@@ -20,7 +20,7 @@ jobs:
           echo "PROJECT_VERSION=$PROJECT_VERSION"
           echo "TAG=${{ github.ref }}"
           TAG_NAME="${GITHUB_REF#refs/tags/}"
-          if [[ "$PROJECT_VERSION" != "$TAG_NAME"]]; then
+          if [[ "$PROJECT_VERSION" != "$TAG_NAME" ]]; then
             echo "Version mismatch"
             exit 1
           fi
