@@ -26,10 +26,11 @@ jobs:
             exit 1
           fi
           echo "Version match"
+
   publish-package:
     runs-on: ubuntu-latest
     needs: check-pyproject-version
-    uses: JRubics/poetry-publish-action@v2
+    uses: JRubics/poetry-publish@v2.1
     with:
       pypi_token: ${{ secrets.PYPI_TOKEN }}
   
