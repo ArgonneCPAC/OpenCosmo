@@ -42,7 +42,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.11', '3.12', '3.13']
-
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,4 +64,7 @@ jobs:
         run: poetry install --with test
 
       - name: Run tests with pytest
-        run: poetry run pytest
+        run: |
+          source $VENV
+          pytest . 
+
