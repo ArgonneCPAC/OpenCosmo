@@ -42,7 +42,8 @@ jobs:
       - uses: ammaraskar/sphinx-action@master
         with:
           docs-folder: "docs"
-  test:
+
+  run-tests:
     name: Run tests
     runs-on: ${{ matrix.os }}
     needs: lint-typecheck
@@ -75,4 +76,32 @@ jobs:
         run: |
           source $VENV
           pytest . 
+  build:
+    name: build
+    runs-on: ${{ matrix.os }}
+    needs: run-tests
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.11', '3.12', '3.13']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      - name: Build package
+        run: poetry build
+      
+    
+
 
