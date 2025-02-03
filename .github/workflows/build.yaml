@@ -42,8 +42,9 @@ jobs:
       - uses: ammaraskar/sphinx-action@master
         with:
           docs-folder: "docs"
+
   run-tests:
-    name: Run Tests
+    name: Run tests
     runs-on: ${{ matrix.os }}
     needs: lint-typecheck
     strategy:
