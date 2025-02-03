@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "opencosmo"
-version = "0.1.0"
+version = "0.1.1"
 description = "OpenCosmo Python Toolkit"
 authors = ["Patrick Wells <pwells@anl.gov>"]
 readme = "README.md"
