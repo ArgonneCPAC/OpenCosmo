@@ -34,6 +34,14 @@ jobs:
       - name: Run mypy type checker
         run: poetry run mypy opencosmo
 
+  build-docs:
+    needs: lint-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ammaraskar/sphinx-action@master
+        with:
+          docs-folder: "/docs"
   test:
     name: Test
     runs-on: ${{ matrix.os }}
