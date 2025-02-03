@@ -31,8 +31,20 @@ on:
       uses: JRubics/poetry-publish-action@v2
       with:
         pypi_token: ${{ secrets.PYPI_TOKEN }}
+    
+    release-github-package:
+      runs-on: ubuntu-latest
+      permissions:
+        contents: write
+      steps:
+        - name: build_changelog
+          uses: mikepenz/release-changelog-builder-action@v5
+        - uses: action/download-artifact@v4
+        - uses: ncipollo/release-action@v1
+          with:
+            body: ${{ steps.build_changelog.outputs.changelog }}
 
-      
-      
+        
+        
 
 
