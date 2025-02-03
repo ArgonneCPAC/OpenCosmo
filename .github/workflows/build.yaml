@@ -78,22 +78,15 @@ jobs:
           pytest . 
   build:
     name: build
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     needs: run-tests
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.11', '3.12', '3.13']
-    defaults:
-      run:
-        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.11'
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
