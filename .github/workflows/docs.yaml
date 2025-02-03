@@ -1,0 +1,7 @@
+name: Build Docs
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
