@@ -1,10 +1,11 @@
-import h5py
-from astropy import cosmology
+import inspect
 from functools import singledispatch
 from pathlib import Path
-from pydantic import BaseModel, Field, computed_field
 from typing import Type
-import inspect
+
+import h5py
+from astropy import cosmology
+from pydantic import BaseModel, Field, computed_field
 
 """
 Reads cosmology from the header of the file and returns the
