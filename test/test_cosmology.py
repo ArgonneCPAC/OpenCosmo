@@ -4,7 +4,7 @@ import astropy.cosmology as ac
 import h5py
 import pytest
 
-from opencosmo import cosmology
+from opencosmo import read_cosmology
 
 
 @pytest.fixture
@@ -68,30 +68,30 @@ def update_cosmology_parameter(
 
 
 def test_flat_lcdm(cosmology_resource_path):
-    cosmo = cosmology.read_cosmology(cosmology_resource_path)
+    cosmo = read_cosmology(cosmology_resource_path)
     assert isinstance(cosmo, ac.FlatLambdaCDM)
 
 
 def test_open_lcdm(open_lcdm):
-    cosmo = cosmology.read_cosmology(open_lcdm)
+    cosmo = read_cosmology(open_lcdm)
     assert isinstance(cosmo, ac.LambdaCDM)
 
 
 def test_flat_wcdm(flat_wcdm):
-    cosmo = cosmology.read_cosmology(flat_wcdm)
+    cosmo = read_cosmology(flat_wcdm)
     assert isinstance(cosmo, ac.FlatwCDM)
 
 
 def test_closed_wcdm(closed_wcdm):
-    cosmo = cosmology.read_cosmology(closed_wcdm)
+    cosmo = read_cosmology(closed_wcdm)
     assert isinstance(cosmo, ac.wCDM)
 
 
 def test_flat_wowa(flat_wowa):
-    cosmo = cosmology.read_cosmology(flat_wowa)
+    cosmo = read_cosmology(flat_wowa)
     assert isinstance(cosmo, ac.Flatw0waCDM)
 
 
 def test_open_wowa(open_wowa):
-    cosmo = cosmology.read_cosmology(open_wowa)
+    cosmo = read_cosmology(open_wowa)
     assert isinstance(cosmo, ac.w0waCDM)
