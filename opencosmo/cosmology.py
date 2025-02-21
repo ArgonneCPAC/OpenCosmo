@@ -1,6 +1,4 @@
 import inspect
-from functools import singledispatch
-from pathlib import Path
 from typing import Type
 
 import h5py
@@ -24,7 +22,7 @@ class CosmologyParameters(BaseModel):
 
     h: float = Field(ge=0.0, description="Reduced Hubble constant")
 
-    @computed_field
+    @computed_field  # type: ignore
     @property
     def H0(self) -> float:
         """
