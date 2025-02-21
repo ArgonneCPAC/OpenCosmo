@@ -5,9 +5,6 @@
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
-import sys
-
-sys.path.insert(0, "../")
 
 project = "OpenCosmo"
 copyright = "2025, OpenCosmo Team"
@@ -26,5 +23,4 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = "alabaster"
-html_static_path = ["_static"]
+html_theme = "sphinx_rtd_theme"
