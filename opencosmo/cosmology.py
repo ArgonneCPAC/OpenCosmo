@@ -16,6 +16,12 @@ astropy.cosmology object.
 
 
 class CosmologyParameters(BaseModel):
+    """
+    Responsible for validating cosmology parameters and handling differences in
+    naming conventions between OpenCosmo and astropy.cosmology. Generally should
+    not be used by the user directly
+    """
+
     h: float = Field(ge=0.0, description="Reduced Hubble constant")
 
     @computed_field
@@ -64,6 +70,25 @@ def get_cosmology_type(parameters: CosmologyParameters) -> Type[cosmology.Cosmol
 
 @oc_reader
 def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
+    """
+    Read cosmology from the header of an OpenCosmo file
+
+    This function reads the cosmology parameters from the
+    header of an OpenCosmo file and returns the most specific
+    astropy.Cosmology object that it can. For example, it can
+    distinguish between FlatLambdaCDM and non-flat wCDM models.
+
+    Parameters
+    ----------
+    file : h5py.File | str | Path
+        The open cosmology file or the path to the file
+
+    Returns
+    -------
+    cosmology : astropy.Cosmology
+        The cosmology object corresponding to the cosmology in the file
+    """
+
     try:
         cosmology_data = file["header"]["simulation"]["cosmology"].attrs
     except (KeyError, AttributeError):
