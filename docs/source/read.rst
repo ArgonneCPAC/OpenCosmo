@@ -1,4 +1,4 @@
 Reading Data
 ===========
 
-..autofunction:: opencosmo.read_cosmology
+.. autofunction:: opencosmo.cosmology.read_cosmology
