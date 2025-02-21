@@ -7,6 +7,8 @@ import h5py
 from astropy import cosmology
 from pydantic import BaseModel, Field, computed_field
 
+from opencosmo.file import oc_reader
+
 """
 Reads cosmology from the header of the file and returns the
 astropy.cosmology object.
@@ -60,7 +62,7 @@ def get_cosmology_type(parameters: CosmologyParameters) -> Type[cosmology.Cosmol
     raise ValueError("Could not determine cosmology type.")
 
 
-@singledispatch
+@oc_reader
 def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
     try:
         cosmology_data = file["header"]["simulation"]["cosmology"].attrs
@@ -79,17 +81,3 @@ def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
         except AttributeError:
             continue
     return cosmology_type(**input_paremeters)
-
-
-@read_cosmology.register
-def _(file_path: str) -> cosmology.Cosmology:
-    file_path = Path(file_path)
-    return read_cosmology(file_path)
-
-
-@read_cosmology.register
-def _(file_path: Path) -> cosmology.Cosmology:
-    if not file_path.exists():
-        raise FileNotFoundError(f"File {file_path} not found.")
-    with h5py.File(file_path, "r") as file:
-        return read_cosmology(file)
