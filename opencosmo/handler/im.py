@@ -1,6 +1,5 @@
-from pathlib import Path
-
-from astropy.io.misc import read_table_hdf5
+import h5py
+from astropy.table import Table  # type: ignore
 
 
 class InMemoryHandler:
@@ -9,9 +8,10 @@ class InMemoryHandler:
     the file will be closed.
     """
 
-    def __init__(self, file_path: Path):
-        self.__path = file_path
-        self.__data = read_table_hdf5(self.__path, path="/data")
+    def __init__(self, file: h5py.File):
+        colnames = file["data"].keys()
+        data = {colname: file["data"][colname][()] for colname in colnames}
+        self.__data = Table(data)
 
     def __enter__(self):
         return self
@@ -19,19 +19,5 @@ class InMemoryHandler:
     def __exit__(self, *exec_details):
         return False
 
-    def apply_filters(self, filters: dict = {}):
-        data = self.__data
-        for filter_ in filters:
-            data = filter_(data)
-        return data
-
-    def apply_transformations(self, transformations: dict = {}):
-        data = self.__data
-        for transformation in transformations:
-            data = transformation(data)
-        self.__data = data
-
     def get_data(self, filters: dict = {}, transformations: dict = {}):
-        data = self.apply_filters(filters)
-        data = self.apply_transformations(transformations)
-        return data
+        return self.__data

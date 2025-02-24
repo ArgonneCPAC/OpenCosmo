@@ -1,7 +1,17 @@
-from functools import property
+from __future__ import annotations
 
-from opencosmo.handler import OpenCosmoDataHandler
-from opencosmo.header import OpenCosmoHeader
+import h5py
+
+from opencosmo.file import file_reader
+from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
+from opencosmo.header import OpenCosmoHeader, read_header
+
+
+@file_reader
+def read(file: h5py.File) -> OpenCosmoDataset:
+    header = read_header(file)
+    handler = InMemoryHandler(file)
+    return OpenCosmoDataset(handler, header)
 
 
 class OpenCosmoDataset:
@@ -18,3 +28,7 @@ class OpenCosmoDataset:
     @property
     def cosmology(self):
         return self.__header.cosmology
+
+    @property
+    def data(self):
+        return self.__handler.get_data()
