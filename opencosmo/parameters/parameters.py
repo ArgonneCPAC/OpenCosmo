@@ -2,6 +2,7 @@ from typing import Type
 
 import h5py
 from pydantic import BaseModel, ValidationError
+from pydantic_core import PydanticCustomError
 
 
 def read_header_attributes(
@@ -16,5 +17,5 @@ def read_header_attributes(
             f"{parameter_model.__name__}. "
             "Are you sure this is an OpenCosmo file?\n"
         )
-        raise ValidationError.from_exception_data(msg, e.errors())
+        raise ValidationError.from_exception_data(msg, e.errors())  # type: ignore
     return parameters

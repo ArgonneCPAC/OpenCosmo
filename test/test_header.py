@@ -9,10 +9,10 @@ from opencosmo.header import read_header
 
 
 def update_simulation_parameter(
-    base_cosmology_path: Path, parameters: dict[str, float], temp_path: Path, name: str
+    base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
 ):
     # make a copy of the original data
-    path = temp_path / f"{name}.hdf5"
+    path = tmp_path / f"{name}.hdf5"
     with h5py.File(base_cosmology_path, "r") as f:
         with h5py.File(path, "w") as file:
             f.copy(f["header"], file, "header")
@@ -29,10 +29,10 @@ def header_resource_path():
 
 
 @pytest.fixture
-def malformed_header_path(header_resource_path):
+def malformed_header_path(header_resource_path, tmp_path):
     update = {"n_dm": "foo"}
     return update_simulation_parameter(
-        header_resource_path, update, header_resource_path.parent, "malformed_header"
+        header_resource_path, update, tmp_path, "malformed_header"
     )
 
 
