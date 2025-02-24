@@ -6,6 +6,7 @@ from .simulation import (
     HydroSimulationParameters,
     SimulationParameters,
     SubgridParameters,
+    read_simulation_parameters,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "SimulationParameters",
     "SubgridParameters",
     "read_header_attributes",
+    "read_simulation_parameters",
 ]

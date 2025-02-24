@@ -29,30 +29,33 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
         cosmology_paramters = parameters.read_header_attributes(
             file, "simulation/cosmology", parameters.CosmologyParameters
         )
-    except KeyError:
+    except KeyError as e:
         raise KeyError(
             "This file does not appear to have cosmology information. "
-            "Are you sure it is an OpenCosmo file?"
+            "Are you sure it is an OpenCosmo file?\n"
+            f"Error: {e}"
         )
 
     try:
-        reformat_paramters = parameters.read_header_attributes(
+        reformat_parameters = parameters.read_header_attributes(
             file, "reformat_hacc/config", parameters.ReformatParamters
         )
-    except KeyError:
-        raise KeyError("File hader is malformedAre you sure it is an OpenCosmo file?")
-    try:
-        simulation_parameters = parameters.read_header_attributes(
-            file,
-            "simulation/parameters",
-            parameters.SimulationParameters,
-            cosmology=cosmology_paramters,
+    except KeyError as e:
+        raise KeyError(
+            "File header is malformed. Are you sure it is an OpenCosmo file?\n "
+            f"Error: {e}"
         )
-    except KeyError:
+    try:
+        simulation_parameters = parameters.read_simulation_parameters(
+            file, reformat_parameters.is_hydro, cosmology_paramters
+        )
+
+    except KeyError as e:
         raise KeyError(
             "This file does not appear to have simulation information. "
-            "Are you sure it is an OpenCosmo file?"
+            "Are you sure it is an OpenCosmo file?\n"
+            f"Error: {e}"
         )
     return OpenCosmoHeader(
-        cosmology_paramters, simulation_parameters, reformat_paramters
+        cosmology_paramters, simulation_parameters, reformat_parameters
     )

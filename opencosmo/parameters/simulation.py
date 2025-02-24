@@ -3,24 +3,35 @@ from __future__ import annotations
 from typing import Optional, Type
 
 import h5py
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from opencosmo import parameters
-from opencosmo.file import file_reader
 
 
-@file_reader
-def get_simulation_paramter_type(file: h5py.File) -> Type[SimulationParameters]:
-    try:
-        pars = parameters.read_header_attributes(
-            file, "reformat_hacc/config", parameters.ReformatParamters
+def read_simulation_parameters(
+    file: h5py.File,
+    is_hydro: bool,
+    cosmology_parameters: parameters.CosmologyParameters,
+) -> Type[SimulationParameters]:
+    if is_hydro:
+        subrid_params = parameters.read_header_attributes(
+            file,
+            "simulation/parameters",
+            SubgridParameters,
+            cosmology_parameters=cosmology_parameters,
         )
-    except KeyError:
-        raise KeyError("File header is malformed.Are you sure it is an OpenCosmo file?")
+        return parameters.read_header_attributes(
+            file,
+            "simulation/parameters",
+            HydroSimulationParameters,
+            subgrid_parameters=subrid_params,
+            cosmology_parameters=cosmology_parameters,
+        )
 
-    if pars.is_hydro:
-        return HydroSimulationParameters
-    return GravityOnlySimulationParameters
+    else:
+        return parameters.read_header_attributes(
+            file, "simulation/paramters", GravityOnlySimulationParameters
+        )
 
 
 def empty_string_to_none(v):
@@ -45,7 +56,7 @@ class SimulationParameters(BaseModel):
     offset_dm_ini: float = Field(
         description="Lagrangian offset for dark matter particles"
     )
-    cosmology: parameters.CosmologyParameters = Field(
+    cosmology_parameters: parameters.CosmologyParameters = Field(
         description="Cosmology parameters"
     )
 
@@ -60,7 +71,12 @@ class SimulationParameters(BaseModel):
 GravityOnlySimulationParameters = SimulationParameters
 
 
+def subgrid_alias_generator(name: str) -> str:
+    return f"subgrid_{name}"
+
+
 class SubgridParameters(BaseModel):
+    model_config = ConfigDict(alias_generator=subgrid_alias_generator)
     agn_kinetic_eps: float = Field(description="AGN feedback efficiency")
     agn_kinetic_jet_vel: float = Field(description="AGN feedback velocity")
     agn_nperh: float = Field(description="AGN sphere of influence")
@@ -76,6 +92,6 @@ class HydroSimulationParameters(SimulationParameters):
     offset_gas_ini: float = Field(
         description="Lagrangian offset for gas particles", alias="offset_bar_ini"
     )
-    subgrid_params: SubgridParameters = Field(
+    subgrid_parameters: SubgridParameters = Field(
         description="Parameters for subgrid physics"
     )
