@@ -1,4 +1,5 @@
 from .cosmology import CosmologyParameters
+from .cosmotools import CosmoToolsParameters
 from .parameters import read_header_attributes
 from .reformat import ReformatParamters
 from .simulation import (
@@ -11,6 +12,7 @@ from .simulation import (
 
 __all__ = [
     "CosmologyParameters",
+    "CosmoToolsParameters",
     "GravityOnlySimulationParameters",
     "HydroSimulationParameters",
     "ReformatParamters",

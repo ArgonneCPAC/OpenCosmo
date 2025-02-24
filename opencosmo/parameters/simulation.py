@@ -39,7 +39,6 @@ def read_simulation_parameters(
             subgrid_parameters=subrid_params,
             cosmology_parameters=cosmology_parameters,
         )
-
     else:
         return parameters.read_header_attributes(
             file, "simulation/paramters", GravityOnlySimulationParameters

@@ -12,9 +12,11 @@ class OpenCosmoHeader:
         self,
         simulation_pars: parameters.SimulationParameters,
         reformat_pars: parameters.ReformatParamters,
+        cosmotools_pars: parameters.CosmoToolsParameters,
     ):
         self.__simulation_pars = simulation_pars
         self.__reformat_pars = reformat_pars
+        self.__cosmotools_pars = cosmotools_pars
 
     @cached_property
     def cosmology(self):
@@ -43,4 +45,18 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
             "Are you sure it is an OpenCosmo file?\n"
             f"Error: {e}"
         )
-    return OpenCosmoHeader(simulation_parameters, reformat_parameters)
+
+    try:
+        cosmotools_parameters = parameters.read_header_attributes(
+            file, "simulation/cosmotools", parameters.CosmoToolsParameters
+        )
+    except KeyError as e:
+        raise KeyError(
+            "This file does not appear to have cosmotools information. "
+            "Are you sure it is an OpenCosmo file?\n"
+            f"Error: {e}"
+        )
+
+    return OpenCosmoHeader(
+        simulation_parameters, reformat_parameters, cosmotools_parameters
+    )
