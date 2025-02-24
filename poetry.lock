@@ -285,6 +285,29 @@ files = [
 numpy = ">=1.19.3"
 
 [[package]]
+name = "hdf5plugin"
+version = "5.0.0"
+description = "HDF5 Plugins for Windows, MacOS, and Linux"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "hdf5plugin-5.0.0-py3-none-macosx_10_13_universal2.whl", hash = "sha256:8f696fcfd8c05b574e98180580e6d28428582cb9c7dd62b17c41ce3bdd5c5994"},
+    {file = "hdf5plugin-5.0.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6793420f5c0bc753e925ef47fac74e491f8aaf27bfa6c61fce5fccaf4cd8e767"},
+    {file = "hdf5plugin-5.0.0-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:e4b34b4e1d71ed47fdd080fce30d9fa9b043c9263385584e8006903c0c10eae1"},
+    {file = "hdf5plugin-5.0.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bd5f3e9cb4448841d07dd9d9258132b7eb900b38f8c49e899efe4050834757e6"},
+    {file = "hdf5plugin-5.0.0-py3-none-win_amd64.whl", hash = "sha256:9bded0f5536471ace7855bd881762de1125586af1162001c39b8e899b89c47e2"},
+    {file = "hdf5plugin-5.0.0.tar.gz", hash = "sha256:3bcc5c4f523953fe020a220c7b1b307c62066e39fdbdcd904fa2268db80e9dbb"},
+]
+
+[package.dependencies]
+h5py = ">=3.0.0"
+
+[package.extras]
+doc = ["ipython", "nbsphinx", "sphinx", "sphinx-rtd-theme"]
+test = ["blosc2 (>=2.5.1)", "blosc2-grok (>=0.2.2)"]
+
+[[package]]
 name = "idna"
 version = "3.10"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -1102,4 +1125,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "276eefd11e6696c425d5ea40073ed6c476e78e95da48fa0fb817307e53d33b82"
+content-hash = "a796810ad258d1781299401db06d19d8b64d582b743bfd3fb1029bf31bf97e43"
