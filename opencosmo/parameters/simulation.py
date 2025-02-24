@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-from opencosmo.file import oc_reader
+from opencosmo.file import file_reader
 
 from .cosmology import CosmologyParameters
 

@@ -1,10 +1,10 @@
 import h5py
 
 from opencosmo import parameters
-from opencosmo.file import oc_reader
+from opencosmo.file import file_reader
 
 
-@oc_reader
+@file_reader
 def read_header(file: h5py.File) -> parameters.SimulationParameters:
     try:
         cosmology_paramters = parameters.read_header_attributes(
