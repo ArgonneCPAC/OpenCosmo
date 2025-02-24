@@ -53,14 +53,16 @@ def empty_string_to_none(v):
 
 class SimulationParameters(BaseModel):
     box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
-    z_ini: float = Field(gt=0, description="Initial redshift")
-    z_end: float = Field(description="Final redshift")
-    n_dm: int = Field(description="Number of dark matter particles (per dimension)")
-    n_gravity: Optional[int] = Field(
-        ge=0, description="Number of gravity-only particles (per dimension)"
+    z_ini: float = Field(ge=0.01, description="Initial redshift")
+    z_end: float = Field(ge=0.0, description="Final redshift")
+    n_dm: int = Field(
+        ge=2, description="Number of dark matter particles (per dimension)"
     )
-    n_steps: int = Field(description="Number of time steps")
-    pm_grid: int = Field(description="Grid resolution (per dimension)")
+    n_gravity: Optional[int] = Field(
+        ge=2, description="Number of gravity-only particles (per dimension)"
+    )
+    n_steps: int = Field(ge=1, description="Number of time steps")
+    pm_grid: int = Field(ge=2, description="Grid resolution (per dimension)")
     offset_gravity_ini: Optional[float] = Field(
         description="Lagrangian offset for gravity-only particles"
     )
