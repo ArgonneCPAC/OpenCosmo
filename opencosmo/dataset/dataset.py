@@ -9,6 +9,12 @@ class OpenCosmoDataset:
         self.__header = header
         self.__handler = handler
 
+    def __enter__(self):
+        return self.__handler.__enter__()
+
+    def __exit__(self, *exc_details):
+        return self.__handler.__exit__(*exc_details)
+
     @property
     def cosmology(self):
         return self.__header.cosmology
