@@ -2,7 +2,6 @@ from typing import Type
 
 import h5py
 from pydantic import BaseModel, ValidationError
-from pydantic_core import PydanticCustomError
 
 
 def read_header_attributes(
