@@ -1,9 +1,25 @@
 from pathlib import Path
 
+import h5py
 import pytest
 from astropy.cosmology import FlatLambdaCDM
+from pydantic import ValidationError
 
 from opencosmo.header import read_header
+
+
+def update_simulation_parameter(
+    base_cosmology_path: Path, parameters: dict[str, float], temp_path: Path, name: str
+):
+    # make a copy of the original data
+    path = temp_path / f"{name}.hdf5"
+    with h5py.File(base_cosmology_path, "r") as f:
+        with h5py.File(path, "w") as file:
+            f.copy(f["header"], file, "header")
+            # update the attributes
+            for key, value in parameters.items():
+                file["header"]["simulation"]["parameters"].attrs[key] = value
+    return path
 
 
 @pytest.fixture
@@ -12,6 +28,19 @@ def header_resource_path():
     return p
 
 
+@pytest.fixture
+def malformed_header_path(header_resource_path):
+    update = {"n_dm": "foo"}
+    return update_simulation_parameter(
+        header_resource_path, update, header_resource_path.parent, "malformed_header"
+    )
+
+
 def test_read_header(header_resource_path):
     header = read_header(header_resource_path)
     assert isinstance(header.cosmology, FlatLambdaCDM)
+
+
+def test_malformed_header(malformed_header_path):
+    with pytest.raises(ValidationError):
+        read_header(malformed_header_path)
