@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Type
+from typing import Optional
 
 import h5py
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,13 +20,6 @@ def read_simulation_parameters(file: h5py.File) -> SimulationParameters:
 
     Parameters
     ----------
-    file: str | Path
-        The path to the file
-
-    Returns
-    -------
-    parameters: SimulationParameters
-        The simulation parameters from the file
 
     """
     is_hydro = file["header/reformat_hacc/config"].attrs.get("is_hydro", None)
