@@ -7,7 +7,7 @@ import h5py
 FileReader = Callable[Concatenate[h5py.File, ...], Any]
 
 
-def oc_reader(func: FileReader) -> FileReader:
+def file_reader(func: FileReader) -> FileReader:
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         return read_file(file, func, *args, **kwargs)
