@@ -10,7 +10,7 @@ from opencosmo.file import file_reader
 
 
 @file_reader
-def read_simulation_parameters(file: h5py.File) -> Type[SimulationParameters]:
+def read_simulation_parameters(file: h5py.File) -> SimulationParameters:
     """
     Read the simulation parameters from an OpenCosmo file
 
