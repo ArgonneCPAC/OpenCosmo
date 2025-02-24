@@ -24,3 +24,7 @@ exclude_patterns = []
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "sphinx_rtd_theme"
+
+# -- Options for autodoc -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
+autodoc_typehints = "description"
