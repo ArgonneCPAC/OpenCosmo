@@ -52,8 +52,8 @@ def empty_string_to_none(v):
 
 
 class SimulationParameters(BaseModel):
-    box_size: float = Field(..., description="Size of the simulation box (Mpc/h)")
-    z_ini: float = Field(description="Initial redshift")
+    box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
+    z_ini: float = Field(gt=0, description="Initial redshift")
     z_end: float = Field(description="Final redshift")
     n_dm: int = Field(description="Number of dark matter particles (per dimension)")
     n_gravity: Optional[int] = Field(
