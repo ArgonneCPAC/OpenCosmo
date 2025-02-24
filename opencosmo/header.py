@@ -25,6 +25,25 @@ class OpenCosmoHeader:
 
 @file_reader
 def read_header(file: h5py.File) -> OpenCosmoHeader:
+    """
+    Read the header of an OpenCosmo file
+
+    This function may be useful if you just want to access some basic
+    information about the simulation but you don't plan to actually
+    read any data.
+
+    Parameters
+    ----------
+    file : str | Path
+        The path to the file
+
+    Returns
+    -------
+    header : OpenCosmoHeader
+        The header information from the file
+
+
+    """
     try:
         reformat_parameters = parameters.read_header_attributes(
             file, "reformat_hacc/config", parameters.ReformatParamters
@@ -35,9 +54,7 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
             f"Error: {e}"
         )
     try:
-        simulation_parameters = parameters.read_simulation_parameters(
-            file, reformat_parameters.is_hydro
-        )
+        simulation_parameters = parameters.read_simulation_parameters(file)
 
     except KeyError as e:
         raise KeyError(

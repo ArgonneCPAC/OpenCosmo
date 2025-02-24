@@ -26,8 +26,8 @@ def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
 
     Parameters
     ----------
-    file : h5py.File | str | Path
-        The open cosmology file or the path to the file
+    file : str | Path
+        The path to the file
 
     Returns
     -------
