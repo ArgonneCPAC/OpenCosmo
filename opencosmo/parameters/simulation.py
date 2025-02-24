@@ -6,13 +6,25 @@ import h5py
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from opencosmo import parameters
+from opencosmo.file import file_reader
 
 
+@file_reader
 def read_simulation_parameters(
     file: h5py.File,
     is_hydro: bool,
-    cosmology_parameters: parameters.CosmologyParameters,
 ) -> Type[SimulationParameters]:
+    try:
+        cosmology_parameters = parameters.read_header_attributes(
+            file, "simulation/cosmology", parameters.CosmologyParameters
+        )
+    except KeyError as e:
+        raise KeyError(
+            "This file does not appear to have cosmology information. "
+            "Are you sure it is an OpenCosmo file?\n"
+            f"Error: {e}"
+        )
+
     if is_hydro:
         subrid_params = parameters.read_header_attributes(
             file,

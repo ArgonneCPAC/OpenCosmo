@@ -32,8 +32,8 @@ class ReformatParamters(BaseModel):
     snapshot_analysis_path_pattern: Optional[str] = None
     temporary_path: Optional[Path] = None
 
-    @classmethod
     @field_validator("is_hydro", mode="before")
+    @classmethod
     def numpy_bool_to_base(cls, value):
         if isinstance(value, np.bool_):
             return bool(value)
