@@ -35,8 +35,10 @@ def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
         The cosmology object corresponding to the cosmology in the file
     """
 
-    parameters = read_header(file)
-    return make_cosmology(parameters.cosmology)
+    header = read_header(file)
+    # The header reads parameters and calls into the code
+    # below to produce an actual cosmology object.
+    return header.cosmology
 
 
 def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:
