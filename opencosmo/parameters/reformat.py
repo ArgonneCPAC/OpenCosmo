@@ -16,7 +16,7 @@ class ReformatParamters(BaseModel):
     cosmotools_lc_path: Optional[Path] = None
     cosmotools_path: Path
     indat_path: Path
-    # is_hydro: bool
+    is_hydro: bool
     lightcone_analysis_path_pattern: Optional[str] = None
     machine: str
     mass_threshold_sodbighaloparticles: Optional[float] = None
