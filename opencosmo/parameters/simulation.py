@@ -1,10 +1,26 @@
-from typing import Optional
+from __future__ import annotations
 
+from typing import Optional, Type
+
+import h5py
 from pydantic import BaseModel, Field, model_validator
 
+from opencosmo import parameters
 from opencosmo.file import file_reader
 
-from .cosmology import CosmologyParameters
+
+@file_reader
+def get_simulation_paramter_type(file: h5py.File) -> Type[SimulationParameters]:
+    try:
+        pars = parameters.read_header_attributes(
+            file, "reformat_hacc/config", parameters.ReformatParamters
+        )
+    except KeyError:
+        raise KeyError("File header is malformed.Are you sure it is an OpenCosmo file?")
+
+    if pars.is_hydro:
+        return HydroSimulationParameters
+    return GravityOnlySimulationParameters
 
 
 def empty_string_to_none(v):
@@ -29,7 +45,9 @@ class SimulationParameters(BaseModel):
     offset_dm_ini: float = Field(
         description="Lagrangian offset for dark matter particles"
     )
-    cosmology: CosmologyParameters = Field(description="Cosmology parameters")
+    cosmology: parameters.CosmologyParameters = Field(
+        description="Cosmology parameters"
+    )
 
     @model_validator(mode="before")
     @classmethod
