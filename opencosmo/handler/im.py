@@ -2,6 +2,19 @@ import h5py
 from astropy.table import Table  # type: ignore
 
 
+def apply_columns_transformations(data: Table, transformations: dict):
+    for column in data.columns:
+        col = data[column]
+        for transformation in transformations:
+            transformed_col = transformation(col)
+            if transformed_col is not None:
+                col = transformed_col
+        if col is not None:
+            data[column] = col
+
+    return data
+
+
 class InMemoryHandler:
     """
     A handler for in-memory storage. All data will be loaded directly into memory, and
@@ -20,4 +33,6 @@ class InMemoryHandler:
         return False
 
     def get_data(self, filters: dict = {}, transformations: dict = {}):
-        return self.__data
+        """ """
+        columns_transformations = transformations.get("columns", [])
+        return apply_columns_transformations(self.__data, columns_transformations)

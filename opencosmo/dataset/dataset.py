@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import h5py
 
+from opencosmo.columns.columns import parse_column_units
 from opencosmo.file import file_reader
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
@@ -29,13 +30,20 @@ def read(file: h5py.File) -> OpenCosmoDataset:
     """
     header = read_header(file)
     handler = InMemoryHandler(file)
-    return OpenCosmoDataset(handler, header)
+    transformations = {"columns": [parse_column_units]}
+    return OpenCosmoDataset(handler, header, transformations)
 
 
 class OpenCosmoDataset:
-    def __init__(self, handler: OpenCosmoDataHandler, header: OpenCosmoHeader):
+    def __init__(
+        self,
+        handler: OpenCosmoDataHandler,
+        header: OpenCosmoHeader,
+        transformations: dict = {},
+    ):
         self.__header = header
         self.__handler = handler
+        self.__transformations = transformations
 
     def __enter__(self):
         return self.__handler.__enter__()
@@ -49,4 +57,4 @@ class OpenCosmoDataset:
 
     @property
     def data(self):
-        return self.__handler.get_data()
+        return self.__handler.get_data(transformations=self.__transformations)
