@@ -10,10 +10,39 @@ from opencosmo.file import file_reader
 
 
 @file_reader
-def read_simulation_parameters(
-    file: h5py.File,
-    is_hydro: bool,
-) -> Type[SimulationParameters]:
+def read_simulation_parameters(file: h5py.File) -> Type[SimulationParameters]:
+    """
+    Read the simulation parameters from an OpenCosmo file
+
+    This function reads the simulation parameters from the header of an OpenCosmo file
+    without reading the entire header or any data. It may be useful if you just want
+    some basic information about the simulation.
+
+    Parameters
+    ----------
+    file: str | Path
+        The path to the file
+
+    Returns
+    -------
+    parameters: SimulationParameters
+        The simulation parameters from the file
+
+    """
+    is_hydro = file["header/reformat_hacc/config"].attrs.get("is_hydro", None)
+    if is_hydro is None:
+        n_dm = file["header/simulation/parameters"].attrs.get("n_dm", 0)
+        n_bar = file["header/simulation/parameters"].attrs.get("n_bar", 0)
+        if n_dm > 0 and n_bar > 0:
+            is_hydro = True
+        elif n_dm > 0:
+            is_hydro = False
+        else:
+            raise KeyError(
+                "Could not determine if this simulation is hydro or gravity-only from "
+                "the header. Are you sure it is an OpenCosmo file?"
+            )
+
     try:
         cosmology_parameters = parameters.read_header_attributes(
             file, "simulation/cosmology", parameters.CosmologyParameters
