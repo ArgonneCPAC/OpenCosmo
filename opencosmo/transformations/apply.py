@@ -1,15 +1,17 @@
+from copy import copy
+
 import numpy as np
 from astropy.table import Column, Table, join
 
-from opencosmo.transformations import protocol as t
+from opencosmo.transformations import transformation as t
 
 
 def apply_table_transformations(
     table: Table, transformations: list[t.TableTransformation]
 ):
-    output_table = table
+    output_table = copy(table)
     for tr in transformations:
-        if (new_table := tr(table)) is not None:
+        if (new_table := tr(output_table)) is not None:
             output_table = combine_tables(table, new_table)
     return output_table
 

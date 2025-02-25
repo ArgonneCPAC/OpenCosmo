@@ -3,7 +3,7 @@ from .apply import (
     apply_filter_transformations,
     apply_table_transformations,
 )
-from .protocol import (
+from .transformation import (
     ColumnTransformation,
     FilterTransformation,
     TableTransformation,
