@@ -3,12 +3,13 @@ from .apply import (
     apply_filter_transformations,
     apply_table_transformations,
 )
-from .transformations import (
+from .protocol import (
     ColumnTransformation,
     FilterTransformation,
     TableTransformation,
     Transformation,
 )
+from .units import apply_units
 
 __all__ = [
     "ColumnTransformation",
@@ -18,4 +19,5 @@ __all__ = [
     "apply_column_transformations",
     "apply_filter_transformations",
     "apply_table_transformations",
+    "apply_units",
 ]
