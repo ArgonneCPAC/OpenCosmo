@@ -36,6 +36,10 @@ class ColumnTransformation(Transformation[Column]):
     """
 
     def __init__(self, column_name: str): ...
+
+    @property
+    def column_name(self) -> str: ...
+
     def transform(self, input: Column) -> Optional[Column]: ...
 
 

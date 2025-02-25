@@ -15,7 +15,7 @@ def read(file: h5py.File) -> OpenCosmoDataset:
 
     You should use this function if the data are small enough that having
     a copy of it (or a few copies of it) in memory is not a problem. For
-    larger datasets, use opencosmo.open
+    larger datasets, use opencosmo.open.
 
     Parameters
     ----------
