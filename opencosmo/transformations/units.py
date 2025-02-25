@@ -37,9 +37,9 @@ def parse_velocities(column: Column):
 def parse_mass(column: Column):
     column_name_parts = column.name.split("_")
 
-    def is_mass_column(part):
+    def is_mass_part(part):
         return part == "mass" or part[0] == "M"
 
-    if any(is_mass_column(part) for part in column_name_parts):
+    if any(is_mass_part(part) for part in column_name_parts):
         column.unit = u.Msun / cu.littleh
         return column
