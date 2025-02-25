@@ -15,10 +15,10 @@ class Transformation(Protocol):
     return None
     """
 
-    def transform(self, input: Column | Table) -> Optional[TransformationOutput]: ...
+    def __call__(self, input: Column | Table) -> Optional[TransformationOutput]: ...
 
 
-class TableTransformation(Transformation[Table]):
+class TableTransformation(Transformation):
     """
     A transformation that can be applied to a table, producing a new table
 
@@ -26,10 +26,10 @@ class TableTransformation(Transformation[Table]):
     will be added.
     """
 
-    def transform(self, input: Table) -> Optional[Table]: ...
+    def __call__(self, input: Table) -> Optional[Table]: ...
 
 
-class ColumnTransformation(Transformation[Column]):
+class ColumnTransformation(Transformation):
     """
     A transformation that is applied to a single transformation, producing
     an updated version of that column (which will replace the original)
@@ -40,13 +40,13 @@ class ColumnTransformation(Transformation[Column]):
     @property
     def column_name(self) -> str: ...
 
-    def transform(self, input: Column) -> Optional[Column]: ...
+    def __call__(self, input: Column) -> Optional[Column]: ...
 
 
-class FilterTransformation(Transformation[Table]):
+class FilterTransformation(Transformation):
     """
     A transformation that masks rows of a table based on some criteria.
     The mask should be a boolean array with the same length as the table.
     """
 
-    def transform(self, input: Table) -> Optional[NDArray[bool]]: ...
+    def __call__(self, input: Table) -> Optional[NDArray[bool]]: ...

@@ -1,38 +1,38 @@
 import numpy as np
 from astropy.table import Column, Table, join
 
-from opencosmo import transformations
+from opencosmo.transformations import protocol as t
 
 
 def apply_table_transformations(
-    table: Table, transformations: list[transformations.TableTransformations]
+    table: Table, transformations: list[t.TableTransformation]
 ):
     output_table = table
-    for t in transformations:
-        if (new_table := t.transform(table)) is not None:
+    for tr in transformations:
+        if (new_table := tr(table)) is not None:
             output_table = combine_tables(table, new_table)
     return output_table
 
 
 def apply_filter_transformations(
-    table: Table, transformations: list[transformations.FilterTransformations]
+    table: Table, transformations: list[t.FilterTransformation]
 ):
     mask = np.ones(len(table), dtype=bool)
-    for t in transformations:
-        if (new_mask := t.transform(table)) is not None:
+    for tr in transformations:
+        if (new_mask := tr(table)) is not None:
             mask &= new_mask
     return table[mask]
 
 
 def apply_column_transformations(
-    table: Table, transformations: list[transformations.ColumnTransformations]
+    table: Table, transformations: list[t.ColumnTransformation]
 ):
-    for t in transformations:
-        column_name = t.column_name
+    for tr in transformations:
+        column_name = tr.column_name
         if column_name not in table.columns:
             raise ValueError(f"Column {column_name} not found in table")
         column = table[column_name]
-        if (new_column := t.transform(column)) is not None:
+        if (new_column := tr(column)) is not None:
             table[column_name] = new_column
     return table
 

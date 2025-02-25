@@ -1,18 +1,7 @@
 import h5py
 from astropy.table import Table  # type: ignore
 
-
-def apply_columns_transformations(data: Table, transformations: dict):
-    for column in data.columns:
-        col = data[column]
-        for transformation in transformations:
-            transformed_col = transformation(col)
-            if transformed_col is not None:
-                col = transformed_col
-        if col is not None:
-            data[column] = col
-
-    return data
+from opencosmo import transformations as t
 
 
 class InMemoryHandler:
@@ -34,5 +23,5 @@ class InMemoryHandler:
 
     def get_data(self, filters: dict = {}, transformations: dict = {}):
         """ """
-        columns_transformations = transformations.get("columns", [])
-        return apply_columns_transformations(self.__data, columns_transformations)
+        table_transformations = transformations.get("table", [])
+        return t.apply_table_transformations(self.__data, table_transformations)
