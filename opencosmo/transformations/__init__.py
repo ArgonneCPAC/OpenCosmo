@@ -1,3 +1,8 @@
+from .apply import (
+    apply_column_transformations,
+    apply_filter_transformations,
+    apply_table_transformations,
+)
 from .transformations import (
     ColumnTransformation,
     FilterTransformation,
@@ -10,4 +15,7 @@ __all__ = [
     "FilterTransformation",
     "TableTransformation",
     "Transformation",
+    "apply_column_transformations",
+    "apply_filter_transformations",
+    "apply_table_transformations",
 ]
