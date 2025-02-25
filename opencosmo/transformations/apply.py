@@ -14,7 +14,7 @@ def apply_table_transformations(
     return output_table
 
 
-def apply_filter_transformation(
+def apply_filter_transformations(
     table: Table, transformations: list[transformations.FilterTransformations]
 ):
     mask = np.ones(len(table), dtype=bool)
@@ -24,7 +24,7 @@ def apply_filter_transformation(
     return table[mask]
 
 
-def apply_column_transformation(
+def apply_column_transformations(
     table: Table, transformations: list[transformations.ColumnTransformations]
 ):
     for t in transformations:
