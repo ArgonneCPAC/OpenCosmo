@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import astropy.cosmology.units as cu
-import astropy.units as u
 import pytest
 from astropy.table import Table
 
