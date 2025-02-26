@@ -9,7 +9,7 @@ from .transformation import (
     TableTransformation,
     Transformation,
 )
-from .units import apply_units
+from .units import apply_units_by_name
 
 __all__ = [
     "ColumnTransformation",
@@ -19,5 +19,5 @@ __all__ = [
     "apply_column_transformations",
     "apply_filter_transformations",
     "apply_table_transformations",
-    "apply_units",
+    "apply_units_by_name",
 ]
