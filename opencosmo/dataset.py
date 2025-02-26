@@ -5,11 +5,12 @@ import h5py
 from opencosmo.file import file_reader
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.transformations import generate_transformations, units
+from opencosmo.transformations import generate_transformations
+from opencosmo.transformations import units as u
 
 
 @file_reader
-def read(file: h5py.File) -> OpenCosmoDataset:
+def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
     """
     Read a dataset from a file into memory.
 
@@ -21,6 +22,9 @@ def read(file: h5py.File) -> OpenCosmoDataset:
     ----------
     file : str or pathlib.Path
         The path to the file to read.
+    units : str, optional as u
+        The unit convention to use. One of "physical", "comoving",
+        "scalefree", or "unitless". The default is "comoving".
 
     Returns
     -------
@@ -30,8 +34,8 @@ def read(file: h5py.File) -> OpenCosmoDataset:
     """
     header = read_header(file)
     handler = InMemoryHandler(file)
-    transformations = units.get_unit_transformations()
-    generators = units.get_unit_transformation_generators()
+    transformations = u.get_unit_transformations(header.cosmology, units)
+    generators = u.get_unit_transformation_generators()
     transformations = generate_transformations(
         file["data"], generators, transformations
     )
