@@ -45,19 +45,6 @@ def apply_filter_transformations(
     return table[mask]
 
 
-def apply_column_transformations(
-    table: Table, transformations: list[t.ColumnTransformation]
-):
-    for tr in transformations:
-        column_name = tr.column_name
-        if column_name not in table.columns:
-            raise ValueError(f"Column {column_name} not found in table")
-        column = table[column_name]
-        if (new_column := tr(column)) is not None:
-            table[column_name] = new_column
-    return table
-
-
 def combine_tables(table: Table, new_table: Table):
     if len(table) != len(new_table):
         raise ValueError("Tables must have the same length")

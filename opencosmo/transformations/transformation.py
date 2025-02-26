@@ -1,7 +1,7 @@
 from typing import Optional, Protocol
 
 from astropy.table import Column, Table
-from h5py import Dataset, Group
+from h5py import Dataset
 from numpy.typing import NDArray
 
 TransformationOutput = Column | Table | NDArray[bool]
