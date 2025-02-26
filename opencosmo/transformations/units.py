@@ -1,20 +1,48 @@
+from functools import partial
 from typing import Optional
 from warnings import warn
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
+from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
 from h5py import Dataset  # type: ignore
 
 from opencosmo import transformations as t
+
+_ = u.add_enabled_units(cu)
 
 
 def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
     return [generate_attribute_unit_transformation]
 
 
-def get_unit_transformations() -> dict[str, list[t.TableTransformation]]:
+def get_unit_transformations(
+    cosmology: Cosmology,
+    convention: str = "comoving",
+) -> dict[str, list[t.TableTransformation]]:
+    if convention == "comoving":
+        remove_h = partial(remove_littleh, cosmology=cosmology)
+        return {"table": [apply_units_by_name, remove_h]}
     return {"table": [apply_units_by_name]}
+
+
+def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
+    """
+    Remove little h from the units of the input table. For comoving
+    coordinates, this is the second step after parsing the units themselves.
+    """
+    table = input
+    for column in table.columns:
+        if (unit := table[column].unit) is not None:
+            try:
+                index = unit.bases.index(cu.littleh)
+            except ValueError:
+                continue
+            power = unit.powers[index]
+            new_unit = unit / cu.littleh**power
+            table[column] = table[column].to(new_unit, cu.with_H0(cosmology.H0))
+    return table
 
 
 def generate_attribute_unit_transformation(

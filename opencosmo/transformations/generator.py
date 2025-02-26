@@ -25,10 +25,14 @@ def generate_transformations(
     """
     for dataset in input.values():
         for generator in generators:
-            transformations = generator(dataset)
-            if transformations is not None:
-                for transformation_type, transformation in transformations.items():
-                    if transformation_type not in existing:
-                        existing[transformation_type] = []
-                    existing[transformation_type].extend(transformation)
+            generated_transformations = generator(dataset)
+            if generated_transformations is not None:
+                for (
+                    transformation_type,
+                    transformations,
+                ) in generated_transformations.items():
+                    existing_transformation = existing.get(transformation_type, [])
+                    existing[transformation_type] = (
+                        transformations + existing_transformation
+                    )
     return existing

@@ -46,8 +46,29 @@ def test_parse_velocities(data_path):
         assert data[col].unit == u.km / u.s
 
 
+def test_comoving_vs_scalefree(data_path):
+    comoving = read(data_path, units="comoving")
+    scalefree = read(data_path, units="scalefree")
+    cols = comoving.data.columns
+    position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
+    h = comoving.cosmology.h
+    for col in position_cols:
+        assert scalefree.data[col].unit == u.Mpc / cu.littleh
+        assert comoving.data[col].unit == u.Mpc
+        assert np.all(comoving.data[col].value == scalefree.data[col].value / h)
+
+
+def test_parse_positions(data_path):
+    dataset = read(data_path, units="scalefree")
+    data = dataset.data
+    cols = data.columns
+    position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
+    for col in position_cols:
+        assert data[col].unit == u.Mpc / cu.littleh
+
+
 def test_parse_mass(data_path):
-    dataset = read(data_path)
+    dataset = read(data_path, units="scalefree")
     data = dataset.data
     cols = data.columns
     mass_cols = filter(
