@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Protocol, TypeVar
+from typing import Optional, Protocol
 
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
