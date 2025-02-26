@@ -1,16 +1,40 @@
 from pathlib import Path
+from shutil import copyfile
 
 import astropy.cosmology.units as cu
 import astropy.units as u
+import h5py
 import numpy as np
 import pytest
+from astropy.table import Column
 
 from opencosmo import read
+
+
+def add_column(tmp_path: Path, original_file: Path, column: Column):
+    new_path = tmp_path / original_file.name
+    copyfile(original_file, new_path)
+    with h5py.File(new_path, "r+") as file:
+        data = file["data"]
+        data.create_dataset(column.name, data=column.data)
+        if column.unit is not None:
+            data[column.name].attrs["unit"] = str(column.unit)
+    return new_path
 
 
 @pytest.fixture
 def data_path():
     return Path("test/resource/galaxyproperties.hdf5")
+
+
+def test_attribute_units(data_path, tmp_path):
+    dataset = read(data_path)
+    data = dataset.data
+    new_column = Column(np.random.rand(len(data)), name="new_column", unit=u.Mpc)
+    new_path = add_column(tmp_path, data_path, new_column)
+    dataset = read(new_path)
+    data = dataset.data
+    assert data["new_column"].unit == u.Mpc
 
 
 def test_parse_velocities(data_path):

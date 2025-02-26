@@ -5,7 +5,11 @@ import h5py
 from opencosmo.file import file_reader
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.transformations import apply_units_by_name
+from opencosmo.transformations import (
+    apply_units_by_name,
+    generate_attribute_unit_transformation,
+    generate_transformations,
+)
 
 
 @file_reader
@@ -30,7 +34,13 @@ def read(file: h5py.File) -> OpenCosmoDataset:
     """
     header = read_header(file)
     handler = InMemoryHandler(file)
-    transformations = {"table": [apply_units_by_name]}
+    transformations = {
+        "table": [apply_units_by_name],
+    }
+    generators = [generate_attribute_unit_transformation]
+    transformations = generate_transformations(
+        file["data"], generators, transformations
+    )
     return OpenCosmoDataset(handler, header, transformations)
 
 
