@@ -6,13 +6,32 @@ from astropy.table import Table, join
 from opencosmo.transformations import transformation as t
 
 
+def apply_column_transformations(
+    table: Table, transformations: list[t.ColumnTransformation]
+):
+    for tr in transformations:
+        column_name = tr.column_name
+        if column_name not in table.columns:
+            raise ValueError(f"Column {column_name} not found in table")
+        column = table[column_name]
+        if (new_column := tr(column)) is not None:
+            table[column_name] = new_column
+    return table
+
+
 def apply_table_transformations(
     table: Table, transformations: list[t.TableTransformation]
 ):
     output_table = copy(table)
     for tr in transformations:
         if (new_table := tr(output_table)) is not None:
-            output_table = combine_tables(table, new_table)
+            original_columns = set(output_table.columns)
+            updated_columns = set(new_table.columns)
+            # if they have the same columns, we can just update the values
+            if original_columns == updated_columns:
+                output_table = new_table
+            else:
+                output_table = combine_tables(table, new_table)
     return output_table
 
 

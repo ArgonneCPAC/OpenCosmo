@@ -1,11 +1,43 @@
+from functools import partial
 from typing import Optional
+from warnings import warn
 
 import astropy.cosmology.units as cu
 import astropy.units as u
 from astropy.table import Column, Table
+from h5py import Dataset
+
+from opencosmo import transformations as t
 
 
-def apply_units_by_name(table: Table) -> None:
+def generate_attribute_unit_transformation(
+    input: Dataset,
+) -> Optional[dict[str, list[t.ColumnTransformation]]]:
+    if "unit" in input.attrs:
+        try:
+            unit = u.Unit(input.attrs["unit"])
+        except ValueError:
+            warn(
+                f"Invalid unit {input.attrs['unit']} in column {input.name}. "
+                "Values will be unitless..."
+            )
+            return None
+        apply_func = partial(apply_unit, unit=unit)
+        apply_func.column_name = input.name.split("/")[-1]
+        return {"column": [apply_func]}
+    return None
+
+
+def apply_unit(column: Column, unit: u.Unit) -> Column:
+    """
+    Apply a unit to a column.
+    """
+    if column.unit is None:
+        column.unit = unit
+    return column
+
+
+def apply_units_by_name(table: Table) -> Table:
     """
     InPlaceTableTransformation that applies units to the columns.
     """
@@ -16,6 +48,7 @@ def apply_units_by_name(table: Table) -> None:
         unit = parse_column_name(colname)
         if unit is not None:
             column.unit = unit
+    return table
 
 
 def parse_column_name(column_name: str) -> Optional[u.Quantity | u.Unit]:

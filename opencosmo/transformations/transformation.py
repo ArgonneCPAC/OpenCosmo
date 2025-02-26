@@ -1,6 +1,7 @@
 from typing import Optional, Protocol
 
 from astropy.table import Column, Table
+from h5py import Dataset, Group
 from numpy.typing import NDArray
 
 TransformationOutput = Column | Table | NDArray[bool]
@@ -8,14 +9,23 @@ TransformationOutput = Column | Table | NDArray[bool]
 
 class Transformation(Protocol):
     """
-    A transformation that can be applied to a column or table,
-    producing a new column, table, or boolean mask.
+    A transformation that can be applied to a hdf5 dataset, or an astropy table/column.
+    output should be an astropy table or column, or a numpy array of booleans (mask).
 
     If the transformation cannot be applied to the data, it should
     return None
     """
 
     def __call__(self, input: Column | Table) -> Optional[TransformationOutput]: ...
+
+
+class DatasetTransformation(Transformation):
+    """
+    A transformation that can be applied to a dataset. In OpenCosmo, all
+    datasets are single-column.
+    """
+
+    def __call__(self, input: Dataset) -> Optional[Column]: ...
 
 
 class TableTransformation(Transformation):
@@ -31,7 +41,7 @@ class TableTransformation(Transformation):
 
 class ColumnTransformation(Transformation):
     """
-    A transformation that is applied to a single transformation, producing
+    A transformation that is applied to a single column, producing
     an updated version of that column (which will replace the original)
     """
 
