@@ -1,6 +1,6 @@
 from typing import Optional, Protocol
 
-from astropy.table import Column
+from astropy.table import Column  # type: ignore
 
 
 class ColumnTransformation(Protocol):

@@ -1,34 +1,13 @@
-from typing import Optional, Protocol
+from __future__ import annotations
 
-from astropy.table import Column, Table
-from h5py import Dataset
+from typing import Optional, Protocol, TypeVar
+
+import numpy as np
+from astropy.table import Column, Table  # type: ignore
 from numpy.typing import NDArray
 
-TransformationOutput = Column | Table | NDArray[bool]
 
-
-class Transformation(Protocol):
-    """
-    A transformation that can be applied to a hdf5 dataset, or an astropy table/column.
-    output should be an astropy table or column, or a numpy array of booleans (mask).
-
-    If the transformation cannot be applied to the data, it should
-    return None
-    """
-
-    def __call__(self, input: Column | Table) -> Optional[TransformationOutput]: ...
-
-
-class DatasetTransformation(Transformation):
-    """
-    A transformation that can be applied to a dataset. In OpenCosmo, all
-    datasets are single-column.
-    """
-
-    def __call__(self, input: Dataset) -> Optional[Column]: ...
-
-
-class TableTransformation(Transformation):
+class TableTransformation(Protocol):
     """
     A transformation that can be applied to a table, producing a new table
 
@@ -39,13 +18,13 @@ class TableTransformation(Transformation):
     def __call__(self, input: Table) -> Optional[Table]: ...
 
 
-class ColumnTransformation(Transformation):
+class ColumnTransformation(Protocol):
     """
     A transformation that is applied to a single column, producing
     an updated version of that column (which will replace the original)
     """
 
-    def __init__(self, column_name: str): ...
+    def __init__(self, column_name: str, *args, **kwargs): ...
 
     @property
     def column_name(self) -> str: ...
@@ -53,10 +32,13 @@ class ColumnTransformation(Transformation):
     def __call__(self, input: Column) -> Optional[Column]: ...
 
 
-class FilterTransformation(Transformation):
+class FilterTransformation(Protocol):
     """
     A transformation that masks rows of a table based on some criteria.
     The mask should be a boolean array with the same length as the table.
     """
 
-    def __call__(self, input: Table) -> Optional[NDArray[bool]]: ...
+    def __call__(self, input: Table) -> Optional[NDArray[np.bool_]]: ...
+
+
+Transformation = TableTransformation | ColumnTransformation | FilterTransformation
