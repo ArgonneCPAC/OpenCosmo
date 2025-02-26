@@ -1,7 +1,7 @@
 from copy import copy
 
 import numpy as np
-from astropy.table import Table, join
+from astropy.table import Table, join  # type: ignore
 
 from opencosmo.transformations import transformation as t
 

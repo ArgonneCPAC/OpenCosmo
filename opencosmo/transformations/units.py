@@ -1,18 +1,25 @@
-from functools import partial
 from typing import Optional
 from warnings import warn
 
-import astropy.cosmology.units as cu
-import astropy.units as u
-from astropy.table import Column, Table
-from h5py import Dataset
+import astropy.cosmology.units as cu  # type: ignore
+import astropy.units as u  # type: ignore
+from astropy.table import Column, Table  # type: ignore
+from h5py import Dataset  # type: ignore
 
 from opencosmo import transformations as t
 
 
+def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
+    return [generate_attribute_unit_transformation]
+
+
+def get_unit_transformations() -> dict[str, list[t.TableTransformation]]:
+    return {"table": [apply_units_by_name]}
+
+
 def generate_attribute_unit_transformation(
     input: Dataset,
-) -> Optional[dict[str, list[t.ColumnTransformation]]]:
+) -> dict[str, list[t.Transformation]]:
     if "unit" in input.attrs:
         try:
             unit = u.Unit(input.attrs["unit"])
@@ -21,26 +28,43 @@ def generate_attribute_unit_transformation(
                 f"Invalid unit {input.attrs['unit']} in column {input.name}. "
                 "Values will be unitless..."
             )
-            return None
-        apply_func = partial(apply_unit, unit=unit)
-        apply_func.column_name = input.name.split("/")[-1]
+            return {}
+        apply_func: t.Transformation = apply_unit(
+            column_name=input.name.split("/")[-1], unit=unit
+        )
         return {"column": [apply_func]}
-    return None
+    return {}
 
 
-def apply_unit(column: Column, unit: u.Unit) -> Column:
+class apply_unit:
     """
-    Apply a unit to a column.
+    Apply a unit to an input column. Ensuring that the correct column is
+    passed will be the responsibility of the caller.
     """
-    if column.unit is None:
-        column.unit = unit
-    return column
+
+    def __init__(self, column_name: str, unit: u.Unit):
+        self.__name = column_name
+        self.unit = unit
+
+    def __call__(self, input: Column) -> Optional[Column]:
+        if input.unit is None:
+            input.unit = self.unit
+        return input
+
+    @property
+    def column_name(self) -> str:
+        return self.__name
 
 
-def apply_units_by_name(table: Table) -> Table:
+def apply_units_by_name(input: Table) -> Optional[Table]:
     """
-    InPlaceTableTransformation that applies units to the columns.
+    Apply units to columns based on their names. The column names in
+    HACC are generally pretty regular, so we can parse them pretty
+    easily. For derived columns, they will be attached as an attribute
+    on the hdf5 dataset.
     """
+    modified = False
+    table = input
     for colname in table.columns:
         column = table[colname]
         if column.unit is not None:
@@ -48,7 +72,10 @@ def apply_units_by_name(table: Table) -> Table:
         unit = parse_column_name(colname)
         if unit is not None:
             column.unit = unit
-    return table
+            modified = True
+    if modified:
+        return table
+    return None
 
 
 def parse_column_name(column_name: str) -> Optional[u.Quantity | u.Unit]:
