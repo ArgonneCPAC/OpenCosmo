@@ -106,3 +106,15 @@ def test_data_update_doesnt_propogate(data_path):
         not in dataset._OpenCosmoDataset__handler._InMemoryHandler__data.columns
     )
     assert "new_column" not in dataset.data.columns
+
+
+def test_unitless_convention(data_path):
+    dataset = read(data_path, units="unitless")
+    data = dataset.data
+    cols = data.columns
+    assert all(data[col].unit is None for col in cols)
+
+
+def test_invalid_unit_convention(data_path):
+    with pytest.raises(ValueError):
+        read(data_path, units="invalid")

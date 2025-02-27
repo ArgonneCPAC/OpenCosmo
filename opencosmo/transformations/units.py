@@ -1,3 +1,4 @@
+from enum import Enum
 from functools import partial
 from typing import Optional
 from warnings import warn
@@ -13,6 +14,13 @@ from opencosmo import transformations as t
 _ = u.add_enabled_units(cu)
 
 
+class UnitConvention(Enum):
+    COMOVING = "comoving"
+    PHYSICAL = "physical"
+    SCALEFREE = "scalefree"
+    UNITLESS = "unitless"
+
+
 def get_unit_transformation_generators(
     convention="comoving",
 ) -> list[t.TransformationGenerator]:
@@ -25,11 +33,15 @@ def get_unit_transformation_generators(
 
     HACC data by default using scale-free comoving units.
     """
-    if convention is not None:
-        return [
-            generate_attribute_unit_transformation,
-            generate_name_unit_transformation,
-        ]
+    units = UnitConvention(convention)
+    match units:
+        case UnitConvention.UNITLESS:
+            return []
+        case _:
+            return [
+                generate_attribute_unit_transformations,
+                generate_name_unit_transformations,
+            ]
 
 
 def get_unit_transformations(
@@ -41,10 +53,13 @@ def get_unit_transformations(
 
     These always apply after the initial transformations generated above.
     """
-    if convention == "comoving":
-        remove_h = partial(remove_littleh, cosmology=cosmology)
-        return {"table": [remove_h]}
-    return {}
+    units = UnitConvention(convention)
+    match units:
+        case UnitConvention.COMOVING:
+            remove_h = partial(remove_littleh, cosmology=cosmology)
+            return {"table": [remove_h]}
+        case _:
+            return {}
 
 
 def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
@@ -65,7 +80,7 @@ def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
     return table
 
 
-def generate_attribute_unit_transformation(
+def generate_attribute_unit_transformations(
     input: Dataset,
 ) -> dict[str, list[t.Transformation]]:
     """
@@ -93,7 +108,7 @@ def generate_attribute_unit_transformation(
     return {}
 
 
-def generate_name_unit_transformation(
+def generate_name_unit_transformations(
     input: Dataset,
 ) -> dict[str, list[t.Transformation]]:
     """
