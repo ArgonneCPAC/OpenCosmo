@@ -37,6 +37,10 @@ sphinx-rtd-theme = "^3.0.2"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.mypy]
+mypy_path = "stubs"
+plugins = ["numpy.typing.mypy_plugin"]
+
 [[tool.mypy.overrides]]
-module = ["h5py", "astropy"]
-ignore_missing_imports = true
+module = ["h5py"]
+follow_untyped_imports = true
