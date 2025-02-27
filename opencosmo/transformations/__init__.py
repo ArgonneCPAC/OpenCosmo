@@ -9,6 +9,7 @@ from .transformation import (
     FilterTransformation,
     TableTransformation,
     Transformation,
+    TransformationDict,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "apply_table_transformations",
     "generate_transformations",
     "TransformationGenerator",
+    "TransformationDict",
 ]

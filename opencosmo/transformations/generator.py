@@ -29,8 +29,8 @@ def generate_transformations(
     that only operate on the in-memory representation.
     """
     for dataset in input.values():
-        for generator in generators:
-            generated_transformations = generator(dataset)
+        for gen in generators:
+            generated_transformations = gen(dataset)
             if generated_transformations is not None:
                 for (
                     transformation_type,

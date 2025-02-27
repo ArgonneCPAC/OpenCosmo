@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Optional, Protocol
 
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from numpy.typing import NDArray
+
+
+class TransformationType(Enum):
+    TABLE = "table"
+    COLUMN = "column"
+    FILTER = "filter"
 
 
 class TableTransformation(Protocol):
@@ -41,3 +48,4 @@ class FilterTransformation(Protocol):
 
 
 Transformation = TableTransformation | ColumnTransformation | FilterTransformation
+TransformationDict = dict[TransformationType, list[Transformation]]

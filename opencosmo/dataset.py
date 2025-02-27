@@ -34,12 +34,13 @@ def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
     """
     header = read_header(file)
     handler = InMemoryHandler(file)
-    generators = u.get_unit_transformation_generators(units)
-    transformations = u.get_unit_transformations(header.cosmology, units)
-    transformations = generate_transformations(
-        file["data"], generators, transformations
+    base_unit_transformations, transformations = u.get_unit_transformations(
+        file["data"], header.cosmology, units
     )
-    return OpenCosmoDataset(handler, header, transformations)
+
+    # merge the dictionaries
+
+    return OpenCosmoDataset(handler, header, base_unit_transformations, transformations)
 
 
 class OpenCosmoDataset:
@@ -47,10 +48,12 @@ class OpenCosmoDataset:
         self,
         handler: OpenCosmoDataHandler,
         header: OpenCosmoHeader,
+        unit_transformations: dict = {},
         transformations: dict = {},
     ):
         self.__header = header
         self.__handler = handler
+        self.__unit_transformations = unit_transformations
         self.__transformations = transformations
 
     def __enter__(self):
@@ -66,3 +69,30 @@ class OpenCosmoDataset:
     @property
     def data(self):
         return self.__handler.get_data(transformations=self.__transformations)
+
+    def with_convention(self, convention: str) -> OpenCosmoDataset:
+        """
+        Get a new dataset with a different unit convention.
+
+        Parameters
+        ----------
+        convention : str
+            The unit convention to use. One of "physical", "comoving",
+            "scalefree", or "unitless".
+
+        Returns
+        -------
+        dataset : OpenCosmoDataset
+            The new dataset with the requested unit convention.
+
+        """
+        new_transformations = u.get_unit_transition_transformations(
+            convention, self.__unit_transformations, self.__header.cosmology
+        )
+
+        return OpenCosmoDataset(
+            self.__handler,
+            self.__header,
+            self.__unit_transformations,
+            new_transformations,
+        )
