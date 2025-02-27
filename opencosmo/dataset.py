@@ -22,9 +22,9 @@ def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
     ----------
     file : str or pathlib.Path
         The path to the file to read.
-    units : str, optional as u
+    units : str | None
         The unit convention to use. One of "physical", "comoving",
-        "scalefree", or "unitless". The default is "comoving".
+        "scalefree", or None. The default is "comoving".
 
     Returns
     -------
@@ -34,8 +34,8 @@ def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
     """
     header = read_header(file)
     handler = InMemoryHandler(file)
+    generators = u.get_unit_transformation_generators(units)
     transformations = u.get_unit_transformations(header.cosmology, units)
-    generators = u.get_unit_transformation_generators()
     transformations = generate_transformations(
         file["data"], generators, transformations
     )
