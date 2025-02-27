@@ -25,8 +25,8 @@ class InMemoryHandler:
 
     def get_data(self, filters: dict = {}, transformations: dict = {}):
         """ """
-        table_transformations = transformations.get("table", [])
-        column_transformations = transformations.get("column", [])
+        table_transformations = transformations.get(t.TransformationType.TABLE, [])
+        column_transformations = transformations.get(t.TransformationType.COLUMN, [])
         new_data = copy(self.__data)
         new_data = t.apply_column_transformations(new_data, column_transformations)
         new_data = t.apply_table_transformations(new_data, table_transformations)

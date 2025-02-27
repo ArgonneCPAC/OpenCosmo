@@ -10,6 +10,7 @@ from .transformation import (
     TableTransformation,
     Transformation,
     TransformationDict,
+    TransformationType,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "generate_transformations",
     "TransformationGenerator",
     "TransformationDict",
+    "TransformationType",
 ]
