@@ -10,6 +10,7 @@ from astropy.table import Column, Table  # type: ignore
 from h5py import Dataset  # type: ignore
 
 from opencosmo import transformations as t
+from opencosmo.header import OpenCosmoHeader
 
 _ = u.add_enabled_units(cu)
 
@@ -72,7 +73,7 @@ def get_unit_transition_transformations(
 
 def get_unit_transformations(
     input: Dataset,
-    cosmology: Cosmology,
+    header: OpenCosmoHeader,
     convention: str = "comoving",
 ) -> tuple[t.TransformationDict, t.TransformationDict]:
     """
@@ -80,6 +81,7 @@ def get_unit_transformations(
 
     These always apply after the initial transformations generated above.
     """
+    cosmology = header.cosmology
     generators = get_unit_transformation_generators()
     base_transformations = t.generate_transformations(input, generators, {})
     units = UnitConvention(convention)
