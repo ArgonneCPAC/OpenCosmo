@@ -12,14 +12,14 @@ class TransformationGenerator(Protocol):
     dataset. Examples include units stored as attributes
     """
 
-    def __call__(self, input: Dataset) -> dict[str, list[t.Transformation]]: ...
+    def __call__(self, input: Dataset) -> t.TransformationDict: ...
 
 
 def generate_transformations(
     input: Group,
     generators: list[TransformationGenerator],
-    existing: dict[str, list[t.Transformation]] = {},
-) -> dict[str, list[t.Transformation]]:
+    existing: t.TransformationDict = {},
+) -> t.TransformationDict:
     """
     Generate transformations based on the input dataset and a list of generators.
     Generated transformations will always be run before other transformations.

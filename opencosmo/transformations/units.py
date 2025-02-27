@@ -48,21 +48,25 @@ def get_unit_transition_transformations(
     hdf5 file so we have to parse the units from their names.
     """
     units = UnitConvention(convention)
-    remove_h = partial(remove_littleh, cosmology=cosmology)
-    comoving_to_phys = partial(comoving_to_physical, cosmology=cosmology, redshift=0)
+    remove_h: t.TableTransformation = partial(remove_littleh, cosmology=cosmology)
+    comoving_to_phys: t.TableTransformation = partial(
+        comoving_to_physical, cosmology=cosmology, redshift=0
+    )
     match units:
         case UnitConvention.COMOVING:
-            update_transformations = {"table": [remove_h]}
+            update_transformations = {t.TransformationType.TABLE: [remove_h]}
         case UnitConvention.PHYSICAL:
-            update_transformation = {"table": [remove_h, comoving_to_phys]}
+            update_transformations = {
+                t.TransformationType.TABLE: [remove_h, comoving_to_phys]
+            }
         case UnitConvention.SCALEFREE:
             update_transformations = {}
         case UnitConvention.UNITLESS:
             return {}
 
-    for key in unit_transformations:
-        existing = update_transformations.get(key, [])
-        update_transformations[key] = unit_transformations[key] + existing
+    for ttype in unit_transformations:
+        existing = update_transformations.get(ttype, [])
+        update_transformations[ttype] = unit_transformations[ttype] + existing
     return update_transformations
 
 
@@ -79,30 +83,29 @@ def get_unit_transformations(
     generators = get_unit_transformation_generators()
     base_transformations = t.generate_transformations(input, generators, {})
     units = UnitConvention(convention)
+    new_transformations: t.TransformationDict = {}
     match units:
         case UnitConvention.COMOVING:
             remove_h = partial(remove_littleh, cosmology=cosmology)
             # update the table transformations
-            new_transformations = {"table": [remove_h]}
+            new_transformations.update({t.TransformationType.TABLE: [remove_h]})
         case UnitConvention.PHYSICAL:
             remove_h = partial(remove_littleh, cosmology=cosmology)
             comoving_to_phys = partial(
                 comoving_to_physical, cosmology=cosmology, redshift=0
             )
-            new_transformations = {"table": [remove_h, comoving_to_phys]}
+            new_transformations.update(
+                {t.TransformationType.TABLE: [remove_h, comoving_to_phys]}
+            )
             # Need to implement mapping between sim step and redshift
             raise NotImplementedError("Physical units not yet implemented")
+        case UnitConvention.UNITLESS:
+            return base_transformations, new_transformations
 
-        case _:
-            new_transformations = {}
-
-    if units == UnitConvention.UNITLESS:
-        return base_transformations, {}
-    else:
-        for key in base_transformations:
-            existing = new_transformations.get(key, [])
-            new_transformations[key] = base_transformations[key] + existing
-        return base_transformations, new_transformations
+    for key in base_transformations:
+        existing = new_transformations.get(key, [])
+        new_transformations[key] = base_transformations[key] + existing
+    return base_transformations, new_transformations
 
 
 def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
@@ -156,7 +159,7 @@ def comoving_to_physical(
 
 def generate_attribute_unit_transformations(
     input: Dataset,
-) -> dict[str, list[t.Transformation]]:
+) -> t.TransformationDict:
     """
     Check the attributes of an hdf5 dataset to see if information about units is stored
     there.
@@ -178,13 +181,13 @@ def generate_attribute_unit_transformations(
         apply_func: t.Transformation = apply_unit(
             column_name=input.name.split("/")[-1], unit=unit
         )
-        return {"column": [apply_func]}
+        return {t.TransformationType.COLUMN: [apply_func]}
     return {}
 
 
 def generate_name_unit_transformations(
     input: Dataset,
-) -> dict[str, list[t.Transformation]]:
+) -> t.TransformationDict:
     """
     Generator for unit transformations based on the name of the column. Just
     checks for the HACC naming conventions.
@@ -193,7 +196,8 @@ def generate_name_unit_transformations(
     unit = parse_column_name(name)
     if unit is not None:
         apply_func: t.Transformation = apply_unit(column_name=name, unit=unit)
-        return {"column": [apply_func]}
+        return {t.TransformationType.COLUMN: [apply_func]}
+    return {}
 
 
 class apply_unit:

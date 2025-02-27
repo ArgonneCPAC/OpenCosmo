@@ -1,5 +1,5 @@
 import numpy as np
-from astropy.table import Table, join  # type: ignore
+from astropy.table import Table  # type: ignore
 
 from opencosmo.transformations import transformation as t
 

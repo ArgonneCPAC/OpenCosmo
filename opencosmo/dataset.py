@@ -5,7 +5,6 @@ import h5py
 from opencosmo.file import file_reader
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.transformations import generate_transformations
 from opencosmo.transformations import units as u
 
 
