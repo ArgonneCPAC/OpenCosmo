@@ -34,7 +34,7 @@ def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
     header = read_header(file)
     handler = InMemoryHandler(file)
     base_unit_transformations, transformations = u.get_unit_transformations(
-        file["data"], header.cosmology, units
+        file["data"], header, units
     )
 
     # merge the dictionaries
