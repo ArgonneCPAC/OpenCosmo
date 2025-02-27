@@ -69,7 +69,7 @@ class OpenCosmoDataset:
     def data(self):
         return self.__handler.get_data(transformations=self.__transformations)
 
-    def with_convention(self, convention: str) -> OpenCosmoDataset:
+    def with_units(self, convention: str) -> OpenCosmoDataset:
         """
         Get a new dataset with a different unit convention.
 
