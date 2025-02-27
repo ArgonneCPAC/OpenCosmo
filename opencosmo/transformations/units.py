@@ -21,45 +21,88 @@ class UnitConvention(Enum):
     UNITLESS = "unitless"
 
 
-def get_unit_transformation_generators(
-    convention="comoving",
-) -> list[t.TransformationGenerator]:
+def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
     """
-    Get the unit transformation generators for a given convention.
+    Get the unit transformation generato.
 
     We use generators for units because it is most appropriate to think
     of units as fundamental to the data, even when they don't actually
     appear in the hdf5 file.
 
-    HACC data by default using scale-free comoving units.
+    Even if the user requests unitless data, we still need to have
+    access to these so that we can apply units if they
+    call Dataset.with_convention later.
+    """
+    return [
+        generate_attribute_unit_transformations,
+        generate_name_unit_transformations,
+    ]
+
+
+def get_unit_transition_transformations(
+    convention: str, unit_transformations: t.TransformationDict, cosmology: Cosmology
+) -> t.TransformationDict:
+    """
+    Given a dataset, the user can request a transformation to a different unit
+    convention. For in-memory datasets, we lose access to information in the
+    hdf5 file so we have to parse the units from their names.
     """
     units = UnitConvention(convention)
+    remove_h = partial(remove_littleh, cosmology=cosmology)
+    comoving_to_phys = partial(comoving_to_physical, cosmology=cosmology, redshift=0)
     match units:
+        case UnitConvention.COMOVING:
+            update_transformations = {"table": [remove_h]}
+        case UnitConvention.PHYSICAL:
+            update_transformation = {"table": [remove_h, comoving_to_phys]}
+        case UnitConvention.SCALEFREE:
+            update_transformations = {}
         case UnitConvention.UNITLESS:
-            return []
-        case _:
-            return [
-                generate_attribute_unit_transformations,
-                generate_name_unit_transformations,
-            ]
+            return {}
+
+    for key in unit_transformations:
+        existing = update_transformations.get(key, [])
+        update_transformations[key] = unit_transformations[key] + existing
+    return update_transformations
 
 
 def get_unit_transformations(
+    input: Dataset,
     cosmology: Cosmology,
     convention: str = "comoving",
-) -> dict[str, list[t.TableTransformation]]:
+) -> tuple[t.TransformationDict, t.TransformationDict]:
     """
     Get further transformations based on the requested unit convention.
 
     These always apply after the initial transformations generated above.
     """
+    generators = get_unit_transformation_generators()
+    base_transformations = t.generate_transformations(input, generators, {})
     units = UnitConvention(convention)
     match units:
         case UnitConvention.COMOVING:
             remove_h = partial(remove_littleh, cosmology=cosmology)
-            return {"table": [remove_h]}
+            # update the table transformations
+            new_transformations = {"table": [remove_h]}
+        case UnitConvention.PHYSICAL:
+            remove_h = partial(remove_littleh, cosmology=cosmology)
+            comoving_to_phys = partial(
+                comoving_to_physical, cosmology=cosmology, redshift=0
+            )
+            new_transformations = {"table": [remove_h, comoving_to_phys]}
+            # Need to implement mapping between sim step and redshift
+            raise NotImplementedError("Physical units not yet implemented")
+
         case _:
-            return {}
+            new_transformations = {}
+
+    if units == UnitConvention.UNITLESS:
+        return base_transformations, {}
+    else:
+        for key in base_transformations:
+            existing = new_transformations.get(key, [])
+            new_transformations[key] = base_transformations[key] + existing
+        return base_transformations, new_transformations
 
 
 def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
@@ -78,6 +121,37 @@ def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
             new_unit = unit / cu.littleh**power
             table[column] = table[column].to(new_unit, cu.with_H0(cosmology.H0))
     return table
+
+
+def comoving_to_physical(
+    input: Table, cosmology: Cosmology, redshift: float
+) -> Optional[Table]:
+    """
+    Convert comoving coordinates to physical coordinates. This is the
+    second step after parsing the units themselves.
+    """
+    renames = {}
+    for column in input.columns:
+        if (unit := input[column].unit) is not None:
+            # Check if the units have distances in them
+            decomposed = unit.decompose()
+            try:
+                index = decomposed.bases.index(u.m)
+            except ValueError:
+                continue
+            power = decomposed.powers[index]
+            # multiply by the scale factor to the same power as the distance
+            a = 1 / (1 + redshift)
+            input[column] = input[column] * a**power
+            # Remove references to "com" from the name
+            names = column.split("_")
+            if "com" in names:
+                names.remove("com")
+                renames[column] = "_".join(names)
+    if renames:
+        input.rename_columns(list(renames.keys()), list(renames.values()))
+
+    return input
 
 
 def generate_attribute_unit_transformations(

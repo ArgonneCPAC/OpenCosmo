@@ -115,6 +115,27 @@ def test_unitless_convention(data_path):
     assert all(data[col].unit is None for col in cols)
 
 
+def test_unit_conversion(data_path):
+    dataset = read(data_path, units="unitless")
+    data = dataset.data
+    cols = data.columns
+
+    unitful_dataset = dataset.with_convention("comoving")
+    position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
+
+    unitless_data = dataset.data
+    unitful_data = unitful_dataset.data
+    for col in position_cols:
+        assert unitful_data[col].unit == u.Mpc
+    for col in cols:
+        assert unitless_data[col].unit is None
+
+    converted_unitless = unitful_dataset.with_convention("unitless")
+    converted_unitless_data = converted_unitless.data
+    for col in cols:
+        assert converted_unitless_data[col].unit is None
+
+
 def test_invalid_unit_convention(data_path):
     with pytest.raises(ValueError):
         read(data_path, units="invalid")
