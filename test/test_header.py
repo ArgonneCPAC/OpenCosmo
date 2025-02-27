@@ -44,3 +44,12 @@ def test_read_header(header_resource_path):
 def test_malformed_header(malformed_header_path):
     with pytest.raises(ValidationError):
         read_header(malformed_header_path)
+
+
+def test_simulation_step_to_redshift(header_resource_path):
+    header = read_header(header_resource_path)
+    simulation_pars = header.simulation
+    step_zs = simulation_pars.step_zs
+    assert step_zs[0] == 200.0
+    assert step_zs[-1] == 0.0
+    assert all(step_zs[i] > step_zs[i + 1] for i in range(len(step_zs) - 1))

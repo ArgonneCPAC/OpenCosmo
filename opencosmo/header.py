@@ -22,6 +22,10 @@ class OpenCosmoHeader:
     def cosmology(self):
         return cosmo.make_cosmology(self.__simulation_pars.cosmology_parameters)
 
+    @property
+    def simulation(self):
+        return self.__simulation_pars
+
 
 @file_reader
 def read_header(file: h5py.File) -> OpenCosmoHeader:

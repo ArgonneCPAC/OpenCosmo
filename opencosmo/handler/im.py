@@ -1,5 +1,9 @@
+from copy import copy
+
 import h5py
 from astropy.table import Table  # type: ignore
+
+from opencosmo import transformations as t
 
 
 class InMemoryHandler:
@@ -20,4 +24,10 @@ class InMemoryHandler:
         return False
 
     def get_data(self, filters: dict = {}, transformations: dict = {}):
-        return self.__data
+        """ """
+        table_transformations = transformations.get(t.TransformationType.TABLE, [])
+        column_transformations = transformations.get(t.TransformationType.COLUMN, [])
+        new_data = copy(self.__data)
+        new_data = t.apply_column_transformations(new_data, column_transformations)
+        new_data = t.apply_table_transformations(new_data, table_transformations)
+        return new_data
