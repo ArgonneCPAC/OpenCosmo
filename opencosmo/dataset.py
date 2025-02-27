@@ -5,7 +5,9 @@ import h5py
 from opencosmo.file import file_reader
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.transformations import TransformationType
 from opencosmo.transformations import units as u
+from opencosmo.transformations.select import select_columns
 
 
 @file_reader
@@ -68,6 +70,38 @@ class OpenCosmoDataset:
     @property
     def data(self):
         return self.__handler.get_data(transformations=self.__transformations)
+
+    def select(self, columns: str | list[str]) -> OpenCosmoDataset:
+        """
+        Select a subset of columns from the dataset.
+
+        Parameters
+        ----------
+        columns : str or list of str
+            The columns to select.
+
+        Returns
+        -------
+        dataset : OpenCosmoDataset
+            The new dataset with only the selected columns.
+
+        """
+        if isinstance(columns, str):
+            columns = [columns]
+
+        new_transformation = select_columns(columns)
+        new_transformations = self.__transformations.copy()
+        current_table_transformations = new_transformations.get(
+            TransformationType.TABLE, []
+        )
+        new_table_transformations = current_table_transformations + [new_transformation]
+        new_transformations[TransformationType.TABLE] = new_table_transformations
+        return OpenCosmoDataset(
+            self.__handler,
+            self.__header,
+            self.__unit_transformations,
+            new_transformations,
+        )
 
     def with_units(self, convention: str) -> OpenCosmoDataset:
         """
