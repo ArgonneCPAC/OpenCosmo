@@ -13,18 +13,38 @@ from opencosmo import transformations as t
 _ = u.add_enabled_units(cu)
 
 
-def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
-    return [generate_attribute_unit_transformation]
+def get_unit_transformation_generators(
+    convention="comoving",
+) -> list[t.TransformationGenerator]:
+    """
+    Get the unit transformation generators for a given convention.
+
+    We use generators for units because it is most appropriate to think
+    of units as fundamental to the data, even when they don't actually
+    appear in the hdf5 file.
+
+    HACC data by default using scale-free comoving units.
+    """
+    if convention is not None:
+        return [
+            generate_attribute_unit_transformation,
+            generate_name_unit_transformation,
+        ]
 
 
 def get_unit_transformations(
     cosmology: Cosmology,
     convention: str = "comoving",
 ) -> dict[str, list[t.TableTransformation]]:
+    """
+    Get further transformations based on the requested unit convention.
+
+    These always apply after the initial transformations generated above.
+    """
     if convention == "comoving":
         remove_h = partial(remove_littleh, cosmology=cosmology)
-        return {"table": [apply_units_by_name, remove_h]}
-    return {"table": [apply_units_by_name]}
+        return {"table": [remove_h]}
+    return {}
 
 
 def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
@@ -48,6 +68,15 @@ def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
 def generate_attribute_unit_transformation(
     input: Dataset,
 ) -> dict[str, list[t.Transformation]]:
+    """
+    Check the attributes of an hdf5 dataset to see if information about units is stored
+    there.
+
+    The raw HACC data does not store units in this way, relying instead on standard
+    naming conventions. However if a user creates a new column, we want to be able to
+    store it in our standard format without losing unit information and we cannot rely
+    on them following our naming conventions.
+    """
     if "unit" in input.attrs:
         try:
             unit = u.Unit(input.attrs["unit"])
@@ -64,10 +93,26 @@ def generate_attribute_unit_transformation(
     return {}
 
 
+def generate_name_unit_transformation(
+    input: Dataset,
+) -> dict[str, list[t.Transformation]]:
+    """
+    Generator for unit transformations based on the name of the column. Just
+    checks for the HACC naming conventions.
+    """
+    name = input.name.split("/")[-1]
+    unit = parse_column_name(name)
+    if unit is not None:
+        apply_func: t.Transformation = apply_unit(column_name=name, unit=unit)
+        return {"column": [apply_func]}
+
+
 class apply_unit:
     """
     Apply a unit to an input column. Ensuring that the correct column is
     passed will be the responsibility of the caller.
+
+    Has to be a class so it can implement the ColumnTransformation protocol.
     """
 
     def __init__(self, column_name: str, unit: u.Unit):
@@ -86,10 +131,14 @@ class apply_unit:
 
 def apply_units_by_name(input: Table) -> Optional[Table]:
     """
-    Apply units to columns based on their names. The column names in
-    HACC are generally pretty regular, so we can parse them pretty
-    easily. For derived columns, they will be attached as an attribute
-    on the hdf5 dataset.
+    An alternative option for applying units based on  name that is
+    a table transformation rather than a column transformation. Not
+    currently in use.
+
+    The advantage of column transformations is that they are much more
+    efficient if we are trying to produce a filter based on a single column
+    in a very large table. We simply load the column, apply the filters that
+    apply to it, and evaluate the filter.
     """
     modified = False
     table = input

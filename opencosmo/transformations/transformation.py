@@ -9,10 +9,9 @@ from numpy.typing import NDArray
 
 class TableTransformation(Protocol):
     """
-    A transformation that can be applied to a table, producing a new table
+    A transformation that can be applied to a table, producing a new table.
 
-    Columns with the same names in both will be updated, and new columns
-    will be added.
+    The new table will replace the original table.
     """
 
     def __call__(self, input: Table) -> Optional[Table]: ...
@@ -21,7 +20,7 @@ class TableTransformation(Protocol):
 class ColumnTransformation(Protocol):
     """
     A transformation that is applied to a single column, producing
-    an updated version of that column (which will replace the original)
+    an updated version of that version of that column.
     """
 
     def __init__(self, column_name: str, *args, **kwargs): ...
