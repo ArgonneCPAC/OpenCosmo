@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from astropy.cosmology import units as cu
 
 from opencosmo import read
 
@@ -22,6 +23,22 @@ def test_select(data_path):
 
     for col in selected_cols:
         assert np.all(data[col] == selected_data[col])
+
+
+def test_select_unit_transformation(data_path):
+    dataset = read(data_path)
+    data = dataset.data
+    cols = list(data.columns)
+    # select 10 columns at random
+
+    position_cols = list(
+        filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
+    )
+    selected = dataset.select(position_cols).with_units("scalefree")
+
+    selected_data = selected.data
+    for col in position_cols:
+        assert data[col].unit == selected_data[col].unit * cu.littleh
 
 
 def test_select_derived_column():
