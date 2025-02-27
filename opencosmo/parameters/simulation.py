@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from functools import cached_property
 from typing import Optional
 
 import h5py
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import numpy as np
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from opencosmo import parameters
 from opencosmo.file import file_reader
@@ -101,6 +103,16 @@ class SimulationParameters(BaseModel):
         if isinstance(data, dict):
             return {k: empty_string_to_none(v) for k, v in data.items()}
         return data
+
+    @computed_field  # type: ignore[misc]
+    @cached_property
+    def step_zs(self) -> list[float]:
+        a_ini = 1 / (1 + self.z_ini)
+        a_end = 1 / (1 + self.z_end)
+        # Steps are evenly spaced in log(a)
+        step_as = np.logspace(np.log10(a_ini), np.log10(a_end), self.n_steps)
+        # print(step_as)
+        return np.round(1 / step_as - 1, 3).tolist()
 
 
 GravityOnlySimulationParameters = SimulationParameters
