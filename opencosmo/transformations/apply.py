@@ -1,14 +1,24 @@
-from copy import copy
-
 import numpy as np
 from astropy.table import Table, join  # type: ignore
 
 from opencosmo.transformations import transformation as t
 
+"""
+Routines for applying transformations tables. The table that is
+passed into these routines is always a copy of the raw data, so 
+it is safe to modify in-place. However they should still return
+the updated versions at the end.
+"""
+
 
 def apply_column_transformations(
     table: Table, transformations: list[t.ColumnTransformation]
 ):
+    """
+    Apply a list of column transformations to a table. If multiple
+    transformations are present for the same column, they will simply
+    be applied in the order they appear in the list.
+    """
     for tr in transformations:
         column_name = tr.column_name
         if column_name not in table.columns:
@@ -22,40 +32,26 @@ def apply_column_transformations(
 def apply_table_transformations(
     table: Table, transformations: list[t.TableTransformation]
 ):
-    output_table = copy(table)
+    """
+    Apply transformations to the table as a whole. These transformations
+    are applied after individual column transformations.
+    """
+    output_table = table
     for tr in transformations:
         if (new_table := tr(output_table)) is not None:
-            original_columns = set(output_table.columns)
-            updated_columns = set(new_table.columns)
-            # if they have the same columns, we can just update the values
-            if original_columns == updated_columns:
-                output_table = new_table
-            else:
-                output_table = combine_tables(table, new_table)
+            output_table = new_table
     return output_table
 
 
 def apply_filter_transformations(
     table: Table, transformations: list[t.FilterTransformation]
 ):
+    """
+    Filter transformations produce boolean masks that are applied to the table
+    to remove rows.
+    """
     mask = np.ones(len(table), dtype=bool)
     for tr in transformations:
         if (new_mask := tr(table)) is not None:
             mask &= new_mask
     return table[mask]
-
-
-def combine_tables(table: Table, new_table: Table):
-    if len(table) != len(new_table):
-        raise ValueError("Tables must have the same length")
-    original_columns = set(table.columns)
-    updated_columns = set(new_table.columns)
-
-    new_columns = updated_columns - original_columns
-    modified_columns = updated_columns & original_columns
-
-    for column in modified_columns:
-        table[column] = new_table[column]
-
-    new_table = table[list(new_columns)]
-    return join(table, new_table)

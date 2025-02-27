@@ -21,7 +21,12 @@ def generate_transformations(
     existing: dict[str, list[t.Transformation]] = {},
 ) -> dict[str, list[t.Transformation]]:
     """
-    Generate transformations based on the input dataset and a list of generators
+    Generate transformations based on the input dataset and a list of generators.
+    Generated transformations will always be run before other transformations.
+
+    The logic is that generators rely on data that will not be accessible after
+    the data is moved into memory, and so in some sense "precede" transformations
+    that only operate on the in-memory representation.
     """
     for dataset in input.values():
         for generator in generators:
