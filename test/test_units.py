@@ -120,7 +120,7 @@ def test_unit_conversion(data_path):
     data = dataset.data
     cols = data.columns
 
-    unitful_dataset = dataset.with_convention("comoving")
+    unitful_dataset = dataset.with_units("comoving")
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
 
     unitless_data = dataset.data
@@ -130,7 +130,7 @@ def test_unit_conversion(data_path):
     for col in cols:
         assert unitless_data[col].unit is None
 
-    converted_unitless = unitful_dataset.with_convention("unitless")
+    converted_unitless = unitful_dataset.with_units("unitless")
     converted_unitless_data = converted_unitless.data
     for col in cols:
         assert converted_unitless_data[col].unit is None
