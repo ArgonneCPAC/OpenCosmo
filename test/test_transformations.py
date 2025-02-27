@@ -55,7 +55,9 @@ def test_comoving_vs_scalefree(data_path):
     for col in position_cols:
         assert scalefree.data[col].unit == u.Mpc / cu.littleh
         assert comoving.data[col].unit == u.Mpc
-        assert np.all(comoving.data[col].value == scalefree.data[col].value / h)
+        assert np.all(
+            np.isclose(comoving.data[col].value, scalefree.data[col].value / h)
+        )
 
 
 def test_parse_positions(data_path):
