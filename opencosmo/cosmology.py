@@ -2,7 +2,7 @@ import inspect
 from typing import Type
 
 import h5py
-from astropy import cosmology
+from astropy import cosmology  # type: ignore
 
 from opencosmo.file import file_reader
 from opencosmo.header import read_header

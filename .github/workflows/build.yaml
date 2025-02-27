@@ -24,6 +24,8 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
+      - name: check pyproject.toml
+        run: cat pyproject.toml
 
       - name: Install dependencies
         run: poetry install --with develop
