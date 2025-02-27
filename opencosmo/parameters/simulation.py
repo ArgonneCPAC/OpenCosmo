@@ -111,8 +111,7 @@ class SimulationParameters(BaseModel):
         a_end = 1 / (1 + self.z_end)
         # Steps are evenly spaced in log(a)
         step_as = np.logspace(np.log10(a_ini), np.log10(a_end), self.n_steps)
-        # print(step_as)
-        return np.round(1 / step_as - 1, 3).tolist()
+        return np.round(1 / step_as - 1, 3).to_list()  # type: ignore
 
 
 GravityOnlySimulationParameters = SimulationParameters
