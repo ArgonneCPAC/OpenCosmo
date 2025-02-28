@@ -11,7 +11,7 @@ from opencosmo.transformations.select import select_columns
 
 
 @file_reader
-def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
+def read(file: h5py.File, units: str = "comoving") -> Dataset:
     """
     Read a dataset from a file into memory.
 
@@ -29,7 +29,7 @@ def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
 
     Returns
     -------
-    dataset : OpenCosmoDataset
+    dataset : Dataset
         The dataset read from the file.
 
     """
@@ -39,12 +39,10 @@ def read(file: h5py.File, units: str = "comoving") -> OpenCosmoDataset:
         file["data"], header, units
     )
 
-    # merge the dictionaries
-
-    return OpenCosmoDataset(handler, header, base_unit_transformations, transformations)
+    return Dataset(handler, header, base_unit_transformations, transformations)
 
 
-class OpenCosmoDataset:
+class Dataset:
     def __init__(
         self,
         handler: OpenCosmoDataHandler,
@@ -58,7 +56,8 @@ class OpenCosmoDataset:
         self.__transformations = transformations
 
     def __enter__(self):
-        return self.__handler.__enter__()
+        # Need to write tests
+        return self
 
     def __exit__(self, *exc_details):
         return self.__handler.__exit__(*exc_details)
@@ -69,9 +68,11 @@ class OpenCosmoDataset:
 
     @property
     def data(self):
+        # should rename this, dataset.data can get confusing
+        # Also the point is that there's MORE data than just the table
         return self.__handler.get_data(transformations=self.__transformations)
 
-    def select(self, columns: str | list[str]) -> OpenCosmoDataset:
+    def select(self, columns: str | list[str]) -> Dataset:
         """
         Select a subset of columns from the dataset.
 
@@ -82,7 +83,7 @@ class OpenCosmoDataset:
 
         Returns
         -------
-        dataset : OpenCosmoDataset
+        dataset : Dataset
             The new dataset with only the selected columns.
 
         """
@@ -96,14 +97,14 @@ class OpenCosmoDataset:
         )
         new_table_transformations = current_table_transformations + [new_transformation]
         new_transformations[TransformationType.TABLE] = new_table_transformations
-        return OpenCosmoDataset(
+        return Dataset(
             self.__handler,
             self.__header,
             self.__unit_transformations,
             new_transformations,
         )
 
-    def with_units(self, convention: str) -> OpenCosmoDataset:
+    def with_units(self, convention: str) -> Dataset:
         """
         Get a new dataset with a different unit convention.
 
@@ -115,7 +116,7 @@ class OpenCosmoDataset:
 
         Returns
         -------
-        dataset : OpenCosmoDataset
+        dataset : Dataset
             The new dataset with the requested unit convention.
 
         """
@@ -123,7 +124,7 @@ class OpenCosmoDataset:
             convention, self.__unit_transformations, self.__header.cosmology
         )
 
-        return OpenCosmoDataset(
+        return Dataset(
             self.__handler,
             self.__header,
             self.__unit_transformations,
