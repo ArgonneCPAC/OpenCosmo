@@ -54,7 +54,7 @@ def test_select_doesnt_alter_raw(data_path):
     selected = dataset.select(selected_cols)
     selected_data = selected.data
 
-    raw_data = dataset._OpenCosmoDataset__handler._InMemoryHandler__data
+    raw_data = dataset._Dataset__handler._InMemoryHandler__data
     assert all(raw_data[col].unit is None for col in selected_cols)
     assert all(data[col].unit == selected_data[col].unit for col in selected_cols)
 
