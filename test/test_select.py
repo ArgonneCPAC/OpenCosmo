@@ -25,6 +25,22 @@ def test_select(data_path):
         assert np.all(data[col] == selected_data[col])
 
 
+def test_chained_select(data_path):
+    dataset = read(data_path)
+    data = dataset.data
+    cols = list(data.columns)
+    # select 10 columns at random
+    selected_cols = np.random.choice(cols, 10, replace=False)
+    subset_cols = np.random.choice(selected_cols, 5, replace=False)
+    selected = dataset.select(selected_cols).select(subset_cols)
+    selected_data = selected.data
+
+    for col in subset_cols:
+        assert np.all(data[col] == selected_data[col])
+
+    assert set(subset_cols) == set(selected_data.columns)
+
+
 def test_select_unit_transformation(data_path):
     dataset = read(data_path)
     data = dataset.data
