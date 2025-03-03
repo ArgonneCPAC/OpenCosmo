@@ -22,9 +22,17 @@ def add_column(tmp_path: Path, original_file: Path, column: Column):
     return new_path
 
 
-@pytest.fixture
-def data_path():
+def galaxy_data_path():
     return Path("test/resource/galaxyproperties.hdf5")
+
+
+def halo_data_path():
+    return Path("test/resource/haloproperties.hdf5")
+
+
+pytestmark = pytest.mark.parametrize(
+    "data_path", [galaxy_data_path(), halo_data_path()]
+)
 
 
 def test_attribute_units(data_path, tmp_path):

@@ -45,8 +45,8 @@ def get_unit_transition_transformations(
 ) -> t.TransformationDict:
     """
     Given a dataset, the user can request a transformation to a different unit
-    convention. For in-memory datasets, we lose access to information in the
-    hdf5 file so we have to parse the units from their names.
+    convention. The returns a new set of transformations that will take the
+    dataset to the requested unit convention.
     """
     units = UnitConvention(convention)
     remove_h: t.TableTransformation = partial(remove_littleh, cosmology=cosmology)
@@ -118,12 +118,25 @@ def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
     table = input
     for column in table.columns:
         if (unit := table[column].unit) is not None:
+            # Handle dex units
             try:
-                index = unit.bases.index(cu.littleh)
+                if isinstance(unit, u.DexUnit):
+                    u_base = unit.physical_unit
+                    constructor = u.DexUnit
+                else:
+                    u_base = unit
+
+                    def constructor(x):
+                        return x
+            except AttributeError:
+                continue
+
+            try:
+                index = u_base.bases.index(cu.littleh)
             except ValueError:
                 continue
-            power = unit.powers[index]
-            new_unit = unit / cu.littleh**power
+            power = u_base.powers[index]
+            new_unit = constructor(u_base / cu.littleh**power)
             table[column] = table[column].to(new_unit, cu.with_H0(cosmology.H0))
     return table
 
@@ -292,7 +305,7 @@ def parse_multipart_name(name: list[str]) -> Optional[u.Quantity | u.Unit]:
     elif name[-1][0] == "L":
         return u.DexUnit(u.erg / u.s)
     elif name[-1] == "entropy":
-        return u.kev / u.cm**2
+        return u.keV / u.cm**2
     elif name[-1] == "ne":
         return u.cm**-3
     elif name[-1][0] == "t":
