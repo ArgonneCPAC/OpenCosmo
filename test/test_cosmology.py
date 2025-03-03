@@ -8,8 +8,8 @@ from opencosmo import read_cosmology
 
 
 @pytest.fixture
-def cosmology_resource_path():
-    p = Path("test/resource/flat_lcdm.hdf5")
+def cosmology_resource_path(data_path):
+    p = data_path / "header.hdf5"
     return p
 
 

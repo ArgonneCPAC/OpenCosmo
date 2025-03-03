@@ -8,12 +8,12 @@ from opencosmo import read
 
 
 @pytest.fixture
-def data_path():
-    return Path("test/resource/galaxyproperties.hdf5")
+def input_path(data_path):
+    return data_path / "galaxyproperties.hdf5"
 
 
-def test_select(data_path):
-    dataset = read(data_path)
+def test_select(input_path):
+    dataset = read(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -25,8 +25,8 @@ def test_select(data_path):
         assert np.all(data[col] == selected_data[col])
 
 
-def test_chained_select(data_path):
-    dataset = read(data_path)
+def test_chained_select(input_path):
+    dataset = read(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -41,8 +41,8 @@ def test_chained_select(data_path):
     assert set(subset_cols) == set(selected_data.columns)
 
 
-def test_select_unit_transformation(data_path):
-    dataset = read(data_path)
+def test_select_unit_transformation(input_path):
+    dataset = read(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -62,8 +62,8 @@ def test_select_derived_column():
     assert True
 
 
-def test_select_doesnt_alter_raw(data_path):
-    dataset = read(data_path)
+def test_select_doesnt_alter_raw(input_path):
+    dataset = read(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -76,8 +76,8 @@ def test_select_doesnt_alter_raw(data_path):
     assert all(data[col].unit == selected_data[col].unit for col in selected_cols)
 
 
-def test_single_column_select(data_path):
-    dataset = read(data_path)
+def test_single_column_select(input_path):
+    dataset = read(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 1 column at random
