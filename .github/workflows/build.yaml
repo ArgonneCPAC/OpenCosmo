@@ -78,8 +78,9 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          export OPENCOSOMO_DATA_PATH="test/resource"
           poetry run pytest
+        env:
+          OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
   build:
     name: build
     runs-on: ubuntu-latest
