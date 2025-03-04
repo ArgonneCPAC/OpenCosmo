@@ -59,6 +59,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -76,8 +78,9 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          source $VENV
-          pytest . 
+          poetry run pytest
+        env:
+          OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
   build:
     name: build
     runs-on: ubuntu-latest
