@@ -1,15 +1,41 @@
 from __future__ import annotations
 
 import operator as op
+from collections import defaultdict
 from typing import Callable
 
-import astropy.units as u
+import astropy.units as u  # type: ignore
+import numpy as np
+from astropy import table  # type: ignore
+
+from opencosmo.dataset.column import ColumnBuilder
+from opencosmo.handler import OpenCosmoDataHandler
 
 Comparison = Callable[[float, float], bool]
 
 
 def col(column_name: str) -> Column:
     return Column(column_name)
+
+
+def apply_filters(
+    handler: OpenCosmoDataHandler,
+    column_builders: dict[str, ColumnBuilder],
+    filters: list[Filter],
+    starting_filter: np.ndarray,
+) -> np.ndarray:
+    output_filter = starting_filter
+    filters_by_column = defaultdict(list)
+    for f in filters:
+        filters_by_column[f.column_name].append(f)
+
+    for column_name, column_filters in filters_by_column.items():
+        builder = column_builders[column_name]
+        column = handler.get_data({column_name: builder}, filter=output_filter)
+        masks = [f.apply(column) for f in column_filters]
+        column_filter = np.logical_and.reduce(masks)
+        output_filter = np.logical_and(output_filter, column_filter)
+    return output_filter
 
 
 class Column:
@@ -57,3 +83,10 @@ class Filter:
         self.column_name = column_name
         self.value = value
         self.operator = operator
+
+    def apply(self, column: table.Column) -> bool:
+        """
+        Filter the dataset based on the filter.
+        """
+        # Astropy's errors are good enough here
+        return self.operator(column, self.value)

@@ -84,4 +84,4 @@ def test_single_column_select(input_path):
     selected = dataset.select(selected_col)
     selected_data = selected.data
 
-    assert np.all(data[selected_col] == selected_data[selected_col])
+    assert np.all(data[selected_col] == selected_data)
