@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import h5py
+import numpy as np
 
+import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
+from opencosmo.dataset.filter import Filter, apply_filters
 from opencosmo.file import file_reader
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.transformations import TransformationType
 from opencosmo.transformations import units as u
-from opencosmo.transformations.select import select_columns
 
 
 @file_reader
@@ -41,8 +42,9 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
     )
     column_names = list(str(col) for col in file["data"].keys())
     builders = get_column_builders(transformations, column_names)
+    filter = np.ones(len(handler), dtype=bool)
 
-    return Dataset(handler, header, builders, base_unit_transformations)
+    return Dataset(handler, header, builders, base_unit_transformations, filter)
 
 
 class Dataset:
@@ -51,12 +53,14 @@ class Dataset:
         handler: OpenCosmoDataHandler,
         header: OpenCosmoHeader,
         builders: dict[str, ColumnBuilder],
-        unit_transformations: dict[str, list],
+        unit_transformations: dict[t.TransformationType, list[t.Transformation]],
+        filter: np.ndarray,
     ):
         self.__header = header
         self.__handler = handler
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
+        self.__filter = filter
 
     def __enter__(self):
         # Need to write tests
@@ -73,7 +77,34 @@ class Dataset:
     def data(self):
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(builders=self.__builders)
+        return self.__handler.get_data(builders=self.__builders, filter=self.__filter)
+
+    def filter(self, *filters: Filter) -> Dataset:
+        """
+        Filter the dataset based on some criteria.
+
+        Parameters
+        ----------
+        filters : Filter
+            The filters to apply to the dataset.
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with the filters applied.
+
+        """
+        new_filter = apply_filters(
+            self.__handler, self.__builders, filters, self.__filter
+        )
+
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            new_filter,
+        )
 
     def select(self, columns: str | list[str]) -> Dataset:
         """
@@ -106,6 +137,7 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
+            self.__filter,
         )
 
     def with_units(self, convention: str) -> Dataset:
@@ -134,4 +166,5 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
+            self.__filter,
         )

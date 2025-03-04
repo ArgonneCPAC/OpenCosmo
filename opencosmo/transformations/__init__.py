@@ -6,6 +6,7 @@ from .apply import (
 )
 from .generator import TransformationGenerator, generate_transformations
 from .transformation import (
+    AllColumnTransformation,
     ColumnTransformation,
     FilterTransformation,
     TableTransformation,
@@ -15,6 +16,7 @@ from .transformation import (
 )
 
 __all__ = [
+    "AllColumnTransformation",
     "ColumnTransformation",
     "FilterTransformation",
     "TableTransformation",

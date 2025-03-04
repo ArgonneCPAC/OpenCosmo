@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from astropy.table import Column
+from collections.abc import Iterable, Sequence
+
+from astropy.table import Column  # type: ignore
 
 import opencosmo.transformations as t
 
 
 def get_column_builders(
-    transformations: t.TransformationDict, column_names: list[str]
+    transformations: t.TransformationDict, column_names: Iterable[str]
 ) -> dict[str, ColumnBuilder]:
     """
     This function creates a dictionary of ColumnBuilders from a dictionary of
@@ -17,11 +19,23 @@ def get_column_builders(
     all_column_transformations = transformations.get(
         t.TransformationType.ALL_COLUMNS, []
     )
-    column_builders = {name: [] for name in column_names}
+    if not all(
+        isinstance(transformation, t.AllColumnTransformation)
+        for transformation in all_column_transformations
+    ):
+        raise ValueError("Expected AllColumnTransformation.")
+    column_builders: dict[str, list[t.Transformation]] = {
+        name: [] for name in column_names
+    }
     for transformation in column_transformations:
+        if not hasattr(transformation, "column_name"):
+            raise ValueError(
+                f"Expected ColumnTransformation, got {type(transformation)}."
+            )
         if transformation.column_name not in column_builders:
             continue
         column_builders[transformation.column_name].append(transformation)
+
     for column_name in column_names:
         column_builders[column_name].extend(all_column_transformations)
     return {
@@ -40,7 +54,11 @@ class ColumnBuilder:
     feeding it to the ColumBuilder.
     """
 
-    def __init__(self, name: str, transformations: list[t.Transformation]):
+    def __init__(
+        self,
+        name: str,
+        transformations: Sequence[t.Transformation],
+    ):
         self.column_name = name
         self.transformations = transformations
 
