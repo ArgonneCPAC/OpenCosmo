@@ -123,7 +123,7 @@ def test_raw_data_is_unitless(input_path):
     assert any(data[col].unit is not None for col in cols)
 
     raw_data = dataset._Dataset__handler._InMemoryHandler__data
-    assert all(raw_data[col].unit is None for col in cols)
+    assert all(isinstance(raw_data[col], np.ndarray) for col in cols)
 
 
 def test_data_update_doesnt_propogate(input_path):
@@ -132,7 +132,7 @@ def test_data_update_doesnt_propogate(input_path):
     new_column = np.random.rand(len(data))
     data["new_column"] = new_column
     assert "new_column" in data.columns
-    assert "new_column" not in dataset._Dataset__handler._InMemoryHandler__data.columns
+    assert "new_column" not in dataset._Dataset__handler._InMemoryHandler__data.keys()
     assert "new_column" not in dataset.data.columns
 
 
