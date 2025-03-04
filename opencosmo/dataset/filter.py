@@ -24,17 +24,18 @@ def apply_filters(
     filters: list[Filter],
     starting_filter: np.ndarray,
 ) -> np.ndarray:
-    output_filter = starting_filter
+    output_filter = starting_filter.copy()
     filters_by_column = defaultdict(list)
     for f in filters:
         filters_by_column[f.column_name].append(f)
 
     for column_name, column_filters in filters_by_column.items():
+        column_filter = np.ones(output_filter.sum(), dtype=bool)
         builder = column_builders[column_name]
         column = handler.get_data({column_name: builder}, filter=output_filter)
-        masks = [f.apply(column) for f in column_filters]
-        column_filter = np.logical_and.reduce(masks)
-        output_filter = np.logical_and(output_filter, column_filter)
+        for f in column_filters:
+            column_filter &= f.apply(column)
+        output_filter[output_filter] &= column_filter
     return output_filter
 
 
