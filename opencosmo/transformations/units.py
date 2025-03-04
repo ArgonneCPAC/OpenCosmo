@@ -45,8 +45,8 @@ def get_unit_transition_transformations(
 ) -> t.TransformationDict:
     """
     Given a dataset, the user can request a transformation to a different unit
-    convention. For in-memory datasets, we lose access to information in the
-    hdf5 file so we have to parse the units from their names.
+    convention. The returns a new set of transformations that will take the
+    dataset to the requested unit convention.
     """
     units = UnitConvention(convention)
     remove_h: t.TableTransformation = partial(remove_littleh, cosmology=cosmology)
@@ -55,10 +55,10 @@ def get_unit_transition_transformations(
     )
     match units:
         case UnitConvention.COMOVING:
-            update_transformations = {t.TransformationType.TABLE: [remove_h]}
+            update_transformations = {t.TransformationType.ALL_COLUMNS: [remove_h]}
         case UnitConvention.PHYSICAL:
             update_transformations = {
-                t.TransformationType.TABLE: [remove_h, comoving_to_phys]
+                t.TransformationType.ALL_COLUMNS: [remove_h, comoving_to_phys]
             }
         case UnitConvention.SCALEFREE:
             update_transformations = {}
@@ -88,16 +88,16 @@ def get_unit_transformations(
     new_transformations: t.TransformationDict = {}
     match units:
         case UnitConvention.COMOVING:
-            remove_h = partial(remove_littleh, cosmology=cosmology)
             # update the table transformations
-            new_transformations.update({t.TransformationType.TABLE: [remove_h]})
+            remove_h = partial(remove_littleh, cosmology=cosmology)
+            new_transformations.update({t.TransformationType.ALL_COLUMNS: [remove_h]})
         case UnitConvention.PHYSICAL:
             remove_h = partial(remove_littleh, cosmology=cosmology)
             comoving_to_phys = partial(
                 comoving_to_physical, cosmology=cosmology, redshift=0
             )
             new_transformations.update(
-                {t.TransformationType.TABLE: [remove_h, comoving_to_phys]}
+                {t.TransformationType.ALL_COLUMNS: [remove_h, comoving_to_phys]}
             )
             # Need to implement mapping between sim step and redshift
             raise NotImplementedError("Physical units not yet implemented")
@@ -110,53 +110,60 @@ def get_unit_transformations(
     return base_transformations, new_transformations
 
 
-def remove_littleh(input: Table, cosmology: Cosmology) -> Optional[Table]:
+def remove_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:
     """
     Remove little h from the units of the input table. For comoving
     coordinates, this is the second step after parsing the units themselves.
     """
-    table = input
-    for column in table.columns:
-        if (unit := table[column].unit) is not None:
-            try:
-                index = unit.bases.index(cu.littleh)
-            except ValueError:
-                continue
-            power = unit.powers[index]
-            new_unit = unit / cu.littleh**power
-            table[column] = table[column].to(new_unit, cu.with_H0(cosmology.H0))
-    return table
+    if (unit := column.unit) is not None:
+        # Handle dex units
+        try:
+            if isinstance(unit, u.DexUnit):
+                u_base = unit.physical_unit
+                constructor = u.DexUnit
+            else:
+                u_base = unit
+
+                def constructor(x):
+                    return x
+        except AttributeError:
+            return None
+
+        try:
+            index = u_base.bases.index(cu.littleh)
+        except ValueError:
+            return None
+        power = u_base.powers[index]
+        new_unit = constructor(u_base / cu.littleh**power)
+        column = column.to(new_unit, cu.with_H0(cosmology.H0))
+    return column
 
 
 def comoving_to_physical(
-    input: Table, cosmology: Cosmology, redshift: float
+    column: Column, cosmology: Cosmology, redshift: float
 ) -> Optional[Table]:
     """
     Convert comoving coordinates to physical coordinates. This is the
     second step after parsing the units themselves.
     """
-    renames = {}
-    for column in input.columns:
-        if (unit := input[column].unit) is not None:
-            # Check if the units have distances in them
-            decomposed = unit.decompose()
-            try:
-                index = decomposed.bases.index(u.m)
-            except ValueError:
-                continue
-            power = decomposed.powers[index]
-            # multiply by the scale factor to the same power as the distance
-            a = 1 / (1 + redshift)
-            input[column] = input[column] * a**power
-            # Remove references to "com" from the name
-            names = column.split("_")
-            if "com" in names:
-                names.remove("com")
-                renames[column] = "_".join(names)
-    if renames:
-        input.rename_columns(list(renames.keys()), list(renames.values()))
+    if (unit := column.unit) is not None:
+        # Check if the units have distances in them
+        decomposed = unit.decompose()
+        try:
+            index = decomposed.bases.index(u.m)
+        except ValueError:
+            return None
+        power = decomposed.powers[index]
+        # multiply by the scale factor to the same power as the distance
+        a = 1 / (1 + redshift)
+        column = column * a**power
+        # Remove references to "com" from the name
+        names = column.split("_")
+        if "com" in names:
+            names.remove("com")
+            column.name = "_".join(names)
 
-    return input
+    return column
 
 
 def generate_attribute_unit_transformations(
@@ -292,7 +299,7 @@ def parse_multipart_name(name: list[str]) -> Optional[u.Quantity | u.Unit]:
     elif name[-1][0] == "L":
         return u.DexUnit(u.erg / u.s)
     elif name[-1] == "entropy":
-        return u.kev / u.cm**2
+        return u.keV / u.cm**2
     elif name[-1] == "ne":
         return u.cm**-3
     elif name[-1][0] == "t":

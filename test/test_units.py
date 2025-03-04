@@ -23,22 +23,53 @@ def add_column(tmp_path: Path, original_file: Path, column: Column):
 
 
 @pytest.fixture
-def data_path():
-    return Path("test/resource/galaxyproperties.hdf5")
+def galaxy_input_path(data_path):
+    return data_path / "galaxyproperties.hdf5"
 
 
-def test_attribute_units(data_path, tmp_path):
-    dataset = read(data_path)
+@pytest.fixture
+def halo_input_path(data_path):
+    return data_path / "haloproperties.hdf5"
+
+
+@pytest.fixture
+def sod_particle_input_path(data_path):
+    return data_path / "sodbighaloparticles.hdf5"
+
+
+@pytest.fixture
+def sod_properties_input_path(data_path):
+    return data_path / "sodproperties.hdf5"
+
+
+@pytest.fixture
+def input_path(request):
+    return request.getfixturevalue(request.param)
+
+
+pytestmark = pytest.mark.parametrize(
+    "input_path",
+    [
+        "galaxy_input_path",
+        "halo_input_path",
+        "sod_properties_input_path",
+    ],
+    indirect=True,
+)
+
+
+def test_attribute_units(input_path, tmp_path):
+    dataset = read(input_path)
     data = dataset.data
     new_column = Column(np.random.rand(len(data)), name="new_column", unit=u.Mpc)
-    new_path = add_column(tmp_path, data_path, new_column)
+    new_path = add_column(tmp_path, input_path, new_column)
     dataset = read(new_path)
     data = dataset.data
     assert data["new_column"].unit == u.Mpc
 
 
-def test_parse_velocities(data_path):
-    dataset = read(data_path)
+def test_parse_velocities(input_path):
+    dataset = read(input_path)
     data = dataset.data
     cols = data.columns
     velocity_cols = filter(lambda col: col.upper()[-2:] in ["VX", "VY", "VZ"], cols)
@@ -46,9 +77,9 @@ def test_parse_velocities(data_path):
         assert data[col].unit == u.km / u.s
 
 
-def test_comoving_vs_scalefree(data_path):
-    comoving = read(data_path, units="comoving")
-    scalefree = read(data_path, units="scalefree")
+def test_comoving_vs_scalefree(input_path):
+    comoving = read(input_path, units="comoving")
+    scalefree = read(input_path, units="scalefree")
     cols = comoving.data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     h = comoving.cosmology.h
@@ -60,8 +91,8 @@ def test_comoving_vs_scalefree(data_path):
         )
 
 
-def test_parse_positions(data_path):
-    dataset = read(data_path, units="scalefree")
+def test_parse_positions(input_path):
+    dataset = read(input_path, units="scalefree")
     data = dataset.data
     cols = data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
@@ -69,8 +100,8 @@ def test_parse_positions(data_path):
         assert data[col].unit == u.Mpc / cu.littleh
 
 
-def test_parse_mass(data_path):
-    dataset = read(data_path, units="scalefree")
+def test_parse_mass(input_path):
+    dataset = read(input_path, units="scalefree")
     data = dataset.data
     cols = data.columns
     mass_cols = filter(
@@ -81,42 +112,39 @@ def test_parse_mass(data_path):
         assert data[col].unit == u.Msun / cu.littleh
 
 
-def test_raw_data_is_unitless(data_path):
+def test_raw_data_is_unitless(input_path):
     """
     Make sure raw data loaded by read remains unitless even if
     the data has units.
     """
-    dataset = read(data_path)
+    dataset = read(input_path)
     data = dataset.data
     cols = data.columns
     assert any(data[col].unit is not None for col in cols)
 
-    raw_data = dataset._OpenCosmoDataset__handler._InMemoryHandler__data
+    raw_data = dataset._Dataset__handler._InMemoryHandler__data
     assert all(raw_data[col].unit is None for col in cols)
 
 
-def test_data_update_doesnt_propogate(data_path):
-    dataset = read(data_path)
+def test_data_update_doesnt_propogate(input_path):
+    dataset = read(input_path)
     data = dataset.data
     new_column = np.random.rand(len(data))
     data["new_column"] = new_column
     assert "new_column" in data.columns
-    assert (
-        "new_column"
-        not in dataset._OpenCosmoDataset__handler._InMemoryHandler__data.columns
-    )
+    assert "new_column" not in dataset._Dataset__handler._InMemoryHandler__data.columns
     assert "new_column" not in dataset.data.columns
 
 
-def test_unitless_convention(data_path):
-    dataset = read(data_path, units="unitless")
+def test_unitless_convention(input_path):
+    dataset = read(input_path, units="unitless")
     data = dataset.data
     cols = data.columns
     assert all(data[col].unit is None for col in cols)
 
 
-def test_unit_conversion(data_path):
-    dataset = read(data_path, units="unitless")
+def test_unit_conversion(input_path):
+    dataset = read(input_path, units="unitless")
     data = dataset.data
     cols = data.columns
 
@@ -136,6 +164,6 @@ def test_unit_conversion(data_path):
         assert converted_unitless_data[col].unit is None
 
 
-def test_invalid_unit_convention(data_path):
+def test_invalid_unit_convention(input_path):
     with pytest.raises(ValueError):
-        read(data_path, units="invalid")
+        read(input_path, units="invalid")

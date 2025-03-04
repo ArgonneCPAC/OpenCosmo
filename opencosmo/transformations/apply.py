@@ -19,6 +19,8 @@ def apply_column_transformations(
     transformations are present for the same column, they will simply
     be applied in the order they appear in the list.
     """
+    print(f"Applying {len(transformations)} column transformations")
+
     for tr in transformations:
         column_name = tr.column_name
         if column_name not in table.columns:
@@ -26,6 +28,22 @@ def apply_column_transformations(
         column = table[column_name]
         if (new_column := tr(column)) is not None:
             table[column_name] = new_column
+    return table
+
+
+def apply_all_columns_transformations(
+    table: Table, transformations: list[t.ColumnTransformation]
+):
+    """
+    Apply a list of column transformations to all columns in the table.
+    This is useful for transformations that should be applied to all columns,
+    such as unit conversions.
+    """
+    for tr in transformations:
+        for column_name in table.columns:
+            column = table[column_name]
+            if (new_column := tr(column)) is not None:
+                table[column_name] = new_column
     return table
 
 
