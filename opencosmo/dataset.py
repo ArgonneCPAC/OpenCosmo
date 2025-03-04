@@ -130,19 +130,3 @@ class Dataset:
             self.__unit_transformations,
             new_transformations,
         )
-
-    def update(self, **kwargs: Column) -> Dataset:
-        """
-        Update the dataset with new columns.
-
-        Parameters
-        ----------
-        kwargs : dict
-            The new columns to add to the dataset.
-
-        Returns
-        -------
-        dataset : Dataset
-            The new dataset with the new columns added.
-
-        """

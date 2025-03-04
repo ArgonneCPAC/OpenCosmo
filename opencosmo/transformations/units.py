@@ -146,7 +146,6 @@ def comoving_to_physical(
     Convert comoving coordinates to physical coordinates. This is the
     second step after parsing the units themselves.
     """
-    renames = {}
     if (unit := column.unit) is not None:
         # Check if the units have distances in them
         decomposed = unit.decompose()
@@ -157,7 +156,7 @@ def comoving_to_physical(
         power = decomposed.powers[index]
         # multiply by the scale factor to the same power as the distance
         a = 1 / (1 + redshift)
-        input[column] = input[column] * a**power
+        column = column * a**power
         # Remove references to "com" from the name
         names = column.split("_")
         if "com" in names:

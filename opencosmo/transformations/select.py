@@ -1,16 +1,16 @@
 from functools import partial
 from typing import Optional
 
-from astropy import table
+from astropy.table import Table  # type: ignore
 
 from opencosmo import transformations as t
 
 
-def select_columns(columns: list[str]) -> t.TableTransformation:
+def select_columns(columns: list[str]) -> t.Transformation:
     return partial(__select_columns, columns=columns)
 
 
-def __select_columns(data: table.Table, columns: list[str]) -> Optional[table.Table]:
+def __select_columns(data: Table, columns: list[str]) -> Optional[Table]:
     # astropy's error message here is not super great, so I'll make my own
 
     data_columns = set(data.colnames)

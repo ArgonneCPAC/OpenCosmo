@@ -42,7 +42,9 @@ class InMemoryHandler:
         new_data = t.apply_table_transformations(new_data, table_transformations)
         return new_data
 
-    def select_columns(self, columns: list[str], transformations: dict = {}):
+    def select_columns(self, columns: str | list[str], transformations: dict = {}):
+        if isinstance(columns, str):
+            columns = [columns]
         new_data = self.__data[columns]
         # Problem: Transformations can rename columns...
         table_transformations = transformations.get(t.TransformationType.TABLE, [])
