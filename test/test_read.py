@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 from astropy.table import Table
 
@@ -7,10 +5,10 @@ from opencosmo import read
 
 
 @pytest.fixture
-def data_path():
-    return Path("test/resource/galaxyproperties.hdf5")
+def input_path(data_path):
+    return data_path / "galaxyproperties.hdf5"
 
 
-def test_read(data_path):
-    dataset = read(data_path)
+def test_read(input_path):
+    dataset = read(input_path)
     assert isinstance(dataset.data, Table)
