@@ -92,6 +92,7 @@ jobs:
         with:
           path: test_data.tar.gz
           key: test-data
+          enableCrossOsArchive: true
       - name: Unpack test data
         run: tar -xzf test_data.tar.gz -C test/resource
       - name: Install Poetry
