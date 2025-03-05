@@ -51,13 +51,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download test data
-        uses: tespkg/actions-cache@v1
+        uses: tespkg/actions-cache/restore@v1
         with:
           accessKey: ${{ secrets.TEST_DATA_ACCESS_KEY }}
           secretKey: ${{ secrets.TEST_DATA_SECRET_KEY }}
           bucket: ${{ secrets.TEST_DATA_BUCKET }}
           key: test-data
           path: test/resource
+          restore-keys: '*.hdf5'
+      - name: verify downloaded test data
+        run: |
+          if [ ! -f test/resource/header.hdf5 ]; then
+            echo "Test data not found"
+            exit 1
+          fi
+
+
 
   run-tests:
     name: Run tests
@@ -93,6 +102,7 @@ jobs:
         with:
           path: test/resource
           key: test-data
+          fail-on-cache-miss: true
 
       - name: Run tests with pytest
         run: |
