@@ -90,4 +90,6 @@ class Filter:
         Filter the dataset based on the filter.
         """
         # Astropy's errors are good enough here
+        if not isinstance(self.value, u.Quantity) and column.unit is not None:
+            self.value *= column.unit
         return self.operator(column, self.value)
