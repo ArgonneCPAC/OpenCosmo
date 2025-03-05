@@ -84,3 +84,25 @@ def test_filter_leaves_original_dataset_unchanged(input_path, max_mass):
     data_len = len(data)
     original_len = len(ds._Dataset__handler)
     assert data_len < original_len
+
+
+def test_equals_filter(input_path):
+    ds = read(input_path)
+    data = ds.data
+    sod_mass = data["sod_halo_mass"]
+    equals_test_value = np.random.choice(sod_mass)
+    ds = ds.filter(col("sod_halo_mass") == equals_test_value)
+    data = ds.data
+    assert len(data) > 0
+    assert np.all(data["sod_halo_mass"] == equals_test_value)
+
+
+def test_notequals_filter(input_path):
+    ds = read(input_path)
+    data = ds.data
+    sod_mass = data["sod_halo_mass"]
+    notequals_test_value = np.random.choice(sod_mass)
+    ds = ds.filter(col("sod_halo_mass") != notequals_test_value)
+    data = ds.data
+    assert len(data) > 0
+    assert np.all(data["sod_halo_mass"] != notequals_test_value)
