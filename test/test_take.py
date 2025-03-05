@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from astropy.cosmology import units as cu
 
 from opencosmo import read
 
