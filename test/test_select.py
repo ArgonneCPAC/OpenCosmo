@@ -21,6 +21,7 @@ def test_select(input_path):
 
     for col in selected_cols:
         assert np.all(data[col] == selected_data[col])
+    assert set(selected_cols) == set(selected_data.columns)
 
 
 def test_chained_select(input_path):
@@ -70,7 +71,7 @@ def test_select_doesnt_alter_raw(input_path):
     selected_data = selected.data
 
     raw_data = dataset._Dataset__handler._InMemoryHandler__data
-    assert all(raw_data[col].unit is None for col in selected_cols)
+    assert all(isinstance(raw_data[col], np.ndarray) for col in cols)
     assert all(data[col].unit == selected_data[col].unit for col in selected_cols)
 
 
@@ -83,4 +84,4 @@ def test_single_column_select(input_path):
     selected = dataset.select(selected_col)
     selected_data = selected.data
 
-    assert np.all(data[selected_col] == selected_data[selected_col])
+    assert np.all(data[selected_col] == selected_data)

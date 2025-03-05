@@ -45,10 +45,39 @@ jobs:
         with:
           docs-folder: "docs"
 
+  get-test-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.TEST_DATA_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.TEST_DATA_SECRET_KEY }}
+          aws-region: us-west-2
+      - name: check if cache exists
+        id: check-cache
+        uses: actions/cache@v4
+        with:
+          path: test_data.tar.gz
+          key: test-data
+          restore-keys: |
+            test-data
+      - name: Download test data 
+        if: steps.check-cache.outputs.cache-hit != 'true'
+        run: aws s3 cp s3://${{ secrets.TEST_DATA_BUCKET }}/test_data.tar.gz test_data.tar.gz
+      - name: Cache test data
+        if: steps.cache-test-data.outputs.cache-hit != 'true'
+        id: cache-test-data
+        uses: actions/cache@v4
+        with:
+          path: test_data.tar.gz
+          key: test-data
+          enableCrossOsArchive: true
+          
   run-tests:
     name: Run tests
     runs-on: ${{ matrix.os }}
-    needs: lint-typecheck
+    needs: [get-test-data, lint-typecheck]
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -59,14 +88,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: get test data
+        uses: actions/cache@v4
         with:
-          lfs: true
-
-      - name: Set up Python
+          path: test_data.tar.gz
+          key: test-data
+          enableCrossOsArchive: true
+      - name: Unpack test data
+        run: |
+          mkdir -p test/resource
+          tar -xzf test_data.tar.gz -C test/resource
+      - name: install python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
@@ -99,7 +134,3 @@ jobs:
           virtualenvs-in-project: true
       - name: Build package
         run: poetry build
-      
-    
-
-

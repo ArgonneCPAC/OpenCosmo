@@ -19,7 +19,6 @@ def apply_column_transformations(
     transformations are present for the same column, they will simply
     be applied in the order they appear in the list.
     """
-    print(f"Applying {len(transformations)} column transformations")
 
     for tr in transformations:
         column_name = tr.column_name

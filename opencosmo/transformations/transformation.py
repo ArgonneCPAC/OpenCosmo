@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Protocol
+from typing import Optional, Protocol, runtime_checkable
 
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
@@ -23,6 +23,15 @@ class TableTransformation(Protocol):
     """
 
     def __call__(self, input: Table) -> Optional[Table]: ...
+
+
+@runtime_checkable
+class AllColumnTransformation(Protocol):
+    """
+    A transformation that is applied to all columns in a table.
+    """
+
+    def __call__(self, input: Column) -> Optional[Column]: ...
 
 
 class ColumnTransformation(Protocol):
@@ -52,5 +61,10 @@ class FilterTransformation(Protocol):
     def __call__(self, input: Table) -> Optional[NDArray[np.bool_]]: ...
 
 
-Transformation = TableTransformation | ColumnTransformation | FilterTransformation
+Transformation = (
+    TableTransformation
+    | ColumnTransformation
+    | FilterTransformation
+    | AllColumnTransformation
+)
 TransformationDict = dict[TransformationType, list[Transformation]]
