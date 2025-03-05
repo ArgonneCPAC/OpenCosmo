@@ -60,6 +60,7 @@ def get_unit_transition_transformations(
             update_transformations = {
                 t.TransformationType.ALL_COLUMNS: [remove_h, comoving_to_phys]
             }
+            raise NotImplementedError("Physical units not yet implemented")
         case UnitConvention.SCALEFREE:
             update_transformations = {}
         case UnitConvention.UNITLESS:
@@ -158,10 +159,10 @@ def comoving_to_physical(
         a = 1 / (1 + redshift)
         column = column * a**power
         # Remove references to "com" from the name
-        names = column.split("_")
-        if "com" in names:
-            names.remove("com")
-            column.name = "_".join(names)
+        name_parts = column.name.split("_")
+        if "com" in name_parts:
+            name_parts.remove("com")
+            column.name = "_".join(name_parts)
 
     return column
 
