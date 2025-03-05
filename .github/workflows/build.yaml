@@ -58,7 +58,7 @@ jobs:
           bucket: ${{ secrets.TEST_DATA_BUCKET }}
           key: test-data
           path: test/resource
-          restore-keys: '*.hdf5'
+          restore-keys: [galaxy, halo, sod, header]
       - name: verify downloaded test data
         run: |
           if [ ! -f test/resource/header.hdf5 ]; then
