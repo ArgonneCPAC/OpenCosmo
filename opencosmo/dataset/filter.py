@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator as op
 from collections import defaultdict
-from typing import Callable
+from typing import Callable, Iterable
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -21,7 +21,7 @@ def col(column_name: str) -> Column:
 def apply_filters(
     handler: OpenCosmoDataHandler,
     column_builders: dict[str, ColumnBuilder],
-    filters: list[Filter],
+    filters: Iterable[Filter],
     starting_filter: np.ndarray,
 ) -> np.ndarray:
     output_filter = starting_filter.copy()
@@ -53,10 +53,11 @@ class Column:
     def __init__(self, column_name: str):
         self.column_name = column_name
 
-    def __eq__(self, other: float | u.Quantity) -> Filter:
+    # mypy doesn't reason about eq and neq correctly
+    def __eq__(self, other: float | u.Quantity) -> Filter:  # type: ignore
         return Filter(self.column_name, other, op.eq)
 
-    def __ne__(self, other: float | u.Quantity) -> Filter:
+    def __ne__(self, other: float | u.Quantity) -> Filter:  # type: ignore
         return Filter(self.column_name, other, op.ne)
 
     def __gt__(self, other: float | u.Quantity) -> Filter:
@@ -85,11 +86,12 @@ class Filter:
         self.value = value
         self.operator = operator
 
-    def apply(self, column: table.Column) -> bool:
+    def apply(self, column: table.Column) -> np.ndarray:
         """
         Filter the dataset based on the filter.
         """
         # Astropy's errors are good enough here
         if not isinstance(self.value, u.Quantity) and column.unit is not None:
             self.value *= column.unit
-        return self.operator(column, self.value)
+        # mypy can't reason about columns correctly
+        return self.operator(column, self.value)  # type: ignore

@@ -3,7 +3,7 @@ from typing import Protocol
 
 import h5py
 import numpy as np
-from astropy.table import Column, Table
+from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
 
