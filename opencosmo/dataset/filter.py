@@ -29,6 +29,14 @@ def apply_filters(
     for f in filters:
         filters_by_column[f.column_name].append(f)
 
+    column_names = set(column_builders.keys())
+    filter_column_names = set(filters_by_column.keys())
+    if not filter_column_names.issubset(column_names):
+        raise ValueError(
+            "Filters were applied to columns that do not exist in the dataset: "
+            f"{filter_column_names - column_names}"
+        )
+
     for column_name, column_filters in filters_by_column.items():
         column_filter = np.ones(output_filter.sum(), dtype=bool)
         builder = column_builders[column_name]

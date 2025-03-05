@@ -85,3 +85,15 @@ def test_single_column_select(input_path):
     selected_data = selected.data
 
     assert np.all(data[selected_col] == selected_data)
+
+
+def test_select_invalid_column(input_path):
+    dataset = read(input_path)
+    data = dataset.data
+    cols = list(data.columns)
+    # select 10 columns at random
+    selected_cols = np.random.choice(cols, 10, replace=False)
+    # add an invalid column
+    selected_cols = np.append(selected_cols, "invalid_column")
+    with pytest.raises(ValueError):
+        dataset.select(selected_cols)

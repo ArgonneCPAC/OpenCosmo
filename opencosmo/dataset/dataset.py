@@ -105,10 +105,18 @@ class Dataset:
         dataset : Dataset
             The new dataset with the filters applied.
 
+        Raises
+        ------
+        ValueError
+            If the given filter refers to columns that are
+            not in the dataset, or the filter would return zero rows.
+
         """
         new_filter = apply_filters(
             self.__handler, self.__builders, filters, self.__filter
         )
+        if np.sum(new_filter) == 0:
+            raise ValueError("Filter would return zero rows.")
 
         return Dataset(
             self.__handler,
@@ -125,13 +133,17 @@ class Dataset:
         Parameters
         ----------
         columns : str or list of str
-            The columns to select.
+            The column or columns to select.
 
         Returns
         -------
         dataset : Dataset
             The new dataset with only the selected columns.
 
+        Raises
+        ------
+        ValueError
+            If any of the given columns are not in the dataset.
         """
         if isinstance(columns, str):
             columns = [columns]
@@ -154,7 +166,7 @@ class Dataset:
 
     def with_units(self, convention: str) -> Dataset:
         """
-        Get a new dataset with a different unit convention.
+        Transform this dataset to a different unit convention
 
         Parameters
         ----------
@@ -183,17 +195,29 @@ class Dataset:
 
     def take(self, n: int, at: str = "start") -> Dataset:
         """
-        Take the first n rows of the dataset.
+        Take n rows from the dataset.
+
+        Can take the first n rows, the last n rows, or n random rows
+        depending on the value of 'at'.
 
         Parameters
         ----------
         n : int
             The number of rows to take.
+        at : str
+            Where to take the rows from. One of "start", "end", or "random".
+            The default is "start".
 
         Returns
         -------
         dataset : Dataset
             The new dataset with only the first n rows.
+
+        Raises
+        ------
+        ValueError
+            If n is negative or greater than the number of rows in the dataset,
+            or if 'at' is invalid.
 
         """
         if n < 0 or n > np.sum(self.__filter):
