@@ -55,6 +55,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.TEST_DATA_SECRET_KEY }}
           aws-region: us-west-2
       - name: check if cache exists
+        id: cache-test-data
         uses: actions/cache@v4
         with:
           path: test_data.tar.gz
@@ -95,6 +96,10 @@ jobs:
           enableCrossOsArchive: true
       - name: Unpack test data
         run: tar -xzf test_data.tar.gz -C test/resource
+      - name: install python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
