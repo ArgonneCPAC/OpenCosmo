@@ -64,14 +64,14 @@ class Dataset:
 
     def __repr__(self):
         length = np.sum(self.__filter)
-        length = length if length < 10 else 10
-        repr_ds = self.take(length)
+        take_length = length if length < 10 else 10
+        repr_ds = self.take(take_length)
         table_repr = repr_ds.data.__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
         head = f"OpenCosmo Dataset (length={length})\n"
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
-        table_head = f"First {length} rows:\n"
+        table_head = f"First {take_length} rows:\n"
         return head + cosmo_repr + table_head + table_repr
 
     def __enter__(self):
