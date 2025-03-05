@@ -95,7 +95,9 @@ jobs:
           key: test-data
           enableCrossOsArchive: true
       - name: Unpack test data
-        run: tar -xzf test_data.tar.gz -C test/resource
+        run: |
+          mkdir -p test/resource
+          tar -xzf test_data.tar.gz -C test/resource
       - name: install python
         uses: actions/setup-python@v4
         with:
