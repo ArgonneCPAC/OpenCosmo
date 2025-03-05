@@ -62,6 +62,18 @@ class Dataset:
         self.__base_unit_transformations = unit_transformations
         self.__filter = filter
 
+    def __repr__(self):
+        length = np.sum(self.__filter)
+        length = length if length < 10 else 10
+        repr_ds = self.take(length)
+        table_repr = repr_ds.data.__repr__()
+        # remove the first line
+        table_repr = table_repr[table_repr.find("\n") + 1 :]
+        head = f"OpenCosmo Dataset (length={length})\n"
+        cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
+        table_head = f"First {length} rows:\n"
+        return head + cosmo_repr + table_head + table_repr
+
     def __enter__(self):
         # Need to write tests
         return self
@@ -167,4 +179,44 @@ class Dataset:
             new_builders,
             self.__base_unit_transformations,
             self.__filter,
+        )
+
+    def take(self, n: int, at: str = "start") -> Dataset:
+        """
+        Take the first n rows of the dataset.
+
+        Parameters
+        ----------
+        n : int
+            The number of rows to take.
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with only the first n rows.
+
+        """
+        if n < 0 or n > np.sum(self.__filter):
+            raise ValueError("Invalid number of rows to take.")
+
+        new_filter = np.zeros_like(self.__filter)
+        indices = np.where(self.__filter)[0]
+        if at == "start":
+            new_filter[indices[:n]] = True
+        elif at == "end":
+            new_filter[indices[-n:]] = True
+        elif at == "random":
+            indices = np.random.choice(indices, n, replace=False)
+            new_filter[indices] = True
+        else:
+            raise ValueError(
+                "Invalid value for 'at'. Expected 'start', 'end', or 'random'."
+            )
+
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            new_filter,
         )
