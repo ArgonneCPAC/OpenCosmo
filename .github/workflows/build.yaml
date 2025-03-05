@@ -55,7 +55,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.TEST_DATA_SECRET_KEY }}
           aws-region: us-west-2
       - name: check if cache exists
-        id: cache-test-data
+        id: check-cache
         uses: actions/cache@v4
         with:
           path: test_data.tar.gz
@@ -63,7 +63,7 @@ jobs:
           restore-keys: |
             test-data
       - name: Download test data 
-        if: steps.cache-test-data.outputs.cache-hit != 'true'
+        if: steps.check-cache.outputs.cache-hit != 'true'
         run: aws s3 cp s3://${{ secrets.TEST_DATA_BUCKET }}/test_data.tar.gz test_data.tar.gz
       - name: Cache test data
         if: steps.cache-test-data.outputs.cache-hit != 'true'
