@@ -71,6 +71,7 @@ jobs:
         with:
           path: test_data.tar.gz
           key: test-data
+          enableCrossOsArchive: true
           
   run-tests:
     name: Run tests
