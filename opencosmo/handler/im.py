@@ -1,5 +1,5 @@
 from copy import copy
-from typing import Optional, Iterable
+from typing import Iterable, Optional
 
 import h5py
 import numpy as np

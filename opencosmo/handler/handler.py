@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Protocol, Iterable
+from typing import Iterable, Protocol
 
 import h5py
 import numpy as np
