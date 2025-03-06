@@ -6,6 +6,7 @@ import numpy as np
 import opencosmo.transformations as t
 from opencosmo.column.column import get_column_builders, ColumnBuilder
 from opencosmo.column.filter import Filter, apply_filters
+from opencosmo.column.derived import DerivedColumn
 from opencosmo.file import file_reader
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
@@ -60,9 +61,9 @@ class Dataset:
         self.__header = header
         self.__handler = handler
         self.__builders = builders
-        self.__derived_columns = {}
         self.__base_unit_transformations = unit_transformations
         self.__filter = filter
+        self.__derived_columns = derived_columns
 
     def __repr__(self):
         length = np.sum(self.__filter)
@@ -246,4 +247,38 @@ class Dataset:
             self.__builders,
             self.__base_unit_transformations,
             new_filter,
+        )
+
+    def update(self, **kwargs: DerivedColumn):
+        """
+        Update the dataset with new columns.
+        """
+        
+        existing_columns = set(self.__builders.keys()) | set(self.__derived_columns.keys())
+        new_columns = set(kwargs.keys())
+        if (overlap := existing_columns & new_columns): 
+            raise ValueError(f"Columns {overlap} already exist in the dataset.")
+
+        for name, derived_column in kwargs.items():
+            # verify they work
+            needed_columns = set(derived_column.columns)
+            if not needed_columns.issubset(self.__builders.keys()):
+                raise ValueError(
+                    f"Derived column {name} requires columns not in the dataset."
+                )
+            # Try to build a very small column
+            subset = self.select(derived_column.columns).take(2)
+            try:
+                derived_column.build(subset.data)
+            except Exception as e:
+                raise ValueError(
+                    f"Derived column {name} could not be built. {e}"
+                )
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            self.__filter,
+            {**self.__derived_columns, **kwargs},
         )
