@@ -1,11 +1,13 @@
 from pathlib import Path
+import typing
 from typing import Protocol
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.column import ColumnBuilder
+if typing.TYPE_CHECKING:
+    from opencosmo.column import ColumnBuilder
 
 
 class OpenCosmoDataHandler(Protocol):
@@ -36,5 +38,5 @@ class OpenCosmoDataHandler(Protocol):
     def __exit__(self, *exc_details): ...
     def __len__(self) -> int: ...
     def get_data(
-        self, column_builders: dict[str, ColumnBuilder], filter: np.ndarray
+        self, column_builders: dict[str, "ColumnBuilder"], filter: np.ndarray
     ) -> Column | Table: ...

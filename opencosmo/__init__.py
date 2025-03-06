@@ -1,5 +1,6 @@
 from .cosmology import read_cosmology
-from .dataset import col, read
+from .dataset import read
+from .column import col
 from .header import read_header
 from .parameters import read_simulation_parameters
 
