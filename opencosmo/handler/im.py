@@ -1,5 +1,5 @@
 from copy import copy
-from typing import Optional
+from typing import Optional, Iterable
 
 import h5py
 import numpy as np
@@ -31,7 +31,7 @@ class InMemoryHandler:
         self,
         file: h5py.File,
         filter: np.ndarray,
-        columns: list[str],
+        columns: Iterable[str],
         dataset_name="data",
     ) -> None:
         group = file.require_group(dataset_name)
