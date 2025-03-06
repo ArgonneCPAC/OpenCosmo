@@ -80,6 +80,31 @@ class Column:
     def __le__(self, other: float | u.Quantity) -> Filter:
         return Filter(self.column_name, other, op.le)
 
+    def __add__(self, other: Column) -> DerivedColumn:
+        return DerivedColumn(self.column_name, other.column_name, op.add)
+
+    def __sub__(self, other: Column) -> DerivedColumn:
+        return DerivedColumn(self.column_name, other.column_name, op.sub)
+
+    def __mul__(self, other: Column) -> DerivedColumn:
+        return DerivedColumn(self.column_name, other.column_name, op.mul)
+
+    def __truediv__(self, other: Column) -> DerivedColumn:
+        return DerivedColumn(self.column_name, other.column_name, op.truediv)
+
+
+class DerivedColumn:
+    """
+    A column that is derived from other columns.
+    """
+
+    def __init__(
+        self, col1: str, col2: str, operation: Callable[[float, float], float]
+    ):
+        self.col1 = col1
+        self.col2 = col2
+        self.operation = operation
+
 
 class Filter:
     """
