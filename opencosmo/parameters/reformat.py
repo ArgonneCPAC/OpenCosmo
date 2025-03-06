@@ -23,7 +23,7 @@ class ReformatParamters(BaseModel):
     mass_threshold_sodbighaloparticles: Optional[float] = None
     mass_threshold_sodpropertybins: Optional[float] = None
     max_level: int = 0
-    #max_level_lc: int = 0
+    max_level_lc: Optional[int] = None
     npart_threshold_galaxyproperties: Optional[int] = None
     output_lc_path_pattern: Optional[str] = None
     rearrange_output_path_pattern: str
