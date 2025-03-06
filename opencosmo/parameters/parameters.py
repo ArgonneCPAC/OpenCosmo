@@ -21,7 +21,7 @@ def read_header_attributes(
     return parameters
 
 
-def write_header_attributes(file: h5py.File, header_path: str, parameters: dict):
+def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseModel):
     group = file.require_group(f"header/{header_path}")
     pars = parameters.model_dump(by_alias=True)
     for key, value in pars.items():
