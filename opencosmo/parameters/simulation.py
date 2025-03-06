@@ -5,7 +5,7 @@ from typing import Optional
 
 import h5py
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from opencosmo import parameters
 from opencosmo.file import file_reader
@@ -95,9 +95,9 @@ class SimulationParameters(BaseModel):
     )
     cosmology_parameters: parameters.CosmologyParameters = Field(
         description="Cosmology parameters",
-        exclude = True,
+        exclude=True,
     )
-    
+
     @model_validator(mode="before")
     @classmethod
     def empty_string_to_none(cls, data):
@@ -140,6 +140,5 @@ class HydroSimulationParameters(SimulationParameters):
     )
     subgrid_parameters: SubgridParameters = Field(
         description="Parameters for subgrid physics",
-        exclude = True,
-
+        exclude=True,
     )

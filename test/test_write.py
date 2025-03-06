@@ -1,10 +1,6 @@
-from pathlib import Path
-
-import astropy.cosmology as ac
-import h5py
 import pytest
 
-from opencosmo import read_header, read, write, col
+from opencosmo import col, read, read_header, write
 from opencosmo.header import write_header
 
 
@@ -13,20 +9,27 @@ def cosmology_resource_path(data_path):
     p = data_path / "header.hdf5"
     return p
 
+
 @pytest.fixture
 def properties_path(data_path):
     return data_path / "haloproperties.hdf5"
+
 
 def test_write_header(data_path, tmp_path):
     header = read_header(data_path / "header.hdf5")
     new_path = tmp_path / "header.hdf5"
     write_header(new_path, header)
-    
+
     new_header = read_header(new_path)
     assert header.simulation == new_header.simulation
-    assert header._OpenCosmoHeader__reformat_pars == new_header._OpenCosmoHeader__reformat_pars
-    assert header._OpenCosmoHeader__cosmotools_pars == new_header._OpenCosmoHeader__cosmotools_pars
-
+    assert (
+        header._OpenCosmoHeader__reformat_pars
+        == new_header._OpenCosmoHeader__reformat_pars
+    )
+    assert (
+        header._OpenCosmoHeader__cosmotools_pars
+        == new_header._OpenCosmoHeader__cosmotools_pars
+    )
 
 
 def test_write_dataset(properties_path, tmp_path):
@@ -36,6 +39,7 @@ def test_write_dataset(properties_path, tmp_path):
 
     new_ds = read(new_path)
     assert all(ds.data == new_ds.data)
+
 
 def test_after_filter(properties_path, tmp_path):
     ds = read(properties_path)
@@ -49,17 +53,14 @@ def test_after_filter(properties_path, tmp_path):
     new_ds = read(tmp_path / "haloproperties.hdf5")
     assert all(filtered_data == new_ds.data)
 
+
 def test_after_unit_transform(properties_path, tmp_path):
     ds = read(properties_path)
     ds = ds.with_units("scalefree")
-    
+
     # write should not change the data
     write(tmp_path / "haloproperties.hdf5", ds)
 
     ds = read(properties_path)
     new_ds = read(tmp_path / "haloproperties.hdf5")
     assert all(ds.data == new_ds.data)
-
-
-    
-
