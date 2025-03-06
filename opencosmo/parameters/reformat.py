@@ -3,9 +3,8 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from pydantic import BaseModel, field_validator, model_validator, field_serializer
+from pydantic import BaseModel, field_serializer, field_validator, model_validator
 
-import h5py
 
 def empty_string_to_none(value: str) -> Optional[str]:
     if value == "":
@@ -33,7 +32,16 @@ class ReformatParamters(BaseModel):
     snapshot_analysis_path_pattern: Optional[str] = None
     temporary_path: Optional[Path] = None
 
-    @field_serializer("cosmotools_lc_path", "cosmotools_path", "indat_path", "temporary_path", "lightcone_analysis_path_pattern", "output_lc_path_pattern", "rearrange_output_lc_path_pattern", "snapshot_analysis_path_pattern")
+    @field_serializer(
+        "cosmotools_lc_path",
+        "cosmotools_path",
+        "indat_path",
+        "temporary_path",
+        "lightcone_analysis_path_pattern",
+        "output_lc_path_pattern",
+        "rearrange_output_lc_path_pattern",
+        "snapshot_analysis_path_pattern",
+    )
     def handle_path(self, v):
         if v is None:
             return ""

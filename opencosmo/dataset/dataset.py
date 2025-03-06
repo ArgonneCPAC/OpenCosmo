@@ -46,6 +46,7 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
 
     return Dataset(handler, header, builders, base_unit_transformations, filter)
 
+
 @file_writer
 def write(file: h5py.File, dataset: Dataset):
     """
@@ -60,6 +61,7 @@ def write(file: h5py.File, dataset: Dataset):
 
     """
     dataset.write(file)
+
 
 class Dataset:
     def __init__(

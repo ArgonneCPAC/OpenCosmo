@@ -19,13 +19,13 @@ class OpenCosmoHeader:
         self.__cosmotools_pars = cosmotools_pars
 
     def write(self, file: h5py.File) -> None:
-
         # Create the header group
         parameters.write_header_attributes(
             file, "reformat_hacc/config", self.__reformat_pars
         )
         parameters.write_header_attributes(
-            file, "simulation/parameters", self.__simulation_pars)
+            file, "simulation/parameters", self.__simulation_pars
+        )
         parameters.write_header_attributes(
             file, "simulation/cosmotools", self.__cosmotools_pars
         )
@@ -37,7 +37,6 @@ class OpenCosmoHeader:
                 file, "simulation/parameters", self.__simulation_pars.subgrid_parameters
             )
 
-
     @cached_property
     def cosmology(self):
         return cosmo.make_cosmology(self.__simulation_pars.cosmology_parameters)
@@ -45,6 +44,7 @@ class OpenCosmoHeader:
     @property
     def simulation(self):
         return self.__simulation_pars
+
 
 @file_writer
 def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
@@ -60,7 +60,7 @@ def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
 
     """
     header.write(file)
-    
+
 
 @file_reader
 def read_header(file: h5py.File) -> OpenCosmoHeader:
