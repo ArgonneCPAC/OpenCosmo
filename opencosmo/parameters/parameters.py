@@ -1,7 +1,9 @@
-from typing import Type
+from typing import Type, Optional, get_origin, Union
 
 import h5py
 from pydantic import BaseModel, ValidationError
+from pathlib import Path
+import numpy as np
 
 
 def read_header_attributes(
@@ -18,3 +20,25 @@ def read_header_attributes(
         )
         raise ValidationError.from_exception_data(msg, e.errors())  # type: ignore
     return parameters
+
+
+def write_header_attributes(
+    file: h5py.File, header_path: str, parameters: dict
+):
+    group = file.require_group(f"header/{header_path}")
+    pars = parameters.model_dump(by_alias=True)
+    for key, value in pars.items():
+        if isinstance(value, dict):
+            write_header_attributes(file, f"{header_path}/{key}", getattr(parameters, key))
+            continue
+        if value is None:
+            group.attrs[key] = ""
+        else:
+            group.attrs[key] = value
+    return None
+
+def get_empty_from_optional(type_: Type):
+    origin = get_origin(type_)
+    if origin is Union:
+        np_equivalent = np.dtype(type_.__args__[0])
+        return h5py.Empty(np_equivalent)

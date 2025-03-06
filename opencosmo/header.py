@@ -4,7 +4,7 @@ import h5py
 
 from opencosmo import cosmology as cosmo
 from opencosmo import parameters
-from opencosmo.file import file_reader
+from opencosmo.file import file_reader, file_writer
 
 
 class OpenCosmoHeader:
@@ -18,6 +18,26 @@ class OpenCosmoHeader:
         self.__reformat_pars = reformat_pars
         self.__cosmotools_pars = cosmotools_pars
 
+    def write(self, file: h5py.File) -> None:
+
+        # Create the header group
+        parameters.write_header_attributes(
+            file, "reformat_hacc/config", self.__reformat_pars
+        )
+        parameters.write_header_attributes(
+            file, "simulation/parameters", self.__simulation_pars)
+        parameters.write_header_attributes(
+            file, "simulation/cosmotools", self.__cosmotools_pars
+        )
+        parameters.write_header_attributes(
+            file, "simulation/cosmology", self.__simulation_pars.cosmology_parameters
+        )
+        if hasattr(self.__simulation_pars, "subgrid_parameters"):
+            parameters.write_header_attributes(
+                file, "simulation/parameters", self.__simulation_pars.subgrid_parameters
+            )
+
+
     @cached_property
     def cosmology(self):
         return cosmo.make_cosmology(self.__simulation_pars.cosmology_parameters)
@@ -26,6 +46,21 @@ class OpenCosmoHeader:
     def simulation(self):
         return self.__simulation_pars
 
+@file_writer
+def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
+    """
+    Write the header of an OpenCosmo file
+
+    Parameters
+    ----------
+    file : h5py.File
+        The file to write to
+    header : OpenCosmoHeader
+        The header information to write
+
+    """
+    header.write(file)
+    
 
 @file_reader
 def read_header(file: h5py.File) -> OpenCosmoHeader:

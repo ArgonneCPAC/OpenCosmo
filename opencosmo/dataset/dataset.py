@@ -6,7 +6,7 @@ import numpy as np
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.filter import Filter, apply_filters
-from opencosmo.file import file_reader
+from opencosmo.file import file_reader, file_writer
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.transformations import units as u
@@ -46,6 +46,20 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
 
     return Dataset(handler, header, builders, base_unit_transformations, filter)
 
+@file_writer
+def write(file: h5py.File, dataset: Dataset):
+    """
+    Write a dataset to a file.
+
+    Parameters
+    ----------
+    file : str or pathlib.Path
+        The path to the file to write to.
+    dataset : Dataset
+        The dataset to write.
+
+    """
+    dataset.data.write(file)
 
 class Dataset:
     def __init__(
