@@ -8,7 +8,7 @@ from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.filter import Filter, apply_filters
 from opencosmo.file import file_reader, file_writer
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
-from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.header import OpenCosmoHeader, read_header, write_header
 from opencosmo.transformations import units as u
 
 
@@ -59,7 +59,7 @@ def write(file: h5py.File, dataset: Dataset):
         The dataset to write.
 
     """
-    dataset.data.write(file)
+    dataset.write(file)
 
 class Dataset:
     def __init__(
@@ -94,6 +94,21 @@ class Dataset:
 
     def __exit__(self, *exc_details):
         return self.__handler.__exit__(*exc_details)
+
+    def write(self, file: h5py.File, dataset_name: str = "data") -> None:
+        """
+        Write the dataset to a file.
+
+        Parameters
+        ----------
+        file : h5py.File
+            The file to write to.
+        dataset_name : str
+            The name of the dataset in the file. The default is "data".
+
+        """
+        write_header(file, self.__header)
+        self.__handler.write(file, self.__filter, self.__builders.keys(), dataset_name)
 
     @property
     def cosmology(self):

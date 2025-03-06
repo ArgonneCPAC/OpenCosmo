@@ -27,6 +27,11 @@ class InMemoryHandler:
     def __exit__(self, *exec_details):
         return False
 
+    def write(self, file: h5py.File, filter: np.ndarray, columns: list[str], dataset_name="data") -> None:
+        group = file.require_group(dataset_name)
+        for column in columns:
+            group.create_dataset(column, data=self.__data[column][filter])
+
     def get_data(
         self, builders: dict = {}, filter: Optional[np.ndarray] = None
     ) -> Column | Table:

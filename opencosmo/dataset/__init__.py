@@ -1,4 +1,4 @@
-from .dataset import Dataset, read
+from .dataset import Dataset, read, write
 from .filter import col
 
-__all__ = ["read", "col", "Dataset"]
+__all__ = ["read", "write", "col", "Dataset"]
