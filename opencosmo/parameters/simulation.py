@@ -5,7 +5,7 @@ from typing import Optional
 
 import h5py
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator, field_serializer
 
 from opencosmo import parameters
 from opencosmo.file import file_reader
@@ -94,9 +94,10 @@ class SimulationParameters(BaseModel):
         description="Lagrangian offset for dark matter particles"
     )
     cosmology_parameters: parameters.CosmologyParameters = Field(
-        description="Cosmology parameters"
+        description="Cosmology parameters",
+        exclude = True,
     )
-
+    
     @model_validator(mode="before")
     @classmethod
     def empty_string_to_none(cls, data):
@@ -104,7 +105,6 @@ class SimulationParameters(BaseModel):
             return {k: empty_string_to_none(v) for k, v in data.items()}
         return data
 
-    @computed_field  # type: ignore[misc]
     @cached_property
     def step_zs(self) -> list[float]:
         a_ini = 1 / (1 + self.z_ini)
@@ -139,5 +139,7 @@ class HydroSimulationParameters(SimulationParameters):
         description="Lagrangian offset for gas particles", alias="offset_bar_ini"
     )
     subgrid_parameters: SubgridParameters = Field(
-        description="Parameters for subgrid physics"
+        description="Parameters for subgrid physics",
+        exclude = True,
+
     )

@@ -1,6 +1,6 @@
 from .cosmology import CosmologyParameters
 from .cosmotools import CosmoToolsParameters
-from .parameters import read_header_attributes
+from .parameters import read_header_attributes, write_header_attributes
 from .reformat import ReformatParamters
 from .simulation import (
     GravityOnlySimulationParameters,
@@ -19,5 +19,6 @@ __all__ = [
     "SimulationParameters",
     "SubgridParameters",
     "read_header_attributes",
+    "write_header_attributes",
     "read_simulation_parameters",
 ]
