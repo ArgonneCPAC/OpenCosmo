@@ -35,7 +35,6 @@ def test_open_close(input_path):
 
 def test_dataset_close(input_path):
     ds = oc.open(input_path)
-    print(type(ds))
     file = ds._Dataset__handler._OutOfMemoryHandler__file
     assert file["data"] is not None
     ds.close()
@@ -65,4 +64,19 @@ def test_select_oom(input_path):
     for col in selected_cols:
         assert np.all(data[col] == selected_data[col])
     assert set(selected_cols) == set(selected_data.columns)
+
+
+
+def test_write_after_filter(input_path, tmp_path):
+    with oc.open(input_path) as ds:
+        ds = ds.filter(oc.col("sod_halo_mass") > 0)
+
+        oc.write(tmp_path / "haloproperties.hdf5", ds)
+
+        data = ds.data
+
+    with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
+        filtered_data = new_ds.data
+        
+    assert all(filtered_data == data)
 
