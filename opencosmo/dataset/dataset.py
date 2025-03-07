@@ -14,10 +14,32 @@ from opencosmo.header import OpenCosmoHeader, read_header, write_header
 from opencosmo.transformations import units as u
 
 
-@contextmanager
 def open(file: str | Path, units: str = "comoving") -> Dataset:
     """
-    Open a dataset from a file.
+    Open a dataset from a file without reading the data into memory.
+
+    The object returned by this function will only read data from the file
+    when it is actually needed. This is useful if the file is very large 
+    and you only need to access a small part of it.
+
+    If you open a file with this function, be sure to close it when
+    you are done.
+
+    ```python
+    import opencosmo as oc
+    ds = oc.open("path/to/file.hdf5")
+    # do work
+    ds.close()
+    ```
+
+    Alternatively you can use a context manager, which will close the file
+    automatically when you are done with it.
+
+    ```python
+    import opencosmo as oc
+    with oc.open("path/to/file.hdf5") as ds:
+        # do work
+    ```
     """
     path = resolve_path(file, FileExistance.MUST_EXIST)
     file = h5py.File(path, "r")
@@ -32,9 +54,7 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     filter = np.ones(len(handler), dtype=bool)
 
     dataset = Dataset(handler, header, builders, base_unit_transformations, filter)
-    yield dataset
-    
-    dataset.close()
+    return dataset
 
 
 
