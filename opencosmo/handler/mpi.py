@@ -48,12 +48,17 @@ class MPIHandler:
         columns: Iterable[str],
         dataset_name="data",
     ) -> None:
+        rank_range = self.elem_range()
         rank_output_length = np.sum(filter)
-        all_output_lengths = self.__comm.gather(rank_output_length, root=0)
+        all_output_lengths = self.__comm.allgather(rank_output_length)
 
         # Determine the number of elements this rank is responsible for
         # writing
-        rank_start = np.sum(all_output_lengths[:self.__comm.Get_rank()])
+        if self.__comm.Get_rank() == 0:
+            rank_start = 0
+        else:
+            rank_start = int(np.sum(all_output_lengths[:self.__comm.Get_rank()]))
+
         rank_end = rank_start + rank_output_length
 
         full_output_length = np.sum(all_output_lengths)
@@ -61,11 +66,14 @@ class MPIHandler:
         for column in columns:
             # This step has to be done by all ranks, per documentation
             group.create_dataset(column, (full_output_length,), dtype=self.__group[column].dtype)
+
         self.__comm.Barrier()
 
         for column in columns:
-            data = self.__group[column][filter]
+            data = self.__group[column][rank_range[0]: rank_range[1]][filter]
+
             group[column][rank_start:rank_end] = data
+        
         self.__comm.Barrier()
 
     def get_data(
