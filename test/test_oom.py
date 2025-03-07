@@ -4,7 +4,14 @@ import numpy as np
 
 @pytest.fixture
 def input_path(data_path):
-    return data_path / "galaxyproperties.hdf5"
+    return data_path / "haloproperties.hdf5"
+
+@pytest.fixture
+def max_mass(input_path):
+    ds = oc.read(input_path)
+    sod_mass = ds.data["sod_halo_mass"]
+    sod_mass_unit = sod_mass.unit
+    return 0.95 * sod_mass.max() * sod_mass_unit
 
 
 def test_open(input_path):
@@ -36,4 +43,26 @@ def test_dataset_close(input_path):
         file["data"]
 
 
+def test_filter_oom(input_path, max_mass):
+    # Assuming test_open worked, this is the only 
+    # thing that needs to be directly tested
+    
+    with oc.open(input_path) as f:
+        ds = f.filter(oc.col("sod_halo_mass") > 0, oc.col("sod_halo_mass") < max_mass)
+        data = ds.data
+    assert data["sod_halo_mass"].min() > 0
+
+def test_select_oom(input_path):
+    with oc.open(input_path) as ds:
+
+        data = ds.data
+        cols = list(data.columns)
+        # select 10 columns at random
+        selected_cols = np.random.choice(cols, 10, replace=False)
+        selected = ds.select(selected_cols)
+        selected_data = selected.data
+
+    for col in selected_cols:
+        assert np.all(data[col] == selected_data[col])
+    assert set(selected_cols) == set(selected_data.columns)
 
