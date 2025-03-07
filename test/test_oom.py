@@ -1,10 +1,13 @@
-import pytest
-import opencosmo as oc
 import numpy as np
+import pytest
+
+import opencosmo as oc
+
 
 @pytest.fixture
 def input_path(data_path):
     return data_path / "haloproperties.hdf5"
+
 
 @pytest.fixture
 def max_mass(input_path):
@@ -43,17 +46,17 @@ def test_dataset_close(input_path):
 
 
 def test_filter_oom(input_path, max_mass):
-    # Assuming test_open worked, this is the only 
+    # Assuming test_open worked, this is the only
     # thing that needs to be directly tested
-    
+
     with oc.open(input_path) as f:
         ds = f.filter(oc.col("sod_halo_mass") > 0, oc.col("sod_halo_mass") < max_mass)
         data = ds.data
     assert data["sod_halo_mass"].min() > 0
 
+
 def test_select_oom(input_path):
     with oc.open(input_path) as ds:
-
         data = ds.data
         cols = list(data.columns)
         # select 10 columns at random
@@ -66,7 +69,6 @@ def test_select_oom(input_path):
     assert set(selected_cols) == set(selected_data.columns)
 
 
-
 def test_write_after_filter(input_path, tmp_path):
     with oc.open(input_path) as ds:
         ds = ds.filter(oc.col("sod_halo_mass") > 0)
@@ -77,6 +79,5 @@ def test_write_after_filter(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         filtered_data = new_ds.data
-        
-    assert all(filtered_data == data)
 
+    assert all(filtered_data == data)
