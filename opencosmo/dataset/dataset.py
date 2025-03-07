@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from pathlib import Path
 
 import h5py
@@ -43,14 +42,14 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     ```
     """
     path = resolve_path(file, FileExistance.MUST_EXIST)
-    file = h5py.File(path, "r")
+    file_handle = h5py.File(path, "r")
 
-    header = read_header(file)
-    handler = OutOfMemoryHandler(file)
+    header = read_header(file_handle)
+    handler = OutOfMemoryHandler(file_handle)
     base_unit_transformations, transformations = u.get_unit_transformations(
-        file["data"], header, units
+        file_handle["data"], header, units
     )
-    column_names = list(str(col) for col in file["data"].keys())
+    column_names = list(str(col) for col in file_handle["data"].keys())
     builders = get_column_builders(transformations, column_names)
     filter = np.ones(len(handler), dtype=bool)
 
