@@ -38,7 +38,8 @@ class OutOfMemoryHandler:
     ) -> None:
         group = file.require_group(dataset_name)
         for column in columns:
-            group.create_dataset(column, data=self.__data[column][filter])
+            data = self.__group[column][filter]
+            group.create_dataset(column, data=data)
 
     def get_data(
         self, builders: dict = {}, filter: Optional[np.ndarray] = None

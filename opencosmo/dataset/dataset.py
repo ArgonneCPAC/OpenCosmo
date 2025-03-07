@@ -2,14 +2,40 @@ from __future__ import annotations
 
 import h5py
 import numpy as np
+from contextlib import contextmanager
+from pathlib import Path
 
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.filter import Filter, apply_filters
-from opencosmo.file import file_reader, file_writer
-from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler
+from opencosmo.file import file_reader, file_writer, resolve_path, FileExistance
+from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header, write_header
 from opencosmo.transformations import units as u
+
+
+@contextmanager
+def open(file: str | Path, units: str = "comoving") -> Dataset:
+    """
+    Open a dataset from a file.
+    """
+    path = resolve_path(file, FileExistance.MUST_EXIST)
+    file = h5py.File(path, "r")
+
+    header = read_header(file)
+    handler = OutOfMemoryHandler(file)
+    base_unit_transformations, transformations = u.get_unit_transformations(
+        file["data"], header, units
+    )
+    column_names = list(str(col) for col in file["data"].keys())
+    builders = get_column_builders(transformations, column_names)
+    filter = np.ones(len(handler), dtype=bool)
+
+    dataset = Dataset(handler, header, builders, base_unit_transformations, filter)
+    yield dataset
+    
+    dataset.close()
+
 
 
 @file_reader
@@ -96,6 +122,9 @@ class Dataset:
 
     def __exit__(self, *exc_details):
         return self.__handler.__exit__(*exc_details)
+
+    def close(self):
+        return self.__handler.__exit__()
 
     def write(self, file: h5py.File, dataset_name: str = "data") -> None:
         """
