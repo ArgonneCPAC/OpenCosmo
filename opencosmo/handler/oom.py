@@ -17,7 +17,6 @@ class OutOfMemoryHandler:
         self.__group = file[group]
         self.__columns = list(self.__group.keys())
 
-
     def __len__(self) -> int:
         return self.__group[self.__columns[0]].size
 

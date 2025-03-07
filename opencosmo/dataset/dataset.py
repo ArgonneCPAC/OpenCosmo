@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import h5py
-import numpy as np
 from contextlib import contextmanager
 from pathlib import Path
+
+import h5py
+import numpy as np
 
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.filter import Filter, apply_filters
-from opencosmo.file import file_reader, file_writer, resolve_path, FileExistance
+from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header, write_header
 from opencosmo.transformations import units as u
@@ -19,7 +20,7 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     Open a dataset from a file without reading the data into memory.
 
     The object returned by this function will only read data from the file
-    when it is actually needed. This is useful if the file is very large 
+    when it is actually needed. This is useful if the file is very large
     and you only need to access a small part of it.
 
     If you open a file with this function, be sure to close it when
@@ -55,7 +56,6 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
 
     dataset = Dataset(handler, header, builders, base_unit_transformations, filter)
     return dataset
-
 
 
 @file_reader
