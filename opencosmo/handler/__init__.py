@@ -5,5 +5,6 @@ import hdf5plugin  # type: ignore # noqa: F401
 from .handler import OpenCosmoDataHandler
 from .im import InMemoryHandler
 from .oom import OutOfMemoryHandler
+from .mpi import MPIHandler
 
-__all__ = ["OpenCosmoDataHandler", "InMemoryHandler", "OutOfMemoryHandler"]
+__all__ = ["OpenCosmoDataHandler", "InMemoryHandler", "OutOfMemoryHandler", "MPIHandler"]
