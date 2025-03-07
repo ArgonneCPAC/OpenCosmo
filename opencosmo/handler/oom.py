@@ -45,6 +45,8 @@ class OutOfMemoryHandler:
         self, builders: dict = {}, filter: Optional[np.ndarray] = None
     ) -> Column | Table:
         """ """
+        if self.__group is None:
+            raise ValueError("This file has already been closed")
         output = {}
         for column, builder in builders.items():
             if filter is None:
@@ -53,7 +55,7 @@ class OutOfMemoryHandler:
                 data = self.__group[column][filter]
 
             col = Column(data, name=column)
-            output[column] = builder(col)
+            output[column] = builder.build(col)
 
         if len(output) == 1:
             return next(iter(output.values()))
