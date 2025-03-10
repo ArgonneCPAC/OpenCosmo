@@ -97,3 +97,49 @@ class MPIHandler:
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)
+    
+    def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
+        """
+        This is the tricky one. We need to update the filter based on the amount of data in ALL the ranks.
+
+        Filters are localized to each rank. For "start" and "end" it's just a matter of figurint out how
+        many elements each rank is responsible for. For "random" we need to be more clever.
+        """
+        rank_length = np.sum(filter)
+        rank_lengths = self.__comm.allgather(rank_length)
+        total_length = np.sum(rank_lengths)
+        if n > total_length:
+            # All ranks crash
+            raise ValueError(f"Requested {n} elements, but only {total_length} are available.")
+
+        if self.__comm.Get_rank() == 0:
+            indices = np.random.choice(total_length, n, replace=False)
+            indices = np.sort(indices)
+            # Distribute the indices to the ranks
+        else:
+            indices = None
+        indices = self.__comm.bcast(indices, root=0)
+
+        rank_start_index = np.sum(rank_lengths[:self.__comm.Get_rank()])
+        rank_end_index = rank_start_index + rank_length
+        rank_indicies = indices[(indices >= rank_start_index) & (indices < rank_end_index)]
+
+        new_true_indices = np.where(filter)[0][rank_indicies - rank_start_index]
+        new_filter = np.zeros_like(filter)
+        new_filter[new_true_indices] = True
+        return new_filter
+
+
+
+
+
+
+
+
+
+            
+
+                
+
+
+
