@@ -5,6 +5,7 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
+from warnings import warn
 
 class MPIHandler:
     """
@@ -108,7 +109,8 @@ class MPIHandler:
         n_requested = self.__comm.allgather(n)
         # Needs to be the same on all ranks
         if len(set(n_requested)) > 1:
-            raise ValueError("n must be the same on all ranks.")
+            warn("Requested different amounts of data on different ranks. Using the value from rank 0.")
+            n = n_requested[0]
 
         rank_length = np.sum(filter)
         rank_lengths = self.__comm.allgather(rank_length)

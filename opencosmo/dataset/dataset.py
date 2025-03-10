@@ -153,7 +153,8 @@ class Dataset:
 
     def write(self, file: h5py.File, dataset_name: str = "data") -> None:
         """
-        Write the dataset to a file.
+        Write the dataset to a file. This should not be called directly for the user.
+        The opencosmo.write file writer automatically handles the file context.
 
         Parameters
         ----------
@@ -163,6 +164,8 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
+        if not isinstance(file, h5py.File):
+            raise AttributeError("Dataset.write should not be called directly, use opencosmo.write instead.")
         write_header(file, self.__header)
         self.__handler.write(file, self.__filter, self.__builders.keys(), dataset_name)
 
