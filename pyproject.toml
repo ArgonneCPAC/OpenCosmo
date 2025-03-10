@@ -18,6 +18,7 @@ optional = true
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.4"
+mpi-pytest = "^2025.2.0"
 
 
 [tool.poetry.group.develop.dependencies]

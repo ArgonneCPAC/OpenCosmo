@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Iterable, Protocol, Optional
 
 import h5py
 import numpy as np
@@ -45,3 +45,7 @@ class OpenCosmoDataHandler(Protocol):
     def get_data(
         self, column_builders: dict[str, ColumnBuilder], filter: np.ndarray
     ) -> Column | Table: ...
+
+    def update_filter(
+        n: int, strategy: str, filter: np.ndarray
+    ) -> np.ndarray: ...

@@ -348,14 +348,14 @@ files = [
 
 [[package]]
 name = "jinja2"
-version = "3.1.5"
+version = "3.1.6"
 description = "A very fast and expressive template engine."
 optional = false
 python-versions = ">=3.7"
 groups = ["docs"]
 files = [
-    {file = "jinja2-3.1.5-py3-none-any.whl", hash = "sha256:aba0f4dc9ed8013c424088f68a5c226f7d6097ed89b246d7749c2ec4175c6adb"},
-    {file = "jinja2-3.1.5.tar.gz", hash = "sha256:8fefff8dc3034e27bb80d67c671eb8a9bc424c0ef4c0826edbff304cceff43bb"},
+    {file = "jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"},
+    {file = "jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d"},
 ]
 
 [package.dependencies]
@@ -436,12 +436,28 @@ files = [
 ]
 
 [[package]]
+name = "mpi-pytest"
+version = "2025.2.0"
+description = "A pytest plugin for executing tests in parallel with MPI"
+optional = false
+python-versions = ">=3.7"
+groups = ["test"]
+files = [
+    {file = "mpi_pytest-2025.2.0-py3-none-any.whl", hash = "sha256:5e258f1bac13c2d14d87b244f5a63d5a5e0609cfc5e302b67ea221d1782d1846"},
+    {file = "mpi_pytest-2025.2.0.tar.gz", hash = "sha256:561cfe0d044071d88fca2e6125de127fbfd44e6a0df1c23f74b65d0bae5bfed0"},
+]
+
+[package.dependencies]
+mpi4py = "*"
+pytest = "*"
+
+[[package]]
 name = "mpi4py"
 version = "4.0.3"
 description = "Python bindings for MPI"
 optional = false
 python-versions = ">=3.6"
-groups = ["main"]
+groups = ["main", "test"]
 files = [
     {file = "mpi4py-4.0.3-cp310-cp310-win_amd64.whl", hash = "sha256:4dfffeb117802c9b22f4fa18e73323d7fa610d6eca7292efc4807ce0321919a1"},
     {file = "mpi4py-4.0.3-cp311-cp311-win_amd64.whl", hash = "sha256:26d9e70081f3c69c74c81306b6ad33918b710980bd1732ab577702909b2db3e8"},
@@ -1159,4 +1175,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "c955cac1c97b938290bcc53ece14d2a0c3ccdf63929668ebe2754cd2f502cc7a"
+content-hash = "605751486fd2536342b070efa361321fec0dded4cb7b041085b3c066c249186d"
