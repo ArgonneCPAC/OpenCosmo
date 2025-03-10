@@ -305,22 +305,8 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        if n < 0 or n > np.sum(self.__filter):
-            raise ValueError("Invalid number of rows to take.")
+        new_filter = self.__handler.update_filter(n, at, self.__filter)
 
-        new_filter = np.zeros_like(self.__filter)
-        indices = np.where(self.__filter)[0]
-        if at == "start":
-            new_filter[indices[:n]] = True
-        elif at == "end":
-            new_filter[indices[-n:]] = True
-        elif at == "random":
-            indices = np.random.choice(indices, n, replace=False)
-            new_filter[indices] = True
-        else:
-            raise ValueError(
-                "Invalid value for 'at'. Expected 'start', 'end', or 'random'."
-            )
 
         return Dataset(
             self.__handler,

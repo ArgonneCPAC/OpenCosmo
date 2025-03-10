@@ -51,13 +51,14 @@ class MPIHandler:
         rank_range = self.elem_range()
         rank_output_length = np.sum(filter)
         all_output_lengths = self.__comm.allgather(rank_output_length)
+        rank = self.__comm.Get_rank()
 
         # Determine the number of elements this rank is responsible for
         # writing
-        if self.__comm.Get_rank() == 0:
+        if not rank:
             rank_start = 0
         else:
-            rank_start = int(np.sum(all_output_lengths[:self.__comm.Get_rank()]))
+            rank_start = np.sum(all_output_lengths[:rank])
 
         rank_end = rank_start + rank_output_length
 

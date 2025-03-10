@@ -58,3 +58,21 @@ class OutOfMemoryHandler:
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)
+    
+    def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
+        if n > (length := np.sum(filter)):
+            raise ValueError(f"Requested {n} elements, but only {length} are available.")
+
+        indices = np.where(filter)[0]
+        new_filter = np.zeros(length, dtype=bool)
+
+        if strategy == "start":
+            new_filter[indices[:n]] = True
+        elif strategy == "end":
+            new_filter[indices[-n:]] = True
+        elif strategy == "random":
+            new_filter[np.random.choice(indices, n, replace=False)] = True
+        else:
+            raise ValueError("Strategy for `take` must be one of 'start', 'end', or 'random'")
+
+        return new_filter

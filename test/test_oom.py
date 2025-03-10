@@ -54,6 +54,11 @@ def test_filter_oom(input_path, max_mass):
         data = ds.data
     assert data["sod_halo_mass"].min() > 0
 
+def test_take_oom(input_path):
+    with oc.open(input_path) as f:
+        ds = f.take(10)
+        data = ds.data
+    assert len(data) == 10
 
 def test_select_oom(input_path):
     with oc.open(input_path) as ds:
