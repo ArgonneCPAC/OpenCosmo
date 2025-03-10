@@ -105,22 +105,35 @@ class MPIHandler:
         Filters are localized to each rank. For "start" and "end" it's just a matter of figurint out how
         many elements each rank is responsible for. For "random" we need to be more clever.
         """
+        n_requested = self.__comm.allgather(n)
+        # Needs to be the same on all ranks
+        if len(set(n_requested)) > 1:
+            raise ValueError("n must be the same on all ranks.")
+
         rank_length = np.sum(filter)
         rank_lengths = self.__comm.allgather(rank_length)
+
         total_length = np.sum(rank_lengths)
         if n > total_length:
             # All ranks crash
             raise ValueError(f"Requested {n} elements, but only {total_length} are available.")
 
         if self.__comm.Get_rank() == 0:
-            indices = np.random.choice(total_length, n, replace=False)
-            indices = np.sort(indices)
+            if strategy == "random":
+                indices = np.random.choice(total_length, n, replace=False)
+                indices = np.sort(indices)
+            elif strategy == "start":
+                indices = np.arange(n)
+            elif strategy == "end":
+                indices = np.arange(total_length - n, total_length)
             # Distribute the indices to the ranks
         else:
             indices = None
         indices = self.__comm.bcast(indices, root=0)
 
-        rank_start_index = np.sum(rank_lengths[:self.__comm.Get_rank()])
+        rank_start_index = self.__comm.Get_rank()
+        if rank_start_index:
+            rank_start_index = np.sum(rank_lengths[:self.__comm.Get_rank()])
         rank_end_index = rank_start_index + rank_length
         rank_indicies = indices[(indices >= rank_start_index) & (indices < rank_end_index)]
 

@@ -306,6 +306,8 @@ class Dataset:
 
         """
         new_filter = self.__handler.update_filter(n, at, self.__filter)
+        if np.sum(new_filter) == 0:
+            raise ValueError("Filter would return zero rows.")
 
 
         return Dataset(
