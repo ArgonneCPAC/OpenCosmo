@@ -114,7 +114,7 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          poetry run pytest -m "not parallel"
+          poetry run pytest --ignore=test/parallel
         env:
           OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
 
@@ -159,14 +159,15 @@ jobs:
           source ${{ github.workspace }}/.venv/bin/activate
           CC="mpicc" HDF5_MPI="ON" pip install --no-binary=h5py h5py
       - name: install project
-        run: poetry install --with test,mpi
+        run: poetry install --with test,mpi,test-mpi
       - name: get number of cores
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
         run: |
           source ${{ github.workspace }}/.venv/bin/activate
-          mpiexec --use-hwthread-cpus -n 4 pytest -m parallel
-
+          mpiexec --use-hwthread-cpus -n 4 pytest -m parallel test/parallel
+        env:
+          OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
     
   build:
     name: build
