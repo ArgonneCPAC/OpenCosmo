@@ -4,7 +4,7 @@ from typing import Type
 import h5py
 from astropy import cosmology  # type: ignore
 
-from opencosmo.file import file_reader
+from opencosmo.file import file_reader, broadcast_read
 from opencosmo.header import read_header
 from opencosmo.parameters import CosmologyParameters
 
@@ -14,6 +14,7 @@ astropy.cosmology object.
 """
 
 
+@broadcast_read
 @file_reader
 def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
     """
