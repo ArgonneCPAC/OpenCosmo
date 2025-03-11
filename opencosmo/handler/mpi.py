@@ -104,16 +104,19 @@ class MPIHandler:
 
     def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
         """
-        This is the tricky one. We need to update the filter based on the amount of data in ALL the ranks.
+        This is the tricky one. We need to update the filter based on the amount of 
+        data in ALL the ranks.
 
-        Filters are localized to each rank. For "start" and "end" it's just a matter of figurint out how
-        many elements each rank is responsible for. For "random" we need to be more clever.
+        Filters are localized to each rank. For "start" and "end" it's just a matter of 
+        figuring out how many elements each rank is responsible for. For "random" we 
+        need to be more clever.
         """
         n_requested = self.__comm.allgather(n)
         # Needs to be the same on all ranks
         if len(set(n_requested)) > 1:
             warn(
-                "Requested different amounts of data on different ranks. Using the value from rank 0."
+                "Requested different amounts of data on different ranks. Using the "
+                "value from rank 0."
             )
             n = n_requested[0]
 
