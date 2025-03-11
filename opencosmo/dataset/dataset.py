@@ -256,9 +256,14 @@ class Dataset:
         columns = [str(col) for col in columns]
 
         if not all(col in self.__builders for col in columns):
-            raise ValueError("Not all columns are present in the dataset.")
 
-        new_builders = {col: self.__builders[col] for col in columns}
+        try:
+            new_builders = {col: self.__builders[col] for col in columns}
+        except KeyError:
+            known_columns = set(self.__builders.keys())
+            unknown_columns = set(columns) - known_columns
+            raise ValueError("Tried to select columns that aren't in this dataset! Missing columns " + ", ".join(unknown_columns))
+
 
         return Dataset(
             self.__handler,
