@@ -154,7 +154,6 @@ jobs:
       - name: Install project
         run: poetry install --only test
       
-      - name: activate venv
       - name: build hdf5 in paralell
         run: |
           source ${{ github.workspace }}/.venv/bin/activate
