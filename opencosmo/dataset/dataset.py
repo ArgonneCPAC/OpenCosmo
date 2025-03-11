@@ -255,8 +255,6 @@ class Dataset:
         # numpy compatability
         columns = [str(col) for col in columns]
 
-        if not all(col in self.__builders for col in columns):
-
         try:
             new_builders = {col: self.__builders[col] for col in columns}
         except KeyError:
