@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import h5py
-from mpi4py import MPI
+try:
+    from mpi4py import MPI
+    from opencosmo.handler import MPIHandler
+except ImportError:
+    MPI = None
 import numpy as np
 
 
@@ -11,7 +15,7 @@ import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.filter import Filter, apply_filters
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler, MPIHandler
+from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header, write_header
 from opencosmo.transformations import units as u
 
@@ -56,7 +60,7 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     file_handle = h5py.File(path, "r")
     header = read_header(file_handle)
 
-    if MPI.COMM_WORLD.Get_size() > 1:
+    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
         handler = MPIHandler(file_handle, comm=MPI.COMM_WORLD)
     else:
         handler = OutOfMemoryHandler(file_handle)

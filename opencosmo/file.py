@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Any, Callable, Concatenate
 
 import h5py
-import mpi4py.MPI as MPI
+
+try:
+    import mpi4py.MPI as MPI
+except ImportError:
+    MPI = None
 
 FileReader = Callable[Concatenate[h5py.File, ...], Any]
 FileWriter = Callable[Concatenate[h5py.File, ...], None]
@@ -33,7 +37,7 @@ def file_writer(func: FileWriter) -> FileWriter:
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         if not isinstance(file, h5py.File):
             path = resolve_path(file, FileExistance.MUST_NOT_EXIST)
-            if MPI.COMM_WORLD.Get_size() > 1:
+            if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
                 with h5py.File(path, "w", driver="mpio", comm=MPI.COMM_WORLD) as f:
                     return func(f, *args, **kwargs)
             with h5py.File(path, "w") as f:
