@@ -159,11 +159,11 @@ jobs:
       - name: build hdf5 in paralell
         run: CC="mpicc" HDF5_MPI="ON" pip install --no-binary=h5py h5py
       - name: install project
-        run: poetry install --with test,test-mpi,mpi
+        run: poetry install --with test,mpi
       - name: get number of cores
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
-        run: mpiexec -use-hwthread-cpus -n 4 pytest -m parallel
+        run: mpiexec --use-hwthread-cpus -n 4 pytest -m parallel
     
   build:
     name: build
