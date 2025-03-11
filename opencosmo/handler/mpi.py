@@ -7,6 +7,7 @@ from mpi4py import MPI
 
 from warnings import warn
 
+
 class MPIHandler:
     """
     A handler for reading and writing data in an MPI context.
@@ -67,21 +68,23 @@ class MPIHandler:
         group = file.require_group(dataset_name)
         for column in columns:
             # This step has to be done by all ranks, per documentation
-            group.create_dataset(column, (full_output_length,), dtype=self.__group[column].dtype)
+            group.create_dataset(
+                column, (full_output_length,), dtype=self.__group[column].dtype
+            )
 
         self.__comm.Barrier()
 
         for column in columns:
-            data = self.__group[column][rank_range[0]: rank_range[1]][filter]
+            data = self.__group[column][rank_range[0] : rank_range[1]][filter]
 
             group[column][rank_start:rank_end] = data
-        
+
         self.__comm.Barrier()
 
     def get_data(
         self, builders: dict = {}, filter: Optional[np.ndarray] = None
     ) -> Column | Table:
-        """ 
+        """
         Get data from the file in the range for this rank.
         """
         if self.__group is None:
@@ -98,7 +101,7 @@ class MPIHandler:
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)
-    
+
     def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
         """
         This is the tricky one. We need to update the filter based on the amount of data in ALL the ranks.
@@ -109,7 +112,9 @@ class MPIHandler:
         n_requested = self.__comm.allgather(n)
         # Needs to be the same on all ranks
         if len(set(n_requested)) > 1:
-            warn("Requested different amounts of data on different ranks. Using the value from rank 0.")
+            warn(
+                "Requested different amounts of data on different ranks. Using the value from rank 0."
+            )
             n = n_requested[0]
 
         rank_length = np.sum(filter)
@@ -118,7 +123,9 @@ class MPIHandler:
         total_length = np.sum(rank_lengths)
         if n > total_length:
             # All ranks crash
-            raise ValueError(f"Requested {n} elements, but only {total_length} are available.")
+            raise ValueError(
+                f"Requested {n} elements, but only {total_length} are available."
+            )
 
         if self.__comm.Get_rank() == 0:
             if strategy == "random":
@@ -135,26 +142,13 @@ class MPIHandler:
 
         rank_start_index = self.__comm.Get_rank()
         if rank_start_index:
-            rank_start_index = np.sum(rank_lengths[:self.__comm.Get_rank()])
+            rank_start_index = np.sum(rank_lengths[: self.__comm.Get_rank()])
         rank_end_index = rank_start_index + rank_length
-        rank_indicies = indices[(indices >= rank_start_index) & (indices < rank_end_index)]
+        rank_indicies = indices[
+            (indices >= rank_start_index) & (indices < rank_end_index)
+        ]
 
         new_true_indices = np.where(filter)[0][rank_indicies - rank_start_index]
         new_filter = np.zeros_like(filter)
         new_filter[new_true_indices] = True
         return new_filter
-
-
-
-
-
-
-
-
-
-            
-
-                
-
-
-

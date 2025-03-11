@@ -1,4 +1,3 @@
-from copy import copy
 from typing import Iterable, Optional
 
 import h5py
@@ -39,7 +38,11 @@ class InMemoryHandler:
             group.create_dataset(column, data=self.__data[column][filter])
 
     def get_data(
-        self, builders: dict = {}, filter: Optional[np.ndarray] = None, n: Optional[int] = None, strategy: str = "start"
+        self,
+        builders: dict = {},
+        filter: Optional[np.ndarray] = None,
+        n: Optional[int] = None,
+        strategy: str = "start",
     ) -> Column | Table:
         """ """
         length = len(self)
@@ -55,8 +58,7 @@ class InMemoryHandler:
             sl = np.random.choice(length, n, replace=False)
 
         filter = filter if filter is not None else np.ones(length, dtype=bool)
-        
-        
+
         output = {}
         for column, builder in builders.items():
             col = self.__data[column][filter][sl]
@@ -66,9 +68,7 @@ class InMemoryHandler:
             return next(iter(output.values()))
         return Table(output)
 
-    def update_filter(
-            self, n: int, strategy: str, filter: np.ndarray
-    ) -> np.ndarray:
+    def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
         if n < 0:
             raise ValueError("n must be greater than zero.")
         if n > np.sum(filter):
@@ -82,6 +82,7 @@ class InMemoryHandler:
         elif strategy == "random":
             new_filter[np.random.choice(indices, n, replace=False)] = True
         else:
-            raise ValueError("Take strategy must be one of 'start', 'end', or 'random'.")
+            raise ValueError(
+                "Take strategy must be one of 'start', 'end', or 'random'."
+            )
         return new_filter
-
