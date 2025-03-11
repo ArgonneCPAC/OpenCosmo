@@ -4,7 +4,12 @@ import h5py
 
 from opencosmo import cosmology as cosmo
 from opencosmo import parameters
-from opencosmo.file import file_reader, file_writer
+from opencosmo.file import file_reader, file_writer, broadcast_read
+
+try:
+    from mpi4py import MPI
+except ImportError:
+    MPI = None
 
 
 class OpenCosmoHeader:
@@ -61,7 +66,7 @@ def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
     """
     header.write(file)
 
-
+@broadcast_read
 @file_reader
 def read_header(file: h5py.File) -> OpenCosmoHeader:
     """
@@ -112,7 +117,7 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
             "Are you sure it is an OpenCosmo file?\n"
             f"Error: {e}"
         )
-
     return OpenCosmoHeader(
         simulation_parameters, reformat_parameters, cosmotools_parameters
     )
+

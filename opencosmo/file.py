@@ -21,6 +21,11 @@ class FileExistance(Enum):
 
 
 def file_reader(func: FileReader) -> FileReader:
+    """
+    Resolves the path to a given file and handles opening
+    and closing the file for reading purposes. Used as a
+    decorator.
+    """
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         if not isinstance(file, h5py.File):
@@ -31,8 +36,12 @@ def file_reader(func: FileReader) -> FileReader:
 
     return wrapper
 
-
 def file_writer(func: FileWriter) -> FileWriter:
+    """
+    Resolves the path to a given file and handles opening
+    and closing the file for writing purposes. Used as a
+    decorator.
+    """
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         if not isinstance(file, h5py.File):
@@ -50,6 +59,29 @@ def file_writer(func: FileWriter) -> FileWriter:
     return wrapper
 
 
+
+def broadcast_read(func: FileReader) -> FileReader:
+    """
+    If MPI is available, the decorated function will only
+    be called on rank 0, with the results broadcast to all
+    ranks. When we read actual data this is not necessary,
+    because the data will be chunked by rank, but for attributes
+    its better to not try to read them from a hundred processes
+    at the same time.
+    """
+    @wraps(func)
+    def wrapper(file: h5py.File | Path | str, *args, **kwargs):
+        output = None
+        if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
+            output = func(file, *args, **kwargs)
+        if MPI is not None:
+            output = MPI.COMM_WORLD.bcast(output, root=0)
+        return output
+    return wrapper
+    
+
+
+
 def resolve_path(
     path: Path | str, existance: FileExistance = FileExistance.MUST_EXIST
 ) -> Path:
@@ -62,3 +94,4 @@ def resolve_path(
     if path.suffix != ".hdf5":
         raise ValueError(f"{path} does not appear to be an hdf5 file.")
     return path
+
