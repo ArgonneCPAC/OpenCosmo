@@ -155,9 +155,6 @@ class Dataset:
         table_head = f"First {take_length} rows:\n"
         return head + cosmo_repr + table_head + table_repr
 
-    def __del__(self):
-        self.__handler.__exit__()
-
     def __enter__(self):
         # Need to write tests
         return self
@@ -183,7 +180,8 @@ class Dataset:
         """
         if not isinstance(file, h5py.File):
             raise AttributeError(
-                "Dataset.write should not be called directly, use opencosmo.write instead."
+                "Dataset.write should not be called directly, "
+                "use opencosmo.write instead."
             )
         write_header(file, self.__header)
         self.__handler.write(file, self.__filter, self.__builders.keys(), dataset_name)

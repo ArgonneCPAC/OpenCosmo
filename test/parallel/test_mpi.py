@@ -56,12 +56,18 @@ def test_filters(input_path):
 
 @pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "filtered.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+
+
+
     ds = oc.open(input_path)
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
-    output_path = tmp_path / "filtered.hdf5"
-    oc.write(output_path, ds)
+    oc.write(temporary_path, ds)
     ds.close()
-    ds = oc.read(output_path)
+    
+    ds = oc.read(temporary_path)
     data = ds.data
     parallel_assert(lambda: len(data) != 0)
     parallel_assert(lambda: all(data["sod_halo_mass"] > 0))

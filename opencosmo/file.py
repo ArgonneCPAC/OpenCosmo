@@ -38,10 +38,13 @@ def file_writer(func: FileWriter) -> FileWriter:
         if not isinstance(file, h5py.File):
             path = resolve_path(file, FileExistance.MUST_NOT_EXIST)
             if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
+                MPI.COMM_WORLD.barrier()
                 with h5py.File(path, "w", driver="mpio", comm=MPI.COMM_WORLD) as f:
                     return func(f, *args, **kwargs)
+
             with h5py.File(path, "w") as f:
                 return func(f, *args, **kwargs)
+
         return func(file, *args, **kwargs)
 
     return wrapper
