@@ -60,6 +60,7 @@ jobs:
         with:
           path: test_data.tar.gz
           key: test-data
+          lookup-only: true
           restore-keys: |
             test-data
       - name: Download test data 
@@ -156,7 +157,7 @@ jobs:
       - name: build hdf5 in paralell
         run: CC="mpicc" HDF5_MPI="ON" pip install --no-binary=h5py h5py
       - name: install project
-        run: poetry install --no-dev
+        run: poetry install --with test,test-mpi,mpi
       - name: Run tests with pytest
         run: mpiexec -n 4 pytest -m parallel
     
