@@ -67,7 +67,7 @@ jobs:
         if: steps.check-cache.outputs.cache-hit != 'true'
         run: aws s3 cp s3://${{ secrets.TEST_DATA_BUCKET }}/test_data.tar.gz test_data.tar.gz
       - name: Cache test data
-        if: steps.cache-test-data.outputs.cache-hit != 'true'
+        if: steps.check-cache.outputs.cache-hit != 'true'
         id: cache-test-data
         uses: actions/cache@v4
         with:
@@ -160,8 +160,10 @@ jobs:
         run: CC="mpicc" HDF5_MPI="ON" pip install --no-binary=h5py h5py
       - name: install project
         run: poetry install --with test,test-mpi,mpi
+      - name: get number of cores
+        run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
-        run: mpiexec -n 4 pytest -m parallel
+        run: mpiexec -use-hwthread-cpus -n 4 pytest -m parallel
     
   build:
     name: build
