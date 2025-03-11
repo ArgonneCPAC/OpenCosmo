@@ -105,7 +105,7 @@ Note that transforming a dataset always produces a new dataset. The original dat
       36           9.66428         4.1855025 ...         -101.0   0.026431121   34102674
       50          9.484544         51.750984 ...         -101.0   0.024551544   39497092
 
-.. autoclass:: opencosmo.dataset.Dataset
+.. autoclass:: opencosmo.Dataset
    :members:
 
 

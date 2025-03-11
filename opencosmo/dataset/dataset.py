@@ -24,24 +24,33 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     when it is actually needed. This is useful if the file is very large
     and you only need to access a small part of it.
 
-    If you open a file with this function, be sure to close it when
-    you are done.
+    If you open a file with this dataset, you should generally close it
+    when you're done
 
-    ```python
-    import opencosmo as oc
-    ds = oc.open("path/to/file.hdf5")
-    # do work
-    ds.close()
-    ```
+    .. code-block:: python
+
+        import opencosmo as oc
+        ds = oc.open("path/to/file.hdf5")
+        # do work
+        ds.close()
 
     Alternatively you can use a context manager, which will close the file
     automatically when you are done with it.
 
-    ```python
-    import opencosmo as oc
-    with oc.open("path/to/file.hdf5") as ds:
-        # do work
-    ```
+    .. code-block:: python
+
+        import opencosmo as oc
+        with oc.open("path/to/file.hdf5") as ds:
+            # do work
+
+    Parameters
+    ----------
+    file : str or pathlib.Path
+        The path to the file to open.
+    units : str
+        The unit convention to use. One of "physical", "comoving",
+        "scalefree", or "unitless". The default is "comoving".
+
     """
     path = resolve_path(file, FileExistance.MUST_EXIST)
     file_handle = h5py.File(path, "r")
@@ -70,7 +79,7 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
 
     You should use this function if the data are small enough that having
     a copy of it (or a few copies of it) in memory is not a problem. For
-    larger datasets, use opencosmo.open.
+    larger datasets, use :py:func:`opencosmo.open`.
 
     Parameters
     ----------
@@ -140,6 +149,9 @@ class Dataset:
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         table_head = f"First {take_length} rows:\n"
         return head + cosmo_repr + table_head + table_repr
+
+    def __del__(self):
+        self.__handler.__exit__()
 
     def __enter__(self):
         # Need to write tests
