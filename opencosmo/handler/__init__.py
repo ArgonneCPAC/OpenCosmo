@@ -9,7 +9,7 @@ from .oom import OutOfMemoryHandler
 __all__ = ["OpenCosmoDataHandler", "InMemoryHandler", "OutOfMemoryHandler"]
 try:
     import mpi4py  # noqa: F401
-    from .mpi import MPIHandler
+    from .mpi import MPIHandler # noqa: F401
 
     __all__.append("MPIHandler")
 except ImportError:
