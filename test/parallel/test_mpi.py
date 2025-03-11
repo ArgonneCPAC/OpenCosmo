@@ -5,10 +5,10 @@ import mpi4py
 import numpy as np
 
 
-
 @pytest.fixture
 def input_path(data_path):
     return data_path / "haloproperties.hdf5"
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
@@ -20,9 +20,8 @@ def test_mpi(input_path):
 
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
-
     ds = oc.open(input_path)
-    
+
     comm = mpi4py.MPI.COMM_WORLD
     data = ds.data
 
@@ -34,7 +33,7 @@ def test_take(input_path):
     else:
         n = 0
     n = comm.bcast(n, root=0)
-    
+
     ds = ds.take(n, "random")
     data = ds.data
     ds.close()
@@ -42,7 +41,8 @@ def test_take(input_path):
     if comm.Get_rank() == 0:
         total_length = sum(lengths)
         assert sum(lengths) == total_length
-    parallel_assert(lambda: total_length == n, participating = comm.Get_rank() == 0)
+    parallel_assert(lambda: total_length == n, participating=comm.Get_rank() == 0)
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_filters(input_path):
@@ -50,8 +50,9 @@ def test_filters(input_path):
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
     data = ds.data
     ds.close()
-    parallel_assert(lambda: len(data) != 0) 
+    parallel_assert(lambda: len(data) != 0)
     parallel_assert(lambda: all(data["sod_halo_mass"] > 0))
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
@@ -64,9 +65,3 @@ def test_filter_write(input_path, tmp_path):
     data = ds.data
     parallel_assert(lambda: len(data) != 0)
     parallel_assert(lambda: all(data["sod_halo_mass"] > 0))
-
-
-
-
-
-

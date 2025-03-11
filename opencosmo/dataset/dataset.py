@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import h5py
+
 try:
     from mpi4py import MPI
     from opencosmo.handler import MPIHandler
@@ -181,7 +182,9 @@ class Dataset:
 
         """
         if not isinstance(file, h5py.File):
-            raise AttributeError("Dataset.write should not be called directly, use opencosmo.write instead.")
+            raise AttributeError(
+                "Dataset.write should not be called directly, use opencosmo.write instead."
+            )
         write_header(file, self.__header)
         self.__handler.write(file, self.__filter, self.__builders.keys(), dataset_name)
 
@@ -260,8 +263,10 @@ class Dataset:
         except KeyError:
             known_columns = set(self.__builders.keys())
             unknown_columns = set(columns) - known_columns
-            raise ValueError("Tried to select columns that aren't in this dataset! Missing columns " + ", ".join(unknown_columns))
-
+            raise ValueError(
+                "Tried to select columns that aren't in this dataset! Missing columns "
+                + ", ".join(unknown_columns)
+            )
 
         return Dataset(
             self.__handler,
@@ -330,7 +335,6 @@ class Dataset:
         new_filter = self.__handler.update_filter(n, at, self.__filter)
         if np.sum(new_filter) == 0:
             raise ValueError("Filter would return zero rows.")
-
 
         return Dataset(
             self.__handler,
