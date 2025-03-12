@@ -322,6 +322,8 @@ class Dataset:
                 ds = ds.collect()
 
         The selected data will now be in memory, and the file will be closed.
+
+        If working in an MPI context, all ranks will recieve the same data.
         """
         new_handler = self.__handler.collect(self.__builders.keys(), self.__mask)
         return Dataset(
