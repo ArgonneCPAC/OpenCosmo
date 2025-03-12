@@ -8,7 +8,7 @@ import h5py
 try:
     import mpi4py.MPI as MPI
 except ImportError:
-    MPI = None
+    MPI = None  # type: ignore
 
 FileReader = Callable[Concatenate[h5py.File, ...], Any]
 FileWriter = Callable[Concatenate[h5py.File, ...], None]
@@ -26,6 +26,7 @@ def file_reader(func: FileReader) -> FileReader:
     and closing the file for reading purposes. Used as a
     decorator.
     """
+
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         if not isinstance(file, h5py.File):
@@ -36,12 +37,14 @@ def file_reader(func: FileReader) -> FileReader:
 
     return wrapper
 
+
 def file_writer(func: FileWriter) -> FileWriter:
     """
     Resolves the path to a given file and handles opening
     and closing the file for writing purposes. Used as a
     decorator.
     """
+
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         if not isinstance(file, h5py.File):
@@ -59,7 +62,6 @@ def file_writer(func: FileWriter) -> FileWriter:
     return wrapper
 
 
-
 def broadcast_read(func: FileReader) -> FileReader:
     """
     If MPI is available, the decorated function will only
@@ -69,6 +71,7 @@ def broadcast_read(func: FileReader) -> FileReader:
     its better to not try to read them from a hundred processes
     at the same time.
     """
+
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         output = None
@@ -77,9 +80,8 @@ def broadcast_read(func: FileReader) -> FileReader:
         if MPI is not None:
             output = MPI.COMM_WORLD.bcast(output, root=0)
         return output
-    return wrapper
-    
 
+    return wrapper
 
 
 def resolve_path(
@@ -94,4 +96,3 @@ def resolve_path(
     if path.suffix != ".hdf5":
         raise ValueError(f"{path} does not appear to be an hdf5 file.")
     return path
-

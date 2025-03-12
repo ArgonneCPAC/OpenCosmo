@@ -26,6 +26,8 @@ class InMemoryHandler:
     def __exit__(self, *exec_details):
         return False
 
+    close = __exit__
+
     def write(
         self,
         file: h5py.File,
@@ -49,19 +51,21 @@ class InMemoryHandler:
         if n is not None and n > length:
             raise ValueError("Requested more data than is available.")
 
-        length = n if n is not None else length
+        n_to_take = n if n is not None else length
+        sl: slice | np.ndarray
         if strategy == "start":
-            sl = slice(0, length)
+            sl = slice(0, n_to_take)
         elif strategy == "end":
-            sl = slice(length - n, length)
+            sl = slice(length - n_to_take, length)
         elif strategy == "random":
-            sl = np.random.choice(length, n, replace=False)
+            idxs = np.random.choice(length, n_to_take, replace=False)
+            sl = np.sort(idxs)
 
-        filter = filter if filter is not None else np.ones(length, dtype=bool)
+        data_filter = filter if filter is not None else np.ones(length, dtype=bool)
 
         output = {}
         for column, builder in builders.items():
-            col = self.__data[column][filter][sl]
+            col = self.__data[column][data_filter][sl]
             output[column] = builder.build(Column(col, name=column))
 
         if len(output) == 1:

@@ -9,7 +9,7 @@ from opencosmo.file import file_reader, file_writer, broadcast_read
 try:
     from mpi4py import MPI
 except ImportError:
-    MPI = None
+    MPI = None  # type: ignore
 
 
 class OpenCosmoHeader:
@@ -66,6 +66,7 @@ def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
     """
     header.write(file)
 
+
 @broadcast_read
 @file_reader
 def read_header(file: h5py.File) -> OpenCosmoHeader:
@@ -120,4 +121,3 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
     return OpenCosmoHeader(
         simulation_parameters, reformat_parameters, cosmotools_parameters
     )
-
