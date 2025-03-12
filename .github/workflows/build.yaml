@@ -145,39 +145,21 @@ jobs:
         run: |
           mkdir -p test/resource
           tar -xzf test_data.tar.gz -C test/resource
+      - name: install poetry
+        run: pipx install poetry
       - name: install python
+        
         uses: actions/setup-python@v4
         with:
+          id: setup-python
           python-version: ${{ matrix.python-version }}
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Install project
-        run: poetry install --only test
-      
-      - name: Check for h5py cache
-        id: cache-h5py
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ github.workspace }}/.venv/lib/python${{ matrix.python-version }}/site-packages/h5py
-          key: h5py-${{ matrix.python-version }}
-      - name: move cache to correct location
-        if: steps.cache-h5py.outputs.cache-hit == 'true'
-        run: mv ${{ runner.workspace }}/h5py  ${{ github.workspace }}/.venv/lib/python${{ matrix.python-version }}/site-packages/
+          cache: poetry
       - name: build hdf5 in paralell
-        if: steps.cache-h5py.outputs.cache-hit != 'true'
+        if: steps.setup-python.outputs.cache-hit != 'true'
         run: |
           source ${{ github.workspace }}/.venv/bin/activate
           CC="mpicc" HDF5_MPI="ON" pip install --no-binary=h5py h5py
-      - name: Cache h5py
-        if: steps.cache-h5py.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/.venv/lib/python${{ matrix.python-version }}/site-packages/h5py
-          key: h5py-${{ matrix.python-version }}
+
       - name: install project
         run: poetry install --with test,mpi,test-mpi
       - name: get number of cores
