@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Iterable, Optional
 
 import h5py
@@ -14,7 +15,13 @@ class InMemoryHandler:
     and closing.
     """
 
-    def __init__(self, file: h5py.File, group: str = "data", columns: Optional[Iterable[str]] = None, mask: Optional[np.ndarray] = None ):
+    def __init__(
+        self,
+        file: h5py.File,
+        group: str = "data",
+        columns: Optional[Iterable[str]] = None,
+        mask: Optional[np.ndarray] = None,
+    ):
         colnames = set(file["data"].keys())
         if columns is not None:
             colnames &= set(columns)

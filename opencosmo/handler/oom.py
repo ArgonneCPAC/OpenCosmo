@@ -1,12 +1,13 @@
 from __future__ import annotations
-from typing import Iterable, Optional
 
+from typing import Iterable, Optional
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.handler import InMemoryHandler
+
 
 class OutOfMemoryHandler:
     """
@@ -34,7 +35,6 @@ class OutOfMemoryHandler:
         file_path = self.__file.filename
         with h5py.File(file_path, "r") as file:
             return InMemoryHandler(file, columns=columns, mask=mask)
-
 
     def write(
         self,
