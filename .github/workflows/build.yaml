@@ -160,7 +160,7 @@ jobs:
         if: steps.setup-python.outputs.cache-hit != 'true'
         run: |
           source ${{ github.workspace }}/.venv/bin/activate
-          CC="mpicc" HDF5_MPI="ON" pip install --no-binary=h5py h5py
+          CC="mpicc" HDF5_MPI="ON" poetry run pip install --no-binary=h5py h5py
 
       - name: install project
         run: poetry install --with test,mpi,test-mpi
