@@ -1,3 +1,4 @@
+from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Protocol
 
@@ -24,29 +25,29 @@ class OpenCosmoDataHandler(Protocol):
 
     1. It should only require a path to the data to work
     2. It should be a context manager
-    3. It needs to be able to apply filters and transformations to the data
+    3. It needs to be able to apply masks and transformations to the datahandler
     4. It should be able to return the data
 
     The handler is only responsible for working with the actual data. Indexes
     and metadata are handled separately.
     """
 
-    def __init__(self, file: Path | h5py.File): ...
+    def __init__(self, file: Path | h5py.File | dict): ...
     def __enter__(self): ...
     def __exit__(self, *exc_details): ...
     def __len__(self) -> int: ...
-    def close(self) -> None: ...
+    def collect(self, columns: Iterable[str], mask: np.ndarray) -> OpenCosmoDataHandler: ...
     def write(
         self,
         file: h5py.File,
-        filter: np.ndarray,
+        mask: np.ndarray,
         columns: Iterable[str],
         dataset_name="data",
     ) -> None: ...
     def get_data(
-        self, column_builders: dict[str, ColumnBuilder], filter: np.ndarray
+        self, column_builders: dict[str, ColumnBuilder], mask: np.ndarray
     ) -> Column | Table: ...
 
-    def update_filter(
-        self, n: int, strategy: str, filter: np.ndarray
+    def update_mask(
+        self, n: int, strategy: str, mask: np.ndarray
     ) -> np.ndarray: ...

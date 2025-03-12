@@ -1,9 +1,12 @@
+from __future__ import annotations
 from typing import Iterable, Optional
+
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
+from opencosmo.handler import InMemoryHandler
 
 class OutOfMemoryHandler:
     """
@@ -27,32 +30,36 @@ class OutOfMemoryHandler:
         self.__columns = None
         return self.__file.close()
 
-    close = __exit__
+    def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
+        file_path = self.__file.filename
+        with h5py.File(file_path, "r") as file:
+            return InMemoryHandler(file, columns=columns, mask=mask)
+
 
     def write(
         self,
         file: h5py.File,
-        filter: np.ndarray,
+        mask: np.ndarray,
         columns: Iterable[str],
         dataset_name="data",
     ) -> None:
         group = file.require_group(dataset_name)
         for column in columns:
-            data = self.__group[column][filter]
+            data = self.__group[column][mask]
             group.create_dataset(column, data=data)
 
     def get_data(
-        self, builders: dict = {}, filter: Optional[np.ndarray] = None
+        self, builders: dict = {}, mask: Optional[np.ndarray] = None
     ) -> Column | Table:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
         output = {}
         for column, builder in builders.items():
-            if filter is None:
+            if mask is None:
                 data = self.__group[column][()]
             else:
-                data = self.__group[column][filter]
+                data = self.__group[column][mask]
 
             col = Column(data, name=column)
             output[column] = builder.build(col)
@@ -61,24 +68,24 @@ class OutOfMemoryHandler:
             return next(iter(output.values()))
         return Table(output)
 
-    def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
-        if n > (length := np.sum(filter)):
+    def update_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
+        if n > (length := np.sum(mask)):
             raise ValueError(
                 f"Requested {n} elements, but only {length} are available."
             )
 
-        indices = np.where(filter)[0]
-        new_filter = np.zeros(length, dtype=bool)
+        indices = np.where(mask)[0]
+        new_mask = np.zeros_like(mask, dtype=bool)
 
         if strategy == "start":
-            new_filter[indices[:n]] = True
+            new_mask[indices[:n]] = True
         elif strategy == "end":
-            new_filter[indices[-n:]] = True
+            new_mask[indices[-n:]] = True
         elif strategy == "random":
-            new_filter[np.random.choice(indices, n, replace=False)] = True
+            new_mask[np.random.choice(indices, n, replace=False)] = True
         else:
             raise ValueError(
                 "Strategy for `take` must be one of 'start', 'end', or 'random'"
             )
 
-        return new_filter
+        return new_mask

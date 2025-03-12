@@ -6,6 +6,7 @@ from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
 from warnings import warn
+from opencosmo.handler import InMemoryHandler
 
 
 class MPIHandler:
@@ -43,17 +44,26 @@ class MPIHandler:
         self.__columns = None
         return self.__file.close()
 
-    close = __exit__
+    def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
+        # concatenate the masks from all ranks
+
+        masks = self.__comm.allgather(mask)
+        file_path = self.__file.filename
+        output_mask = np.concatenate(masks)
+        with h5py.File(file_path, "r") as file:
+            return InMemoryHandler(file, columns=columns, mask=output_mask)
+
+
 
     def write(
         self,
         file: h5py.File,
-        filter: np.ndarray,
+        mask: np.ndarray,
         columns: Iterable[str],
         dataset_name="data",
     ) -> None:
         rank_range = self.elem_range()
-        rank_output_length = np.sum(filter)
+        rank_output_length = np.sum(mask)
         all_output_lengths = self.__comm.allgather(rank_output_length)
         rank = self.__comm.Get_rank()
 
@@ -77,14 +87,14 @@ class MPIHandler:
         self.__comm.Barrier()
 
         for column in columns:
-            data = self.__group[column][rank_range[0] : rank_range[1]][filter]
+            data = self.__group[column][rank_range[0] : rank_range[1]][mask]
 
             group[column][rank_start:rank_end] = data
 
         self.__comm.Barrier()
 
     def get_data(
-        self, builders: dict = {}, filter: Optional[np.ndarray] = None
+        self, builders: dict = {}, mask: Optional[np.ndarray] = None
     ) -> Column | Table:
         """
         Get data from the file in the range for this rank.
@@ -95,8 +105,8 @@ class MPIHandler:
         range_ = self.elem_range()
         for column, builder in builders.items():
             data = self.__group[column][range_[0] : range_[1]]
-            if filter is not None:
-                data = data[filter]
+            if mask is not None:
+                data = data[mask]
             col = Column(data, name=column)
             output[column] = builder.build(col)
 
@@ -104,12 +114,12 @@ class MPIHandler:
             return next(iter(output.values()))
         return Table(output)
 
-    def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
+    def update_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
         """
-        This is the tricky one. We need to update the filter based on the amount of
+        This is the tricky one. We need to update the mask based on the amount of
         data in ALL the ranks.
 
-        Filters are localized to each rank. For "start" and "end" it's just a matter of
+        masks are localized to each rank. For "start" and "end" it's just a matter of
         figuring out how many elements each rank is responsible for. For "random" we
         need to be more clever.
         """
@@ -122,7 +132,7 @@ class MPIHandler:
             )
             n = n_requested[0]
 
-        rank_length = np.sum(filter)
+        rank_length = np.sum(mask)
         rank_lengths = self.__comm.allgather(rank_length)
 
         total_length = np.sum(rank_lengths)
@@ -157,7 +167,7 @@ class MPIHandler:
             (indices >= rank_start_index) & (indices < rank_end_index)
         ]
 
-        new_true_indices = np.where(filter)[0][rank_indicies - rank_start_index]
-        new_filter = np.zeros_like(filter)
-        new_filter[new_true_indices] = True
-        return new_filter
+        new_true_indices = np.where(mask)[0][rank_indicies - rank_start_index]
+        new_mask = np.zeros_like(mask)
+        new_mask[new_true_indices] = True
+        return new_mask
