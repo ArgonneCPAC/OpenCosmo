@@ -6,11 +6,11 @@ import h5py
 
 try:
     from mpi4py import MPI
+
     from opencosmo.handler import MPIHandler
 except ImportError:
     MPI = None  # type: ignore
 import numpy as np
-
 
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
@@ -218,9 +218,7 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        new_mask = apply_masks(
-            self.__handler, self.__builders, masks, self.__mask
-        )
+        new_mask = apply_masks(self.__handler, self.__builders, masks, self.__mask)
         if np.sum(new_mask) == 0:
             raise ValueError(" would return zero rows.")
 

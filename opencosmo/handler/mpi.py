@@ -1,11 +1,11 @@
 from typing import Iterable, Optional, Tuple
+from warnings import warn
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
-from warnings import warn
 from opencosmo.handler import InMemoryHandler
 
 
@@ -52,8 +52,6 @@ class MPIHandler:
         output_mask = np.concatenate(masks)
         with h5py.File(file_path, "r") as file:
             return InMemoryHandler(file, columns=columns, mask=output_mask)
-
-
 
     def write(
         self,

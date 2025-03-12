@@ -1,8 +1,9 @@
-import opencosmo as oc
-import pytest
-from pytest_mpi.parallel_assert import parallel_assert
 import mpi4py
 import numpy as np
+import pytest
+from pytest_mpi.parallel_assert import parallel_assert
+
+import opencosmo as oc
 
 
 @pytest.fixture
@@ -71,7 +72,6 @@ def test_filter_write(input_path, tmp_path):
     parallel_assert(lambda: all(data["sod_halo_mass"] > 0))
 
 
-
 @pytest.mark.parallel(nprocs=4)
 def test_collect(input_path):
     with oc.open(input_path) as f:
@@ -79,10 +79,16 @@ def test_collect(input_path):
 
     parallel_assert(lambda: len(ds.data) == 100)
 
+
 @pytest.mark.parallel(nprocs=4)
 def test_select_collect(input_path):
     with oc.open(input_path) as f:
-        ds = f.filter(oc.col("sod_halo_mass") > 0).select(["sod_halo_mass", "fof_halo_mass"]).take(100, at="random").collect()
+        ds = (
+            f.filter(oc.col("sod_halo_mass") > 0)
+            .select(["sod_halo_mass", "fof_halo_mass"])
+            .take(100, at="random")
+            .collect()
+        )
 
     parallel_assert(lambda: len(ds.data) == 100)
     parallel_assert(lambda: set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
