@@ -28,7 +28,7 @@ jobs:
         run: cat pyproject.toml
 
       - name: Install dependencies
-        run: poetry install --with develop
+        run: poetry install --with develop,mpi
 
       - name: Run ruff linter
         run: poetry run ruff check .

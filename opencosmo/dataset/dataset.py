@@ -361,7 +361,9 @@ class Dataset:
         """
         new_mask = self.__handler.update_mask(n, at, self.__mask)
         if np.sum(new_mask) == 0:
-            raise ValueError(" would return zero rows.")
+            # This should only happen in an MPI context, so
+            # delegate error handling to the user.
+            raise ValueError("Filter returned zero rows!")
 
         return Dataset(
             self.__handler,
