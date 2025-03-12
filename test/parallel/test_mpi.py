@@ -60,13 +60,11 @@ def test_filter_write(input_path, tmp_path):
     temporary_path = tmp_path / "filtered.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
 
-
-
     ds = oc.open(input_path)
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
     oc.write(temporary_path, ds)
     ds.close()
-    
+
     ds = oc.read(temporary_path)
     data = ds.data
     parallel_assert(lambda: len(data) != 0)

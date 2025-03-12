@@ -8,7 +8,7 @@ try:
     from mpi4py import MPI
     from opencosmo.handler import MPIHandler
 except ImportError:
-    MPI = None
+    MPI = None  # type: ignore
 import numpy as np
 
 
@@ -61,6 +61,7 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     file_handle = h5py.File(path, "r")
     header = read_header(file_handle)
 
+    handler: OpenCosmoDataHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
         handler = MPIHandler(file_handle, comm=MPI.COMM_WORLD)
     else:

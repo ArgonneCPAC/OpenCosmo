@@ -43,6 +43,8 @@ class MPIHandler:
         self.__columns = None
         return self.__file.close()
 
+    close = __exit__
+
     def write(
         self,
         file: h5py.File,
@@ -104,11 +106,11 @@ class MPIHandler:
 
     def update_filter(self, n: int, strategy: str, filter: np.ndarray) -> np.ndarray:
         """
-        This is the tricky one. We need to update the filter based on the amount of 
+        This is the tricky one. We need to update the filter based on the amount of
         data in ALL the ranks.
 
-        Filters are localized to each rank. For "start" and "end" it's just a matter of 
-        figuring out how many elements each rank is responsible for. For "random" we 
+        Filters are localized to each rank. For "start" and "end" it's just a matter of
+        figuring out how many elements each rank is responsible for. For "random" we
         need to be more clever.
         """
         n_requested = self.__comm.allgather(n)
@@ -142,6 +144,10 @@ class MPIHandler:
         else:
             indices = None
         indices = self.__comm.bcast(indices, root=0)
+
+        if indices is None:
+            # Should not happen, but this is for mypy
+            raise ValueError("Indices should not be None.")
 
         rank_start_index = self.__comm.Get_rank()
         if rank_start_index:

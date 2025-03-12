@@ -27,6 +27,8 @@ class OutOfMemoryHandler:
         self.__columns = None
         return self.__file.close()
 
+    close = __exit__
+
     def write(
         self,
         file: h5py.File,
