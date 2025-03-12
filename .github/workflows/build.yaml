@@ -164,6 +164,9 @@ jobs:
         with:
           path: ${{ github.workspace }}/.venv/lib/python${{ matrix.python-version }}/site-packages/h5py
           key: h5py-${{ matrix.python-version }}
+      - name: move cache to correct location
+        if: steps.cache-h5py.outputs.cache-hit != 'true'
+        run: mv ${{ runner.workspace }}/h5py  ${{ github.workspace }}/.venv/lib/python${{ matrix.python-version }}/site-packages/
       - name: build hdf5 in paralell
         if: steps.cache-h5py.outputs.cache-hit != 'true'
         run: |
