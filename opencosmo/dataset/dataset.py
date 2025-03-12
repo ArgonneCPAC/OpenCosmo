@@ -14,7 +14,7 @@ import numpy as np
 
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
-from opencosmo.dataset.filter import Filter, apply_filters
+from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header, write_header
@@ -72,9 +72,9 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     )
     column_names = list(str(col) for col in file_handle["data"].keys())
     builders = get_column_builders(transformations, column_names)
-    filter = np.ones(len(handler), dtype=bool)
+    mask = np.ones(len(handler), dtype=bool)
 
-    dataset = Dataset(handler, header, builders, base_unit_transformations, filter)
+    dataset = Dataset(handler, header, builders, base_unit_transformations, mask)
     return dataset
 
 
@@ -108,9 +108,9 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
     )
     column_names = list(str(col) for col in file["data"].keys())
     builders = get_column_builders(transformations, column_names)
-    filter = np.ones(len(handler), dtype=bool)
+    mask = np.ones(len(handler), dtype=bool)
 
-    return Dataset(handler, header, builders, base_unit_transformations, filter)
+    return Dataset(handler, header, builders, base_unit_transformations, mask)
 
 
 @file_writer
@@ -136,16 +136,16 @@ class Dataset:
         header: OpenCosmoHeader,
         builders: dict[str, ColumnBuilder],
         unit_transformations: dict[t.TransformationType, list[t.Transformation]],
-        filter: np.ndarray,
+        mask: np.ndarray,
     ):
         self.__header = header
         self.__handler = handler
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
-        self.__filter = filter
+        self.__mask = mask
 
     def __repr__(self):
-        length = np.sum(self.__filter)
+        length = np.sum(self.__)
         take_length = length if length < 10 else 10
         repr_ds = self.take(take_length)
         table_repr = repr_ds.data.__repr__()
@@ -185,7 +185,7 @@ class Dataset:
                 "use opencosmo.write instead."
             )
         write_header(file, self.__header)
-        self.__handler.write(file, self.__filter, self.__builders.keys(), dataset_name)
+        self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
 
     @property
     def cosmology(self):
@@ -195,41 +195,41 @@ class Dataset:
     def data(self):
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(builders=self.__builders, filter=self.__filter)
+        return self.__handler.get_data(builders=self.__builders, mask=self.__mask)
 
-    def filter(self, *filters: Filter) -> Dataset:
+    def filter(self, *masks: Mask) -> Dataset:
         """
         Filter the dataset based on some criteria.
 
         Parameters
         ----------
-        filters : Filter
-            The filters to apply to the dataset.
+        s : mask
+            The s to apply to the dataset.
 
         Returns
         -------
         dataset : Dataset
-            The new dataset with the filters applied.
+            The new dataset with the s applied.
 
         Raises
         ------
         ValueError
-            If the given filter refers to columns that are
-            not in the dataset, or the filter would return zero rows.
+            If the given  refers to columns that are
+            not in the dataset, or the  would return zero rows.
 
         """
-        new_filter = apply_filters(
-            self.__handler, self.__builders, filters, self.__filter
+        new_mask = apply_masks(
+            self.__handler, self.__builders, masks, self.__mask
         )
-        if np.sum(new_filter) == 0:
-            raise ValueError("Filter would return zero rows.")
+        if np.sum(new_mask) == 0:
+            raise ValueError(" would return zero rows.")
 
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_filter,
+            new_mask,
         )
 
     def select(self, columns: str | list[str]) -> Dataset:
@@ -272,7 +272,7 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__filter,
+            self.__mask,
         )
 
     def with_units(self, convention: str) -> Dataset:
@@ -301,7 +301,37 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__filter,
+            self.__mask,
+        )
+
+    def collect(self) -> Dataset:
+        """
+        Given a dataset that was originally opend with opencosmo.open,
+        return a dataset that is in-memory as though it was read with
+        opencosmo.read.
+
+        This is useful if you have a very large dataset on disk, and you
+        want to filter it down and then close the file.
+
+        For example:
+
+        .. code-block:: python
+
+            import opencosmo as oc
+            with oc.open("path/to/file.hdf5") as file:
+                ds = file.(ds["sod_halo_mass"] > 0)
+                ds = ds.select(["sod_halo_mass", "sod_halo_radius"])
+                ds = ds.collect()
+
+        The selected data will now be in memory, and the file will be closed.
+        """
+        new_handler = self.__handler.collect(self.__builders.keys(), self.__mask)
+        return Dataset(
+            new_handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            np.ones(len(new_handler), dtype=bool),
         )
 
     def take(self, n: int, at: str = "start") -> Dataset:
@@ -331,14 +361,14 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        new_filter = self.__handler.update_filter(n, at, self.__filter)
-        if np.sum(new_filter) == 0:
-            raise ValueError("Filter would return zero rows.")
+        new_mask = self.__handler.update_mask(n, at, self.__mask)
+        if np.sum(new_mask) == 0:
+            raise ValueError(" would return zero rows.")
 
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_filter,
+            new_mask,
         )

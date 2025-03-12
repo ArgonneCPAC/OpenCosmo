@@ -88,3 +88,18 @@ def test_write_after_filter(input_path, tmp_path):
         filtered_data = new_ds.data
 
     assert all(filtered_data == data)
+
+
+def test_collect(input_path):
+    with oc.open(input_path) as f:
+        ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
+
+    assert len(ds.data) == 100
+
+def test_select_collect(input_path):
+    with oc.open(input_path) as f:
+        ds = f.filter(oc.col("sod_halo_mass") > 0).select(["sod_halo_mass", "fof_halo_mass"]).take(100, at="random").collect()
+
+    assert len(ds.data) == 100
+    assert set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"}
+
