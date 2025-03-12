@@ -159,7 +159,6 @@ jobs:
       - name: build hdf5 in paralell
         if: steps.setup-python.outputs.cache-hit != 'true'
         run: |
-          source ${{ github.workspace }}/.venv/bin/activate
           CC="mpicc" HDF5_MPI="ON" poetry run pip install --no-binary=h5py h5py
 
       - name: install project
