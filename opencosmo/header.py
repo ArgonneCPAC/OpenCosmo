@@ -50,6 +50,10 @@ class OpenCosmoHeader:
     def simulation(self):
         return self.__simulation_pars
 
+    @property
+    def reformat(self):
+        return self.__reformat_pars
+
 
 @file_writer
 def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:

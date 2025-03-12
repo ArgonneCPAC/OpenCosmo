@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from opencosmo.header import OpenCosmoHeader
+from opencosmo.spatial.tree import read_tree
 from typing import Iterable, Optional
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
+from opencosmo.spatial.region import BoxRegion
 
 
 class InMemoryHandler:
@@ -18,6 +21,7 @@ class InMemoryHandler:
     def __init__(
         self,
         file: h5py.File,
+        header: OpenCosmoHeader,
         group: str = "data",
         columns: Optional[Iterable[str]] = None,
         mask: Optional[np.ndarray] = None,
@@ -30,6 +34,8 @@ class InMemoryHandler:
             self.__data = {colname: file["data"][colname][mask] for colname in colnames}
         else:
             self.__data = {colname: file["data"][colname][()] for colname in colnames}
+
+        self.__tree = read_tree(file, header)
 
     def __len__(self) -> int:
         return len(next(iter(self.__data.values())))
@@ -106,3 +112,14 @@ class InMemoryHandler:
                 "Take strategy must be one of 'start', 'end', or 'random'."
             )
         return new_mask
+    
+    def get_spatial_mask(self, region: BoxRegion) -> np.ndarray:
+        slices = self.__tree.query(region)
+        mask = np.zeros(len(self), dtype=bool)
+        for sl in slices:
+            x = self.__data["fof_halo_center_x"][sl]
+            y = self.__data["fof_halo_center_y"][sl]
+            z = self.__data["fof_halo_center_z"][sl]
+            mask[sl] = region.contains(x, y, z)
+        return mask
+

@@ -19,6 +19,7 @@ from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header, write_header
 from opencosmo.transformations import units as u
+from opencosmo.spatial.region import BoxRegion, Point3d
 
 
 def open(file: str | Path, units: str = "comoving") -> Dataset:
@@ -65,7 +66,7 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
         handler = MPIHandler(file_handle, comm=MPI.COMM_WORLD)
     else:
-        handler = OutOfMemoryHandler(file_handle)
+        handler = OutOfMemoryHandler(file_handle, header)
 
     base_unit_transformations, transformations = u.get_unit_transformations(
         file_handle["data"], header, units
@@ -102,7 +103,7 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
 
     """
     header = read_header(file)
-    handler = InMemoryHandler(file)
+    handler = InMemoryHandler(file, header)
     base_unit_transformations, transformations = u.get_unit_transformations(
         file["data"], header, units
     )
@@ -374,3 +375,18 @@ class Dataset:
             self.__base_unit_transformations,
             new_mask,
         )
+
+    def spatial_query(self, p1: Point3d, p2: Point3d):
+        box = BoxRegion(p1, p2)
+        spatial_mask = self.__handler.get_spatial_mask(box)
+        new_mask = self.__mask & spatial_mask
+
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            new_mask,
+        )
+
+

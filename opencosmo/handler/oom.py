@@ -7,6 +7,8 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.handler import InMemoryHandler
+from opencosmo.spatial.tree import read_tree
+from opencosmo.header import OpenCosmoHeader
 
 
 class OutOfMemoryHandler:
@@ -15,10 +17,11 @@ class OutOfMemoryHandler:
 
     """
 
-    def __init__(self, file: h5py.File, group: str = "data"):
+    def __init__(self, file: h5py.File, header: OpenCosmoHeader, group: str = "data"):
         self.__file = file
         self.__group = file[group]
         self.__columns = list(self.__group.keys())
+        self.__tree = read_tree(file, header)
 
     def __len__(self) -> int:
         return self.__group[self.__columns[0]].size
