@@ -92,3 +92,18 @@ def test_select_collect(input_path):
 
     parallel_assert(lambda: len(ds.data) == 100)
     parallel_assert(lambda: set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
+
+@pytest.mark.parallel(nprocs=4)
+def test_take_empty_rank(input_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    with oc.open(input_path) as f:
+        ds = f.filter(oc.col("sod_halo_mass") > 0)
+        data = ds.data
+        length = comm.allgather(len(data))
+        n_to_take = length[0] + length[1] // 2
+        if comm.Get_rank() in [0, 1]:
+            ds = ds.take(n_to_take, at="start")
+        else:
+            with pytest.raises(ValueError):
+                ds = ds.take(n_to_take, at="start")
+
