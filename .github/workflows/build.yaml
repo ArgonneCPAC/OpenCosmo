@@ -159,6 +159,7 @@ jobs:
         run: poetry install --only test
       
       - name: Check for h5py cache
+        id: cache-h5py
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.venv/lib/python${{ matrix.python-version }}/site-packages/h5py
