@@ -154,6 +154,8 @@ jobs:
           id: setup-python
           python-version: ${{ matrix.python-version }}
           cache: poetry
+      - name: install project root
+        run: poetry install --only-root
       - name: build hdf5 in paralell
         if: steps.setup-python.outputs.cache-hit != 'true'
         run: |
