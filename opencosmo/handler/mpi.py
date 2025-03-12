@@ -9,6 +9,37 @@ from mpi4py import MPI
 from opencosmo.handler import InMemoryHandler
 
 
+def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
+    """
+    Verify that the input is the same on all ranks.
+
+    If not, use the value from rank 0 if require is false,
+    otherwise raise an error.
+    """
+    output = {}
+    for key, value in kwargs.items():
+        values = comm.allgather(value)
+
+        if isinstance(value, Iterable):
+            sets = [frozenset(v) for v in values]
+            if len(set(sets)) > 1:
+                if key in require:
+                    raise ValueError(
+                        f"Requested different values for {key} on different ranks."
+                    )
+                else:
+                    warn(f"Requested different values for {key} on different ranks.")
+        elif len(set(values)) > 1:
+            if key in require:
+                raise ValueError(
+                    f"Requested different values for {key} on different ranks."
+                )
+            else:
+                warn(f"Requested different values for {key} on different ranks.")
+        output[key] = values[0]
+    return output
+
+
 class MPIHandler:
     """
     A handler for reading and writing data in an MPI context.
@@ -46,6 +77,8 @@ class MPIHandler:
 
     def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
         # concatenate the masks from all ranks
+        columns = list(columns)
+        columns = verify_input(comm=self.__comm, columns=columns)["columns"]
 
         masks = self.__comm.allgather(mask)
         file_path = self.__file.filename
@@ -60,6 +93,12 @@ class MPIHandler:
         columns: Iterable[str],
         dataset_name="data",
     ) -> None:
+        columns = list(columns)
+        input = verify_input(
+            comm=self.__comm, columns=columns, fname=file.filename, require=["fname"]
+        )
+        columns = input["columns"]
+
         rank_range = self.elem_range()
         rank_output_length = np.sum(mask)
         all_output_lengths = self.__comm.allgather(rank_output_length)
@@ -97,11 +136,17 @@ class MPIHandler:
         """
         Get data from the file in the range for this rank.
         """
+        builder_keys = list(builders.keys())
+        builder_keys = verify_input(comm=self.__comm, builder_keys=builder_keys)[
+            "builder_keys"
+        ]
+
         if self.__group is None:
             raise ValueError("This file has already been closed")
         output = {}
         range_ = self.elem_range()
-        for column, builder in builders.items():
+        for column in builder_keys:
+            builder = builders[column]
             data = self.__group[column][range_[0] : range_[1]]
             if mask is not None:
                 data = data[mask]
@@ -121,14 +166,7 @@ class MPIHandler:
         figuring out how many elements each rank is responsible for. For "random" we
         need to be more clever.
         """
-        n_requested = self.__comm.allgather(n)
-        # Needs to be the same on all ranks
-        if len(set(n_requested)) > 1:
-            warn(
-                "Requested different amounts of data on different ranks. Using the "
-                "value from rank 0."
-            )
-            n = n_requested[0]
+        n = verify_input(comm=self.__comm, n=n)["n"]
 
         rank_length = np.sum(mask)
         rank_lengths = self.__comm.allgather(rank_length)
@@ -136,9 +174,8 @@ class MPIHandler:
         total_length = np.sum(rank_lengths)
         if n > total_length:
             # All ranks crash
-            raise ValueError(
-                f"Requested {n} elements, but only {total_length} are available."
-            )
+            warn(f"Requested {n} elements, but only {total_length} are available.")
+            n = total_length
 
         if self.__comm.Get_rank() == 0:
             if strategy == "random":
@@ -168,4 +205,5 @@ class MPIHandler:
         new_true_indices = np.where(mask)[0][rank_indicies - rank_start_index]
         new_mask = np.zeros_like(mask)
         new_mask[new_true_indices] = True
+
         return new_mask
