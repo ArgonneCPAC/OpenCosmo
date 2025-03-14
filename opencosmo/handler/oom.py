@@ -7,8 +7,7 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.handler import InMemoryHandler
-from opencosmo.spatial.tree import read_tree
-from opencosmo.header import OpenCosmoHeader
+from opencosmo.spatial.tree import Tree
 
 
 class OutOfMemoryHandler:
@@ -17,11 +16,11 @@ class OutOfMemoryHandler:
 
     """
 
-    def __init__(self, file: h5py.File, header: OpenCosmoHeader, group: str = "data"):
+    def __init__(self, file: h5py.File, tree: Tree, group: str = "data"):
         self.__file = file
         self.__group = file[group]
         self.__columns = list(self.__group.keys())
-        self.__tree = read_tree(file, header)
+        self.__tree = tree
 
     def __len__(self) -> int:
         return self.__group[self.__columns[0]].size
@@ -36,8 +35,9 @@ class OutOfMemoryHandler:
 
     def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
         file_path = self.__file.filename
+        tree = self.__tree.apply_mask(mask)
         with h5py.File(file_path, "r") as file:
-            return InMemoryHandler(file, columns=columns, mask=mask)
+            return InMemoryHandler(file, columns=columns, mask=mask, tree=tree)
 
     def write(
         self,
@@ -50,6 +50,8 @@ class OutOfMemoryHandler:
         for column in columns:
             data = self.__group[column][mask]
             group.create_dataset(column, data=data)
+        tree = self.__tree.apply_mask(mask)
+        tree.write(file)
 
     def get_data(
         self, builders: dict = {}, mask: Optional[np.ndarray] = None
@@ -71,7 +73,7 @@ class OutOfMemoryHandler:
             return next(iter(output.values()))
         return Table(output)
 
-    def update_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
+    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
         if n > (length := np.sum(mask)):
             raise ValueError(
                 f"Requested {n} elements, but only {length} are available."

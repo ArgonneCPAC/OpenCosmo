@@ -18,8 +18,8 @@ from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header, write_header
+from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo.spatial.region import BoxRegion, Point3d
 
 
 def open(file: str | Path, units: str = "comoving") -> Dataset:
@@ -61,12 +61,13 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     path = resolve_path(file, FileExistance.MUST_EXIST)
     file_handle = h5py.File(path, "r")
     header = read_header(file_handle)
+    tree = read_tree(file_handle, header)
 
     handler: OpenCosmoDataHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        handler = MPIHandler(file_handle, comm=MPI.COMM_WORLD)
+        handler = MPIHandler(file_handle, tree=tree, comm=MPI.COMM_WORLD)
     else:
-        handler = OutOfMemoryHandler(file_handle, header)
+        handler = OutOfMemoryHandler(file_handle, tree=tree)
 
     base_unit_transformations, transformations = u.get_unit_transformations(
         file_handle["data"], header, units
@@ -103,7 +104,8 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
 
     """
     header = read_header(file)
-    handler = InMemoryHandler(file, header)
+    tree = read_tree(file, header)
+    handler = InMemoryHandler(file, tree)
     base_unit_transformations, transformations = u.get_unit_transformations(
         file["data"], header, units
     )
@@ -362,7 +364,7 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        new_mask = self.__handler.update_mask(n, at, self.__mask)
+        new_mask = self.__handler.take_mask(n, at, self.__mask)
         if np.sum(new_mask) == 0:
             # This should only happen in an MPI context, so
             # delegate error handling to the user.
@@ -375,18 +377,3 @@ class Dataset:
             self.__base_unit_transformations,
             new_mask,
         )
-
-    def spatial_query(self, p1: Point3d, p2: Point3d):
-        box = BoxRegion(p1, p2)
-        spatial_mask = self.__handler.get_spatial_mask(box)
-        new_mask = self.__mask & spatial_mask
-
-        return Dataset(
-            self.__handler,
-            self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_mask,
-        )
-
-
