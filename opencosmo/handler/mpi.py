@@ -135,7 +135,7 @@ class MPIHandler:
             group[column][rank_start:rank_end] = data
 
         tree = self.__tree.apply_mask(mask)
-        tree.write(file, dataset_name=dataset_name)
+        tree.write(file)
 
         self.__comm.Barrier()
 
