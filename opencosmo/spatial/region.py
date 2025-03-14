@@ -32,16 +32,3 @@ class BoxRegion:
         )
 
 
-class SphereRegion:
-    def __init__(self, center: Point3d, radius: float):
-        self.center = np.array(center)
-        self.radius = radius
-
-    def bounding_box(self) -> BoxRegion:
-        return BoxRegion(self.center - self.radius, self.center + self.radius)
-
-    def contains(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray:
-        dx = x - self.center[0]
-        dy = y - self.center[1]
-        dz = z - self.center[2]
-        return dx**2 + dy**2 + dz**2 <= self.radius**2

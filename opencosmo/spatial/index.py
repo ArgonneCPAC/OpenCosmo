@@ -1,4 +1,4 @@
-from typing import Iterable, Protocol
+from typing import Protocol
 
 from opencosmo.parameters import SimulationParameters
 
@@ -6,4 +6,3 @@ from opencosmo.parameters import SimulationParameters
 class SpatialIndex(Protocol):
     def __init__(self, simulation_parameters: SimulationParameters, max_level: int): ...
 
-    def get_regions(self, *args, **kwargs) -> Iterable[int]: ...
