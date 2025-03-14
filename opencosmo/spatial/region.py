@@ -30,5 +30,3 @@ class BoxRegion:
             & (z >= self.p1[2])
             & (z <= self.p2[2])
         )
-
-
