@@ -8,7 +8,6 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
-from opencosmo.spatial.region import BoxRegion
 
 
 class OpenCosmoDataHandler(Protocol):
@@ -52,5 +51,4 @@ class OpenCosmoDataHandler(Protocol):
         self, column_builders: dict[str, ColumnBuilder], mask: np.ndarray
     ) -> Column | Table: ...
 
-    def update_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray: ...
-    def get_spatial_mask(self, region: BoxRegion) -> np.ndarray: ...
+    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray: ...

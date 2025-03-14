@@ -7,6 +7,7 @@ from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
 from opencosmo.handler import InMemoryHandler
+from opencosmo.spatial.tree import Tree
 
 
 def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
@@ -45,11 +46,14 @@ class MPIHandler:
     A handler for reading and writing data in an MPI context.
     """
 
-    def __init__(self, file: h5py.File, group: str = "data", comm=MPI.COMM_WORLD):
+    def __init__(
+        self, file: h5py.File, tree: Tree, group: str = "data", comm=MPI.COMM_WORLD
+    ):
         self.__file = file
         self.__group = file[group]
         self.__columns = list(self.__group.keys())
         self.__comm = comm
+        self.__tree = tree
 
     def elem_range(self) -> Tuple[int, int]:
         """
@@ -84,7 +88,9 @@ class MPIHandler:
         file_path = self.__file.filename
         output_mask = np.concatenate(masks)
         with h5py.File(file_path, "r") as file:
-            return InMemoryHandler(file, columns=columns, mask=output_mask)
+            return InMemoryHandler(
+                file, tree=self.__tree, columns=columns, mask=output_mask
+            )
 
     def write(
         self,
@@ -128,6 +134,9 @@ class MPIHandler:
 
             group[column][rank_start:rank_end] = data
 
+        tree = self.__tree.apply_mask(mask)
+        tree.write(file, dataset_name=dataset_name)
+
         self.__comm.Barrier()
 
     def get_data(
@@ -157,7 +166,7 @@ class MPIHandler:
             return next(iter(output.values()))
         return Table(output)
 
-    def update_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
+    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
         """
         This is the tricky one. We need to update the mask based on the amount of
         data in ALL the ranks.

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.spatial.tree import read_tree
 from typing import Iterable, Optional
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
-from opencosmo.spatial.region import BoxRegion
+
+from opencosmo.spatial.tree import Tree
 
 
 class InMemoryHandler:
@@ -21,7 +20,7 @@ class InMemoryHandler:
     def __init__(
         self,
         file: h5py.File,
-        header: OpenCosmoHeader,
+        tree: Tree,
         group: str = "data",
         columns: Optional[Iterable[str]] = None,
         mask: Optional[np.ndarray] = None,
@@ -30,12 +29,13 @@ class InMemoryHandler:
         if columns is not None:
             colnames &= set(columns)
 
+        self.__tree = tree
+
         if mask is not None:
             self.__data = {colname: file["data"][colname][mask] for colname in colnames}
+            self.__tree = self.__tree.apply_mask(mask)
         else:
             self.__data = {colname: file["data"][colname][()] for colname in colnames}
-
-        self.__tree = read_tree(file, header)
 
     def __len__(self) -> int:
         return len(next(iter(self.__data.values())))
@@ -47,8 +47,13 @@ class InMemoryHandler:
         return False
 
     def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
+        """
+        Create a new InMemoryHandler with only the specified columns and
+        the specified mask applied.
+        """
         new_data = {colname: self.__data[colname][mask] for colname in columns}
-        return InMemoryHandler(new_data)
+        tree = self.__tree.apply_mask(mask)
+        return InMemoryHandler(new_data, tree)
 
     def write(
         self,
@@ -57,9 +62,15 @@ class InMemoryHandler:
         columns: Iterable[str],
         dataset_name="data",
     ) -> None:
+        """
+        Write the data in the specified columns, with the specified mask, to the file.
+        """
         group = file.require_group(dataset_name)
         for column in columns:
             group.create_dataset(column, data=self.__data[column][mask])
+        print("Data written to file.")
+        tree = self.__tree.apply_mask(mask)
+        tree.write(file, dataset_name="index")
 
     def get_data(
         self,
@@ -68,7 +79,10 @@ class InMemoryHandler:
         n: Optional[int] = None,
         strategy: str = "start",
     ) -> Column | Table:
-        """ """
+        """
+        Get data from the in-memory storage with optional masking and column
+        selection.
+        """
         length = len(self)
         if n is not None and n > length:
             raise ValueError("Requested more data than is available.")
@@ -94,7 +108,10 @@ class InMemoryHandler:
             return next(iter(output.values()))
         return Table(output)
 
-    def update_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
+    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
+        """
+        Create a new mask based on a "take" operation.
+        """
         if n < 0:
             raise ValueError("n must be greater than zero.")
         if n > np.sum(mask):
@@ -112,14 +129,3 @@ class InMemoryHandler:
                 "Take strategy must be one of 'start', 'end', or 'random'."
             )
         return new_mask
-    
-    def get_spatial_mask(self, region: BoxRegion) -> np.ndarray:
-        slices = self.__tree.query(region)
-        mask = np.zeros(len(self), dtype=bool)
-        for sl in slices:
-            x = self.__data["fof_halo_center_x"][sl]
-            y = self.__data["fof_halo_center_y"][sl]
-            z = self.__data["fof_halo_center_z"][sl]
-            mask[sl] = region.contains(x, y, z)
-        return mask
-
