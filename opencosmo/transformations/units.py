@@ -2,6 +2,7 @@ from enum import Enum
 from functools import partial
 from typing import Optional
 from warnings import warn
+from functools import reduce
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
@@ -36,7 +37,6 @@ def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
     """
     return [
         generate_attribute_unit_transformations,
-        generate_name_unit_transformations,
     ]
 
 
@@ -180,14 +180,43 @@ def generate_attribute_unit_transformations(
     on them following our naming conventions.
     """
     if "unit" in input.attrs:
+        if (us := input.attrs["unit"]) == "None":
+            return {}
+        
+        comoving = us.startswith("comoving ")
+        
+        if comoving:
+            us = us.removeprefix("comoving ")
+
+        # Check if there are multiplied factors
+        units = us.split("*")
+        units = [u_ if "^" in u_ or "log" in u_ else u_.strip("() ") for u_ in units]
+        # handle carots
+        powers = [1 if "^" not in u_ else int(u_.split("^")[-1]) for u_ in units]
+        units = [u_.split("^")[0].strip("() ") if "^" in u_ else u_ for u_ in units]
+        # handle logarithmic units
+        units = [u_.replace("log10", "dex") for u_ in units]
+
+
+
         try:
-            unit = u.Unit(input.attrs["unit"])
+            unit = reduce(lambda x, y: x * y, [u.Unit(u_)**p for u_, p in zip(units, powers)])
         except ValueError:
+            print(units)
             warn(
-                f"Invalid unit {input.attrs['unit']} in column {input.name}. "
+                f"Invalid unit {us} in column {input.name}. "
                 "Values will be unitless..."
             )
             return {}
+        # astropy parses h as hours, so convert to littleh
+        try:
+            h_index = unit.bases.index(u.hour)
+            power = unit.powers[h_index]
+            unit = unit * cu.littleh**power / u.hour**power
+        except (ValueError, AttributeError):
+            pass
+            
+
         apply_func: t.Transformation = apply_unit(
             column_name=input.name.split("/")[-1], unit=unit
         )
@@ -232,81 +261,3 @@ class apply_unit:
         return self.__name
 
 
-def apply_units_by_name(input: Table) -> Optional[Table]:
-    """
-    An alternative option for applying units based on  name that is
-    a table transformation rather than a column transformation. Not
-    currently in use.
-
-    The advantage of column transformations is that they are much more
-    efficient if we are trying to produce a filter based on a single column
-    in a very large table. We simply load the column, apply the filters that
-    apply to it, and evaluate the filter.
-    """
-    modified = False
-    table = input
-    for colname in table.columns:
-        column = table[colname]
-        if column.unit is not None:
-            continue
-        unit = parse_column_name(colname)
-        if unit is not None:
-            column.unit = unit
-            modified = True
-    if modified:
-        return table
-    return None
-
-
-def parse_column_name(column_name: str) -> Optional[u.Quantity | u.Unit]:
-    name_parts = column_name.split("_")
-    if len(name_parts) == 1:
-        return parse_single_name(name_parts[0])
-    else:
-        return parse_multipart_name(name_parts)
-
-
-def parse_single_name(name: str) -> Optional[u.Quantity | u.Unit]:
-    match name:
-        case "x" | "y" | "z" | "hh":
-            return u.Mpc / cu.littleh
-        case "phi" | "uu":
-            return (u.km / u.s) ** 2
-        case "mass" | "mbh":
-            return u.Msun / cu.littleh
-        case "rho":
-            return (u.Msun / u.kpc**3) * cu.littleh**2
-        case "bhr":
-            return u.Msun / u.yr
-        case "age":  # Fix needed:
-            return None
-        case _:
-            return None
-
-
-def parse_multipart_name(name: list[str]) -> Optional[u.Quantity | u.Unit]:
-    if "mass" in name or name[-1][0].upper() == "M":
-        return u.Msun / cu.littleh
-    if "radius" in name or name[-1][0] == "R" or name[-1].startswith("rad"):
-        return u.Mpc / cu.littleh
-    elif "vel" in name or name[-1] in ["vx", "vy", "vz"]:
-        return u.km / u.s
-    elif name[-1] in ["x", "y", "z"]:
-        return u.Mpc / cu.littleh
-    elif name[-1][0] == "Y":
-        return (u.Mpc / cu.littleh) ** 2
-    elif name[-1][0] == "T":
-        return u.Kelvin
-    elif name[-1][0] == "L":
-        return u.DexUnit(u.erg / u.s)
-    elif name[-1] == "entropy":
-        return u.keV / u.cm**2
-    elif name[-1] == "ne":
-        return u.cm**-3
-    elif name[-1][0] == "t":
-        return u.Gyr
-    elif name[-1] in ["sfr", "bhr"]:
-        return u.Msun / u.yr
-    elif name[-1] == "ke":
-        return (u.km / u.s) ** 2
-    return None

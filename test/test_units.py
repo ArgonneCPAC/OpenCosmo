@@ -67,6 +67,14 @@ def test_attribute_units(input_path, tmp_path):
     data = dataset.data
     assert data["new_column"].unit == u.Mpc
 
+def test_logarithmic_units(input_path):
+    dataset = read(input_path)
+    data = dataset.data
+    cols = data.columns
+    for col in cols:
+        if "log" in col.lower():
+            assert isinstance (data[col].unit, u.DexUnit)
+
 
 def test_parse_velocities(input_path):
     dataset = read(input_path)
@@ -82,6 +90,7 @@ def test_comoving_vs_scalefree(input_path):
     scalefree = read(input_path, units="scalefree")
     cols = comoving.data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
+    position_cols = filter(lambda col: "angmom" not in col, position_cols)
     h = comoving.cosmology.h
     for col in position_cols:
         assert scalefree.data[col].unit == u.Mpc / cu.littleh
@@ -90,12 +99,23 @@ def test_comoving_vs_scalefree(input_path):
             np.isclose(comoving.data[col].value, scalefree.data[col].value / h)
         )
 
+def test_angular_momentum(input_path):
+    dataset = read(input_path)
+    dataset = dataset.with_units("scalefree")
+    data = dataset.data
+    cols = data.columns
+    angmom_cols = filter(lambda col: "angmom" in col, cols)
+    angmom_unit = (u.Msun / cu.littleh) * (u.km / u.s) * (u.Mpc / cu.littleh)
+    for col in angmom_cols:
+        assert data[col].unit == angmom_unit
+
 
 def test_parse_positions(input_path):
     dataset = read(input_path, units="scalefree")
     data = dataset.data
     cols = data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
+    position_cols = filter(lambda col: "angmom" not in col, position_cols)
     for col in position_cols:
         assert data[col].unit == u.Mpc / cu.littleh
 
@@ -108,6 +128,7 @@ def test_parse_mass(input_path):
         lambda col: any(part == "mass" or part[0] == "M" for part in col.split("_")),
         cols,
     )
+    mass_cols = filter(lambda col: "_c_" not in col, mass_cols)
     for col in mass_cols:
         assert data[col].unit == u.Msun / cu.littleh
 
@@ -150,6 +171,7 @@ def test_unit_conversion(input_path):
 
     unitful_dataset = dataset.with_units("comoving")
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
+    position_cols = filter(lambda col: "angmom" not in col, position_cols)
 
     unitless_data = dataset.data
     unitful_data = unitful_dataset.data
