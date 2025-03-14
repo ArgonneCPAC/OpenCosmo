@@ -9,7 +9,7 @@ from opencosmo import read_cosmology
 
 @pytest.fixture
 def cosmology_resource_path(data_path):
-    p = data_path / "header.hdf5"
+    p = data_path / "galaxyproperties.hdf5"
     return p
 
 

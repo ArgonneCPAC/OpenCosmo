@@ -16,7 +16,7 @@ def properties_path(data_path):
 
 
 def test_write_header(data_path, tmp_path):
-    header = read_header(data_path / "header.hdf5")
+    header = read_header(data_path / "galaxyproperties.hdf5")
     new_path = tmp_path / "header.hdf5"
     write_header(new_path, header)
 

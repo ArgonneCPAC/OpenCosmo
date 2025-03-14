@@ -15,16 +15,21 @@ except ImportError:
 class OpenCosmoHeader:
     def __init__(
         self,
+        file_pars: parameters.FileParameters,
         simulation_pars: parameters.SimulationParameters,
         reformat_pars: parameters.ReformatParamters,
         cosmotools_pars: parameters.CosmoToolsParameters,
     ):
+        self.__file_pars = file_pars
         self.__simulation_pars = simulation_pars
         self.__reformat_pars = reformat_pars
         self.__cosmotools_pars = cosmotools_pars
 
     def write(self, file: h5py.File) -> None:
-        # Create the header group
+        parameters.write_header_attributes(
+            file, "file", self.__file_pars
+        )
+
         parameters.write_header_attributes(
             file, "reformat_hacc/config", self.__reformat_pars
         )
@@ -94,6 +99,15 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
 
     """
     try:
+        file_parameters = parameters.read_header_attributes(
+            file, "file", parameters.FileParameters
+        )
+    except KeyError as e:
+        raise KeyError(
+            "File header is malformed. Are you sure it is an OpenCosmo file?\n "
+            f"Error: {e}"
+        )
+    try:
         reformat_parameters = parameters.read_header_attributes(
             file, "reformat_hacc/config", parameters.ReformatParamters
         )
@@ -123,5 +137,5 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
             f"Error: {e}"
         )
     return OpenCosmoHeader(
-        simulation_parameters, reformat_parameters, cosmotools_parameters
+        file_parameters, simulation_parameters, reformat_parameters, cosmotools_parameters
     )
