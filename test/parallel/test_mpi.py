@@ -64,12 +64,12 @@ def test_filter_write(input_path, tmp_path):
     ds = oc.open(input_path)
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
     oc.write(temporary_path, ds)
+    data = ds.collect().data
     ds.close()
 
     ds = oc.read(temporary_path)
-    data = ds.data
-    parallel_assert(lambda: len(data) != 0)
-    parallel_assert(lambda: all(data["sod_halo_mass"] > 0))
+    written_data = ds.data
+    parallel_assert(lambda: np.all(data == written_data))
 
 
 @pytest.mark.parallel(nprocs=4)

@@ -148,7 +148,7 @@ class Dataset:
         self.__mask = mask
 
     def __repr__(self):
-        length = np.sum(self.__)
+        length = np.sum(self.__mask)
         take_length = length if length < 10 else 10
         repr_ds = self.take(take_length)
         table_repr = repr_ds.data.__repr__()

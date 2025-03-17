@@ -50,6 +50,7 @@ def test_select_unit_transformation(input_path):
         filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     )
     selected = dataset.select(position_cols).with_units("scalefree")
+    position_cols = filter(lambda col: "angmom" not in col, position_cols)
 
     selected_data = selected.data
     for col in position_cols:

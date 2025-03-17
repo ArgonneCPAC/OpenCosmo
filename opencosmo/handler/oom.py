@@ -8,6 +8,7 @@ from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
+from opencosmo.file import get_data_structure
 
 
 class OutOfMemoryHandler:
@@ -20,11 +21,12 @@ class OutOfMemoryHandler:
     def __init__(self, file: h5py.File, tree: Tree, group: str = "data"):
         self.__file = file
         self.__group = file[group]
-        self.__columns = list(self.__group.keys())
+        self.__columns = get_data_structure(file[group])
         self.__tree = tree
 
     def __len__(self) -> int:
-        return self.__group[self.__columns[0]].size
+
+        return self.__group[next(iter(self.__columns))].shape[0]
 
     def __enter__(self):
         return self
@@ -47,10 +49,14 @@ class OutOfMemoryHandler:
         columns: Iterable[str],
         dataset_name="data",
     ) -> None:
+        if self.__group is None:
+            raise ValueError("This file has already been closed")
         group = file.require_group(dataset_name)
         for column in columns:
             data = self.__group[column][mask]
             group.create_dataset(column, data=data)
+            if self.__columns[column] is not None:
+                group[column].attrs["unit"] = self.__columns[column]
         tree = self.__tree.apply_mask(mask)
         tree.write(file)
 
