@@ -153,7 +153,6 @@ jobs:
         with:
           id: setup-python
           python-version: ${{ matrix.python-version }}
-          cache: poetry
       - name: build hdf5 in paralell
         run: |
           CC="mpicc" HDF5_MPI="ON" poetry run pip install --no-binary=h5py h5py
