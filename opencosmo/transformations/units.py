@@ -8,7 +8,7 @@ import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
 from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
-from h5py import Dataset  # type: ignore
+from h5py import Dataset  as h5Dataset# type: ignore
 
 from opencosmo import transformations as t
 from opencosmo.header import OpenCosmoHeader
@@ -72,8 +72,9 @@ def get_unit_transition_transformations(
     return update_transformations
 
 
+
 def get_unit_transformations(
-    input: Dataset,
+    input: h5Dataset,
     header: OpenCosmoHeader,
     convention: str = "comoving",
 ) -> tuple[t.TransformationDict, t.TransformationDict]:
@@ -168,7 +169,7 @@ def comoving_to_physical(
 
 
 def generate_attribute_unit_transformations(
-    input: Dataset,
+    input: h5Dataset,
 ) -> t.TransformationDict:
     """
     Check the attributes of an hdf5 dataset to see if information about units is stored
@@ -220,21 +221,6 @@ def generate_attribute_unit_transformations(
         apply_func: t.Transformation = apply_unit(
             column_name=input.name.split("/")[-1], unit=unit
         )
-        return {t.TransformationType.COLUMN: [apply_func]}
-    return {}
-
-
-def generate_name_unit_transformations(
-    input: Dataset,
-) -> t.TransformationDict:
-    """
-    Generator for unit transformations based on the name of the column. Just
-    checks for the HACC naming conventions.
-    """
-    name = input.name.split("/")[-1]
-    unit = parse_column_name(name)
-    if unit is not None:
-        apply_func: t.Transformation = apply_unit(column_name=name, unit=unit)
         return {t.TransformationType.COLUMN: [apply_func]}
     return {}
 
