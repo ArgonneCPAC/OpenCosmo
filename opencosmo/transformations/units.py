@@ -73,43 +73,22 @@ def get_unit_transition_transformations(
 
 
 
-def get_unit_transformations(
+def get_base_unit_transformations(
     input: h5Dataset,
     header: OpenCosmoHeader,
-    convention: str = "comoving",
-) -> tuple[t.TransformationDict, t.TransformationDict]:
+) -> t.TransformationDict:
     """
-    Get further transformations based on the requested unit convention.
+    Get the base unit transformations for a given dataset. These transformations
+    produce the units that the data are actually stored in. Datasets alwyas
+    hold onto a copy of these transformations even if the user later requests
+    a different unit convention.
+
 
     These always apply after the initial transformations generated above.
     """
-    cosmology = header.cosmology
     generators = get_unit_transformation_generators()
     base_transformations = t.generate_transformations(input, generators, {})
-    units = UnitConvention(convention)
-    new_transformations: t.TransformationDict = {}
-    match units:
-        case UnitConvention.COMOVING:
-            # update the table transformations
-            remove_h = partial(remove_littleh, cosmology=cosmology)
-            new_transformations.update({t.TransformationType.ALL_COLUMNS: [remove_h]})
-        case UnitConvention.PHYSICAL:
-            remove_h = partial(remove_littleh, cosmology=cosmology)
-            comoving_to_phys = partial(
-                comoving_to_physical, cosmology=cosmology, redshift=0
-            )
-            new_transformations.update(
-                {t.TransformationType.ALL_COLUMNS: [remove_h, comoving_to_phys]}
-            )
-            # Need to implement mapping between sim step and redshift
-            raise NotImplementedError("Physical units not yet implemented")
-        case UnitConvention.UNITLESS:
-            return base_transformations, new_transformations
-
-    for key in base_transformations:
-        existing = new_transformations.get(key, [])
-        new_transformations[key] = base_transformations[key] + existing
-    return base_transformations, new_transformations
+    return base_transformations
 
 
 def remove_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:

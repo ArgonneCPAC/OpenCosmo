@@ -86,8 +86,8 @@ def test_parse_velocities(input_path):
 
 
 def test_comoving_vs_scalefree(input_path):
-    comoving = read(input_path, units="comoving")
-    scalefree = read(input_path, units="scalefree")
+    comoving = read(input_path).with_units("comoving")
+    scalefree = read(input_path).with_units("scalefree")
     cols = comoving.data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     position_cols = filter(lambda col: "angmom" not in col, position_cols)
@@ -111,7 +111,7 @@ def test_angular_momentum(input_path):
 
 
 def test_parse_positions(input_path):
-    dataset = read(input_path, units="scalefree")
+    dataset = read(input_path).with_units("scalefree")
     data = dataset.data
     cols = data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
@@ -121,7 +121,7 @@ def test_parse_positions(input_path):
 
 
 def test_parse_mass(input_path):
-    dataset = read(input_path, units="scalefree")
+    dataset = read(input_path).with_units("scalefree")
     data = dataset.data
     cols = data.columns
     mass_cols = filter(
@@ -158,14 +158,14 @@ def test_data_update_doesnt_propogate(input_path):
 
 
 def test_unitless_convention(input_path):
-    dataset = read(input_path, units="unitless")
+    dataset = read(input_path).with_units("unitless")
     data = dataset.data
     cols = data.columns
     assert all(data[col].unit is None for col in cols)
 
 
 def test_unit_conversion(input_path):
-    dataset = read(input_path, units="unitless")
+    dataset = read(input_path).with_units("unitless")
     data = dataset.data
     cols = data.columns
 
@@ -188,4 +188,4 @@ def test_unit_conversion(input_path):
 
 def test_invalid_unit_convention(input_path):
     with pytest.raises(ValueError):
-        read(input_path, units="invalid")
+        read(input_path).with_units("invalid_unit")
