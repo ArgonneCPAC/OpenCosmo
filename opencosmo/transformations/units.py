@@ -8,6 +8,7 @@ import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
 from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
+from astropy.constants import m_p
 from h5py import File, Group, Dataset as h5Dataset# type: ignore
 
 from opencosmo import transformations as t
@@ -15,6 +16,27 @@ from opencosmo.header import OpenCosmoHeader
 from opencosmo.dataset.column import get_column_builders
 
 _ = u.add_enabled_units(cu)
+
+UNIT_MAP = {
+    "comoving Mpc/h": u.Mpc / cu.littleh,
+    "comoving (Mpc/h)^2": (u.Mpc / cu.littleh) ** 2,
+    "comoving km/s": u.km / u.s,
+    "comoving (km/s)^2": (u.km / u.s) ** 2,
+    "Msun/h": u.Msun / cu.littleh,
+    "Msun/yr": u.Msun / u.yr,
+    "K": u.K,
+    "comoving (Msun/h * (km/s) * Mpc/h)": (u.Msun / cu.littleh) * (u.km / u.s) * (u.Mpc / cu.littleh),
+    "log10(erg/s)": u.DexUnit("erg/s"),
+    "h^2 keV / (comoving cm)^3": (cu.littleh**2) * u.keV / (u.cm**3),
+    "keV * cm^2": u.keV * u.cm**2,
+    "cm^-3": u.cm**-3,
+    "Gyr": u.Gyr,
+    "Msun/h / (comoving Mpc/h)^3": (u.Msun / cu.littleh) / (u.Mpc / cu.littleh)**3,
+    "Msun/h * km/s": (u.Msun / cu.littleh) * (u.km / u.s),
+    "H0^-1": (u.s * (1*u.Mpc).to(u.km).value).to(u.year) / (100 * cu.littleh),
+    "m_hydrogen": m_p,
+    "Msun * (km/s)^2": (u.Msun) * (u.km / u.s)**2,
+}
 
 
 class UnitConvention(Enum):
@@ -172,50 +194,24 @@ def generate_attribute_unit_transformations(
     on them following our naming conventions.
     """
     if "unit" in input.attrs:
-        if (us := input.attrs["unit"]) == "None":
+        if (us := input.attrs["unit"]) == "None" or us == "":
             return {}
-        
-        comoving = us.startswith("comoving ")
-        
-        if comoving:
-            us = us.removeprefix("comoving ")
-
-        # Check if there are multiplied factors
-        units = us.split("*")
-        units = [u_ if "^" in u_ or "log" in u_ else u_.strip("() ") for u_ in units]
-        # handle carots
-        powers = [1 if "^" not in u_ else int(u_.split("^")[-1]) for u_ in units]
-        units = [u_.split("^")[0].strip("() ") if "^" in u_ else u_ for u_ in units]
-        # handle logarithmic units
-        units = [u_.replace("log10", "dex") for u_ in units]
-
-
-
         try:
-            unit = reduce(lambda x, y: x * y, [u.Unit(u_)**p for u_, p in zip(units, powers)])
-        except ValueError:
-            print(units)
+
+            unit = UNIT_MAP[us]
+            apply_func: t.Transformation = apply_unit(
+                column_name=input.name.split("/")[-1], unit=unit
+            )
+            return {t.TransformationType.COLUMN: [apply_func]}
+        except KeyError:
             warn(
                 f"Invalid unit {us} in column {input.name}. "
                 "Values will be unitless..."
             )
             return {}
-        # astropy parses h as hours, so convert to littleh
-        try:
-            h_index = unit.bases.index(u.hour)
-            power = unit.powers[h_index]
-            unit = unit * cu.littleh**power / u.hour**power
-        except (ValueError, AttributeError):
-            pass
-            
-
-        apply_func: t.Transformation = apply_unit(
-            column_name=input.name.split("/")[-1], unit=unit
-        )
-        return {t.TransformationType.COLUMN: [apply_func]}
     return {}
-
-
+        
+        
 class apply_unit:
     """
     Apply a unit to an input column. Ensuring that the correct column is
@@ -230,7 +226,7 @@ class apply_unit:
 
     def __call__(self, input: Column) -> Optional[Column]:
         if input.unit is None:
-            input.unit = self.unit
+            return input * self.unit
         return input
 
     @property

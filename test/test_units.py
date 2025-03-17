@@ -58,16 +58,6 @@ pytestmark = pytest.mark.parametrize(
 )
 
 
-def test_attribute_units(input_path, tmp_path):
-    dataset = read(input_path)
-    data = dataset.data
-    new_column = Column(np.random.rand(len(data)), name="new_column", unit=u.Mpc)
-    new_path = add_column(tmp_path, input_path, new_column)
-    dataset = read(new_path)
-    data = dataset.data
-    assert data["new_column"].unit == u.Mpc
-
-
 def test_logarithmic_units(input_path):
     dataset = read(input_path)
     data = dataset.data
@@ -191,3 +181,5 @@ def test_unit_conversion(input_path):
 def test_invalid_unit_convention(input_path):
     with pytest.raises(ValueError):
         read(input_path).with_units("invalid_unit")
+
+

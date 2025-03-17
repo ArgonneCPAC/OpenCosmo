@@ -1,6 +1,8 @@
 import pytest
 import opencosmo as oc
 import h5py
+import astropy.units as u
+from astropy.cosmology import units as cu
 
 @pytest.fixture
 def input_path(data_path):
@@ -37,6 +39,14 @@ def test_read_invalid_dataset(input_path):
 def test_read_invalid_datasets(input_path):
     with pytest.raises(ValueError):
         oc.read(input_path, ["star_particles", "invalid_particles"])
+
+def test_age_h0_units(input_path, tmp_path):
+    dc = oc.read(input_path, "agn_particles")
+    assert dc.data["age"].unit == u.yr
+    dc = dc.with_units("scalefree")
+    assert dc.data["age"].unit == u.yr / cu.littleh
+
+
 
 
 
