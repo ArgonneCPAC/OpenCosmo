@@ -1,11 +1,9 @@
 from typing import Protocol
 
-from h5py import Group, Dataset
-
-from opencosmo.transformations import transformation as t
+from h5py import Dataset, Group
 
 from opencosmo.file import broadcast_read
-
+from opencosmo.transformations import transformation as t
 
 
 class TransformationGenerator(Protocol):

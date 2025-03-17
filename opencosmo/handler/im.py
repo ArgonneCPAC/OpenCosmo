@@ -6,8 +6,8 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.spatial.tree import Tree
 from opencosmo.file import get_data_structure
+from opencosmo.spatial.tree import Tree
 
 
 class InMemoryHandler:
@@ -26,17 +26,20 @@ class InMemoryHandler:
         columns: Optional[Iterable[str]] = None,
         mask: Optional[np.ndarray] = None,
     ):
-
         self.__columns = get_data_structure(file[group])
         if columns is not None:
             self.__columns = {n: u for n, u in self.__columns.items() if n in columns}
         self.__tree = tree
 
         if mask is not None:
-            self.__data = {colname: file["data"][colname][mask] for colname in self.__columns}
+            self.__data = {
+                colname: file["data"][colname][mask] for colname in self.__columns
+            }
             self.__tree = self.__tree.apply_mask(mask)
         else:
-            self.__data = {colname: file["data"][colname][()] for colname in self.__columns}
+            self.__data = {
+                colname: file["data"][colname][()] for colname in self.__columns
+            }
 
     def __len__(self) -> int:
         return len(next(iter(self.__data.values())))

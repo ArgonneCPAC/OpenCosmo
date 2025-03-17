@@ -26,9 +26,7 @@ class OpenCosmoHeader:
         self.__cosmotools_pars = cosmotools_pars
 
     def write(self, file: h5py.File) -> None:
-        parameters.write_header_attributes(
-            file, "file", self.__file_pars
-        )
+        parameters.write_header_attributes(file, "file", self.__file_pars)
 
         parameters.write_header_attributes(
             file, "reformat_hacc/config", self.__reformat_pars
@@ -137,5 +135,8 @@ def read_header(file: h5py.File) -> OpenCosmoHeader:
             f"Error: {e}"
         )
     return OpenCosmoHeader(
-        file_parameters, simulation_parameters, reformat_parameters, cosmotools_parameters
+        file_parameters,
+        simulation_parameters,
+        reformat_parameters,
+        cosmotools_parameters,
     )

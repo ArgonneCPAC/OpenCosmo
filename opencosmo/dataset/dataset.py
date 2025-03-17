@@ -72,7 +72,6 @@ def open(file: str | Path) -> Dataset:
         "comoving", base_unit_transformations, header.cosmology
     )
 
-
     column_names = list(str(col) for col in file_handle["data"].keys())
     builders = get_column_builders(to_comoving_transformations, column_names)
     mask = np.ones(len(handler), dtype=bool)
@@ -103,9 +102,7 @@ def read(file: h5py.File) -> Dataset:
     header = read_header(file)
     tree = read_tree(file, header)
     handler = InMemoryHandler(file, tree)
-    base_unit_transformations = u.get_base_unit_transformations(
-        file["data"], header
-    )
+    base_unit_transformations = u.get_base_unit_transformations(file["data"], header)
     to_comoving_transformations = u.get_unit_transition_transformations(
         "comoving", base_unit_transformations, header.cosmology
     )
@@ -162,7 +159,7 @@ class Dataset:
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         table_head = f"First {take_length} rows:\n"
         return head + cosmo_repr + table_head + table_repr
-    
+
     def __len__(self):
         return np.sum(self.__mask)
 
@@ -206,7 +203,6 @@ class Dataset:
             )
         write_header(file, self.__header)
         self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
-
 
     def filter(self, *masks: Mask) -> Dataset:
         """

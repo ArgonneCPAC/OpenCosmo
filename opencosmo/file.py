@@ -15,6 +15,7 @@ FileWriter = Callable[Concatenate[h5py.File, ...], None]
 H5Resource = TypeVar("H5Resource", h5py.File, h5py.Group, h5py.Dataset)
 H5Reader = Callable[Concatenate[H5Resource, ...], Any]
 
+
 class FileExistance(Enum):
     MUST_EXIST = "must_exist"
     MUST_NOT_EXIST = "must_not_exist"
@@ -84,11 +85,11 @@ def broadcast_read(func: H5Reader) -> H5Reader:
 
     return wrapper
 
+
 @broadcast_read
 def get_data_structure(group: h5py.Group) -> dict[str, Any]:
     units = {name: group[name].attrs.get("unit", "") for name in group.keys()}
     return units
-
 
 
 def resolve_path(
