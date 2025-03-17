@@ -22,7 +22,7 @@ from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
 
 
-def open(file: str | Path, units: str = "comoving") -> Dataset:
+def open(file: str | Path) -> Dataset:
     """
     Open a dataset from a file without reading the data into memory.
 
@@ -53,10 +53,6 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     ----------
     file : str or pathlib.Path
         The path to the file to open.
-    units : str
-        The unit convention to use. One of "physical", "comoving",
-        "scalefree", or "unitless". The default is "comoving".
-
     """
     path = resolve_path(file, FileExistance.MUST_EXIST)
     file_handle = h5py.File(path, "r")
@@ -69,11 +65,16 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
     else:
         handler = OutOfMemoryHandler(file_handle, tree=tree)
 
-    base_unit_transformations, transformations = u.get_unit_transformations(
-        file_handle["data"], header, units
+    base_unit_transformations = u.get_base_unit_transformations(
+        file_handle["data"], header
     )
+    to_comoving_transformations = u.get_unit_transition_transformations(
+        "comoving", base_unit_transformations, header.cosmology
+    )
+
+
     column_names = list(str(col) for col in file_handle["data"].keys())
-    builders = get_column_builders(transformations, column_names)
+    builders = get_column_builders(to_comoving_transformations, column_names)
     mask = np.ones(len(handler), dtype=bool)
 
     dataset = Dataset(handler, header, builders, base_unit_transformations, mask)
@@ -81,7 +82,7 @@ def open(file: str | Path, units: str = "comoving") -> Dataset:
 
 
 @file_reader
-def read(file: h5py.File, units: str = "comoving") -> Dataset:
+def read(file: h5py.File) -> Dataset:
     """
     Read a dataset from a file into memory.
 
@@ -93,10 +94,6 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
     ----------
     file : str or pathlib.Path
         The path to the file to read.
-    units : str | None
-        The unit convention to use. One of "physical", "comoving",
-        "scalefree", or None. The default is "comoving".
-
     Returns
     -------
     dataset : Dataset
@@ -106,11 +103,15 @@ def read(file: h5py.File, units: str = "comoving") -> Dataset:
     header = read_header(file)
     tree = read_tree(file, header)
     handler = InMemoryHandler(file, tree)
-    base_unit_transformations, transformations = u.get_unit_transformations(
-        file["data"], header, units
+    base_unit_transformations = u.get_base_unit_transformations(
+        file["data"], header
     )
+    to_comoving_transformations = u.get_unit_transition_transformations(
+        "comoving", base_unit_transformations, header.cosmology
+    )
+
     column_names = list(str(col) for col in file["data"].keys())
-    builders = get_column_builders(transformations, column_names)
+    builders = get_column_builders(to_comoving_transformations, column_names)
     mask = np.ones(len(handler), dtype=bool)
 
     return Dataset(handler, header, builders, base_unit_transformations, mask)
@@ -148,6 +149,9 @@ class Dataset:
         self.__mask = mask
 
     def __repr__(self):
+        """
+        A basic string representation of the dataset
+        """
         length = np.sum(self.__mask)
         take_length = length if length < 10 else 10
         repr_ds = self.take(take_length)
@@ -158,6 +162,9 @@ class Dataset:
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         table_head = f"First {take_length} rows:\n"
         return head + cosmo_repr + table_head + table_repr
+    
+    def __len__(self):
+        return np.sum(self.__mask)
 
     def __enter__(self):
         # Need to write tests
@@ -168,6 +175,16 @@ class Dataset:
 
     def close(self):
         return self.__handler.__exit__()
+
+    @property
+    def cosmology(self):
+        return self.__header.cosmology
+
+    @property
+    def data(self):
+        # should rename this, dataset.data can get confusing
+        # Also the point is that there's MORE data than just the table
+        return self.__handler.get_data(builders=self.__builders, mask=self.__mask)
 
     def write(self, file: h5py.File, dataset_name: str = "data") -> None:
         """
@@ -190,15 +207,6 @@ class Dataset:
         write_header(file, self.__header)
         self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
 
-    @property
-    def cosmology(self):
-        return self.__header.cosmology
-
-    @property
-    def data(self):
-        # should rename this, dataset.data can get confusing
-        # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(builders=self.__builders, mask=self.__mask)
 
     def filter(self, *masks: Mask) -> Dataset:
         """
