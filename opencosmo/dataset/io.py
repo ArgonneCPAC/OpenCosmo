@@ -107,7 +107,7 @@ def read(file: h5py.File, datasets: Optional[str | Iterable[str]] = None) -> oc.
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
 
 @file_writer
-def write(file: h5py.File, dataset: oc.Dataset):
+def write(file: h5py.File, dataset: oc.Dataset | oc.DataCollection) -> None:
     """
     Write a dataset to a file.
 
@@ -176,6 +176,7 @@ def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] =
         if missing_datasets:
             raise ValueError(f"Datasets {missing_datasets} not found in file.")
         datasets_in_file = set(requested_datasets)
+
 
     collection = DataCollection()
     for dataset_name in datasets_in_file:

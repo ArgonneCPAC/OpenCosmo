@@ -19,11 +19,14 @@ def apply_column_transformations(
     transformations are present for the same column, they will simply
     be applied in the order they appear in the list.
     """
+    print(transformations)
 
     for tr in transformations:
         column_name = tr.column_name
         if column_name not in table.columns:
             raise ValueError(f"Column {column_name} not found in table")
+        if column_name == "gal_com_vx":
+            print(table[column_name])
         column = table[column_name]
         if (new_column := tr(column)) is not None:
             table[column_name] = new_column
