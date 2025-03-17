@@ -6,14 +6,14 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
+from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
-from opencosmo.file import get_data_structure
 
 
 class OutOfMemoryHandler:
     """
-    A handler for data that will not be stored in memory. Data will remain on 
+    A handler for data that will not be stored in memory. Data will remain on
     disk until needed
 
     """
@@ -25,7 +25,6 @@ class OutOfMemoryHandler:
         self.__tree = tree
 
     def __len__(self) -> int:
-
         return self.__group[next(iter(self.__columns))].shape[0]
 
     def __enter__(self):

@@ -67,13 +67,14 @@ def test_attribute_units(input_path, tmp_path):
     data = dataset.data
     assert data["new_column"].unit == u.Mpc
 
+
 def test_logarithmic_units(input_path):
     dataset = read(input_path)
     data = dataset.data
     cols = data.columns
     for col in cols:
         if "log" in col.lower():
-            assert isinstance (data[col].unit, u.DexUnit)
+            assert isinstance(data[col].unit, u.DexUnit)
 
 
 def test_parse_velocities(input_path):
@@ -98,6 +99,7 @@ def test_comoving_vs_scalefree(input_path):
         assert np.all(
             np.isclose(comoving.data[col].value, scalefree.data[col].value / h)
         )
+
 
 def test_angular_momentum(input_path):
     dataset = read(input_path)

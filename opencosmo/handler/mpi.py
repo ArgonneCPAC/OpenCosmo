@@ -9,7 +9,6 @@ from mpi4py import MPI
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
-from opencosmo.file import get_data_structure
 
 
 def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
