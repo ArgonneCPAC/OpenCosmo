@@ -76,7 +76,7 @@ def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
 
 @broadcast_read
 @file_reader
-def read_header(file: h5py.File) -> OpenCosmoHeader:
+def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
     """
     Read the header of an OpenCosmo file
 

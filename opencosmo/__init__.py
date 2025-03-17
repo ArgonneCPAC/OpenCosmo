@@ -1,5 +1,5 @@
 from .cosmology import read_cosmology
-from .dataset import Dataset, col, open, read, write
+from .dataset import Dataset, DataCollection, col, open, read, write
 from .header import read_header
 from .parameters import read_simulation_parameters
 
@@ -12,4 +12,5 @@ __all__ = [
     "col",
     "open",
     "Dataset",
+    "DataCollection",
 ]

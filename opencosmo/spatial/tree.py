@@ -10,7 +10,7 @@ from opencosmo.spatial.index import SpatialIndex
 from opencosmo.spatial.octree import OctTreeIndex
 
 
-def read_tree(file: h5py.File, header: OpenCosmoHeader):
+def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
     """
     Read a tree from an HDF5 file and the associated
     header. The tree is just a mapping between a spatial

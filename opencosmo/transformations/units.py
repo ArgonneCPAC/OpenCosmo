@@ -1,16 +1,18 @@
 from enum import Enum
-from functools import partial, reduce
+from functools import partial
 from typing import Optional
 from warnings import warn
+from functools import reduce
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
 from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
-from h5py import Dataset as h5Dataset  # type: ignore
+from h5py import File, Group, Dataset as h5Dataset# type: ignore
 
 from opencosmo import transformations as t
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.dataset.column import get_column_builders
 
 _ = u.add_enabled_units(cu)
 
@@ -69,6 +71,18 @@ def get_unit_transition_transformations(
         existing = update_transformations.get(ttype, [])
         update_transformations[ttype] = unit_transformations[ttype] + existing
     return update_transformations
+
+def get_default_unit_transformations(file: File | Group, header: OpenCosmoHeader):
+    base_unit_transformations = get_base_unit_transformations(file["data"], header)
+    to_comoving_transformations = get_unit_transition_transformations(
+        "comoving", base_unit_transformations, header.cosmology
+    )
+
+    column_names = list(str(col) for col in file["data"].keys())
+    builders = get_column_builders(to_comoving_transformations, column_names)
+
+    return builders, base_unit_transformations
+
 
 
 def get_base_unit_transformations(
@@ -160,9 +174,9 @@ def generate_attribute_unit_transformations(
     if "unit" in input.attrs:
         if (us := input.attrs["unit"]) == "None":
             return {}
-
+        
         comoving = us.startswith("comoving ")
-
+        
         if comoving:
             us = us.removeprefix("comoving ")
 
@@ -175,14 +189,15 @@ def generate_attribute_unit_transformations(
         # handle logarithmic units
         units = [u_.replace("log10", "dex") for u_ in units]
 
+
+
         try:
-            unit = reduce(
-                lambda x, y: x * y, [u.Unit(u_) ** p for u_, p in zip(units, powers)]
-            )
+            unit = reduce(lambda x, y: x * y, [u.Unit(u_)**p for u_, p in zip(units, powers)])
         except ValueError:
             print(units)
             warn(
-                f"Invalid unit {us} in column {input.name}. Values will be unitless..."
+                f"Invalid unit {us} in column {input.name}. "
+                "Values will be unitless..."
             )
             return {}
         # astropy parses h as hours, so convert to littleh
@@ -192,6 +207,7 @@ def generate_attribute_unit_transformations(
             unit = unit * cu.littleh**power / u.hour**power
         except (ValueError, AttributeError):
             pass
+            
 
         apply_func: t.Transformation = apply_unit(
             column_name=input.name.split("/")[-1], unit=unit
@@ -220,3 +236,5 @@ class apply_unit:
     @property
     def column_name(self) -> str:
         return self.__name
+
+

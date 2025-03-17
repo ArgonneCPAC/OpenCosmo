@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import h5py
 
 try:
@@ -15,119 +13,10 @@ import numpy as np
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.mask import Mask, apply_masks
-from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
-from opencosmo.header import OpenCosmoHeader, read_header, write_header
-from opencosmo.spatial import read_tree
+from opencosmo.handler import OpenCosmoDataHandler
+from opencosmo.header import OpenCosmoHeader, write_header
 from opencosmo.transformations import units as u
 
-
-def open(file: str | Path) -> Dataset:
-    """
-    Open a dataset from a file without reading the data into memory.
-
-    The object returned by this function will only read data from the file
-    when it is actually needed. This is useful if the file is very large
-    and you only need to access a small part of it.
-
-    If you open a file with this dataset, you should generally close it
-    when you're done
-
-    .. code-block:: python
-
-        import opencosmo as oc
-        ds = oc.open("path/to/file.hdf5")
-        # do work
-        ds.close()
-
-    Alternatively you can use a context manager, which will close the file
-    automatically when you are done with it.
-
-    .. code-block:: python
-
-        import opencosmo as oc
-        with oc.open("path/to/file.hdf5") as ds:
-            # do work
-
-    Parameters
-    ----------
-    file : str or pathlib.Path
-        The path to the file to open.
-    """
-    path = resolve_path(file, FileExistance.MUST_EXIST)
-    file_handle = h5py.File(path, "r")
-    header = read_header(file_handle)
-    tree = read_tree(file_handle, header)
-
-    handler: OpenCosmoDataHandler
-    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        handler = MPIHandler(file_handle, tree=tree, comm=MPI.COMM_WORLD)
-    else:
-        handler = OutOfMemoryHandler(file_handle, tree=tree)
-
-    base_unit_transformations = u.get_base_unit_transformations(
-        file_handle["data"], header
-    )
-    to_comoving_transformations = u.get_unit_transition_transformations(
-        "comoving", base_unit_transformations, header.cosmology
-    )
-
-    column_names = list(str(col) for col in file_handle["data"].keys())
-    builders = get_column_builders(to_comoving_transformations, column_names)
-    mask = np.ones(len(handler), dtype=bool)
-
-    dataset = Dataset(handler, header, builders, base_unit_transformations, mask)
-    return dataset
-
-
-@file_reader
-def read(file: h5py.File) -> Dataset:
-    """
-    Read a dataset from a file into memory.
-
-    You should use this function if the data are small enough that having
-    a copy of it (or a few copies of it) in memory is not a problem. For
-    larger datasets, use :py:func:`opencosmo.open`.
-
-    Parameters
-    ----------
-    file : str or pathlib.Path
-        The path to the file to read.
-    Returns
-    -------
-    dataset : Dataset
-        The dataset read from the file.
-
-    """
-    header = read_header(file)
-    tree = read_tree(file, header)
-    handler = InMemoryHandler(file, tree)
-    base_unit_transformations = u.get_base_unit_transformations(file["data"], header)
-    to_comoving_transformations = u.get_unit_transition_transformations(
-        "comoving", base_unit_transformations, header.cosmology
-    )
-
-    column_names = list(str(col) for col in file["data"].keys())
-    builders = get_column_builders(to_comoving_transformations, column_names)
-    mask = np.ones(len(handler), dtype=bool)
-
-    return Dataset(handler, header, builders, base_unit_transformations, mask)
-
-
-@file_writer
-def write(file: h5py.File, dataset: Dataset):
-    """
-    Write a dataset to a file.
-
-    Parameters
-    ----------
-    file : str or pathlib.Path
-        The path to the file to write to.
-    dataset : Dataset
-        The dataset to write.
-
-    """
-    dataset.write(file)
 
 
 class Dataset:
@@ -139,8 +28,8 @@ class Dataset:
         unit_transformations: dict[t.TransformationType, list[t.Transformation]],
         mask: np.ndarray,
     ):
-        self.__header = header
         self.__handler = handler
+        self.__header = header
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
         self.__mask = mask

@@ -33,12 +33,12 @@ class InMemoryHandler:
 
         if mask is not None:
             self.__data = {
-                colname: file["data"][colname][mask] for colname in self.__columns
+                colname: file[group][colname][mask] for colname in self.__columns
             }
             self.__tree = self.__tree.apply_mask(mask)
         else:
             self.__data = {
-                colname: file["data"][colname][()] for colname in self.__columns
+                colname: file[group][colname][()] for colname in self.__columns
             }
 
     def __len__(self) -> int:
