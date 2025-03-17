@@ -12,7 +12,8 @@ from opencosmo.spatial.tree import Tree
 
 class OutOfMemoryHandler:
     """
-    A handler for in-memory storage. Data will remain on disk until needed
+    A handler for data that will not be stored in memory. Data will remain on 
+    disk until needed
 
     """
 

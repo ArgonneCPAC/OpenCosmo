@@ -1,7 +1,7 @@
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Concatenate
+from typing import Any, Callable, Concatenate, TypeVar
 
 import h5py
 
@@ -12,7 +12,8 @@ except ImportError:
 
 FileReader = Callable[Concatenate[h5py.File, ...], Any]
 FileWriter = Callable[Concatenate[h5py.File, ...], None]
-
+H5Resource = TypeVar("H5Resource", h5py.File, h5py.Group, h5py.Dataset)
+H5Reader = Callable[Concatenate[H5Resource, ...], Any]
 
 class FileExistance(Enum):
     MUST_EXIST = "must_exist"
@@ -62,7 +63,7 @@ def file_writer(func: FileWriter) -> FileWriter:
     return wrapper
 
 
-def broadcast_read(func: FileReader) -> FileReader:
+def broadcast_read(func: H5Reader) -> H5Reader:
     """
     If MPI is available, the decorated function will only
     be called on rank 0, with the results broadcast to all
