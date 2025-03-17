@@ -7,6 +7,7 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.spatial.tree import Tree
+from opencosmo.file import get_data_structure
 
 
 class InMemoryHandler:
@@ -25,17 +26,17 @@ class InMemoryHandler:
         columns: Optional[Iterable[str]] = None,
         mask: Optional[np.ndarray] = None,
     ):
-        colnames = set(file["data"].keys())
-        if columns is not None:
-            colnames &= set(columns)
 
+        self.__columns = get_data_structure(file[group])
+        if columns is not None:
+            self.__columns = {n: u for n, u in self.__columns.items() if n in columns}
         self.__tree = tree
 
         if mask is not None:
-            self.__data = {colname: file["data"][colname][mask] for colname in colnames}
+            self.__data = {colname: file["data"][colname][mask] for colname in self.__columns}
             self.__tree = self.__tree.apply_mask(mask)
         else:
-            self.__data = {colname: file["data"][colname][()] for colname in colnames}
+            self.__data = {colname: file["data"][colname][()] for colname in self.__columns}
 
     def __len__(self) -> int:
         return len(next(iter(self.__data.values())))
@@ -68,7 +69,8 @@ class InMemoryHandler:
         group = file.require_group(dataset_name)
         for column in columns:
             group.create_dataset(column, data=self.__data[column][mask])
-        print("Data written to file.")
+            if self.__columns[column] is not None:
+                group[column].attrs["unit"] = self.__columns[column]
         tree = self.__tree.apply_mask(mask)
         tree.write(file, dataset_name="index")
 
@@ -76,32 +78,17 @@ class InMemoryHandler:
         self,
         builders: dict = {},
         mask: Optional[np.ndarray] = None,
-        n: Optional[int] = None,
-        strategy: str = "start",
     ) -> Column | Table:
         """
         Get data from the in-memory storage with optional masking and column
         selection.
         """
         length = len(self)
-        if n is not None and n > length:
-            raise ValueError("Requested more data than is available.")
-
-        n_to_take = n if n is not None else length
-        sl: slice | np.ndarray
-        if strategy == "start":
-            sl = slice(0, n_to_take)
-        elif strategy == "end":
-            sl = slice(length - n_to_take, length)
-        elif strategy == "random":
-            idxs = np.random.choice(length, n_to_take, replace=False)
-            sl = np.sort(idxs)
 
         data_mask = mask if mask is not None else np.ones(length, dtype=bool)
-
         output = {}
         for column, builder in builders.items():
-            col = self.__data[column][data_mask][sl]
+            col = self.__data[column][data_mask]
             output[column] = builder.build(Column(col, name=column))
 
         if len(output) == 1:

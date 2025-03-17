@@ -6,8 +6,10 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
+from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
+from opencosmo.file import get_data_structure
 
 
 def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
@@ -51,7 +53,7 @@ class MPIHandler:
     ):
         self.__file = file
         self.__group = file[group]
-        self.__columns = list(self.__group.keys())
+        self.__columns = get_data_structure(file[group])
         self.__comm = comm
         self.__tree = tree
 
@@ -61,7 +63,7 @@ class MPIHandler:
         """
         nranks = self.__comm.Get_size()
         rank = self.__comm.Get_rank()
-        n = self.__group[self.__columns[0]].size
+        n = self.__group[next(iter(self.__columns))].shape[0]
 
         if rank == nranks - 1:
             return (rank * (n // nranks), n)
@@ -126,6 +128,8 @@ class MPIHandler:
             group.create_dataset(
                 column, (full_output_length,), dtype=self.__group[column].dtype
             )
+            if self.__columns[column] is not None:
+                group[column].attrs["unit"] = self.__columns[column]
 
         self.__comm.Barrier()
 

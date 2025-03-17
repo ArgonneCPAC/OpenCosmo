@@ -86,8 +86,7 @@ def test_write_after_filter(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         filtered_data = new_ds.data
-
-    assert all(filtered_data == data)
+        assert np.all(data == filtered_data)
 
 
 def test_collect(input_path):

@@ -84,6 +84,12 @@ def broadcast_read(func: H5Reader) -> H5Reader:
 
     return wrapper
 
+@broadcast_read
+def get_data_structure(group: h5py.Group) -> dict[str, Any]:
+    units = {name: group[name].attrs.get("unit", "") for name in group.keys()}
+    return units
+
+
 
 def resolve_path(
     path: Path | str, existance: FileExistance = FileExistance.MUST_EXIST
