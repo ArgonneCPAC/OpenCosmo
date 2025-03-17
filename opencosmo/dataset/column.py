@@ -72,8 +72,7 @@ class ColumnBuilder:
 
         new_column = data
         for transformation in self.transformations:
-            new_column = transformation(new_column)
-            if new_column is None:
-                new_column = data
-                continue
+            transformed_column = transformation(new_column)
+            if transformed_column is not None:
+                new_column = transformed_column
         return new_column

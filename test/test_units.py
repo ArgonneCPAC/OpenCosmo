@@ -71,7 +71,7 @@ def test_parse_velocities(input_path):
     dataset = read(input_path)
     data = dataset.data
     cols = data.columns
-    velocity_cols = filter(lambda col: col.upper()[-2:] in ["VX", "VY", "VZ"], cols)
+    velocity_cols = list(filter(lambda col: col.upper()[-2:] in ["VX", "VY", "VZ"], cols))
     for col in velocity_cols:
         assert data[col].unit == u.km / u.s
 

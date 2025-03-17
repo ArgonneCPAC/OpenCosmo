@@ -197,7 +197,6 @@ def generate_attribute_unit_transformations(
         if (us := input.attrs["unit"]) == "None" or us == "":
             return {}
         try:
-
             unit = UNIT_MAP[us]
             apply_func: t.Transformation = apply_unit(
                 column_name=input.name.split("/")[-1], unit=unit
@@ -225,6 +224,7 @@ class apply_unit:
         self.unit = unit
 
     def __call__(self, input: Column) -> Optional[Column]:
+
         if input.unit is None:
             return input * self.unit
         return input
