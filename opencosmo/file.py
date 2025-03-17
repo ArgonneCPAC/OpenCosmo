@@ -10,11 +10,10 @@ try:
 except ImportError:
     MPI = None  # type: ignore
 
-FileReader = Callable[Concatenate[h5py.File, ...], Any]
-FileWriter = Callable[Concatenate[h5py.File, ...], None]
 H5Resource = TypeVar("H5Resource", h5py.File, h5py.Group, h5py.Dataset)
 H5Reader = Callable[Concatenate[H5Resource, ...], Any]
-
+FileReader = Callable[Concatenate[h5py.File | h5py.Group, ...], Any]
+FileWriter = Callable[Concatenate[h5py.File | h5py.Group, ...], None]
 
 class FileExistance(Enum):
     MUST_EXIST = "must_exist"
@@ -30,10 +29,10 @@ def file_reader(func: FileReader) -> FileReader:
     """
 
     @wraps(func)
-    def wrapper(file: h5py.File | Path | str, *args, **kwargs):
-        if not isinstance(file, h5py.File):
+    def wrapper(file: h5py.File | h5py.Group | Path | str, *args, **kwargs):
+        if not isinstance(file, h5py.File | h5py.Group):
             path = resolve_path(file, FileExistance.MUST_EXIST)
-            with h5py.File(path, "r") as f:
+            with h5py.File(path, "r", driver="core") as f:
                 return func(f, *args, **kwargs)
         return func(file, *args, **kwargs)
 
