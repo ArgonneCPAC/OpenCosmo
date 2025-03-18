@@ -128,12 +128,12 @@ def test_write_particles(particle_path, tmp_path):
     with oc.open(particle_path) as f:
         oc.write(output_path, f)
         data = f.collect()
-        header = f._DataCollection__header
+        header = f._header
     if comm.Get_rank() == 0:
         read_data = oc.read(output_path)
-        for key in data:
+        for key in data.keys():
             assert np.all(data[key].data == read_data[key].data)
-        read_header = read_data._DataCollection__header
+        read_header = read_data._header
         models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
         for model in models:
             key = f"_OpenCosmoHeader__{model}"

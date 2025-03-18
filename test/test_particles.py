@@ -61,6 +61,6 @@ def test_write_particles(input_path, tmp_path):
     new_path = tmp_path / "haloparticles.hdf5"
     oc.write(new_path, dc)
     new_dc = oc.read(new_path)
-    for key in dc:
+    for key in dc.keys():
         assert key in new_dc
         assert all(dc[key].data == new_dc[key].data)
