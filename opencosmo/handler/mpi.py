@@ -143,8 +143,8 @@ class MPIHandler:
         self.__comm.Barrier()
 
         for column in columns:
-            data = self.__group[column][rank_range[0] : rank_range[1]][mask]
-
+            data = self.__group[column][rank_range[0] : rank_range[1]][()]
+            data = data[mask]
             data_group[column][rank_start:rank_end] = data
 
         tree = self.__tree.apply_mask(mask)

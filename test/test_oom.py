@@ -8,6 +8,10 @@ import opencosmo as oc
 def input_path(data_path):
     return data_path / "haloproperties.hdf5"
 
+@pytest.fixture
+def particle_path(data_path):
+    return data_path / "haloparticles.hdf5"
+
 
 @pytest.fixture
 def max_mass(input_path):
@@ -107,3 +111,19 @@ def test_select_collect(input_path):
 
     assert len(ds.data) == 100
     assert set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"}
+
+def test_write_collection(particle_path, tmp_path):
+    ds = oc.open(particle_path)
+    oc.write(tmp_path / "haloparticles.hdf5", ds)
+    models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
+    header = ds._DataCollection__header
+
+    with oc.open(tmp_path / "haloparticles.hdf5") as new_ds:
+        for key in ds:
+            assert np.all(ds[key].data == new_ds[key].data)
+
+        new_header = new_ds._DataCollection__header
+        for model in models:
+            key = f"_OpenCosmoHeader__{model}"
+            assert getattr(header, key) == getattr(new_header, key)
+    
