@@ -18,6 +18,16 @@ class DataCollection(dict):
         self.__header = header
         super().__init__(*args, **kwargs)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_details):
+        for dataset in self.values():
+            try:
+                dataset.close()
+            except ValueError:
+                continue
+
     def write(self, file: h5py.File):
         """
         Write the collection to an HDF5 file.
@@ -31,6 +41,11 @@ class DataCollection(dict):
             self.__header.write(file)
             for key, dataset in self.items():
                 dataset.write(file, key, with_header=False)
+
+    def collect(self):
+        data = {k: v.collect() for k, v in self.items()}
+        return DataCollection(header=self.__header, **data)
+
 
 class SimulationCollection(DataCollection):
     """

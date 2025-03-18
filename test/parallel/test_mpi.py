@@ -10,6 +10,10 @@ import opencosmo as oc
 def input_path(data_path):
     return data_path / "haloproperties.hdf5"
 
+@pytest.fixture
+def particle_path(data_path):
+    return data_path / "haloparticles.hdf5"
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
@@ -107,3 +111,29 @@ def test_take_empty_rank(input_path):
         else:
             with pytest.raises(ValueError):
                 ds = ds.take(n_to_take, at="start")
+
+@pytest.mark.parallel(nprocs=4)
+def test_read_particles(particle_path):
+    with oc.open(particle_path) as f:
+        parallel_assert(lambda: isinstance(f, dict))
+
+@pytest.mark.parallel(nprocs=4)
+def test_write_particles(particle_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    output_path = tmp_path / "particles.hdf5"
+    output_path = comm.bcast(output_path, root=0)
+    with oc.open(particle_path) as f:
+        oc.write(output_path, f)
+        data = f.collect()
+        header = f._DataCollection__header
+    if comm.Get_rank() == 0:
+        read_data = oc.read(output_path)
+        for key in data:
+            assert np.all(data[key].data == read_data[key].data)
+        read_header = read_data._DataCollection__header
+        models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
+        for model in models:
+            key = f"_OpenCosmoHeader__{model}"
+            assert getattr(header, key) == getattr(read_header, key)
+        
+

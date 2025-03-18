@@ -18,10 +18,14 @@ class OutOfMemoryHandler:
 
     """
 
-    def __init__(self, file: h5py.File, tree: Tree, group: str = "data"):
+    def __init__(self, file: h5py.File, tree: Tree, group: Optional[str] = None):
+        self.__group_name = group
         self.__file = file
-        self.__group = file[group]
-        self.__columns = get_data_structure(file[group])
+        if group is None:
+            self.__group = file["data"]
+        else:
+            self.__group = file[f"{group}/data"]
+        self.__columns = get_data_structure(self.__group)
         self.__tree = tree
 
     def __len__(self) -> int:
@@ -37,9 +41,15 @@ class OutOfMemoryHandler:
 
     def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
         file_path = self.__file.filename
-        tree = self.__tree.apply_mask(mask)
+        if np.all(mask):
+            tree = self.__tree
+            output_mask = None
+        else:
+            output_mask = mask
+            tree = self.__tree.apply_mask(mask)
+
         with h5py.File(file_path, "r") as file:
-            return InMemoryHandler(file, columns=columns, mask=mask, tree=tree)
+            return InMemoryHandler(file, tree, group_name=self.__group_name, columns=columns, mask=output_mask)
 
     def write(
         self,
@@ -61,7 +71,6 @@ class OutOfMemoryHandler:
             data_group.create_dataset(column, data=data)
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
-        print(group)
         tree = self.__tree.apply_mask(mask)
         tree.write(group)
 

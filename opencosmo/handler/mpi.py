@@ -4,6 +4,7 @@ from warnings import warn
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
+from typing import Optional
 from mpi4py import MPI
 
 from opencosmo.file import get_data_structure
@@ -48,11 +49,15 @@ class MPIHandler:
     """
 
     def __init__(
-        self, file: h5py.File, tree: Tree, group: str = "data", comm=MPI.COMM_WORLD
+        self, file: h5py.File, tree: Tree, group: Optional[str] = None, comm=MPI.COMM_WORLD
     ):
         self.__file = file
-        self.__group = file[group]
-        self.__columns = get_data_structure(file[group])
+        self.__group_name = group
+        if group is None:
+            self.__group = file["data"]
+        else:
+            self.__group = file[f"{group}/data"]
+        self.__columns = get_data_structure(self.__group)
         self.__comm = comm
         self.__tree = tree
 
@@ -88,9 +93,11 @@ class MPIHandler:
         masks = self.__comm.allgather(mask)
         file_path = self.__file.filename
         output_mask = np.concatenate(masks)
+        if all(output_mask):
+            output_mask = None
         with h5py.File(file_path, "r") as file:
             return InMemoryHandler(
-                file, tree=self.__tree, columns=columns, mask=output_mask
+                file, tree=self.__tree, columns=columns, mask=output_mask, group_name=self.__group_name
             )
 
     def write(
