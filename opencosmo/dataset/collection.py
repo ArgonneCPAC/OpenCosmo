@@ -14,7 +14,8 @@ class DataCollection(dict):
     because 
 
     """
-    def __init__(self, header: Optional[OpenCosmoHeader] = None, *args, **kwargs):
+    def __init__(self, collection_type: str, header: Optional[OpenCosmoHeader] = None, *args, **kwargs):
+        self.collection_type = collection_type
         self.__header = header
         super().__init__(*args, **kwargs)
 
