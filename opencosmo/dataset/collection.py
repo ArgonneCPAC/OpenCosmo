@@ -99,6 +99,7 @@ class DataCollection(dict):
             for key, dataset in self.items():
                 dataset.write(file, key, with_header=False)
 
+
 class SimulationCollection(DataCollection):
     """
     A collection of datasets of the same type from different
@@ -140,4 +141,3 @@ class ParticleCollection(DataCollection):
     def collect(self):
         data = {k: v.collect() for k, v in self.items()}
         return ParticleCollection(header=self._header, **data)
-    
