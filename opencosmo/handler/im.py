@@ -71,9 +71,9 @@ class InMemoryHandler:
         if dataset_name is None:
             group = file
         else:
-            group = file.create_group(dataset_name)
+            group = file.require_group(dataset_name)
 
-        data_group = group.create_group("data")
+        data_group = group.require_group("data")
         for column in columns:
             data_group.create_dataset(column, data=self.__data[column][mask])
             if self.__columns[column] is not None:

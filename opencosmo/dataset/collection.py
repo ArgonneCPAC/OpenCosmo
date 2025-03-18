@@ -51,8 +51,12 @@ class DataCollection(dict):
     """
     def __init__(self, collection_type: str, header: Optional[OpenCosmoHeader] = None, *args, **kwargs):
         self.collection_type = collection_type
-        self.__header = header
+        self._header = header
         super().__init__(*args, **kwargs)
+
+    def __iter__(self):
+        # This is more logial than iterating over the keys
+        return iter(self.values())
 
     def __enter__(self):
         return self
@@ -70,17 +74,17 @@ class DataCollection(dict):
         """
         # figure out if we have unique headers
     
-        if self.__header is None:
+        if self._header is None:
             for key, dataset in self.items():
                 dataset.write(file, key)
         else:
-            self.__header.write(file)
+            self._header.write(file)
             for key, dataset in self.items():
                 dataset.write(file, key, with_header=False)
 
     def collect(self):
         data = {k: v.collect() for k, v in self.items()}
-        return DataCollection(header=self.__header, **data)
+        return DataCollection(header=self._header, **data)
 
 
 class SimulationCollection(DataCollection):
@@ -93,6 +97,22 @@ class SimulationCollection(DataCollection):
     def __init__(self, dtype: str, *args, **kwargs):
         self.dtype = dtype
         super().__init__("multi_simulation", *args, **kwargs)
+
+    def __map(self, method, *args, **kwargs):
+        """
+        This type of collection will only ever be constructed if all the underlying
+        datasets have the same data type, so it is always safe to map operations
+        across all of them.
+        """
+        output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
+        return SimulationCollection(self.dtype, header=self._header, **output)
+
+    def __getattr__(self, name):
+        # check if the method exists on the first dataset
+        if hasattr(next(iter(self.values())), name):
+            return lambda *args, **kwargs: self.__map(name, *args, **kwargs)
+        else:
+            raise AttributeError(f"Attribute {name} not found on {self.dtype} dataset")
 
 
 class ParticleCollection(DataCollection):

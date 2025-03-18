@@ -6,6 +6,7 @@ from opencosmo import cosmology as cosmo
 from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
 
+from typing import Optional
 try:
     from mpi4py import MPI
 except ImportError:
@@ -25,7 +26,7 @@ class OpenCosmoHeader:
         self.__reformat_pars = reformat_pars
         self.__cosmotools_pars = cosmotools_pars
 
-    def write(self, file: h5py.File) -> None:
+    def write(self, file: h5py.File | h5py.Group) -> None:
         parameters.write_header_attributes(file, "file", self.__file_pars)
 
         parameters.write_header_attributes(
@@ -59,7 +60,7 @@ class OpenCosmoHeader:
 
 
 @file_writer
-def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
+def write_header(file: h5py.File, header: OpenCosmoHeader, dataset_name: Optional[str] = None) -> None:
     """
     Write the header of an OpenCosmo file
 
@@ -71,7 +72,11 @@ def write_header(file: h5py.File, header: OpenCosmoHeader) -> None:
         The header information to write
 
     """
-    header.write(file)
+    if dataset_name is not None:
+        group = file.require_group(dataset_name)
+    else:
+        group = file
+    header.write(group)
 
 
 @broadcast_read
