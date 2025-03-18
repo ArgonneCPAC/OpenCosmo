@@ -178,7 +178,7 @@ def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] =
         datasets_in_file = set(requested_datasets)
 
 
-    collection = DataCollection()
+    collection = DataCollection(header=header)
     for dataset_name in datasets_in_file:
         collection[dataset_name] = read_single_dataset(file, dataset_name, header)
 

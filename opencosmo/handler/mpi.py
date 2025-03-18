@@ -98,12 +98,11 @@ class MPIHandler:
         file: h5py.File,
         mask: np.ndarray,
         columns: Iterable[str],
-        dataset_name="data",
+        dataset_name: Optional[str] = None,
     ) -> None:
         columns = list(columns)
         input = verify_input(
-            comm=self.__comm, columns=columns, fname=file.filename, require=["fname"]
-        )
+            comm=self.__comm, columns=columns, dataset_name = dataset_name, fname=file.filename, require=["fname", "dataset_name"])
         columns = input["columns"]
 
         rank_range = self.elem_range()
@@ -121,24 +120,28 @@ class MPIHandler:
         rank_end = rank_start + rank_output_length
 
         full_output_length = np.sum(all_output_lengths)
-        group = file.require_group(dataset_name)
+        if dataset_name is None:
+            group = file
+        else:
+            group = file.require_group(dataset_name)
+        data_group = group.create_group("data")
         for column in columns:
             # This step has to be done by all ranks, per documentation
-            group.create_dataset(
+            data_group.create_dataset(
                 column, (full_output_length,), dtype=self.__group[column].dtype
             )
             if self.__columns[column] is not None:
-                group[column].attrs["unit"] = self.__columns[column]
+                data_group[column].attrs["unit"] = self.__columns[column]
 
         self.__comm.Barrier()
 
         for column in columns:
             data = self.__group[column][rank_range[0] : rank_range[1]][mask]
 
-            group[column][rank_start:rank_end] = data
+            data_group[column][rank_start:rank_end] = data
 
         tree = self.__tree.apply_mask(mask)
-        tree.write(file)
+        tree.write(group)
 
         self.__comm.Barrier()
 

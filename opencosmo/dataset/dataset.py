@@ -17,6 +17,7 @@ from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
 from opencosmo.transformations import units as u
 
+from typing import Optional
 
 
 class Dataset:
@@ -29,7 +30,7 @@ class Dataset:
         mask: np.ndarray,
     ):
         self.__handler = handler
-        self.__header = header
+        self.header = header
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
         self.__mask = mask
@@ -64,7 +65,7 @@ class Dataset:
 
     @property
     def cosmology(self):
-        return self.__header.cosmology
+        return self.header.cosmology
 
     @property
     def data(self):
@@ -72,7 +73,7 @@ class Dataset:
         # Also the point is that there's MORE data than just the table
         return self.__handler.get_data(builders=self.__builders, mask=self.__mask)
 
-    def write(self, file: h5py.File, dataset_name: str = "data") -> None:
+    def write(self, file: h5py.File, dataset_name: Optional[str] = None, with_header = True) -> None:
         """
         Write the dataset to a file. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.
@@ -90,7 +91,10 @@ class Dataset:
                 "Dataset.write should not be called directly, "
                 "use opencosmo.write instead."
             )
-        write_header(file, self.__header)
+
+        if with_header:
+            write_header(file, self.header)
+
         self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
 
     def filter(self, *masks: Mask) -> Dataset:
@@ -120,7 +124,7 @@ class Dataset:
 
         return Dataset(
             self.__handler,
-            self.__header,
+            self.header,
             self.__builders,
             self.__base_unit_transformations,
             new_mask,
@@ -163,7 +167,7 @@ class Dataset:
 
         return Dataset(
             self.__handler,
-            self.__header,
+            self.header,
             new_builders,
             self.__base_unit_transformations,
             self.__mask,
@@ -186,13 +190,13 @@ class Dataset:
 
         """
         new_transformations = u.get_unit_transition_transformations(
-            convention, self.__base_unit_transformations, self.__header.cosmology
+            convention, self.__base_unit_transformations, self.header.cosmology
         )
         new_builders = get_column_builders(new_transformations, self.__builders.keys())
 
         return Dataset(
             self.__handler,
-            self.__header,
+            self.header,
             new_builders,
             self.__base_unit_transformations,
             self.__mask,
@@ -224,7 +228,7 @@ class Dataset:
         new_handler = self.__handler.collect(self.__builders.keys(), self.__mask)
         return Dataset(
             new_handler,
-            self.__header,
+            self.header,
             self.__builders,
             self.__base_unit_transformations,
             np.ones(len(new_handler), dtype=bool),
@@ -265,7 +269,7 @@ class Dataset:
 
         return Dataset(
             self.__handler,
-            self.__header,
+            self.header,
             self.__builders,
             self.__base_unit_transformations,
             new_mask,

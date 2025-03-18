@@ -1,4 +1,6 @@
 import h5py
+from typing import Optional
+from opencosmo.header import OpenCosmoHeader
 
 class DataCollection(dict):
     """
@@ -12,8 +14,8 @@ class DataCollection(dict):
     because 
 
     """
-    def __init__(self, collection_type: str, *args, **kwargs):
-        self.__collection_type = collection_type
+    def __init__(self, header: Optional[OpenCosmoHeader] = None, *args, **kwargs):
+        self.__header = header
         super().__init__(*args, **kwargs)
 
     def write(self, file: h5py.File):
@@ -21,11 +23,14 @@ class DataCollection(dict):
         Write the collection to an HDF5 file.
         """
         # figure out if we have unique headers
-        headers = {ds.__header for ds in self.values()}
-
-
-        
-
+    
+        if self.__header is None:
+            for key, dataset in self.items():
+                dataset.write(file, key)
+        else:
+            self.__header.write(file)
+            for key, dataset in self.items():
+                dataset.write(file, key, with_header=False)
 
 class SimulationCollection(DataCollection):
     """
