@@ -22,23 +22,27 @@ class InMemoryHandler:
         self,
         file: h5py.File,
         tree: Tree,
-        group: str = "data",
+        group_name: Optional[str] = None,
         columns: Optional[Iterable[str]] = None,
         mask: Optional[np.ndarray] = None,
     ):
-        self.__columns = get_data_structure(file[group])
+        if group_name is None:
+            group = file["data"]
+        else:
+            group = file[f"{group_name}/data"]
+        self.__columns = get_data_structure(group)
         if columns is not None:
             self.__columns = {n: u for n, u in self.__columns.items() if n in columns}
         self.__tree = tree
 
         if mask is not None:
             self.__data = {
-                colname: file[group][colname][mask] for colname in self.__columns
+                colname: group[colname][mask] for colname in self.__columns
             }
             self.__tree = self.__tree.apply_mask(mask)
         else:
             self.__data = {
-                colname: file[group][colname][()] for colname in self.__columns
+                colname: group[colname][()] for colname in self.__columns
             }
 
     def __len__(self) -> int:
