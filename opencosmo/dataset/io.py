@@ -10,20 +10,22 @@ try:
     from opencosmo.handler import MPIHandler
 except ImportError:
     MPI = None  # type: ignore
+from typing import Iterable, Optional
+
 import numpy as np
 
 import opencosmo as oc
 from opencosmo.dataset.collection import DataCollection, get_collection_type
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
-from opencosmo.header import  read_header, OpenCosmoHeader
+from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from typing import Optional, Iterable
 
-from collections import defaultdict
 
-def open(file: str | Path, datasets: Optional[str | Iterable[str]] = None) -> oc.oc.Dataset:
+def open(
+    file: str | Path, datasets: Optional[str | Iterable[str]] = None
+) -> oc.Dataset | DataCollection:
     """
     Open a dataset from a file without reading the data into memory.
 
@@ -60,10 +62,8 @@ def open(file: str | Path, datasets: Optional[str | Iterable[str]] = None) -> oc
     if "data" not in file_handle:
         return open_multi_dataset_file(file_handle)
 
-
     header = read_header(file_handle)
     tree = read_tree(file_handle, header)
-
 
     handler: OpenCosmoDataHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
@@ -71,7 +71,9 @@ def open(file: str | Path, datasets: Optional[str | Iterable[str]] = None) -> oc
     else:
         handler = OutOfMemoryHandler(file_handle, tree=tree)
 
-    builders, base_unit_transformations = u.get_default_unit_transformations(file_handle, header)
+    builders, base_unit_transformations = u.get_default_unit_transformations(
+        file_handle, header
+    )
     mask = np.ones(len(handler), dtype=bool)
 
     dataset = oc.Dataset(handler, header, builders, base_unit_transformations, mask)
@@ -79,7 +81,9 @@ def open(file: str | Path, datasets: Optional[str | Iterable[str]] = None) -> oc
 
 
 @file_reader
-def read(file: h5py.File, datasets: Optional[str | Iterable[str]] = None) -> oc.Dataset:
+def read(
+    file: h5py.File, datasets: Optional[str | Iterable[str]] = None
+) -> oc.Dataset | DataCollection:
     """
     Read a dataset from a file into memory.
 
@@ -107,9 +111,12 @@ def read(file: h5py.File, datasets: Optional[str | Iterable[str]] = None) -> oc.
     tree = read_tree(file, header)
     handler = InMemoryHandler(file, tree)
     mask = np.ones(len(handler), dtype=bool)
-    builders, base_unit_transformations = u.get_default_unit_transformations(file, header)
+    builders, base_unit_transformations = u.get_default_unit_transformations(
+        file, header
+    )
 
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
+
 
 @file_writer
 def write(file: h5py.File, dataset: oc.Dataset | oc.DataCollection) -> None:
@@ -126,6 +133,7 @@ def write(file: h5py.File, dataset: oc.Dataset | oc.DataCollection) -> None:
     """
     dataset.write(file)
 
+
 def open_multi_dataset_file(file: h5py.File) -> DataCollection:
     """
     Open a file with multiple datasets.
@@ -138,7 +146,7 @@ def open_multi_dataset_file(file: h5py.File) -> DataCollection:
 
     datasets = [k for k in file.keys() if k != "header"]
     if len(datasets) == 0:
-        raise ValueError('No datasets found in file.')
+        raise ValueError("No datasets found in file.")
     collection = CollectionType(header=header)
     for dataset_name in datasets:
         collection[dataset_name] = open_single_dataset(file, dataset_name, header)
@@ -148,7 +156,9 @@ def open_multi_dataset_file(file: h5py.File) -> DataCollection:
     return collection
 
 
-def open_single_dataset(file: h5py.File, dataset_key: str, header: OpenCosmoHeader = None) -> oc.Dataset:
+def open_single_dataset(
+    file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
+) -> oc.Dataset:
     """
     Open a file with a single dataset.
     """
@@ -159,18 +169,22 @@ def open_single_dataset(file: h5py.File, dataset_key: str, header: OpenCosmoHead
         header = read_header(file[dataset_key])
 
     tree = read_tree(file[dataset_key], header)
+    handler: OpenCosmoDataHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
         handler = MPIHandler(file, tree=tree, comm=MPI.COMM_WORLD, group=dataset_key)
     else:
         handler = OutOfMemoryHandler(file, tree=tree, group=dataset_key)
 
-
-    builders, base_unit_transformations = u.get_default_unit_transformations(file[dataset_key], header)
+    builders, base_unit_transformations = u.get_default_unit_transformations(
+        file[dataset_key], header
+    )
     mask = np.ones(len(handler), dtype=bool)
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
 
 
-def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] = None) -> DataCollection:
+def read_multi_dataset_file(
+    file: h5py.File, datasets: Optional[Iterable[str]] = None
+) -> DataCollection:
     """
     Read particle data from an HDF5 file.
     """
@@ -182,7 +196,7 @@ def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] =
 
     datasets_in_file = {k for k in file.keys() if k != "header"}
     if len(datasets_in_file) == 0:
-        raise ValueError('No datasets found in file.')
+        raise ValueError("No datasets found in file.")
 
     if datasets is not None:
         requested_datasets = set(datasets)
@@ -190,7 +204,6 @@ def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] =
         if missing_datasets:
             raise ValueError(f"Datasets {missing_datasets} not found in file.")
         datasets_in_file = set(requested_datasets)
-
 
     collection = CollectionType(header=header)
     for dataset_name in datasets_in_file:
@@ -201,7 +214,9 @@ def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] =
     return collection
 
 
-def read_single_dataset(file: h5py.File, dataset_key: str, header: OpenCosmoHeader = None):
+def read_single_dataset(
+    file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
+):
     """
     Read a single dataset from a multi-dataset file
     """
@@ -213,10 +228,8 @@ def read_single_dataset(file: h5py.File, dataset_key: str, header: OpenCosmoHead
 
     tree = read_tree(file[dataset_key], header)
     handler = InMemoryHandler(file, tree, dataset_key)
-    builders, base_unit_transformations = u.get_default_unit_transformations(file[dataset_key], header)
+    builders, base_unit_transformations = u.get_default_unit_transformations(
+        file[dataset_key], header
+    )
     mask = np.ones(len(handler), dtype=bool)
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
-
-
-
-

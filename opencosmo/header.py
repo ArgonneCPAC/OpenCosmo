@@ -1,4 +1,5 @@
 from functools import cached_property
+from typing import Optional
 
 import h5py
 
@@ -6,7 +7,6 @@ from opencosmo import cosmology as cosmo
 from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
 
-from typing import Optional
 try:
     from mpi4py import MPI
 except ImportError:
@@ -60,7 +60,9 @@ class OpenCosmoHeader:
 
 
 @file_writer
-def write_header(file: h5py.File, header: OpenCosmoHeader, dataset_name: Optional[str] = None) -> None:
+def write_header(
+    file: h5py.File, header: OpenCosmoHeader, dataset_name: Optional[str] = None
+) -> None:
     """
     Write the header of an OpenCosmo file
 

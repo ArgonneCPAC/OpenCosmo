@@ -15,6 +15,7 @@ H5Reader = Callable[Concatenate[H5Resource, ...], Any]
 FileReader = Callable[Concatenate[h5py.File | h5py.Group, ...], Any]
 FileWriter = Callable[Concatenate[h5py.File | h5py.Group, ...], None]
 
+
 class FileExistance(Enum):
     MUST_EXIST = "must_exist"
     MUST_NOT_EXIST = "must_not_exist"

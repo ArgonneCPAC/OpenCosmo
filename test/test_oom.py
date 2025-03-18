@@ -8,6 +8,7 @@ import opencosmo as oc
 def input_path(data_path):
     return data_path / "haloproperties.hdf5"
 
+
 @pytest.fixture
 def particle_path(data_path):
     return data_path / "haloparticles.hdf5"
@@ -112,6 +113,7 @@ def test_select_collect(input_path):
     assert len(ds.data) == 100
     assert set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"}
 
+
 def test_write_collection(particle_path, tmp_path):
     ds = oc.open(particle_path)
     oc.write(tmp_path / "haloparticles.hdf5", ds)
@@ -126,4 +128,3 @@ def test_write_collection(particle_path, tmp_path):
         for model in models:
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(new_header, key)
-    
