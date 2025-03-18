@@ -10,6 +10,7 @@ import opencosmo as oc
 def input_path(data_path):
     return data_path / "haloproperties.hdf5"
 
+
 @pytest.fixture
 def particle_path(data_path):
     return data_path / "haloparticles.hdf5"
@@ -112,10 +113,12 @@ def test_take_empty_rank(input_path):
             with pytest.raises(ValueError):
                 ds = ds.take(n_to_take, at="start")
 
+
 @pytest.mark.parallel(nprocs=4)
 def test_read_particles(particle_path):
     with oc.open(particle_path) as f:
         parallel_assert(lambda: isinstance(f, dict))
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_write_particles(particle_path, tmp_path):
@@ -135,5 +138,3 @@ def test_write_particles(particle_path, tmp_path):
         for model in models:
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(read_header, key)
-        
-

@@ -4,7 +4,6 @@ from warnings import warn
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
-from typing import Optional
 from mpi4py import MPI
 
 from opencosmo.file import get_data_structure
@@ -49,7 +48,11 @@ class MPIHandler:
     """
 
     def __init__(
-        self, file: h5py.File, tree: Tree, group: Optional[str] = None, comm=MPI.COMM_WORLD
+        self,
+        file: h5py.File,
+        tree: Tree,
+        group: Optional[str] = None,
+        comm=MPI.COMM_WORLD,
     ):
         self.__file = file
         self.__group_name = group
@@ -97,7 +100,11 @@ class MPIHandler:
             output_mask = None
         with h5py.File(file_path, "r") as file:
             return InMemoryHandler(
-                file, tree=self.__tree, columns=columns, mask=output_mask, group_name=self.__group_name
+                file,
+                tree=self.__tree,
+                columns=columns,
+                mask=output_mask,
+                group_name=self.__group_name,
             )
 
     def write(
@@ -109,7 +116,12 @@ class MPIHandler:
     ) -> None:
         columns = list(columns)
         input = verify_input(
-            comm=self.__comm, columns=columns, dataset_name = dataset_name, fname=file.filename, require=["fname", "dataset_name"])
+            comm=self.__comm,
+            columns=columns,
+            dataset_name=dataset_name,
+            fname=file.filename,
+            require=["fname", "dataset_name"],
+        )
         columns = input["columns"]
 
         rank_range = self.elem_range()

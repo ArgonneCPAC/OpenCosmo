@@ -2,18 +2,18 @@ from enum import Enum
 from functools import partial
 from typing import Optional
 from warnings import warn
-from functools import reduce
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
+from astropy.constants import m_p  # type: ignore
 from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
-from astropy.constants import m_p
-from h5py import File, Group, Dataset as h5Dataset# type: ignore
+from h5py import Dataset as h5Dataset
+from h5py import File, Group  # type: ignore
 
 from opencosmo import transformations as t
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.dataset.column import get_column_builders
+from opencosmo.header import OpenCosmoHeader
 
 _ = u.add_enabled_units(cu)
 
@@ -25,17 +25,19 @@ UNIT_MAP = {
     "Msun/h": u.Msun / cu.littleh,
     "Msun/yr": u.Msun / u.yr,
     "K": u.K,
-    "comoving (Msun/h * (km/s) * Mpc/h)": (u.Msun / cu.littleh) * (u.km / u.s) * (u.Mpc / cu.littleh),
+    "comoving (Msun/h * (km/s) * Mpc/h)": (u.Msun / cu.littleh)
+    * (u.km / u.s)
+    * (u.Mpc / cu.littleh),
     "log10(erg/s)": u.DexUnit("erg/s"),
     "h^2 keV / (comoving cm)^3": (cu.littleh**2) * u.keV / (u.cm**3),
     "keV * cm^2": u.keV * u.cm**2,
     "cm^-3": u.cm**-3,
     "Gyr": u.Gyr,
-    "Msun/h / (comoving Mpc/h)^3": (u.Msun / cu.littleh) / (u.Mpc / cu.littleh)**3,
+    "Msun/h / (comoving Mpc/h)^3": (u.Msun / cu.littleh) / (u.Mpc / cu.littleh) ** 3,
     "Msun/h * km/s": (u.Msun / cu.littleh) * (u.km / u.s),
-    "H0^-1": (u.s * (1*u.Mpc).to(u.km).value).to(u.year) / (100 * cu.littleh),
+    "H0^-1": (u.s * (1 * u.Mpc).to(u.km).value).to(u.year) / (100 * cu.littleh),
     "m_hydrogen": m_p,
-    "Msun * (km/s)^2": (u.Msun) * (u.km / u.s)**2,
+    "Msun * (km/s)^2": (u.Msun) * (u.km / u.s) ** 2,
 }
 
 
@@ -94,6 +96,7 @@ def get_unit_transition_transformations(
         update_transformations[ttype] = unit_transformations[ttype] + existing
     return update_transformations
 
+
 def get_default_unit_transformations(file: File | Group, header: OpenCosmoHeader):
     base_unit_transformations = get_base_unit_transformations(file["data"], header)
     to_comoving_transformations = get_unit_transition_transformations(
@@ -104,7 +107,6 @@ def get_default_unit_transformations(file: File | Group, header: OpenCosmoHeader
     builders = get_column_builders(to_comoving_transformations, column_names)
 
     return builders, base_unit_transformations
-
 
 
 def get_base_unit_transformations(
@@ -204,13 +206,12 @@ def generate_attribute_unit_transformations(
             return {t.TransformationType.COLUMN: [apply_func]}
         except KeyError:
             warn(
-                f"Invalid unit {us} in column {input.name}. "
-                "Values will be unitless..."
+                f"Invalid unit {us} in column {input.name}. Values will be unitless..."
             )
             return {}
     return {}
-        
-        
+
+
 class apply_unit:
     """
     Apply a unit to an input column. Ensuring that the correct column is
@@ -224,7 +225,6 @@ class apply_unit:
         self.unit = unit
 
     def __call__(self, input: Column) -> Optional[Column]:
-
         if input.unit is None:
             return input * self.unit
         return input
@@ -232,5 +232,3 @@ class apply_unit:
     @property
     def column_name(self) -> str:
         return self.__name
-
-

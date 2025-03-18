@@ -49,14 +49,20 @@ class OutOfMemoryHandler:
             tree = self.__tree.apply_mask(mask)
 
         with h5py.File(file_path, "r") as file:
-            return InMemoryHandler(file, tree, group_name=self.__group_name, columns=columns, mask=output_mask)
+            return InMemoryHandler(
+                file,
+                tree,
+                group_name=self.__group_name,
+                columns=columns,
+                mask=output_mask,
+            )
 
     def write(
         self,
         file: h5py.File,
         mask: np.ndarray,
         columns: Iterable[str],
-        dataset_name: Optional[str] = None
+        dataset_name: Optional[str] = None,
     ) -> None:
         if self.__group is None:
             raise ValueError("This file has already been closed")

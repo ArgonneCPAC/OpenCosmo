@@ -1,13 +1,8 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import h5py
-
-try:
-    from mpi4py import MPI
-
-    from opencosmo.handler import MPIHandler
-except ImportError:
-    MPI = None  # type: ignore
 import numpy as np
 
 import opencosmo.transformations as t
@@ -16,8 +11,6 @@ from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
 from opencosmo.transformations import units as u
-
-from typing import Optional
 
 
 class Dataset:
@@ -73,7 +66,9 @@ class Dataset:
         # Also the point is that there's MORE data than just the table
         return self.__handler.get_data(builders=self.__builders, mask=self.__mask)
 
-    def write(self, file: h5py.File, dataset_name: Optional[str] = None, with_header = True) -> None:
+    def write(
+        self, file: h5py.File, dataset_name: Optional[str] = None, with_header=True
+    ) -> None:
         """
         Write the dataset to a file. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.
@@ -91,7 +86,6 @@ class Dataset:
                 "Dataset.write should not be called directly, "
                 "use opencosmo.write instead."
             )
-
 
         if with_header:
             write_header(file, self.header, dataset_name)

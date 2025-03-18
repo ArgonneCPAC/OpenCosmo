@@ -1,10 +1,14 @@
-import h5py
-from typing import Optional
-from opencosmo.header import OpenCosmoHeader
+from __future__ import annotations
+
 from collections import defaultdict
+from typing import Callable, Optional
+
+import h5py
+
+from opencosmo.header import OpenCosmoHeader
 
 
-def get_collection_type(file: h5py.File) -> type:
+def get_collection_type(file: h5py.File) -> Callable[..., DataCollection]:
     """
     Determine the type of a file containing multiple datasets. Currently
     we only support multi_simulation and particle.
@@ -14,8 +18,8 @@ def get_collection_type(file: h5py.File) -> type:
     """
     datasets = [k for k in file.keys() if k != "header"]
     if len(datasets) == 0:
-        raise ValueError('No datasets found in file.')
-    
+        raise ValueError("No datasets found in file.")
+
     if all("particle" in dataset for dataset in datasets) and "header" in file.keys():
         return ParticleCollection
 
@@ -32,9 +36,15 @@ def get_collection_type(file: h5py.File) -> type:
             dtype = config_values["data_type"][0]
             return lambda *args, **kwargs: SimulationCollection(dtype, *args, **kwargs)
         else:
-            raise ValueError("Unknown file type. It appears to have multiple datasets, but organized incorrectly")
+            raise ValueError(
+                "Unknown file type. "
+                "It appears to have multiple datasets, but organized incorrectly"
+            )
     else:
-        raise ValueError("Unknown file type. It appears to have multiple datasets, but organized incorrectly")
+        raise ValueError(
+            "Unknown file type. "
+            "It appears to have multiple datasets, but organized incorrectly"
+        )
 
 
 class DataCollection(dict):
@@ -46,10 +56,17 @@ class DataCollection(dict):
 
     In general, we want to discourage users from creating their
     own data collections (unless they are derived from one of ours)
-    because 
+    because
 
     """
-    def __init__(self, collection_type: str, header: Optional[OpenCosmoHeader] = None, *args, **kwargs):
+
+    def __init__(
+        self,
+        collection_type: str,
+        header: Optional[OpenCosmoHeader] = None,
+        *args,
+        **kwargs,
+    ):
         self.collection_type = collection_type
         self._header = header
         super().__init__(*args, **kwargs)
@@ -73,7 +90,7 @@ class DataCollection(dict):
         Write the collection to an HDF5 file.
         """
         # figure out if we have unique headers
-    
+
         if self._header is None:
             for key, dataset in self.items():
                 dataset.write(file, key)
@@ -94,6 +111,7 @@ class SimulationCollection(DataCollection):
     as the individual datasets, but maps the results across
     all of them.
     """
+
     def __init__(self, dtype: str, *args, **kwargs):
         self.dtype = dtype
         super().__init__("multi_simulation", *args, **kwargs)
@@ -120,9 +138,6 @@ class ParticleCollection(DataCollection):
     A collection of different particle species from the same
     halo.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__("particle", *args, **kwargs)
-
-
-
-

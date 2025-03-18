@@ -71,7 +71,9 @@ def test_parse_velocities(input_path):
     dataset = read(input_path)
     data = dataset.data
     cols = data.columns
-    velocity_cols = list(filter(lambda col: col.upper()[-2:] in ["VX", "VY", "VZ"], cols))
+    velocity_cols = list(
+        filter(lambda col: col.upper()[-2:] in ["VX", "VY", "VZ"], cols)
+    )
     for col in velocity_cols:
         assert data[col].unit == u.km / u.s
 
@@ -181,5 +183,3 @@ def test_unit_conversion(input_path):
 def test_invalid_unit_convention(input_path):
     with pytest.raises(ValueError):
         read(input_path).with_units("invalid_unit")
-
-

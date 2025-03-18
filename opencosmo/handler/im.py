@@ -36,9 +36,9 @@ class InMemoryHandler:
         self.__tree = tree
         self.__data = {colname: group[colname][()] for colname in self.__columns}
         if mask is not None:
-            self.__data = {colname: self.__data[colname][mask] for colname in self.__columns}
-        
-
+            self.__data = {
+                colname: self.__data[colname][mask] for colname in self.__columns
+            }
 
     def __len__(self) -> int:
         return len(next(iter(self.__data.values())))
