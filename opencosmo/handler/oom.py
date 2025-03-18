@@ -46,18 +46,24 @@ class OutOfMemoryHandler:
         file: h5py.File,
         mask: np.ndarray,
         columns: Iterable[str],
-        dataset_name="data",
+        dataset_name: Optional[str] = None
     ) -> None:
         if self.__group is None:
             raise ValueError("This file has already been closed")
-        group = file.require_group(dataset_name)
+        if dataset_name is None:
+            group = file
+        else:
+            group = file.require_group(dataset_name)
+
+        data_group = group.create_group("data")
         for column in columns:
             data = self.__group[column][mask]
-            group.create_dataset(column, data=data)
+            data_group.create_dataset(column, data=data)
             if self.__columns[column] is not None:
-                group[column].attrs["unit"] = self.__columns[column]
+                data_group[column].attrs["unit"] = self.__columns[column]
+        print(group)
         tree = self.__tree.apply_mask(mask)
-        tree.write(file)
+        tree.write(group)
 
     def get_data(
         self, builders: dict = {}, mask: Optional[np.ndarray] = None

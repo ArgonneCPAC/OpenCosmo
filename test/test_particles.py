@@ -47,7 +47,14 @@ def test_age_h0_units(input_path, tmp_path):
     assert dc.data["age"].unit == u.yr / cu.littleh
 
 
-
+def test_write_particles(input_path, tmp_path):
+    dc = oc.read(input_path)
+    new_path = tmp_path / "haloparticles.hdf5"
+    oc.write(new_path, dc)
+    new_dc = oc.read(new_path)
+    for key in dc:
+        assert key in new_dc
+        assert all(dc[key].data == new_dc[key].data)
 
 
 
