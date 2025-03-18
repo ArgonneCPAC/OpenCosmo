@@ -92,8 +92,9 @@ class Dataset:
                 "use opencosmo.write instead."
             )
 
+
         if with_header:
-            write_header(file, self.header)
+            write_header(file, self.header, dataset_name)
 
         self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
 
