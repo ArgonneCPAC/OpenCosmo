@@ -67,7 +67,8 @@ class OutOfMemoryHandler:
 
         data_group = group.create_group("data")
         for column in columns:
-            data = self.__group[column][mask]
+            data = self.__group[column][()]
+            data = data[mask]
             data_group.create_dataset(column, data=data)
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
@@ -82,10 +83,9 @@ class OutOfMemoryHandler:
             raise ValueError("This file has already been closed")
         output = {}
         for column, builder in builders.items():
-            if mask is None:
-                data = self.__group[column][()]
-            else:
-                data = self.__group[column][mask]
+            data = self.__group[column][()]
+            if mask is not None:
+                data = data[mask]
 
             col = Column(data, name=column)
             output[column] = builder.build(col)
