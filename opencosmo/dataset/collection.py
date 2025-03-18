@@ -1,6 +1,41 @@
 import h5py
 from typing import Optional
 from opencosmo.header import OpenCosmoHeader
+from collections import defaultdict
+
+
+def get_collection_type(file: h5py.File) -> type:
+    """
+    Determine the type of a file containing multiple datasets. Currently
+    we only support multi_simulation and particle.
+
+    multi_simulation == multiple simulations, same data types
+    particle == single simulation, multiple particle species
+    """
+    datasets = [k for k in file.keys() if k != "header"]
+    if len(datasets) == 0:
+        raise ValueError('No datasets found in file.')
+    
+    if all("particle" in dataset for dataset in datasets) and "header" in file.keys():
+        return ParticleCollection
+
+    elif "header" not in file.keys():
+        config_values = defaultdict(list)
+        for dataset in datasets:
+            try:
+                filetype_data = dict(file[dataset]["header"]["file"].attrs)
+                for key, value in filetype_data.items():
+                    config_values[key].append(value)
+            except KeyError:
+                continue
+        if all(len(set(v)) == 1 for v in config_values.values()):
+            dtype = config_values["data_type"][0]
+            return lambda *args, **kwargs: SimulationCollection(dtype, *args, **kwargs)
+        else:
+            raise ValueError("Unknown file type. It appears to have multiple datasets, but organized incorrectly")
+    else:
+        raise ValueError("Unknown file type. It appears to have multiple datasets, but organized incorrectly")
+
 
 class DataCollection(dict):
     """
@@ -55,8 +90,9 @@ class SimulationCollection(DataCollection):
     as the individual datasets, but maps the results across
     all of them.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__("simulation", *args, **kwargs)
+    def __init__(self, dtype: str, *args, **kwargs):
+        self.dtype = dtype
+        super().__init__("multi_simulation", *args, **kwargs)
 
 
 class ParticleCollection(DataCollection):

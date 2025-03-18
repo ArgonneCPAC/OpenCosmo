@@ -13,7 +13,7 @@ except ImportError:
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.dataset.collection import DataCollection
+from opencosmo.dataset.collection import DataCollection, get_collection_type
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import  read_header, OpenCosmoHeader
@@ -130,7 +130,7 @@ def open_multi_dataset_file(file: h5py.File) -> DataCollection:
     """
     Open a file with multiple datasets.
     """
-    dataset_type = determine_multi_dataset_type(file)
+    CollectionType = get_collection_type(file)
     try:
         header = read_header(file)
     except KeyError:
@@ -139,7 +139,7 @@ def open_multi_dataset_file(file: h5py.File) -> DataCollection:
     datasets = [k for k in file.keys() if k != "header"]
     if len(datasets) == 0:
         raise ValueError('No datasets found in file.')
-    collection = DataCollection(dataset_type, header=header)
+    collection = CollectionType(header=header)
     for dataset_name in datasets:
         collection[dataset_name] = open_single_dataset(file, dataset_name, header)
 
@@ -170,43 +170,11 @@ def open_single_dataset(file: h5py.File, dataset_key: str, header: OpenCosmoHead
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
 
 
-def determine_multi_dataset_type(file: h5py.File) -> str:
-    """
-    Determine the type of a file containing multiple datasets. Currently
-    we only support multi_simulation and particle.
-
-    multi_simulation == multiple simulations, same data types
-    particle == single simulation, multiple particle species
-    """
-    datasets = [k for k in file.keys() if k != "header"]
-    if len(datasets) == 0:
-        raise ValueError('No datasets found in file.')
-    
-    if all("particle" in dataset for dataset in datasets) and "header" in file.keys():
-        return "particle"
-
-    elif "header" not in file.keys():
-        config_values = defaultdict(list)
-        for dataset in datasets:
-            try:
-                filetype_data = dict(file[dataset]["header"]["file"].attrs)
-                for key, value in filetype_data.items():
-                    config_values[key].append(value)
-            except KeyError:
-                continue
-        if all(set(v) for v in config_values.values()):
-            return "multi_simulation"
-        else:
-            raise ValueError("Unknown file type. It appears to have multiple datasets, but organized incorrectly")
-    else:
-        raise ValueError("Unknown file type. It appears to have multiple datasets, but organized incorrectly")
-
-
 def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] = None) -> DataCollection:
     """
     Read particle data from an HDF5 file.
     """
-    dataset_type = determine_multi_dataset_type(file)
+    CollectionType = get_collection_type(file)
     try:
         header = read_header(file)
     except KeyError:
@@ -224,7 +192,7 @@ def read_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]] =
         datasets_in_file = set(requested_datasets)
 
 
-    collection = DataCollection(dataset_type, header=header)
+    collection = CollectionType(header=header)
     for dataset_name in datasets_in_file:
         collection[dataset_name] = read_single_dataset(file, dataset_name, header)
 
