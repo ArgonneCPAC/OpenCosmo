@@ -17,10 +17,6 @@ def multi_path(data_path):
 def particle_path(data_path):
     return data_path / "haloparticles.hdf5"
 
-def test_particle_read(particle_path):
-    dataset = oc.read(particle_path)
-    assert dataset.collection_type == "particle"
-
 
 
 def test_read(input_path):
@@ -36,5 +32,9 @@ def test_all_columns_included(input_path):
 
 def test_read_multi(multi_path):
     dataset = oc.read(multi_path)
-    assert isinstance(dataset, oc.DataCollection)
-    assert dataset.collection_type == "multi_simulation"
+    assert isinstance(dataset, oc.dataset.collection.SimulationCollection)
+
+def test_particle_read(particle_path):
+    dataset = oc.read(particle_path)
+    assert isinstance(dataset, oc.dataset.collection.ParticleCollection)
+
