@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_serializer, field_validator, model_validat
 
 
 def empty_string_to_none(value: str) -> Optional[str]:
-    if value == "":
+    if type(value) is str and value == "":
         return None
     return value
 
@@ -22,7 +22,7 @@ class ReformatParamters(BaseModel):
     mass_threshold_sodbighaloparticles: Optional[float] = None
     mass_threshold_sodpropertybins: Optional[float] = None
     max_level: int = 0
-    max_level_lc: Optional[int] = None
+    max_level_lc: Optional[list[tuple[int, int]]] = None
     npart_threshold_galaxyproperties: Optional[int] = None
     output_lc_path_pattern: Optional[str] = None
     rearrange_output_path_pattern: str
@@ -62,5 +62,5 @@ class ReformatParamters(BaseModel):
     @classmethod
     def empty_string_to_none(cls, data):
         if isinstance(data, dict):
-            return {k: empty_string_to_none(v) for k, v in data.items()}
+            data = {k: empty_string_to_none(v) for k, v in data.items()}
         return data

@@ -65,7 +65,7 @@ def read_simulation_parameters(file: h5py.File) -> SimulationParameters:
         )
     else:
         return parameters.read_header_attributes(
-            file, "simulation/paramters", GravityOnlySimulationParameters
+            file, "simulation/parameters", GravityOnlySimulationParameters, cosmology_parameters=cosmology_parameters
         )
 
 
@@ -79,9 +79,6 @@ class SimulationParameters(BaseModel):
     box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
     z_ini: float = Field(ge=0.01, description="Initial redshift")
     z_end: float = Field(ge=0.0, description="Final redshift")
-    n_dm: int = Field(
-        ge=2, description="Number of dark matter particles (per dimension)"
-    )
     n_gravity: Optional[int] = Field(
         ge=2, description="Number of gravity-only particles (per dimension)"
     )
@@ -89,9 +86,6 @@ class SimulationParameters(BaseModel):
     pm_grid: int = Field(ge=2, description="Grid resolution (per dimension)")
     offset_gravity_ini: Optional[float] = Field(
         description="Lagrangian offset for gravity-only particles"
-    )
-    offset_dm_ini: float = Field(
-        description="Lagrangian offset for dark matter particles"
     )
     cosmology_parameters: parameters.CosmologyParameters = Field(
         description="Cosmology parameters",
@@ -135,8 +129,14 @@ class HydroSimulationParameters(SimulationParameters):
     n_gas: int = Field(
         description="Number of gas particles (per dimension)", alias="n_bar"
     )
+    n_dm: int = Field(
+        ge=2, description="Number of dark matter particles (per dimension)"
+    )
     offset_gas_ini: float = Field(
         description="Lagrangian offset for gas particles", alias="offset_bar_ini"
+    )
+    offset_dm_ini: float = Field(
+        description="Lagrangian offset for dark matter particles"
     )
     subgrid_parameters: SubgridParameters = Field(
         description="Parameters for subgrid physics",
