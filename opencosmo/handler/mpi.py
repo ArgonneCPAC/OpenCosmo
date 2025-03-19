@@ -158,8 +158,14 @@ class MPIHandler:
             data = self.__group[column][rank_range[0] : rank_range[1]][()]
             data = data[mask]
             data_group[column][rank_start:rank_end] = data
-
-        tree = self.__tree.apply_mask(mask)
+        
+        masks = self.__comm.gather(mask, root=0)
+        if rank == 0:
+            mask = np.concatenate(masks)
+            tree = self.__tree.apply_mask(mask)
+        else:
+            tree = None
+        tree = self.__comm.bcast(tree, root=0)
         tree.write(group)
 
         self.__comm.Barrier()
@@ -186,6 +192,7 @@ class MPIHandler:
                 data = data[mask]
             col = Column(data, name=column)
             output[column] = builder.build(col)
+        self.__comm.Barrier()   
 
         if len(output) == 1:
             return next(iter(output.values()))
