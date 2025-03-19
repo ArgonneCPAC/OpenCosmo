@@ -1,11 +1,12 @@
+from pathlib import Path
+
+import h5py
 import mpi4py
 import numpy as np
 import pytest
-from pytest_mpi.parallel_assert import parallel_assert
-from pathlib import Path
-import h5py
-
 from pydantic import ValidationError
+from pytest_mpi.parallel_assert import parallel_assert
+
 import opencosmo as oc
 
 
@@ -22,9 +23,8 @@ def particle_path(data_path):
 @pytest.fixture
 def malformed_header_path(input_path, tmp_path):
     update = {"n_dm": "foo"}
-    return update_simulation_parameter(
-        input_path, update, tmp_path, "malformed_header"
-    )
+    return update_simulation_parameter(input_path, update, tmp_path, "malformed_header")
+
 
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
@@ -38,6 +38,7 @@ def update_simulation_parameter(
             for key, value in parameters.items():
                 file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
@@ -162,9 +163,8 @@ def test_write_particles(particle_path, tmp_path):
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(read_header, key)
 
+
 @pytest.mark.parallel(nprocs=4)
 def test_read_bad_header(malformed_header_path):
     with pytest.raises(ValidationError):
-        header = oc.read_header(malformed_header_path)
-
-
+        _ = oc.read_header(malformed_header_path)
