@@ -4,9 +4,13 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      '**/*.py'
   push:
     branches:
       - main
+    paths:
+      '**/*.py'
 
 jobs:
   lint-typecheck:
