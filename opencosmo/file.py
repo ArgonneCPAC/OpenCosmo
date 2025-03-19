@@ -78,9 +78,16 @@ def broadcast_read(func: H5Reader) -> H5Reader:
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         output = None
         if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
-            output = func(file, *args, **kwargs)
+            try:
+                output = func(file, *args, **kwargs)
+            except Exception as e:
+                output = e
         if MPI is not None:
+            # Broadcasting the error ensures other ranks
+            # will raise the exception and quit.
             output = MPI.COMM_WORLD.bcast(output, root=0)
+        if isinstance(output, Exception):
+            raise output
         return output
 
     return wrapper
