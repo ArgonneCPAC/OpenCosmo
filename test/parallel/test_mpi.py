@@ -168,3 +168,4 @@ def test_write_particles(particle_path, tmp_path):
 def test_read_bad_header(malformed_header_path):
     with pytest.raises(ValidationError):
         _ = oc.read_header(malformed_header_path)
+
