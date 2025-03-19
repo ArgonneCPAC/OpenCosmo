@@ -2,7 +2,10 @@ import mpi4py
 import numpy as np
 import pytest
 from pytest_mpi.parallel_assert import parallel_assert
+from pathlib import Path
+import h5py
 
+from pydantic import ValidationError
 import opencosmo as oc
 
 
@@ -15,6 +18,26 @@ def input_path(data_path):
 def particle_path(data_path):
     return data_path / "haloparticles.hdf5"
 
+
+@pytest.fixture
+def malformed_header_path(input_path, tmp_path):
+    update = {"n_dm": "foo"}
+    return update_simulation_parameter(
+        input_path, update, tmp_path, "malformed_header"
+    )
+
+def update_simulation_parameter(
+    base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
+):
+    # make a copy of the original data
+    path = tmp_path / f"{name}.hdf5"
+    with h5py.File(base_cosmology_path, "r") as f:
+        with h5py.File(path, "w") as file:
+            f.copy(f["header"], file, "header")
+            # update the attributes
+            for key, value in parameters.items():
+                file["header"]["simulation"]["parameters"].attrs[key] = value
+    return path
 
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
@@ -138,3 +161,10 @@ def test_write_particles(particle_path, tmp_path):
         for model in models:
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(read_header, key)
+
+@pytest.mark.parallel(nprocs=4)
+def test_read_bad_header(malformed_header_path):
+    with pytest.raises(ValidationError):
+        header = oc.read_header(malformed_header_path)
+
+
