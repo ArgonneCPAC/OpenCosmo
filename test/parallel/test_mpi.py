@@ -4,7 +4,6 @@ import h5py
 import mpi4py
 import numpy as np
 import pytest
-from pydantic import ValidationError
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
