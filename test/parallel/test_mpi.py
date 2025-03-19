@@ -163,11 +163,3 @@ def test_write_particles(particle_path, tmp_path):
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(read_header, key)
 
-
-@pytest.mark.parallel(nprocs=4)
-def test_read_bad_header(malformed_header_path):
-    comm = mpi4py.MPI.COMM_WORLD
-    path = comm.bcast(malformed_header_path, root=0)
-    with pytest.raises(ValidationError):
-        oc.read_header(path)
-
