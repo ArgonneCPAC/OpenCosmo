@@ -155,8 +155,9 @@ jobs:
       - name: install python
         uses: actions/setup-python@v4
         with:
-          id: setup-python
           python-version: ${{ matrix.python-version }}
+          cache: pip
+
       - name: build hdf5 in paralell
         run: |
           CC="mpicc" HDF5_MPI="ON" poetry run pip install --no-binary=h5py h5py

@@ -166,6 +166,8 @@ def test_write_particles(particle_path, tmp_path):
 
 @pytest.mark.parallel(nprocs=4)
 def test_read_bad_header(malformed_header_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    path = comm.bcast(malformed_header_path, root=0)
     with pytest.raises(ValidationError):
-        _ = oc.read_header(malformed_header_path)
+        oc.read_header(path)
 
