@@ -2,6 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel, model_validator
 
+
 def empty_string_to_none(value: str) -> Optional[str]:
     if type(value) is str and value == "":
         return None
@@ -20,6 +21,7 @@ class CosmoToolsParameters(BaseModel):
     galaxy_dbscan_neighbors: Optional[int]
     galaxy_aperture_radius: Optional[int]
     galaxy_pmin: Optional[int]
+
     @model_validator(mode="before")
     @classmethod
     def empty_string_to_none(cls, data):

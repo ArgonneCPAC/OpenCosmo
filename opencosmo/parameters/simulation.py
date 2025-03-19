@@ -65,7 +65,10 @@ def read_simulation_parameters(file: h5py.File) -> SimulationParameters:
         )
     else:
         return parameters.read_header_attributes(
-            file, "simulation/parameters", GravityOnlySimulationParameters, cosmology_parameters=cosmology_parameters
+            file,
+            "simulation/parameters",
+            GravityOnlySimulationParameters,
+            cosmology_parameters=cosmology_parameters,
         )
 
 
