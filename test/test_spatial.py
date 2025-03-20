@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 import opencosmo as oc
 
@@ -16,14 +17,18 @@ def test_filter_write(input_path, tmp_path):
         size_unfiltered = len(f.data)
 
     ds = oc.read(tmp_file)
-    slices = ds._Dataset__handler._InMemoryHandler__tree._Tree__slices
+    starts = ds._Dataset__handler._InMemoryHandler__tree._Tree__starts
+    sizes = ds._Dataset__handler._InMemoryHandler__tree._Tree__sizes
     size = len(ds.data)
     assert size < size_unfiltered
 
     def is_valid(sl, size):
         return sl.stop > sl.start and sl.start >= 0 and sl.stop <= size
 
-    for level in slices:
-        slice_total = sum((s.stop - s.start) for s in slices[level].values())
+    for level in range(len(starts)):
+        slice_total = np.sum(sizes[level])
+
+
         assert slice_total == size
-        assert all(is_valid(s, size) for s in slices[level].values())
+        assert np.all(np.cumsum(np.insert(sizes[level], 0, 0))[:-1] == starts[level])
+        
