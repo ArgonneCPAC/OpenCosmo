@@ -161,4 +161,3 @@ def test_write_particles(particle_path, tmp_path):
         for model in models:
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(read_header, key)
-

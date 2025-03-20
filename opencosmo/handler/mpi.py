@@ -126,7 +126,10 @@ class MPIHandler:
 
         rank_range = self.elem_range()
         rank_output_length = np.sum(mask)
+
         all_output_lengths = self.__comm.allgather(rank_output_length)
+        all_input_lengths = self.__comm.allgather(len(mask))
+
         rank = self.__comm.Get_rank()
 
         # Determine the number of elements this rank is responsible for
@@ -158,15 +161,33 @@ class MPIHandler:
             data = self.__group[column][rank_range[0] : rank_range[1]][()]
             data = data[mask]
             data_group[column][rank_start:rank_end] = data
-        
-        masks = self.__comm.gather(mask, root=0)
+
+        displacements = np.insert(np.cumsum(all_input_lengths[:-1]), 0, 0)
         if rank == 0:
-            mask = np.concatenate(masks)
+            recvbuf = np.empty(sum(all_input_lengths), dtype=np.uint8)
+            self.__comm.Gatherv(
+                sendbuf=mask.view(np.uint8),
+                recvbuf=(
+                    recvbuf.view(np.uint8),
+                    all_input_lengths,
+                    displacements,
+                    MPI.BYTE,
+                ),
+                root=0,
+            )
+        else:
+            self.__comm.Gatherv(
+                sendbuf=mask.view(np.uint8), recvbuf=(None, None, None, None), root=0
+            )
+
+        if rank == 0:
+            mask = recvbuf.astype(bool)
             tree = self.__tree.apply_mask(mask)
         else:
             tree = None
         tree = self.__comm.bcast(tree, root=0)
-        tree.write(group)
+        #
+        tree.write(group)  # type: ignore
 
         self.__comm.Barrier()
 
@@ -192,7 +213,7 @@ class MPIHandler:
                 data = data[mask]
             col = Column(data, name=column)
             output[column] = builder.build(col)
-        self.__comm.Barrier()   
+        self.__comm.Barrier()
 
         if len(output) == 1:
             return next(iter(output.values()))
