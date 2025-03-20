@@ -17,19 +17,19 @@ def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
     index and a slice into the data.
     """
     max_level = header.reformat.max_level
-    data_indices = OrderedDict()
+    starts = {}
+    sizes = {}
+
 
     for level in range(max_level + 1):
         group = file[f"index/level_{level}"]
-        starts = group["start"][()]
-        sizes = group["size"][()]
-        level_indices = {}
-        for i, (start, size) in enumerate(zip(starts, sizes)):
-            level_indices[i] = slice(start, start + size)
-        data_indices[level] = level_indices
+        level_starts = group["start"][()]
+        level_sizes = group["size"][()]
+        starts[level] = level_starts
+        sizes[level] = level_sizes
 
     spatial_index = OctTreeIndex(header.simulation, max_level)
-    return Tree(spatial_index, data_indices)
+    return Tree(spatial_index, starts, sizes)
 
 
 def write_tree(file: h5py.File, tree: Tree, dataset_name: str = "index"):
@@ -43,9 +43,11 @@ class Tree:
     spatial queries
     """
 
-    def __init__(self, index: SpatialIndex, slices: dict[int, dict[int, slice]]):
+    def __init__(self, index: SpatialIndex, starts: dict[int], sizes: dict[int]):
         self.__index = index
-        self.__slices = slices
+        self.__starts = starts
+        self.__sizes = sizes
+
 
     def apply_mask(self, mask: np.ndarray) -> Tree:
         """
@@ -55,19 +57,34 @@ class Tree:
 
         The mask will have the same shape as the original data.
         """
+
         if np.all(mask):
             return self
-        new_slices = {}
-        for level, slices in self.__slices.items():
-            lengths = [np.sum(mask[s]) for s in slices.values()]
-            new_starts = np.cumsum([0] + lengths[:-1])
-            new_slices[level] = {
-                i: slice(new_starts[i], new_starts[i] + lengths[i])
-                for i in range(len(lengths))
-                if lengths[i] > 0
-            }
-        return Tree(self.__index, new_slices)
+        output_starts = {}
+        output_sizes = {}
+        for level in self.__starts:
+            start = self.__starts[level]
+            size = self.__sizes[level]
+            offsets = np.zeros_like(size)
+            for i in range(len(start)):
+                # Create a slice object for the current level
+                s = slice(start[i], start[i] + size[i])
+                slice_mask = mask[s]  # Apply the slice to the mask
+                offsets[i] = np.sum(slice_mask)  # Count the number of True values
+            level_starts = np.cumsum(np.insert(offsets, 0, 0))[:-1]  # Cumulative sum to get new starts
+            level_sizes = offsets
+            output_starts[level] = level_starts
+            output_sizes[level] = level_sizes
 
+        return Tree(self.__index, output_starts, output_sizes)
+
+
+
+                # Apply the mask to get the new slice
+
+
+    
+        
     def write(self, file: h5py.File, dataset_name: str = "index"):
         """
         Write the tree to an HDF5 file. Note that this function
@@ -76,9 +93,7 @@ class Tree:
         necessary.
         """
         group = file.require_group(dataset_name)
-        for level, slices in self.__slices.items():
+        for level in self.__starts:
             level_group = group.require_group(f"level_{level}")
-            start = np.array([s.start for s in slices.values()])
-            size = np.array([s.stop - s.start for s in slices.values()])
-            level_group.create_dataset("start", data=start)
-            level_group.create_dataset("size", data=size)
+            level_group.create_dataset("start", data=self.__starts[level])
+            level_group.create_dataset("size", data=self.__sizes[level])
