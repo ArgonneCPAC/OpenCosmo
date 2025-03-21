@@ -8,7 +8,7 @@ from mpi4py import MPI
 
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
-from opencosmo.spatial.tree import Tree
+from opencosmo.spatial.tree import Tree, pack_masked_ranges
 
 
 def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
@@ -162,32 +162,9 @@ class MPIHandler:
             data = data[mask]
             data_group[column][rank_start:rank_end] = data
 
-        displacements = np.insert(np.cumsum(all_input_lengths[:-1]), 0, 0)
-        if rank == 0:
-            recvbuf = np.empty(sum(all_input_lengths), dtype=np.uint8)
-            self.__comm.Gatherv(
-                sendbuf=mask.view(np.uint8),
-                recvbuf=(
-                    recvbuf.view(np.uint8),
-                    all_input_lengths,
-                    displacements,
-                    MPI.BYTE,
-                ),
-                root=0,
-            )
-        else:
-            self.__comm.Gatherv(
-                sendbuf=mask.view(np.uint8), recvbuf=(None, None, None, None), root=0
-            )
-
-        if rank == 0:
-            mask = recvbuf.astype(bool)
-            tree = self.__tree.apply_mask(mask)
-        else:
-            tree = None
-        tree = self.__comm.bcast(tree, root=0)
-        #
-        tree.write(group)  # type: ignore
+        new_tree = self.__tree.apply_mask(mask, self.__comm, self.elem_range())
+        
+        new_tree.write(group)  # type: ignore
 
         self.__comm.Barrier()
 
