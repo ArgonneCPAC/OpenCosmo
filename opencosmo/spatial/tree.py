@@ -5,6 +5,11 @@ from collections import OrderedDict
 import h5py
 import numpy as np
 
+try:
+    from mpi4py import MPI
+except ImportError:
+    MPI = None
+
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial.index import SpatialIndex
 from opencosmo.spatial.octree import OctTreeIndex
@@ -35,6 +40,46 @@ def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
 def write_tree(file: h5py.File, tree: Tree, dataset_name: str = "index"):
     tree.write(file, dataset_name)
 
+def apply_range_mask(mask: np.ndarray, range_: tuple[int, int], starts: dict[int, np.ndarray], sizes: dict[int, np.ndarray]) -> dict[int, tuple[int, np.ndarray]]:
+    """
+    Given an index range, apply a mask of the same size to produces new sizes.
+    """
+    output_sizes = {}
+    for level, st in starts.items():
+        ends = st + sizes[level]
+        # Not in range if the end is less than start, or the start is greater than end
+        overlaps_mask = ~((st > range_[1]) | (ends < range_[0]))
+        # The first start may be less thank the range start so
+        first_start_index = np.argmax(overlaps_mask)
+        st = st[overlaps_mask]
+        st[0] = range_[0]
+        st = st - range_[0]
+        # Determine how many true values are in the mask in the ranges
+        new_sizes = np.fromiter((np.sum(a) for a in np.split(mask, st[1:])), dtype=int)
+        output_sizes[level] = (first_start_index, new_sizes)
+    return output_sizes
+
+def pack_masked_ranges(old_starts: dict[int, np.ndarray], new_sizes: list[dict[int, tuple[int, np.ndarray]]]) -> dict[int, np.ndarray]:
+    """
+    Given a list of masked ranges, pack them into a new set of sizes.
+    """
+    output_starts = {}
+    output_sizes = {}
+    for level in new_sizes[0]:
+        new_level_sizes = np.zeros_like(old_starts[level])
+        new_start_info = [rm[level] for rm in new_sizes]
+        for (first_idx, sizes) in new_start_info:
+            new_level_sizes[first_idx:first_idx + len(sizes)] += sizes
+        output_sizes[level] = new_level_sizes
+        output_starts[level] = np.cumsum(np.insert(new_level_sizes, 0, 0))[:-1]
+    
+    return output_starts, output_sizes
+
+
+
+
+
+
 
 class Tree:
     """
@@ -43,13 +88,13 @@ class Tree:
     spatial queries
     """
 
-    def __init__(self, index: SpatialIndex, starts: dict[int], sizes: dict[int]):
+    def __init__(self, index: SpatialIndex, starts: dict[int, np.ndarray], sizes: dict[int, np.ndarray]):
         self.__index = index
         self.__starts = starts
         self.__sizes = sizes
 
 
-    def apply_mask(self, mask: np.ndarray) -> Tree:
+    def apply_mask(self, mask: np.ndarray, comm: MPI.Comm = None, range_ = None) -> Tree:
         """
         Given a boolean mask, create a new tree with slices adjusted to
         only include the elements where the mask is True. This is used
@@ -58,6 +103,8 @@ class Tree:
         The mask will have the same shape as the original data.
         """
 
+        if comm is not None:
+            return self.__apply_rank_mask(mask, comm, range_)
         if np.all(mask):
             return self
         output_starts = {}
@@ -78,18 +125,24 @@ class Tree:
 
         return Tree(self.__index, output_starts, output_sizes)
 
-
-
-                # Apply the mask to get the new slice
-
-
-    
+    def __apply_rank_mask(self, mask: np.ndarray, comm: MPI.Comm, range_: tuple[int, int]) -> Tree:
+        """
+        Given a range and a mask, apply the mask to the tree. The mask
+        will have the same shape as the original data.
+        """
+        new_sizes = apply_range_mask(mask, range_, self.__starts, self.__sizes)
+        all_new_sizes = comm.allgather(new_sizes)
+        new_starts, new_sizes = pack_masked_ranges(self.__starts, all_new_sizes)
+        return Tree(self.__index, new_starts, new_sizes)
         
     def write(self, file: h5py.File, dataset_name: str = "index"):
         """
         Write the tree to an HDF5 file. Note that this function
         is not responsible for applying masking. The routine calling this
-        function should first create a new tree with apply_mask if
+        funct
+        MPI = None
+        MPI = None
+        MPI = Noneion should first create a new tree with apply_mask if
         necessary.
         """
         group = file.require_group(dataset_name)

@@ -91,13 +91,28 @@ def test_filter_write(input_path, tmp_path):
 
     ds = oc.open(input_path)
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
+
+
+
     oc.write(temporary_path, ds)
     data = ds.collect().data
     ds.close()
 
     ds = oc.read(temporary_path)
     written_data = ds.data
+
+    handler = ds._Dataset__handler
+    tree = handler._InMemoryHandler__tree
+    starts = tree._Tree__starts
+    sizes = tree._Tree__sizes
+
     parallel_assert(lambda: np.all(data == written_data))
+    for level in sizes:
+        parallel_assert(lambda: np.sum(sizes[level]) == len(handler))
+        parallel_assert(lambda: starts[level][0] == 0)
+        if level > 0:
+            sizes_from_starts = np.diff(np.append(starts[level], len(handler)))
+            parallel_assert(lambda: np.all(sizes_from_starts == sizes[level]))
 
 
 @pytest.mark.parallel(nprocs=4)

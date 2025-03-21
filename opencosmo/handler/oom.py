@@ -89,9 +89,10 @@ class OutOfMemoryHandler:
             raise ValueError("This file has already been closed")
         output = {}
         for column, builder in builders.items():
-            data = self.__group[column][()]
             if mask is not None:
-                data = data[mask]
+                data = self.__group[column][mask]
+            else:
+                data = self.__group[column][()]
 
             col = Column(data, name=column)
             output[column] = builder.build(col)
