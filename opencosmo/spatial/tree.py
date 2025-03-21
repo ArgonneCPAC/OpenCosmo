@@ -20,13 +20,23 @@ def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
     Read a tree from an HDF5 file and the associated
     header. The tree is just a mapping between a spatial
     index and a slice into the data.
+
+    Note: The max level in the header may not actually match
+    the max level in the file. When a large dataset is filtered down,
+    we may reduce the tree level to save space in the output file.
+
+    The max level in the header is the maximum level in the full
+    dataset, so this is the HIGHEST it can be.
     """
     max_level = header.reformat.max_level
     starts = {}
     sizes = {}
 
     for level in range(max_level + 1):
-        group = file[f"index/level_{level}"]
+        try:
+            group = file[f"index/level_{level}"]
+        except KeyError:
+            break
         level_starts = group["start"][()]
         level_sizes = group["size"][()]
         starts[level] = level_starts
@@ -50,7 +60,17 @@ def apply_range_mask(
     Given an index range, apply a mask of the same size to produces new sizes.
     """
     output_sizes = {}
+    max_level = 0
+    for level in starts:
+        level_sizes = sizes[level]
+        nonzero = level_sizes[level_sizes > 0]
+        if np.average(nonzero) < 500:
+            break
+        max_level += 1
+
     for level, st in starts.items():
+        if level > max_level:
+            break
         ends = st + sizes[level]
         # Not in range if the end is less than start, or the start is greater than end
         overlaps_mask = ~((st > range_[1]) | (ends < range_[0]))
