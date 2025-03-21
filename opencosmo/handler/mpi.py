@@ -8,7 +8,7 @@ from mpi4py import MPI
 
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
-from opencosmo.spatial.tree import Tree, pack_masked_ranges
+from opencosmo.spatial.tree import Tree
 
 
 def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
@@ -128,7 +128,6 @@ class MPIHandler:
         rank_output_length = np.sum(mask)
 
         all_output_lengths = self.__comm.allgather(rank_output_length)
-        all_input_lengths = self.__comm.allgather(len(mask))
 
         rank = self.__comm.Get_rank()
 
@@ -163,7 +162,7 @@ class MPIHandler:
             data_group[column][rank_start:rank_end] = data
 
         new_tree = self.__tree.apply_mask(mask, self.__comm, self.elem_range())
-        
+
         new_tree.write(group)  # type: ignore
 
         self.__comm.Barrier()
