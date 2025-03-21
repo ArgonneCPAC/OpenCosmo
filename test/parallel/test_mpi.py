@@ -92,8 +92,6 @@ def test_filter_write(input_path, tmp_path):
     ds = oc.open(input_path)
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
 
-
-
     oc.write(temporary_path, ds)
     data = ds.collect().data
     ds.close()

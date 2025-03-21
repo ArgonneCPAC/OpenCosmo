@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 
 import opencosmo as oc
 
@@ -28,7 +28,5 @@ def test_filter_write(input_path, tmp_path):
     for level in range(len(starts)):
         slice_total = np.sum(sizes[level])
 
-
         assert slice_total == size
         assert np.all(np.cumsum(np.insert(sizes[level], 0, 0))[:-1] == starts[level])
-        
