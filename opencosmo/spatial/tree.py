@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from typing import Optional
 
 import h5py
 import numpy as np
-from typing import Optional
 
 try:
     from mpi4py import MPI
@@ -60,17 +60,8 @@ def apply_range_mask(
     Given an index range, apply a mask of the same size to produces new sizes.
     """
     output_sizes = {}
-    max_level = 0
-    for level in starts:
-        level_sizes = sizes[level]
-        nonzero = level_sizes[level_sizes > 0]
-        if np.average(nonzero) < 500:
-            break
-        max_level += 1
 
     for level, st in starts.items():
-        if level > max_level:
-            break
         ends = st + sizes[level]
         # Not in range if the end is less than start, or the start is greater than end
         overlaps_mask = ~((st > range_[1]) | (ends < range_[0]))
@@ -88,9 +79,17 @@ def apply_range_mask(
 def pack_masked_ranges(
     old_starts: dict[int, np.ndarray],
     new_sizes: list[dict[int, tuple[int, np.ndarray]]],
+    min_level_size: int = 500,
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
     """
     Given a list of masked ranges, pack them into a new set of sizes.
+    This is used when working with MPI, and allows us to avoid sending
+    very large masks between ranks.
+
+    For queries that return a small fraction of the data, we can end up
+    writing a lot of zeros in the lower levels of the tree. So we can
+    dynamically choose to stop writing levels when the average size of
+    the level is below a certain threshold
     """
     output_starts = {}
     output_sizes = {}
@@ -99,6 +98,10 @@ def pack_masked_ranges(
         new_start_info = [rm[level] for rm in new_sizes]
         for first_idx, sizes in new_start_info:
             new_level_sizes[first_idx : first_idx + len(sizes)] += sizes
+
+        avg_size = np.mean(new_level_sizes[new_level_sizes > 0])
+        if avg_size < min_level_size:
+            break
         output_sizes[level] = new_level_sizes
         output_starts[level] = np.cumsum(np.insert(new_level_sizes, 0, 0))[:-1]
 
