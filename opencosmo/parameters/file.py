@@ -5,9 +5,11 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 class FileType(Enum):
     galaxy_properties = "galaxy_properties"
+    galaxy_particles = "galaxy_particles"
     halo_properties = "halo_properties"
     halo_profiles = "halo_profiles"
     halo_particles = "halo_particles"
+
 
 
 class FileParameters(BaseModel):

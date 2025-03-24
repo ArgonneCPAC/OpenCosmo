@@ -29,7 +29,6 @@ def file_reader(func: FileReader) -> FileReader:
     decorator.
     """
 
-    @wraps(func)
     def wrapper(file: h5py.File | h5py.Group | Path | str, *args, **kwargs):
         if not isinstance(file, h5py.File | h5py.Group):
             path = resolve_path(file, FileExistance.MUST_EXIST)
