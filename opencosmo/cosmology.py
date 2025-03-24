@@ -5,7 +5,7 @@ import h5py
 from astropy import cosmology  # type: ignore
 
 from opencosmo.file import broadcast_read, file_reader
-from opencosmo.header import read_header
+from opencosmo import header
 from opencosmo.parameters import CosmologyParameters
 
 """
@@ -36,10 +36,10 @@ def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
         The cosmology object corresponding to the cosmology in the file
     """
 
-    header = read_header(file)
+    head = header.read_header(file)
     # The header reads parameters and calls into the code
     # below to produce an actual cosmology object.
-    return header.cosmology
+    return head.cosmology
 
 
 def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:

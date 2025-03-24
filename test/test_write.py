@@ -1,7 +1,7 @@
 import pytest
 
-from opencosmo import col, read, read_header, write
-from opencosmo.header import write_header
+from opencosmo import col, read,  write
+from opencosmo.header import read_header, write_header
 
 
 @pytest.fixture
