@@ -23,10 +23,14 @@ class Dataset:
         mask: np.ndarray,
     ):
         self.__handler = handler
-        self.header = header
+        self.__header = header
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
         self.__mask = mask
+
+    @property
+    def header(self) -> OpenCosmoHeader:
+        return self.__header
 
     def __repr__(self):
         """
