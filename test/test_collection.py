@@ -37,6 +37,10 @@ def test_multi_filter_write(multi_path, tmp_path):
 
 def test_data_linking(all_path):
     collection = oc.collection.collection.LinkedCollection.from_files(*all_path)
-    print(collection)
-    assert False
+    for particles in collection.iter_linked("dm_particles"):
+        if particles is not None:
+            print(particles)
+            assert False
+            
+
 

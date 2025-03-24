@@ -5,8 +5,11 @@ from typing import Callable, Optional
 from pathlib import Path
 
 import h5py
+import numpy as np
+
 
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.dataset.mask import Mask
 import opencosmo as oc
 from .link import verify_links, get_links
 
@@ -24,7 +27,7 @@ def get_collection_type(file: h5py.File) -> Callable[..., DataCollection]:
         raise ValueError("No datasets found in file.")
 
     if all("particle" in dataset for dataset in datasets) and "header" in file.keys():
-        return ParticleCollection
+        return lambda *args, **kwargs: DataCollection("particle", *args, **kwargs)
 
     elif "header" not in file.keys():
         config_values = defaultdict(list)
@@ -112,19 +115,50 @@ class FileHandle:
         self.handle = h5py.File(path, "r")
         self.header = read_header(self.handle)
 
-
 class LinkedCollection(DataCollection):
     """
     A collection of datasets that are linked together, allowing
     for cross-matching and other operations to be performed.
+
+    For now, these are always a combination of a properties dataset
+    and some other set of datasetes (particles and/or profiles).
     """
-    def __init__(self, header: OpenCosmoHeader, datasets: dict, links: dict, *args, **kwargs):
+    def __init__(self, header: OpenCosmoHeader, properties: oc.Dataset, datasets: dict, links: dict, *args, **kwargs):
         """
         Initialize a linked collection with the provided datasets and links.
         """
-        super().__init__("linked", header=header, *args, **kwargs)
-        self.links = links
-        self.update(datasets)
+        super().__init__("linked", header, *args, **kwargs)
+        self.__properties = properties
+        self.__datasets = {}
+        self[properties.header.file.data_type] = properties
+        for dtype, dataset in datasets.items():
+            if isinstance(dataset, DataCollection):
+                self.__datasets.update(dataset)
+            else:
+                self.__datasets[dtype] = dataset
+        self.__linked = links
+        self.__idxs = np.where(self.__properties.mask)[0]
+        self.update(self.__datasets)
+
+    def __get_linked(self, dtype: str, index: int):
+        if dtype not in self.__linked:
+            raise ValueError(f"No links found for {dtype}")
+        elif index >= len(self.__properties):
+            raise ValueError(f"Index {index} out of range for {dtype}")
+        # find the index into the linked dataset at the mask index
+        linked_index = self.__idxs[index]
+        try: 
+            start = self.__linked[dtype]["start_index"][linked_index]
+            size = self.__linked[dtype]["length"][linked_index]
+        except IndexError:
+            start = self.__linked[dtype][linked_index]
+            size = 1
+            
+
+        
+        if start == -1 or size == -1:
+            return None
+        return self.__datasets[dtype].get_range(start, start + size)
 
     @classmethod
     def from_files(cls, *files: Path):
@@ -144,8 +178,45 @@ class LinkedCollection(DataCollection):
             raise ValueError("No valid links found in files")
 
         datasets = {ds.header.file.data_type: ds for ds in datasets}
-        return cls(file_handles[0].header, datasets, links)
+        properties_file = datasets.pop(next(iter(link_spec)))
+        return cls(file_handles[0].header, properties_file, datasets, next(iter(links.values())))
 
+    def iter_linked(self, dtypes: Optional[str | list[str]] = None):
+        """
+        Iterate over the datasets in the collection that are linked to the
+        provided data types. This is a generator that yields the linked
+        datasets.
+        """
+        
+        if dtypes is None:
+            dtypes = list(self.__linked.keys())
+        elif isinstance(dtypes, str):
+            dtypes = [dtypes]
+        if not all(dtype in self.__linked for dtype in dtypes):
+            raise ValueError("One or more of the provided data types is not linked")
+        
+        ndtypes = len(dtypes)
+        for i in range(len(self.__properties)):
+            results = {dtype: self.__get_linked(dtype, i) for dtype in dtypes}
+            if ndtypes == 1:
+                yield results[dtypes[0]]
+            else:
+                yield results
+
+    def filter(self, *masks: Mask):
+        """
+        Filter the datasets in the collection by the provided masks.
+        """
+        new_properties = self.__properties.filter(*masks)
+        return LinkedCollection(self.header, new_properties, self.__datasets, self.__linked)
+    
+    def take(self, n: int, at: str = "start"):
+        new_properties = self.__properties.take(n, at)
+        return LinkedCollection(self.header, new_properties, self.__datasets, self.__linked)
+
+    
+    
+    
 class SimulationCollection(DataCollection):
     """
     A collection of datasets of the same type from different
@@ -175,15 +246,3 @@ class SimulationCollection(DataCollection):
             raise AttributeError(f"Attribute {name} not found on {self.dtype} dataset")
 
 
-class ParticleCollection(DataCollection):
-    """
-    A collection of different particle species from the same
-    halo.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__("particle", *args, **kwargs)
-
-    def collect(self):
-        data = {k: v.collect() for k, v in self.items()}
-        return ParticleCollection(header=self._header, **data)

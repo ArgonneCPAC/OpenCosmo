@@ -4,6 +4,9 @@ from typing import Optional
 
 import h5py
 import numpy as np
+from copy import copy
+
+from astropy.table import Table
 
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
@@ -31,6 +34,10 @@ class Dataset:
     @property
     def header(self) -> OpenCosmoHeader:
         return self.__header
+
+    @property
+    def mask(self) -> np.ndarray:
+        return self.__mask
 
     def __repr__(self):
         """
@@ -96,7 +103,40 @@ class Dataset:
 
         self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
 
-    def filter(self, *masks: Mask) -> Dataset:
+    def get_range(self, start: int, end: int) -> Table:
+        """
+        Get a range of rows from the dataset.
+
+        Parameters
+        ----------
+        start : int
+            The first row to get.
+        end : int
+            The last row to get.
+
+        Returns
+        -------
+        table : astropy.table.Table
+            The table with only the rows from start to end.
+
+        Raises
+        ------
+        ValueError
+            If start or end are negative, or if end is greater than start.
+
+        """
+        if start < 0 or end < 0:
+            raise ValueError("start and end must be positive.")
+        if end < start:
+            raise ValueError("end must be greater than start.")
+        if end > len(self):
+            raise ValueError("end must be less than the length of the dataset.")
+
+        return self.__handler.get_range(
+            start, end, self.__builders, self.__mask
+        )
+
+    def filter(self, *masks: Mask, boolean_filter: np.ndarray = None) -> Dataset:
         """
         Filter the dataset based on some criteria.
 
@@ -117,9 +157,20 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        new_mask = apply_masks(self.__handler, self.__builders, masks, self.__mask)
-        if np.sum(new_mask) == 0:
-            raise ValueError(" would return zero rows.")
+        if boolean_filter is not None:
+            if len(boolean_filter) != sum(self.__mask):
+                raise ValueError(
+                    "Boolean filter must be the same length as the dataset."
+                )
+            elif boolean_filter.dtype != bool:
+                raise ValueError("Boolean filter must be a boolean array.")
+            new_mask = copy(self.__mask)
+            new_mask[self.__mask] = boolean_filter
+
+        else:
+            new_mask = apply_masks(self.__handler, self.__builders, masks, self.__mask)
+            if np.sum(new_mask) == 0:
+                raise ValueError(" would return zero rows.")
 
         return Dataset(
             self.__handler,
@@ -273,3 +324,4 @@ class Dataset:
             self.__base_unit_transformations,
             new_mask,
         )
+

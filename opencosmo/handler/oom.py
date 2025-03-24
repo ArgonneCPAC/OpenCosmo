@@ -89,16 +89,32 @@ class OutOfMemoryHandler:
             raise ValueError("This file has already been closed")
         output = {}
         for column, builder in builders.items():
+            data = self.__group[column][()]
             if mask is not None:
-                data = self.__group[column][mask]
-            else:
-                data = self.__group[column][()]
+                data = data[mask]
 
             col = Column(data, name=column)
             output[column] = builder.build(col)
 
         if len(output) == 1:
             return next(iter(output.values()))
+        return Table(output)
+
+    def get_range(
+        self, start: int, end: int, builders: dict = {}, mask: Optional[np.ndarray] = None
+    ) -> dict[str, tuple[float, float]]:
+        if self.__group is None:
+            raise ValueError("This file has already been closed")
+        output = {}
+        idxs = np.where(mask)[0]
+        start_idx = idxs[start]
+        end_idx = idxs[end]
+        for column, builder in builders.items():
+            data = self.__group[column][start_idx:end_idx]
+            data = data[mask[start_idx:end_idx]]
+            col = Column(data, name=column)
+            output[column] = builder.build(col)
+
         return Table(output)
 
     def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
