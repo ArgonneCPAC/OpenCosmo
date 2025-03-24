@@ -4,7 +4,7 @@ import astropy.cosmology as ac
 import h5py
 import pytest
 
-from opencosmo import read_cosmology
+from opencosmo.cosmology import read_cosmology
 
 
 @pytest.fixture

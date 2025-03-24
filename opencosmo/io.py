@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.dataset.collection import DataCollection, get_collection_type
+from opencosmo.collection.collection import DataCollection, get_collection_type
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header
