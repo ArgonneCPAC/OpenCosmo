@@ -99,7 +99,9 @@ class Mask:
         mask the dataset based on the mask.
         """
         # Astropy's errors are good enough here
-        if not isinstance(self.value, u.Quantity) and column.unit is not None:
-            self.value *= column.unit
+        value = self.value
+        if not isinstance(value, u.Quantity) and column.unit is not None:
+            value *= column.unit
+            
         # mypy can't reason about columns correctly
-        return self.operator(column, self.value)  # type: ignore
+        return self.operator(column, value)
