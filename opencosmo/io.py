@@ -74,7 +74,7 @@ def open(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file_handle, header
     )
-    mask = np.ones(len(handler), dtype=bool)
+    mask = np.arange(len(handler))
 
     dataset = oc.Dataset(handler, header, builders, base_unit_transformations, mask)
     return dataset
@@ -110,7 +110,7 @@ def read(
     header = read_header(file)
     tree = read_tree(file, header)
     handler = InMemoryHandler(file, tree)
-    mask = np.ones(len(handler), dtype=bool)
+    mask = np.arange(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file, header
     )
@@ -178,7 +178,7 @@ def open_single_dataset(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header
     )
-    mask = np.ones(len(handler), dtype=bool)
+    mask = np.arange(len(handler))
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
 
 
@@ -231,5 +231,5 @@ def read_single_dataset(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header
     )
-    mask = np.ones(len(handler), dtype=bool)
+    mask = np.arange(len(handler))
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)

@@ -118,7 +118,7 @@ def test_write_collection(particle_path, tmp_path):
     ds = oc.open(particle_path)
     oc.write(tmp_path / "haloparticles.hdf5", ds)
     models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
-    header = ds._header
+    header = ds.header
 
     with oc.open(tmp_path / "haloparticles.hdf5") as new_ds:
         # select 100 rows at random
@@ -129,7 +129,7 @@ def test_write_collection(particle_path, tmp_path):
                 ds[key].take(100, "end").data == new_ds[key].take(100, "end").data
             )
 
-        new_header = new_ds._header
+        new_header = new_ds.header
         for model in models:
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(new_header, key)

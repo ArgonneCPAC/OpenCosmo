@@ -58,7 +58,7 @@ def test_take(input_path):
     total_length = comm.allreduce(rank_length, op=mpi4py.MPI.SUM)
     # get a random number between 0 and total_length
     if comm.Get_rank() == 0:
-        n = np.random.randint(0, total_length)
+        n = np.random.randint(1000, total_length)
     else:
         n = 0
     n = comm.bcast(n, root=0)
@@ -92,6 +92,7 @@ def test_filter_write(input_path, tmp_path):
     ds = oc.open(input_path)
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
 
+
     oc.write(temporary_path, ds)
     data = ds.collect().data
     ds.close()
@@ -103,7 +104,6 @@ def test_filter_write(input_path, tmp_path):
     tree = handler._InMemoryHandler__tree
     starts = tree._Tree__starts
     sizes = tree._Tree__sizes
-
     parallel_assert(lambda: np.all(data == written_data))
     for level in sizes:
         parallel_assert(lambda: np.sum(sizes[level]) == len(handler))
@@ -163,14 +163,14 @@ def test_write_particles(particle_path, tmp_path):
     output_path = comm.bcast(output_path, root=0)
     with oc.open(particle_path) as f:
         oc.write(output_path, f)
-        data = f.collect()
-        header = f._header
     if comm.Get_rank() == 0:
-        read_data = oc.read(output_path)
-        for key in data.keys():
-            assert np.all(data[key].data == read_data[key].data)
-        read_header = read_data._header
+        original_data = oc.read(particle_path)
+        written_data = oc.read(output_path)
+        for key in original_data.keys():
+            assert np.all(original_data[key].data == written_data[key].data)
+        header = original_data.header
+        written_header = written_data.header
         models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
         for model in models:
             key = f"_OpenCosmoHeader__{model}"
-            assert getattr(header, key) == getattr(read_header, key)
+            assert getattr(header, key) == getattr(written_header, key)

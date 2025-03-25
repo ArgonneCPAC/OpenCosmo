@@ -23,33 +23,31 @@ def test_multi_filter(multi_path):
     collection = oc.read(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
 
-    for ds in collection:
+    for ds in collection.datasets():
         assert all(ds.data["sod_halo_mass"] > 0)
 
 
 def test_multi_filter_write(multi_path, tmp_path):
     collection = oc.read(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
-    for ds in collection:
+    for ds in collection.datasets():
         assert all(ds.data["sod_halo_mass"] > 0)
     oc.write(tmp_path / "filtered.hdf5", collection)
 
     collection = oc.read(tmp_path / "filtered.hdf5")
-    for ds in collection:
+    for ds in collection.datasets():
         assert all(ds.data["sod_halo_mass"] > 0)
 
 
 def test_data_linking(all_paths):
     collection = open_linked(*all_paths)
-    n = 0
-    import time
+    collection = collection.filter(oc.col("sod_halo_mass") > 1e13).take(10, at="random")
+    particle_species = filter(lambda name: "particles" in name, collection.keys())
+    for properties, particles in collection.objects(list(particle_species)):
+        for particle_species in particles.values():
+            halo_id = particle_species.data["fof_halo_tag"]
+            assert len(set(halo_id)) == 1
+        break
 
-    start = time.time()
-    for properties, particles in collection.items(["dm_particles", "star_particles"]):
-        particles
-        n += 1
-        if n == 10:
-            break
-    end = time.time()
-    print(f"Iterating over {n} items took {round(end - start, 2)} seconds")
-    assert False
+
+

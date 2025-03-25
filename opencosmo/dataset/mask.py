@@ -22,9 +22,8 @@ def apply_masks(
     handler: OpenCosmoDataHandler,
     column_builders: dict[str, ColumnBuilder],
     masks: Iterable[Mask],
-    starting_mask: np.ndarray,
+    indices: np.ndarray,
 ) -> np.ndarray:
-    output_mask = starting_mask.copy()
     masks_by_column = defaultdict(list)
     for f in masks:
         masks_by_column[f.column_name].append(f)
@@ -36,15 +35,16 @@ def apply_masks(
             "masks were applied to columns that do not exist in the dataset: "
             f"{mask_column_names - column_names}"
         )
+    output_indices = indices
 
     for column_name, column_masks in masks_by_column.items():
-        column_mask = np.ones(output_mask.sum(), dtype=bool)
+        column_mask = np.ones(len(output_indices), dtype=bool)
         builder = column_builders[column_name]
-        column = handler.get_data({column_name: builder}, mask=output_mask)
+        column = handler.get_data({column_name: builder}, output_indices)
         for f in column_masks:
             column_mask &= f.apply(column)
-        output_mask[output_mask] &= column_mask
-    return output_mask
+        output_indices = output_indices[column_mask]
+    return output_indices
 
 
 class Column:

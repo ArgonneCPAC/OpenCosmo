@@ -40,13 +40,13 @@ class OutOfMemoryHandler:
         self.__columns = None
         return self.__file.close()
 
-    def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
+    def collect(self, columns: Iterable[str], indices: np.ndarray) -> InMemoryHandler:
         file_path = self.__file.filename
-        if np.all(mask):
+        if len(indices) == len(self):
             tree = self.__tree
-            output_mask = None
         else:
-            output_mask = mask
+            mask = np.zeros(len(self), dtype=bool)
+            mask[indices] = True
             tree = self.__tree.apply_mask(mask)
 
         with h5py.File(file_path, "r") as file:
@@ -55,13 +55,13 @@ class OutOfMemoryHandler:
                 tree,
                 group_name=self.__group_name,
                 columns=columns,
-                mask=output_mask,
+                indices=indices,
             )
 
     def write(
         self,
         file: h5py.File,
-        mask: np.ndarray,
+        indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
     ) -> None:
@@ -75,24 +75,27 @@ class OutOfMemoryHandler:
         data_group = group.create_group("data")
         for column in columns:
             data = self.__group[column][()]
-            data = data[mask]
+            data = data[indices]
             data_group.create_dataset(column, data=data)
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
-        tree = self.__tree.apply_mask(mask)
+        tree_mask = np.zeros(len(self), dtype=bool)
+        tree_mask[indices] = True
+        tree = self.__tree.apply_mask(tree_mask)
         tree.write(group)
 
     def get_data(
-        self, builders: dict = {}, mask: Optional[np.ndarray] = None
+        self, builders: dict, indices: np.ndarray
     ) -> Column | Table:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
         output = {}
+        start_idx = indices[0]
+        end_idx = indices[-1] + 1
         for column, builder in builders.items():
-            data = self.__group[column][()]
-            if mask is not None:
-                data = data[mask]
+            data = self.__group[column][start_idx:end_idx]
+            data = data[indices - start_idx]
 
             col = Column(data, name=column)
             output[column] = builder.build(col)
@@ -106,40 +109,35 @@ class OutOfMemoryHandler:
         start: int,
         end: int,
         builders: dict[str, ColumnBuilder],
-        mask: np.ndarray,
+        indices: np.ndarray,
     ) -> dict[str, tuple[float, float]]:
         if self.__group is None:
             raise ValueError("This file has already been closed")
         output = {}
-        idxs = np.where(mask)[0]
-        start_idx = idxs[start]
-        end_idx = idxs[end]
+        start_idx = indices[start]
+        end_idx = indices[end] + 1
         for column, builder in builders.items():
             data = self.__group[column][start_idx:end_idx]
-            data = data[mask[start_idx:end_idx]]
+            data = data[indices[start:end]]
             col = Column(data, name=column)
             output[column] = builder.build(col)
 
         return Table(output)
 
-    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
-        if n > (length := np.sum(mask)):
+    def take_indices(self, n: int, strategy: str, indices: np.ndarray) -> np.ndarray:
+        if n > (length := len(indices)):
             raise ValueError(
                 f"Requested {n} elements, but only {length} are available."
             )
 
-        indices = np.where(mask)[0]
-        new_mask = np.zeros_like(mask, dtype=bool)
-
         if strategy == "start":
-            new_mask[indices[:n]] = True
+            return indices[:n]
         elif strategy == "end":
-            new_mask[indices[-n:]] = True
+            return indices[-n:]
         elif strategy == "random":
-            new_mask[np.random.choice(indices, n, replace=False)] = True
+            return np.sort(np.random.choice(indices, n, replace=False))
         else:
             raise ValueError(
                 "Strategy for `take` must be one of 'start', 'end', or 'random'"
             )
 
-        return new_mask

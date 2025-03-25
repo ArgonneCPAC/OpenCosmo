@@ -48,14 +48,8 @@ class OpenCosmoDataHandler(Protocol):
         dataset_name="data",
     ) -> None: ...
     def get_data(
-        self, column_builders: dict[str, ColumnBuilder], mask: np.ndarray
+        self, column_builders: dict[str, ColumnBuilder], indices: np.ndarray,
     ) -> Column | Table: ...
-    def get_range(
-        self,
-        start: int,
-        end: int,
-        column_builders: dict[str, ColumnBuilder],
-        mask: np.ndarray,
-    ) -> dict[str, tuple[float, float]]: ...
-
-    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray: ...
+    def take_indices(
+        self, n: int, strategy: str, indices: np.ndarray
+    ) -> np.ndarray: ...

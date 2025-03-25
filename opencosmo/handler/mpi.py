@@ -89,29 +89,29 @@ class MPIHandler:
         self.__columns = None
         return self.__file.close()
 
-    def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
+    def collect(self, columns: Iterable[str], indices: np.ndarray) -> InMemoryHandler:
         # concatenate the masks from all ranks
         columns = list(columns)
         columns = verify_input(comm=self.__comm, columns=columns)["columns"]
+        range_ = self.elem_range()
+        rank_indices = indices + range_[0]
 
-        masks = self.__comm.allgather(mask)
+        all_indices = self.__comm.allgather(rank_indices)
         file_path = self.__file.filename
-        output_mask = np.concatenate(masks)
-        if all(output_mask):
-            output_mask = None
+        all_indices = np.concatenate(all_indices)
         with h5py.File(file_path, "r") as file:
             return InMemoryHandler(
                 file,
                 tree=self.__tree,
                 columns=columns,
-                mask=output_mask,
+                indices=all_indices,
                 group_name=self.__group_name,
             )
 
     def write(
         self,
         file: h5py.File,
-        mask: np.ndarray,
+        indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
     ) -> None:
@@ -126,7 +126,7 @@ class MPIHandler:
         columns = input["columns"]
 
         rank_range = self.elem_range()
-        rank_output_length = np.sum(mask)
+        rank_output_length = len(indices)
 
         all_output_lengths = self.__comm.allgather(rank_output_length)
 
@@ -157,10 +157,13 @@ class MPIHandler:
 
         self.__comm.Barrier()
 
+
         for column in columns:
             data = self.__group[column][rank_range[0] : rank_range[1]][()]
-            data = data[mask]
+            data = data[indices]
             data_group[column][rank_start:rank_end] = data
+        mask = np.zeros(len(self), dtype=bool)
+        mask[indices] = True
 
         new_tree = self.__tree.apply_mask(mask, self.__comm, self.elem_range())
 
@@ -169,7 +172,7 @@ class MPIHandler:
         self.__comm.Barrier()
 
     def get_data(
-        self, builders: dict = {}, mask: Optional[np.ndarray] = None
+        self, builders: dict, indices: np.ndarray,
     ) -> Column | Table:
         """
         Get data from the file in the range for this rank.
@@ -183,12 +186,11 @@ class MPIHandler:
             raise ValueError("This file has already been closed")
         output = {}
         range_ = self.elem_range()
+
         for column in builder_keys:
             builder = builders[column]
             data = self.__group[column][range_[0] : range_[1]]
-            if mask is not None:
-                data = data[mask]
-            col = Column(data, name=column)
+            col = Column(data[indices], name=column)
             output[column] = builder.build(col)
         self.__comm.Barrier()
 
@@ -196,27 +198,7 @@ class MPIHandler:
             return next(iter(output.values()))
         return Table(output)
 
-    def get_range(
-        self, start: int, end: int, builders: dict[str, ColumnBuilder], mask: np.ndarray
-    ) -> Table:
-        """
-        This function operates on a per-rank basis, and requires no communication.
-        """
-        if self.__group is None:
-            raise ValueError("This file has already been closed")
-        output = {}
-        idxs = np.where(mask)[0]
-        start_idx = idxs[start]
-        end_idx = idxs[end]
-        for column, builder in builders.items():
-            data = self.__group[column][start_idx:end_idx]
-            data = data[mask[start_idx:end_idx]]
-            col = Column(data, name=column)
-            output[column] = builder.build(col)
-
-        return Table(output)
-
-    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
+    def take_indices(self, n: int, strategy: str, indices: np.ndarray) -> np.ndarray:
         """
         This is the tricky one. We need to update the mask based on the amount of
         data in ALL the ranks.
@@ -227,29 +209,29 @@ class MPIHandler:
         """
         n = verify_input(comm=self.__comm, n=n)["n"]
 
-        rank_length = np.sum(mask)
+        rank_length = len(indices)
         rank_lengths = self.__comm.allgather(rank_length)
 
         total_length = np.sum(rank_lengths)
         if n > total_length:
             # All ranks crash
-            warn(f"Requested {n} elements, but only {total_length} are available.")
+            raise(f"Requested {n} elements, but only {total_length} are available.")
             n = total_length
 
         if self.__comm.Get_rank() == 0:
             if strategy == "random":
-                indices = np.random.choice(total_length, n, replace=False)
-                indices = np.sort(indices)
+                take_indices = np.random.choice(total_length, n, replace=False)
+                take_indices = np.sort(take_indices)
             elif strategy == "start":
-                indices = np.arange(n)
+                take_indices = np.arange(n)
             elif strategy == "end":
-                indices = np.arange(total_length - n, total_length)
+                take_indices = np.arange(total_length - n, total_length)
             # Distribute the indices to the ranks
         else:
-            indices = None
-        indices = self.__comm.bcast(indices, root=0)
+            take_indices = None
+        take_indices = self.__comm.bcast(take_indices, root=0)
 
-        if indices is None:
+        if take_indices is None:
             # Should not happen, but this is for mypy
             raise ValueError("Indices should not be None.")
 
@@ -257,12 +239,14 @@ class MPIHandler:
         if rank_start_index:
             rank_start_index = np.sum(rank_lengths[: self.__comm.Get_rank()])
         rank_end_index = rank_start_index + rank_length
-        rank_indicies = indices[
-            (indices >= rank_start_index) & (indices < rank_end_index)
+
+        rank_indicies = take_indices[
+            (take_indices >= rank_start_index) & (take_indices < rank_end_index)
         ]
+        if len(rank_indicies) == 0:
+            # This rank doesn't have enough data
+            raise ValueError(
+                f"This take operation will return no data for rank {self.__comm.Get_rank()}"
+            )
 
-        new_true_indices = np.where(mask)[0][rank_indicies - rank_start_index]
-        new_mask = np.zeros_like(mask)
-        new_mask[new_true_indices] = True
-
-        return new_mask
+        return rank_indicies - rank_start_index
