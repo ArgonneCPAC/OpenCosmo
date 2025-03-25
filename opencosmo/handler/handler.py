@@ -51,7 +51,11 @@ class OpenCosmoDataHandler(Protocol):
         self, column_builders: dict[str, ColumnBuilder], mask: np.ndarray
     ) -> Column | Table: ...
     def get_range(
-        self, start: int, end: int, column_builders: dict[str, ColumnBuilder], mask: np.ndarray
+        self,
+        start: int,
+        end: int,
+        column_builders: dict[str, ColumnBuilder],
+        mask: np.ndarray,
     ) -> dict[str, tuple[float, float]]: ...
 
     def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray: ...

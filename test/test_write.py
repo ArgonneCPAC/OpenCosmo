@@ -1,6 +1,6 @@
 import pytest
 
-from opencosmo import col, read,  write
+from opencosmo import col, read, write
 from opencosmo.header import read_header, write_header
 
 

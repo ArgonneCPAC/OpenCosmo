@@ -11,7 +11,6 @@ class FileType(Enum):
     halo_particles = "halo_particles"
 
 
-
 class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
     data_type: FileType

@@ -1,5 +1,6 @@
-import pytest
 from pathlib import Path
+
+import pytest
 
 import opencosmo as oc
 from opencosmo.collection import open_linked
@@ -16,6 +17,7 @@ def all_paths(data_path: Path):
 
     hdf_files = [data_path / file for file in files]
     return list(hdf_files)
+
 
 def test_multi_filter(multi_path):
     collection = oc.read(multi_path)
@@ -36,17 +38,18 @@ def test_multi_filter_write(multi_path, tmp_path):
     for ds in collection:
         assert all(ds.data["sod_halo_mass"] > 0)
 
+
 def test_data_linking(all_paths):
     collection = open_linked(*all_paths)
-    for particles in collection.items(["dm_particles", "star_particles"]):
-        print(particles)
-        break
+    n = 0
+    import time
 
-    collection = collection.with_units("scalefree")
-    for particles in collection.items(["dm_particles", "star_particles"]):
-        print(particles)
-        break
+    start = time.time()
+    for properties, particles in collection.items(["dm_particles", "star_particles"]):
+        particles
+        n += 1
+        if n == 10:
+            break
+    end = time.time()
+    print(f"Iterating over {n} items took {round(end - start, 2)} seconds")
     assert False
-            
-
-

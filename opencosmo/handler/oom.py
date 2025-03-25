@@ -101,7 +101,11 @@ class OutOfMemoryHandler:
         return Table(output)
 
     def get_range(
-        self, start: int, end: int, builders: dict = {}, mask: Optional[np.ndarray] = None
+        self,
+        start: int,
+        end: int,
+        builders: dict = {},
+        mask: Optional[np.ndarray] = None,
     ) -> dict[str, tuple[float, float]]:
         if self.__group is None:
             raise ValueError("This file has already been closed")
