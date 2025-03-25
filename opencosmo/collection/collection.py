@@ -121,6 +121,8 @@ class DataCollection(dict):
     def header(self):
         return self.__header
 
+    datasets = dict.values
+
     def __enter__(self):
         return self
 
@@ -146,7 +148,7 @@ class DataCollection(dict):
                 dataset.write(file, key, with_header=False)
 
 
-class LinkedCollection(DataCollection):
+class LinkedCollection(dict):
     """
     A collection of datasets that are linked together, allowing
     for cross-matching and other operations to be performed.
@@ -167,13 +169,17 @@ class LinkedCollection(DataCollection):
         """
         Initialize a linked collection with the provided datasets and links.
         """
-        super().__init__("linked", header, *args, **kwargs)
+        self.__header = header
         self.__properties = properties
         self.__datasets = datasets
         self[properties.header.file.data_type] = properties
         self.__linked = links
-        self.__idxs = np.where(self.__properties.mask)[0]
+        self.__idxs = self.__properties.indices
         self.update(self.__datasets)
+
+    @property
+    def header(self):
+        return self.__header
 
     def __get_linked(self, dtype: str, index: int):
         if dtype not in self.__linked:
@@ -192,9 +198,9 @@ class LinkedCollection(DataCollection):
         if start == -1 or size == -1:
             return None
 
-        return self.__datasets[dtype].get_range(start, start + size)
+        return self.__datasets[dtype].take_range(start, start + size)
 
-    def items(self, dtypes: Optional[str | list[str]] = None):
+    def objects(self, dtypes: Optional[str | list[str]] = None):
         """
         Iterate over the datasets in the collection that are linked to the
         provided data types.
@@ -262,7 +268,7 @@ class SimulationCollection(DataCollection):
         across all of them.
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return SimulationCollection(self.dtype, header=self._header, **output)
+        return SimulationCollection(self.dtype, header=self.header, **output)
 
     def __getattr__(self, name):
         # check if the method exists on the first dataset

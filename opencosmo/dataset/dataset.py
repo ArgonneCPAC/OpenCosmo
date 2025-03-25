@@ -22,27 +22,27 @@ class Dataset:
         header: OpenCosmoHeader,
         builders: dict[str, ColumnBuilder],
         unit_transformations: dict[t.TransformationType, list[t.Transformation]],
-        mask: np.ndarray,
+        indices: np.ndarray,
     ):
         self.__handler = handler
         self.__header = header
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
-        self.__mask = mask
+        self.__indices = indices
 
     @property
     def header(self) -> OpenCosmoHeader:
         return self.__header
 
     @property
-    def mask(self) -> np.ndarray:
-        return self.__mask
+    def indices(self) -> np.ndarray:
+        return self.__indices
 
     def __repr__(self):
         """
         A basic string representation of the dataset
         """
-        length = np.sum(self.__mask)
+        length = len(self)
         take_length = length if length < 10 else 10
         repr_ds = self.take(take_length)
         table_repr = repr_ds.data.__repr__()
@@ -54,7 +54,7 @@ class Dataset:
         return head + cosmo_repr + table_head + table_repr
 
     def __len__(self):
-        return np.sum(self.__mask)
+        return len(self.__indices)
 
     def __enter__(self):
         # Need to write tests
@@ -68,13 +68,13 @@ class Dataset:
 
     @property
     def cosmology(self):
-        return self.header.cosmology
+        return self.__header.cosmology
 
     @property
     def data(self):
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(builders=self.__builders, mask=self.__mask)
+        return self.__handler.get_data(builders=self.__builders, indices=self.__indices)
 
     def write(
         self, file: h5py.File, dataset_name: Optional[str] = None, with_header=True
@@ -98,9 +98,9 @@ class Dataset:
             )
 
         if with_header:
-            write_header(file, self.header, dataset_name)
+            write_header(file, self.__header, dataset_name)
 
-        self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
+        self.__handler.write(file, self.__indices, self.__builders.keys(), dataset_name)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
@@ -116,7 +116,7 @@ class Dataset:
         max = len(self)
         chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
         for start, end in chunk_ranges:
-            chunk = self.get_range(start, end)
+            chunk = self.take_range(start, end).data
             columns = {
                 k: chunk[k].quantity if chunk[k].unit else chunk[k]
                 for k in chunk.keys()
@@ -124,7 +124,7 @@ class Dataset:
             for i in range(len(chunk)):
                 yield {k: v[i] for k, v in columns.items()}
 
-    def get_range(self, start: int, end: int) -> Table:
+    def take_range(self, start: int, end: int) -> Table:
         """
         Get a range of rows from the dataset.
 
@@ -153,7 +153,16 @@ class Dataset:
         if end > len(self):
             raise ValueError("end must be less than the length of the dataset.")
 
-        return self.__handler.get_range(start, end, self.__builders, self.__mask)
+        new_indicies = self.__indices[start:end]
+        
+
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            new_indicies,
+        )
 
     def filter(self, *masks: Mask) -> Dataset:
         """
@@ -176,16 +185,20 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        new_mask = apply_masks(self.__handler, self.__builders, masks, self.__mask)
-        if np.sum(new_mask) == 0:
-            raise ValueError(" would return zero rows.")
+        
+
+        new_indices = apply_masks(self.__handler, self.__builders, masks, self.__indices)
+
+
+        if len(new_indices) == 0:
+            raise ValueError("Filter returned zero rows!")
 
         return Dataset(
             self.__handler,
-            self.header,
+            self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_mask,
+            new_indices,
         )
 
     def select(self, columns: str | list[str]) -> Dataset:
@@ -225,10 +238,10 @@ class Dataset:
 
         return Dataset(
             self.__handler,
-            self.header,
+            self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__mask,
+            self.__indices
         )
 
     def with_units(self, convention: str) -> Dataset:
@@ -248,16 +261,16 @@ class Dataset:
 
         """
         new_transformations = u.get_unit_transition_transformations(
-            convention, self.__base_unit_transformations, self.header.cosmology
+            convention, self.__base_unit_transformations, self.__header.cosmology
         )
         new_builders = get_column_builders(new_transformations, self.__builders.keys())
 
         return Dataset(
             self.__handler,
-            self.header,
+            self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__mask,
+            self.__indices
         )
 
     def collect(self) -> Dataset:
@@ -283,13 +296,13 @@ class Dataset:
 
         If working in an MPI context, all ranks will recieve the same data.
         """
-        new_handler = self.__handler.collect(self.__builders.keys(), self.__mask)
+        new_handler = self.__handler.collect(self.__builders.keys(), self.__indices)
         return Dataset(
             new_handler,
-            self.header,
+            self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            np.ones(len(new_handler), dtype=bool),
+            np.arange(len(new_handler))
         )
 
     def take(self, n: int, at: str = "start") -> Dataset:
@@ -319,16 +332,18 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        new_mask = self.__handler.take_mask(n, at, self.__mask)
-        if np.sum(new_mask) == 0:
-            # This should only happen in an MPI context, so
-            # delegate error handling to the user.
-            raise ValueError("Filter returned zero rows!")
+
+        if at not in ["start", "end", "random"]:
+            raise ValueError("Invalid value for 'at'. Must be one of 'start', 'end', or 'random'.") 
+        new_indices = self.__handler.take_indices(n, at, self.__indices)
+
 
         return Dataset(
             self.__handler,
-            self.header,
+            self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_mask,
+            new_indices
         )
+
+

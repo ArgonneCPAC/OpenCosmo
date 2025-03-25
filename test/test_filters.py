@@ -60,6 +60,11 @@ def test_chained_filters(input_path, max_mass):
     assert data["sod_halo_cdelta"].min() > 0
     assert data["sod_halo_cdelta"].max() < 20
 
+def test_take_filter(input_path, max_mass):
+    ds = read(input_path).take(10000)
+    ds = ds.filter(col("sod_halo_mass") > 0, col("sod_halo_mass") < max_mass)
+    assert len(ds.data) < 10000
+
 
 def test_filter_unit_transformation(input_path, max_mass):
     ds = read(input_path)

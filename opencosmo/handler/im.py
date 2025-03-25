@@ -25,7 +25,7 @@ class InMemoryHandler:
         tree: Tree,
         group_name: Optional[str] = None,
         columns: Optional[Iterable[str]] = None,
-        mask: Optional[np.ndarray] = None,
+        indices: Optional[np.ndarray] = None,
     ):
         if group_name is None:
             group = file["data"]
@@ -36,9 +36,9 @@ class InMemoryHandler:
             self.__columns = {n: u for n, u in self.__columns.items() if n in columns}
         self.__tree = tree
         self.__data = {colname: group[colname][()] for colname in self.__columns}
-        if mask is not None:
+        if indices is not None:
             self.__data = {
-                colname: self.__data[colname][mask] for colname in self.__columns
+                colname: self.__data[colname][indices] for colname in self.__columns
             }
 
     def __len__(self) -> int:
@@ -50,19 +50,21 @@ class InMemoryHandler:
     def __exit__(self, *exec_details):
         return False
 
-    def collect(self, columns: Iterable[str], mask: np.ndarray) -> InMemoryHandler:
+    def collect(self, columns: Iterable[str], indices: np.ndarray) -> InMemoryHandler:
         """
         Create a new InMemoryHandler with only the specified columns and
         the specified mask applied.
         """
-        new_data = {colname: self.__data[colname][mask] for colname in columns}
+        new_data = {colname: self.__data[colname][indices] for colname in columns}
+        mask = np.zeros(len(self), dtype=bool)
+        mask[indices] = True
         tree = self.__tree.apply_mask(mask)
         return InMemoryHandler(new_data, tree)
 
     def write(
         self,
         file: h5py.File,
-        mask: np.ndarray,
+        indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
     ) -> None:
@@ -76,67 +78,41 @@ class InMemoryHandler:
 
         data_group = group.require_group("data")
         for column in columns:
-            data_group.create_dataset(column, data=self.__data[column][mask])
+            data_group.create_dataset(column, data=self.__data[column][indices])
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
+        mask = np.zeros(len(self), dtype=bool)
         tree = self.__tree.apply_mask(mask)
         tree.write(group, dataset_name="index")
 
     def get_data(
         self,
-        builders: dict = {},
-        mask: Optional[np.ndarray] = None,
+        builders: dict,
+        indices: np.ndarray,
     ) -> Column | Table:
         """
         Get data from the in-memory storage with optional masking and column
         selection.
         """
-        length = len(self)
 
-        data_mask = mask if mask is not None else np.ones(length, dtype=bool)
         output = {}
         for column, builder in builders.items():
-            col = self.__data[column][data_mask]
+            col = self.__data[column][indices]
             output[column] = builder.build(Column(col, name=column))
 
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)
-
-    def get_range(
-        self,
-        start: int,
-        end: int,
-        column_builder: dict[str, ColumnBuilder],
-        mask: np.ndarray,
-    ) -> Table:
-        idxs = np.where(mask)[0]
-        start_idx = idxs[start]
-        end_idx = idxs[end]
-        output = {}
-        for column, builder in column_builder.items():
-            col = self.__data[column][start_idx:end_idx]
-            output[column] = builder.build(Column(col, name=column))
-        return Table(output)
-
-    def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:
-        """
-        Create a new mask based on a "take" operation.
-        """
-        if n < 0:
-            raise ValueError("n must be greater than zero.")
-        if n > np.sum(mask):
-            raise ValueError("Requested more data than is available.")
-        new_mask = np.zeros_like(mask)
-        indices = np.where(mask)[0]
-        if strategy == "start":
-            new_mask[indices[:n]] = True
+    
+    def take_indices(self, n: int, strategy: str, indices: np.ndarray):
+        if n < 0  or n > len(indices):
+            raise ValueError("n must be between 0 and then number of available rows")
+        if strategy == "random":
+            return np.sort(np.random.choice(indices, n, replace=False))
+        elif strategy == "start":
+            return indices[:n]
         elif strategy == "end":
-            new_mask[indices[-n:]] = True
-        elif strategy == "random":
-            new_mask[np.random.choice(indices, n, replace=False)] = True
-        else:
-            raise ValueError(
-                "Take strategy must be one of 'start', 'end', or 'random'."
-            )
-        return new_mask
+            return indices[-n:]
+
+    
+
