@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import h5py
-import numpy as np
 
 import opencosmo as oc
 from opencosmo.dataset.mask import Mask

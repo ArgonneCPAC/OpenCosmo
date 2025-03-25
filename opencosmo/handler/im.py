@@ -6,7 +6,6 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.file import get_data_structure
 from opencosmo.spatial.tree import Tree
 
@@ -103,9 +102,9 @@ class InMemoryHandler:
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)
-    
+
     def take_indices(self, n: int, strategy: str, indices: np.ndarray):
-        if n < 0  or n > len(indices):
+        if n < 0 or n > len(indices):
             raise ValueError("n must be between 0 and then number of available rows")
         if strategy == "random":
             return np.sort(np.random.choice(indices, n, replace=False))
@@ -113,6 +112,3 @@ class InMemoryHandler:
             return indices[:n]
         elif strategy == "end":
             return indices[-n:]
-
-    
-

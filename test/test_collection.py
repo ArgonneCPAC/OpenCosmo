@@ -48,6 +48,3 @@ def test_data_linking(all_paths):
             halo_id = particle_species.data["fof_halo_tag"]
             assert len(set(halo_id)) == 1
         break
-
-
-

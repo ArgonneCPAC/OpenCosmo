@@ -40,14 +40,16 @@ def test_write_dataset(properties_path, tmp_path):
     new_ds = read(new_path)
     assert all(ds.data == new_ds.data)
 
+
 def test_after_take_filter(properties_path, tmp_path):
     ds = read(properties_path).take(10000)
     ds = ds.filter(col("sod_halo_mass") > 0)
     filtered_data = ds.data
-    
+
     write(tmp_path / "haloproperties.hdf5", ds)
     new_ds = read(tmp_path / "haloproperties.hdf5")
     assert all(filtered_data == new_ds.data)
+
 
 def test_after_take(properties_path, tmp_path):
     ds = read(properties_path).take(10000)
@@ -56,6 +58,7 @@ def test_after_take(properties_path, tmp_path):
 
     new_ds = read(tmp_path / "haloproperties.hdf5")
     assert all(data == new_ds.data)
+
 
 def test_after_filter(properties_path, tmp_path):
     ds = read(properties_path)
