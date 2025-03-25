@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from copy import copy
 from typing import Optional
 
+import astropy.units as u
 import h5py
 import numpy as np
-from copy import copy
-
 from astropy.table import Table
-import astropy.units as u
 
 import opencosmo.transformations as t
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
@@ -107,10 +106,10 @@ class Dataset:
     def rows(self) -> dict[str, float | u.Quantity]:
         """
         Iterate over the rows in the dataset. Returns a dictionary of values
-        for each row, with associated units. For performance it is recommended 
+        for each row, with associated units. For performance it is recommended
         that you first select the columns you need to work with.
-        
-        Yields  
+
+        Yields
         -------
         row : dict
             A dictionary of values for each row in the dataset.
@@ -119,10 +118,12 @@ class Dataset:
         chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
         for start, end in chunk_ranges:
             chunk = self.get_range(start, end)
-            columns = {k: chunk[k].quantity if chunk[k].unit else chunk[k] for k in chunk.keys()}
+            columns = {
+                k: chunk[k].quantity if chunk[k].unit else chunk[k]
+                for k in chunk.keys()
+            }
             for i in range(len(chunk)):
                 yield {k: v[i] for k, v in columns.items()}
-        
 
     def get_range(self, start: int, end: int) -> Table:
         """
@@ -153,9 +154,7 @@ class Dataset:
         if end > len(self):
             raise ValueError("end must be less than the length of the dataset.")
 
-        return self.__handler.get_range(
-            start, end, self.__builders, self.__mask
-        )
+        return self.__handler.get_range(start, end, self.__builders, self.__mask)
 
     def filter(self, *masks: Mask, boolean_filter: np.ndarray = None) -> Dataset:
         """
@@ -345,4 +344,3 @@ class Dataset:
             self.__base_unit_transformations,
             new_mask,
         )
-

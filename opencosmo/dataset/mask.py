@@ -102,6 +102,6 @@ class Mask:
         value = self.value
         if not isinstance(value, u.Quantity) and column.unit is not None:
             value *= column.unit
-            
+
         # mypy can't reason about columns correctly
         return self.operator(column, value)

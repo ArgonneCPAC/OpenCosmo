@@ -125,7 +125,9 @@ def test_write_collection(particle_path, tmp_path):
         for key in ds.keys():
             # Much too slow to check everything
             assert np.all(ds[key].take(100).data == new_ds[key].take(100).data)
-            assert np.all(ds[key].take(100, "end").data == new_ds[key].take(100, "end").data)
+            assert np.all(
+                ds[key].take(100, "end").data == new_ds[key].take(100, "end").data
+            )
 
         new_header = new_ds._header
         for model in models:

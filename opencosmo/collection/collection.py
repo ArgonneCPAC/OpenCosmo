@@ -1,26 +1,28 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Callable, Optional
 from pathlib import Path
-from contextlib import contextmanager
+from typing import Callable, Optional
 
 import h5py
 import numpy as np
 
-
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.dataset.mask import Mask
 import opencosmo as oc
-from .link import verify_links, get_links
+from opencosmo.dataset.mask import Mask
+from opencosmo.header import OpenCosmoHeader, read_header
+
+from .link import get_links, verify_links
+
 
 class FileHandle:
     """
     Helper class used just for setup
     """
+
     def __init__(self, path: Path):
         self.handle = h5py.File(path, "r")
         self.header = read_header(self.handle)
+
 
 def open_linked(*files: Path):
     """
@@ -30,16 +32,18 @@ def open_linked(*files: Path):
     file_handles = [FileHandle(file) for file in files]
     datasets = [oc.open(file) for file in files]
     property_file_type, linked_files = verify_links(*[fh.header for fh in file_handles])
-    property_handle = next(filter(lambda x: x.header.file.data_type == property_file_type, file_handles)).handle
+    property_handle = next(
+        filter(lambda x: x.header.file.data_type == property_file_type, file_handles)
+    ).handle
     links = get_links(property_handle)
     if not links:
         raise ValueError("No valid links found in files")
-    
+
     output_datasets = {}
     for dataset in datasets:
         if isinstance(dataset, oc.DataCollection):
             output_datasets.update(dataset)
-        else:   
+        else:
             output_datasets[dataset.header.file.data_type] = dataset
 
     properties_file = output_datasets.pop(property_file_type)
@@ -72,7 +76,9 @@ def get_collection_type(file: h5py.File) -> Callable[..., DataCollection]:
             except KeyError:
                 continue
         if all(len(set(v)) == 1 for v in config_values.values()):
-            return lambda *args, **kwargs: SimulationCollection("particle", *args, **kwargs)
+            return lambda *args, **kwargs: SimulationCollection(
+                "particle", *args, **kwargs
+            )
         else:
             raise ValueError(
                 "Unknown file type. "
@@ -138,7 +144,6 @@ class DataCollection(dict):
                 dataset.write(file, key, with_header=False)
 
 
-
 class LinkedCollection(DataCollection):
     """
     A collection of datasets that are linked together, allowing
@@ -147,7 +152,16 @@ class LinkedCollection(DataCollection):
     For now, these are always a combination of a properties dataset
     and some other set of datasetes (particles and/or profiles).
     """
-    def __init__(self, header: OpenCosmoHeader, properties: oc.Dataset, datasets: dict, links: dict, *args, **kwargs):
+
+    def __init__(
+        self,
+        header: OpenCosmoHeader,
+        properties: oc.Dataset,
+        datasets: dict,
+        links: dict,
+        *args,
+        **kwargs,
+    ):
         """
         Initialize a linked collection with the provided datasets and links.
         """
@@ -166,32 +180,30 @@ class LinkedCollection(DataCollection):
             raise ValueError(f"Index {index} out of range for {dtype}")
         # find the index into the linked dataset at the mask index
         linked_index = self.__idxs[index]
-        try: 
+        try:
             start = self.__linked[dtype]["start_index"][linked_index]
             size = self.__linked[dtype]["length"][linked_index]
         except IndexError:
             start = self.__linked[dtype][linked_index]
             size = 1
-        
+
         if start == -1 or size == -1:
             return None
+
         return self.__datasets[dtype].get_range(start, start + size)
 
     def items(self, dtypes: Optional[str | list[str]] = None):
         """
         Iterate over the datasets in the collection that are linked to the
-        provided data types. This is a generator that yields the linked
-        datasets.
+        provided data types.
         """
-    
-        
         if dtypes is None:
             dtypes = list(self.__linked.keys())
         elif isinstance(dtypes, str):
             dtypes = [dtypes]
         if not all(dtype in self.__linked for dtype in dtypes):
             raise ValueError("One or more of the provided data types is not linked")
-        
+
         ndtypes = len(dtypes)
         for i, properties in enumerate(self.__properties.rows()):
             results = {dtype: self.__get_linked(dtype, i) for dtype in dtypes}
@@ -208,24 +220,27 @@ class LinkedCollection(DataCollection):
         on the properties file that is linked to the other datasets.
         """
         new_properties = self.__properties.filter(*masks)
-        return LinkedCollection(self.header, new_properties, self.__datasets, self.__linked)
-    
+        return LinkedCollection(
+            self.header, new_properties, self.__datasets, self.__linked
+        )
+
     def take(self, n: int, at: str = "start"):
         new_properties = self.__properties.take(n, at)
-        return LinkedCollection(self.header, new_properties, self.__datasets, self.__linked)
-    
+        return LinkedCollection(
+            self.header, new_properties, self.__datasets, self.__linked
+        )
+
     def with_units(self, convention: str) -> LinkedCollection:
         """
         Return a new dataset with the units converted to the provided convention.
         """
         new_properties = self.__properties.with_units(convention)
         new_datasets = {k: v.with_units(convention) for k, v in self.__datasets.items()}
-        return LinkedCollection(self.header, new_properties, new_datasets, self.__linked)
-    
+        return LinkedCollection(
+            self.header, new_properties, new_datasets, self.__linked
+        )
 
-    
-    
-    
+
 class SimulationCollection(DataCollection):
     """
     A collection of datasets of the same type from different
@@ -253,5 +268,3 @@ class SimulationCollection(DataCollection):
             return lambda *args, **kwargs: self.__map(name, *args, **kwargs)
         else:
             raise AttributeError(f"Attribute {name} not found on {self.dtype} dataset")
-
-

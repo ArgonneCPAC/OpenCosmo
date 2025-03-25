@@ -57,11 +57,10 @@ class OpenCosmoHeader:
     @property
     def reformat(self):
         return self.__reformat_pars
-    
+
     @property
     def file(self):
         return self.__file_pars
-
 
 
 @file_writer
