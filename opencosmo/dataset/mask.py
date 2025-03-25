@@ -3,6 +3,7 @@ from __future__ import annotations
 import operator as op
 from collections import defaultdict
 from typing import Callable, Iterable
+from numbers import Real
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -62,37 +63,43 @@ class Column:
         self.column_name = column_name
 
     # mypy doesn't reason about eq and neq correctly
-    def __eq__(self, other: float | u.Quantity) -> Mask:  # type: ignore
+    def __eq__(self, other: Real | u.Quantity) -> Mask:  # type: ignore
         return Mask(self.column_name, other, op.eq)
 
-    def __ne__(self, other: float | u.Quantity) -> Mask:  # type: ignore
+    def __ne__(self, other: Real | u.Quantity) -> Mask:  # type: ignore
         return Mask(self.column_name, other, op.ne)
 
-    def __gt__(self, other: float | u.Quantity) -> Mask:
+    def __gt__(self, other: Real | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.gt)
 
-    def __ge__(self, other: float | u.Quantity) -> Mask:
+    def __ge__(self, other: Real | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.ge)
 
-    def __lt__(self, other: float | u.Quantity) -> Mask:
+    def __lt__(self, other: Real | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.lt)
 
-    def __le__(self, other: float | u.Quantity) -> Mask:
+    def __le__(self, other: Real | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.le)
+    
+    def __contains__(self, other: Real | u.Quantity) -> Mask:
+        return Mask(self.column_name, other, np.isin, no_units=True)
 
 
 class Mask:
     """
-    A mask is a class that represents a mask on a column. It is used to
-    mask a dataset.
+    A mask is a class that represents a mask on a column. Masks evaluate
+    to t/f for every element in the given column.
     """
 
     def __init__(
-        self, column_name: str, value: float | u.Quantity, operator: Comparison
+        self, column_name: str, value: float | u.Quantity, operator: Comparison, no_units: bool = False
     ):
         self.column_name = column_name
         self.value = value
         self.operator = operator
+        self.no_units = no_units
+        if self.no_units and isinstance(self.value, u.Quantity):
+            raise ValueError("This mask does not accept units")
 
     def apply(self, column: table.Column) -> np.ndarray:
         """
@@ -100,6 +107,8 @@ class Mask:
         """
         # Astropy's errors are good enough here
         value = self.value
+        if self.no_units and column.unit is not None:
+            raise ValueError("This mask does not accept units")
         if not isinstance(value, u.Quantity) and column.unit is not None:
             value *= column.unit
 

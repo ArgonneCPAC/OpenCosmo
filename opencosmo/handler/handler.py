@@ -43,7 +43,7 @@ class OpenCosmoDataHandler(Protocol):
     def write(
         self,
         file: h5py.File,
-        mask: np.ndarray,
+        indices: np.ndarray,
         columns: Iterable[str],
         dataset_name="data",
     ) -> None: ...
