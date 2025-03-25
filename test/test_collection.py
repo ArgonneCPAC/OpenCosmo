@@ -39,9 +39,14 @@ def test_multi_filter_write(multi_path, tmp_path):
 def test_data_linking(all_paths):
     collection = open_linked(*all_paths)
     for particles in collection.items(["dm_particles", "star_particles"]):
-        if any(v is not None for v in particles.values()):
-            print(particles)
-            assert False
+        print(particles)
+        break
+
+    collection = collection.with_units("scalefree")
+    for particles in collection.items(["dm_particles", "star_particles"]):
+        print(particles)
+        break
+    assert False
             
 
 

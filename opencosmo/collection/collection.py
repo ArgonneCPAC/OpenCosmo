@@ -113,10 +113,6 @@ class DataCollection(dict):
     def header(self):
         return self.__header
 
-    def __iter__(self):
-        # This is more logial than iterating over the keys
-        return iter(self.values())
-
     def __enter__(self):
         return self
 
@@ -157,13 +153,8 @@ class LinkedCollection(DataCollection):
         """
         super().__init__("linked", header, *args, **kwargs)
         self.__properties = properties
-        self.__datasets = {}
+        self.__datasets = datasets
         self[properties.header.file.data_type] = properties
-        for dtype, dataset in datasets.items():
-            if isinstance(dataset, DataCollection):
-                self.__datasets.update(dataset)
-            else:
-                self.__datasets[dtype] = dataset
         self.__linked = links
         self.__idxs = np.where(self.__properties.mask)[0]
         self.update(self.__datasets)
@@ -181,20 +172,10 @@ class LinkedCollection(DataCollection):
         except IndexError:
             start = self.__linked[dtype][linked_index]
             size = 1
-            
-
         
         if start == -1 or size == -1:
             return None
         return self.__datasets[dtype].get_range(start, start + size)
-
-    @classmethod
-    def from_files(cls, *files: Path):
-        """
-        Given a list of file paths, open them to create a linked collection.
-        This is always done out-of-memory.
-        """
-
 
     def items(self, dtypes: Optional[str | list[str]] = None):
         """
@@ -202,6 +183,7 @@ class LinkedCollection(DataCollection):
         provided data types. This is a generator that yields the linked
         datasets.
         """
+    
         
         if dtypes is None:
             dtypes = list(self.__linked.keys())
@@ -211,16 +193,19 @@ class LinkedCollection(DataCollection):
             raise ValueError("One or more of the provided data types is not linked")
         
         ndtypes = len(dtypes)
-        for i in range(len(self.__properties)):
+        for i, properties in enumerate(self.__properties.rows()):
             results = {dtype: self.__get_linked(dtype, i) for dtype in dtypes}
+            if all(result is None for result in results.values()):
+                continue
             if ndtypes == 1:
-                yield results[dtypes[0]]
+                yield properties, results[dtypes[0]]
             else:
-                yield results
+                yield properties, results
 
     def filter(self, *masks: Mask):
         """
-        Filter the datasets in the collection by the provided masks.
+        Filter the datasets in the collection by the provided masks. Filtering occurs
+        on the properties file that is linked to the other datasets.
         """
         new_properties = self.__properties.filter(*masks)
         return LinkedCollection(self.header, new_properties, self.__datasets, self.__linked)
