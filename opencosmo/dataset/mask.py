@@ -82,7 +82,7 @@ class Column:
         return Mask(self.column_name, other, op.le)
     
     def isin(self, other: Iterable[Real | u.Quantity]) -> Mask:
-        return Mask(self.column_name, other, np.isin, no_units=True)
+        return Mask(self.column_name, other, np.isin)
 
 
 class Mask:
@@ -92,14 +92,11 @@ class Mask:
     """
 
     def __init__(
-        self, column_name: str, value: float | u.Quantity, operator: Comparison, no_units: bool = False
+        self, column_name: str, value: float | u.Quantity, operator: Comparison
     ):
         self.column_name = column_name
         self.value = value
         self.operator = operator
-        self.no_units = no_units
-        if self.no_units and isinstance(self.value, u.Quantity):
-            raise ValueError("This mask does not accept units")
 
     def apply(self, column: table.Column) -> np.ndarray:
         """
@@ -107,8 +104,6 @@ class Mask:
         """
         # Astropy's errors are good enough here
         value = self.value
-        if self.no_units and column.unit is not None:
-            raise ValueError("This mask does not accept units")
         if not isinstance(value, u.Quantity) and column.unit is not None:
             value *= column.unit
 
