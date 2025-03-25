@@ -6,7 +6,6 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
-from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
@@ -157,7 +156,6 @@ class MPIHandler:
 
         self.__comm.Barrier()
 
-
         for column in columns:
             data = self.__group[column][rank_range[0] : rank_range[1]][()]
             data = data[indices]
@@ -172,7 +170,9 @@ class MPIHandler:
         self.__comm.Barrier()
 
     def get_data(
-        self, builders: dict, indices: np.ndarray,
+        self,
+        builders: dict,
+        indices: np.ndarray,
     ) -> Column | Table:
         """
         Get data from the file in the range for this rank.
@@ -215,7 +215,9 @@ class MPIHandler:
         total_length = np.sum(rank_lengths)
         if n > total_length:
             # All ranks crash
-            raise(f"Requested {n} elements, but only {total_length} are available.")
+            raise ValueError(
+                f"Requested {n} elements, but only {total_length} are available."
+            )
             n = total_length
 
         if self.__comm.Get_rank() == 0:
@@ -246,7 +248,8 @@ class MPIHandler:
         if len(rank_indicies) == 0:
             # This rank doesn't have enough data
             raise ValueError(
-                f"This take operation will return no data for rank {self.__comm.Get_rank()}"
+                "This take operation will return no data for rank "
+                f"{self.__comm.Get_rank()}"
             )
 
         return rank_indicies - rank_start_index

@@ -84,9 +84,7 @@ class OutOfMemoryHandler:
         tree = self.__tree.apply_mask(tree_mask)
         tree.write(group)
 
-    def get_data(
-        self, builders: dict, indices: np.ndarray
-    ) -> Column | Table:
+    def get_data(self, builders: dict, indices: np.ndarray) -> Column | Table:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
@@ -140,4 +138,3 @@ class OutOfMemoryHandler:
             raise ValueError(
                 "Strategy for `take` must be one of 'start', 'end', or 'random'"
             )
-

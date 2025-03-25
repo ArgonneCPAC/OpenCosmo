@@ -154,7 +154,6 @@ class Dataset:
             raise ValueError("end must be less than the length of the dataset.")
 
         new_indicies = self.__indices[start:end]
-        
 
         return Dataset(
             self.__handler,
@@ -185,10 +184,10 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        
 
-        new_indices = apply_masks(self.__handler, self.__builders, masks, self.__indices)
-
+        new_indices = apply_masks(
+            self.__handler, self.__builders, masks, self.__indices
+        )
 
         if len(new_indices) == 0:
             raise ValueError("Filter returned zero rows!")
@@ -241,7 +240,7 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__indices
+            self.__indices,
         )
 
     def with_units(self, convention: str) -> Dataset:
@@ -270,7 +269,7 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__indices
+            self.__indices,
         )
 
     def collect(self) -> Dataset:
@@ -302,7 +301,7 @@ class Dataset:
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            np.arange(len(new_handler))
+            np.arange(len(new_handler)),
         )
 
     def take(self, n: int, at: str = "start") -> Dataset:
@@ -334,16 +333,15 @@ class Dataset:
         """
 
         if at not in ["start", "end", "random"]:
-            raise ValueError("Invalid value for 'at'. Must be one of 'start', 'end', or 'random'.") 
+            raise ValueError(
+                "Invalid value for 'at'. Must be one of 'start', 'end', or 'random'."
+            )
         new_indices = self.__handler.take_indices(n, at, self.__indices)
-
 
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_indices
+            new_indices,
         )
-
-

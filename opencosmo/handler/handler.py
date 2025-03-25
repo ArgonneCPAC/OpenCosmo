@@ -48,7 +48,9 @@ class OpenCosmoDataHandler(Protocol):
         dataset_name="data",
     ) -> None: ...
     def get_data(
-        self, column_builders: dict[str, ColumnBuilder], indices: np.ndarray,
+        self,
+        column_builders: dict[str, ColumnBuilder],
+        indices: np.ndarray,
     ) -> Column | Table: ...
     def take_indices(
         self, n: int, strategy: str, indices: np.ndarray
