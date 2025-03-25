@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-from copy import copy
-from typing import Optional
+from typing import Generator, Optional
 
-import astropy.units as u
 import h5py
 import numpy as np
-from astropy.table import Table
+from astropy import units  # type: ignore
+from astropy.table import Table  # type: ignore
 
 import opencosmo.transformations as t
+import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
-from opencosmo.transformations import units as u
 
 
 class Dataset:
@@ -103,7 +102,7 @@ class Dataset:
 
         self.__handler.write(file, self.__mask, self.__builders.keys(), dataset_name)
 
-    def rows(self) -> dict[str, float | u.Quantity]:
+    def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
         Iterate over the rows in the dataset. Returns a dictionary of values
         for each row, with associated units. For performance it is recommended
@@ -156,7 +155,7 @@ class Dataset:
 
         return self.__handler.get_range(start, end, self.__builders, self.__mask)
 
-    def filter(self, *masks: Mask, boolean_filter: np.ndarray = None) -> Dataset:
+    def filter(self, *masks: Mask) -> Dataset:
         """
         Filter the dataset based on some criteria.
 
@@ -177,20 +176,9 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        if boolean_filter is not None:
-            if len(boolean_filter) != sum(self.__mask):
-                raise ValueError(
-                    "Boolean filter must be the same length as the dataset."
-                )
-            elif boolean_filter.dtype != bool:
-                raise ValueError("Boolean filter must be a boolean array.")
-            new_mask = copy(self.__mask)
-            new_mask[self.__mask] = boolean_filter
-
-        else:
-            new_mask = apply_masks(self.__handler, self.__builders, masks, self.__mask)
-            if np.sum(new_mask) == 0:
-                raise ValueError(" would return zero rows.")
+        new_mask = apply_masks(self.__handler, self.__builders, masks, self.__mask)
+        if np.sum(new_mask) == 0:
+            raise ValueError(" would return zero rows.")
 
         return Dataset(
             self.__handler,

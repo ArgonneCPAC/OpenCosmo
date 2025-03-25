@@ -6,6 +6,7 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
+from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
@@ -193,6 +194,26 @@ class MPIHandler:
 
         if len(output) == 1:
             return next(iter(output.values()))
+        return Table(output)
+
+    def get_range(
+        self, start: int, end: int, builders: dict[str, ColumnBuilder], mask: np.ndarray
+    ) -> Table:
+        """
+        This function operates on a per-rank basis, and requires no communication.
+        """
+        if self.__group is None:
+            raise ValueError("This file has already been closed")
+        output = {}
+        idxs = np.where(mask)[0]
+        start_idx = idxs[start]
+        end_idx = idxs[end]
+        for column, builder in builders.items():
+            data = self.__group[column][start_idx:end_idx]
+            data = data[mask[start_idx:end_idx]]
+            col = Column(data, name=column)
+            output[column] = builder.build(col)
+
         return Table(output)
 
     def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:

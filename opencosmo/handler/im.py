@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
+from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.file import get_data_structure
 from opencosmo.spatial.tree import Tree
 
@@ -100,6 +101,22 @@ class InMemoryHandler:
 
         if len(output) == 1:
             return next(iter(output.values()))
+        return Table(output)
+
+    def get_range(
+        self,
+        start: int,
+        end: int,
+        column_builder: dict[str, ColumnBuilder],
+        mask: np.ndarray,
+    ) -> Table:
+        idxs = np.where(mask)[0]
+        start_idx = idxs[start]
+        end_idx = idxs[end]
+        output = {}
+        for column, builder in column_builder.items():
+            col = self.__data[column][start_idx:end_idx]
+            output[column] = builder.build(Column(col, name=column))
         return Table(output)
 
     def take_mask(self, n: int, strategy: str, mask: np.ndarray) -> np.ndarray:

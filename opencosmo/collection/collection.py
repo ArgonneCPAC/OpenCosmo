@@ -39,7 +39,7 @@ def open_linked(*files: Path):
     if not links:
         raise ValueError("No valid links found in files")
 
-    output_datasets = {}
+    output_datasets: dict[str, oc.Dataset] = {}
     for dataset in datasets:
         if isinstance(dataset, oc.DataCollection):
             output_datasets.update(dataset)
@@ -47,8 +47,10 @@ def open_linked(*files: Path):
             output_datasets[dataset.header.file.data_type] = dataset
 
     properties_file = output_datasets.pop(property_file_type)
-    links = {k: links[k] for k in output_datasets}
-    return LinkedCollection(property_handle, properties_file, output_datasets, links)
+    output_links = {k: v for k, v in links.items() if k in output_datasets}
+    return LinkedCollection(
+        property_handle, properties_file, output_datasets, output_links
+    )
 
 
 def get_collection_type(file: h5py.File) -> Callable[..., DataCollection]:
@@ -135,11 +137,11 @@ class DataCollection(dict):
         """
         # figure out if we have unique headers
 
-        if self._header is None:
+        if self.__header is None:
             for key, dataset in self.items():
                 dataset.write(file, key)
         else:
-            self._header.write(file)
+            self.__header.write(file)
             for key, dataset in self.items():
                 dataset.write(file, key, with_header=False)
 

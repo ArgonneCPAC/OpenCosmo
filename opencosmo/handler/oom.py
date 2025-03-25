@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
+from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
@@ -104,8 +105,8 @@ class OutOfMemoryHandler:
         self,
         start: int,
         end: int,
-        builders: dict = {},
-        mask: Optional[np.ndarray] = None,
+        builders: dict[str, ColumnBuilder],
+        mask: np.ndarray,
     ) -> dict[str, tuple[float, float]]:
         if self.__group is None:
             raise ValueError("This file has already been closed")

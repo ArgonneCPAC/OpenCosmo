@@ -104,4 +104,4 @@ class Mask:
             value *= column.unit
 
         # mypy can't reason about columns correctly
-        return self.operator(column, value)
+        return self.operator(column, value)  # type: ignore
