@@ -32,7 +32,7 @@ ALLOWED_LINKS = {  # Files that can serve as a link holder and
 }
 
 
-def verify_links(*headers: OpenCosmoHeader) -> dict[str, list[str]]:
+def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
     """
     Verify that the links in the headers are valid. This means that the
     link holder has a corresponding link target and that the link target
@@ -80,7 +80,7 @@ def verify_links(*headers: OpenCosmoHeader) -> dict[str, list[str]]:
     return output_file, links[output_file]
 
 
-def get_links(file: File | Group) -> dict[str, np.ndarray]:
+def get_links(file: File | Group) -> HaloPropertyLink | GalaxyPropertyLink:
     if "data_linked" not in file.keys():
         raise ValueError(f"No links found in {file.name}")
     keys = file["data_linked"].keys()
