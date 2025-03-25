@@ -81,7 +81,7 @@ class Column:
     def __le__(self, other: Real | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.le)
     
-    def __contains__(self, other: Real | u.Quantity) -> Mask:
+    def isin(self, other: Iterable[Real | u.Quantity]) -> Mask:
         return Mask(self.column_name, other, np.isin, no_units=True)
 
 
