@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 
 import opencosmo as oc
+from opencosmo.collection import open_linked
 
 
 @pytest.fixture
@@ -10,7 +11,7 @@ def multi_path(data_path):
 
 
 @pytest.fixture
-def all_path(data_path: Path):
+def all_paths(data_path: Path):
     files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
 
     hdf_files = [data_path / file for file in files]
@@ -35,10 +36,10 @@ def test_multi_filter_write(multi_path, tmp_path):
     for ds in collection:
         assert all(ds.data["sod_halo_mass"] > 0)
 
-def test_data_linking(all_path):
-    collection = oc.collection.collection.LinkedCollection.from_files(*all_path)
-    for particles in collection.iter_linked("dm_particles"):
-        if particles is not None:
+def test_data_linking(all_paths):
+    collection = open_linked(*all_paths)
+    for particles in collection.items(["dm_particles", "star_particles"]):
+        if any(v is not None for v in particles.values()):
             print(particles)
             assert False
             

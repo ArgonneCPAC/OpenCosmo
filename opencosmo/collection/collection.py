@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Callable, Optional
 from pathlib import Path
+from contextlib import contextmanager
 
 import h5py
 import numpy as np
@@ -13,10 +14,42 @@ from opencosmo.dataset.mask import Mask
 import opencosmo as oc
 from .link import verify_links, get_links
 
+class FileHandle:
+    """
+    Helper class used just for setup
+    """
+    def __init__(self, path: Path):
+        self.handle = h5py.File(path, "r")
+        self.header = read_header(self.handle)
+
+def open_linked(*files: Path):
+    """
+    Open a collection of files that are linked together, such as a
+    properties file and a particle file.
+    """
+    file_handles = [FileHandle(file) for file in files]
+    datasets = [oc.open(file) for file in files]
+    property_file_type, linked_files = verify_links(*[fh.header for fh in file_handles])
+    property_handle = next(filter(lambda x: x.header.file.data_type == property_file_type, file_handles)).handle
+    links = get_links(property_handle)
+    if not links:
+        raise ValueError("No valid links found in files")
+    
+    output_datasets = {}
+    for dataset in datasets:
+        if isinstance(dataset, oc.DataCollection):
+            output_datasets.update(dataset)
+        else:   
+            output_datasets[dataset.header.file.data_type] = dataset
+
+    properties_file = output_datasets.pop(property_file_type)
+    links = {k: links[k] for k in output_datasets}
+    return LinkedCollection(property_handle, properties_file, output_datasets, links)
+
 
 def get_collection_type(file: h5py.File) -> Callable[..., DataCollection]:
     """
-    Determine the type of a file containing multiple datasets. Currently
+    Determine the type of a single file containing multiple datasets. Currently
     we only support multi_simulation and particle.
 
     multi_simulation == multiple simulations, same data types
@@ -39,8 +72,7 @@ def get_collection_type(file: h5py.File) -> Callable[..., DataCollection]:
             except KeyError:
                 continue
         if all(len(set(v)) == 1 for v in config_values.values()):
-            dtype = config_values["data_type"][0]
-            return lambda *args, **kwargs: SimulationCollection(dtype, *args, **kwargs)
+            return lambda *args, **kwargs: SimulationCollection("particle", *args, **kwargs)
         else:
             raise ValueError(
                 "Unknown file type. "
@@ -110,10 +142,6 @@ class DataCollection(dict):
                 dataset.write(file, key, with_header=False)
 
 
-class FileHandle:
-    def __init__(self, path: Path):
-        self.handle = h5py.File(path, "r")
-        self.header = read_header(self.handle)
 
 class LinkedCollection(DataCollection):
     """
@@ -167,21 +195,8 @@ class LinkedCollection(DataCollection):
         This is always done out-of-memory.
         """
 
-        file_handles = [FileHandle(file) for file in files]
-        datasets = [oc.open(file) for file in files]
-        link_spec = verify_links(*[fh.header for fh in file_handles])
-        links = {}
-        for file_type in link_spec:
-            handle = next(filter(lambda x: x.header.file.data_type == file_type, file_handles)).handle
-            links[file_type] = get_links(handle)
-        if not links:
-            raise ValueError("No valid links found in files")
 
-        datasets = {ds.header.file.data_type: ds for ds in datasets}
-        properties_file = datasets.pop(next(iter(link_spec)))
-        return cls(file_handles[0].header, properties_file, datasets, next(iter(links.values())))
-
-    def iter_linked(self, dtypes: Optional[str | list[str]] = None):
+    def items(self, dtypes: Optional[str | list[str]] = None):
         """
         Iterate over the datasets in the collection that are linked to the
         provided data types. This is a generator that yields the linked
@@ -213,6 +228,15 @@ class LinkedCollection(DataCollection):
     def take(self, n: int, at: str = "start"):
         new_properties = self.__properties.take(n, at)
         return LinkedCollection(self.header, new_properties, self.__datasets, self.__linked)
+    
+    def with_units(self, convention: str) -> LinkedCollection:
+        """
+        Return a new dataset with the units converted to the provided convention.
+        """
+        new_properties = self.__properties.with_units(convention)
+        new_datasets = {k: v.with_units(convention) for k, v in self.__datasets.items()}
+        return LinkedCollection(self.header, new_properties, new_datasets, self.__linked)
+    
 
     
     

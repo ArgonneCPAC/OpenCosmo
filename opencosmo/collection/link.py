@@ -68,7 +68,8 @@ def verify_links(*headers: OpenCosmoHeader) -> dict[str, list[str]]:
     for file in master_files:
         if dtypes_to_headers[file].simulation != dtypes_to_headers[master_files[0]].simulation:
             raise ValueError(f"Simulation mismatch between {file} and {master_files[0]}")
-    return dict(links)
+    output_file = master_files[0]
+    return output_file, links[output_file]
 
 def get_links(file: File | Group) -> dict[str, np.ndarray]:
     if "data_linked" not in file.keys():

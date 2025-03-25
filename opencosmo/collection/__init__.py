@@ -1,3 +1,3 @@
-from .collection import DataCollection
+from .collection import DataCollection, open_linked
 
-__all__ = ["DataCollection"]
+__all__ = ["DataCollection", "open_linked"]
