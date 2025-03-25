@@ -169,8 +169,8 @@ class Dataset:
 
         Parameters
         ----------
-        s : mask
-            The s to apply to the dataset.
+        masks : Mask
+            The Masks to apply to the dataset.
 
         Returns
         -------
