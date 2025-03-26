@@ -77,7 +77,11 @@ class Dataset:
         return self.__handler.get_data(builders=self.__builders, indices=self.__indices)
 
     def write(
-        self, file: h5py.File, dataset_name: Optional[str] = None, with_header=True, indices: Optional[np.ndarray] = None
+        self,
+        file: h5py.File,
+        dataset_name: Optional[str] = None,
+        with_header=True,
+        indices: Optional[np.ndarray] = None,
     ) -> None:
         """
         Write the dataset to a file. This should not be called directly for the user.
@@ -353,4 +357,3 @@ class Dataset:
             self.__base_unit_transformations,
             new_indices,
         )
-

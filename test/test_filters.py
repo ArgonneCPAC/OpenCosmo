@@ -102,6 +102,7 @@ def test_equals_filter(input_path):
     assert len(data) > 0
     assert np.all(data["sod_halo_mass"] == equals_test_value)
 
+
 def test_isin_filter(input_path):
     ds = read(input_path)
     halo_tags = ds.select("fof_halo_tag").take(10, at="random").data

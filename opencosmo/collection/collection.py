@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from pathlib import Path
-from typing import Optional, Protocol, Iterable
+from typing import Iterable, Optional, Protocol
 
 try:
     from mpi4py import MPI
@@ -13,44 +11,38 @@ except ImportError:
 
 
 import h5py
-
-import opencosmo as oc
-from opencosmo.dataset.mask import Mask
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.spatial import read_tree
-from opencosmo.handler import InMemoryHandler, OutOfMemoryHandler, OpenCosmoDataHandler
-from opencosmo.transformations import units as u
 import numpy as np
 
-from .link import get_links, verify_links, write_links
+import opencosmo as oc
+from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
+from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.spatial import read_tree
+from opencosmo.transformations import units as u
 
 
 class Collection(Protocol):
-    pass
-
-    
     @classmethod
-    def open(cls, file: h5py.File, datasets:  ptional[Iterable[str]] = None) -> Collection:
-        ...
+    def open(
+        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
+    ) -> Collection | oc.Dataset: ...
 
     @classmethod
-    def read(cls, file: h5py.File) -> Collection:
-        ...
+    def read(
+        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]]
+    ) -> Collection: ...
 
-    def write(self, file: h5py.File):
-        ...
+    def write(self, file: h5py.File): ...
 
-    def as_dict(self) -> dict[str, oc.Dataset]:
-        ...
+    def as_dict(self) -> dict[str, oc.Dataset]: ...
 
-    def __enter__(self):
-        ...
+    def __enter__(self): ...
 
-    def __exit__(self, *exc_details):
-        ...
+    def __exit__(self, *exc_details): ...
 
 
-def write_with_common_header(collection: Collection, header: OpenCosmoHeader, file: h5py.File):
+def write_with_common_header(
+    collection: Collection, header: OpenCosmoHeader, file: h5py.File
+):
     """
     Write the collection to an HDF5 file.
     """
@@ -59,6 +51,7 @@ def write_with_common_header(collection: Collection, header: OpenCosmoHeader, fi
     header.write(file)
     for key, dataset in collection.as_dict().items():
         dataset.write(file, key, with_header=False)
+
 
 def write_with_unique_headers(collection: Collection, file: h5py.File):
     """
@@ -74,6 +67,7 @@ def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
     if not set(datasets).issubset(set(file.keys())):
         raise ValueError(f"Some of {', '.join(datasets)} not found in file.")
 
+
 class ParticleCollection(dict):
     def __init__(self, header: OpenCosmoHeader, datasets: dict[str, oc.Dataset]):
         self.__header = header
@@ -85,7 +79,7 @@ class ParticleCollection(dict):
 
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *exc_details):
         for dataset in self.values():
             try:
@@ -94,7 +88,9 @@ class ParticleCollection(dict):
                 continue
 
     @classmethod
-    def open(cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None) -> ParticleCollection:
+    def open(
+        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
+    ) -> ParticleCollection | oc.Dataset:
         if datasets_to_get is not None:
             verify_datasets_exist(file, datasets_to_get)
             names = datasets_to_get
@@ -110,20 +106,21 @@ class ParticleCollection(dict):
             return next(iter(datasets.values()))
         return cls(header, datasets)
 
-
     @classmethod
-    def read(cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None) -> ParticleCollection:
+    def read(
+        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
+    ) -> ParticleCollection:
         if datasets_to_get is not None:
             verify_datasets_exist(file, datasets_to_get)
             names = datasets_to_get
         else:
             names = list(filter(lambda x: x != "header", file.keys()))
-           
+
         header = read_header(file)
         datasets = {name: read_single_dataset(file, name, header) for name in names}
 
-        if not datasets: 
-            raise ValueError(f"No datasets found in file.")
+        if not datasets:
+            raise ValueError("No datasets found in file.")
 
         elif len(datasets) == 1:
             return next(iter(datasets.values()))
@@ -136,7 +133,7 @@ class ParticleCollection(dict):
     def write(self, file: h5py.File):
         return write_with_common_header(self, self.__header, file)
 
-    def as_dict(self):
+    def as_dict(self) -> dict[str, oc.Dataset]:
         return self
 
 
@@ -152,26 +149,29 @@ class SimulationCollection(dict):
         self.dtype = dtype
         self.update(datasets)
 
-    def as_dict(self):
+    def as_dict(self) -> dict[str, oc.Dataset]:
         return self
 
     @classmethod
-    def open(cls, file: h5py.File, datasets: Optional[Iterable[str]] == None) -> SimulationCollection:
-        if datasets is not None:
-            verify_datasets_exist(file, datasets)
-            names = datasets
+    def open(
+        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
+    ) -> SimulationCollection:
+        if datasets_to_get is not None:
+            verify_datasets_exist(file, datasets_to_get)
+            names = datasets_to_get
         else:
             names = list(filter(lambda x: x != "header", file.keys()))
         datasets = {name: open_single_dataset(file, name) for name in names}
-        dtype = next(iter(datasets.values())).dtype
+        dtype = next(iter(datasets.values())).header.file.data_type
         return cls(dtype, datasets)
-        
-    
+
     @classmethod
-    def read(cls, file: h5py.File, datasets: Optiona[Iterable[str]] == None) -> SimulationCollection:
-        if datasets is not None:
-            verify_datasets_exist(file, datasets)
-            names = datasets
+    def read(
+        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
+    ) -> SimulationCollection:
+        if datasets_to_get is not None:
+            verify_datasets_exist(file, datasets_to_get)
+            names = datasets_to_get
         else:
             names = list(filter(lambda x: x != "header", file.keys()))
 
@@ -180,11 +180,9 @@ class SimulationCollection(dict):
         return cls(dtype, datasets)
 
     datasets = dict.values
-        
 
     def write(self, h5file: h5py.File):
         return write_with_unique_headers(self, h5file)
-
 
     def __map(self, method, *args, **kwargs):
         """
@@ -202,6 +200,7 @@ class SimulationCollection(dict):
         else:
             raise AttributeError(f"Attribute {name} not found on {self.dtype} dataset")
 
+
 def open_single_dataset(
     file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
 ) -> oc.Dataset:
@@ -217,7 +216,9 @@ def open_single_dataset(
     tree = read_tree(file[dataset_key], header)
     handler: OpenCosmoDataHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        handler = MPIHandler(file, tree=tree, comm=MPI.COMM_WORLD, group_name=dataset_key)
+        handler = MPIHandler(
+            file, tree=tree, comm=MPI.COMM_WORLD, group_name=dataset_key
+        )
     else:
         handler = OutOfMemoryHandler(file, tree=tree, group_name=dataset_key)
 
@@ -226,6 +227,7 @@ def open_single_dataset(
     )
     mask = np.arange(len(handler))
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
+
 
 def read_single_dataset(
     file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
@@ -246,4 +248,3 @@ def read_single_dataset(
     )
     mask = np.arange(len(handler))
     return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
-

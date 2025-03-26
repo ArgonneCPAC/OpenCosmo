@@ -1,22 +1,14 @@
-from typing import Iterable, Optional
-import h5py
-from pathlib import Path
-from opencosmo import dataset as ds
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
-from opencosmo.collection.link import verify_links, get_links, LinkedCollection
-from opencosmo.transformations import units as u
-from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
-from opencosmo import io
 from collections import defaultdict
-from opencosmo.spatial import read_tree
-import numpy as np
+from pathlib import Path
+from typing import Iterable, Optional
 
-try:
-    from mpi4py import MPI
-    from opencosmo.handler import MPIHandler
-except ImportError:
-    MPI = None
+import h5py
+
+from opencosmo import dataset as ds
+from opencosmo import io
+from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
+from opencosmo.collection.link import LinkedCollection, get_links, verify_links
+from opencosmo.header import read_header
 
 
 class FileHandle:
@@ -28,22 +20,26 @@ class FileHandle:
         self.handle = h5py.File(path, "r")
         self.header = read_header(self.handle)
 
-def open_multi_dataset_file(file: h5py.File, datasets: Optional[Iterable[str]]) -> Collection:
+
+def open_multi_dataset_file(
+    file: h5py.File, datasets: Optional[Iterable[str]]
+) -> Collection | ds.Dataset:
     """
     Open a file with multiple datasets.
     """
     CollectionType = get_collection_type(file)
     return CollectionType.open(file, datasets)
-    
+
 
 def read_multi_dataset_file(
     file: h5py.File, datasets: Optional[Iterable[str]] = None
-) -> Collection:
+) -> Collection | ds.Dataset:
     """
     Read particle data from an HDF5 file.
     """
     CollectionType = get_collection_type(file)
     return CollectionType.read(file, datasets)
+
 
 def open_linked(*files: Path):
     """
@@ -62,16 +58,18 @@ def open_linked(*files: Path):
 
     output_datasets: dict[str, ds.Dataset] = {}
     for dataset in datasets:
-        try:
-            output_datasets.update(dataset.as_dict())
-        except AttributeError:
+        if isinstance(dataset, ds.Dataset):
             output_datasets[dataset.header.file.data_type] = dataset
+        else:
+            output_datasets.update(dataset.as_dict())
 
     properties_file = output_datasets.pop(property_file_type)
     return LinkedCollection(
         properties_file.header, properties_file, output_datasets, links
     )
-def get_collection_type(file: h5py.File) -> Collection:
+
+
+def get_collection_type(file: h5py.File) -> type[Collection]:
     """
     Determine the type of a single file containing multiple datasets. Currently
     we support multi_simulation, particle, and linked collections.

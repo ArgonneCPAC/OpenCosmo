@@ -12,7 +12,6 @@ def input_path(data_path):
     return data_path / "haloparticles.hdf5"
 
 
-
 def test_read_one_particle(input_path):
     ds = oc.read(input_path, "star_particles")
     assert isinstance(ds, oc.Dataset)
@@ -40,6 +39,7 @@ def test_open_one_particle(input_path):
     with oc.open(input_path, "star_particles") as ds:
         assert isinstance(ds, oc.Dataset)
 
+
 def test_open_some_particles(input_path):
     keys = ["star_particles", "dm_particles"]
     with oc.open(input_path, keys) as ds:
@@ -48,6 +48,7 @@ def test_open_some_particles(input_path):
         assert "star_particles" in ds
         assert "dm_particles" in ds
 
+
 def test_open_all_particles(input_path):
     with h5py.File(input_path, "r") as f:
         keys = list(f.keys())
@@ -55,6 +56,7 @@ def test_open_all_particles(input_path):
     with oc.open(input_path) as ds:
         assert isinstance(ds, ParticleCollection)
         assert len(ds) == len(keys) - 1
+
 
 def test_read_invalid_dataset(input_path):
     with pytest.raises(ValueError):

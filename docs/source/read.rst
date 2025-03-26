@@ -22,6 +22,3 @@ If you do not close the dataset manually (or with a context manager) the underly
 
 .. autofunction:: opencosmo.read
 .. autofunction:: opencosmo.open
-.. autofunction:: opencosmo.read_cosmology
-.. autofunction:: opencosmo.read_header
-.. autofunction:: opencosmo.read_simulation_parameters

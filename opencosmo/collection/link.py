@@ -14,15 +14,14 @@ of data
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TypedDict, Optional, Iterable
+from typing import Iterable, Optional, TypedDict
 
 import numpy as np
 from h5py import File, Group
 
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.dataset.mask import Mask
 import opencosmo as oc
-
+from opencosmo.dataset.mask import Mask
+from opencosmo.header import OpenCosmoHeader, read_header
 
 LINK_ALIASES = {  # Name maps
     "star_particles": "sodbighaloparticles_star_particles",
@@ -37,6 +36,8 @@ ALLOWED_LINKS = {  # Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles"],
     "galaxy_properties": ["galaxy_particles"],
 }
+
+
 class LinkedCollection(dict):
     """
     A collection of datasets that are linked together, allowing
@@ -51,7 +52,7 @@ class LinkedCollection(dict):
         header: OpenCosmoHeader,
         properties: oc.Dataset,
         datasets: dict,
-        links: dict,
+        links: GalaxyPropertyLink | HaloPropertyLink,
         *args,
         **kwargs,
     ):
@@ -66,6 +67,19 @@ class LinkedCollection(dict):
         self.__linked = links
         self.__idxs = self.__properties.indices
         self.update(self.__datasets)
+
+    def as_dict(self) -> dict[str, oc.Dataset]:
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        for dataset in self.values():
+            try:
+                dataset.__exit__(*args)
+            except AttributeError:
+                continue
 
     @property
     def header(self):
@@ -92,14 +106,18 @@ class LinkedCollection(dict):
                 output_datasets[name] = ds
 
         return cls(header, properties, output_datasets, links)
-    
+
     @classmethod
-    def open(cls, file: File, names: Optional[dict[str, oc.Dataset]]):
+    def open(cls, file: File, names: Optional[Iterable[str]] = None):
         """
         Open a collection of linked datasets from an HDF5 file.
         """
-        header = oc.read_header(file)
+        header = read_header(file)
         properties = oc.open(file, header.file.data_type)
+        if not isinstance(properties, oc.Dataset):
+            raise ValueError(
+                "Expected a single dataset for the properties file, but found a collection of them"
+            )
         links = get_links(file)
         if names is None:
             names = set(file.keys()) - {header.file.data_type, "header"}
@@ -125,15 +143,19 @@ class LinkedCollection(dict):
             if dataset is self.__properties:
                 continue
             try:
-                starts = self.__linked[key]["start_index"][idxs]
-                sizes = self.__linked[key]["length"][idxs]
-                indices = np.concatenate([np.arange(start, start + size) for start, size in zip(starts, sizes)])
+                starts = self.__linked[key]["start_index"][idxs]  # type: ignore
+                sizes = self.__linked[key]["length"][idxs]  # type: ignore
+                indices = np.concatenate(
+                    [
+                        np.arange(start, start + size)
+                        for start, size in zip(starts, sizes)
+                    ]
+                )
                 dataset.write(file, alias, indices=indices)
             except IndexError:
-                indices = self.__linked[key][idxs]
+                indices = self.__linked[key][idxs]  # type: ignore
                 dataset.write(file, alias, indices=indices)
 
-        
         property_dataset = self.__properties.header.file.data_type
         self.__properties.write(file, property_dataset, property_dataset)
         write_links(file[property_dataset], self.__linked, self.__properties.indices)
@@ -146,10 +168,10 @@ class LinkedCollection(dict):
         # find the index into the linked dataset at the mask index
         linked_index = self.__idxs[index]
         try:
-            start = self.__linked[dtype]["start_index"][linked_index]
-            size = self.__linked[dtype]["length"][linked_index]
+            start = self.__linked[dtype]["start_index"][linked_index]  # type: ignore
+            size = self.__linked[dtype]["length"][linked_index]  # type: ignore
         except IndexError:
-            start = self.__linked[dtype][linked_index]
+            start = self.__linked[dtype][linked_index]  # type: ignore
             size = 1
 
         if start == -1 or size == -1:
@@ -206,7 +228,6 @@ class LinkedCollection(dict):
         )
 
 
-
 def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
     """
     Verify that the links in the headers are valid. This means that the
@@ -255,7 +276,7 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
     return output_file, links[output_file]
 
 
-def get_links(file: File | Group) -> HaloPropertyLink | GalaxyPropertyLink:
+def get_links(file: File | Group) -> GalaxyPropertyLink | HaloPropertyLink:
     if "data_linked" not in file.keys():
         raise ValueError(f"No links found in {file.name}")
     keys = file["data_linked"].keys()
@@ -268,9 +289,7 @@ def get_links(file: File | Group) -> HaloPropertyLink | GalaxyPropertyLink:
         # we're dealing with a galaxy property file
         size = file["data_linked"]["galaxyparticles_star_particles_size"][()]
         start = file["data_linked"]["galaxyparticles_star_particles_start"][()]
-        return GalaxyPropertyLink(
-            {"galaxy_particles": {"start_index": start, "length": size}}
-        )
+        return {"galaxy_particles": {"start_index": start, "length": size}}
 
 
 def read_halo_property_links(file: File | Group) -> HaloPropertyLink:
@@ -282,50 +301,44 @@ def read_halo_property_links(file: File | Group) -> HaloPropertyLink:
     """
 
     # Read the links for dark matter, AGN, gas, and star particles
-    return HaloPropertyLink(
-        {
-            "dm_particles": {
-                "start_index": file["data_linked"][
-                    "sodbighaloparticles_dm_particles_start"
-                ][()],
-                "length": file["data_linked"]["sodbighaloparticles_dm_particles_size"][
-                    ()
-                ],
-            },
-            "agn_particles": {
-                "start_index": file["data_linked"][
-                    "sodbighaloparticles_agn_particles_start"
-                ][()],
-                "length": file["data_linked"]["sodbighaloparticles_agn_particles_size"][
-                    ()
-                ],
-            },
-            "gas_particles": {
-                "start_index": file["data_linked"][
-                    "sodbighaloparticles_gas_particles_start"
-                ][()],
-                "length": file["data_linked"]["sodbighaloparticles_gas_particles_size"][
-                    ()
-                ],
-            },
-            "star_particles": {
-                "start_index": file["data_linked"][
-                    "sodbighaloparticles_star_particles_start"
-                ][()],
-                "length": file["data_linked"][
-                    "sodbighaloparticles_star_particles_size"
-                ][()],
-            },
-            "galaxy_properties": {
-                "start_index": file["data_linked"]["galaxyproperties_start"][()],
-                "length": file["data_linked"]["galaxyproperties_size"][()],
-            },
-            "halo_profiles": file["data_linked"]["sod_profile_idx"][()],
-        }
-    )
+    return {
+        "dm_particles": {
+            "start_index": file["data_linked"][
+                "sodbighaloparticles_dm_particles_start"
+            ][()],
+            "length": file["data_linked"]["sodbighaloparticles_dm_particles_size"][()],
+        },
+        "agn_particles": {
+            "start_index": file["data_linked"][
+                "sodbighaloparticles_agn_particles_start"
+            ][()],
+            "length": file["data_linked"]["sodbighaloparticles_agn_particles_size"][()],
+        },
+        "gas_particles": {
+            "start_index": file["data_linked"][
+                "sodbighaloparticles_gas_particles_start"
+            ][()],
+            "length": file["data_linked"]["sodbighaloparticles_gas_particles_size"][()],
+        },
+        "star_particles": {
+            "start_index": file["data_linked"][
+                "sodbighaloparticles_star_particles_start"
+            ][()],
+            "length": file["data_linked"]["sodbighaloparticles_star_particles_size"][
+                ()
+            ],
+        },
+        "galaxy_properties": {
+            "start_index": file["data_linked"]["galaxyproperties_start"][()],
+            "length": file["data_linked"]["galaxyproperties_size"][()],
+        },
+        "halo_profiles": file["data_linked"]["sod_profile_idx"][()],
+    }
 
 
-def pack_links(data_link: DataLink | np.ndarray, indices: np.ndarray) -> DataLink:
+def pack_links(
+    data_link: DataLink | np.ndarray, indices: np.ndarray
+) -> DataLink | np.ndarray:
     if isinstance(data_link, np.ndarray):
         return np.arange(len(indices))
     elif isinstance(data_link, dict):
@@ -334,19 +347,21 @@ def pack_links(data_link: DataLink | np.ndarray, indices: np.ndarray) -> DataLin
         new_starts = np.insert(new_starts, 0, 0)[:-1]
         return {"start_index": new_starts, "length": lengths}
 
-def write_links(file: File | Group, links: HaloPropertyLink | GalaxyPropertyLink, indices: np.ndarray):
+
+def write_links(
+    file: File | Group,
+    links: GalaxyPropertyLink | HaloPropertyLink,
+    indices: np.ndarray,
+):
     group = file.require_group("data_linked")
     for key, value in links.items():
-        link_to_write = pack_links(value, indices)
+        link_to_write = pack_links(value, indices)  # type: ignore
         alias = LINK_ALIASES.get(key, key)
         if key == "halo_profiles":
             group.create_dataset(alias, data=link_to_write)
         else:
             group.create_dataset(f"{alias}_start", data=link_to_write["start_index"])
             group.create_dataset(f"{alias}_size", data=link_to_write["length"])
-
-
-
 
 
 class DataLink(TypedDict):
