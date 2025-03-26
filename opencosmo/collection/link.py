@@ -151,10 +151,10 @@ class LinkedCollection(dict):
                         for start, size in zip(starts, sizes)
                     ]
                 )
-                dataset.write(file, alias, indices_=indices)
+                dataset.write(file, alias, _indices=indices)
             except IndexError:
                 indices = self.__linked[key][idxs]  # type: ignore
-                dataset.write(file, alias, indices_=indices)
+                dataset.write(file, alias, _indices=indices)
 
         property_dataset = self.__properties.header.file.data_type
         self.__properties.write(file, property_dataset, property_dataset)
