@@ -38,5 +38,5 @@ def test_read_multi(multi_path):
 
 def test_particle_read(particle_path):
     dataset = oc.read(particle_path)
-    assert isinstance(dataset, oc.collection.DataCollection)
+    assert isinstance(dataset, oc.collection.ParticleCollection)
     assert all("particle" in key for key in dataset.keys())

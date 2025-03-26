@@ -14,22 +14,197 @@ of data
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TypedDict
+from typing import TypedDict, Optional, Iterable
 
 import numpy as np
 from h5py import File, Group
 
-from opencosmo.header import OpenCosmoHeader
+from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.dataset.mask import Mask
+import opencosmo as oc
+
 
 LINK_ALIASES = {  # Name maps
-    "sodbighaloparticles": "halo_particles",
-    "sod_profile": "halo_profiles",
+    "star_particles": "sodbighaloparticles_star_particles",
+    "dm_particles": "sodbighaloparticles_dm_particles",
+    "agn_particles": "sodbighaloparticles_agn_particles",
+    "gas_particles": "sodbighaloparticles_gas_particles",
+    "halo_profiles": "sod_profile_idx",
+    "galaxy_properties": "galaxyproperties",
 }
 
 ALLOWED_LINKS = {  # Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles"],
     "galaxy_properties": ["galaxy_particles"],
 }
+class LinkedCollection(dict):
+    """
+    A collection of datasets that are linked together, allowing
+    for cross-matching and other operations to be performed.
+
+    For now, these are always a combination of a properties dataset
+    and some other set of datasetes (particles and/or profiles).
+    """
+
+    def __init__(
+        self,
+        header: OpenCosmoHeader,
+        properties: oc.Dataset,
+        datasets: dict,
+        links: dict,
+        *args,
+        **kwargs,
+    ):
+        """
+        Initialize a linked collection with the provided datasets and links.
+        """
+
+        self.__header = header
+        self.__properties = properties
+        self.__datasets = datasets
+        self[properties.header.file.data_type] = properties
+        self.__linked = links
+        self.__idxs = self.__properties.indices
+        self.update(self.__datasets)
+
+    @property
+    def header(self):
+        return self.__header
+
+    @classmethod
+    def read(cls, file: File, names: Optional[Iterable[str]] = None):
+        """
+        Read a collection of linked datasets from an HDF5 file.
+        """
+        header = read_header(file)
+        properties = oc.read(file, header.file.data_type)
+        links = get_links(file[header.file.data_type])
+        if names is None:
+            names = set(file.keys()) - {header.file.data_type, "header"}
+
+        datasets = {name: oc.read(file, name) for name in names}
+        output_datasets = {}
+        for name, ds in datasets.items():
+            if name in LINK_ALIASES.values():
+                key = next(k for k, v in LINK_ALIASES.items() if v == name)
+                output_datasets[key] = ds
+            else:
+                output_datasets[name] = ds
+
+        return cls(header, properties, output_datasets, links)
+    
+    @classmethod
+    def open(cls, file: File, names: Optional[dict[str, oc.Dataset]]):
+        """
+        Open a collection of linked datasets from an HDF5 file.
+        """
+        header = oc.read_header(file)
+        properties = oc.open(file, header.file.data_type)
+        links = get_links(file)
+        if names is None:
+            names = set(file.keys()) - {header.file.data_type, "header"}
+
+        datasets = {name: oc.open(file, name) for name in names}
+        output_datasets = {}
+        for name, ds in datasets.items():
+            if name in LINK_ALIASES.values():
+                key = next(k for k, v in LINK_ALIASES.items() if v == name)
+                output_datasets[key] = ds
+            else:
+                output_datasets[name] = ds
+        return cls(header, properties, output_datasets, links)
+
+    def write(self, file: File):
+        """
+        Write the collection to an HDF5 file.
+        """
+        self.__header.write(file)
+        idxs = self.__properties.indices
+        for key, dataset in self.items():
+            alias = LINK_ALIASES.get(key, key)
+            if dataset is self.__properties:
+                continue
+            try:
+                starts = self.__linked[key]["start_index"][idxs]
+                sizes = self.__linked[key]["length"][idxs]
+                indices = np.concatenate([np.arange(start, start + size) for start, size in zip(starts, sizes)])
+                dataset.write(file, alias, indices=indices)
+            except IndexError:
+                indices = self.__linked[key][idxs]
+                dataset.write(file, alias, indices=indices)
+
+        
+        property_dataset = self.__properties.header.file.data_type
+        self.__properties.write(file, property_dataset, property_dataset)
+        write_links(file[property_dataset], self.__linked, self.__properties.indices)
+
+    def __get_linked(self, dtype: str, index: int):
+        if dtype not in self.__linked:
+            raise ValueError(f"No links found for {dtype}")
+        elif index >= len(self.__properties):
+            raise ValueError(f"Index {index} out of range for {dtype}")
+        # find the index into the linked dataset at the mask index
+        linked_index = self.__idxs[index]
+        try:
+            start = self.__linked[dtype]["start_index"][linked_index]
+            size = self.__linked[dtype]["length"][linked_index]
+        except IndexError:
+            start = self.__linked[dtype][linked_index]
+            size = 1
+
+        if start == -1 or size == -1:
+            return None
+
+        return self.__datasets[dtype].take_range(start, start + size)
+
+    def objects(self, dtypes: Optional[str | list[str]] = None):
+        """
+        Iterate over the datasets in the collection that are linked to the
+        provided data types.
+        """
+        if dtypes is None:
+            dtypes = list(k for k in self.__linked.keys() if k in self.__datasets)
+        elif isinstance(dtypes, str):
+            dtypes = [dtypes]
+        if not all(dtype in self.__linked for dtype in dtypes):
+            raise ValueError("One or more of the provided data types is not linked")
+
+        ndtypes = len(dtypes)
+        for i, properties in enumerate(self.__properties.rows()):
+            results = {dtype: self.__get_linked(dtype, i) for dtype in dtypes}
+            if all(result is None for result in results.values()):
+                continue
+            if ndtypes == 1:
+                yield properties, results[dtypes[0]]
+            else:
+                yield properties, results
+
+    def filter(self, *masks: Mask):
+        """
+        Filter the datasets in the collection by the provided masks. Filtering occurs
+        on the properties file that is linked to the other datasets.
+        """
+        new_properties = self.__properties.filter(*masks)
+        return LinkedCollection(
+            self.header, new_properties, self.__datasets, self.__linked
+        )
+
+    def take(self, n: int, at: str = "start"):
+        new_properties = self.__properties.take(n, at)
+        return LinkedCollection(
+            self.header, new_properties, self.__datasets, self.__linked
+        )
+
+    def with_units(self, convention: str) -> LinkedCollection:
+        """
+        Return a new dataset with the units converted to the provided convention.
+        """
+        new_properties = self.__properties.with_units(convention)
+        new_datasets = {k: v.with_units(convention) for k, v in self.__datasets.items()}
+        return LinkedCollection(
+            self.header, new_properties, new_datasets, self.__linked
+        )
+
 
 
 def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
@@ -148,6 +323,30 @@ def read_halo_property_links(file: File | Group) -> HaloPropertyLink:
             "halo_profiles": file["data_linked"]["sod_profile_idx"][()],
         }
     )
+
+
+def pack_links(data_link: DataLink | np.ndarray, indices: np.ndarray) -> DataLink:
+    if isinstance(data_link, np.ndarray):
+        return np.arange(len(indices))
+    elif isinstance(data_link, dict):
+        lengths = data_link["length"][indices]
+        new_starts = np.cumsum(lengths)
+        new_starts = np.insert(new_starts, 0, 0)[:-1]
+        return {"start_index": new_starts, "length": lengths}
+
+def write_links(file: File | Group, links: HaloPropertyLink | GalaxyPropertyLink, indices: np.ndarray):
+    group = file.require_group("data_linked")
+    for key, value in links.items():
+        link_to_write = pack_links(value, indices)
+        alias = LINK_ALIASES.get(key, key)
+        if key == "halo_profiles":
+            group.create_dataset(alias, data=link_to_write)
+        else:
+            group.create_dataset(f"{alias}_start", data=link_to_write["start_index"])
+            group.create_dataset(f"{alias}_size", data=link_to_write["length"])
+
+
+
 
 
 class DataLink(TypedDict):
