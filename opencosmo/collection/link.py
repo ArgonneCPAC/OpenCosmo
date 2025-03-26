@@ -44,7 +44,7 @@ class LinkedCollection(dict):
     for cross-matching and other operations to be performed.
 
     For now, these are always a combination of a properties dataset
-    and some other set of datasetes (particles and/or profiles).
+    and several particle or profile datasets. 
     """
 
     def __init__(
@@ -181,8 +181,35 @@ class LinkedCollection(dict):
 
     def objects(self, dtypes: Optional[str | list[str]] = None):
         """
-        Iterate over the datasets in the collection that are linked to the
-        provided data types.
+        Iterate over the objects in the collection, returning the properties
+        of the object as well as its particles and/or profiles. The specific
+        datatypes you want to return can be specified with the `dtypes` argument.
+        If `dtypes` is not provided, all linked datasets will be returned.
+
+        The objects are returned as a tuple of the properties and a dictionary
+        of the linked datasets. If only one datatype is requested, the second
+        element of the tuple will simply be the linked dataset. For example
+        If we have a collection of halo properties linked to halo particles and
+        star particles:
+
+        .. code-block:: python
+            
+            for properties, particles in collection.objects():
+                properties # dict of properties for the given halo
+                particles # dict containing one halo particle dataset 
+                          # and one star particle dataset for this halo
+
+        Parameters
+        ----------
+        dtypes : str or list of str, optional
+            The data types to return. If not provided, all datasets will be returned.
+
+        Returns
+        -------
+
+        tuple of (OpenCosmoHeader, dict) or (OpenCosmoHeader, oc.Dataset)
+            The properties of the object and the linked datasets
+
         """
         if dtypes is None:
             dtypes = list(k for k in self.__linked.keys() if k in self.__datasets)
@@ -203,8 +230,20 @@ class LinkedCollection(dict):
 
     def filter(self, *masks: Mask):
         """
-        Filter the datasets in the collection by the provided masks. Filtering occurs
-        on the properties file that is linked to the other datasets.
+        Filtering a linked collection always operates on the properties dataset. For
+        example, a collection of halos can be filtered by the standard halo properties,
+        such as fof_halo_mass. The filteriing works identically to 
+        :meth:`oc.Dataset.filter`.
+
+        Parameters
+        ----------
+        masks : Mask
+            The masks to apply to the properties dataset.
+
+        Returns
+        -------
+        LinkedCollection
+            A new collection with the filtered properties dataset.
         """
         new_properties = self.__properties.filter(*masks)
         return LinkedCollection(
@@ -212,6 +251,10 @@ class LinkedCollection(dict):
         )
 
     def take(self, n: int, at: str = "start"):
+        """
+        Take some number of objects from the collection. This method operates
+        identically to :meth:`oc.Dataset.take`.
+        """
         new_properties = self.__properties.take(n, at)
         return LinkedCollection(
             self.header, new_properties, self.__datasets, self.__linked
@@ -219,7 +262,8 @@ class LinkedCollection(dict):
 
     def with_units(self, convention: str) -> LinkedCollection:
         """
-        Return a new dataset with the units converted to the provided convention.
+        Convert the units of the collection to a given convention. This method
+        operates identically to :meth:`oc.Dataset.with_units
         """
         new_properties = self.__properties.with_units(convention)
         new_datasets = {k: v.with_units(convention) for k, v in self.__datasets.items()}
