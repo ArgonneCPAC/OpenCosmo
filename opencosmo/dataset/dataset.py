@@ -77,7 +77,7 @@ class Dataset:
         return self.__handler.get_data(builders=self.__builders, indices=self.__indices)
 
     def write(
-        self, file: h5py.File, dataset_name: Optional[str] = None, with_header=True
+        self, file: h5py.File, dataset_name: Optional[str] = None, with_header=True, indices: Optional[np.ndarray] = None
     ) -> None:
         """
         Write the dataset to a file. This should not be called directly for the user.
@@ -100,7 +100,15 @@ class Dataset:
         if with_header:
             write_header(file, self.__header, dataset_name)
 
-        self.__handler.write(file, self.__indices, self.__builders.keys(), dataset_name)
+        if indices is not None:
+            indices.sort()
+            if indices[0] < 0 or indices[-1] >= len(self):
+                raise ValueError("Indices out of bounds")
+            idxs = self.__indices[indices]
+        else:
+            idxs = self.__indices
+
+        self.__handler.write(file, idxs, self.__builders.keys(), dataset_name)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
@@ -345,3 +353,4 @@ class Dataset:
             self.__base_unit_transformations,
             new_indices,
         )
+

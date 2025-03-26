@@ -51,15 +51,15 @@ class MPIHandler:
         self,
         file: h5py.File,
         tree: Tree,
-        group: Optional[str] = None,
+        group_name: Optional[str] = None,
         comm=MPI.COMM_WORLD,
     ):
         self.__file = file
-        self.__group_name = group
-        if group is None:
+        self.__group_name = group_name
+        if group_name is None:
             self.__group = file["data"]
         else:
-            self.__group = file[f"{group}/data"]
+            self.__group = file[f"{group_name}/data"]
         self.__columns = get_data_structure(self.__group)
         self.__comm = comm
         self.__tree = tree

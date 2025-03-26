@@ -2,129 +2,90 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional, Protocol, Iterable
+
+try:
+    from mpi4py import MPI
+
+    from opencosmo.handler import MPIHandler
+except ImportError:
+    MPI = None  # type: ignore
+
 
 import h5py
 
 import opencosmo as oc
 from opencosmo.dataset.mask import Mask
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.spatial import read_tree
+from opencosmo.handler import InMemoryHandler, OutOfMemoryHandler, OpenCosmoDataHandler
+from opencosmo.transformations import units as u
+import numpy as np
 
-from .link import get_links, verify_links
+from .link import get_links, verify_links, write_links
 
 
-class FileHandle:
+class Collection(Protocol):
+    pass
+
+    
+    @classmethod
+    def open(cls, file: h5py.File, datasets:  ptional[Iterable[str]] = None) -> Collection:
+        ...
+
+    @classmethod
+    def read(cls, file: h5py.File) -> Collection:
+        ...
+
+    def write(self, file: h5py.File):
+        ...
+
+    def as_dict(self) -> dict[str, oc.Dataset]:
+        ...
+
+    def __enter__(self):
+        ...
+
+    def __exit__(self, *exc_details):
+        ...
+
+
+def write_with_common_header(collection: Collection, header: OpenCosmoHeader, file: h5py.File):
     """
-    Helper class used just for setup
+    Write the collection to an HDF5 file.
     """
+    # figure out if we have unique headers
 
-    def __init__(self, path: Path):
-        self.handle = h5py.File(path, "r")
-        self.header = read_header(self.handle)
+    header.write(file)
+    for key, dataset in collection.as_dict().items():
+        dataset.write(file, key, with_header=False)
 
-
-def open_linked(*files: Path):
+def write_with_unique_headers(collection: Collection, file: h5py.File):
     """
-    Open a collection of files that are linked together, such as a
-    properties file and a particle file.
+    Write the collection to an HDF5 file.
     """
-    file_handles = [FileHandle(file) for file in files]
-    datasets = [oc.open(file) for file in files]
-    property_file_type, linked_files = verify_links(*[fh.header for fh in file_handles])
-    property_handle = next(
-        filter(lambda x: x.header.file.data_type == property_file_type, file_handles)
-    ).handle
-    links = get_links(property_handle)
-    if not links:
-        raise ValueError("No valid links found in files")
+    # figure out if we have unique headers
 
-    output_datasets: dict[str, oc.Dataset] = {}
-    for dataset in datasets:
-        if isinstance(dataset, oc.DataCollection):
-            output_datasets.update(dataset)
-        else:
-            output_datasets[dataset.header.file.data_type] = dataset
-
-    properties_file = output_datasets.pop(property_file_type)
-    output_links = {k: v for k, v in links.items() if k in output_datasets}
-    return LinkedCollection(
-        property_handle, properties_file, output_datasets, output_links
-    )
+    for key, dataset in collection.as_dict().items():
+        dataset.write(file, key)
 
 
-def get_collection_type(file: h5py.File) -> Callable[..., DataCollection]:
-    """
-    Determine the type of a single file containing multiple datasets. Currently
-    we only support multi_simulation and particle.
+def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
+    if not set(datasets).issubset(set(file.keys())):
+        raise ValueError(f"Some of {', '.join(datasets)} not found in file.")
 
-    multi_simulation == multiple simulations, same data types
-    particle == single simulation, multiple particle species
-    """
-    datasets = [k for k in file.keys() if k != "header"]
-    if len(datasets) == 0:
-        raise ValueError("No datasets found in file.")
-
-    if all("particle" in dataset for dataset in datasets) and "header" in file.keys():
-        return lambda *args, **kwargs: DataCollection("particle", *args, **kwargs)
-
-    elif "header" not in file.keys():
-        config_values = defaultdict(list)
-        for dataset in datasets:
-            try:
-                filetype_data = dict(file[dataset]["header"]["file"].attrs)
-                for key, value in filetype_data.items():
-                    config_values[key].append(value)
-            except KeyError:
-                continue
-        if all(len(set(v)) == 1 for v in config_values.values()):
-            return lambda *args, **kwargs: SimulationCollection(
-                "particle", *args, **kwargs
-            )
-        else:
-            raise ValueError(
-                "Unknown file type. "
-                "It appears to have multiple datasets, but organized incorrectly"
-            )
-    else:
-        raise ValueError(
-            "Unknown file type. "
-            "It appears to have multiple datasets, but organized incorrectly"
-        )
-
-
-class DataCollection(dict):
-    """
-    A collection of datasets that are related in some way. Provides
-    access to high-level operations such as cross-matching, or plotting
-    multiple datasets together.
-
-
-    In general, we want to discourage users from creating their
-    own data collections (unless they are derived from one of ours)
-    because
-
-    """
-
-    def __init__(
-        self,
-        collection_type: str,
-        header: Optional[OpenCosmoHeader] = None,
-        *args,
-        **kwargs,
-    ):
-        self.collection_type = collection_type
+class ParticleCollection(dict):
+    def __init__(self, header: OpenCosmoHeader, datasets: dict[str, oc.Dataset]):
         self.__header = header
-        super().__init__(*args, **kwargs)
+        self.update(datasets)
 
     @property
     def header(self):
         return self.__header
 
-    datasets = dict.values
-
     def __enter__(self):
         return self
-
+    
     def __exit__(self, *exc_details):
         for dataset in self.values():
             try:
@@ -132,123 +93,54 @@ class DataCollection(dict):
             except ValueError:
                 continue
 
-    def write(self, file: h5py.File):
-        """
-        Write the collection to an HDF5 file.
-        """
-        # figure out if we have unique headers
-
-        if self.__header is None:
-            for key, dataset in self.items():
-                dataset.write(file, key)
+    @classmethod
+    def open(cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None) -> ParticleCollection:
+        if datasets_to_get is not None:
+            verify_datasets_exist(file, datasets_to_get)
+            names = datasets_to_get
         else:
-            self.__header.write(file)
-            for key, dataset in self.items():
-                dataset.write(file, key, with_header=False)
+            names = list(filter(lambda x: x != "header", file.keys()))
+
+        header = read_header(file)
+        datasets = {name: open_single_dataset(file, name, header) for name in names}
+        if not datasets:
+            raise ValueError("No datasets found in file.")
+
+        elif len(datasets) == 1:
+            return next(iter(datasets.values()))
+        return cls(header, datasets)
 
 
-class LinkedCollection(dict):
-    """
-    A collection of datasets that are linked together, allowing
-    for cross-matching and other operations to be performed.
+    @classmethod
+    def read(cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None) -> ParticleCollection:
+        if datasets_to_get is not None:
+            verify_datasets_exist(file, datasets_to_get)
+            names = datasets_to_get
+        else:
+            names = list(filter(lambda x: x != "header", file.keys()))
+           
+        header = read_header(file)
+        datasets = {name: read_single_dataset(file, name, header) for name in names}
 
-    For now, these are always a combination of a properties dataset
-    and some other set of datasetes (particles and/or profiles).
-    """
+        if not datasets: 
+            raise ValueError(f"No datasets found in file.")
 
-    def __init__(
-        self,
-        header: OpenCosmoHeader,
-        properties: oc.Dataset,
-        datasets: dict,
-        links: dict,
-        *args,
-        **kwargs,
-    ):
-        """
-        Initialize a linked collection with the provided datasets and links.
-        """
-        self.__header = header
-        self.__properties = properties
-        self.__datasets = datasets
-        self[properties.header.file.data_type] = properties
-        self.__linked = links
-        self.__idxs = self.__properties.indices
-        self.update(self.__datasets)
+        elif len(datasets) == 1:
+            return next(iter(datasets.values()))
 
-    @property
-    def header(self):
-        return self.__header
+        return cls(header, datasets)
 
-    def __get_linked(self, dtype: str, index: int):
-        if dtype not in self.__linked:
-            raise ValueError(f"No links found for {dtype}")
-        elif index >= len(self.__properties):
-            raise ValueError(f"Index {index} out of range for {dtype}")
-        # find the index into the linked dataset at the mask index
-        linked_index = self.__idxs[index]
-        try:
-            start = self.__linked[dtype]["start_index"][linked_index]
-            size = self.__linked[dtype]["length"][linked_index]
-        except IndexError:
-            start = self.__linked[dtype][linked_index]
-            size = 1
+    particle_types = dict.keys
+    particles = dict.values
 
-        if start == -1 or size == -1:
-            return None
+    def write(self, file: h5py.File):
+        return write_with_common_header(self, self.__header, file)
 
-        return self.__datasets[dtype].take_range(start, start + size)
-
-    def objects(self, dtypes: Optional[str | list[str]] = None):
-        """
-        Iterate over the datasets in the collection that are linked to the
-        provided data types.
-        """
-        if dtypes is None:
-            dtypes = list(self.__linked.keys())
-        elif isinstance(dtypes, str):
-            dtypes = [dtypes]
-        if not all(dtype in self.__linked for dtype in dtypes):
-            raise ValueError("One or more of the provided data types is not linked")
-
-        ndtypes = len(dtypes)
-        for i, properties in enumerate(self.__properties.rows()):
-            results = {dtype: self.__get_linked(dtype, i) for dtype in dtypes}
-            if all(result is None for result in results.values()):
-                continue
-            if ndtypes == 1:
-                yield properties, results[dtypes[0]]
-            else:
-                yield properties, results
-
-    def filter(self, *masks: Mask):
-        """
-        Filter the datasets in the collection by the provided masks. Filtering occurs
-        on the properties file that is linked to the other datasets.
-        """
-        new_properties = self.__properties.filter(*masks)
-        return LinkedCollection(
-            self.header, new_properties, self.__datasets, self.__linked
-        )
-
-    def take(self, n: int, at: str = "start"):
-        new_properties = self.__properties.take(n, at)
-        return LinkedCollection(
-            self.header, new_properties, self.__datasets, self.__linked
-        )
-
-    def with_units(self, convention: str) -> LinkedCollection:
-        """
-        Return a new dataset with the units converted to the provided convention.
-        """
-        new_properties = self.__properties.with_units(convention)
-        new_datasets = {k: v.with_units(convention) for k, v in self.__datasets.items()}
-        return LinkedCollection(
-            self.header, new_properties, new_datasets, self.__linked
-        )
+    def as_dict(self):
+        return self
 
 
-class SimulationCollection(DataCollection):
+class SimulationCollection(dict):
     """
     A collection of datasets of the same type from different
     simulations. In general this exposes the exact same API
@@ -256,9 +148,43 @@ class SimulationCollection(DataCollection):
     all of them.
     """
 
-    def __init__(self, dtype: str, *args, **kwargs):
+    def __init__(self, dtype: str, datasets: dict[str, oc.Dataset]):
         self.dtype = dtype
-        super().__init__("multi_simulation", *args, **kwargs)
+        self.update(datasets)
+
+    def as_dict(self):
+        return self
+
+    @classmethod
+    def open(cls, file: h5py.File, datasets: Optional[Iterable[str]] == None) -> SimulationCollection:
+        if datasets is not None:
+            verify_datasets_exist(file, datasets)
+            names = datasets
+        else:
+            names = list(filter(lambda x: x != "header", file.keys()))
+        datasets = {name: open_single_dataset(file, name) for name in names}
+        dtype = next(iter(datasets.values())).dtype
+        return cls(dtype, datasets)
+        
+    
+    @classmethod
+    def read(cls, file: h5py.File, datasets: Optiona[Iterable[str]] == None) -> SimulationCollection:
+        if datasets is not None:
+            verify_datasets_exist(file, datasets)
+            names = datasets
+        else:
+            names = list(filter(lambda x: x != "header", file.keys()))
+
+        datasets = {name: read_single_dataset(file, name) for name in names}
+        dtype = next(iter(datasets.values())).header.file.data_type
+        return cls(dtype, datasets)
+
+    datasets = dict.values
+        
+
+    def write(self, h5file: h5py.File):
+        return write_with_unique_headers(self, h5file)
+
 
     def __map(self, method, *args, **kwargs):
         """
@@ -267,7 +193,7 @@ class SimulationCollection(DataCollection):
         across all of them.
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return SimulationCollection(self.dtype, header=self.header, **output)
+        return SimulationCollection(self.dtype, output)
 
     def __getattr__(self, name):
         # check if the method exists on the first dataset
@@ -275,3 +201,49 @@ class SimulationCollection(DataCollection):
             return lambda *args, **kwargs: self.__map(name, *args, **kwargs)
         else:
             raise AttributeError(f"Attribute {name} not found on {self.dtype} dataset")
+
+def open_single_dataset(
+    file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
+) -> oc.Dataset:
+    """
+    Open a file with a single dataset.
+    """
+    if dataset_key not in file.keys():
+        raise ValueError(f"No group named '{dataset_key}' found in file.")
+
+    if header is None:
+        header = read_header(file[dataset_key])
+
+    tree = read_tree(file[dataset_key], header)
+    handler: OpenCosmoDataHandler
+    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
+        handler = MPIHandler(file, tree=tree, comm=MPI.COMM_WORLD, group_name=dataset_key)
+    else:
+        handler = OutOfMemoryHandler(file, tree=tree, group_name=dataset_key)
+
+    builders, base_unit_transformations = u.get_default_unit_transformations(
+        file[dataset_key], header
+    )
+    mask = np.arange(len(handler))
+    return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
+
+def read_single_dataset(
+    file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
+):
+    """
+    Read a single dataset from a multi-dataset file
+    """
+    if dataset_key not in file.keys():
+        raise ValueError(f"No group named '{dataset_key}' found in file.")
+
+    if header is None:
+        header = read_header(file[dataset_key])
+
+    tree = read_tree(file[dataset_key], header)
+    handler = InMemoryHandler(file, tree, dataset_key)
+    builders, base_unit_transformations = u.get_default_unit_transformations(
+        file[dataset_key], header
+    )
+    mask = np.arange(len(handler))
+    return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
+

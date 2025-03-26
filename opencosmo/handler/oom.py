@@ -19,13 +19,13 @@ class OutOfMemoryHandler:
 
     """
 
-    def __init__(self, file: h5py.File, tree: Tree, group: Optional[str] = None):
-        self.__group_name = group
+    def __init__(self, file: h5py.File, tree: Tree, group_name: Optional[str] = None):
+        self.__group_name = group_name
         self.__file = file
-        if group is None:
+        if group_name is None:
             self.__group = file["data"]
         else:
-            self.__group = file[f"{group}/data"]
+            self.__group = file[f"{group_name}/data"]
         self.__columns = get_data_structure(self.__group)
         self.__tree = tree
 
