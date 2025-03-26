@@ -35,7 +35,7 @@ def read_multi_dataset_file(
     file: h5py.File, datasets: Optional[Iterable[str]] = None
 ) -> Collection | ds.Dataset:
     """
-    Read particle data from an HDF5 file.
+    Read a file with multiple datasets.
     """
     CollectionType = get_collection_type(file)
     return CollectionType.read(file, datasets)

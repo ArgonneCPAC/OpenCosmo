@@ -21,6 +21,19 @@ from opencosmo.transformations import units as u
 
 
 class Collection(Protocol):
+    """
+    Collections represent a group of datasets that are related in some way. They
+    support higher-level operations that are applied across all datasets in the
+    collection, sometimes in a non-obvious way.
+
+    This protocl defines methods a collection must implement. Note that 
+    the "open" and "read" methods are used in the case an entire collection
+    is located within a single file. Multi-file collections are handled
+    in the collection.io module. Most complexity is hidden from the user
+    who simply calls "oc.read" and "oc.open" to get a collection. The io 
+    module also does sanity checking to ensure files are structurally valid, 
+    so we do not have to do it here.
+    """
     @classmethod
     def open(
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
@@ -44,7 +57,8 @@ def write_with_common_header(
     collection: Collection, header: OpenCosmoHeader, file: h5py.File
 ):
     """
-    Write the collection to an HDF5 file.
+    Write a collection to an HDF5 file when all datasets share
+    a common header.
     """
     # figure out if we have unique headers
 
@@ -55,7 +69,8 @@ def write_with_common_header(
 
 def write_with_unique_headers(collection: Collection, file: h5py.File):
     """
-    Write the collection to an HDF5 file.
+    Write the collection to an HDF5 file when each dattaset
+    has its own header.
     """
     # figure out if we have unique headers
 
@@ -64,12 +79,19 @@ def write_with_unique_headers(collection: Collection, file: h5py.File):
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
+    """
+    Verify a set of datasets exist in a given file.
+    """
     if not set(datasets).issubset(set(file.keys())):
         raise ValueError(f"Some of {', '.join(datasets)} not found in file.")
 
 
 class ParticleCollection(dict):
     def __init__(self, header: OpenCosmoHeader, datasets: dict[str, oc.Dataset]):
+        """
+        Represents a collection of datasets for different particle species
+        from a single simulation. All should share the same header.
+        """
         self.__header = header
         self.update(datasets)
 
@@ -205,7 +227,7 @@ def open_single_dataset(
     file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
 ) -> oc.Dataset:
     """
-    Open a file with a single dataset.
+    Open a single dataset in a file with multiple datasets.
     """
     if dataset_key not in file.keys():
         raise ValueError(f"No group named '{dataset_key}' found in file.")

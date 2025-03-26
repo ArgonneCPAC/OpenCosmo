@@ -81,7 +81,7 @@ class Dataset:
         file: h5py.File,
         dataset_name: Optional[str] = None,
         with_header=True,
-        indices: Optional[np.ndarray] = None,
+        _indices: Optional[np.ndarray] = None,
     ) -> None:
         """
         Write the dataset to a file. This should not be called directly for the user.
@@ -104,11 +104,11 @@ class Dataset:
         if with_header:
             write_header(file, self.__header, dataset_name)
 
-        if indices is not None:
-            indices.sort()
-            if indices[0] < 0 or indices[-1] >= len(self):
+        if _indices is not None:
+            _indices.sort()
+            if _indices[0] < 0 or _indices[-1] >= len(self):
                 raise ValueError("Indices out of bounds")
-            idxs = self.__indices[indices]
+            idxs = self.__indices[_indices]
         else:
             idxs = self.__indices
 
