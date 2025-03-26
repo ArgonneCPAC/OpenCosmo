@@ -15,12 +15,12 @@ from typing import Iterable, Optional
 import numpy as np
 
 import opencosmo as oc
+from opencosmo import collection
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import read_header
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo import collection
 
 
 def open(
@@ -69,15 +69,18 @@ def open(
     else:
         group = file_handle
 
-
     header = read_header(file_handle)
     tree = read_tree(file_handle, header)
+    if not isinstance(datasets, str):
+        raise ValueError("Asked for multiple datasets, but file has only one")
 
     handler: OpenCosmoDataHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        handler = MPIHandler(file_handle,group_name=datasets, tree=tree, comm=MPI.COMM_WORLD)
+        handler = MPIHandler(
+            file_handle, group_name=datasets, tree=tree, comm=MPI.COMM_WORLD
+        )
     else:
-        handler = OutOfMemoryHandler(file_handle, group_name=datasets,tree=tree)
+        handler = OutOfMemoryHandler(file_handle, group_name=datasets, tree=tree)
 
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
@@ -119,7 +122,9 @@ def read(
             raise ValueError(f"Dataset {datasets} not found in file {file}")
     else:
         group = file
-    
+
+    if not isinstance(datasets, str):
+        raise ValueError("Asked for multiple datasets, but file has only one")
     header = read_header(file)
     tree = read_tree(file, header)
     handler = InMemoryHandler(file, tree, group_name=datasets)
@@ -132,7 +137,7 @@ def read(
 
 
 @file_writer
-def write(file: h5py.File, dataset: oc.Dataset | oc.DataCollection) -> None:
+def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
     """
     Write a dataset to a file.
 
@@ -145,5 +150,3 @@ def write(file: h5py.File, dataset: oc.Dataset | oc.DataCollection) -> None:
 
     """
     dataset.write(file)
-
-

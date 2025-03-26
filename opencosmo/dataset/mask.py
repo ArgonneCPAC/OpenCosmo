@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import operator as op
 from collections import defaultdict
-from typing import Callable, Iterable
 from numbers import Real
+from typing import Callable, Iterable
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -80,7 +80,7 @@ class Column:
 
     def __le__(self, other: Real | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.le)
-    
+
     def isin(self, other: Iterable[Real | u.Quantity]) -> Mask:
         return Mask(self.column_name, other, np.isin)
 
@@ -92,7 +92,10 @@ class Mask:
     """
 
     def __init__(
-        self, column_name: str, value: float | u.Quantity, operator: Comparison
+        self,
+        column_name: str,
+        value: float | u.Quantity,
+        operator: Callable[[table.Column, float | u.Quantity], np.ndarray],
     ):
         self.column_name = column_name
         self.value = value
