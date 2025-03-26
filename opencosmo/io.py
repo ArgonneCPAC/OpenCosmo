@@ -71,7 +71,7 @@ def open(
 
     header = read_header(file_handle)
     tree = read_tree(file_handle, header)
-    if not isinstance(datasets, str):
+    if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
     handler: OpenCosmoDataHandler
@@ -123,7 +123,7 @@ def read(
     else:
         group = file
 
-    if not isinstance(datasets, str):
+    if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
     header = read_header(file)
     tree = read_tree(file, header)
