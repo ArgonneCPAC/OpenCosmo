@@ -255,9 +255,10 @@ class MPIHandler:
         ]
         if len(rank_indicies) == 0:
             # This rank doesn't have enough data
-            raise ValueError(
+            warn(
                 "This take operation will return no data for rank "
                 f"{self.__comm.Get_rank()}"
             )
+            return np.array([], dtype=int)
 
         return rank_indicies - rank_start_index
