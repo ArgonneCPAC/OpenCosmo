@@ -22,6 +22,7 @@ from h5py import File, Group
 import opencosmo as oc
 from opencosmo.dataset.mask import Mask
 from opencosmo.header import OpenCosmoHeader, read_header
+import h5py
 
 LINK_ALIASES = { # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
@@ -91,6 +92,9 @@ class LinkedCollection(dict):
         """
         Read a collection of linked datasets from an HDF5 file.
         """
+        raise NotImplementedError(
+            "Directly reading linked collections is not supported. Use `open` instead."
+        )
         header = read_header(file)
         properties = oc.read(file, header.file.data_type)
         links = get_links(file[header.file.data_type])
@@ -110,7 +114,7 @@ class LinkedCollection(dict):
     @classmethod
     def open(cls, file: File, names: Optional[Iterable[str]] = None):
         """
-        Open a collection of linked datasets from an HDF5 file.
+        Open a collection of linked datasets from in a single HDF5 file.
         """
         header = read_header(file)
         properties = oc.open(file, header.file.data_type)
@@ -118,7 +122,7 @@ class LinkedCollection(dict):
             raise ValueError(
                 "Expected a single dataset for the properties file, but found a collection of them"
             )
-        links = get_links(file)
+        links = get_links(file[header.file.data_type])
         if names is None:
             names = set(file.keys()) - {header.file.data_type, "header"}
 
@@ -155,7 +159,7 @@ class LinkedCollection(dict):
                     ]
                 )
                 dataset.write(file, alias, _indices=indices)
-            except IndexError:
+            except (IndexError, ValueError):
                 indices = self.__linked[key][idxs]  # type: ignore
                 dataset.write(file, alias, _indices=indices)
 
@@ -329,18 +333,17 @@ def get_links(file: File | Group) -> GalaxyPropertyLink | HaloPropertyLink:
     keys = file["data_linked"].keys()
     # Remove everything after the last underscore to get unique link names
     unique_keys = {key.rsplit("_", 1)[0] for key in keys}
-    print(unique_keys)
     if any(k.startswith("sod") for k in unique_keys):
         # we're dealing with a halo property file
-        return read_halo_property_links(file)
+        return load_halo_property_links(file)
     else:
         # we're dealing with a galaxy property file
-        size = file["data_linked"]["galaxyparticles_star_particles_size"][()]
-        start = file["data_linked"]["galaxyparticles_star_particles_start"][()]
+        size = file["data_linked"]["galaxyparticles_star_particles_size"],
+        start = file["data_linked"]["galaxyparticles_star_particles_start"],
         return {"galaxy_particles": {"start_index": start, "length": size}}
 
 
-def read_halo_property_links(file: File | Group) -> HaloPropertyLink | GravityOnlyHaloPropertyLink:
+def load_halo_property_links(file: File | Group) -> HaloPropertyLink | GravityOnlyHaloPropertyLink:
     """
     Read the links from a halo property file. The links are stored in the
     "data_linked" group of the file. Each link is a combination of a
@@ -353,58 +356,55 @@ def read_halo_property_links(file: File | Group) -> HaloPropertyLink | GravityOn
         # Gravity-Only simulation
         return {
             "dm_particles": {
-                "start_index": file["data_linked"]["sodbighaloparticles_gravity_particles_size"][()],
-                "length": file["data_linked"]["sodbighaloparticles_gravity_particles_start"][()],
+                "start_index": file["data_linked"]["sodbighaloparticles_gravity_particles_size"],
+                "length": file["data_linked"]["sodbighaloparticles_gravity_particles_start"],
             },
-            "halo_profiles": file["data_linked"]["sod_profile_idx"][()],
+            "halo_profiles": file["data_linked"]["sod_profile_idx"],
         }
 
     # Read the links for dark matter, AGN, gas, and star particles
     return {
         "dm_particles": {
             "start_index": file["data_linked"][
-                "sodbighaloparticles_dm_particles_start"
-            ][()],
-            "length": file["data_linked"]["sodbighaloparticles_dm_particles_size"][()],
+                "sodbighaloparticles_dm_particles_start"],
+            "length": file["data_linked"]["sodbighaloparticles_dm_particles_size"],
         },
         "agn_particles": {
             "start_index": file["data_linked"][
                 "sodbighaloparticles_agn_particles_start"
-            ][()],
-            "length": file["data_linked"]["sodbighaloparticles_agn_particles_size"][()],
+            ],
+            "length": file["data_linked"]["sodbighaloparticles_agn_particles_size"],
         },
         "gas_particles": {
             "start_index": file["data_linked"][
                 "sodbighaloparticles_gas_particles_start"
-            ][()],
-            "length": file["data_linked"]["sodbighaloparticles_gas_particles_size"][()],
+            ],
+            "length": file["data_linked"]["sodbighaloparticles_gas_particles_size"],
         },
         "star_particles": {
             "start_index": file["data_linked"][
                 "sodbighaloparticles_star_particles_start"
-            ][()],
-            "length": file["data_linked"]["sodbighaloparticles_star_particles_size"][
-                ()
             ],
+            "length": file["data_linked"]["sodbighaloparticles_star_particles_size"]
         },
         "galaxy_properties": {
-            "start_index": file["data_linked"]["galaxyproperties_start"][()],
-            "length": file["data_linked"]["galaxyproperties_size"][()],
+            "start_index": file["data_linked"]["galaxyproperties_start"],
+            "length": file["data_linked"]["galaxyproperties_size"],
         },
-        "halo_profiles": file["data_linked"]["sod_profile_idx"][()],
+        "halo_profiles": file["data_linked"]["sod_profile_idx"]
     }
 
 
 def pack_links(
-    data_link: DataLink | np.ndarray, indices: np.ndarray
+    data_link: DataLink | h5py.dataset, indices: np.ndarray
 ) -> DataLink | np.ndarray:
-    if isinstance(data_link, np.ndarray):
-        return np.arange(len(indices))
-    elif isinstance(data_link, dict):
+    if isinstance(data_link, dict):
         lengths = data_link["length"][indices]
         new_starts = np.cumsum(lengths)
         new_starts = np.insert(new_starts, 0, 0)[:-1]
         return {"start_index": new_starts, "length": lengths}
+    elif isinstance(data_link, h5py.Dataset):
+        return np.arange(len(indices))
 
 
 def write_links(

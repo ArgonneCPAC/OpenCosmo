@@ -59,7 +59,7 @@ def test_link_write(all_paths, tmp_path):
         10, at="random"
     )
     oc.write(tmp_path / "linked.hdf5", collection)
-    written_data = oc.read(tmp_path / "linked.hdf5")
+    written_data = oc.open(tmp_path / "linked.hdf5")
     n = 0
     particle_species = filter(lambda name: "particles" in name, written_data.keys())
     for properties, particles in written_data.objects(list(particle_species)):
@@ -71,5 +71,8 @@ def test_link_write(all_paths, tmp_path):
 
         assert len(halo_tags) == 1
         assert halo_tags.pop() == properties["fof_halo_tag"]
+
+    with pytest.raises(NotImplementedError):
+        oc.read(tmp_path / "linked.hdf5")
 
     assert n == 10

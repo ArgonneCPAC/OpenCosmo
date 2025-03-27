@@ -49,6 +49,7 @@ def open_linked(*files: Path):
     file_handles = [FileHandle(file) for file in files]
     datasets = [io.open(file) for file in files]
     property_file_type, linked_files = verify_links(*[fh.header for fh in file_handles])
+
     property_handle = next(
         filter(lambda x: x.header.file.data_type == property_file_type, file_handles)
     ).handle
