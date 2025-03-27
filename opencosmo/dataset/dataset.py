@@ -104,15 +104,7 @@ class Dataset:
         if with_header:
             write_header(file, self.__header, dataset_name)
 
-        if _indices is not None:
-            _indices.sort()
-            if _indices[0] < 0 or _indices[-1] >= len(self):
-                raise ValueError("Indices out of bounds")
-            idxs = self.__indices[_indices]
-        else:
-            idxs = self.__indices
-
-        self.__handler.write(file, idxs, self.__builders.keys(), dataset_name)
+        self.__handler.write(file, self.__indices, self.__builders.keys(), dataset_name, _indices)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
