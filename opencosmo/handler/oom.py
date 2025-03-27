@@ -64,6 +64,7 @@ class OutOfMemoryHandler:
         indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
+        selected: Optional[np.ndarray] = None,
     ) -> None:
         if self.__group is None:
             raise ValueError("This file has already been closed")
@@ -72,15 +73,23 @@ class OutOfMemoryHandler:
         else:
             group = file.require_group(dataset_name)
 
+        if selected is not None:
+            selected.sort()
+            if selected[-1] >= len(indices):
+                raise ValueError("Selected indices are out of range")
+            idxs = indices[selected]
+        else:
+            idxs = indices
+
         data_group = group.create_group("data")
         for column in columns:
             data = self.__group[column][()]
-            data = data[indices]
+            data = data[idxs]
             data_group.create_dataset(column, data=data)
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
         tree_mask = np.zeros(len(self), dtype=bool)
-        tree_mask[indices] = True
+        tree_mask[idxs] = True
         tree = self.__tree.apply_mask(tree_mask)
         tree.write(group)
 
