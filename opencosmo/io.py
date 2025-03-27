@@ -24,7 +24,7 @@ from opencosmo.transformations import units as u
 
 
 def open(
-    file: str | Path, datasets: Optional[str | Iterable[str]] = None
+    file: str | Path | h5py.File, datasets: Optional[str | Iterable[str]] = None
 ) -> oc.Dataset | collection.Collection:
     """
     Open a dataset from a file without reading the data into memory.
@@ -57,8 +57,11 @@ def open(
     file : str or pathlib.Path
         The path to the file to open.
     """
-    path = resolve_path(file, FileExistance.MUST_EXIST)
-    file_handle = h5py.File(path, "r")
+    if not isinstance(file, h5py.File):
+        path = resolve_path(file, FileExistance.MUST_EXIST)
+        file_handle = h5py.File(path, "r")
+    else:
+        file_handle = file
     if "data" not in file_handle:
         if not isinstance(datasets, str):
             return collection.open_multi_dataset_file(file_handle, datasets)
