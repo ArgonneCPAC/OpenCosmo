@@ -8,6 +8,7 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
+from typing import Optional
 
 
 class OpenCosmoDataHandler(Protocol):
@@ -45,7 +46,8 @@ class OpenCosmoDataHandler(Protocol):
         file: h5py.File,
         indices: np.ndarray,
         columns: Iterable[str],
-        dataset_name="data",
+        dataset_name: Optional[str] = None,
+        selected: Optional[dict[str, str]] = None,
     ) -> None: ...
     def get_data(
         self,

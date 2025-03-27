@@ -113,6 +113,7 @@ class MPIHandler:
         indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
+        selected: Optional[np.ndarray] = None,
     ) -> None:
         columns = list(columns)
         input = verify_input(
@@ -125,6 +126,13 @@ class MPIHandler:
         columns = input["columns"]
 
         rank_range = self.elem_range()
+        if selected is not None:
+            rank_selected = selected[(selected >= rank_range[0]) & (selected < rank_range[1])]
+            # Note there's no error handling here for invalid indices, should
+            # be fixed
+            indices = indices[rank_selected - rank_range[0]]
+
+
         rank_output_length = len(indices)
 
         all_output_lengths = self.__comm.allgather(rank_output_length)
