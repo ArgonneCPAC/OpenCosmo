@@ -61,13 +61,16 @@ def test_link_write(all_paths, tmp_path):
     oc.write(tmp_path / "linked.hdf5", collection)
     written_data = oc.open(tmp_path / "linked.hdf5")
     n = 0
-    particle_species = filter(lambda name: "particles" in name, written_data.keys())
-    for properties, particles in written_data.objects(list(particle_species)):
+    for properties, particles in written_data.objects():
         halo_tags = set()
         n += 1
-        for particle_type, particle_species in particles.items():
-            species_tags = set(particle_species.data["fof_halo_tag"])
-            halo_tags.update(species_tags)
+        for linked_type, linked_dataset in particles.items():
+            if "particles" not in linked_type:
+                bin_tags = [tag for tag in linked_dataset.data["fof_halo_bin_tag"][0]]
+                halo_tags.update(bin_tags)
+            else:
+                species_tags = set(linked_dataset.data["fof_halo_tag"])
+                halo_tags.update(species_tags)
 
         assert len(halo_tags) == 1
         assert halo_tags.pop() == properties["fof_halo_tag"]
