@@ -23,13 +23,14 @@ import opencosmo as oc
 from opencosmo.dataset.mask import Mask
 from opencosmo.header import OpenCosmoHeader, read_header
 
-LINK_ALIASES = {  # Name maps
-    "star_particles": "sodbighaloparticles_star_particles",
-    "dm_particles": "sodbighaloparticles_dm_particles",
-    "agn_particles": "sodbighaloparticles_agn_particles",
-    "gas_particles": "sodbighaloparticles_gas_particles",
-    "halo_profiles": "sod_profile_idx",
-    "galaxy_properties": "galaxyproperties",
+LINK_ALIASES = { # Left: Name in file, right: Name in collection
+    "sodbighaloparticles_star_particles": "star_particles",
+    "sodbighaloparticles_dm_particles": "dm_particles",
+    "sodbighaloparticles_gravity_particles": "dm_particles",
+    "sodbighaloparticles_agn_particles": "agn_particles",
+    "sodbighaloparticles_gas_particles": "gas_particles",
+    "sod_profile_idx": "halo_profiles",
+    "galaxyproperties": "galaxy_properties",
 }
 
 ALLOWED_LINKS = {  # Files that can serve as a link holder and
@@ -99,10 +100,9 @@ class LinkedCollection(dict):
         datasets = {name: oc.read(file, name) for name in names}
         output_datasets = {}
         for name, ds in datasets.items():
-            if name in LINK_ALIASES.values():
-                key = next(k for k, v in LINK_ALIASES.items() if v == name)
-                output_datasets[key] = ds
-            else:
+            try:
+                output_datasets[LINK_ALIASES[name]] = ds
+            except KeyError:
                 output_datasets[name] = ds
 
         return cls(header, properties, output_datasets, links)
@@ -125,10 +125,9 @@ class LinkedCollection(dict):
         datasets = {name: oc.open(file, name) for name in names}
         output_datasets = {}
         for name, ds in datasets.items():
-            if name in LINK_ALIASES.values():
-                key = next(k for k, v in LINK_ALIASES.items() if v == name)
-                output_datasets[key] = ds
-            else:
+            try:
+                output_datasets[LINK_ALIASES[name]] = ds
+            except KeyError:
                 output_datasets[name] = ds
         return cls(header, properties, output_datasets, links)
 
@@ -139,7 +138,11 @@ class LinkedCollection(dict):
         self.__header.write(file)
         idxs = self.__properties.indices
         for key, dataset in self.items():
-            alias = LINK_ALIASES.get(key, key)
+            if key in LINK_ALIASES.values():
+                alias = next(k for k, v in LINK_ALIASES.items() if v == key)
+            else:
+                alias = key
+
             if dataset is self.__properties:
                 continue
             try:
@@ -326,6 +329,7 @@ def get_links(file: File | Group) -> GalaxyPropertyLink | HaloPropertyLink:
     keys = file["data_linked"].keys()
     # Remove everything after the last underscore to get unique link names
     unique_keys = {key.rsplit("_", 1)[0] for key in keys}
+    print(unique_keys)
     if any(k.startswith("sod") for k in unique_keys):
         # we're dealing with a halo property file
         return read_halo_property_links(file)
@@ -336,13 +340,24 @@ def get_links(file: File | Group) -> GalaxyPropertyLink | HaloPropertyLink:
         return {"galaxy_particles": {"start_index": start, "length": size}}
 
 
-def read_halo_property_links(file: File | Group) -> HaloPropertyLink:
+def read_halo_property_links(file: File | Group) -> HaloPropertyLink | GravityOnlyHaloPropertyLink:
     """
     Read the links from a halo property file. The links are stored in the
     "data_linked" group of the file. Each link is a combination of a
     starting index and a length, which maps a single row in the property
     file to a range of rows in the particle file.
     """
+    try:
+        _ = file["data_linked"]["sodbighaloparticles_dm_particles_start"]
+    except KeyError:
+        # Gravity-Only simulation
+        return {
+            "dm_particles": {
+                "start_index": file["data_linked"]["sodbighaloparticles_gravity_particles_size"][()],
+                "length": file["data_linked"]["sodbighaloparticles_gravity_particles_start"][()],
+            },
+            "halo_profiles": file["data_linked"]["sod_profile_idx"][()],
+        }
 
     # Read the links for dark matter, AGN, gas, and star particles
     return {
@@ -400,7 +415,7 @@ def write_links(
     group = file.require_group("data_linked")
     for key, value in links.items():
         link_to_write = pack_links(value, indices)  # type: ignore
-        alias = LINK_ALIASES.get(key, key)
+        alias = next(k for k, v in LINK_ALIASES.items() if v == key)
         if key == "halo_profiles":
             group.create_dataset(alias, data=link_to_write)
         else:
@@ -412,6 +427,9 @@ class DataLink(TypedDict):
     start_index: np.ndarray  # The starting index of the link in the particle file
     length: np.ndarray  # The
 
+class GravityOnlyHaloPropertyLink(TypedDict):
+    dm_particles: DataLink
+    halo_profiles: np.ndarray
 
 class HaloPropertyLink(TypedDict):
     dm_particles: DataLink
