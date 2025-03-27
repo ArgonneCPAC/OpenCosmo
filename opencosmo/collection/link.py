@@ -182,10 +182,10 @@ class LinkedCollection(dict):
         # find the index into the linked dataset at the mask index
         alias = self.__aliases[dtype]
         linked_index = self.__idxs[index]
-        try:
+        if len(self.__linked[alias]) == 2:
             start = self.__linked[alias]["start_index"][linked_index]  # type: ignore
             size = self.__linked[alias]["length"][linked_index]  # type: ignore
-        except IndexError:
+        else:
             start = self.__linked[alias][linked_index]  # type: ignore
             size = 1
 
@@ -227,7 +227,7 @@ class LinkedCollection(dict):
 
         """
         if dtypes is None:
-            dtypes = list(k for k in self.__linked.keys() if k in self.__datasets)
+            dtypes = list(k for k,v in self.__datasets.items() if v is not self.__properties)
         elif isinstance(dtypes, str):
             dtypes = [dtypes]
 
