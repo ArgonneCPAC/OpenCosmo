@@ -30,7 +30,7 @@ LINK_ALIASES = { # Left: Name in file, right: Name in collection
     "sodbighaloparticles_gravity_particles": "dm_particles",
     "sodbighaloparticles_agn_particles": "agn_particles",
     "sodbighaloparticles_gas_particles": "gas_particles",
-    "sod_profile_idx": "halo_profiles",
+    "sod_profile": "halo_profiles",
     "galaxyproperties": "galaxy_properties",
 }
 
@@ -68,6 +68,17 @@ class LinkedCollection(dict):
         self[properties.header.file.data_type] = properties
         self.__linked = links
         self.__idxs = self.__properties.indices
+        self.__aliases = {}
+        for link_name in links:
+            if link_name in self.__datasets:
+                self.__aliases[link_name] = link_name
+            elif LINK_ALIASES.get(link_name, "") in self.__datasets:
+                self.__aliases[LINK_ALIASES[link_name]] = link_name
+        if len(self.__aliases) != len(self.__datasets):
+            raise ValueError(
+                "Not all linked datasets have a corresponding link in the properties file"
+            )
+
         self.update(self.__datasets)
 
     def as_dict(self) -> dict[str, oc.Dataset]:
@@ -142,16 +153,12 @@ class LinkedCollection(dict):
         self.__header.write(file)
         idxs = self.__properties.indices
         for key, dataset in self.items():
-            if key in LINK_ALIASES.values():
-                alias = next(k for k, v in LINK_ALIASES.items() if v == key)
-            else:
-                alias = key
-
             if dataset is self.__properties:
                 continue
+            alias = self.__aliases[key]
             try:
-                starts = self.__linked[key]["start_index"][idxs]  # type: ignore
-                sizes = self.__linked[key]["length"][idxs]  # type: ignore
+                starts = self.__linked[alias]["start_index"][idxs]  # type: ignore
+                sizes = self.__linked[alias]["length"][idxs]  # type: ignore
                 indices = np.concatenate(
                     [
                         np.arange(start, start + size)
@@ -160,7 +167,7 @@ class LinkedCollection(dict):
                 )
                 dataset.write(file, alias, _indices=indices)
             except (IndexError, ValueError):
-                indices = self.__linked[key][idxs]  # type: ignore
+                indices = self.__linked[alias][idxs]  # type: ignore
                 dataset.write(file, alias, _indices=indices)
 
         property_dataset = self.__properties.header.file.data_type
@@ -168,17 +175,18 @@ class LinkedCollection(dict):
         write_links(file[property_dataset], self.__linked, self.__properties.indices)
 
     def __get_linked(self, dtype: str, index: int):
-        if dtype not in self.__linked:
+        if dtype not in self.__aliases:
             raise ValueError(f"No links found for {dtype}")
         elif index >= len(self.__properties):
             raise ValueError(f"Index {index} out of range for {dtype}")
         # find the index into the linked dataset at the mask index
+        alias = self.__aliases[dtype]
         linked_index = self.__idxs[index]
         try:
-            start = self.__linked[dtype]["start_index"][linked_index]  # type: ignore
-            size = self.__linked[dtype]["length"][linked_index]  # type: ignore
+            start = self.__linked[alias]["start_index"][linked_index]  # type: ignore
+            size = self.__linked[alias]["length"][linked_index]  # type: ignore
         except IndexError:
-            start = self.__linked[dtype][linked_index]  # type: ignore
+            start = self.__linked[alias][linked_index]  # type: ignore
             size = 1
 
         if start == -1 or size == -1:
@@ -222,8 +230,7 @@ class LinkedCollection(dict):
             dtypes = list(k for k in self.__linked.keys() if k in self.__datasets)
         elif isinstance(dtypes, str):
             dtypes = [dtypes]
-        if not all(dtype in self.__linked for dtype in dtypes):
-            raise ValueError("One or more of the provided data types is not linked")
+
 
         ndtypes = len(dtypes)
         for i, properties in enumerate(self.__properties.rows()):
@@ -333,67 +340,18 @@ def get_links(file: File | Group) -> GalaxyPropertyLink | HaloPropertyLink:
     keys = file["data_linked"].keys()
     # Remove everything after the last underscore to get unique link names
     unique_keys = {key.rsplit("_", 1)[0] for key in keys}
-    if any(k.startswith("sod") for k in unique_keys):
-        # we're dealing with a halo property file
-        return load_halo_property_links(file)
-    else:
-        # we're dealing with a galaxy property file
-        size = file["data_linked"]["galaxyparticles_star_particles_size"],
-        start = file["data_linked"]["galaxyparticles_star_particles_start"],
-        return {"galaxy_particles": {"start_index": start, "length": size}}
-
-
-def load_halo_property_links(file: File | Group) -> HaloPropertyLink | GravityOnlyHaloPropertyLink:
-    """
-    Read the links from a halo property file. The links are stored in the
-    "data_linked" group of the file. Each link is a combination of a
-    starting index and a length, which maps a single row in the property
-    file to a range of rows in the particle file.
-    """
-    try:
-        _ = file["data_linked"]["sodbighaloparticles_dm_particles_start"]
-    except KeyError:
-        # Gravity-Only simulation
-        return {
-            "dm_particles": {
-                "start_index": file["data_linked"]["sodbighaloparticles_gravity_particles_size"],
-                "length": file["data_linked"]["sodbighaloparticles_gravity_particles_start"],
-            },
-            "halo_profiles": file["data_linked"]["sod_profile_idx"],
-        }
-
-    # Read the links for dark matter, AGN, gas, and star particles
-    return {
-        "dm_particles": {
-            "start_index": file["data_linked"][
-                "sodbighaloparticles_dm_particles_start"],
-            "length": file["data_linked"]["sodbighaloparticles_dm_particles_size"],
-        },
-        "agn_particles": {
-            "start_index": file["data_linked"][
-                "sodbighaloparticles_agn_particles_start"
-            ],
-            "length": file["data_linked"]["sodbighaloparticles_agn_particles_size"],
-        },
-        "gas_particles": {
-            "start_index": file["data_linked"][
-                "sodbighaloparticles_gas_particles_start"
-            ],
-            "length": file["data_linked"]["sodbighaloparticles_gas_particles_size"],
-        },
-        "star_particles": {
-            "start_index": file["data_linked"][
-                "sodbighaloparticles_star_particles_start"
-            ],
-            "length": file["data_linked"]["sodbighaloparticles_star_particles_size"]
-        },
-        "galaxy_properties": {
-            "start_index": file["data_linked"]["galaxyproperties_start"],
-            "length": file["data_linked"]["galaxyproperties_size"],
-        },
-        "halo_profiles": file["data_linked"]["sod_profile_idx"]
-    }
-
+    output_links = {}
+    for key in unique_keys:
+        if f"{key}_start" in keys and f"{key}_size" in keys:
+            output_links[key] = {
+                "start_index": file["data_linked"][f"{key}_start"],
+                "length": file["data_linked"][f"{key}_size"],
+            }
+        elif f"{key}_idx" in keys:
+            output_links[key] = file["data_linked"][f"{key}_idx"]
+        else:
+            raise ValueError(f"Invalid link type found for {key}")
+    return output_links
 
 def pack_links(
     data_link: DataLink | h5py.dataset, indices: np.ndarray
@@ -415,12 +373,11 @@ def write_links(
     group = file.require_group("data_linked")
     for key, value in links.items():
         link_to_write = pack_links(value, indices)  # type: ignore
-        alias = next(k for k, v in LINK_ALIASES.items() if v == key)
-        if key == "halo_profiles":
-            group.create_dataset(alias, data=link_to_write)
+        if key == "sod_profile":
+            group.create_dataset("sod_profile_idx", data=link_to_write)
         else:
-            group.create_dataset(f"{alias}_start", data=link_to_write["start_index"])
-            group.create_dataset(f"{alias}_size", data=link_to_write["length"])
+            group.create_dataset(f"{key}_start", data=link_to_write["start_index"])
+            group.create_dataset(f"{key}_size", data=link_to_write["length"])
 
 
 class DataLink(TypedDict):
