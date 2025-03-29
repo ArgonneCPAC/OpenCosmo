@@ -22,7 +22,6 @@ from h5py import File, Group
 import opencosmo as oc
 from opencosmo.dataset.mask import Mask
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.link.handler import LinkHandler
 import h5py
 
 try:
@@ -61,7 +60,9 @@ class LinkedCollection(dict):
         self,
         header: OpenCosmoHeader,
         properties: oc.Dataset,
-        handlers: dict[str, LinkHandler],
+        datasets: dict,
+        links: GalaxyPropertyLink | HaloPropertyLink,
+        total_length: int,
         *args,
         **kwargs,
     ):
@@ -71,7 +72,7 @@ class LinkedCollection(dict):
 
         self.__header = header
         self.__properties = properties
-        self.__handlers = handlers
+        self.__datasets = datasets
         self[properties.header.file.data_type] = properties
         self.__properties_total_length = total_length
         self.__linked = links
@@ -490,7 +491,7 @@ class GravityOnlyHaloPropertyLink(TypedDict):
     dm_particles: DataLink
     halo_profiles: np.ndarray
 
-class HaloPropertyLink(TypedDict):
+class HydroHaloPropertyLink(TypedDict):
     dm_particles: DataLink
     agn_particles: DataLink
     gas_particles: DataLink

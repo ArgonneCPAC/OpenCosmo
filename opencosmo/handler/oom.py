@@ -131,6 +131,11 @@ class OutOfMemoryHandler:
 
         return Table(output)
 
+    def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
+        if start < 0 or end > len(indices):
+            raise ValueError("Indices out of range")
+        return indices[start:end]
+
     def take_indices(self, n: int, strategy: str, indices: np.ndarray) -> np.ndarray:
         if n > (length := len(indices)):
             raise ValueError(

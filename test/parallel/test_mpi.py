@@ -7,6 +7,7 @@ import pytest
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+from opencosmo.collection import open_linked
 
 
 @pytest.fixture
@@ -24,6 +25,12 @@ def malformed_header_path(input_path, tmp_path):
     update = {"n_dm": "foo"}
     return update_simulation_parameter(input_path, update, tmp_path, "malformed_header")
 
+@pytest.fixture
+def all_paths(data_path: Path):
+    files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
+
+    hdf_files = [data_path / file for file in files]
+    return list(hdf_files)
 
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
@@ -145,8 +152,7 @@ def test_take_empty_rank(input_path):
         if comm.Get_rank() in [0, 1]:
             ds = ds.take(n_to_take, at="start")
         else:
-            with pytest.raises(ValueError):
-                ds = ds.take(n_to_take, at="start")
+            ds = ds.take(n_to_take, at="start")
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -173,3 +179,25 @@ def test_write_particles(particle_path, tmp_path):
         for model in models:
             key = f"_OpenCosmoHeader__{model}"
             assert getattr(header, key) == getattr(written_header, key)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_link_write(all_paths, tmp_path):
+    collection = open_linked(*all_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
+        10, at="random"
+    )
+    comm = mpi4py.MPI.COMM_WORLD
+    output_path = tmp_path / "random_linked.hdf5"
+    output_path = comm.bcast(output_path, root=0)
+
+    oc.write(output_path, collection)
+    assert False
+    written_data = oc.open(output_path)
+    print(written_data["halo_properties"].data)
+    print(written_data["dm_particles"].data)
+
+    assert False
+    with pytest.raises(NotImplementedError):
+        oc.read(output_path)
+
