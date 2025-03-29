@@ -9,6 +9,7 @@ from opencosmo import io
 from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
 from opencosmo.collection.link import LinkedCollection, get_links, verify_links
 from opencosmo.header import read_header
+from opencosmo.link.handler import open_linked as ol
 
 
 class FileHandle:
@@ -46,6 +47,7 @@ def open_linked(*files: Path):
     Open a collection of files that are linked together, such as a
     properties file and a particle file.
     """
+    return ol(*files)
     file_handles = [FileHandle(file) for file in files]
     datasets = [io.open(file) for file in files]
     property_file_type, linked_files = verify_links(*[fh.header for fh in file_handles])
@@ -63,10 +65,10 @@ def open_linked(*files: Path):
             output_datasets[dataset.header.file.data_type] = dataset
         else:
             output_datasets.update(dataset.as_dict())
-
     properties_file = output_datasets.pop(property_file_type)
+    total_properties_length = len(properties_file)
     return LinkedCollection(
-        properties_file.header, properties_file, output_datasets, links
+        properties_file.header, properties_file, output_datasets, links, total_properties_length
     )
 
 

@@ -23,7 +23,11 @@ def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
         values = comm.allgather(value)
 
         if isinstance(value, Iterable):
-            sets = [frozenset(v) for v in values]
+            try:
+                sets = [frozenset(v) for v in values]
+            except:
+                print(values)
+                assert False
             if len(set(sets)) > 1:
                 if key in require:
                     raise ValueError(
@@ -40,6 +44,21 @@ def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
                 warn(f"Requested different values for {key} on different ranks.")
         output[key] = values[0]
     return output
+
+def redistribute_indices(indices: np.ndarray, rank_range: tuple[int,int]):
+    in_range_mask = (indices >= rank_range[0]) & (indices < rank_range[1])
+    in_range_indices = indices[in_range_mask]
+    out_of_range_indices = indices[~in_range_mask]
+
+    # send to all ranks
+    all_out_of_range_indices = MPI.COMM_WORLD.allgather(out_of_range_indices)
+    # concatenate all out of range indices from all ranks
+    all_out_of_range_indices = np.unique(np.concatenate(all_out_of_range_indices))
+    # now we can redistribute the indices to the ranks
+    new_indices_mask = (all_out_of_range_indices >= rank_range[0]) & (all_out_of_range_indices < rank_range[1])
+    new_indices = all_out_of_range_indices[new_indices_mask]
+    output_indices = np.concatenate((in_range_indices, new_indices))
+    return np.sort(output_indices)
 
 
 class MPIHandler:
@@ -126,13 +145,10 @@ class MPIHandler:
         columns = input["columns"]
 
         rank_range = self.elem_range()
-        if selected is not None:
-            rank_selected = selected[(selected >= rank_range[0]) & (selected < rank_range[1])]
-            # Note there's no error handling here for invalid indices, should
-            # be fixed
-            indices = indices[rank_selected - rank_range[0]]
+        #indices = redistribute_indices(indices, rank_range)
 
-
+        print(indices)
+        assert False
         rank_output_length = len(indices)
 
         all_output_lengths = self.__comm.allgather(rank_output_length)
@@ -154,22 +170,32 @@ class MPIHandler:
         else:
             group = file.require_group(dataset_name)
         data_group = group.create_group("data")
+
         for column in columns:
             # This step has to be done by all ranks, per documentation
+            if len(self.__group[column].shape) != 1:
+                shape = (full_output_length, self.__group[column].shape[1])
+            else:
+                shape = (full_output_length,)
+
             data_group.create_dataset(
-                column, (full_output_length,), dtype=self.__group[column].dtype
+                column, shape, dtype=self.__group[column].dtype
             )
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
 
         self.__comm.Barrier()
 
-        for column in columns:
-            data = self.__group[column][rank_range[0] : rank_range[1]][()]
-            data = data[indices]
-            data_group[column][rank_start:rank_end] = data
+        if rank_output_length != 0:
+            for column in columns:
+                data = self.__group[column][rank_range[0] : rank_range[1]][()]
+                data = data[indices]
+
+                data_group[column][rank_start:rank_end] = data
+
         mask = np.zeros(len(self), dtype=bool)
         mask[indices] = True
+
 
         new_tree = self.__tree.apply_mask(mask, self.__comm, self.elem_range())
 
@@ -186,6 +212,7 @@ class MPIHandler:
         Get data from the file in the range for this rank.
         """
         builder_keys = list(builders.keys())
+
         builder_keys = verify_input(comm=self.__comm, builder_keys=builder_keys)[
             "builder_keys"
         ]
@@ -197,14 +224,38 @@ class MPIHandler:
 
         for column in builder_keys:
             builder = builders[column]
-            data = self.__group[column][range_[0] : range_[1]]
-            col = Column(data[indices], name=column)
-            output[column] = builder.build(col)
-        self.__comm.Barrier()
-
+            if len(indices) > 0:
+                data = self.__group[column][range_[0] : range_[1]]
+                col = Column(data[indices], name=column)
+                output[column] = builder.build(col)
+            else:
+                col = Column()
+                output[column] = col
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)
+
+    def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
+        pars = verify_input(comm=self.__comm, start=start, end=end)
+        start = pars["start"]
+        end = pars["end"]
+        rank_lengths = self.__comm.allgather(len(indices))
+        rank_ranges = np.insert(np.cumsum(rank_lengths), 0, 0)
+
+        rank_start = rank_ranges[self.__comm.Get_rank()]
+        ran_end = rank_ranges[self.__comm.Get_rank() + 1]
+        if rank_start >= end or ran_end <= start:
+            return np.array([], dtype=int)
+        else:
+            rank_start = max(rank_start, start)
+            ran_end = min(ran_end, end)
+
+        rank_indices = indices[(indices >= rank_start) & (indices < ran_end)]
+        return rank_indices - rank_start
+
+
+
+
 
     def take_indices(self, n: int, strategy: str, indices: np.ndarray) -> np.ndarray:
         """

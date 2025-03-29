@@ -134,7 +134,7 @@ class ParticleCollection(dict):
     ) -> ParticleCollection:
         if datasets_to_get is not None:
             verify_datasets_exist(file, datasets_to_get)
-            names = datasets_to_get
+            names = datasets_to_getcollection
         else:
             names = list(filter(lambda x: x != "header", file.keys()))
 

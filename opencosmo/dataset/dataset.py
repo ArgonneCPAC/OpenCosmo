@@ -104,7 +104,10 @@ class Dataset:
         if with_header:
             write_header(file, self.__header, dataset_name)
 
-        self.__handler.write(file, self.__indices, self.__builders.keys(), dataset_name, _indices)
+        if _indices is None:
+            _indices = self.__indices
+
+        self.__handler.write(file, _indices, self.__builders.keys(), dataset_name)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
@@ -120,10 +123,12 @@ class Dataset:
         max = len(self)
         chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
         for start, end in chunk_ranges:
-            chunk = self.take_range(start, end).data
+            chunk = self.take_range(start, end)
+
+            chunk_data = chunk.data
             columns = {
-                k: chunk[k].quantity if chunk[k].unit else chunk[k]
-                for k in chunk.keys()
+                k: chunk_data[k].quantity if chunk_data[k].unit else chunk_data[k]
+                for k in chunk_data.keys()
             }
             for i in range(len(chunk)):
                 yield {k: v[i] for k, v in columns.items()}
@@ -157,7 +162,7 @@ class Dataset:
         if end > len(self):
             raise ValueError("end must be less than the length of the dataset.")
 
-        new_indicies = self.__indices[start:end]
+        new_indicies = self.__handler.take_range(start, end, self.__indices)
 
         return Dataset(
             self.__handler,
