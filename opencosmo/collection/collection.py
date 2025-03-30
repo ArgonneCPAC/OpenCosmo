@@ -26,14 +26,15 @@ class Collection(Protocol):
     support higher-level operations that are applied across all datasets in the
     collection, sometimes in a non-obvious way.
 
-    This protocl defines methods a collection must implement. Note that 
+    This protocl defines methods a collection must implement. Note that
     the "open" and "read" methods are used in the case an entire collection
     is located within a single file. Multi-file collections are handled
     in the collection.io module. Most complexity is hidden from the user
-    who simply calls "oc.read" and "oc.open" to get a collection. The io 
-    module also does sanity checking to ensure files are structurally valid, 
+    who simply calls "oc.read" and "oc.open" to get a collection. The io
+    module also does sanity checking to ensure files are structurally valid,
     so we do not have to do it here.
     """
+
     @classmethod
     def open(
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
@@ -134,7 +135,7 @@ class ParticleCollection(dict):
     ) -> ParticleCollection:
         if datasets_to_get is not None:
             verify_datasets_exist(file, datasets_to_get)
-            names = datasets_to_getcollection
+            names = datasets_to_get
         else:
             names = list(filter(lambda x: x != "header", file.keys()))
 

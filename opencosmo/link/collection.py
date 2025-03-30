@@ -1,8 +1,13 @@
 from __future__ import annotations
-from typing import Optional, Iterable
+
+from typing import Iterable, Optional
+
+import numpy as np
+from h5py import File
+
 import opencosmo as oc
 from opencosmo import link as l
-import numpy as np
+
 
 class LinkedCollection:
     """
@@ -10,7 +15,7 @@ class LinkedCollection:
     for cross-matching and other operations to be performed.
 
     For now, these are always a combination of a properties dataset
-    and several particle or profile datasets. 
+    and several particle or profile datasets.
     """
 
     def __init__(
@@ -29,14 +34,14 @@ class LinkedCollection:
         self.__idxs = self.__properties.indices
 
     @classmethod
-    def open(cls, file: File, names: Optional[Iterable[str]] = None) -> LinkedCollection:
+    def open(
+        cls, file: File, names: Optional[Iterable[str]] = None
+    ) -> LinkedCollection:
         return l.open_linked_file(file)
 
     @classmethod
     def read(cls, *args, **kwargs) -> LinkedCollection:
         raise NotImplementedError
-
-
 
     def as_dict(self) -> dict[str, oc.Dataset]:
         return self
@@ -59,7 +64,7 @@ class LinkedCollection:
 
     def filter(self, *masks):
         """
-        Apply a filter to the properties dataset and propagate it to the linked datasets.
+        Apply a filter to the properties dataset and propagate it to the linked datasets
         """
         if not masks:
             return self
@@ -68,6 +73,7 @@ class LinkedCollection:
             filtered,
             self.__handlers,
         )
+
     def take(self, n: int, at: str = "start"):
         new_properties = self.__properties.take(n, at)
         return LinkedCollection(
@@ -75,8 +81,9 @@ class LinkedCollection:
             self.__handlers,
         )
 
-
-    def objects(self, data_types: Optional[Iterable[str]] = None) -> Iterable[tuple[oc.Dataset, dict[str, oc.Dataset]]]:
+    def objects(
+        self, data_types: Optional[Iterable[str]] = None
+    ) -> Iterable[tuple[oc.Dataset, dict[str, oc.Dataset]]]:
         """
         Iterate over the properties dataset and the linked datasets.
         """
@@ -101,5 +108,3 @@ class LinkedCollection:
         link_group = file[header.file.data_type].create_group("data_linked")
         for key, handler in self.__handlers.items():
             handler.write(file, key, link_group, self.__idxs)
-
- 

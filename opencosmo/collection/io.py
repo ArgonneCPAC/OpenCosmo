@@ -6,8 +6,8 @@ import h5py
 
 from opencosmo import dataset as ds
 from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
-from opencosmo.link.collection import LinkedCollection
 from opencosmo.header import read_header
+from opencosmo.link.collection import LinkedCollection
 
 
 class FileHandle:

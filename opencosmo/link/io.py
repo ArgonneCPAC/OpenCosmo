@@ -1,11 +1,13 @@
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo import link as l
-import opencosmo as oc
-from pathlib import Path
-from h5py import File, Group
 from collections import defaultdict
+from pathlib import Path
 
-LINK_ALIASES = { # Left: Name in file, right: Name in collection
+from h5py import File, Group
+
+import opencosmo as oc
+from opencosmo import link as l
+from opencosmo.header import OpenCosmoHeader, read_header
+
+LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
     "sodbighaloparticles_dm_particles": "dm_particles",
     "sodbighaloparticles_gravity_particles": "dm_particles",
@@ -19,6 +21,7 @@ ALLOWED_LINKS = {  # Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles"],
     "galaxy_properties": ["galaxy_particles"],
 }
+
 
 def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
     """
@@ -67,6 +70,7 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
     output_file = properties_files[0]
     return output_file, links[output_file]
 
+
 def open_linked_files(*files: Path):
     """
     Open a collection of files that are linked together, such as a
@@ -75,33 +79,55 @@ def open_linked_files(*files: Path):
     file_handles = [File(file, "r") for file in files]
     headers = [read_header(file) for file in file_handles]
     properties_file, linked_files = verify_links(*headers)
-    properties_index = next(index for index, header in enumerate(headers) if header.file.data_type == properties_file)
+    properties_index = next(
+        index
+        for index, header in enumerate(headers)
+        if header.file.data_type == properties_file
+    )
     properties_file = file_handles.pop(properties_index)
     properties_dataset = oc.open(properties_file)
 
-    linked_files_by_type = {file["header"]["file"].attrs["data_type"]: file for file in file_handles}
+    linked_files_by_type = {
+        file["header"]["file"].attrs["data_type"]: file for file in file_handles
+    }
     if len(linked_files_by_type) != len(linked_files):
         raise ValueError("Linked files must have unique data types")
-    return get_linked_datasets(properties_dataset, linked_files_by_type, properties_file)
+    return get_linked_datasets(
+        properties_dataset, linked_files_by_type, properties_file
+    )
+
 
 def open_linked_file(file_handle: File) -> l.LinkedCollection:
     """
     Open a single file that contains both properties and linked datasets.
     """
-    properties_name = list(filter(lambda name: "properties" in name, file_handle.keys()))
+    properties_name = list(
+        filter(lambda name: "properties" in name, file_handle.keys())
+    )
     if len(properties_name) != 1:
-        raise ValueError(f"A linked file must contain exactly one properties dataset, found {len(properties_name)}")
+        raise ValueError(
+            "A linked file must contain exactly one properties dataset, "
+            f"found {len(properties_name)}"
+        )
     properties_name = properties_name[0]
-    other_datasets = [name for name in file_handle.keys() if name not in (properties_name, "header")]
+    other_datasets = [
+        name for name in file_handle.keys() if name not in (properties_name, "header")
+    ]
     if not other_datasets:
         raise ValueError("No linked datasets found in file")
     linked_groups_by_type = {name: file_handle[name] for name in other_datasets}
     properties_dataset = oc.open(file_handle[properties_name])
-    
-    return get_linked_datasets(properties_dataset, linked_groups_by_type, file_handle[properties_name])
+
+    return get_linked_datasets(
+        properties_dataset, linked_groups_by_type, file_handle[properties_name]
+    )
 
 
-def get_linked_datasets(properties_dataset: oc.Dataset, linked_files_by_type: dict[str, File | Group], properties_file: File) -> l.LinkedCollection:
+def get_linked_datasets(
+    properties_dataset: oc.Dataset,
+    linked_files_by_type: dict[str, File | Group],
+    properties_file: File,
+) -> l.LinkedCollection:
     datasets = {}
     for dtype, pointer in linked_files_by_type.items():
         if "data" not in pointer.keys():
@@ -109,9 +135,9 @@ def get_linked_datasets(properties_dataset: oc.Dataset, linked_files_by_type: di
         else:
             datasets.update({dtype: pointer})
 
-
-
-    link_handlers = get_link_handlers(properties_file, datasets, properties_dataset.header)
+    link_handlers = get_link_handlers(
+        properties_file, datasets, properties_dataset.header
+    )
     output = {}
     for key, handler in link_handlers.items():
         if key in LINK_ALIASES:
@@ -119,10 +145,14 @@ def get_linked_datasets(properties_dataset: oc.Dataset, linked_files_by_type: di
         else:
             output[key] = handler
 
-    return l.LinkedCollection(properties_dataset, output)  
+    return l.LinkedCollection(properties_dataset, output)
 
 
-def get_link_handlers(link_file: File | Group, linked_files: dict[str, File | Group], header: OpenCosmoHeader) -> dict[str, "LinkHandler"]:
+def get_link_handlers(
+    link_file: File | Group,
+    linked_files: dict[str, File | Group],
+    header: OpenCosmoHeader,
+) -> dict[str, l.LinkHandler]:
     if "data_linked" not in link_file.keys():
         raise KeyError("No linked datasets found in the file.")
     links = link_file["data_linked"]
@@ -138,9 +168,10 @@ def get_link_handlers(link_file: File | Group, linked_files: dict[str, File | Gr
         try:
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
-            output_links[key] = l.OomLinkHandler(linked_files[key], (start, size), header)
+            output_links[key] = l.OomLinkHandler(
+                linked_files[key], (start, size), header
+            )
         except KeyError:
             index = links["sod_profile_idx"]
             output_links[key] = l.OomLinkHandler(linked_files[key], index, header)
     return output_links
-

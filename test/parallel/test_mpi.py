@@ -25,12 +25,14 @@ def malformed_header_path(input_path, tmp_path):
     update = {"n_dm": "foo"}
     return update_simulation_parameter(input_path, update, tmp_path, "malformed_header")
 
+
 @pytest.fixture
 def all_paths(data_path: Path):
     files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
 
     hdf_files = [data_path / file for file in files]
     return list(hdf_files)
+
 
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
@@ -200,4 +202,3 @@ def test_link_write(all_paths, tmp_path):
     assert False
     with pytest.raises(NotImplementedError):
         oc.read(output_path)
-

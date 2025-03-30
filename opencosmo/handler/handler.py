@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Iterable, Optional, Protocol
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
-from typing import Optional
 
 
 class OpenCosmoDataHandler(Protocol):

@@ -23,11 +23,7 @@ def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
         values = comm.allgather(value)
 
         if isinstance(value, Iterable):
-            try:
-                sets = [frozenset(v) for v in values]
-            except:
-                print(values)
-                assert False
+            sets = [frozenset(v) for v in values]
             if len(set(sets)) > 1:
                 if key in require:
                     raise ValueError(
@@ -45,7 +41,8 @@ def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
         output[key] = values[0]
     return output
 
-def redistribute_indices(indices: np.ndarray, rank_range: tuple[int,int]):
+
+def redistribute_indices(indices: np.ndarray, rank_range: tuple[int, int]):
     in_range_mask = (indices >= rank_range[0]) & (indices < rank_range[1])
     in_range_indices = indices[in_range_mask]
     out_of_range_indices = indices[~in_range_mask]
@@ -55,7 +52,9 @@ def redistribute_indices(indices: np.ndarray, rank_range: tuple[int,int]):
     # concatenate all out of range indices from all ranks
     all_out_of_range_indices = np.unique(np.concatenate(all_out_of_range_indices))
     # now we can redistribute the indices to the ranks
-    new_indices_mask = (all_out_of_range_indices >= rank_range[0]) & (all_out_of_range_indices < rank_range[1])
+    new_indices_mask = (all_out_of_range_indices >= rank_range[0]) & (
+        all_out_of_range_indices < rank_range[1]
+    )
     new_indices = all_out_of_range_indices[new_indices_mask]
     output_indices = np.concatenate((in_range_indices, new_indices))
     return np.sort(output_indices)
@@ -145,7 +144,7 @@ class MPIHandler:
         columns = input["columns"]
 
         rank_range = self.elem_range()
-        #indices = redistribute_indices(indices, rank_range)
+        # indices = redistribute_indices(indices, rank_range)
 
         print(indices)
         assert False
@@ -178,9 +177,7 @@ class MPIHandler:
             else:
                 shape = (full_output_length,)
 
-            data_group.create_dataset(
-                column, shape, dtype=self.__group[column].dtype
-            )
+            data_group.create_dataset(column, shape, dtype=self.__group[column].dtype)
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
 
@@ -195,7 +192,6 @@ class MPIHandler:
 
         mask = np.zeros(len(self), dtype=bool)
         mask[indices] = True
-
 
         new_tree = self.__tree.apply_mask(mask, self.__comm, self.elem_range())
 
@@ -252,10 +248,6 @@ class MPIHandler:
 
         rank_indices = indices[(indices >= rank_start) & (indices < ran_end)]
         return rank_indices - rank_start
-
-
-
-
 
     def take_indices(self, n: int, strategy: str, indices: np.ndarray) -> np.ndarray:
         """
