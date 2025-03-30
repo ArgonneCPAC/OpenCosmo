@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 import opencosmo as oc
-from opencosmo.collection import open_linked
+from opencosmo.link import open_linked_files
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def test_multi_filter_write(multi_path, tmp_path):
 
 
 def test_data_linking(all_paths):
-    collection = open_linked(*all_paths)
+    collection = open_linked_files(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(
         10, at="random"
     )
@@ -54,7 +54,7 @@ def test_data_linking(all_paths):
 
 
 def test_link_write(all_paths, tmp_path):
-    collection = open_linked(*all_paths)
+    collection = open_linked_files(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(
         10, at="random"
     )

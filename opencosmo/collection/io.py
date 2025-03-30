@@ -5,11 +5,9 @@ from typing import Iterable, Optional
 import h5py
 
 from opencosmo import dataset as ds
-from opencosmo import io
 from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
-from opencosmo.collection.link import LinkedCollection, get_links, verify_links
+from opencosmo.link.collection import LinkedCollection
 from opencosmo.header import read_header
-from opencosmo.link.handler import open_linked as ol
 
 
 class FileHandle:
@@ -40,36 +38,6 @@ def read_multi_dataset_file(
     """
     CollectionType = get_collection_type(file)
     return CollectionType.read(file, datasets)
-
-
-def open_linked(*files: Path):
-    """
-    Open a collection of files that are linked together, such as a
-    properties file and a particle file.
-    """
-    return ol(*files)
-    file_handles = [FileHandle(file) for file in files]
-    datasets = [io.open(file) for file in files]
-    property_file_type, linked_files = verify_links(*[fh.header for fh in file_handles])
-
-    property_handle = next(
-        filter(lambda x: x.header.file.data_type == property_file_type, file_handles)
-    ).handle
-    links = get_links(property_handle)
-    if not links:
-        raise ValueError("No valid links found in files")
-
-    output_datasets: dict[str, ds.Dataset] = {}
-    for dataset in datasets:
-        if isinstance(dataset, ds.Dataset):
-            output_datasets[dataset.header.file.data_type] = dataset
-        else:
-            output_datasets.update(dataset.as_dict())
-    properties_file = output_datasets.pop(property_file_type)
-    total_properties_length = len(properties_file)
-    return LinkedCollection(
-        properties_file.header, properties_file, output_datasets, links, total_properties_length
-    )
 
 
 def get_collection_type(file: h5py.File) -> type[Collection]:

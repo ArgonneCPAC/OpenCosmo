@@ -57,7 +57,7 @@ def open(
     file : str or pathlib.Path
         The path to the file to open.
     """
-    if not isinstance(file, h5py.File):
+    if not isinstance(file, h5py.File) and not isinstance(file, h5py.Group):
         path = resolve_path(file, FileExistance.MUST_EXIST)
         file_handle = h5py.File(path, "r")
     else:
