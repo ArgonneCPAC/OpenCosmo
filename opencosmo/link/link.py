@@ -16,13 +16,13 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable, Optional, TypedDict
 
+import h5py
 import numpy as np
 from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo.dataset.mask import Mask
 from opencosmo.header import OpenCosmoHeader, read_header
-import h5py
 
 try:
     from mpi4py import MPI
@@ -31,7 +31,7 @@ except ImportError:
     # This allows the module to be imported without it
     MPI = None
 
-LINK_ALIASES = { # Left: Name in file, right: Name in collection
+LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
     "sodbighaloparticles_dm_particles": "dm_particles",
     "sodbighaloparticles_gravity_particles": "dm_particles",
@@ -53,7 +53,7 @@ class LinkedCollection(dict):
     for cross-matching and other operations to be performed.
 
     For now, these are always a combination of a properties dataset
-    and several particle or profile datasets. 
+    and several particle or profile datasets.
     """
 
     def __init__(
@@ -61,7 +61,7 @@ class LinkedCollection(dict):
         header: OpenCosmoHeader,
         properties: oc.Dataset,
         datasets: dict,
-        links: GalaxyPropertyLink | HaloPropertyLink,
+        links: GalaxyPropertyLink | HydroHaloPropertyLink,
         total_length: int,
         *args,
         **kwargs,
@@ -85,7 +85,8 @@ class LinkedCollection(dict):
                 self.__aliases[LINK_ALIASES[link_name]] = link_name
         if len(self.__aliases) != len(self.__datasets):
             raise ValueError(
-                "Not all linked datasets have a corresponding link in the properties file"
+                "Not all linked datasets have a corresponding "
+                "link in the properties file"
             )
 
         self.update(self.__datasets)
@@ -140,7 +141,8 @@ class LinkedCollection(dict):
         properties = oc.open(file, header.file.data_type)
         if not isinstance(properties, oc.Dataset):
             raise ValueError(
-                "Expected a single dataset for the properties file, but found a collection of them"
+                "Expected a single dataset for the properties file, "
+                "but found a collection of them"
             )
         links = get_links(file[header.file.data_type])
         if names is None:
@@ -151,7 +153,7 @@ class LinkedCollection(dict):
         names.sort()
         datasets = {}
         for name in names:
-            datasets.update({name: oc.open(file, name)})  
+            datasets.update({name: oc.open(file, name)})
 
         output_datasets = {}
         for name, ds in datasets.items():
@@ -208,7 +210,6 @@ class LinkedCollection(dict):
         property_dataset = self.__properties.header.file.data_type
         self.__properties.write(file, property_dataset)
 
-
         write_links(file[property_dataset], self.__linked, idxs)
 
     def __get_linked(self, dtype: str, index: int):
@@ -245,10 +246,10 @@ class LinkedCollection(dict):
         star particles:
 
         .. code-block:: python
-            
+
             for properties, particles in collection.objects():
                 properties # dict of properties for the given halo
-                particles # dict containing one halo particle dataset 
+                particles # dict containing one halo particle dataset
                           # and one star particle dataset for this halo
 
         Parameters
@@ -264,15 +265,16 @@ class LinkedCollection(dict):
 
         """
         if dtypes is None:
-            dtypes = list(k for k,v in self.__datasets.items() if v is not self.__properties)
+            dtypes = list(
+                k for k, v in self.__datasets.items() if v is not self.__properties
+            )
         elif isinstance(dtypes, str):
             dtypes = [dtypes]
-
 
         ndtypes = len(dtypes)
         for i, properties in enumerate(self.__properties.rows()):
             results = {dtype: self.__get_linked(dtype, i) for dtype in dtypes}
-            
+
             if all(result is None for result in results.values()):
                 continue
             if ndtypes == 1:
@@ -284,7 +286,7 @@ class LinkedCollection(dict):
         """
         Filtering a linked collection always operates on the properties dataset. For
         example, a collection of halos can be filtered by the standard halo properties,
-        such as fof_halo_mass. The filteriing works identically to 
+        such as fof_halo_mass. The filteriing works identically to
         :meth:`oc.Dataset.filter`.
 
         Parameters
@@ -299,7 +301,11 @@ class LinkedCollection(dict):
         """
         new_properties = self.__properties.filter(*masks)
         return LinkedCollection(
-            self.header, new_properties, self.__datasets, self.__linked, self.__properties_total_length
+            self.header,
+            new_properties,
+            self.__datasets,
+            self.__linked,
+            self.__properties_total_length,
         )
 
     def take(self, n: int, at: str = "start"):
@@ -309,7 +315,11 @@ class LinkedCollection(dict):
         """
         new_properties = self.__properties.take(n, at)
         return LinkedCollection(
-            self.header, new_properties, self.__datasets, self.__linked, self.__properties_total_length
+            self.header,
+            new_properties,
+            self.__datasets,
+            self.__linked,
+            self.__properties_total_length,
         )
 
     def with_units(self, convention: str) -> LinkedCollection:
@@ -320,7 +330,11 @@ class LinkedCollection(dict):
         new_properties = self.__properties.with_units(convention)
         new_datasets = {k: v.with_units(convention) for k, v in self.__datasets.items()}
         return LinkedCollection(
-            self.header, new_properties, new_datasets, self.__linked, self.__properties_total_length
+            self.header,
+            new_properties,
+            new_datasets,
+            self.__linked,
+            self.__properties_total_length,
         )
 
 
@@ -372,7 +386,7 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
     return output_file, links[output_file]
 
 
-def get_links(file: File | Group) -> GalaxyPropertyLink | HaloPropertyLink:
+def get_links(file: File | Group) -> GalaxyPropertyLink | HydroHaloPropertyLink:
     if "data_linked" not in file.keys():
         raise ValueError(f"No links found in {file.name}")
     keys = file["data_linked"].keys()
@@ -391,6 +405,7 @@ def get_links(file: File | Group) -> GalaxyPropertyLink | HaloPropertyLink:
             raise ValueError(f"Invalid link type found for {key}")
     return output_links
 
+
 def pack_links(
     data_link: DataLink | h5py.dataset, indices: np.ndarray
 ) -> DataLink | np.ndarray:
@@ -403,10 +418,11 @@ def pack_links(
     elif isinstance(data_link, h5py.Dataset):
         return np.arange(len(indices))
 
+
 def write_links_mpi(
     file: File | Group,
-    links: GalaxyPropertyLink | HaloPropertyLink,
-    indices: np.ndarray
+    links: GalaxyPropertyLink | HydroHaloPropertyLink,
+    indices: np.ndarray,
 ):
     if MPI is None:
         # should never happen
@@ -422,10 +438,11 @@ def write_links_mpi(
     keys.sort()
     for key in keys:
         # Pack the links for writing
-        
-        
+
         if key == "sod_profile":
-            group.create_dataset("sod_profile_idx", shape=(total_length,), dtype=np.int64)
+            group.create_dataset(
+                "sod_profile_idx", shape=(total_length,), dtype=np.int64
+            )
 
         else:
             # For other links, create start and size datasets
@@ -440,56 +457,47 @@ def write_links_mpi(
         else:
             recv_buffer = (None, None, None, None)
         # Gather all the indices from all ranks
-        MPI.COMM_WORLD.Gatherv(
-            indices,
-            recv_buffer,
-            root=0
-        )
+        MPI.COMM_WORLD.Gatherv(indices, recv_buffer, root=0)
         # Now write the gathered data to the file from rank 0
         if rank == 0:
             print(recv_data)
             assert False
             packed_links = pack_links(links[key], np.sort(recv_data))
             if key == "sod_profile":
-                group["sod_profile_idx"][...] = packed_links  
+                group["sod_profile_idx"][...] = packed_links
             else:
-                group[f"{key}_start"][...] = packed_links["start_index"]  
-                group[f"{key}_size"][...] = packed_links["length"] 
+                group[f"{key}_start"][...] = packed_links["start_index"]
+                group[f"{key}_size"][...] = packed_links["length"]
         assert False
 
 
 def write_links(
     file: File | Group,
-    links: GalaxyPropertyLink | HaloPropertyLink,
+    links: GalaxyPropertyLink | HydroHaloPropertyLink,
     indices: np.ndarray,
 ):
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        return write_links_mpi(
-            file,
-            links,
-            indices
-        )
+        return write_links_mpi(file, links, indices)
     group = file.require_group("data_linked")
     for key, value in links.items():
         link_to_write = pack_links(value, indices)  # type: ignore
         if key == "sod_profile":
-            group.create_dataset("sod_profile_idx", data = link_to_write)
+            group.create_dataset("sod_profile_idx", data=link_to_write)
         else:
             group.create_dataset(f"{key}_start", data=link_to_write["start_index"])
-                                
-            group.create_dataset(f"{key}_size", data = link_to_write["length"])
 
-            
-
+            group.create_dataset(f"{key}_size", data=link_to_write["length"])
 
 
 class DataLink(TypedDict):
     start_index: np.ndarray  # The starting index of the link in the particle file
     length: np.ndarray  # The
 
+
 class GravityOnlyHaloPropertyLink(TypedDict):
     dm_particles: DataLink
     halo_profiles: np.ndarray
+
 
 class HydroHaloPropertyLink(TypedDict):
     dm_particles: DataLink

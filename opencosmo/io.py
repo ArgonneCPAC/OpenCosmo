@@ -24,7 +24,9 @@ from opencosmo.transformations import units as u
 
 
 def open(
-    file: str | Path | h5py.File, datasets: Optional[str | Iterable[str]] = None, range: Optional[tuple[int, int]] = None
+    file: str | Path | h5py.File,
+    datasets: Optional[str | Iterable[str]] = None,
+    range: Optional[tuple[int, int]] = None,
 ) -> oc.Dataset | collection.Collection:
     """
     Open a dataset from a file without reading the data into memory.
@@ -91,7 +93,8 @@ def open(
     if range is not None:
         if range[0] < 0 or range[1] > len(handler):
             raise ValueError(
-                f"Range {range} is out of bounds for the dataset with length {len(handler)}"
+                f"Range {range} is out of bounds for the dataset "
+                f"with length {len(handler)}"
             )
         mask = np.arange(range[0], range[1])
     else:

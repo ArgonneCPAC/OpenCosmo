@@ -105,7 +105,6 @@ def pack_masked_ranges(
         output_sizes[level] = new_level_sizes
         output_starts[level] = np.cumsum(np.insert(new_level_sizes, 0, 0))[:-1]
 
-
     return output_starts, output_sizes
 
 
