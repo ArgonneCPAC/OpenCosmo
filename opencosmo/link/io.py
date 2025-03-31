@@ -6,6 +6,13 @@ from h5py import File, Group
 import opencosmo as oc
 from opencosmo import link as l
 from opencosmo.header import OpenCosmoHeader, read_header
+from typing import Type
+
+try:
+    from mpi4py import MPI
+    from opencosmo.link.mpi import MpiLinkHandler
+except ImportError:
+    MPI = None # type: ignore
 
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
@@ -86,6 +93,8 @@ def open_linked_files(*files: Path):
     )
     properties_file = file_handles.pop(properties_index)
     properties_dataset = oc.open(properties_file)
+    if not isinstance(properties_dataset, oc.Dataset):
+        raise ValueError("Properties file must contain a single dataset, but found more")
 
     linked_files_by_type = {
         file["header"]["file"].attrs["data_type"]: file for file in file_handles
@@ -117,6 +126,8 @@ def open_linked_file(file_handle: File) -> l.LinkedCollection:
         raise ValueError("No linked datasets found in file")
     linked_groups_by_type = {name: file_handle[name] for name in other_datasets}
     properties_dataset = oc.open(file_handle[properties_name])
+    if not isinstance(properties_dataset, oc.Dataset):
+        raise ValueError("Properties dataset must be a single dataset")
 
     return get_linked_datasets(
         properties_dataset, linked_groups_by_type, file_handle[properties_name]
@@ -156,6 +167,12 @@ def get_link_handlers(
     if "data_linked" not in link_file.keys():
         raise KeyError("No linked datasets found in the file.")
     links = link_file["data_linked"]
+
+    handler: Type[l.LinkHandler]
+    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
+        handler = MpiLinkHandler
+    else:
+        handler = l.OomLinkHandler
     unique_dtypes = {key.rsplit("_", 1)[0] for key in links.keys()}
     output_links = {}
     for dtype in unique_dtypes:
@@ -168,10 +185,10 @@ def get_link_handlers(
         try:
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
-            output_links[key] = l.OomLinkHandler(
+            output_links[key] = handler(
                 linked_files[key], (start, size), header
             )
         except KeyError:
             index = links["sod_profile_idx"]
-            output_links[key] = l.OomLinkHandler(linked_files[key], index, header)
+            output_links[key] = handler(linked_files[key], index, header)
     return output_links

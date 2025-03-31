@@ -66,7 +66,6 @@ class InMemoryHandler:
         indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
-        selected: Optional[Iterable[str]] = None,
     ) -> None:
         """
         Write the data in the specified columns, with the specified mask, to the file.
@@ -75,19 +74,9 @@ class InMemoryHandler:
             group = file
         else:
             group = file.require_group(dataset_name)
-
-        if selected is not None:
-            selected.sort()
-            if selected[-1] > len(self):
-                raise ValueError("Selected indices are out of bounds")
-            else:
-                idxs = indices[selected]
-        else:
-            idxs = indices
-
         data_group = group.require_group("data")
         for column in columns:
-            data_group.create_dataset(column, data=self.__data[column][idxs])
+            data_group.create_dataset(column, data=self.__data[column][indices])
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
         mask = np.zeros(len(self), dtype=bool)

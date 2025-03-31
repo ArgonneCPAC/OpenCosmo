@@ -122,6 +122,8 @@ class Dataset:
         """
         max = len(self)
         chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
+        if len(chunk_ranges) == 0:
+            chunk_ranges = [(0, 0)]
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
 
@@ -162,14 +164,17 @@ class Dataset:
         if end > len(self):
             raise ValueError("end must be less than the length of the dataset.")
 
-        new_indicies = self.__handler.take_range(start, end, self.__indices)
+        if start < 0 or end > len(self):
+            raise ValueError("start and end must be within the bounds of the dataset.")
+
+        new_indices = self.__indices[start:end]
 
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_indicies,
+            new_indices
         )
 
     def filter(self, *masks: Mask) -> Dataset:
@@ -341,11 +346,19 @@ class Dataset:
 
         """
 
-        if at not in ["start", "end", "random"]:
-            raise ValueError(
-                "Invalid value for 'at'. Must be one of 'start', 'end', or 'random'."
-            )
-        new_indices = self.__handler.take_indices(n, at, self.__indices)
+        if n < 0 or n > len(self):
+            raise ValueError("Invalid value for 'n', must be between 0 and the length of the dataset.")
+        if at == "start":
+            new_indices = self.__indices[:n]
+        elif at == "end":
+            new_indices = self.__indices[-n:]
+        elif at == "random":
+            new_indices = np.random.choice(self.__indices, n, replace=False)
+            new_indices.sort()
+
+        else:
+            raise ValueError("Invalid value for 'at'. Must be one of 'start', 'end', or 'random'.")
+
 
         return Dataset(
             self.__handler,
