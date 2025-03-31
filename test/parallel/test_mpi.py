@@ -5,9 +5,9 @@ import mpi4py
 import numpy as np
 import pytest
 from pytest_mpi.parallel_assert import parallel_assert
-
+from collections import defaultdict
 import opencosmo as oc
-from opencosmo.collection import open_linked
+from opencosmo.link import open_linked_files
 
 
 @pytest.fixture
@@ -185,20 +185,43 @@ def test_write_particles(particle_path, tmp_path):
 
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
-    collection = open_linked(*all_paths)
-    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
-        10, at="random"
-    )
+    collection = open_linked_files(*all_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14)
+    length = len(collection.properties)
+    length = 10 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
     output_path = tmp_path / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)
 
-    oc.write(output_path, collection)
-    assert False
-    written_data = oc.open(output_path)
-    print(written_data["halo_properties"].data)
-    print(written_data["dm_particles"].data)
+    written_data = defaultdict(list)
 
-    assert False
+    for i, (properties, particles) in enumerate(collection.objects()):
+        for key, ds in particles.items():
+            written_data[properties["fof_halo_tag"]].append((key, len(ds)))
+
+            
+
+    oc.write(output_path, collection)
+
+    read_data = defaultdict(list)
+    read_ds = oc.open(output_path)
+    for properties, particles in read_ds.objects():
+        for key, ds in particles.items():
+            read_data[properties["fof_halo_tag"]].append((key, len(ds)))
+
+
+    all_read = comm.gather(read_data, root=0)
+    all_written = comm.gather(written_data, root=0)
+    # merge the dictionaries
+    if comm.Get_rank() == 0:
+        read_data = {}
+        written_data = {}
+        for i in range(len(all_read)):
+            read_data.update(all_read[i])
+            written_data.update(all_written[i])
+        for key in read_data:
+            assert set(read_data[key]) == set(written_data[key])
+
+
     with pytest.raises(NotImplementedError):
         oc.read(output_path)

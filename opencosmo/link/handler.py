@@ -36,10 +36,12 @@ class LinkHandler(Protocol):
         file: File | Group,
         links: Group | tuple[Group, Group],
         header: OpenCosmoHeader,
+        *args,
+        **kwargs,
     ): ...
-    def get_data(self, indices: int | np.ndarray) -> oc.Dataset: ...
+    def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]: ...
     def write(
-        self, data_group: Group, link_group: Group, indices: int | np.ndarray
+        self, data_group: Group, link_group: Group, name: str, indices: int | np.ndarray
     ) -> None: ...
 
 
@@ -48,13 +50,17 @@ class OomLinkHandler:
         self,
         file: File | Group,
         link: Group | tuple[Group, Group],
-        header: OpenCosmoHeader = None,
+        header: OpenCosmoHeader
     ):
         self.file = file
         self.link = link
         self.header = header
 
-    def get_data(self, indices: np.ndarray) -> Optional[oc.Dataset]:
+    def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
+        if isinstance(indices, int):
+            indices = np.array([indices], dtype=int)
+        min_idx = np.min(indices)
+        max_idx = np.max(indices)
         if isinstance(self.link, tuple):
             start = self.link[0][indices]
             size = self.link[1][indices]
@@ -63,17 +69,21 @@ class OomLinkHandler:
             size = size[valid_rows]
             if not start.size:
                 return None
-            indices = np.concatenate(
+            indices_into_data = np.concatenate(
                 [np.arange(idx, idx + length) for idx, length in zip(start, size)]
             )
         else:
-            indices = self.link[indices]
-            indices = indices[indices >= 0]
-            if not indices.size:
-                return None
-        return build_dataset(self.file, indices, self.header)
 
-    def write(self, file: File, name: str, link_group: Group, indices: np.ndarray):
+            indices_into_data = self.link[min_idx:max_idx + 1][indices - min_idx]
+            indices_into_data = np.array(indices_into_data[indices_into_data >= 0])
+            if not indices_into_data.size:
+                return None
+            print(indices_into_data)
+        return build_dataset(self.file, indices_into_data, self.header)
+
+    def write(self, group: Group, link_group: Group, name: str, indices: int | np.ndarray):
+        if isinstance(indices, int):
+            indices = np.array([indices])
         # Pack the indices
         if not isinstance(self.link, tuple):
             new_idxs = np.arange(len(indices))
@@ -85,4 +95,6 @@ class OomLinkHandler:
             link_group.create_dataset(f"{name}_size", data=lengths, dtype=int)
 
         dataset = self.get_data(indices)
-        dataset.write(file, name)
+        if dataset is not None:
+            dataset.write(group, name)
+

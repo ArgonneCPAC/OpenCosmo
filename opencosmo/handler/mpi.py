@@ -42,24 +42,6 @@ def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
     return output
 
 
-def redistribute_indices(indices: np.ndarray, rank_range: tuple[int, int]):
-    in_range_mask = (indices >= rank_range[0]) & (indices < rank_range[1])
-    in_range_indices = indices[in_range_mask]
-    out_of_range_indices = indices[~in_range_mask]
-
-    # send to all ranks
-    all_out_of_range_indices = MPI.COMM_WORLD.allgather(out_of_range_indices)
-    # concatenate all out of range indices from all ranks
-    all_out_of_range_indices = np.unique(np.concatenate(all_out_of_range_indices))
-    # now we can redistribute the indices to the ranks
-    new_indices_mask = (all_out_of_range_indices >= rank_range[0]) & (
-        all_out_of_range_indices < rank_range[1]
-    )
-    new_indices = all_out_of_range_indices[new_indices_mask]
-    output_indices = np.concatenate((in_range_indices, new_indices))
-    return np.sort(output_indices)
-
-
 class MPIHandler:
     """
     A handler for reading and writing data in an MPI context.
@@ -71,6 +53,8 @@ class MPIHandler:
         tree: Tree,
         group_name: Optional[str] = None,
         comm=MPI.COMM_WORLD,
+        rank_range: Optional[Tuple[int, int]] = None,
+
     ):
         self.__file = file
         self.__group_name = group_name
@@ -81,11 +65,14 @@ class MPIHandler:
         self.__columns = get_data_structure(self.__group)
         self.__comm = comm
         self.__tree = tree
+        self.__elem_range = rank_range
 
     def elem_range(self) -> Tuple[int, int]:
         """
         The full dataset will be split into equal parts by rank.
         """
+        if self.__elem_range is not None:
+            return self.__elem_range
         nranks = self.__comm.Get_size()
         rank = self.__comm.Get_rank()
         n = self.__group[next(iter(self.__columns))].shape[0]
@@ -146,8 +133,6 @@ class MPIHandler:
         rank_range = self.elem_range()
         # indices = redistribute_indices(indices, rank_range)
 
-        print(indices)
-        assert False
         rank_output_length = len(indices)
 
         all_output_lengths = self.__comm.allgather(rank_output_length)
@@ -172,6 +157,7 @@ class MPIHandler:
 
         for column in columns:
             # This step has to be done by all ranks, per documentation
+            shape: Tuple[int, ...]
             if len(self.__group[column].shape) != 1:
                 shape = (full_output_length, self.__group[column].shape[1])
             else:
@@ -208,13 +194,12 @@ class MPIHandler:
         Get data from the file in the range for this rank.
         """
         builder_keys = list(builders.keys())
-
-        builder_keys = verify_input(comm=self.__comm, builder_keys=builder_keys)[
-            "builder_keys"
-        ]
-
         if self.__group is None:
             raise ValueError("This file has already been closed")
+
+        if len(indices) == 0:
+            columns = {key: Column() for key in builder_keys}
+            return Table(columns)
         output = {}
         range_ = self.elem_range()
 
@@ -232,33 +217,22 @@ class MPIHandler:
         return Table(output)
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
-        pars = verify_input(comm=self.__comm, start=start, end=end)
-        start = pars["start"]
-        end = pars["end"]
-        rank_lengths = self.__comm.allgather(len(indices))
-        rank_ranges = np.insert(np.cumsum(rank_lengths), 0, 0)
 
-        rank_start = rank_ranges[self.__comm.Get_rank()]
-        ran_end = rank_ranges[self.__comm.Get_rank() + 1]
-        if rank_start >= end or ran_end <= start:
-            return np.array([], dtype=int)
-        else:
-            rank_start = max(rank_start, start)
-            ran_end = min(ran_end, end)
 
-        rank_indices = indices[(indices >= rank_start) & (indices < ran_end)]
-        return rank_indices - rank_start
+        if start < 0 or end > len(indices):
+            raise ValueError("Requested range is not within the rank's range.")
+
+        return indices[start:end]
+        
+
+
 
     def take_indices(self, n: int, strategy: str, indices: np.ndarray) -> np.ndarray:
         """
-        This is the tricky one. We need to update the mask based on the amount of
-        data in ALL the ranks.
-
         masks are localized to each rank. For "start" and "end" it's just a matter of
         figuring out how many elements each rank is responsible for. For "random" we
         need to be more clever.
         """
-        n = verify_input(comm=self.__comm, n=n)["n"]
 
         rank_length = len(indices)
         rank_lengths = self.__comm.allgather(rank_length)

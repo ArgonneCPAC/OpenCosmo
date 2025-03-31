@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Any
 
 import numpy as np
 from h5py import File
@@ -43,8 +43,13 @@ class LinkedCollection:
     def read(cls, *args, **kwargs) -> LinkedCollection:
         raise NotImplementedError
 
-    def as_dict(self) -> dict[str, oc.Dataset]:
-        return self
+    @property
+    def properties(self) -> oc.Dataset:
+        """
+        Return the properties dataset.
+        """
+        return self.__properties
+
 
     def keys(self) -> list[str]:
         """
@@ -83,7 +88,7 @@ class LinkedCollection:
 
     def objects(
         self, data_types: Optional[Iterable[str]] = None
-    ) -> Iterable[tuple[oc.Dataset, dict[str, oc.Dataset]]]:
+    ) -> Iterable[tuple[dict[str,Any], dict[str, Optional[oc.Dataset]]]]:
         """
         Iterate over the properties dataset and the linked datasets.
         """
@@ -94,8 +99,9 @@ class LinkedCollection:
         else:
             handlers = {dt: self.__handlers[dt] for dt in data_types}
 
+
         for i, row in enumerate(self.__properties.rows()):
-            index = np.array([i])
+            index = np.array(self.__properties.indices[i])
             output = {key: handler.get_data(index) for key, handler in handlers.items()}
             if not any(output.values()):
                 continue
@@ -106,5 +112,8 @@ class LinkedCollection:
         header.write(file)
         self.__properties.write(file, header.file.data_type)
         link_group = file[header.file.data_type].create_group("data_linked")
-        for key, handler in self.__handlers.items():
-            handler.write(file, key, link_group, self.__idxs)
+        keys = list(self.__handlers.keys())
+        keys.sort()
+        for key in keys:
+            handler = self.__handlers[key]
+            handler.write(file, link_group, key, self.__idxs)

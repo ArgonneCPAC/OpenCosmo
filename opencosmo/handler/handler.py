@@ -46,7 +46,6 @@ class OpenCosmoDataHandler(Protocol):
         indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
-        selected: Optional[dict[str, str]] = None,
     ) -> None: ...
     def get_data(
         self,
