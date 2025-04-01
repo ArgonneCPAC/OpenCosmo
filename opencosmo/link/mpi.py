@@ -126,8 +126,18 @@ class MpiLinkHandler:
         if not isinstance(self.link, tuple):
             link_group.create_dataset("sod_profile_idx", shape=shape, dtype=int)
             self.comm.Barrier()
+            start = indices[0]
+            end = indices[-1] + 1
+            indices_into_data = self.link[self.offset + start:self.offset + end]
+            indices_into_data = indices_into_data[indices - start]
+            nonzero = indices_into_data >= 0
+            nonzero = self.comm.gather(nonzero)
+
             if self.comm.Get_rank() == 0:
-                link_group["sod_profile_idx"][:] = np.arange(sum(sizes))
+                nonzero = np.concatenate(nonzero)
+                sod_profile_idx = np.full(len(nonzero), -1)
+                sod_profile_idx[nonzero] = np.arange(sum(nonzero))
+                link_group["sod_profile_idx"][:] = sod_profile_idx
         else:
             link_group.create_dataset(f"{name}_start", shape=shape, dtype=int)
             link_group.create_dataset(f"{name}_size", shape=shape, dtype=int)

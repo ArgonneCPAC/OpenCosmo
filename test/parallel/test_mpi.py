@@ -169,13 +169,14 @@ def test_write_particles(particle_path, tmp_path):
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = open_linked_files(*all_paths)
-    collection = collection.filter(oc.col("sod_halo_mass") > 10**14)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
     length = len(collection.properties)
-    length = 10 if length > 8 else length
+    length = 8 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
     output_path = tmp_path / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)
 
+    collection = collection.take(length, at="random")
     written_data = defaultdict(list)
 
     for i, (properties, particles) in enumerate(collection.objects()):
