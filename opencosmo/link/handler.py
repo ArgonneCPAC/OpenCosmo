@@ -28,9 +28,15 @@ def build_dataset(
 class LinkHandler(Protocol):
     """
     A LinkHandler is responsible for handling linked datasets. Links are found
-    in property files, and contain indexes into another dataset. The link handler
-    is responsible for holding pointers to the linked files, and returning
-    the associated data when requested (as a Dataset object).
+    in property files, and contain indexes into another dataset. For example, a
+    halo properties file will contain links to a halo particles file. Each halo
+    in the properties file will have a corresponding range of indexes that contain
+    the associated particles in the particles file. 
+
+    The link handler is responsible for reading data and instatiating datasets
+    that contain the linked data for the given object. There will be one link
+    handler for each linked dataset in the properties file. This potentially
+    means there will be multiple pointers to a single particle file, for example.
     """
 
     def __init__(
@@ -41,14 +47,34 @@ class LinkHandler(Protocol):
         *args,
         **kwargs,
     ): ...
-    def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]: ...
-    def get_all_data(self) -> oc.Dataset: ...
+    def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
+        """
+        Given a index or a set of indices, return the data from the linked dataset
+        that corresponds to the halo/galaxy at that index in the properties file.
+        Sometimes the linked dataset will not have data for that object, in which
+        case None should be returned.
+        """
+        pass
+    def get_all_data(self) -> oc.Dataset: 
+        """
+        Return all the data from the linked dataset. 
+        """
+        pass
     def write(
         self, data_group: Group, link_group: Group, name: str, indices: int | np.ndarray
-    ) -> None: ...
+    ) -> None:
+        """
+        Write the linked data for the given indices to data_group.
+        This function will then update the links to be consistent with the newly
+        written data, and write the updated links to link_group.
+        """
+        pass
 
 
 class OomLinkHandler:
+    """
+    Links are currently only supported out-of-memory.
+    """
     def __init__(
         self,
         file: File | Group,
@@ -67,9 +93,10 @@ class OomLinkHandler:
             indices = np.array([indices], dtype=int)
         min_idx = np.min(indices)
         max_idx = np.max(indices)
+
         if isinstance(self.link, tuple):
-            start = self.link[0][indices]
-            size = self.link[1][indices]
+            start = self.link[0][min_idx : max_idx + 1][indices - min_idx]
+            size = self.link[1][min_idx : max_idx + 1][indices - min_idx]
             valid_rows = size > 0
             start = start[valid_rows]
             size = size[valid_rows]
