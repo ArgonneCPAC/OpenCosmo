@@ -26,10 +26,9 @@ from opencosmo.transformations import units as u
 def open(
     file: str | Path | h5py.File,
     datasets: Optional[str | Iterable[str]] = None,
-    range: Optional[tuple[int, int]] = None,
 ) -> oc.Dataset | collection.Collection:
     """
-    Open a dataset from a file without reading the data into memory.
+    Open a dataset or data collection from a file without reading the data into memory.
 
     The object returned by this function will only read data from the file
     when it is actually needed. This is useful if the file is very large
@@ -58,6 +57,16 @@ def open(
     ----------
     file : str or pathlib.Path
         The path to the file to open.
+    datasets : str or list[str], optional
+        If the file has multiple datasets, the name of the dataset(s) to open.
+        All other datasets will be ignored. If not provided, will open all
+        datasets
+
+    Returns
+    -------
+    dataset : oc.Dataset or oc.Collection
+        The dataset or collection opened from the file.
+
     """
     if not isinstance(file, h5py.File) and not isinstance(file, h5py.Group):
         path = resolve_path(file, FileExistance.MUST_EXIST)
@@ -90,16 +99,8 @@ def open(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
-    if range is not None:
-        if range[0] < 0 or range[1] > len(handler):
-            raise ValueError(
-                f"Range {range} is out of bounds for the dataset "
-                f"with length {len(handler)}"
-            )
-        mask = np.arange(range[0], range[1])
-    else:
-        mask = np.arange(len(handler))
 
+    mask = np.arange(len(handler))
     dataset = oc.Dataset(handler, header, builders, base_unit_transformations, mask)
     return dataset
 
@@ -119,10 +120,15 @@ def read(
     ----------
     file : str or pathlib.Path
         The path to the file to read.
+    datasets : str or list[str], optional
+        If the file has multiple datasets, the name of the dataset(s) to read.
+        All other datasets will be ignored. If not provided, will read all
+            datasets
+
     Returns
     -------
-    dataset : oc.Dataset
-        The dataset read from the file.
+    dataset : oc.Dataset or oc.Collection
+        The dataset or collection read from the file.
 
     """
 

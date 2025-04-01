@@ -14,6 +14,13 @@ except ImportError:
 
 
 class OpenCosmoHeader:
+    """
+    A class to represent the header of an OpenCosmo file. The header contains
+    information about the simulation the data is a part of, as well as other
+    meatadata that are useful to the library in various contexts. Most files
+    will have a single unique header, but it is possible to have multiple
+    headers in a SimulationCollection.
+    """
     def __init__(
         self,
         file_pars: parameters.FileParameters,
