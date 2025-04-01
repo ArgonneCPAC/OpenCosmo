@@ -1,6 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
-from typing import Type
+from typing import Iterable, Optional, Type
 
 from h5py import File, Group
 
@@ -109,7 +109,9 @@ def open_linked_files(*files: Path):
     )
 
 
-def open_linked_file(file_handle: File) -> l.LinkedCollection:
+def open_linked_file(
+    file_handle: File, datasets_to_get: Optional[Iterable[str]] = None
+) -> l.LinkedCollection:
     """
     Open a single file that contains both properties and linked datasets.
     """
@@ -122,8 +124,9 @@ def open_linked_file(file_handle: File) -> l.LinkedCollection:
             f"found {len(properties_name)}"
         )
     properties_name = properties_name[0]
+    names_to_ignore = [properties_name, "header"] + list(datasets_to_get or [])
     other_datasets = [
-        name for name in file_handle.keys() if name not in (properties_name, "header")
+        name for name in file_handle.keys() if name not in names_to_ignore
     ]
     if not other_datasets:
         raise ValueError("No linked datasets found in file")

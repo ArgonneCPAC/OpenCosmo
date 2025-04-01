@@ -47,10 +47,11 @@ class Collection(Protocol):
 
     def write(self, file: h5py.File): ...
 
-    def as_dict(self) -> dict[str, oc.Dataset]: ...
-
+    def __getitem__(self, key: str) -> oc.Dataset: ...
+    def keys(self) -> Iterable[str]: ...
+    def values(self) -> Iterable[oc.Dataset]: ...
+    def items(self) -> Iterable[tuple[str, oc.Dataset]]: ...
     def __enter__(self): ...
-
     def __exit__(self, *exc_details): ...
 
 
@@ -64,7 +65,7 @@ def write_with_common_header(
     # figure out if we have unique headers
 
     header.write(file)
-    for key, dataset in collection.as_dict().items():
+    for key, dataset in collection.items():
         dataset.write(file, key, with_header=False)
 
 
@@ -75,7 +76,7 @@ def write_with_unique_headers(collection: Collection, file: h5py.File):
     """
     # figure out if we have unique headers
 
-    for key, dataset in collection.as_dict().items():
+    for key, dataset in collection.items():
         dataset.write(file, key)
 
 

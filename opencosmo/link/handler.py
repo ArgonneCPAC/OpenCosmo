@@ -13,13 +13,15 @@ from opencosmo.transformations import units as u
 
 
 def build_dataset(
-    file: File | Group, indices: np.ndarray, header: OpenCosmoHeader
+    file: File | Group, header: OpenCosmoHeader, indices: Optional[np.ndarray] = None
 ) -> oc.Dataset:
     tree = read_tree(file, header)
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file, header
     )
     handler = OutOfMemoryHandler(file, tree=tree)
+    if indices is None:
+        indices = np.arange(len(handler))
     return oc.Dataset(handler, header, builders, base_unit_transformations, indices)
 
 
@@ -40,6 +42,7 @@ class LinkHandler(Protocol):
         **kwargs,
     ): ...
     def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]: ...
+    def get_all_data(self) -> oc.Dataset: ...
     def write(
         self, data_group: Group, link_group: Group, name: str, indices: int | np.ndarray
     ) -> None: ...
@@ -55,6 +58,9 @@ class OomLinkHandler:
         self.file = file
         self.link = link
         self.header = header
+
+    def get_all_data(self) -> oc.Dataset:
+        return build_dataset(self.file, self.header)
 
     def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
         if isinstance(indices, int):
@@ -77,8 +83,7 @@ class OomLinkHandler:
             indices_into_data = np.array(indices_into_data[indices_into_data >= 0])
             if not indices_into_data.size:
                 return None
-            print(indices_into_data)
-        return build_dataset(self.file, indices_into_data, self.header)
+        return build_dataset(self.file, self.header, indices_into_data)
 
     def write(
         self, group: Group, link_group: Group, name: str, indices: int | np.ndarray
