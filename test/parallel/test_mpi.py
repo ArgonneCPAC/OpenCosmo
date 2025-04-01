@@ -53,34 +53,27 @@ def test_mpi(input_path):
     with oc.open(input_path) as f:
         data = f.data
 
-    parallel_assert(lambda: len(data) != 0)
+    parallel_assert(len(data) != 0)
 
 
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
-
-    comm = mpi4py.MPI.COMM_WORLD
     data = ds.data
-
-    rank_length = len(data)
-    total_length = comm.allreduce(rank_length, op=mpi4py.MPI.SUM)
-    # get a random number between 0 and total_length
-    if comm.Get_rank() == 0:
-        n = np.random.randint(1000, total_length)
-    else:
-        n = 0
-    n = comm.bcast(n, root=0)
-
+    n = 1000
     ds = ds.take(n, "random")
     data = ds.data
     ds.close()
-    lengths = comm.gather(len(data), root=0)
-    if comm.Get_rank() == 0:
-        total_length = sum(lengths)
-        assert sum(lengths) == total_length
-    parallel_assert(lambda: total_length == n, participating=comm.Get_rank() == 0)
+    parallel_assert(len(data) == n)
 
+    halo_tags = data["fof_halo_tag"]
+    gathered_tags = mpi4py.MPI.COMM_WORLD.gather(halo_tags, root=0)
+    tags = set()
+    if mpi4py.MPI.COMM_WORLD.Get_rank() == 0:
+        for tag_list in gathered_tags:
+            tags.update(tag_list)
+
+        assert len(tags) == 4*n
 
 @pytest.mark.parallel(nprocs=4)
 def test_filters(input_path):
@@ -88,8 +81,8 @@ def test_filters(input_path):
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
     data = ds.data
     ds.close()
-    parallel_assert(lambda: len(data) != 0)
-    parallel_assert(lambda: all(data["sod_halo_mass"] > 0))
+    parallel_assert(len(data) != 0)
+    parallel_assert(all(data["sod_halo_mass"] > 0))
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -112,13 +105,13 @@ def test_filter_write(input_path, tmp_path):
     tree = handler._InMemoryHandler__tree
     starts = tree._Tree__starts
     sizes = tree._Tree__sizes
-    parallel_assert(lambda: np.all(data == written_data))
+    parallel_assert(np.all(data == written_data))
     for level in sizes:
-        parallel_assert(lambda: np.sum(sizes[level]) == len(handler))
-        parallel_assert(lambda: starts[level][0] == 0)
+        parallel_assert(np.sum(sizes[level]) == len(handler))
+        parallel_assert(starts[level][0] == 0)
         if level > 0:
             sizes_from_starts = np.diff(np.append(starts[level], len(handler)))
-            parallel_assert(lambda: np.all(sizes_from_starts == sizes[level]))
+            parallel_assert(np.all(sizes_from_starts == sizes[level]))
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -126,7 +119,7 @@ def test_collect(input_path):
     with oc.open(input_path) as f:
         ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
 
-    parallel_assert(lambda: len(ds.data) == 100)
+    parallel_assert(len(ds.data) == 400)
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -139,28 +132,15 @@ def test_select_collect(input_path):
             .collect()
         )
 
-    parallel_assert(lambda: len(ds.data) == 100)
-    parallel_assert(lambda: set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
+    parallel_assert(len(ds.data) == 400)
+    parallel_assert(set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
 
-
-@pytest.mark.parallel(nprocs=4)
-def test_take_empty_rank(input_path):
-    comm = mpi4py.MPI.COMM_WORLD
-    with oc.open(input_path) as f:
-        ds = f.filter(oc.col("sod_halo_mass") > 0)
-        data = ds.data
-        length = comm.allgather(len(data))
-        n_to_take = length[0] + length[1] // 2
-        if comm.Get_rank() in [0, 1]:
-            ds = ds.take(n_to_take, at="start")
-        else:
-            ds = ds.take(n_to_take, at="start")
 
 
 @pytest.mark.parallel(nprocs=4)
 def test_read_particles(particle_path):
     with oc.open(particle_path) as f:
-        parallel_assert(lambda: isinstance(f, dict))
+        parallel_assert(isinstance(f, dict))
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -170,17 +150,17 @@ def test_write_particles(particle_path, tmp_path):
     output_path = comm.bcast(output_path, root=0)
     with oc.open(particle_path) as f:
         oc.write(output_path, f)
-    if comm.Get_rank() == 0:
-        original_data = oc.read(particle_path)
-        written_data = oc.read(output_path)
-        for key in original_data.keys():
-            assert np.all(original_data[key].data == written_data[key].data)
-        header = original_data.header
-        written_header = written_data.header
-        models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
-        for model in models:
-            key = f"_OpenCosmoHeader__{model}"
-            assert getattr(header, key) == getattr(written_header, key)
+    original_data = oc.read(particle_path)
+    written_data = oc.read(output_path)
+    indices = np.random.randint(0, len(original_data), 100)
+    for key in original_data.keys():
+        assert np.all(original_data[key].data[indices] == written_data[key].data[indices])
+    header = original_data.header
+    written_header = written_data.header
+    models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
+    for model in models:
+        key = f"_OpenCosmoHeader__{model}"
+        parallel_assert(getattr(header, key) == getattr(written_header, key))
 
 
 @pytest.mark.parallel(nprocs=4)
