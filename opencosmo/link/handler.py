@@ -119,7 +119,11 @@ class OomLinkHandler:
             indices = np.array([indices])
         # Pack the indices
         if not isinstance(self.link, tuple):
-            new_idxs = np.arange(len(indices))
+            new_idxs = np.full(len(indices), -1)
+            current_values = self.link[indices[0]: indices[-1] + 1]
+            current_values = current_values[indices - indices[0]]
+            has_data = current_values >= 0
+            new_idxs[has_data] = np.arange(sum(has_data))
             link_group.create_dataset("sod_profile_idx", data=new_idxs, dtype=int)
         else:
             lengths = self.link[1][indices]
