@@ -7,9 +7,11 @@ from h5py import File, Group
 from mpi4py import MPI
 
 import opencosmo as oc
+from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.handler import MPIHandler
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.spatial import read_tree
+from opencosmo.spatial import Tree, read_tree
+from opencosmo.transformations import TransformationDict
 from opencosmo.transformations import units as u
 
 
@@ -18,9 +20,9 @@ def build_dataset(
     indices: np.ndarray,
     header: OpenCosmoHeader,
     comm: MPI.Comm,
-    tree,
-    base_transformations,
-    builders,
+    tree: Tree,
+    base_transformations: TransformationDict,
+    builders: dict[str, ColumnBuilder],
 ) -> oc.Dataset:
     if len(indices) > 0:
         index_range = (indices.min(), indices.max() + 1)
@@ -30,6 +32,20 @@ def build_dataset(
 
     handler = MPIHandler(file, tree=tree, comm=comm, rank_range=index_range)
     return oc.Dataset(handler, header, builders, base_transformations, indices)
+
+
+def build_full_dataset(
+    file: File | Group,
+    header: OpenCosmoHeader,
+    comm: MPI.Comm,
+    tree: Tree,
+    base_transformations: TransformationDict,
+    builders: dict[str, ColumnBuilder],
+) -> oc.Dataset:
+    handler = MPIHandler(file, tree=tree, comm=comm)
+    return oc.Dataset(
+        handler, header, builders, base_transformations, np.arange(len(handler))
+    )
 
 
 class MpiLinkHandler:
@@ -54,6 +70,16 @@ class MpiLinkHandler:
         else:
             n_per_rank = self.link.shape[0] // self.comm.Get_size()
             self.offset = n_per_rank * self.comm.Get_rank()
+
+    def get_all_data(self) -> oc.Dataset:
+        return build_full_dataset(
+            self.file,
+            self.header,
+            self.comm,
+            self.tree,
+            self.base_unit_transformations,
+            self.builders,
+        )
 
     def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
         if isinstance(indices, int):

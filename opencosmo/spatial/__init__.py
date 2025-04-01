@@ -1,3 +1,3 @@
-from .tree import read_tree
+from .tree import Tree, read_tree
 
-__all__ = ["read_tree"]
+__all__ = ["read_tree", "Tree"]

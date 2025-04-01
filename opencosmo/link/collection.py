@@ -35,9 +35,9 @@ class LinkedCollection:
 
     @classmethod
     def open(
-        cls, file: File, names: Optional[Iterable[str]] = None
+        cls, file: File, datasets_to_get: Optional[Iterable[str]] = None
     ) -> LinkedCollection:
-        return l.open_linked_file(file)
+        return l.open_linked_file(file, datasets_to_get)
 
     @classmethod
     def read(cls, *args, **kwargs) -> LinkedCollection:
@@ -55,6 +55,32 @@ class LinkedCollection:
         Return the keys of the linked datasets.
         """
         return list(self.__handlers.keys()) + [self.__properties.header.file.data_type]
+
+    def values(self) -> list[oc.Dataset]:
+        """
+        Return the linked datasets.
+        """
+        return [self.__properties] + [
+            handler.get_all_data() for handler in self.__handlers.values()
+        ]
+
+    def items(self) -> list[tuple[str, oc.Dataset]]:
+        """
+        Return the linked datasets as key-value pairs.
+        """
+        return [
+            (key, handler.get_all_data()) for key, handler in self.__handlers.items()
+        ]
+
+    def __getitem__(self, key: str) -> oc.Dataset:
+        """
+        Return the linked dataset with the given key.
+        """
+        if key == self.__properties.header.file.data_type:
+            return self.__properties
+        elif key not in self.__handlers:
+            raise KeyError(f"Dataset {key} not found in collection.")
+        return self.__handlers[key].get_all_data()
 
     def __enter__(self):
         return self
