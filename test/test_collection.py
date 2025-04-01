@@ -1,10 +1,10 @@
 from pathlib import Path
+from typing import defaultdict
 
 import pytest
 
 import opencosmo as oc
 from opencosmo.link import open_linked_files
-from typing import defaultdict
 
 
 @pytest.fixture
@@ -78,8 +78,6 @@ def test_link_write(all_paths, tmp_path):
                 continue
             original_output[properties["fof_halo_tag"]].append(name)
 
-
-
     read_output = defaultdict(list)
     oc.write(tmp_path / "linked.hdf5", collection)
     written_data = oc.open(tmp_path / "linked.hdf5")
@@ -101,7 +99,7 @@ def test_link_write(all_paths, tmp_path):
 
         assert len(halo_tags) == 1
         assert halo_tags.pop() == properties["fof_halo_tag"]
-    
+
     for key in original_output.keys():
         assert set(original_output[key]) == set(read_output[key])
 

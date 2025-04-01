@@ -174,7 +174,7 @@ class Dataset:
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_indices
+            new_indices,
         )
 
     def filter(self, *masks: Mask) -> Dataset:
@@ -347,7 +347,9 @@ class Dataset:
         """
 
         if n < 0 or n > len(self):
-            raise ValueError("Invalid value for 'n', must be between 0 and the length of the dataset.")
+            raise ValueError(
+                "Invalid value for 'n', must be between 0 and the length of the dataset"
+            )
         if at == "start":
             new_indices = self.__indices[:n]
         elif at == "end":
@@ -357,8 +359,9 @@ class Dataset:
             new_indices.sort()
 
         else:
-            raise ValueError("Invalid value for 'at'. Must be one of 'start', 'end', or 'random'.")
-
+            raise ValueError(
+                "Invalid value for 'at'. Must be one of 'start', 'end', or 'random'."
+            )
 
         return Dataset(
             self.__handler,

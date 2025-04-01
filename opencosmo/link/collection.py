@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Any
+from typing import Any, Iterable, Optional
 
 import numpy as np
 from h5py import File
@@ -50,7 +50,6 @@ class LinkedCollection:
         """
         return self.__properties
 
-
     def keys(self) -> list[str]:
         """
         Return the keys of the linked datasets.
@@ -88,7 +87,7 @@ class LinkedCollection:
 
     def objects(
         self, data_types: Optional[Iterable[str]] = None
-    ) -> Iterable[tuple[dict[str,Any], dict[str, Optional[oc.Dataset]]]]:
+    ) -> Iterable[tuple[dict[str, Any], dict[str, Optional[oc.Dataset]]]]:
         """
         Iterate over the properties dataset and the linked datasets.
         """
@@ -98,7 +97,6 @@ class LinkedCollection:
             raise ValueError("Some data types are not linked in the collection.")
         else:
             handlers = {dt: self.__handlers[dt] for dt in data_types}
-
 
         for i, row in enumerate(self.__properties.rows()):
             index = np.array(self.__properties.indices[i])
