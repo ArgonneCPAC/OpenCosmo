@@ -1,18 +1,19 @@
 from collections import defaultdict
 from pathlib import Path
+from typing import Type
 
 from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo import link as l
 from opencosmo.header import OpenCosmoHeader, read_header
-from typing import Type
 
 try:
     from mpi4py import MPI
+
     from opencosmo.link.mpi import MpiLinkHandler
 except ImportError:
-    MPI = None # type: ignore
+    MPI = None  # type: ignore
 
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
@@ -94,7 +95,9 @@ def open_linked_files(*files: Path):
     properties_file = file_handles.pop(properties_index)
     properties_dataset = oc.open(properties_file)
     if not isinstance(properties_dataset, oc.Dataset):
-        raise ValueError("Properties file must contain a single dataset, but found more")
+        raise ValueError(
+            "Properties file must contain a single dataset, but found more"
+        )
 
     linked_files_by_type = {
         file["header"]["file"].attrs["data_type"]: file for file in file_handles
@@ -185,9 +188,7 @@ def get_link_handlers(
         try:
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
-            output_links[key] = handler(
-                linked_files[key], (start, size), header
-            )
+            output_links[key] = handler(linked_files[key], (start, size), header)
         except KeyError:
             index = links["sod_profile_idx"]
             output_links[key] = handler(linked_files[key], index, header)

@@ -101,7 +101,6 @@ class OutOfMemoryHandler:
         start_idx = indices[0]
         end_idx = indices[-1] + 1
         for column, builder in builders.items():
-            
             data = self.__group[column][start_idx:end_idx]
             data = data[indices - start_idx]
 

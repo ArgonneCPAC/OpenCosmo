@@ -50,7 +50,7 @@ class OomLinkHandler:
         self,
         file: File | Group,
         link: Group | tuple[Group, Group],
-        header: OpenCosmoHeader
+        header: OpenCosmoHeader,
     ):
         self.file = file
         self.link = link
@@ -73,15 +73,16 @@ class OomLinkHandler:
                 [np.arange(idx, idx + length) for idx, length in zip(start, size)]
             )
         else:
-
-            indices_into_data = self.link[min_idx:max_idx + 1][indices - min_idx]
+            indices_into_data = self.link[min_idx : max_idx + 1][indices - min_idx]
             indices_into_data = np.array(indices_into_data[indices_into_data >= 0])
             if not indices_into_data.size:
                 return None
             print(indices_into_data)
         return build_dataset(self.file, indices_into_data, self.header)
 
-    def write(self, group: Group, link_group: Group, name: str, indices: int | np.ndarray):
+    def write(
+        self, group: Group, link_group: Group, name: str, indices: int | np.ndarray
+    ):
         if isinstance(indices, int):
             indices = np.array([indices])
         # Pack the indices
@@ -97,4 +98,3 @@ class OomLinkHandler:
         dataset = self.get_data(indices)
         if dataset is not None:
             dataset.write(group, name)
-

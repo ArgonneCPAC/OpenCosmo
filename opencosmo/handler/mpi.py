@@ -54,7 +54,6 @@ class MPIHandler:
         group_name: Optional[str] = None,
         comm=MPI.COMM_WORLD,
         rank_range: Optional[Tuple[int, int]] = None,
-
     ):
         self.__file = file
         self.__group_name = group_name
@@ -217,15 +216,10 @@ class MPIHandler:
         return Table(output)
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
-
-
         if start < 0 or end > len(indices):
             raise ValueError("Requested range is not within the rank's range.")
 
         return indices[start:end]
-        
-
-
 
     def take_indices(self, n: int, strategy: str, indices: np.ndarray) -> np.ndarray:
         """
