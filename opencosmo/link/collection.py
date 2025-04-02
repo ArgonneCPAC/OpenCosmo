@@ -92,6 +92,27 @@ class LinkedCollection:
             except AttributeError:
                 continue
 
+    def select(self, dataset: str, columns: str | list[str]) -> LinkedCollection:
+        """
+        Update the linked collection to only include the columns specified
+        in the given dataset.
+        """
+        if dataset == self.__properties.header.file.data_type:
+            new_properties = self.__properties.select(columns)
+            return LinkedCollection(
+                new_properties,
+                self.__handlers,
+            )
+
+        elif dataset not in self.__handlers:
+            raise ValueError(f"Dataset {dataset} not found in collection.")
+        handler = self.__handlers[dataset]
+        new_handler = handler.select(columns)
+        return LinkedCollection(
+            self.__properties,
+            {**self.__handlers, dataset: new_handler}
+        )
+
     def filter(self, *masks):
         """
         Apply a filter to the properties dataset and propagate it to the linked datasets

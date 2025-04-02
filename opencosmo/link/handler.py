@@ -70,6 +70,12 @@ class LinkHandler(Protocol):
         """
         pass
 
+    def select(self, columns: str | list[str]) -> LinkHandler:
+        """
+        Return a new LinkHandler that only contains the data for the given indices.
+        """
+        pass
+
 
 class OomLinkHandler:
     """
@@ -84,6 +90,7 @@ class OomLinkHandler:
         self.file = file
         self.link = link
         self.header = header
+        self.selected = None
 
     def get_all_data(self) -> oc.Dataset:
         return build_dataset(self.file, self.header)
@@ -110,7 +117,22 @@ class OomLinkHandler:
             indices_into_data = np.array(indices_into_data[indices_into_data >= 0])
             if not indices_into_data.size:
                 return None
-        return build_dataset(self.file, self.header, indices_into_data)
+
+        dataset = build_dataset(self.file, self.header, indices_into_data)
+        if self.selected is not None:
+            dataset = dataset.select(self.selected)
+        return dataset
+
+    def select(self, columns: str | list[str]) -> OomLinkHandler:
+        if self.selected is not None:
+            new_selected = set(columns)
+            if not new_selected.issubset(self.selected):
+                raise ValueError("Tried to select columns that are not in the dataset.")
+        else:
+            new_selected = set(columns)
+
+        self.selected = new_selected
+
 
     def write(
         self, group: Group, link_group: Group, name: str, indices: int | np.ndarray
