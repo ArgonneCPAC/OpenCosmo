@@ -24,7 +24,7 @@ class Collection(Protocol):
     """
     Collections represent a group of datasets that are related in some way. They
     support higher-level operations that are applied across all datasets in the
-    collection, sometimes in a non-obvious way. 
+    collection, sometimes in a non-obvious way.
 
     This protocol defines methods a collection must implement. Most notably they
     must include  __getitem__, keys, values and __items__, which allows

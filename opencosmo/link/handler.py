@@ -31,7 +31,7 @@ class LinkHandler(Protocol):
     in property files, and contain indexes into another dataset. For example, a
     halo properties file will contain links to a halo particles file. Each halo
     in the properties file will have a corresponding range of indexes that contain
-    the associated particles in the particles file. 
+    the associated particles in the particles file.
 
     The link handler is responsible for reading data and instatiating datasets
     that contain the linked data for the given object. There will be one link
@@ -55,11 +55,13 @@ class LinkHandler(Protocol):
         case None should be returned.
         """
         pass
-    def get_all_data(self) -> oc.Dataset: 
+
+    def get_all_data(self) -> oc.Dataset:
         """
-        Return all the data from the linked dataset. 
+        Return all the data from the linked dataset.
         """
         pass
+
     def write(
         self, data_group: Group, link_group: Group, name: str, indices: int | np.ndarray
     ) -> None:
@@ -81,6 +83,7 @@ class OomLinkHandler:
     """
     Links are currently only supported out-of-memory.
     """
+
     def __init__(
         self,
         file: File | Group,
@@ -90,7 +93,7 @@ class OomLinkHandler:
         self.file = file
         self.link = link
         self.header = header
-        self.selected = None
+        self.selected: Optional[set[str]] = None
 
     def get_all_data(self) -> oc.Dataset:
         return build_dataset(self.file, self.header)
@@ -134,7 +137,6 @@ class OomLinkHandler:
         self.selected = new_selected
         return self
 
-
     def write(
         self, group: Group, link_group: Group, name: str, indices: int | np.ndarray
     ):
@@ -143,7 +145,7 @@ class OomLinkHandler:
         # Pack the indices
         if not isinstance(self.link, tuple):
             new_idxs = np.full(len(indices), -1)
-            current_values = self.link[indices[0]: indices[-1] + 1]
+            current_values = self.link[indices[0] : indices[-1] + 1]
             current_values = current_values[indices - indices[0]]
             has_data = current_values >= 0
             new_idxs[has_data] = np.arange(sum(has_data))

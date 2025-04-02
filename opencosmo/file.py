@@ -19,6 +19,7 @@ FileWriter = Callable[Concatenate[h5py.File | h5py.Group, ...], None]
 A collection of utilities for working with hdf5 files.
 """
 
+
 class FileExistance(Enum):
     MUST_EXIST = "must_exist"
     MUST_NOT_EXIST = "must_not_exist"

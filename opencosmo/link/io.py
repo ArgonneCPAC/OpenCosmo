@@ -79,7 +79,9 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
             raise ValueError(
                 f"Simulation mismatch between {file} and {properties_files[0]}"
             )
-    properties_files = [file for file, has_link in zip(properties_files, has_links) if has_link]
+    properties_files = [
+        file for file, has_link in zip(properties_files, has_links) if has_link
+    ]
     property_file = properties_files[0]
     return property_file, links[property_file]
 

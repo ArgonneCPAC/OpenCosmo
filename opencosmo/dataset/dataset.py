@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Generator, Optional
+from typing import Generator, Iterable, Optional
 
 import h5py
 import numpy as np
@@ -214,7 +214,7 @@ class Dataset:
             new_indices,
         )
 
-    def select(self, columns: str | list[str]) -> Dataset:
+    def select(self, columns: str | Iterable[str]) -> Dataset:
         """
         Select a subset of columns from the dataset.
 

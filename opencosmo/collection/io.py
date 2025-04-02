@@ -3,17 +3,17 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import h5py
+
 import opencosmo as oc
 from opencosmo import dataset as ds
 from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
-from opencosmo.header import read_header
 from opencosmo.link.collection import LinkedCollection
 
 
 def open_simulation_files(**paths: Path) -> SimulationCollection:
     """
     Open multiple files and return a simulation collection. The data
-    type of every file must be the same. 
+    type of every file must be the same.
 
     Parameters
     ----------
@@ -34,6 +34,7 @@ def open_simulation_files(**paths: Path) -> SimulationCollection:
     if len(dtypes) != 1:
         raise ValueError("All datasets must be of the same type.")
     return SimulationCollection(dtypes.pop(), datasets)
+
 
 def open_multi_dataset_file(
     file: h5py.File, datasets: Optional[Iterable[str]]
