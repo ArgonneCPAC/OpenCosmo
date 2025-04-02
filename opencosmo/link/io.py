@@ -23,6 +23,7 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_gas_particles": "gas_particles",
     "sod_profile": "halo_profiles",
     "galaxyproperties": "galaxy_properties",
+    "galaxyparticles_star_particles": "star_particles",
 }
 
 ALLOWED_LINKS = {  # Files that can serve as a link holder and
