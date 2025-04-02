@@ -47,7 +47,7 @@ def test_multi_filter_write(multi_path, tmp_path):
 
 def test_data_linking(halo_paths):
     collection = open_linked_files(*halo_paths)
-    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
         10, at="random"
     )
     particle_species = filter(lambda name: "particles" in name, collection.keys())

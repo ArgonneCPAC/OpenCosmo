@@ -56,6 +56,7 @@ class MpiLinkHandler:
         header: OpenCosmoHeader,
         comm: MPI.Comm = MPI.COMM_WORLD,
     ):
+        self.selected = None
         self.file = file
         self.link = link
         self.header = header
@@ -102,7 +103,7 @@ class MpiLinkHandler:
             indices_into_data = indices_into_data[indices_into_data >= 0]
             if len(indices_into_data) == 0:
                 indices_into_data = np.array([], dtype=int)
-        return build_dataset(
+        dataset =  build_dataset(
             self.file,
             indices_into_data,
             self.header,
@@ -111,6 +112,19 @@ class MpiLinkHandler:
             self.base_unit_transformations,
             self.builders,
         )
+        if self.selected is not None:
+            dataset = dataset.select(self.selected)
+        return dataset
+
+    def select(self, columns: str | list[str]) -> MpiLinkHandler:
+        if self.selected is not None:
+            new_selected = set(columns)
+            if not new_selected.issubset(self.selected):
+                raise ValueError("Tried to select columns that are not in the dataset.")
+        else:
+            new_selected = set(columns)
+
+        self.selected = new_selected
 
     def write(
         self, data_group: File, link_group: Group, name: str, indices: int | np.ndarray
