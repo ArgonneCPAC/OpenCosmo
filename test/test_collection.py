@@ -70,6 +70,22 @@ def test_data_linking(halo_paths):
     assert n_particles > 0
     assert n_profiles > 0
 
+def test_data_link_selection(halo_paths):
+    collection = open_linked_files(*halo_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
+        10, at="random"
+    )
+    collection = collection.select("dm_particles", ["x", "y", "z"])
+    collection = collection.select("halo_properties", ["fof_halo_tag", "sod_halo_mass"])
+    found_dm_particles = False
+    for properties, particles in collection.objects():
+        assert set(properties.keys()) == {"fof_halo_tag", "sod_halo_mass"}
+        if particles["dm_particles"] is not None:
+            dm_particles = particles["dm_particles"]
+            found_dm_particles = True
+            assert set(dm_particles.data.colnames) == {"x", "y", "z"}
+    assert found_dm_particles
+
 def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
     galaxy_path = galaxy_paths[0]
     collection = open_linked_files(*halo_paths, galaxy_path)

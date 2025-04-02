@@ -132,6 +132,7 @@ class OomLinkHandler:
             new_selected = set(columns)
 
         self.selected = new_selected
+        return self
 
 
     def write(
