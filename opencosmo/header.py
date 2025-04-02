@@ -21,6 +21,7 @@ class OpenCosmoHeader:
     will have a single unique header, but it is possible to have multiple
     headers in a SimulationCollection.
     """
+
     def __init__(
         self,
         file_pars: parameters.FileParameters,

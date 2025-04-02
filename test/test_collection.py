@@ -18,6 +18,7 @@ def halo_paths(data_path: Path):
     hdf_files = [data_path / file for file in files]
     return list(hdf_files)
 
+
 @pytest.fixture
 def galaxy_paths(data_path: Path):
     files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
@@ -70,6 +71,7 @@ def test_data_linking(halo_paths):
     assert n_particles > 0
     assert n_profiles > 0
 
+
 def test_data_link_selection(halo_paths):
     collection = open_linked_files(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
@@ -85,6 +87,7 @@ def test_data_link_selection(halo_paths):
             found_dm_particles = True
             assert set(dm_particles.data.colnames) == {"x", "y", "z"}
     assert found_dm_particles
+
 
 def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
     galaxy_path = galaxy_paths[0]
@@ -105,15 +108,14 @@ def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
 
 def test_galaxy_linking(galaxy_paths):
     collection = open_linked_files(*galaxy_paths)
-    collection = collection.filter(oc.col("gal_mass") < 10**12).take(
-        10, at="random"
-    )
+    collection = collection.filter(oc.col("gal_mass") < 10**12).take(10, at="random")
     for properties, particles in collection.objects():
         gal_tag = properties["gal_tag"]
         star_particles = particles["star_particles"]
         particle_gal_tags = set(star_particles.data["gal_tag"])
         assert len(particle_gal_tags) == 1
         assert particle_gal_tags.pop() == gal_tag
+
 
 def test_link_write(halo_paths, tmp_path):
     collection = open_linked_files(*halo_paths)

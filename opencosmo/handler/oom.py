@@ -95,9 +95,6 @@ class OutOfMemoryHandler:
 
     def get_data(self, builders: dict, indices: np.ndarray) -> Column | Table:
         """ """
-        debug = False
-        if indices[0] == 359:
-            debug = True
         if self.__group is None:
             raise ValueError("This file has already been closed")
         output = {}
@@ -106,7 +103,6 @@ class OutOfMemoryHandler:
         for column, builder in builders.items():
             data = self.__group[column][start_idx:end_idx]
             data = data[indices - start_idx]
-
 
             col = Column(data, name=column)
             output[column] = builder.build(col)

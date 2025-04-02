@@ -109,8 +109,7 @@ class LinkedCollection:
         handler = self.__handlers[dataset]
         new_handler = handler.select(columns)
         return LinkedCollection(
-            self.__properties,
-            {**self.__handlers, dataset: new_handler}
+            self.__properties, {**self.__handlers, dataset: new_handler}
         )
 
     def filter(self, *masks):

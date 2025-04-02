@@ -56,7 +56,7 @@ class MpiLinkHandler:
         header: OpenCosmoHeader,
         comm: MPI.Comm = MPI.COMM_WORLD,
     ):
-        self.selected = None
+        self.selected: Optional[set[str]] = None
         self.file = file
         self.link = link
         self.header = header
@@ -103,7 +103,7 @@ class MpiLinkHandler:
             indices_into_data = indices_into_data[indices_into_data >= 0]
             if len(indices_into_data) == 0:
                 indices_into_data = np.array([], dtype=int)
-        dataset =  build_dataset(
+        dataset = build_dataset(
             self.file,
             indices_into_data,
             self.header,
@@ -143,7 +143,7 @@ class MpiLinkHandler:
             self.comm.Barrier()
             start = indices[0]
             end = indices[-1] + 1
-            indices_into_data = self.link[self.offset + start:self.offset + end]
+            indices_into_data = self.link[self.offset + start : self.offset + end]
             indices_into_data = indices_into_data[indices - start]
             nonzero = indices_into_data >= 0
             nonzero = self.comm.gather(nonzero)
