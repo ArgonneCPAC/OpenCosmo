@@ -151,8 +151,8 @@ def test_write_particles(particle_path, tmp_path):
     output_path = comm.bcast(output_path, root=0)
     with oc.open(particle_path) as f:
         oc.write(output_path, f)
-    original_data = oc.read(particle_path)
-    written_data = oc.read(output_path)
+    original_data = oc.open(particle_path)
+    written_data = oc.open(output_path)
     indices = np.random.randint(0, len(original_data), 100)
     for key in original_data.keys():
         assert np.all(
