@@ -3,22 +3,37 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import h5py
-
+import opencosmo as oc
 from opencosmo import dataset as ds
 from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
 from opencosmo.header import read_header
 from opencosmo.link.collection import LinkedCollection
 
 
-class FileHandle:
+def open_simulation_files(**paths: Path) -> SimulationCollection:
     """
-    Helper class used just for setup
+    Open multiple files and return a simulation collection. The data
+    type of every file must be the same. 
+
+    Parameters
+    ----------
+    paths : str or Path
+        The paths to the files to open.
+
+    Returns
+    -------
+    SimulationCollection
+
     """
-
-    def __init__(self, path: Path):
-        self.handle = h5py.File(path, "r")
-        self.header = read_header(self.handle)
-
+    datasets: dict[str, oc.Dataset] = {}
+    for key, path in paths.items():
+        dataset = oc.open(path)
+        if not isinstance(dataset, oc.Dataset):
+            raise ValueError("All datasets must be of the same type.")
+    dtypes = set(dataset.header.file.data_type for dataset in datasets.values())
+    if len(dtypes) != 1:
+        raise ValueError("All datasets must be of the same type.")
+    return SimulationCollection(dtypes.pop(), datasets)
 
 def open_multi_dataset_file(
     file: h5py.File, datasets: Optional[Iterable[str]]
