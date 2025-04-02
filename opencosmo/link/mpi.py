@@ -125,6 +125,7 @@ class MpiLinkHandler:
             new_selected = set(columns)
 
         self.selected = new_selected
+        return self
 
     def write(
         self, data_group: File, link_group: Group, name: str, indices: int | np.ndarray
