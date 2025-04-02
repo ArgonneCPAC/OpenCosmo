@@ -70,6 +70,23 @@ def test_data_linking(halo_paths):
     assert n_particles > 0
     assert n_profiles > 0
 
+def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
+    galaxy_path = galaxy_paths[0]
+    collection = open_linked_files(*halo_paths, galaxy_path)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(10)
+    for properties, particles in collection.objects():
+        fof_tag = properties["fof_halo_tag"]
+        for p in particles.values():
+            try:
+                tags = set(p.data["fof_halo_tag"])
+                assert len(tags) == 1
+                assert tags.pop() == fof_tag
+            except KeyError:
+                tags = set(p.data["fof_halo_bin_tag"][0])
+                assert len(tags) == 1
+                assert tags.pop() == fof_tag
+
+
 def test_galaxy_linking(galaxy_paths):
     collection = open_linked_files(*galaxy_paths)
     collection = collection.filter(oc.col("gal_mass") < 10**12).take(

@@ -27,7 +27,7 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
 }
 
 ALLOWED_LINKS = {  # Files that can serve as a link holder and
-    "halo_properties": ["halo_particles", "halo_profiles"],
+    "halo_properties": ["halo_particles", "halo_profiles", "galaxy_properties"],
     "galaxy_properties": ["galaxy_particles"],
 }
 
@@ -65,9 +65,12 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
             except KeyError:
                 continue  # No link header found for this file
 
-    # Master files also need to have the same simulation
+    has_links = [file in links for file in properties_files]
+    # Properties files also need to have the same simulation
     if len(properties_files) > 1:
-        raise ValueError("Data linking can only have one master file")
+        # need exactly one true (for now)
+        if sum(has_links) != 1:
+            raise NotImplementedError("Chained links are not yet supported")
     for file in properties_files:
         if (
             dtypes_to_headers[file].simulation
@@ -76,8 +79,9 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
             raise ValueError(
                 f"Simulation mismatch between {file} and {properties_files[0]}"
             )
-    output_file = properties_files[0]
-    return output_file, links[output_file]
+    properties_files = [file for file, has_link in zip(properties_files, has_links) if has_link]
+    property_file = properties_files[0]
+    return property_file, links[property_file]
 
 
 def open_linked_files(*files: Path):
