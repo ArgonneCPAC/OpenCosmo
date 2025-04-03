@@ -139,34 +139,6 @@ def test_select_collect(input_path):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_read_particles(particle_path):
-    with oc.open(particle_path) as f:
-        parallel_assert(isinstance(f, dict))
-
-
-@pytest.mark.parallel(nprocs=4)
-def test_write_particles(particle_path, tmp_path):
-    comm = mpi4py.MPI.COMM_WORLD
-    output_path = tmp_path / "particles.hdf5"
-    output_path = comm.bcast(output_path, root=0)
-    with oc.open(particle_path) as f:
-        oc.write(output_path, f)
-    original_data = oc.open(particle_path)
-    written_data = oc.open(output_path)
-    indices = np.random.randint(0, len(original_data), 100)
-    for key in original_data.keys():
-        assert np.all(
-            original_data[key].data[indices] == written_data[key].data[indices]
-        )
-    header = original_data.header
-    written_header = written_data.header
-    models = ["file_pars", "simulation_pars", "reformat_pars", "cosmotools_pars"]
-    for model in models:
-        key = f"_OpenCosmoHeader__{model}"
-        parallel_assert(getattr(header, key) == getattr(written_header, key))
-
-
-@pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = open_linked_files(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13)

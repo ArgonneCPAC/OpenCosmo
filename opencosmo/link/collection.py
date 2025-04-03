@@ -126,7 +126,7 @@ class LinkedCollection:
 
     def with_units(self, convention: str):
         """
-        Apply the given unit convention to the properties dataset and propagate 
+        Apply the given unit convention to the properties dataset and propagate
         it to the linked datasets.
         """
         new_properties = self.__properties.with_units(convention)
@@ -148,7 +148,7 @@ class LinkedCollection:
 
     def objects(
         self, data_types: Optional[Iterable[str]] = None
-    ) -> Iterable[tuple[dict[str, Any], dict[str, Optional[oc.Dataset]]]]:
+    ) -> Iterable[tuple[dict[str, Any], dict[str, oc.Dataset]]]:
         """
         Iterate over the properties dataset and the linked datasets.
         """
@@ -162,7 +162,7 @@ class LinkedCollection:
         for i, row in enumerate(self.__properties.rows()):
             index = np.array(self.__properties.indices[i])
             output = {key: handler.get_data(index) for key, handler in handlers.items()}
-            if not any(output.values()):
+            if not any(len(v) for v in output.values()):
                 continue
             yield row, output
 
