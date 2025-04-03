@@ -10,6 +10,7 @@ from opencosmo.handler import OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
+from opencosmo.link.builder import DatasetBuilder
 
 
 def build_dataset(
@@ -44,6 +45,7 @@ class LinkHandler(Protocol):
         file: File | Group,
         links: Group | tuple[Group, Group],
         header: OpenCosmoHeader,
+        builder: Optional[DatasetBuilder] = None,
         *args,
         **kwargs,
     ): ...
@@ -89,11 +91,17 @@ class OomLinkHandler:
         file: File | Group,
         link: Group | tuple[Group, Group],
         header: OpenCosmoHeader,
+        builder: Optional[DatasetBuilder] = None,
     ):
         self.file = file
         self.link = link
         self.header = header
-        self.selected: Optional[set[str]] = None
+        self.builder = builder
+        if self.builder is None:
+            self.builder = DatasetBuilder(
+                selected=None,
+                unit_convention=None,
+            )
 
     def get_all_data(self) -> oc.Dataset:
         return build_dataset(self.file, self.header)
@@ -111,31 +119,37 @@ class OomLinkHandler:
             start = start[valid_rows]
             size = size[valid_rows]
             if not start.size:
-                return None
-            indices_into_data = np.concatenate(
-                [np.arange(idx, idx + length) for idx, length in zip(start, size)]
-            )
+                indices_into_data = np.array([], dtype=int)
+            else:
+                indices_into_data = np.concatenate(
+                    [np.arange(idx, idx + length) for idx, length in zip(start, size)]
+                )
         else:
             indices_into_data = self.link[min_idx : max_idx + 1][indices - min_idx]
             indices_into_data = np.array(indices_into_data[indices_into_data >= 0])
             if not indices_into_data.size:
-                return None
+                indices_into_data = np.array([], dtype=int)
 
-        dataset = build_dataset(self.file, self.header, indices_into_data)
-        if self.selected is not None:
-            dataset = dataset.select(self.selected)
-        return dataset
+        return self.builder.build(self.file, self.header, indices_into_data)
+        
 
     def select(self, columns: str | list[str]) -> OomLinkHandler:
-        if self.selected is not None:
-            new_selected = set(columns)
-            if not new_selected.issubset(self.selected):
-                raise ValueError("Tried to select columns that are not in the dataset.")
-        else:
-            new_selected = set(columns)
+        builder = self.builder.select(columns)
+        return OomLinkHandler(
+            self.file,
+            self.link,
+            self.header,
+            builder,
+        )
 
-        self.selected = new_selected
-        return self
+    def with_units(self, convention: str) -> OomLinkHandler:
+        return OomLinkHandler(
+            self.file,
+            self.link,
+            self.header,
+            self.builder.with_units(convention),
+        )
+
 
     def write(
         self, group: Group, link_group: Group, name: str, indices: int | np.ndarray
