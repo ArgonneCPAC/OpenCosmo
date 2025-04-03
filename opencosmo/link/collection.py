@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 import numpy as np
-from h5py import File
+from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo import link as l
@@ -123,13 +123,17 @@ class LinkedCollection:
             filtered,
             self.__handlers,
         )
-    
+
     def with_units(self, convention: str):
         """
-        Apply the given unit convention to the properties dataset and propagate it to the linked datasets.
+        Apply the given unit convention to the properties dataset and propagate 
+        it to the linked datasets.
         """
         new_properties = self.__properties.with_units(convention)
-        new_handlers = {key: handler.with_units(convention) for key, handler in self.__handlers.items()}
+        new_handlers = {
+            key: handler.with_units(convention)
+            for key, handler in self.__handlers.items()
+        }
         return LinkedCollection(
             new_properties,
             new_handlers,
@@ -162,7 +166,7 @@ class LinkedCollection:
                 continue
             yield row, output
 
-    def write(self, file: File):
+    def write(self, file: File | Group):
         header = self.__properties.header
         header.write(file)
         self.__properties.write(file, header.file.data_type)
