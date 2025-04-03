@@ -9,10 +9,12 @@ import opencosmo as oc
 from opencosmo import link as l
 
 
-class LinkedCollection:
+class StructureCollection:
     """
-    A collection of datasets that are linked together, allowing
-    for cross-matching and other operations to be performed.
+    A collection of datasets that contain both high-level properties
+    and lower level information (such as particles) for structures
+    in the simulation. Currently these structures include halos
+    and galaxies.
 
     For now, these are always a combination of a properties dataset
     and several particle or profile datasets.
@@ -32,15 +34,18 @@ class LinkedCollection:
         self.__properties = properties
         self.__handlers = handlers
         self.__idxs = self.__properties.indices
+    def __repr__(self):
+        dtype_str = ", ".join(self.__handlers.keys())
+        return f"LinkedCollection of {self.__properties.header.file.data_type} with linked datasets: {dtype_str}"
 
     @classmethod
     def open(
         cls, file: File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> LinkedCollection:
+    ) -> StructureCollection:
         return l.open_linked_file(file, datasets_to_get)
 
     @classmethod
-    def read(cls, *args, **kwargs) -> LinkedCollection:
+    def read(cls, *args, **kwargs) -> StructureCollection:
         raise NotImplementedError
 
     @property
@@ -92,14 +97,14 @@ class LinkedCollection:
             except AttributeError:
                 continue
 
-    def select(self, dataset: str, columns: str | list[str]) -> LinkedCollection:
+    def select(self, dataset: str, columns: str | list[str]) -> StructureCollection:
         """
         Update the linked collection to only include the columns specified
         in the given dataset.
         """
         if dataset == self.__properties.header.file.data_type:
             new_properties = self.__properties.select(columns)
-            return LinkedCollection(
+            return StructureCollection(
                 new_properties,
                 self.__handlers,
             )
@@ -108,7 +113,7 @@ class LinkedCollection:
             raise ValueError(f"Dataset {dataset} not found in collection.")
         handler = self.__handlers[dataset]
         new_handler = handler.select(columns)
-        return LinkedCollection(
+        return StructureCollection(
             self.__properties, {**self.__handlers, dataset: new_handler}
         )
 
@@ -119,7 +124,7 @@ class LinkedCollection:
         if not masks:
             return self
         filtered = self.__properties.filter(*masks)
-        return LinkedCollection(
+        return StructureCollection(
             filtered,
             self.__handlers,
         )
@@ -134,14 +139,14 @@ class LinkedCollection:
             key: handler.with_units(convention)
             for key, handler in self.__handlers.items()
         }
-        return LinkedCollection(
+        return StructureCollection(
             new_properties,
             new_handlers,
         )
 
     def take(self, n: int, at: str = "start"):
         new_properties = self.__properties.take(n, at)
-        return LinkedCollection(
+        return StructureCollection(
             new_properties,
             self.__handlers,
         )

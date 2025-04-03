@@ -118,7 +118,7 @@ def open_linked_files(*files: Path):
 
 def open_linked_file(
     file_handle: File, datasets_to_get: Optional[Iterable[str]] = None
-) -> l.LinkedCollection:
+) -> l.StructureCollection:
     """
     Open a single file that contains both properties and linked datasets.
     """
@@ -151,7 +151,7 @@ def get_linked_datasets(
     properties_dataset: oc.Dataset,
     linked_files_by_type: dict[str, File | Group],
     properties_file: File,
-) -> l.LinkedCollection:
+) -> l.StructureCollection:
     datasets = {}
     for dtype, pointer in linked_files_by_type.items():
         if "data" not in pointer.keys():
@@ -169,7 +169,7 @@ def get_linked_datasets(
         else:
             output[key] = handler
 
-    return l.LinkedCollection(properties_dataset, output)
+    return l.StructureCollection(properties_dataset, output)
 
 
 def get_link_handlers(
