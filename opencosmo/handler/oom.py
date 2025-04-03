@@ -16,7 +16,6 @@ class OutOfMemoryHandler:
     """
     A handler for data that will not be stored in memory. Data will remain on
     disk until needed
-
     """
 
     def __init__(self, file: h5py.File, tree: Tree, group_name: Optional[str] = None):

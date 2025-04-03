@@ -6,7 +6,7 @@ import h5py
 
 import opencosmo as oc
 from opencosmo import dataset as ds
-from opencosmo.collection import Collection, ParticleCollection, SimulationCollection
+from opencosmo.collection import Collection, SimulationCollection
 from opencosmo.link.collection import LinkedCollection
 
 
@@ -69,10 +69,7 @@ def get_collection_type(file: h5py.File) -> type[Collection]:
     if len(datasets) == 0:
         raise ValueError("No datasets found in file.")
 
-    if all("particle" in dataset for dataset in datasets) and "header" in file.keys():
-        return ParticleCollection
-
-    elif "header" not in file.keys():
+    if "header" not in file.keys():
         config_values = defaultdict(list)
         for dataset in datasets:
             try:

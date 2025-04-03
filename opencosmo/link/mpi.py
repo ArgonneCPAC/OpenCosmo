@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Iterable
+from typing import Iterable, Optional
 
 import numpy as np
 from h5py import File, Group
@@ -10,6 +10,7 @@ import opencosmo as oc
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.handler import MPIHandler
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.link.builder import DatasetBuilder
 from opencosmo.spatial import Tree, read_tree
 from opencosmo.transformations import TransformationDict
 from opencosmo.transformations import units as u
@@ -54,18 +55,19 @@ class MpiLinkHandler:
         file: File | Group,
         link: Group | tuple[Group, Group],
         header: OpenCosmoHeader,
+        builder: Optional[DatasetBuilder] = None,
         comm: MPI.Comm = MPI.COMM_WORLD,
-        builder: Optional[MpiDatasetBuilder] = None,
+        **kwargs,
     ):
         self.selected: Optional[set[str]] = None
         self.file = file
         self.link = link
         self.header = header
         self.comm = comm
-        self.builder = builder
-        if self.builder is None:
+        if builder is None:
             tree = read_tree(file, self.header)
-            self.builder = MpiDatasetBuilder(tree, comm=comm)
+            builder = MpiDatasetBuilder(tree, comm=comm)
+        self.builder = builder
         if isinstance(self.link, tuple):
             n_per_rank = self.link[0].shape[0] // self.comm.Get_size()
             self.offset = n_per_rank * self.comm.Get_rank()
@@ -109,7 +111,17 @@ class MpiLinkHandler:
 
         return dataset
 
-    def select(self, columns: str | list[str]) -> MpiLinkHandler:
+    def with_units(self, convention: str) -> MpiLinkHandler:
+        new_builder = self.builder.with_units(convention)
+        return MpiLinkHandler(
+            self.file,
+            self.link,
+            self.header,
+            comm=self.comm,
+            builder=new_builder,
+        )
+
+    def select(self, columns: str | Iterable[str]) -> MpiLinkHandler:
         new_builder = self.builder.select(columns)
         return MpiLinkHandler(
             self.file,
@@ -120,8 +132,8 @@ class MpiLinkHandler:
         )
 
     def write(
-        self, data_group: File, link_group: Group, name: str, indices: int | np.ndarray
-    ):
+        self, data_group: Group, link_group: Group, name: str, indices: int | np.ndarray
+    ) -> None:
         # Pack the indices
         if isinstance(indices, int):
             indices = np.array([indices])
@@ -166,6 +178,7 @@ class MpiLinkHandler:
         if dataset is not None:
             dataset.write(data_group, name)
 
+
 class MpiDatasetBuilder:
     __allowed_conventions = {
         "unitless",
@@ -173,13 +186,13 @@ class MpiDatasetBuilder:
         "comoving",
         "physical",
     }
+
     def __init__(
         self,
         tree: Tree,
         selected: Optional[set[str]] = None,
         unit_convention: Optional[str] = None,
         comm: MPI.Comm = MPI.COMM_WORLD,
-
     ):
         self.tree = tree
         self.selected = selected
@@ -200,7 +213,9 @@ class MpiDatasetBuilder:
             comm=self.comm,
         )
 
-    def select(self, selected: Iterable[str]) -> MpiDatasetBuilder:
+    def select(self, selected: str | Iterable[str]) -> MpiDatasetBuilder:
+        if isinstance(selected, str):
+            selected = [selected]
         selected = set(selected)
         if self.selected is None:
             return MpiDatasetBuilder(
@@ -219,12 +234,13 @@ class MpiDatasetBuilder:
             unit_convention=self.unit_convention,
             comm=self.comm,
         )
+
     def build(
         self,
         file: File | Group,
         header: OpenCosmoHeader,
-        indices: np.ndarray
-    ) -> Optional[oc.Dataset]:
+        indices: Optional[np.ndarray] = None,
+    ) -> oc.Dataset:
         builders, base_unit_transformations = u.get_default_unit_transformations(
             file, header
         )
@@ -236,19 +252,20 @@ class MpiDatasetBuilder:
             new_transformations = u.get_unit_transition_transformations(
                 self.unit_convention, base_unit_transformations, header.cosmology
             )
-            builders = get_column_builders(new_transformations, self.selected)
+            builders = get_column_builders(new_transformations, selected)
 
         builders = {key: builders[key] for key in selected}
 
         rank_range = None
-        if len(indices) > 0:
+        if indices is not None and len(indices) > 0:
             rank_range = (indices.min(), indices.max() + 1)
             indices = indices - rank_range[0]
-
 
         handler = MPIHandler(
             file, tree=self.tree, comm=self.comm, rank_range=rank_range
         )
+        if indices is None:
+            indices = np.arange(len(handler))
 
         dataset = oc.Dataset(
             handler,
@@ -259,5 +276,3 @@ class MpiDatasetBuilder:
         )
 
         return dataset
-
-

@@ -14,11 +14,11 @@ import h5py
 import numpy as np
 
 import opencosmo as oc
+from opencosmo.dataset.mask import Mask
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo.dataset.mask import Mask
 
 
 class Collection(Protocol):
@@ -97,79 +97,6 @@ def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
         raise ValueError(f"Some of {', '.join(datasets)} not found in file.")
 
 
-class ParticleCollection(dict):
-    def __init__(self, header: OpenCosmoHeader, datasets: dict[str, oc.Dataset]):
-        """
-        Represents a collection of datasets for different particle species
-        from a single simulation. All should share the same header.
-        """
-        self.__header = header
-        self.update(datasets)
-
-    @property
-    def header(self):
-        return self.__header
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc_details):
-        for dataset in self.values():
-            try:
-                dataset.close()
-            except ValueError:
-                continue
-
-    @classmethod
-    def open(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> ParticleCollection | oc.Dataset:
-        if datasets_to_get is not None:
-            verify_datasets_exist(file, datasets_to_get)
-            names = datasets_to_get
-        else:
-            names = list(filter(lambda x: x != "header", file.keys()))
-
-        header = read_header(file)
-        datasets = {name: open_single_dataset(file, name, header) for name in names}
-        if not datasets:
-            raise ValueError("No datasets found in file.")
-
-        elif len(datasets) == 1:
-            return next(iter(datasets.values()))
-        return cls(header, datasets)
-
-    @classmethod
-    def read(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> ParticleCollection:
-        if datasets_to_get is not None:
-            verify_datasets_exist(file, datasets_to_get)
-            names = datasets_to_get
-        else:
-            names = list(filter(lambda x: x != "header", file.keys()))
-
-        header = read_header(file)
-        datasets = {name: read_single_dataset(file, name, header) for name in names}
-
-        if not datasets:
-            raise ValueError("No datasets found in file.")
-
-        elif len(datasets) == 1:
-            return next(iter(datasets.values()))
-
-        return cls(header, datasets)
-
-    particle_types = dict.keys
-    particles = dict.values
-
-    def write(self, file: h5py.File):
-        return write_with_common_header(self, self.__header, file)
-
-    def as_dict(self) -> dict[str, oc.Dataset]:
-        return self
-
-
 class SimulationCollection(dict):
     """
     A collection of datasets of the same type from different
@@ -184,6 +111,16 @@ class SimulationCollection(dict):
 
     def as_dict(self) -> dict[str, oc.Dataset]:
         return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_details):
+        for dataset in self.values():
+            try:
+                dataset.close()
+            except ValueError:
+                continue
 
     @classmethod
     def open(
@@ -225,7 +162,7 @@ class SimulationCollection(dict):
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
         return SimulationCollection(self.dtype, output)
-    
+
     def filter(self, *masks: Mask) -> SimulationCollection:
         """
         Filter the datasets in the collection. This method behaves
@@ -235,7 +172,7 @@ class SimulationCollection(dict):
 
         Parameters
         ----------
-        filters: 
+        filters:
             The filters constructed with :func:`opencosmo.col`
 
         Returns
@@ -260,7 +197,7 @@ class SimulationCollection(dict):
         """
         Transform all datasets or collections to use the given unit convention. This
         method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
-    
+
         Parameters
         ----------
         convention: str
@@ -273,14 +210,12 @@ class SimulationCollection(dict):
     def take(self, *args, **kwargs) -> SimulationCollection:
         """
         Take a subest of rows from all datasets or collections in this collection.
-        This method will delegate to the underlying method in :class:`opencosmo.Dataset`,
-        or :class:`opencosmo.Collection` depending on the context. As such, behavior
-        may vary depending on what this collection contains.
+        This method will delegate to the underlying method in 
+        :class:`opencosmo.Dataset`, or :class:`opencosmo.Collection` depending on  the 
+        context. As such, behaviormay vary depending on what this collection contains.
         """
 
         return self.__map("take", *args, **kwargs)
-
-
 
 
 def open_single_dataset(

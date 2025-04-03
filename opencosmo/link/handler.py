@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Iterable, Optional, Protocol
 
 import numpy as np
 from h5py import File, Group
@@ -8,9 +8,9 @@ from h5py import File, Group
 import opencosmo as oc
 from opencosmo.handler import OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.link.builder import DatasetBuilder, OomDatasetBuilder
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo.link.builder import DatasetBuilder
 
 
 def build_dataset(
@@ -43,12 +43,17 @@ class LinkHandler(Protocol):
     def __init__(
         self,
         file: File | Group,
-        links: Group | tuple[Group, Group],
+        link: Group | tuple[Group, Group],
         header: OpenCosmoHeader,
         builder: Optional[DatasetBuilder] = None,
-        *args,
         **kwargs,
-    ): ...
+    ):
+        """
+        Initialize the LinkHandler with the file, link, header, and optional builder.
+        The builder is used to build the dataset from the file.
+        """
+        pass
+
     def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
         """
         Given a index or a set of indices, return the data from the linked dataset
@@ -74,9 +79,15 @@ class LinkHandler(Protocol):
         """
         pass
 
-    def select(self, columns: str | list[str]) -> LinkHandler:
+    def select(self, columns: str | Iterable[str]) -> LinkHandler:
         """
         Return a new LinkHandler that only contains the data for the given indices.
+        """
+        pass
+
+    def with_units(self, convention: str) -> LinkHandler:
+        """
+        Return a new LinkHandler that uses the given unit convention.
         """
         pass
 
@@ -91,17 +102,19 @@ class OomLinkHandler:
         file: File | Group,
         link: Group | tuple[Group, Group],
         header: OpenCosmoHeader,
-        builder: Optional[DatasetBuilder] = None,
+        builder: Optional[OomDatasetBuilder] = None,
     ):
         self.file = file
         self.link = link
         self.header = header
-        self.builder = builder
-        if self.builder is None:
-            self.builder = DatasetBuilder(
+
+        if builder is None:
+            self.builder = OomDatasetBuilder(
                 selected=None,
                 unit_convention=None,
             )
+        else:
+            self.builder = builder
 
     def get_all_data(self) -> oc.Dataset:
         return build_dataset(self.file, self.header)
@@ -131,9 +144,10 @@ class OomLinkHandler:
                 indices_into_data = np.array([], dtype=int)
 
         return self.builder.build(self.file, self.header, indices_into_data)
-        
 
-    def select(self, columns: str | list[str]) -> OomLinkHandler:
+    def select(self, columns: str | Iterable[str]) -> OomLinkHandler:
+        if isinstance(columns, str):
+            columns = [columns]
         builder = self.builder.select(columns)
         return OomLinkHandler(
             self.file,
@@ -149,7 +163,6 @@ class OomLinkHandler:
             self.header,
             self.builder.with_units(convention),
         )
-
 
     def write(
         self, group: Group, link_group: Group, name: str, indices: int | np.ndarray

@@ -38,8 +38,6 @@ def get_column_builders(
 
     for column_name in column_names:
         column_builders[column_name].extend(all_column_transformations)
-    if len(column_names) == 3:
-        assert False
     return {
         name: ColumnBuilder(name, builders)
         for name, builders in column_builders.items()
