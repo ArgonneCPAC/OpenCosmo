@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Iterable
 
 import numpy as np
 from h5py import File, Group
 from mpi4py import MPI
 
 import opencosmo as oc
-from opencosmo.dataset.column import ColumnBuilder
+from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.handler import MPIHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial import Tree, read_tree
@@ -55,16 +55,17 @@ class MpiLinkHandler:
         link: Group | tuple[Group, Group],
         header: OpenCosmoHeader,
         comm: MPI.Comm = MPI.COMM_WORLD,
+        builder: Optional[MpiDatasetBuilder] = None,
     ):
         self.selected: Optional[set[str]] = None
         self.file = file
         self.link = link
         self.header = header
         self.comm = comm
-        self.tree = read_tree(file, header)
-        self.builders, self.base_unit_transformations = (
-            u.get_default_unit_transformations(file, header)
-        )
+        self.builder = builder
+        if self.builder is None:
+            tree = read_tree(file, self.header)
+            self.builder = MpiDatasetBuilder(tree, comm=comm)
         if isinstance(self.link, tuple):
             n_per_rank = self.link[0].shape[0] // self.comm.Get_size()
             self.offset = n_per_rank * self.comm.Get_rank()
@@ -73,13 +74,9 @@ class MpiLinkHandler:
             self.offset = n_per_rank * self.comm.Get_rank()
 
     def get_all_data(self) -> oc.Dataset:
-        return build_full_dataset(
+        return self.builder.build(
             self.file,
             self.header,
-            self.comm,
-            self.tree,
-            self.base_unit_transformations,
-            self.builders,
         )
 
     def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
@@ -103,29 +100,24 @@ class MpiLinkHandler:
             indices_into_data = indices_into_data[indices_into_data >= 0]
             if len(indices_into_data) == 0:
                 indices_into_data = np.array([], dtype=int)
-        dataset = build_dataset(
+
+        dataset = self.builder.build(
             self.file,
-            indices_into_data,
             self.header,
-            self.comm,
-            self.tree,
-            self.base_unit_transformations,
-            self.builders,
+            indices=indices_into_data,
         )
-        if self.selected is not None:
-            dataset = dataset.select(self.selected)
+
         return dataset
 
     def select(self, columns: str | list[str]) -> MpiLinkHandler:
-        if self.selected is not None:
-            new_selected = set(columns)
-            if not new_selected.issubset(self.selected):
-                raise ValueError("Tried to select columns that are not in the dataset.")
-        else:
-            new_selected = set(columns)
-
-        self.selected = new_selected
-        return self
+        new_builder = self.builder.select(columns)
+        return MpiLinkHandler(
+            self.file,
+            self.link,
+            self.header,
+            comm=self.comm,
+            builder=new_builder,
+        )
 
     def write(
         self, data_group: File, link_group: Group, name: str, indices: int | np.ndarray
@@ -173,3 +165,99 @@ class MpiLinkHandler:
 
         if dataset is not None:
             dataset.write(data_group, name)
+
+class MpiDatasetBuilder:
+    __allowed_conventions = {
+        "unitless",
+        "scalefree",
+        "comoving",
+        "physical",
+    }
+    def __init__(
+        self,
+        tree: Tree,
+        selected: Optional[set[str]] = None,
+        unit_convention: Optional[str] = None,
+        comm: MPI.Comm = MPI.COMM_WORLD,
+
+    ):
+        self.tree = tree
+        self.selected = selected
+        self.unit_convention = (
+            unit_convention if unit_convention is not None else "comoving"
+        )
+        self.comm = comm
+
+    def with_units(self, convention: str) -> MpiDatasetBuilder:
+        if convention not in self.__allowed_conventions:
+            raise ValueError(
+                f"Unit convention must be one of {self.__allowed_conventions}"
+            )
+        return MpiDatasetBuilder(
+            tree=self.tree,
+            selected=self.selected,
+            unit_convention=convention,
+            comm=self.comm,
+        )
+
+    def select(self, selected: Iterable[str]) -> MpiDatasetBuilder:
+        selected = set(selected)
+        if self.selected is None:
+            return MpiDatasetBuilder(
+                tree=self.tree,
+                selected=selected,
+                unit_convention=self.unit_convention,
+                comm=self.comm,
+            )
+        if not selected.issubset(self.selected):
+            raise ValueError(
+                "Selected columns must be a subset of the already selected columns."
+            )
+        return MpiDatasetBuilder(
+            tree=self.tree,
+            selected=self.selected.intersection(selected),
+            unit_convention=self.unit_convention,
+            comm=self.comm,
+        )
+    def build(
+        self,
+        file: File | Group,
+        header: OpenCosmoHeader,
+        indices: np.ndarray
+    ) -> Optional[oc.Dataset]:
+        builders, base_unit_transformations = u.get_default_unit_transformations(
+            file, header
+        )
+        selected = self.selected
+        if selected is None:
+            selected = builders.keys()
+
+        if self.unit_convention != "comoving":
+            new_transformations = u.get_unit_transition_transformations(
+                self.unit_convention, base_unit_transformations, header.cosmology
+            )
+            builders = get_column_builders(new_transformations, self.selected)
+
+        builders = {key: builders[key] for key in selected}
+
+        rank_range = None
+        if len(indices) > 0:
+            rank_range = (indices.min(), indices.max() + 1)
+            indices = indices - rank_range[0]
+
+
+        handler = MPIHandler(
+            file, tree=self.tree, comm=self.comm, rank_range=rank_range
+        )
+
+        dataset = oc.Dataset(
+            handler,
+            header,
+            builders,
+            base_unit_transformations,
+            indices,
+        )
+
+        return dataset
+
+

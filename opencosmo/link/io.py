@@ -198,6 +198,7 @@ def get_link_handlers(
         try:
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
+
             output_links[key] = handler(linked_files[key], (start, size), header)
         except KeyError:
             index = links["sod_profile_idx"]

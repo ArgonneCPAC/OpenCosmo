@@ -123,6 +123,17 @@ class LinkedCollection:
             filtered,
             self.__handlers,
         )
+    
+    def with_units(self, convention: str):
+        """
+        Apply the given unit convention to the properties dataset and propagate it to the linked datasets.
+        """
+        new_properties = self.__properties.with_units(convention)
+        new_handlers = {key: handler.with_units(convention) for key, handler in self.__handlers.items()}
+        return LinkedCollection(
+            new_properties,
+            new_handlers,
+        )
 
     def take(self, n: int, at: str = "start"):
         new_properties = self.__properties.take(n, at)

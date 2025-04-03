@@ -98,14 +98,16 @@ class OutOfMemoryHandler:
         if self.__group is None:
             raise ValueError("This file has already been closed")
         output = {}
+        if len(indices) == 0:
+            return Table({key: Column() for key in builders.keys()})
         start_idx = indices[0]
         end_idx = indices[-1] + 1
         for column, builder in builders.items():
-            data = self.__group[column][start_idx:end_idx]
-            data = data[indices - start_idx]
-
-            col = Column(data, name=column)
-            output[column] = builder.build(col)
+            if len(indices) > 0:
+                data = self.__group[column][start_idx:end_idx]
+                data = data[indices - start_idx]
+                col = Column(data, name=column)
+                output[column] = builder.build(col)
 
         if len(output) == 1:
             return next(iter(output.values()))

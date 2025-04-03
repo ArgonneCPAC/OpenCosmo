@@ -18,6 +18,7 @@ from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemory
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
+from opencosmo.dataset.mask import Mask
 
 
 class Collection(Protocol):
@@ -57,6 +58,10 @@ class Collection(Protocol):
     def items(self) -> Iterable[tuple[str, oc.Dataset]]: ...
     def __enter__(self): ...
     def __exit__(self, *exc_details): ...
+    def filter(self, *masks: Mask) -> Collection: ...
+    def select(self, *args, **kwargs) -> Collection: ...
+    def with_units(self, convention: str) -> Collection: ...
+    def take(self, *args, **kwargs) -> Collection: ...
 
 
 def write_with_common_header(
@@ -220,13 +225,62 @@ class SimulationCollection(dict):
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
         return SimulationCollection(self.dtype, output)
+    
+    def filter(self, *masks: Mask) -> SimulationCollection:
+        """
+        Filter the datasets in the collection. This method behaves
+        exactly like :meth:`opencosmo.Dataset.filter`, except that
+        it applies the filter to all the datasets or collections
+        within this collection. The result is a new collection.
 
-    def __getattr__(self, name):
-        # check if the method exists on the first dataset
-        if hasattr(next(iter(self.values())), name):
-            return lambda *args, **kwargs: self.__map(name, *args, **kwargs)
-        else:
-            raise AttributeError(f"Attribute {name} not found on {self.dtype} dataset")
+        Parameters
+        ----------
+        filters: 
+            The filters constructed with :func:`opencosmo.col`
+
+        Returns
+        -------
+        SimulationCollection
+            A new collection with the same datasets, but only the
+            particles that pass the filter.
+        """
+        return self.__map("filter", *masks)
+
+    def select(self, *args, **kwargs) -> SimulationCollection:
+        """
+        Select a subset of the datasets in the collection. This method
+        calls the underlying method in :class:`opencosmo.Dataset`, or
+        :class:`opencosmo.Collection` depending on the context. As such
+        its behavior and arguments can vary depending on what this collection
+        contains.
+        """
+        return self.__map("select", *args, **kwargs)
+
+    def with_units(self, convention: str) -> SimulationCollection:
+        """
+        Transform all datasets or collections to use the given unit convention. This
+        method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
+    
+        Parameters
+        ----------
+        convention: str
+            The unit convention to use. One of "unitless",
+            "scalefree", "comoving", or "physical".
+
+        """
+        return self.__map("with_units", convention)
+
+    def take(self, *args, **kwargs) -> SimulationCollection:
+        """
+        Take a subest of rows from all datasets or collections in this collection.
+        This method will delegate to the underlying method in :class:`opencosmo.Dataset`,
+        or :class:`opencosmo.Collection` depending on the context. As such, behavior
+        may vary depending on what this collection contains.
+        """
+
+        return self.__map("take", *args, **kwargs)
+
+
 
 
 def open_single_dataset(
