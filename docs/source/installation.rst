@@ -1,0 +1,43 @@
+Installation
+============
+
+The OpenCosmo library is available for Python 3.11 and later and can be installed with :code:`pip`:
+
+.. code-block:: bash
+
+   pip install opencosmo
+
+There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing :code:`opencosmo` into a virtual environment. If you're using `Conda <https://docs.conda.io/projects/conda/en/stable/:code:user-guide/getting-started.html>`_ you can create a new environment with Python 3.11 and install :code:`opencosmo` into it like so:
+
+.. code-block:: bash
+
+   conda create -n opencosmo python=3.11 opencosmo
+   conda activate opencosmo
+
+This will create a new environment called :code:`opencosmo` with Python 3.11 and install the `opencosmo` package into it with all necessary dependencies. If you plan to use :code:`opencosmo` in a Jupyter notebook, you can install the :code:`ipykernel` package to make the environment available as a kernel:
+
+.. code-block:: bash
+
+   conda install ipykernel
+   python -m ipykernel install --user --name=opencosmo
+
+Be sure you have run the :code:`activate` command shown above before running the :code:`ipykernel` command.
+
+Installing with MPI Support
+---------------------------
+
+:code:`opencosmo` can leverage MPI to distribute analysis on a very large dataset across multiple cores or nodes. If you just need to open datasets in an MPI context, you simply need to install the :code:`mpi4py` package:
+
+.. code-block:: bash
+
+   pip install mpi4py
+
+However to *write* datasets in an MPI context, you will need to install the :code:`h5py` package with MPI support. Pre-built wheels with MPI support are not generally available on PyPI, so you will need to build :code:`h5py` from source against a version of the HDF5 library that was built with MPI support. Many HPC systems have an optimized MPI-enabled version of HDF5 available. For example, on Polaris at the Argonne Leadership Computing Facility (ALCF), run the follwing commands in the Python environment you plan to use with :code:`opencosmo`:
+
+.. code-block:: bash
+
+   pip uninstall h5py # If a non-MPI version is already installed in your environment
+   HDF5_MPI="ON" HDF5_DIR=$HDF5_DIR  CC="cc" pip install --no-cache-dir --force-reinstall --no-binary=h5py h5py
+
+Parallel HDF5 is also available at `NERSC <https://docs.nersc.gov/development/languages/python/parallel-python/#parallel-io-with-h5py>`_ and `OLCF <https://docs.olcf.ornl.gov/software/python/parallel_h5py.html>`_. See the linked documentation for details of getting your environment set up at one of those facilities.
+
