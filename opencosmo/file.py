@@ -34,7 +34,7 @@ def file_reader(func: FileReader) -> FileReader:
     """
 
     def wrapper(file: h5py.File | h5py.Group | Path | str, *args, **kwargs):
-        if not isinstance(file, h5py.File | h5py.Group):
+        if not isinstance(file, (h5py.File, h5py.Group)):
             path = resolve_path(file, FileExistance.MUST_EXIST)
             with h5py.File(path, "r", driver="core") as f:
                 return func(f, *args, **kwargs)
@@ -52,9 +52,14 @@ def file_writer(func: FileWriter) -> FileWriter:
 
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
-        if not isinstance(file, h5py.File):
+        if not isinstance(file, h5py.File | h5py.Group):
             path = resolve_path(file, FileExistance.MUST_NOT_EXIST)
             if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
+                # Check that the file path is the same on all ranks
+                all_paths = MPI.COMM_WORLD.allgather(path)
+                if len(set(all_paths)) > 1:
+                    raise ValueError("File path is different on different ranks.")
+
                 with h5py.File(path, "w", driver="mpio", comm=MPI.COMM_WORLD) as f:
                     return func(f, *args, **kwargs)
 

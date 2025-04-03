@@ -148,7 +148,7 @@ class LinkedCollection:
 
     def objects(
         self, data_types: Optional[Iterable[str]] = None
-    ) -> Iterable[tuple[dict[str, Any], dict[str, oc.Dataset]]]:
+    ) -> Iterable[tuple[dict[str, Any], oc.Dataset | dict[str, oc.Dataset]]]:
         """
         Iterate over the properties dataset and the linked datasets.
         """
@@ -164,7 +164,10 @@ class LinkedCollection:
             output = {key: handler.get_data(index) for key, handler in handlers.items()}
             if not any(len(v) for v in output.values()):
                 continue
-            yield row, output
+            if len(output) == 1:
+                yield row, next(iter(output.values()))
+            else:
+                yield row, output
 
     def write(self, file: File | Group):
         header = self.__properties.header

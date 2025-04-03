@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Protocol
+from typing import Iterable, Mapping, Optional, Protocol
 
 try:
     from mpi4py import MPI
@@ -74,8 +74,11 @@ def write_with_common_header(
     # figure out if we have unique headers
 
     header.write(file)
-    for key, dataset in collection.items():
-        dataset.write(file, key, with_header=False)
+    keys = list(collection.keys())
+    keys.sort()
+    for key in keys:
+        group = file.create_group(key)
+        collection[key].write(group, key, with_header=False)
 
 
 def write_with_unique_headers(collection: Collection, file: h5py.File):
@@ -85,8 +88,11 @@ def write_with_unique_headers(collection: Collection, file: h5py.File):
     """
     # figure out if we have unique headers
 
-    for key, dataset in collection.items():
-        dataset.write(file, key)
+    keys = list(collection.keys())
+    keys.sort()
+    for key in keys:
+        group = file.create_group(key)
+        collection[key].write(group)
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
@@ -105,8 +111,7 @@ class SimulationCollection(dict):
     all of them.
     """
 
-    def __init__(self, dtype: str, datasets: dict[str, oc.Dataset]):
-        self.dtype = dtype
+    def __init__(self, datasets: Mapping[str, oc.Dataset | Collection]):
         self.update(datasets)
 
     def as_dict(self) -> dict[str, oc.Dataset]:
@@ -131,9 +136,8 @@ class SimulationCollection(dict):
             names = datasets_to_get
         else:
             names = list(filter(lambda x: x != "header", file.keys()))
-        datasets = {name: open_single_dataset(file, name) for name in names}
-        dtype = next(iter(datasets.values())).header.file.data_type
-        return cls(dtype, datasets)
+        datasets = {name: oc.open(file[name]) for name in names}
+        return cls(datasets)
 
     @classmethod
     def read(
@@ -146,8 +150,7 @@ class SimulationCollection(dict):
             names = list(filter(lambda x: x != "header", file.keys()))
 
         datasets = {name: read_single_dataset(file, name) for name in names}
-        dtype = next(iter(datasets.values())).header.file.data_type
-        return cls(dtype, datasets)
+        return cls(datasets)
 
     datasets = dict.values
 
@@ -161,7 +164,7 @@ class SimulationCollection(dict):
         across all of them.
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return SimulationCollection(self.dtype, output)
+        return SimulationCollection(output)
 
     def filter(self, *masks: Mask) -> SimulationCollection:
         """

@@ -124,8 +124,7 @@ class MPIHandler:
             comm=self.__comm,
             columns=columns,
             dataset_name=dataset_name,
-            fname=file.filename,
-            require=["fname", "dataset_name"],
+            require=["dataset_name"],
         )
         columns = input["columns"]
 
