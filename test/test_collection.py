@@ -4,6 +4,7 @@ from typing import defaultdict
 import pytest
 
 import opencosmo as oc
+from opencosmo.collection import SimulationCollection
 from opencosmo.link import open_linked_files
 
 
@@ -22,6 +23,13 @@ def halo_paths(data_path: Path):
 @pytest.fixture
 def galaxy_paths(data_path: Path):
     files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
+    hdf_files = [data_path / file for file in files]
+    return list(hdf_files)
+
+
+@pytest.fixture
+def galaxy_paths_2(data_path: Path):
+    files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
     hdf_files = [data_path / file for file in files]
     return list(hdf_files)
 
@@ -114,9 +122,8 @@ def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
 def test_galaxy_linking(galaxy_paths):
     collection = open_linked_files(*galaxy_paths)
     collection = collection.filter(oc.col("gal_mass") < 10**12).take(10, at="random")
-    for properties, particles in collection.objects():
+    for properties, star_particles in collection.objects():
         gal_tag = properties["gal_tag"]
-        star_particles = particles["star_particles"]
         particle_gal_tags = set(star_particles.data["gal_tag"])
         assert len(particle_gal_tags) == 1
         assert particle_gal_tags.pop() == gal_tag
@@ -163,3 +170,21 @@ def test_link_write(halo_paths, tmp_path):
         oc.read(tmp_path / "linked.hdf5")
 
     assert n == 10
+
+
+def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
+    galaxies_1 = open_linked_files(*galaxy_paths)
+    galaxies_2 = open_linked_files(*galaxy_paths_2)
+    datasets = {"scidac_01": galaxies_1, "scidac_02": galaxies_2}
+
+    collection = SimulationCollection(datasets)
+    oc.write(tmp_path / "galaxies.hdf5", collection)
+
+    dataset = oc.open(tmp_path / "galaxies.hdf5")
+    dataset = dataset.filter(oc.col("gal_mass") > 10**12).take(10, at="random")
+    for ds in dataset.values():
+        for props, particles in ds.objects():
+            gal_tag = props["gal_tag"]
+            gal_tags = set(particles.data["gal_tag"])
+            assert len(gal_tags) == 1
+            assert gal_tags.pop() == gal_tag

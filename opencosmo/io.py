@@ -24,7 +24,7 @@ from opencosmo.transformations import units as u
 
 
 def open(
-    file: str | Path | h5py.File,
+    file: str | Path | h5py.File | h5py.Group,
     datasets: Optional[str | Iterable[str]] = None,
 ) -> oc.Dataset | collection.Collection:
     """

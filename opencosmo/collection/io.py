@@ -33,7 +33,7 @@ def open_simulation_files(**paths: Path) -> SimulationCollection:
     dtypes = set(dataset.header.file.data_type for dataset in datasets.values())
     if len(dtypes) != 1:
         raise ValueError("All datasets must be of the same type.")
-    return SimulationCollection(dtypes.pop(), datasets)
+    return SimulationCollection(datasets)
 
 
 def open_multi_dataset_file(
