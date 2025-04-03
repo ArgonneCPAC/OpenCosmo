@@ -81,7 +81,7 @@ class MpiLinkHandler:
             self.header,
         )
 
-    def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
+    def get_data(self, indices: int | np.ndarray) -> oc.Dataset:
         if isinstance(indices, int):
             indices = np.array([indices], dtype=int)
 

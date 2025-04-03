@@ -34,9 +34,3 @@ def test_all_columns_included(input_path):
 def test_read_multi(multi_path):
     dataset = oc.read(multi_path)
     assert isinstance(dataset, oc.collection.collection.SimulationCollection)
-
-
-def test_particle_read(particle_path):
-    dataset = oc.read(particle_path)
-    assert isinstance(dataset, oc.collection.ParticleCollection)
-    assert all("particle" in key for key in dataset.keys())

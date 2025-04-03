@@ -57,15 +57,20 @@ def test_data_linking(halo_paths):
     for properties, particles in collection.objects():
         halo_tags = set()
         for name, particle_species in particles.items():
-            if particle_species is None:
+            if len(particle_species) == 0:
                 continue
             try:
+                halo_tags = set(particle_species.data["fof_halo_tag"])
+                assert len(halo_tags) == 1
                 halo_tags.update(particle_species.data["fof_halo_tag"])
                 n_particles += 1
             except KeyError:
                 bin_tags = [tag for tag in particle_species.data["unique_tag"][0]]
+                bin_tags = set(bin_tags)
+                assert len(bin_tags) == 1
                 halo_tags.update(bin_tags)
                 n_profiles += 1
+
         assert len(set(halo_tags)) == 1
         assert halo_tags.pop() == properties["fof_halo_tag"]
     assert n_particles > 0

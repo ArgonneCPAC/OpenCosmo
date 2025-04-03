@@ -210,8 +210,8 @@ class SimulationCollection(dict):
     def take(self, *args, **kwargs) -> SimulationCollection:
         """
         Take a subest of rows from all datasets or collections in this collection.
-        This method will delegate to the underlying method in 
-        :class:`opencosmo.Dataset`, or :class:`opencosmo.Collection` depending on  the 
+        This method will delegate to the underlying method in
+        :class:`opencosmo.Dataset`, or :class:`opencosmo.Collection` depending on  the
         context. As such, behaviormay vary depending on what this collection contains.
         """
 

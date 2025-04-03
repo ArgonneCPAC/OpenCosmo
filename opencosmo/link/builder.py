@@ -125,13 +125,14 @@ class OomDatasetBuilder:
         if indices is None:
             indices_ = np.arange(len(handler))
 
-        elif isinstance(indices, np.ndarray) and len(indices) > 0:
-            index_range = (indices.min(), indices.max() + 1)
-            indices_ = indices - index_range[0]
+        elif len(indices) > 0:
             if indices[0] < 0 or indices[-1] >= len(handler):
                 raise ValueError(
                     "Indices must be within 0 and the length of the dataset."
                 )
+            indices_ = indices
+        else:
+            indices_ = indices
 
         dataset = Dataset(
             handler,

@@ -54,12 +54,12 @@ class LinkHandler(Protocol):
         """
         pass
 
-    def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
+    def get_data(self, indices: int | np.ndarray) -> oc.Dataset:
         """
         Given a index or a set of indices, return the data from the linked dataset
         that corresponds to the halo/galaxy at that index in the properties file.
         Sometimes the linked dataset will not have data for that object, in which
-        case None should be returned.
+        a zero-length dataset will be returned.
         """
         pass
 
@@ -119,7 +119,7 @@ class OomLinkHandler:
     def get_all_data(self) -> oc.Dataset:
         return build_dataset(self.file, self.header)
 
-    def get_data(self, indices: int | np.ndarray) -> Optional[oc.Dataset]:
+    def get_data(self, indices: int | np.ndarray) -> oc.Dataset:
         if isinstance(indices, int):
             indices = np.array([indices], dtype=int)
         min_idx = np.min(indices)
