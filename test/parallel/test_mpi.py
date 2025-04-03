@@ -49,6 +49,7 @@ def all_paths(data_path: Path):
     hdf_files = [data_path / file for file in files]
     return list(hdf_files)
 
+
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
 ):

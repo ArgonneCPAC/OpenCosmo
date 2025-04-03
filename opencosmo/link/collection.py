@@ -34,9 +34,12 @@ class StructureCollection:
         self.__properties = properties
         self.__handlers = handlers
         self.__idxs = self.__properties.indices
+
     def __repr__(self):
+        structure_type = self.__properties.header.file.data_type.split("_")[0] + "s"
         dtype_str = ", ".join(self.__handlers.keys())
-        return f"LinkedCollection of {self.__properties.header.file.data_type} with linked datasets: {dtype_str}"
+        return f"Collection of {structure_type} with "\
+            f"linked datasets {dtype_str}"
 
     @classmethod
     def open(
