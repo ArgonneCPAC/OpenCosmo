@@ -7,7 +7,7 @@ import h5py
 import opencosmo as oc
 from opencosmo import dataset as ds
 from opencosmo.collection import Collection, SimulationCollection
-from opencosmo.link.collection import LinkedCollection
+from opencosmo.link.collection import StructureCollection
 
 
 def open_simulation_files(**paths: Path) -> SimulationCollection:
@@ -86,7 +86,7 @@ def get_collection_type(file: h5py.File) -> type[Collection]:
                 "It appears to have multiple datasets, but organized incorrectly"
             )
     elif len(list(filter(lambda x: x.endswith("properties"), datasets))) == 1:
-        return LinkedCollection
+        return StructureCollection
     else:
         raise ValueError(
             "Unknown file type. "

@@ -1,4 +1,4 @@
-from .collection import LinkedCollection
+from .collection import StructureCollection
 from .handler import LinkHandler, OomLinkHandler
 from .io import open_linked_file, open_linked_files
 

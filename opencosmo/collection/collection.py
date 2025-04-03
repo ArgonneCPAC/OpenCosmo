@@ -127,6 +127,12 @@ class SimulationCollection(dict):
             except ValueError:
                 continue
 
+    def __repr__(self):
+        n_collections = sum(1 for v in self.values() if isinstance(v, SimulationCollection))
+        n_datasets = sum(1 for v in self.values() if isinstance(v, oc.Dataset))
+        return f"SimulationCollection({len(self)} datasets, {n_collections} collections, {n_datasets} datasets)"
+
+
     @classmethod
     def open(
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
