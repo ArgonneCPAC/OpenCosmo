@@ -126,7 +126,10 @@ def open_linked_file(
         filter(lambda name: "properties" in name, file_handle.keys())
     )
     if len(properties_name) == 2:
-        if "galaxy_properties" in properties_name and "halo_properties" in properties_name:
+        if (
+            "galaxy_properties" in properties_name
+            and "halo_properties" in properties_name
+        ):
             properties_name = ["halo_properties"]
             # Custom handling for now
         else:

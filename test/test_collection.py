@@ -190,10 +190,8 @@ def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
 
-def test_multiple_properties(galaxy_paths, halo_paths):
 
+def test_multiple_properties(galaxy_paths, halo_paths):
     galaxy_path = galaxy_paths[0]
     ds = open_linked_files(galaxy_path, *halo_paths)
     assert isinstance(ds, StructureCollection)
-
-
