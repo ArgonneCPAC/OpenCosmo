@@ -125,11 +125,18 @@ def open_linked_file(
     properties_name = list(
         filter(lambda name: "properties" in name, file_handle.keys())
     )
-    if len(properties_name) != 1:
-        raise ValueError(
-            "A linked file must contain exactly one properties dataset, "
-            f"found {len(properties_name)}"
-        )
+    if len(properties_name) == 2:
+        if "galaxy_properties" in properties_name and "halo_properties" in properties_name:
+            properties_name = ["halo_properties"]
+            # Custom handling for now
+        else:
+            raise ValueError(
+                "Multiple properties datasets found, please specify which one to use"
+            )
+
+    elif len(properties_name) == 0:
+        raise ValueError("No properties dataset found in file")
+
     properties_name = properties_name[0]
     names_to_ignore = [properties_name, "header"] + list(datasets_to_get or [])
     other_datasets = [
@@ -201,6 +208,6 @@ def get_link_handlers(
 
             output_links[key] = handler(linked_files[key], (start, size), header)
         except KeyError:
-            index = links["sod_profile_idx"]
+            index = links[f"{dtype}_idx"]
             output_links[key] = handler(linked_files[key], index, header)
     return output_links
