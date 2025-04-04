@@ -70,22 +70,8 @@ def get_collection_type(file: h5py.File) -> type[Collection]:
         raise ValueError("No datasets found in file.")
 
     if "header" not in file.keys():
-        config_values = defaultdict(list)
-        for dataset in datasets:
-            try:
-                filetype_data = dict(file[dataset]["header"]["file"].attrs)
-                for key, value in filetype_data.items():
-                    config_values[key].append(value)
-            except KeyError:
-                continue
-        if all(len(set(v)) == 1 for v in config_values.values()):
-            return SimulationCollection
-        else:
-            raise ValueError(
-                "Unknown file type. "
-                "It appears to have multiple datasets, but organized incorrectly"
-            )
-    elif len(list(filter(lambda x: x.endswith("properties"), datasets))) == 1:
+        return SimulationCollection
+    elif len(list(filter(lambda x: x.endswith("properties"), datasets))) >= 1:
         return StructureCollection
     else:
         raise ValueError(

@@ -6,6 +6,7 @@ import pytest
 import opencosmo as oc
 from opencosmo.collection import SimulationCollection
 from opencosmo.link import open_linked_files
+from opencosmo.link.collection import StructureCollection
 
 
 @pytest.fixture
@@ -188,3 +189,11 @@ def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
             gal_tags = set(particles.data["gal_tag"])
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
+
+def test_multiple_properties(galaxy_paths, halo_paths):
+
+    galaxy_path = galaxy_paths[0]
+    ds = open_linked_files(galaxy_path, *halo_paths)
+    assert isinstance(ds, StructureCollection)
+
+
