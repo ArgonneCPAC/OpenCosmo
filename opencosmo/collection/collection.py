@@ -132,8 +132,10 @@ class SimulationCollection(dict):
             1 for v in self.values() if isinstance(v, SimulationCollection)
         )
         n_datasets = sum(1 for v in self.values() if isinstance(v, oc.Dataset))
-        return f"SimulationCollection({len(self)} datasets, "\
-        f"{n_collections} collections, {n_datasets} datasets)"
+        return (
+            f"SimulationCollection({len(self)} datasets, "
+            f"{n_collections} collections, {n_datasets} datasets)"
+        )
 
     @classmethod
     def open(
