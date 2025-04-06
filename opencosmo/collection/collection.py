@@ -19,6 +19,7 @@ from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemory
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
+from opencosmo.link import StructureCollection
 
 
 class Collection(Protocol):
@@ -129,11 +130,11 @@ class SimulationCollection(dict):
 
     def __repr__(self):
         n_collections = sum(
-            1 for v in self.values() if isinstance(v, SimulationCollection)
+            1 for v in self.values() if isinstance(v, (SimulationCollection, StructureCollection))
         )
         n_datasets = sum(1 for v in self.values() if isinstance(v, oc.Dataset))
         return (
-            f"SimulationCollection({len(self)} datasets, "
+            f"SimulationCollection("
             f"{n_collections} collections, {n_datasets} datasets)"
         )
 
