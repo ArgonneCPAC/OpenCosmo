@@ -7,7 +7,6 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
-from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
 
@@ -25,18 +24,17 @@ class OutOfMemoryHandler:
             self.__group = file["data"]
         else:
             self.__group = file[f"{group_name}/data"]
-        self.__columns = get_data_structure(self.__group)
         self.__tree = tree
 
     def __len__(self) -> int:
-        return self.__group[next(iter(self.__columns))].shape[0]
+        first_column_name = next(iter(self.__group.keys()))
+        return self.__group[first_column_name].shape[0]
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exec_details):
         self.__group = None
-        self.__columns = None
         return self.__file.close()
 
     def collect(self, columns: Iterable[str], indices: np.ndarray) -> InMemoryHandler:
@@ -85,8 +83,12 @@ class OutOfMemoryHandler:
             data = self.__group[column][()]
             data = data[idxs]
             data_group.create_dataset(column, data=data)
-            if self.__columns[column] is not None:
-                data_group[column].attrs["unit"] = self.__columns[column]
+            try:
+                unit = self.__group[column].attrs["unit"]
+                data_group[column].attrs["unit"] = unit
+            except:
+                pass
+                
         tree_mask = np.zeros(len(self), dtype=bool)
         tree_mask[idxs] = True
         tree = self.__tree.apply_mask(tree_mask)
