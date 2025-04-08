@@ -9,6 +9,7 @@ from mpi4py import MPI
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
+from opencosmo.utils import read_indices
 
 
 def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
@@ -195,21 +196,15 @@ class MPIHandler:
         if self.__group is None:
             raise ValueError("This file has already been closed")
 
-        if len(indices) == 0:
-            columns = {key: Column() for key in builder_keys}
-            return Table(columns)
         output = {}
-        range_ = self.elem_range()
 
         for column in builder_keys:
-            builder = builders[column]
-            if len(indices) > 0:
-                data = self.__group[column][range_[0] : range_[1]]
-                col = Column(data[indices], name=column)
-                output[column] = builder.build(col)
-            else:
-                col = Column()
-                output[column] = col
+            col = read_indices(
+                self.__group[column],
+                indices,
+                self.elem_range(),
+            )
+            output[column] = builders[column].build(col)
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)

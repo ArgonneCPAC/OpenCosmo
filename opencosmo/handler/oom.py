@@ -9,6 +9,7 @@ from astropy.table import Column, Table  # type: ignore
 from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
+from opencosmo.utils import read_indices, write_indices
 
 
 class OutOfMemoryHandler:
@@ -61,7 +62,6 @@ class OutOfMemoryHandler:
         indices: np.ndarray,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
-        selected: Optional[np.ndarray] = None,
     ) -> None:
         if self.__group is None:
             raise ValueError("This file has already been closed")
@@ -69,28 +69,12 @@ class OutOfMemoryHandler:
             group = file
         else:
             group = file.require_group(dataset_name)
-
-        if selected is not None:
-            selected.sort()
-            if selected[-1] >= len(indices):
-                raise ValueError("Selected indices are out of range")
-            idxs = indices[selected]
-        else:
-            idxs = indices
-
         data_group = group.create_group("data")
         for column in columns:
-            data = self.__group[column][()]
-            data = data[idxs]
-            data_group.create_dataset(column, data=data)
-            try:
-                unit = self.__group[column].attrs["unit"]
-                data_group[column].attrs["unit"] = unit
-            except:
-                pass
+            write_indices(self.__group[column], data_group, indices)
                 
         tree_mask = np.zeros(len(self), dtype=bool)
-        tree_mask[idxs] = True
+        tree_mask[indices] = True
         tree = self.__tree.apply_mask(tree_mask)
         tree.write(group)
 
@@ -99,16 +83,9 @@ class OutOfMemoryHandler:
         if self.__group is None:
             raise ValueError("This file has already been closed")
         output = {}
-        if len(indices) == 0:
-            return Table({key: Column() for key in builders.keys()})
-        start_idx = indices[0]
-        end_idx = indices[-1] + 1
         for column, builder in builders.items():
-            if len(indices) > 0:
-                data = self.__group[column][start_idx:end_idx]
-                data = data[indices - start_idx]
-                col = Column(data, name=column)
-                output[column] = builder.build(col)
+            col = read_indices(self.__group[column], indices)
+            output[column] = builder.build(col)
 
         if len(output) == 1:
             return next(iter(output.values()))
