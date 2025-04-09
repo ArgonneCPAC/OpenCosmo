@@ -72,7 +72,7 @@ class OutOfMemoryHandler:
         data_group = group.create_group("data")
         for column in columns:
             write_indices(self.__group[column], data_group, indices)
-                
+
         tree_mask = np.zeros(len(self), dtype=bool)
         tree_mask[indices] = True
         tree = self.__tree.apply_mask(tree_mask)
