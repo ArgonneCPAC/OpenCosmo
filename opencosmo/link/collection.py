@@ -9,6 +9,21 @@ import opencosmo as oc
 from opencosmo import link as l
 
 
+def filter_properties_by_dataset(
+    dataset: oc.Dataset,
+    properties: oc.Dataset,
+    *masks
+) -> oc.Dataset:
+    masked_dataset = dataset.filter(*masks)
+    if properties.header.file.data_type == "halo_properties":
+        linked_column = "fof_halo_tag"
+    elif properties.header.file.data_type == "galaxy_properties":
+        linked_column = "gal_tag"
+
+    tags = masked_dataset.select(linked_column).data
+    new_properties = properties.filter(oc.col(linked_column).isin(tags))
+    return new_properties
+
 class StructureCollection:
     """
     A collection of datasets that contain both high-level properties
@@ -24,6 +39,7 @@ class StructureCollection:
         self,
         properties: oc.Dataset,
         handlers: dict[str, l.LinkHandler],
+        filters: Optional[dict[str, Any]] = {},
         *args,
         **kwargs,
     ):
@@ -34,6 +50,7 @@ class StructureCollection:
         self.__properties = properties
         self.__handlers = handlers
         self.__idxs = self.__properties.indices
+        self.__filters = filters
 
     def __repr__(self):
         structure_type = self.__properties.header.file.data_type.split("_")[0] + "s"
@@ -87,7 +104,8 @@ class StructureCollection:
             return self.__properties
         elif key not in self.__handlers:
             raise KeyError(f"Dataset {key} not found in collection.")
-        return self.__handlers[key].get_all_data()
+        indices = self.__properties.indices
+        return self.__handlers[key].get_data(indices)
 
     def __enter__(self):
         return self
@@ -119,13 +137,20 @@ class StructureCollection:
             self.__properties, {**self.__handlers, dataset: new_handler}
         )
 
-    def filter(self, *masks):
+    def filter(self, *masks, dataset: Optional[str] = None) -> StructureCollection:
         """
         Apply a filter to the properties dataset and propagate it to the linked datasets
         """
         if not masks:
             return self
-        filtered = self.__properties.filter(*masks)
+        if dataset is None:
+            filtered = self.__properties.filter(*masks)
+        elif dataset not in self.__handlers:
+            raise ValueError(f"Dataset {dataset} not found in collection.") 
+        else:
+            filtered = filter_properties_by_dataset(
+                self[dataset], self.__properties, *masks
+            )
         return StructureCollection(
             filtered,
             self.__handlers,
