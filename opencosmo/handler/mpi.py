@@ -121,13 +121,13 @@ class MPIHandler:
         selected: Optional[np.ndarray] = None,
     ) -> None:
         columns = list(columns)
-        input = verify_input(
+        input_ = verify_input(
             comm=self.__comm,
             columns=columns,
             dataset_name=dataset_name,
             require=["dataset_name"],
         )
-        columns = input["columns"]
+        columns = input_["columns"]
 
         rank_range = self.elem_range()
         # indices = redistribute_indices(indices, rank_range)
