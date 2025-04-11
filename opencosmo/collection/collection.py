@@ -178,7 +178,7 @@ class SimulationCollection(dict):
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
         return SimulationCollection(output)
 
-    def filter(self, *masks: Mask) -> SimulationCollection:
+    def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:
         """
         Filter the datasets in the collection. This method behaves
         exactly like :meth:`opencosmo.Dataset.filter`, except that
@@ -196,7 +196,7 @@ class SimulationCollection(dict):
             A new collection with the same datasets, but only the
             particles that pass the filter.
         """
-        return self.__map("filter", *masks)
+        return self.__map("filter", *masks, **kwargs)
 
     def select(self, *args, **kwargs) -> SimulationCollection:
         """
