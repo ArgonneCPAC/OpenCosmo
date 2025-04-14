@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Iterable, Optional, Protocol, Self
 
-import numpy as np
 from h5py import File, Group
 
 from opencosmo import Dataset
@@ -26,26 +25,17 @@ class DatasetBuilder(Protocol):
     the data.
     """
 
-    def __init__(
-        self,
-        selected: Optional[set[str]] = None,
-        unit_convention: Optional[str] = None,
-        *args,
-        **kwargs,
-    ):
-        pass
-
     def with_units(self, convention: str) -> Self:
         pass
 
-    def select(self, selected: Iterable[str]) -> Self:
+    def select(self, selected: str | Iterable[str]) -> Self:
         pass
 
     def build(
         self,
         file: File | Group,
         header: OpenCosmoHeader,
-        indices: Optional[np.ndarray] = None,
+        index: Optional[DataIndex] = None,
     ) -> Dataset:
         pass
 

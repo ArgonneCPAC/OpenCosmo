@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeGuard, TypeVar
 
 import h5py
 import numpy as np
@@ -8,10 +8,26 @@ import numpy as np
 T = TypeVar("T", np.ndarray, h5py.Dataset)
 
 
+def all_are_chunked(
+    others: tuple[DataIndex, ...],
+) -> TypeGuard[tuple[ChunkedIndex, ...]]:
+    """
+    Check if all elements in the tuple are instances of ChunkedIndex.
+    """
+    return all(isinstance(other, ChunkedIndex) for other in others)
+
+
+def all_are_simple(others: tuple[DataIndex, ...]) -> TypeGuard[tuple[SimpleIndex, ...]]:
+    """
+    Check if all elements in the tuple are instances of SimpleIndex.
+    """
+    return all(isinstance(other, SimpleIndex) for other in others)
+
+
 class DataIndex(Protocol):
     @classmethod
     def from_size(cls, size: int) -> DataIndex: ...
-    def set_data(self, data: T, value: Any) -> T: ...
+    def set_data(self, data: np.ndarray, value: Any) -> np.ndarray: ...
     def get_data(self, data: h5py.Dataset | np.ndarray) -> np.ndarray: ...
     def take(self, n: int, at: str = "random") -> DataIndex: ...
     def take_range(self, start: int, end: int) -> DataIndex: ...
@@ -19,7 +35,7 @@ class DataIndex(Protocol):
     def range(self) -> tuple[int, int]: ...
     def concatenate(self, *others: DataIndex) -> DataIndex: ...
     def __len__(self) -> int: ...
-    def __getitem__(self, item: int) -> int: ...
+    def __getitem__(self, item: int) -> DataIndex: ...
 
 
 class SimpleIndex:
@@ -31,7 +47,7 @@ class SimpleIndex:
         self.__index = np.sort(index)
 
     @classmethod
-    def from_size(cls, size: int) -> SimpleIndex:
+    def from_size(cls, size: int) -> DataIndex:
         return SimpleIndex(np.arange(size))
 
     def __len__(self) -> int:
@@ -43,10 +59,10 @@ class SimpleIndex:
         """
         return self.__index[0], self.__index[-1]
 
-    def concatenate(self, *others: SimpleIndex) -> SimpleIndex:
+    def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:
             return self
-        if all(isinstance(other, SimpleIndex) for other in others):
+        if all_are_simple(others):
             new_index = np.concatenate(
                 [self.__index] + [other.__index for other in others]
             )
@@ -69,7 +85,7 @@ class SimpleIndex:
         data[self.__index] = value
         return data
 
-    def take(self, n: int, at: str = "random") -> SimpleIndex:
+    def take(self, n: int, at: str = "random") -> DataIndex:
         """
         Take n elements from the index.
         """
@@ -84,7 +100,7 @@ class SimpleIndex:
         else:
             raise ValueError(f"Unknown value for 'at': {at}")
 
-    def take_range(self, start: int, end: int) -> SimpleIndex:
+    def take_range(self, start: int, end: int) -> DataIndex:
         """
         Take a range of elements from the index.
         """
@@ -98,7 +114,7 @@ class SimpleIndex:
 
         return SimpleIndex(self.__index[start:end])
 
-    def mask(self, mask: np.ndarray) -> SimpleIndex:
+    def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:
             raise ValueError(
                 f"Mask shape {mask.shape} does not match index size {len(self)}"
@@ -130,7 +146,7 @@ class SimpleIndex:
         indices_into_output = self.__index - min_index
         return output[indices_into_output]
 
-    def __getitem__(self, item: int) -> SimpleIndex:
+    def __getitem__(self, item: int) -> DataIndex:
         """
         Get an item from the index.
         """
@@ -197,7 +213,7 @@ class ChunkedIndex:
     def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:
             return self
-        if all(isinstance(other, ChunkedIndex) for other in others):
+        if all_are_chunked(others):
             new_starts = np.concatenate(
                 [self.__starts] + [other.__starts for other in others]
             )
@@ -214,7 +230,7 @@ class ChunkedIndex:
             return self.concatenate(*simple_indices)
 
     @classmethod
-    def from_size(cls, size: int) -> ChunkedIndex:
+    def from_size(cls, size: int) -> DataIndex:
         """
         Create a ChunkedIndex from a size.
         """
@@ -269,12 +285,14 @@ class ChunkedIndex:
             )
             idxs = np.random.choice(idxs, n, replace=False)
             return SimpleIndex(idxs)
+
         elif at == "start":
             last_chunk_in_range = np.searchsorted(np.cumsum(self.__sizes), n)
             new_starts = self.__starts[: last_chunk_in_range + 1].copy()
             new_sizes = self.__sizes[: last_chunk_in_range + 1].copy()
             new_sizes[-1] = n - np.sum(new_sizes[:-1])
             return ChunkedIndex(new_starts, new_sizes)
+
         elif at == "end":
             starting_chunk = np.searchsorted(np.cumsum(self.__sizes), len(self) - n)
             new_sizes = self.__sizes[starting_chunk:].copy()
@@ -286,6 +304,8 @@ class ChunkedIndex:
                 - new_sizes[0]
             )
             return ChunkedIndex(new_starts, new_sizes)
+        else:
+            raise ValueError(f"Unknown value for 'at': {at}")
 
     def take_range(self, start: int, end: int) -> DataIndex:
         """
@@ -383,7 +403,7 @@ class ChunkedIndex:
 
         return output
 
-    def __getitem__(self, item: int) -> SimpleIndex:
+    def __getitem__(self, item: int) -> DataIndex:
         """
         Get an item from the index.
         """

@@ -25,7 +25,7 @@ def apply_masks(
     column_builders: dict[str, ColumnBuilder],
     masks: Iterable[Mask],
     index: DataIndex,
-) -> np.ndarray:
+) -> DataIndex:
     masks_by_column = defaultdict(list)
     for f in masks:
         masks_by_column[f.column_name].append(f)

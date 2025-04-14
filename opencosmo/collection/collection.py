@@ -11,7 +11,6 @@ except ImportError:
 
 
 import h5py
-import numpy as np
 
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex
@@ -258,8 +257,8 @@ def open_single_dataset(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header
     )
-    mask = np.arange(len(handler))
-    return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
+    index = ChunkedIndex.from_size(len(handler))
+    return oc.Dataset(handler, header, builders, base_unit_transformations, index)
 
 
 def read_single_dataset(

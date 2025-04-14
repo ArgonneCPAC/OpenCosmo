@@ -7,48 +7,14 @@ from h5py import File, Group
 from mpi4py import MPI
 
 import opencosmo as oc
-from opencosmo.dataset.column import ColumnBuilder, get_column_builders
+from opencosmo.dataset.column import get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.handler import MPIHandler
 from opencosmo.handler.mpi import partition
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.link.builder import DatasetBuilder
 from opencosmo.spatial import Tree, read_tree
-from opencosmo.transformations import TransformationDict
 from opencosmo.transformations import units as u
-
-
-def build_dataset(
-    file: File | Group,
-    indices: np.ndarray,
-    header: OpenCosmoHeader,
-    comm: MPI.Comm,
-    tree: Tree,
-    base_transformations: TransformationDict,
-    builders: dict[str, ColumnBuilder],
-) -> oc.Dataset:
-    if len(indices) > 0:
-        index_range = (indices.min(), indices.max() + 1)
-        indices = indices - index_range[0]
-    else:
-        index_range = None
-
-    handler = MPIHandler(file, tree=tree, comm=comm, rank_range=index_range)
-    return oc.Dataset(handler, header, builders, base_transformations, indices)
-
-
-def build_full_dataset(
-    file: File | Group,
-    header: OpenCosmoHeader,
-    comm: MPI.Comm,
-    tree: Tree,
-    base_transformations: TransformationDict,
-    builders: dict[str, ColumnBuilder],
-) -> oc.Dataset:
-    handler = MPIHandler(file, tree=tree, comm=comm)
-    return oc.Dataset(
-        handler, header, builders, base_transformations, np.arange(len(handler))
-    )
 
 
 class MpiLinkHandler:
@@ -68,8 +34,9 @@ class MpiLinkHandler:
         self.comm = comm
         if builder is None:
             tree = read_tree(file, self.header)
-            builder = MpiDatasetBuilder(tree, comm=comm)
-        self.builder = builder
+            self.builder: DatasetBuilder = MpiDatasetBuilder(tree, comm=comm)
+        else:
+            self.builder = builder
         if isinstance(self.link, tuple):
             n_per_rank = self.link[0].shape[0] // self.comm.Get_size()
             self.offset = n_per_rank * self.comm.Get_rank()
@@ -90,6 +57,7 @@ class MpiLinkHandler:
             valid_rows = size > 0
             start = start[valid_rows]
             size = size[valid_rows]
+            new_index: DataIndex
             if len(start) == 0:
                 new_index = SimpleIndex(np.array([], dtype=int))
             else:
@@ -143,10 +111,13 @@ class MpiLinkHandler:
             self.comm.Barrier()
             indices_into_data = index.get_data(self.link)
             nonzero = indices_into_data >= 0
-            nonzero = self.comm.gather(nonzero)
+            all_nonzero = self.comm.gather(nonzero)
 
             if self.comm.Get_rank() == 0:
-                nonzero = np.concatenate(nonzero)
+                if all_nonzero is None:
+                    # should never happen, but mypy...
+                    raise ValueError("No data to write")
+                nonzero = np.concatenate(all_nonzero)
                 sod_profile_idx = np.full(len(nonzero), -1)
                 sod_profile_idx[nonzero] = np.arange(sum(nonzero))
                 link_group["sod_profile_idx"][:] = sod_profile_idx
