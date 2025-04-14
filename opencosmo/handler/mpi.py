@@ -6,10 +6,10 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from mpi4py import MPI
 
+from opencosmo.dataset.index import DataIndex
 from opencosmo.file import get_data_structure
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
-from opencosmo.dataset.index import DataIndex
 
 
 def partition(comm: MPI.Comm, length: int) -> Tuple[int, int]:
@@ -24,7 +24,6 @@ def partition(comm: MPI.Comm, length: int) -> Tuple[int, int]:
     end = (rank + 1) * (length // nranks)
     size = end - start
     return (start, size)
-
 
 
 def verify_input(comm: MPI.Comm, require: Iterable[str] = [], **kwargs) -> dict:
@@ -172,11 +171,7 @@ class MPIHandler:
 
         self.__comm.Barrier()
 
-    def get_data(
-        self,
-        builders: dict,
-        index: DataIndex
-    ) -> Column | Table:
+    def get_data(self, builders: dict, index: DataIndex) -> Column | Table:
         """
         Get data from the file in the range for this rank.
         """
@@ -198,4 +193,3 @@ class MPIHandler:
             raise ValueError("Requested range is not within the rank's range.")
 
         return indices[start:end]
-

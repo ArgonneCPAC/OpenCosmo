@@ -1,14 +1,13 @@
 """
 I/O utilities for hdf5
 """
-from opencosmo.dataset.index import DataIndex
 
 from typing import Optional
 
 import hdf5plugin  # type: ignore
-import numpy as np
-from astropy.table import Column  # type: ignore
 from h5py import Dataset, Group
+
+from opencosmo.dataset.index import DataIndex
 
 
 def write_index(

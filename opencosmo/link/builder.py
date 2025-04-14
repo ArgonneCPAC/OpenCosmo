@@ -7,11 +7,11 @@ from h5py import File, Group
 
 from opencosmo import Dataset
 from opencosmo.dataset.column import get_column_builders
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.handler import OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo.dataset.index import DataIndex, ChunkedIndex, SimpleIndex
 
 try:
     from mpi4py import MPI

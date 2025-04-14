@@ -6,9 +6,9 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.file import get_data_structure
 from opencosmo.spatial.tree import Tree
-from opencosmo.dataset.index import DataIndex, ChunkedIndex
 
 
 class InMemoryHandler:
@@ -38,7 +38,9 @@ class InMemoryHandler:
         if index is None:
             length = len(next(iter(group.values())))
             index = ChunkedIndex.from_size(length)
-        self.__data = {colname: index.get_data(group[colname]) for colname in self.__columns}
+        self.__data = {
+            colname: index.get_data(group[colname]) for colname in self.__columns
+        }
 
     def __len__(self) -> int:
         return len(next(iter(self.__data.values())))
