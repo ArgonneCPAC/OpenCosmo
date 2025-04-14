@@ -13,6 +13,7 @@ from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
+from opencosmo.dataset.index import DataIndex, ChunkedIndex
 
 
 class Dataset:
@@ -22,21 +23,21 @@ class Dataset:
         header: OpenCosmoHeader,
         builders: dict[str, ColumnBuilder],
         unit_transformations: dict[t.TransformationType, list[t.Transformation]],
-        indices: np.ndarray,
+        index: DataIndex,
     ):
         self.__handler = handler
         self.__header = header
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
-        self.__indices = indices
+        self.__index = index
 
     @property
     def header(self) -> OpenCosmoHeader:
         return self.__header
 
     @property
-    def indices(self) -> np.ndarray:
-        return self.__indices
+    def index(self) -> DataIndex:
+        return self.__index
 
     def __repr__(self):
         """
@@ -54,7 +55,7 @@ class Dataset:
         return head + cosmo_repr + table_head + table_repr
 
     def __len__(self):
-        return len(self.__indices)
+        return len(self.__index)
 
     def __enter__(self):
         # Need to write tests
@@ -74,7 +75,7 @@ class Dataset:
     def data(self):
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(builders=self.__builders, indices=self.__indices)
+        return self.__handler.get_data(builders=self.__builders, index=self.__index)
 
     def write(
         self,
@@ -103,7 +104,7 @@ class Dataset:
         if with_header:
             write_header(file, self.__header, dataset_name)
 
-        self.__handler.write(file, self.indices, self.__builders.keys(), dataset_name)
+        self.__handler.write(file, self.__index, self.__builders.keys(), dataset_name)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
@@ -163,14 +164,14 @@ class Dataset:
         if start < 0 or end > len(self):
             raise ValueError("start and end must be within the bounds of the dataset.")
 
-        new_indices = self.__indices[start:end]
+        new_index = self.__index.take_range(start, end)
 
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_indices,
+            new_index,
         )
 
     def filter(self, *masks: Mask) -> Dataset:
@@ -195,19 +196,19 @@ class Dataset:
 
         """
 
-        new_indices = apply_masks(
-            self.__handler, self.__builders, masks, self.__indices
+        new_index = apply_masks(
+            self.__handler, self.__builders, masks, self.__index
         )
 
-        if len(new_indices) == 0:
-            raise ValueError("Filter returned zero rows!")
+        if len(new_index) == 0:
+            raise ValueError("The filter returned no rows!")
 
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_indices,
+            new_index,
         )
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
@@ -250,7 +251,7 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__indices,
+            self.__index,
         )
 
     def with_units(self, convention: str) -> Dataset:
@@ -279,7 +280,7 @@ class Dataset:
             self.__header,
             new_builders,
             self.__base_unit_transformations,
-            self.__indices,
+            self.__index,
         )
 
     def collect(self) -> Dataset:
@@ -305,13 +306,14 @@ class Dataset:
 
         If working in an MPI context, all ranks will recieve the same data.
         """
-        new_handler = self.__handler.collect(self.__builders.keys(), self.__indices)
+        new_handler = self.__handler.collect(self.__builders.keys(), self.__index)
+        new_index = ChunkedIndex.from_size(len(new_handler))
         return Dataset(
             new_handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            np.arange(len(new_handler)),
+            new_index,
         )
 
     def take(self, n: int, at: str = "start") -> Dataset:
@@ -341,28 +343,13 @@ class Dataset:
             or if 'at' is invalid.
 
         """
+        new_index = self.__index.take(n, at)
 
-        if n < 0 or n > len(self):
-            raise ValueError(
-                "Invalid value for 'n', must be between 0 and the length of the dataset"
-            )
-        if at == "start":
-            new_indices = self.__indices[:n]
-        elif at == "end":
-            new_indices = self.__indices[-n:]
-        elif at == "random":
-            new_indices = np.random.choice(self.__indices, n, replace=False)
-            new_indices.sort()
-
-        else:
-            raise ValueError(
-                "Invalid value for 'at'. Must be one of 'start', 'end', or 'random'."
-            )
 
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
-            new_indices,
+            new_index,
         )

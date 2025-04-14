@@ -8,6 +8,7 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
+from opencosmo.dataset.index import DataIndex
 
 
 class OpenCosmoDataHandler(Protocol):
@@ -43,15 +44,12 @@ class OpenCosmoDataHandler(Protocol):
     def write(
         self,
         file: h5py.File,
-        indices: np.ndarray,
+        index: DataIndex,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
     ) -> None: ...
     def get_data(
         self,
         column_builders: dict[str, ColumnBuilder],
-        indices: np.ndarray,
+        index: DataIndex,
     ) -> Column | Table: ...
-    def take_indices(
-        self, n: int, strategy: str, indices: np.ndarray
-    ) -> np.ndarray: ...

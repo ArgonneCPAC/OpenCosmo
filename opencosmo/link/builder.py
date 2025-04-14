@@ -11,6 +11,7 @@ from opencosmo.handler import OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
+from opencosmo.dataset.index import DataIndex, ChunkedIndex, SimpleIndex
 
 try:
     from mpi4py import MPI
@@ -100,7 +101,7 @@ class OomDatasetBuilder:
         self,
         file: File | Group,
         header: OpenCosmoHeader,
-        indices: Optional[np.ndarray] = None,
+        index: Optional[DataIndex] = None,
     ) -> Dataset:
         tree = read_tree(file, header)
         builders, base_unit_transformations = u.get_default_unit_transformations(
@@ -122,23 +123,14 @@ class OomDatasetBuilder:
 
         handler = OutOfMemoryHandler(file, tree=tree)
 
-        if indices is None:
-            indices_ = np.arange(len(handler))
-
-        elif len(indices) > 0:
-            if indices[0] < 0 or indices[-1] >= len(handler):
-                raise ValueError(
-                    "Indices must be within 0 and the length of the dataset."
-                )
-            indices_ = indices
-        else:
-            indices_ = indices
+        if index is None:
+            index = ChunkedIndex.from_size(len(handler))
 
         dataset = Dataset(
             handler,
             header,
             builders,
             base_unit_transformations,
-            indices_,
+            index,
         )
         return dataset

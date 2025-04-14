@@ -9,11 +9,13 @@ from mpi4py import MPI
 import opencosmo as oc
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.handler import MPIHandler
+from opencosmo.handler.mpi import partition
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.link.builder import DatasetBuilder
 from opencosmo.spatial import Tree, read_tree
 from opencosmo.transformations import TransformationDict
 from opencosmo.transformations import units as u
+from opencosmo.dataset.index import DataIndex, SimpleIndex, ChunkedIndex
 
 
 def build_dataset(
@@ -81,32 +83,28 @@ class MpiLinkHandler:
             self.header,
         )
 
-    def get_data(self, indices: int | np.ndarray) -> oc.Dataset:
-        if isinstance(indices, int):
-            indices = np.array([indices], dtype=int)
-
+    def get_data(self, index: DataIndex) -> oc.Dataset:
         if isinstance(self.link, tuple):
-            start = self.link[0][indices + self.offset]
-            size = self.link[1][indices + self.offset]
+            start = index.get_data(self.link[0])
+            size = index.get_data(self.link[1])
             valid_rows = size > 0
             start = start[valid_rows]
             size = size[valid_rows]
             if len(start) == 0:
-                indices_into_data = np.array([], dtype=int)
+                new_index = SimpleIndex(np.array([], dtype=int))
             else:
-                indices_into_data = np.concatenate(
-                    [np.arange(idx, idx + length) for idx, length in zip(start, size)]
-                )
+                new_index = ChunkedIndex(start, size)
         else:
-            indices_into_data = self.link[indices + self.offset]
+            indices_into_data = index.get_data(self.link)
             indices_into_data = indices_into_data[indices_into_data >= 0]
             if len(indices_into_data) == 0:
                 indices_into_data = np.array([], dtype=int)
+            new_index = SimpleIndex(indices_into_data)
 
         dataset = self.builder.build(
             self.file,
             self.header,
-            indices=indices_into_data,
+            index=new_index,
         )
 
         return dataset
@@ -132,12 +130,10 @@ class MpiLinkHandler:
         )
 
     def write(
-        self, data_group: Group, link_group: Group, name: str, indices: int | np.ndarray
+        self, data_group: Group, link_group: Group, name: str, index: DataIndex
     ) -> None:
         # Pack the indices
-        if isinstance(indices, int):
-            indices = np.array([indices])
-        sizes = self.comm.allgather(len(indices))
+        sizes = self.comm.allgather(len(index))
         shape = (sum(sizes),)
         if sum(sizes) == 0:
             return
@@ -145,10 +141,7 @@ class MpiLinkHandler:
         if not isinstance(self.link, tuple):
             link_group.create_dataset("sod_profile_idx", shape=shape, dtype=int)
             self.comm.Barrier()
-            start = indices[0]
-            end = indices[-1] + 1
-            indices_into_data = self.link[self.offset + start : self.offset + end]
-            indices_into_data = indices_into_data[indices - start]
+            indices_into_data = index.get_data(self.link)
             nonzero = indices_into_data >= 0
             nonzero = self.comm.gather(nonzero)
 
@@ -157,11 +150,12 @@ class MpiLinkHandler:
                 sod_profile_idx = np.full(len(nonzero), -1)
                 sod_profile_idx[nonzero] = np.arange(sum(nonzero))
                 link_group["sod_profile_idx"][:] = sod_profile_idx
+
         else:
             link_group.create_dataset(f"{name}_start", shape=shape, dtype=int)
             link_group.create_dataset(f"{name}_size", shape=shape, dtype=int)
             self.comm.Barrier()
-            rank_sizes = self.link[1][self.offset + indices]
+            rank_sizes = index.get_data(self.link[1])
             all_rank_sizes = self.comm.gather(rank_sizes)
             if self.comm.Get_rank() == 0:
                 if all_rank_sizes is None:
@@ -173,8 +167,8 @@ class MpiLinkHandler:
                 link_group[f"{name}_start"][:] = starts
                 link_group[f"{name}_size"][:] = all_sizes
 
-        dataset = self.get_data(indices)
-
+        self.comm.Barrier()
+        dataset = self.get_data(index)
         if dataset is not None:
             dataset.write(data_group, name)
 
@@ -239,7 +233,7 @@ class MpiDatasetBuilder:
         self,
         file: File | Group,
         header: OpenCosmoHeader,
-        indices: Optional[np.ndarray] = None,
+        index: Optional[DataIndex] = None,
     ) -> oc.Dataset:
         builders, base_unit_transformations = u.get_default_unit_transformations(
             file, header
@@ -256,23 +250,20 @@ class MpiDatasetBuilder:
 
         builders = {key: builders[key] for key in selected}
 
-        rank_range = None
-        if indices is not None and len(indices) > 0:
-            rank_range = (indices.min(), indices.max() + 1)
-            indices = indices - rank_range[0]
 
         handler = MPIHandler(
-            file, tree=self.tree, comm=self.comm, rank_range=rank_range
+            file, tree=self.tree, comm=self.comm
         )
-        if indices is None:
-            indices = np.arange(len(handler))
+        if index is None:
+            start, size = partition(self.comm, len(handler))
+            index = ChunkedIndex.single_chunk(start, size)
 
         dataset = oc.Dataset(
             handler,
             header,
             builders,
             base_unit_transformations,
-            indices,
+            index,
         )
 
         return dataset

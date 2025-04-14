@@ -8,6 +8,7 @@ from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.file import get_data_structure
 from opencosmo.spatial.tree import Tree
+from opencosmo.dataset.index import DataIndex, ChunkedIndex
 
 
 class InMemoryHandler:
@@ -24,7 +25,7 @@ class InMemoryHandler:
         tree: Tree,
         group_name: Optional[str] = None,
         columns: Optional[Iterable[str]] = None,
-        indices: Optional[np.ndarray] = None,
+        index: Optional[DataIndex] = None,
     ):
         if group_name is None:
             group = file["data"]
@@ -34,11 +35,10 @@ class InMemoryHandler:
         if columns is not None:
             self.__columns = {n: u for n, u in self.__columns.items() if n in columns}
         self.__tree = tree
-        self.__data = {colname: group[colname][()] for colname in self.__columns}
-        if indices is not None:
-            self.__data = {
-                colname: self.__data[colname][indices] for colname in self.__columns
-            }
+        if index is None:
+            length = len(next(iter(group.values())))
+            index = ChunkedIndex.from_size(length)
+        self.__data = {colname: index.get_data(group[colname]) for colname in self.__columns}
 
     def __len__(self) -> int:
         return len(next(iter(self.__data.values())))
@@ -63,7 +63,7 @@ class InMemoryHandler:
     def write(
         self,
         file: h5py.File,
-        indices: np.ndarray,
+        index: DataIndex,
         columns: Iterable[str],
         dataset_name: Optional[str] = None,
     ) -> None:
@@ -76,7 +76,7 @@ class InMemoryHandler:
             group = file.require_group(dataset_name)
         data_group = group.require_group("data")
         for column in columns:
-            data_group.create_dataset(column, data=self.__data[column][indices])
+            data_group.create_dataset(column, data=index.get_data(self.__data[column]))
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
         mask = np.zeros(len(self), dtype=bool)
@@ -86,7 +86,7 @@ class InMemoryHandler:
     def get_data(
         self,
         builders: dict,
-        indices: np.ndarray,
+        index: DataIndex,
     ) -> Column | Table:
         """
         Get data from the in-memory storage with optional masking and column
@@ -95,19 +95,9 @@ class InMemoryHandler:
 
         output = {}
         for column, builder in builders.items():
-            col = self.__data[column][indices]
+            col = index.get_data(self.__data[column])
             output[column] = builder.build(Column(col, name=column))
 
         if len(output) == 1:
             return next(iter(output.values()))
         return Table(output)
-
-    def take_indices(self, n: int, strategy: str, indices: np.ndarray):
-        if n < 0 or n > len(indices):
-            raise ValueError("n must be between 0 and then number of available rows")
-        if strategy == "random":
-            return np.sort(np.random.choice(indices, n, replace=False))
-        elif strategy == "start":
-            return indices[:n]
-        elif strategy == "end":
-            return indices[-n:]

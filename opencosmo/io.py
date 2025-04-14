@@ -12,15 +12,16 @@ except ImportError:
     MPI = None  # type: ignore
 from typing import Iterable, Optional
 
-import numpy as np
 
 import opencosmo as oc
 from opencosmo import collection
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
+from opencosmo.handler.mpi import partition
 from opencosmo.header import read_header
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 
 
 def open(
@@ -89,19 +90,21 @@ def open(
         raise ValueError("Asked for multiple datasets, but file has only one")
 
     handler: OpenCosmoDataHandler
+    index: DataIndex
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
         handler = MPIHandler(
             file_handle, group_name=datasets, tree=tree, comm=MPI.COMM_WORLD
         )
+        start, size = partition(MPI.COMM_WORLD, len(handler))
+        index = ChunkedIndex.single_chunk(start, size)
     else:
         handler = OutOfMemoryHandler(file_handle, group_name=datasets, tree=tree)
-
+        index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
 
-    mask = np.arange(len(handler))
-    dataset = oc.Dataset(handler, header, builders, base_unit_transformations, mask)
+    dataset = oc.Dataset(handler, header, builders, base_unit_transformations, index)
     return dataset
 
 
@@ -147,12 +150,12 @@ def read(
     header = read_header(file)
     tree = read_tree(file, header)
     handler = InMemoryHandler(file, tree, group_name=datasets)
-    mask = np.arange(len(handler))
+    index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
 
-    return oc.Dataset(handler, header, builders, base_unit_transformations, mask)
+    return oc.Dataset(handler, header, builders, base_unit_transformations, index)
 
 
 @file_writer

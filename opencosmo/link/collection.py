@@ -49,7 +49,7 @@ class StructureCollection:
 
         self.__properties = properties
         self.__handlers = handlers
-        self.__idxs = self.__properties.indices
+        self.__index = self.__properties.index
         self.__filters = filters
 
     def __repr__(self):
@@ -104,8 +104,8 @@ class StructureCollection:
             return self.__properties
         elif key not in self.__handlers:
             raise KeyError(f"Dataset {key} not found in collection.")
-        indices = self.__properties.indices
-        return self.__handlers[key].get_data(indices)
+        index = self.__properties.index
+        return self.__handlers[key].get_data(index)
 
     def __enter__(self):
         return self
@@ -192,7 +192,7 @@ class StructureCollection:
             handlers = {dt: self.__handlers[dt] for dt in data_types}
 
         for i, row in enumerate(self.__properties.rows()):
-            index = np.array(self.__properties.indices[i])
+            index = self.__properties.index[i]
             output = {key: handler.get_data(index) for key, handler in handlers.items()}
             if not any(len(v) for v in output.values()):
                 continue
@@ -210,4 +210,5 @@ class StructureCollection:
         keys.sort()
         for key in keys:
             handler = self.__handlers[key]
-            handler.write(file, link_group, key, self.__idxs)
+            handler.write(file, link_group, key, self.__index)
+

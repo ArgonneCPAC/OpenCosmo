@@ -179,16 +179,21 @@ def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
     datasets = {"scidac_01": galaxies_1, "scidac_02": galaxies_2}
 
     collection = SimulationCollection(datasets)
+    collection = collection.filter(oc.col("gal_mass") > 10**12).take(50, at="start")
+
     oc.write(tmp_path / "galaxies.hdf5", collection)
 
     dataset = oc.open(tmp_path / "galaxies.hdf5")
-    dataset = dataset.filter(oc.col("gal_mass") > 10**12).take(10, at="random")
+    j = 0
     for ds in dataset.values():
         for props, particles in ds.objects():
             gal_tag = props["gal_tag"]
             gal_tags = set(particles.data["gal_tag"])
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
+            j += 1
+
+    assert j == 100
 
 
 def test_multiple_properties(galaxy_paths, halo_paths):

@@ -11,6 +11,7 @@ from astropy import table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.handler import OpenCosmoDataHandler
+from opencosmo.dataset.index import DataIndex
 
 Comparison = Callable[[float, float], bool]
 
@@ -23,7 +24,7 @@ def apply_masks(
     handler: OpenCosmoDataHandler,
     column_builders: dict[str, ColumnBuilder],
     masks: Iterable[Mask],
-    indices: np.ndarray,
+    index: DataIndex,
 ) -> np.ndarray:
     masks_by_column = defaultdict(list)
     for f in masks:
@@ -36,16 +37,16 @@ def apply_masks(
             "masks were applied to columns that do not exist in the dataset: "
             f"{mask_column_names - column_names}"
         )
-    output_indices = indices
+    output_index = index
 
     for column_name, column_masks in masks_by_column.items():
-        column_mask = np.ones(len(output_indices), dtype=bool)
+        column_mask = np.ones(len(output_index), dtype=bool)
         builder = column_builders[column_name]
-        column = handler.get_data({column_name: builder}, output_indices)
+        column = handler.get_data({column_name: builder}, output_index)
         for f in column_masks:
             column_mask &= f.apply(column)
-        output_indices = output_indices[column_mask]
-    return output_indices
+        output_index = output_index.mask(column_mask)
+    return output_index
 
 
 class Column:
