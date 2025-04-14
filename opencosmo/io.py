@@ -12,16 +12,15 @@ except ImportError:
     MPI = None  # type: ignore
 from typing import Iterable, Optional
 
-
 import opencosmo as oc
 from opencosmo import collection
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.handler.mpi import partition
 from opencosmo.header import read_header
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
 
 
 def open(

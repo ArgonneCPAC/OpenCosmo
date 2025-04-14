@@ -8,6 +8,7 @@ from mpi4py import MPI
 
 import opencosmo as oc
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
+from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.handler import MPIHandler
 from opencosmo.handler.mpi import partition
 from opencosmo.header import OpenCosmoHeader
@@ -15,7 +16,6 @@ from opencosmo.link.builder import DatasetBuilder
 from opencosmo.spatial import Tree, read_tree
 from opencosmo.transformations import TransformationDict
 from opencosmo.transformations import units as u
-from opencosmo.dataset.index import DataIndex, SimpleIndex, ChunkedIndex
 
 
 def build_dataset(
@@ -250,10 +250,7 @@ class MpiDatasetBuilder:
 
         builders = {key: builders[key] for key in selected}
 
-
-        handler = MPIHandler(
-            file, tree=self.tree, comm=self.comm
-        )
+        handler = MPIHandler(file, tree=self.tree, comm=self.comm)
         if index is None:
             start, size = partition(self.comm, len(handler))
             index = ChunkedIndex.single_chunk(start, size)

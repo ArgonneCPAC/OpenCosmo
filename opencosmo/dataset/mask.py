@@ -10,8 +10,8 @@ import numpy as np
 from astropy import table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
-from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.dataset.index import DataIndex
+from opencosmo.handler import OpenCosmoDataHandler
 
 Comparison = Callable[[float, float], bool]
 

@@ -6,11 +6,10 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.column import ColumnBuilder
+from opencosmo.dataset.index import DataIndex
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
 from opencosmo.utils import write_index
-from opencosmo.dataset.index import DataIndex
 
 
 class OutOfMemoryHandler:
@@ -76,7 +75,7 @@ class OutOfMemoryHandler:
 
         tree_mask = np.zeros(len(self), dtype=bool)
         tree_mask = index.set_data(tree_mask, True)
-        
+
         tree = self.__tree.apply_mask(tree_mask)
         tree.write(group)
 

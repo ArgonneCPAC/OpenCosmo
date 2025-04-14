@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional
 
-import numpy as np
 from h5py import File, Group
 
 import opencosmo as oc
@@ -10,9 +9,7 @@ from opencosmo import link as l
 
 
 def filter_properties_by_dataset(
-    dataset: oc.Dataset,
-    properties: oc.Dataset,
-    *masks
+    dataset: oc.Dataset, properties: oc.Dataset, *masks
 ) -> oc.Dataset:
     masked_dataset = dataset.filter(*masks)
     if properties.header.file.data_type == "halo_properties":
@@ -23,6 +20,7 @@ def filter_properties_by_dataset(
     tags = masked_dataset.select(linked_column).data
     new_properties = properties.filter(oc.col(linked_column).isin(tags))
     return new_properties
+
 
 class StructureCollection:
     """
@@ -146,7 +144,7 @@ class StructureCollection:
         if dataset is None:
             filtered = self.__properties.filter(*masks)
         elif dataset not in self.__handlers:
-            raise ValueError(f"Dataset {dataset} not found in collection.") 
+            raise ValueError(f"Dataset {dataset} not found in collection.")
         else:
             filtered = filter_properties_by_dataset(
                 self[dataset], self.__properties, *masks
@@ -211,4 +209,3 @@ class StructureCollection:
         for key in keys:
             handler = self.__handlers[key]
             handler.write(file, link_group, key, self.__index)
-

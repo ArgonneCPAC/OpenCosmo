@@ -3,17 +3,16 @@ from __future__ import annotations
 from typing import Generator, Iterable, Optional
 
 import h5py
-import numpy as np
 from astropy import units  # type: ignore
 from astropy.table import Table  # type: ignore
 
 import opencosmo.transformations as t
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
-from opencosmo.dataset.index import DataIndex, ChunkedIndex
 
 
 class Dataset:
@@ -196,9 +195,7 @@ class Dataset:
 
         """
 
-        new_index = apply_masks(
-            self.__handler, self.__builders, masks, self.__index
-        )
+        new_index = apply_masks(self.__handler, self.__builders, masks, self.__index)
 
         if len(new_index) == 0:
             raise ValueError("The filter returned no rows!")
@@ -344,7 +341,6 @@ class Dataset:
 
         """
         new_index = self.__index.take(n, at)
-
 
         return Dataset(
             self.__handler,

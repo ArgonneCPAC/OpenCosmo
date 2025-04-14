@@ -14,13 +14,13 @@ import h5py
 import numpy as np
 
 import opencosmo as oc
+from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.link import StructureCollection
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo.dataset.index import ChunkedIndex
 
 
 class Collection(Protocol):
@@ -95,6 +95,7 @@ def write_with_unique_headers(collection: Collection, file: h5py.File):
     for key in keys:
         group = file.create_group(key)
         collection[key].write(group)
+
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
     """

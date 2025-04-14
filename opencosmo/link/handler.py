@@ -6,12 +6,12 @@ import numpy as np
 from h5py import File, Group
 
 import opencosmo as oc
+from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.handler import OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.link.builder import DatasetBuilder, OomDatasetBuilder
 from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
-from opencosmo.dataset.index import DataIndex, SimpleIndex, ChunkedIndex
 
 
 def build_dataset(
@@ -122,7 +122,7 @@ class OomLinkHandler:
 
     def get_data(self, index: DataIndex) -> oc.Dataset:
         if isinstance(self.link, tuple):
-            start = index.get_data(self.link[0]) 
+            start = index.get_data(self.link[0])
             size = index.get_data(self.link[1])
             valid_rows = size > 0
             start = start[valid_rows]
@@ -159,9 +159,7 @@ class OomLinkHandler:
             self.builder.with_units(convention),
         )
 
-    def write(
-        self, group: Group, link_group: Group, name: str, index: DataIndex
-    ):
+    def write(self, group: Group, link_group: Group, name: str, index: DataIndex):
         # Pack the indices
         if not isinstance(self.link, tuple):
             new_idxs = np.full(len(index), -1)
