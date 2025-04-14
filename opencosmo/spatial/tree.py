@@ -71,7 +71,7 @@ def apply_range_mask(
         st[0] = range_[0]
         st = st - range_[0]
         # Determine how many true values are in the mask in the ranges
-        new_sizes = np.fromiter((np.sum(a) for a in np.split(mask, st[1:])), dtype=int)
+        new_sizes = np.add.reduceat(mask, st)
         output_sizes[level] = (first_start_index, new_sizes)
     return output_sizes
 
