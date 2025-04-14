@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Iterable, Optional, Protocol
 
 import h5py
-import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
@@ -39,7 +38,7 @@ class OpenCosmoDataHandler(Protocol):
     def __exit__(self, *exc_details): ...
     def __len__(self) -> int: ...
     def collect(
-        self, columns: Iterable[str], mask: np.ndarray
+        self, columns: Iterable[str], index: DataIndex
     ) -> OpenCosmoDataHandler: ...
     def write(
         self,

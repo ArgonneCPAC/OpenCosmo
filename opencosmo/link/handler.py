@@ -7,24 +7,8 @@ from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
-from opencosmo.handler import OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.link.builder import DatasetBuilder, OomDatasetBuilder
-from opencosmo.spatial import read_tree
-from opencosmo.transformations import units as u
-
-
-def build_dataset(
-    file: File | Group, header: OpenCosmoHeader, indices: Optional[np.ndarray] = None
-) -> oc.Dataset:
-    tree = read_tree(file, header)
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        file, header
-    )
-    handler = OutOfMemoryHandler(file, tree=tree)
-    if indices is None:
-        indices = np.arange(len(handler))
-    return oc.Dataset(handler, header, builders, base_unit_transformations, indices)
 
 
 class LinkHandler(Protocol):
@@ -55,7 +39,7 @@ class LinkHandler(Protocol):
         """
         pass
 
-    def get_data(self, indices: int | DataIndex) -> oc.Dataset:
+    def get_data(self, index: DataIndex) -> oc.Dataset:
         """
         Given a index or a set of indices, return the data from the linked dataset
         that corresponds to the halo/galaxy at that index in the properties file.
@@ -71,7 +55,7 @@ class LinkHandler(Protocol):
         pass
 
     def write(
-        self, data_group: Group, link_group: Group, name: str, indices: int | np.ndarray
+        self, data_group: Group, link_group: Group, name: str, index: DataIndex
     ) -> None:
         """
         Write the linked data for the given indices to data_group.
@@ -118,7 +102,10 @@ class OomLinkHandler:
             self.builder = builder
 
     def get_all_data(self) -> oc.Dataset:
-        return build_dataset(self.file, self.header)
+        return self.builder.build(
+            self.file,
+            self.header,
+        )
 
     def get_data(self, index: DataIndex) -> oc.Dataset:
         if isinstance(self.link, tuple):
@@ -127,6 +114,7 @@ class OomLinkHandler:
             valid_rows = size > 0
             start = start[valid_rows]
             size = size[valid_rows]
+            new_index: DataIndex
             if not start.size:
                 new_index = SimpleIndex(np.array([], dtype=int))
             else:
@@ -135,8 +123,6 @@ class OomLinkHandler:
             indices_into_data = index.get_data(self.link)
             indices_into_data = indices_into_data[indices_into_data >= 0]
             new_index = SimpleIndex(indices_into_data)
-            if not indices_into_data.size:
-                indices_into_data = SimpleIndex(np.array([], dtype=int))
 
         return self.builder.build(self.file, self.header, new_index)
 

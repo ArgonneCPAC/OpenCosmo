@@ -51,14 +51,16 @@ class InMemoryHandler:
     def __exit__(self, *exec_details):
         return False
 
-    def collect(self, columns: Iterable[str], indices: np.ndarray) -> InMemoryHandler:
+    def collect(self, columns: Iterable[str], index: DataIndex) -> InMemoryHandler:
         """
         Create a new InMemoryHandler with only the specified columns and
         the specified mask applied.
         """
-        new_data = {colname: self.__data[colname][indices] for colname in columns}
+        new_data = {
+            colname: index.get_data(self.__data[colname]) for colname in columns
+        }
         mask = np.zeros(len(self), dtype=bool)
-        mask[indices] = True
+        mask = index.set_data(mask, True)
         tree = self.__tree.apply_mask(mask)
         return InMemoryHandler(new_data, tree)
 
