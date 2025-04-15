@@ -8,6 +8,7 @@ try:
     from mpi4py import MPI
 
     from opencosmo.handler import MPIHandler
+    from opencosmo.handler.mpi import partition
 except ImportError:
     MPI = None  # type: ignore
 from typing import Iterable, Optional
@@ -17,7 +18,6 @@ from opencosmo import collection
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
-from opencosmo.handler.mpi import partition
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
 
