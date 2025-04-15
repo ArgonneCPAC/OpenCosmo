@@ -13,7 +13,7 @@ from opencosmo.handler import MPIHandler
 from opencosmo.handler.mpi import partition
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.link.builder import DatasetBuilder
-from opencosmo.spatial import Tree, read_tree
+from opencosmo.spatial import Tree
 from opencosmo.transformations import units as u
 
 
