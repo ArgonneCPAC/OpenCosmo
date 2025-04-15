@@ -32,7 +32,8 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    :maxdepth: 1
    :caption: API Reference
 
-   main_ref
+   io_ref
+   dataset_ref
    collection_ref
 
 
