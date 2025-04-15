@@ -18,7 +18,6 @@ from opencosmo.dataset.mask import Mask
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.link import StructureCollection
-from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
 
 
@@ -245,7 +244,9 @@ def open_single_dataset(
     if header is None:
         header = read_header(file[dataset_key])
 
-    tree = read_tree(file[dataset_key], header)
+
+    # tree = read_tree(file[dataset_key], header)
+    tree = None
     handler: OpenCosmoDataHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
         handler = MPIHandler(
@@ -272,8 +273,10 @@ def read_single_dataset(
 
     if header is None:
         header = read_header(file[dataset_key])
-
-    tree = read_tree(file[dataset_key], header)
+    
+    # tree = read_tree(file[dataset_key], header)
+    tree = None
+        
     handler = InMemoryHandler(file, tree, dataset_key)
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header

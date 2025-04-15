@@ -84,7 +84,8 @@ def open(
         group = file_handle
 
     header = read_header(file_handle)
-    tree = read_tree(file_handle, header)
+    # tree = read_tree(file_handle, header)
+    tree = None
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
@@ -147,7 +148,8 @@ def read(
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
     header = read_header(file)
-    tree = read_tree(file, header)
+    # tree = read_tree(file, header)
+    tree = None
     handler = InMemoryHandler(file, tree, group_name=datasets)
     index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(

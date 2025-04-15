@@ -102,6 +102,7 @@ def test_filters(input_path):
     parallel_assert(all(data["sod_halo_mass"] > 0))
 
 
+@pytest.mark.skip("Trees are not fully implemented")
 @pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD

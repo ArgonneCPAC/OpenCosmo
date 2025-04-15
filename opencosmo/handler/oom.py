@@ -18,7 +18,7 @@ class OutOfMemoryHandler:
     disk until needed
     """
 
-    def __init__(self, file: h5py.File, tree: Tree, group_name: Optional[str] = None):
+    def __init__(self, file: h5py.File, tree: Optional[Tree] = None, group_name: Optional[str] = None):
         self.__group_name = group_name
         self.__file = file
         if group_name is None:
@@ -40,12 +40,14 @@ class OutOfMemoryHandler:
 
     def collect(self, columns: Iterable[str], index: DataIndex) -> InMemoryHandler:
         file_path = self.__file.filename
-        if len(index) == len(self):
-            tree = self.__tree
-        else:
+        tree: Optional[Tree] = None
+        if self.__tree is not None and len(index) == len(self):
             mask = np.zeros(len(self), dtype=bool)
             mask = index.set_data(mask, True)
             tree = self.__tree.apply_mask(mask)
+        
+        else:
+            tree = self.__tree
 
         with h5py.File(file_path, "r") as file:
             return InMemoryHandler(
@@ -73,11 +75,11 @@ class OutOfMemoryHandler:
         for column in columns:
             write_index(self.__group[column], data_group, index)
 
-        tree_mask = np.zeros(len(self), dtype=bool)
-        tree_mask = index.set_data(tree_mask, True)
-
-        tree = self.__tree.apply_mask(tree_mask)
-        tree.write(group)
+        if self.__tree is not None:
+            tree_mask = np.zeros(len(self), dtype=bool)
+            tree_mask = index.set_data(tree_mask, True)
+            tree = self.__tree.apply_mask(tree_mask)
+            tree.write(group)
 
     def get_data(self, builders: dict, index: DataIndex) -> Column | Table:
         """ """

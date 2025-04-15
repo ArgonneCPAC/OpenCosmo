@@ -65,7 +65,7 @@ class MPIHandler:
     def __init__(
         self,
         file: h5py.File,
-        tree: Tree,
+        tree: Optional[Tree] = None,
         group_name: Optional[str] = None,
         comm=MPI.COMM_WORLD,
     ):
@@ -164,10 +164,9 @@ class MPIHandler:
 
         mask = np.zeros(len(self), dtype=bool)
         mask = index.set_data(mask, True)
-
-        new_tree = self.__tree.apply_mask(mask, self.__comm, index.range())
-
-        new_tree.write(group)  # type: ignore
+        if self.__tree is not None:
+            new_tree = self.__tree.apply_mask(mask, self.__comm, index.range())
+            new_tree.write(group)  # type: ignore
 
         self.__comm.Barrier()
 

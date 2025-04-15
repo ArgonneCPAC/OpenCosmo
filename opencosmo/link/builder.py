@@ -9,7 +9,6 @@ from opencosmo.dataset.column import get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.handler import OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.spatial import read_tree
 from opencosmo.transformations import units as u
 
 try:
@@ -93,7 +92,8 @@ class OomDatasetBuilder:
         header: OpenCosmoHeader,
         index: Optional[DataIndex] = None,
     ) -> Dataset:
-        tree = read_tree(file, header)
+        # tree = read_tree(file, header)
+        tree = None
         builders, base_unit_transformations = u.get_default_unit_transformations(
             file, header
         )

@@ -33,7 +33,8 @@ class MpiLinkHandler:
         self.header = header
         self.comm = comm
         if builder is None:
-            tree = read_tree(file, self.header)
+            # tree = read_tree(file, self.header)
+            tree = None
             self.builder: DatasetBuilder = MpiDatasetBuilder(tree, comm=comm)
         else:
             self.builder = builder
@@ -154,7 +155,7 @@ class MpiDatasetBuilder:
 
     def __init__(
         self,
-        tree: Tree,
+        tree: Optional[Tree] = None,
         selected: Optional[set[str]] = None,
         unit_convention: Optional[str] = None,
         comm: MPI.Comm = MPI.COMM_WORLD,
