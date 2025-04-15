@@ -11,12 +11,12 @@ OpenCosmo will automatically detect if it is operating within an MPI process. Ea
 
 I/O with Parallel HDF5
 ----------------------
-Reading HDF5 data in parallel requires no additional work on your part. However parallel writes require that you have a copy of HDF5 on your system that has been compiled with parallel write support turned on. h5py does *not* come with this version of HDF5 by default. To install it, you will need to uninstall the version of h5py that is installed in your Python environment and manually re-install with MPI support enabled. As long as you have an appropriate C compiler on your system this should be straightforward. See `this entry in the h5py documentation <https://docs.h5py.org/en/latest/build.html#custom-installation>`_ for more details. 
+Reading HDF5 data in parallel requires no additional work on your part. However parallel writes require that you have a copy of HDF5 on your system that has been compiled with parallel write support turned on. See :doc:`installation` for details on how to install a parallel version of hdf5 on your system.
 
 Transformations Must be Consistent Across Ranks
 ------------------------------------------------
 
-The OpenCosmo MPI routines should only be used to perform operations that would take prohibitively long on a single thread. You should always perform the same operations on your dataset on all ranks, and then write the output to a new file. If you perform different operations on the same dataset the results may still write but may not be what you expect.
+The OpenCosmo MPI routines should only be used to perform operations that would take prohibitively long on a single thread. You should always perform the same operations on your dataset on all ranks, and then write the output to a new file. If you perform different operations on the same dataset the results may still write but may not be what you expect. In the worst-case scenario the process will hang.
 
 "Take" Operations
 -----------------

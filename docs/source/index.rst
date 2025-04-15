@@ -25,7 +25,11 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    main_api
    collections
    units
-   dataset
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Advanced Usage
+
    mpi
 
 .. toctree::
