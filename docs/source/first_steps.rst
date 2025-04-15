@@ -48,7 +48,7 @@ Although you can access data directly, :code:`opencosmo` provides tools for quer
 
    dataset = dataset
        .filter(oc.col("fof_halo_mass") > 1e13)
-       .take(1000, at="random")
+       .take(1000)
        .select("fof_halo_mass", "sod_halo_cdelta")
 
    print(dataset)
