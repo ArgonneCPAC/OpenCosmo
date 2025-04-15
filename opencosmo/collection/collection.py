@@ -244,7 +244,6 @@ def open_single_dataset(
     if header is None:
         header = read_header(file[dataset_key])
 
-
     # tree = read_tree(file[dataset_key], header)
     tree = None
     handler: OpenCosmoDataHandler
@@ -273,10 +272,10 @@ def read_single_dataset(
 
     if header is None:
         header = read_header(file[dataset_key])
-    
+
     # tree = read_tree(file[dataset_key], header)
     tree = None
-        
+
     handler = InMemoryHandler(file, tree, dataset_key)
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header

@@ -18,7 +18,12 @@ class OutOfMemoryHandler:
     disk until needed
     """
 
-    def __init__(self, file: h5py.File, tree: Optional[Tree] = None, group_name: Optional[str] = None):
+    def __init__(
+        self,
+        file: h5py.File,
+        tree: Optional[Tree] = None,
+        group_name: Optional[str] = None,
+    ):
         self.__group_name = group_name
         self.__file = file
         if group_name is None:
@@ -45,7 +50,7 @@ class OutOfMemoryHandler:
             mask = np.zeros(len(self), dtype=bool)
             mask = index.set_data(mask, True)
             tree = self.__tree.apply_mask(mask)
-        
+
         else:
             tree = self.__tree
 
