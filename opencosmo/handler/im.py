@@ -22,7 +22,7 @@ class InMemoryHandler:
     def __init__(
         self,
         file: h5py.File,
-        tree: Tree,
+        tree: Optional[Tree] = None,
         group_name: Optional[str] = None,
         columns: Optional[Iterable[str]] = None,
         index: Optional[DataIndex] = None,
@@ -61,7 +61,10 @@ class InMemoryHandler:
         }
         mask = np.zeros(len(self), dtype=bool)
         mask = index.set_data(mask, True)
-        tree = self.__tree.apply_mask(mask)
+        if self.__tree is not None:
+            tree = self.__tree.apply_mask(mask)
+        else:
+            tree = None
         return InMemoryHandler(new_data, tree)
 
     def write(
@@ -84,8 +87,9 @@ class InMemoryHandler:
             if self.__columns[column] is not None:
                 data_group[column].attrs["unit"] = self.__columns[column]
         mask = np.zeros(len(self), dtype=bool)
-        tree = self.__tree.apply_mask(mask)
-        tree.write(group, dataset_name="index")
+        if self.__tree is not None:
+            tree = self.__tree.apply_mask(mask)
+            tree.write(group, dataset_name="index")
 
     def get_data(
         self,

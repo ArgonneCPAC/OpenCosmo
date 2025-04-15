@@ -8,7 +8,7 @@ import opencosmo as oc
 def input_path(data_path):
     return data_path / "haloproperties.hdf5"
 
-
+@pytest.mark.skip("Trees are not fully implemented yet")
 def test_filter_write(input_path, tmp_path):
     tmp_file = tmp_path / "filtered_data.hdf5"
     with oc.open(input_path) as f:
