@@ -27,11 +27,13 @@ A Structure Collection contains datasets of multiple types that are linked toget
    for halo, particles in data.objects():
       # do work
 
-At each iteration of the loop, "halo" will be a dictionary of the properties of a singe halo, while "particles" will be a dictionary of :py:class:`oc.Dataset`, one for each particle species.
+At each iteration of the loop, "halo" will be a dictionary of the properties of a singlee halo (with units), while "particles" will be a dictionary of :py:class:`oc.Dataset`, one for each particle species.
 
 If you don't need all the particle species, you can always select one or multiple that you actually care about when you do the iteration:
-for halo, dm_particles in data.objects(["dm_particles"]):
-   # do work
+
+.. code-block:: python
+   for halo, dm_particles in data.objects(["dm_particles"]):
+      # do work
 
 Where dm_particles will now be a dataset containing the dark matter particles for the given halo.
 

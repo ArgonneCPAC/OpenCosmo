@@ -6,7 +6,7 @@ The Dataset is the core construct in OpenCosmo. It provides convineience functio
 Reading a Dataset
 ------------------
 
-Datasets can be created with :py:func:`opencosmo.read` or :py:func:`opencosmo.open`. Use read if you're working with a small amount of data, and it's not a problem to load it all into memory at once. Use open if the dataset is large and you plan to filter it down. For more details, see :doc:`read`.
+Datasets can be created with :py:func:`opencosmo.read` or :py:func:`opencosmo.open`. Use read if you're working with a small amount of data, and it's not a problem to load it all into memory at once. Use open if the dataset is large and you plan to filter it down. For more details, see :doc:`io`.
 
 Working with Datasets
 ---------------------
@@ -105,8 +105,6 @@ Note that transforming a dataset always produces a new dataset. The original dat
       36           9.66428         4.1855025 ...         -101.0   0.026431121   34102674
       50          9.484544         51.750984 ...         -101.0   0.024551544   39497092
 
-.. autoclass:: opencosmo.Dataset
-   :members:
 
 
  

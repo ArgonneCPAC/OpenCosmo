@@ -4,7 +4,8 @@ from typing import Generator, Iterable, Optional
 
 import h5py
 from astropy import units  # type: ignore
-from astropy.table import Table  # type: ignore
+from astropy.table import Table, Column # type: ignore
+from astropy.cosmology import Cosmology # type: ignore
 
 import opencosmo.transformations as t
 import opencosmo.transformations.units as u
@@ -29,14 +30,6 @@ class Dataset:
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
         self.__index = index
-
-    @property
-    def header(self) -> OpenCosmoHeader:
-        return self.__header
-
-    @property
-    def index(self) -> DataIndex:
-        return self.__index
 
     def __repr__(self):
         """
@@ -67,111 +60,40 @@ class Dataset:
         return self.__handler.__exit__()
 
     @property
-    def cosmology(self):
+    def cosmology(self) ->  Cosmology:
+        """
+        The cosmology of the simulation this dataset is drawn from as
+        an astropy.cosmology.Cosmology object.
+
+        Returns
+        -------
+        cosmology : astropy.cosmology.Cosmology
+        """
         return self.__header.cosmology
 
     @property
-    def data(self):
+    def data(self) -> Table | Column:
+        """
+        The data in the dataset. This will be an astropy.table.Table or 
+        astropy.table.Column (if there is only one column selected).
+
+        Returns
+        -------
+        data : astropy.table.Table or astropy.table.Column
+            The data in the dataset. 
+
+        """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
         return self.__handler.get_data(builders=self.__builders, index=self.__index)
 
-    def write(
-        self,
-        file: h5py.File | h5py.Group,
-        dataset_name: Optional[str] = None,
-        with_header=True,
-    ) -> None:
-        """
-        Write the dataset to a file. This should not be called directly for the user.
-        The opencosmo.write file writer automatically handles the file context.
+    @property
+    def header(self) -> OpenCosmoHeader:
+        return self.__header
 
-        Parameters
-        ----------
-        file : h5py.File
-            The file to write to.
-        dataset_name : str
-            The name of the dataset in the file. The default is "data".
-
-        """
-        if not isinstance(file, (h5py.File, h5py.Group)):
-            raise AttributeError(
-                "Dataset.write should not be called directly, "
-                "use opencosmo.write instead."
-            )
-
-        if with_header:
-            write_header(file, self.__header, dataset_name)
-
-        self.__handler.write(file, self.__index, self.__builders.keys(), dataset_name)
-
-    def rows(self) -> Generator[dict[str, float | units.Quantity]]:
-        """
-        Iterate over the rows in the dataset. Returns a dictionary of values
-        for each row, with associated units. For performance it is recommended
-        that you first select the columns you need to work with.
-
-        Yields
-        -------
-        row : dict
-            A dictionary of values for each row in the dataset.
-        """
-        max = len(self)
-        chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
-        if len(chunk_ranges) == 0:
-            chunk_ranges = [(0, 0)]
-        for start, end in chunk_ranges:
-            chunk = self.take_range(start, end)
-
-            chunk_data = chunk.data
-            columns = {
-                k: chunk_data[k].quantity if chunk_data[k].unit else chunk_data[k]
-                for k in chunk_data.keys()
-            }
-            for i in range(len(chunk)):
-                yield {k: v[i] for k, v in columns.items()}
-
-    def take_range(self, start: int, end: int) -> Table:
-        """
-        Get a range of rows from the dataset.
-
-        Parameters
-        ----------
-        start : int
-            The first row to get.
-        end : int
-            The last row to get.
-
-        Returns
-        -------
-        table : astropy.table.Table
-            The table with only the rows from start to end.
-
-        Raises
-        ------
-        ValueError
-            If start or end are negative, or if end is greater than start.
-
-        """
-        if start < 0 or end < 0:
-            raise ValueError("start and end must be positive.")
-        if end < start:
-            raise ValueError("end must be greater than start.")
-        if end > len(self):
-            raise ValueError("end must be less than the length of the dataset.")
-
-        if start < 0 or end > len(self):
-            raise ValueError("start and end must be within the bounds of the dataset.")
-
-        new_index = self.__index.take_range(start, end)
-
-        return Dataset(
-            self.__handler,
-            self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_index,
-        )
+    @property
+    def index(self) -> DataIndex:
+        return self.__index
 
     def filter(self, *masks: Mask) -> Dataset:
         """
@@ -179,13 +101,13 @@ class Dataset:
 
         Parameters
         ----------
-        masks : Mask
-            The Masks to apply to the dataset.
+        *masks : Mask
+            The masks to apply to dataset, constructed with :func:`opencosmo.col`
 
         Returns
         -------
         dataset : Dataset
-            The new dataset with the s applied.
+            The new dataset with the masks applied.
 
         Raises
         ------
@@ -208,13 +130,40 @@ class Dataset:
             new_index,
         )
 
+    def rows(self) -> Generator[dict[str, float | units.Quantity]]:
+        """
+        Iterate over the rows in the dataset. Yields
+        for each row, with associated units. For performance it is recommended
+        that you first select the columns you need to work with.
+
+        Yields
+        -------
+        row : dict
+            A dictionary of values for each row in the dataset with units.
+        """
+        max = len(self)
+        chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
+        if len(chunk_ranges) == 0:
+            chunk_ranges = [(0, 0)]
+        for start, end in chunk_ranges:
+            chunk = self.take_range(start, end)
+
+            chunk_data = chunk.data
+            columns = {
+                k: chunk_data[k].quantity if chunk_data[k].unit else chunk_data[k]
+                for k in chunk_data.keys()
+            }
+            for i in range(len(chunk)):
+                yield {k: v[i] for k, v in columns.items()}
+
+
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
         Select a subset of columns from the dataset.
 
         Parameters
         ----------
-        columns : str or list of str
+        columns : str or list[str]
             The column or columns to select.
 
         Returns
@@ -251,9 +200,119 @@ class Dataset:
             self.__index,
         )
 
+    def take(self, n: int, at: str = "random") -> Dataset:
+        """
+        Take some number of rows from the dataset.
+
+        Can take the first n rows, the last n rows, or n random rows
+        depending on the value of 'at'.
+
+        Parameters
+        ----------
+        n : int
+            The number of rows to take.
+        at : str
+            Where to take the rows from. One of "start", "end", or "random".
+            The default is "random".
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with only the selected rows.
+
+        Raises
+        ------
+        ValueError
+            If n is negative or greater than the number of rows in the dataset,
+            or if 'at' is invalid.
+
+        """
+        new_index = self.__index.take(n, at)
+
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            new_index,
+        )
+
+    def take_range(self, start: int, end: int) -> Table:
+        """
+        Get a range of rows from the dataset.
+
+        Parameters
+        ----------
+        start : int
+            The first row to get.
+        end : int
+            The last row to get.
+
+        Returns
+        -------
+        table : astropy.table.Table
+            The table with only the rows from start to end.
+
+        Raises
+        ------
+        ValueError
+            If start or end are negative or greater than the length of the dataset 
+            or if end is greater than start.
+
+        """
+        if start < 0 or end < 0:
+            raise ValueError("start and end must be positive.")
+        if end < start:
+            raise ValueError("end must be greater than start.")
+        if end > len(self):
+            raise ValueError("end must be less than the length of the dataset.")
+
+        if start < 0 or end > len(self):
+            raise ValueError("start and end must be within the bounds of the dataset.")
+
+        new_index = self.__index.take_range(start, end)
+
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            new_index,
+        )
+
+
+    def write(
+        self,
+        file: h5py.File | h5py.Group,
+        dataset_name: Optional[str] = None,
+        with_header=True,
+    ) -> None:
+        """
+        Write the dataset to a file. This should not be called directly for the user.
+        The opencosmo.write file writer automatically handles the file context.
+
+        Parameters
+        ----------
+        file : h5py.File
+            The file to write to.
+        dataset_name : str
+            The name of the dataset in the file. The default is "data".
+
+        """
+        if not isinstance(file, (h5py.File, h5py.Group)):
+            raise AttributeError(
+                "Dataset.write should not be called directly, "
+                "use opencosmo.write instead."
+            )
+
+        if with_header:
+            write_header(file, self.__header, dataset_name)
+
+        self.__handler.write(file, self.__index, self.__builders.keys(), dataset_name)
+
     def with_units(self, convention: str) -> Dataset:
         """
-        Transform this dataset to a different unit convention
+        Create a new dataset from this one with a different unit convention.
 
         Parameters
         ----------
@@ -316,39 +375,4 @@ class Dataset:
             new_index,
         )
 
-    def take(self, n: int, at: str = "start") -> Dataset:
-        """
-        Take n rows from the dataset.
 
-        Can take the first n rows, the last n rows, or n random rows
-        depending on the value of 'at'.
-
-        Parameters
-        ----------
-        n : int
-            The number of rows to take.
-        at : str
-            Where to take the rows from. One of "start", "end", or "random".
-            The default is "start".
-
-        Returns
-        -------
-        dataset : Dataset
-            The new dataset with only the first n rows.
-
-        Raises
-        ------
-        ValueError
-            If n is negative or greater than the number of rows in the dataset,
-            or if 'at' is invalid.
-
-        """
-        new_index = self.__index.take(n, at)
-
-        return Dataset(
-            self.__handler,
-            self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_index,
-        )

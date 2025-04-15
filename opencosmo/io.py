@@ -118,6 +118,10 @@ def read(
     a copy of it (or a few copies of it) in memory is not a problem. For
     larger datasets, use :py:func:`opencosmo.open`.
 
+    Note that some dataset types cannot be read, due to complexities with
+    how the data is handled. Using :py:func:`opencosmo.open` is recommended
+    for most use cases.
+
     Parameters
     ----------
     file : str or pathlib.Path
@@ -125,7 +129,7 @@ def read(
     datasets : str or list[str], optional
         If the file has multiple datasets, the name of the dataset(s) to read.
         All other datasets will be ignored. If not provided, will read all
-            datasets
+        datasets
 
     Returns
     -------
@@ -161,7 +165,8 @@ def read(
 @file_writer
 def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
     """
-    Write a dataset to a file.
+    Write a dataset to the file at the sepecified path. This will work for
+    any dataset or collection.
 
     Parameters
     ----------
@@ -169,6 +174,15 @@ def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
         The path to the file to write to.
     dataset : oc.Dataset
         The dataset to write.
+
+    Raises
+    ------
+    FileExistsError
+        If the file at the specified path already exists
+    FileNotFoundError
+        If the parent folder of the ouput file does not exist 
+
+
 
     """
     dataset.write(file)

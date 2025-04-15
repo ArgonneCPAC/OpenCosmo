@@ -156,8 +156,19 @@ class StructureCollection:
 
     def with_units(self, convention: str):
         """
-        Apply the given unit convention to the properties dataset and propagate
-        it to the linked datasets.
+        Apply the given unit convention to the collection. 
+        See :py:meth:`opencosmo.Dataset.with_units`
+
+        Parameters
+        ----------
+        convention : str
+            The unit convention to apply. One of "unitless", "scalefree",
+            "comoving", or "physical".
+
+        Returns
+        -------
+        StructureCollection
+            A new collection with the unit convention applied.
         """
         new_properties = self.__properties.with_units(convention)
         new_handlers = {
