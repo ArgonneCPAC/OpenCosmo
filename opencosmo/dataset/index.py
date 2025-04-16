@@ -7,6 +7,8 @@ import numpy as np
 
 T = TypeVar("T", np.ndarray, h5py.Dataset)
 
+class EmptyMaskError(Exception):
+    pass
 
 def all_are_chunked(
     others: tuple[DataIndex, ...],
@@ -116,15 +118,15 @@ class SimpleIndex:
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:
-            raise ValueError(
+            raise np.exceptions.AxisError(
                 f"Mask shape {mask.shape} does not match index size {len(self)}"
             )
 
         if mask.dtype != bool:
-            raise ValueError(f"Mask dtype {mask.dtype} is not boolean")
+            raise TypeError(f"Mask dtype {mask.dtype} is not boolean")
 
         if not mask.any():
-            raise ValueError("Mask is all False")
+            raise EmptyMaskError("Mask is all False")
 
         if mask.all():
             return self

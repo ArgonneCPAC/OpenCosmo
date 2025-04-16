@@ -10,7 +10,7 @@ from astropy.cosmology import Cosmology # type: ignore
 import opencosmo.transformations as t
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
+from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
@@ -117,10 +117,10 @@ class Dataset:
 
         """
 
-        new_index = apply_masks(self.__handler, self.__builders, masks, self.__index)
-
-        if len(new_index) == 0:
-            raise ValueError("The filter returned no rows!")
+        try:
+            new_index = apply_masks(self.__handler, self.__builders, masks, self.__index)
+        except EmptyMaskError:
+            raise ValueError("No rows matched the given filters!")
 
         return Dataset(
             self.__handler,
