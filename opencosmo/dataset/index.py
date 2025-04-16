@@ -345,7 +345,7 @@ class ChunkedIndex:
             raise ValueError(f"Mask dtype {mask.dtype} is not boolean")
 
         if not mask.any():
-            raise ValueError("Mask is all False")
+            raise EmptyMaskError("Mask is all False")
 
         if mask.all():
             return self
