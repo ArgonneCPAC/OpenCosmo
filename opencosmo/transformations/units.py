@@ -66,7 +66,7 @@ def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
 
 
 def get_unit_transition_transformations(
-    convention: str, unit_transformations: t.TransformationDict, cosmology: Cosmology
+    convention: str, unit_transformations: t.TransformationDict, cosmology: Cosmology, redshift: float = 0
 ) -> t.TransformationDict:
     """
     Given a dataset, the user can request a transformation to a different unit
@@ -76,7 +76,7 @@ def get_unit_transition_transformations(
     units = UnitConvention(convention)
     remove_h: t.TableTransformation = partial(remove_littleh, cosmology=cosmology)
     comoving_to_phys: t.TableTransformation = partial(
-        comoving_to_physical, cosmology=cosmology, redshift=0
+        comoving_to_physical, cosmology=cosmology, redshift=redshift
     )
     match units:
         case UnitConvention.COMOVING:
@@ -85,7 +85,6 @@ def get_unit_transition_transformations(
             update_transformations = {
                 t.TransformationType.ALL_COLUMNS: [remove_h, comoving_to_phys]
             }
-            raise NotImplementedError("Physical units not yet implemented")
         case UnitConvention.SCALEFREE:
             update_transformations = {}
         case UnitConvention.UNITLESS:
@@ -168,17 +167,12 @@ def comoving_to_physical(
         decomposed = unit.decompose()
         try:
             index = decomposed.bases.index(u.m)
-        except ValueError:
+        except (ValueError, AttributeError):
             return None
         power = decomposed.powers[index]
         # multiply by the scale factor to the same power as the distance
         a = 1 / (1 + redshift)
         column = column * a**power
-        # Remove references to "com" from the name
-        name_parts = column.name.split("_")
-        if "com" in name_parts:
-            name_parts.remove("com")
-            column.name = "_".join(name_parts)
 
     return column
 

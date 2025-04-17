@@ -104,7 +104,7 @@ class OomDatasetBuilder:
 
         if self.unit_convention != "comoving":
             new_transformations = u.get_unit_transition_transformations(
-                self.unit_convention, base_unit_transformations, header.cosmology
+                self.unit_convention, base_unit_transformations, header.cosmology, header.file.redshift
             )
             builders = get_column_builders(new_transformations, selected)
 
