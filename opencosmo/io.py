@@ -165,7 +165,7 @@ def read(
 @file_writer
 def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
     """
-    Write a dataset or collection to the file at the sepecified path. 
+    Write a dataset or collection to the file at the sepecified path.
 
     Parameters
     ----------
@@ -179,6 +179,6 @@ def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
     FileExistsError
         If the file at the specified path already exists
     FileNotFoundError
-        If the parent folder of the ouput file does not exist 
+        If the parent folder of the ouput file does not exist
     """
     dataset.write(file)

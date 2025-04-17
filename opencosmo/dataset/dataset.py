@@ -4,8 +4,8 @@ from typing import Generator, Iterable, Optional
 
 import h5py
 from astropy import units  # type: ignore
-from astropy.table import Table, Column # type: ignore
-from astropy.cosmology import Cosmology # type: ignore
+from astropy.cosmology import Cosmology  # type: ignore
+from astropy.table import Column, Table  # type: ignore
 
 import opencosmo.transformations as t
 import opencosmo.transformations.units as u
@@ -60,7 +60,7 @@ class Dataset:
         return self.__handler.__exit__()
 
     @property
-    def cosmology(self) ->  Cosmology:
+    def cosmology(self) -> Cosmology:
         """
         The cosmology of the simulation this dataset is drawn from as
         an astropy.cosmology.Cosmology object.
@@ -74,18 +74,20 @@ class Dataset:
     @property
     def data(self) -> Table | Column:
         """
-        The data in the dataset. This will be an astropy.table.Table or 
+        The data in the dataset. This will be an astropy.table.Table or
         astropy.table.Column (if there is only one column selected).
 
         Returns
         -------
         data : astropy.table.Table or astropy.table.Column
-            The data in the dataset. 
+            The data in the dataset.
 
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(builders=self.__builders, index=self.__index)
+        return self.__handler.get_data(
+            column_builders=self.__builders, index=self.__index
+        )
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -95,7 +97,7 @@ class Dataset:
     def index(self) -> DataIndex:
         return self.__index
 
-    def filter(self, *filters: Mask) -> Dataset:
+    def filter(self, *masks: Mask) -> Dataset:
         """
         Filter the dataset based on some criteria.
 
@@ -118,7 +120,9 @@ class Dataset:
         """
 
         try:
-            new_index = apply_masks(self.__handler, self.__builders, masks, self.__index)
+            new_index = apply_masks(
+                self.__handler, self.__builders, masks, self.__index
+            )
         except EmptyMaskError:
             raise ValueError("No rows matched the given filters!")
 
@@ -155,7 +159,6 @@ class Dataset:
             }
             for i in range(len(chunk)):
                 yield {k: v[i] for k, v in columns.items()}
-
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
@@ -256,7 +259,7 @@ class Dataset:
         Raises
         ------
         ValueError
-            If start or end are negative or greater than the length of the dataset 
+            If start or end are negative or greater than the length of the dataset
             or if end is greater than start.
 
         """
@@ -279,7 +282,6 @@ class Dataset:
             self.__base_unit_transformations,
             new_index,
         )
-
 
     def write(
         self,
@@ -374,5 +376,3 @@ class Dataset:
             self.__base_unit_transformations,
             new_index,
         )
-
-

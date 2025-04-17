@@ -175,7 +175,7 @@ class SimulationCollection(dict):
     def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:
         """
         Filter the datasets in the collection. This method behaves
-        exactly like :meth:`opencosmo.Dataset.filter` or 
+        exactly like :meth:`opencosmo.Dataset.filter` or
         :meth:`opencosmo.StructureCollection.filter`, but
         it applies the filter to all the datasets or collections
         within this collection. The result is a new collection.
