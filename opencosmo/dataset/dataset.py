@@ -86,7 +86,7 @@ class Dataset:
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
         return self.__handler.get_data(
-            column_builders=self.__builders, index=self.__index
+            builders=self.__builders, index=self.__index
         )
 
     @property

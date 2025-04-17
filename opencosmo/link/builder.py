@@ -4,7 +4,7 @@ from typing import Iterable, Optional, Protocol, Self
 
 from h5py import File, Group
 
-from opencosmo import Dataset
+import opencosmo as oc
 from opencosmo.dataset.column import get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.handler import OutOfMemoryHandler
@@ -35,7 +35,7 @@ class DatasetBuilder(Protocol):
         file: File | Group,
         header: OpenCosmoHeader,
         index: Optional[DataIndex] = None,
-    ) -> Dataset:
+    ) -> oc.Dataset:
         pass
 
 
@@ -91,7 +91,7 @@ class OomDatasetBuilder:
         file: File | Group,
         header: OpenCosmoHeader,
         index: Optional[DataIndex] = None,
-    ) -> Dataset:
+    ) -> oc.Dataset:
         # tree = read_tree(file, header)
         tree = None
         builders, base_unit_transformations = u.get_default_unit_transformations(
@@ -119,7 +119,7 @@ class OomDatasetBuilder:
         if index is None:
             index = ChunkedIndex.from_size(len(handler))
 
-        dataset = Dataset(
+        dataset = oc.Dataset(
             handler,
             header,
             builders,
