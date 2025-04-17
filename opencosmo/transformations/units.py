@@ -171,7 +171,7 @@ def comoving_to_physical(
             return None
         power = decomposed.powers[index]
         # multiply by the scale factor to the same power as the distance
-        a = 1 / (1 + redshift)
+        a = cosmology.scale_factor(redshift)
         column = column * a**power
 
     return column
