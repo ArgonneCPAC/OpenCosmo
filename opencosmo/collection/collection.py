@@ -114,9 +114,6 @@ class SimulationCollection(dict):
     def __init__(self, datasets: Mapping[str, oc.Dataset | Collection]):
         self.update(datasets)
 
-    def as_dict(self) -> dict[str, oc.Dataset]:
-        return self
-
     def __enter__(self):
         return self
 
@@ -163,8 +160,6 @@ class SimulationCollection(dict):
         datasets = {name: read_single_dataset(file, name) for name in names}
         return cls(datasets)
 
-    datasets = dict.values
-
     def write(self, h5file: h5py.File):
         return write_with_unique_headers(self, h5file)
 
@@ -180,7 +175,8 @@ class SimulationCollection(dict):
     def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:
         """
         Filter the datasets in the collection. This method behaves
-        exactly like :meth:`opencosmo.Dataset.filter`, except that
+        exactly like :meth:`opencosmo.Dataset.filter` or 
+        :meth:`opencosmo.StructureCollection.filter`, but
         it applies the filter to all the datasets or collections
         within this collection. The result is a new collection.
 
@@ -204,6 +200,16 @@ class SimulationCollection(dict):
         :class:`opencosmo.Collection` depending on the context. As such
         its behavior and arguments can vary depending on what this collection
         contains.
+
+        Parameters
+        ----------
+        args:
+            The arguments to pass to the select method. This is
+            usually a list of column names to select.
+        kwargs:
+            The keyword arguments to pass to the select method.
+            This is usually a dictionary of column names to select.
+
         """
         return self.__map("select", *args, **kwargs)
 

@@ -95,7 +95,7 @@ class Dataset:
     def index(self) -> DataIndex:
         return self.__index
 
-    def filter(self, *masks: Mask) -> Dataset:
+    def filter(self, *filters: Mask) -> Dataset:
         """
         Filter the dataset based on some criteria.
 

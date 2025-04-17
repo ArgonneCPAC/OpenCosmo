@@ -20,8 +20,11 @@ You can also have work with a datasets in multiple unit conventions at the same 
 
    import opencosmo as oc
 
-   ds = oc.read("galaxyproperties.hdf5", units="physical")
-   ds_comoving = ds.with_units("comoving")
+   # comoving is the default
+   ds_comoving = oc.read("galaxyproperties.hdf5")
+   ds_physical = ds_comoving.with_units("physical")
+   # ds_comoving is not changed
+
 
 
 When you filter a dataset with :py:meth:`opencosmo.Dataset.filter`, the filtering will be performed in the same unit convention as the dataset. If you provide a unitless value to a filter, it will be interpreted as a value with the same units as the column in question.
@@ -30,7 +33,7 @@ When you filter a dataset with :py:meth:`opencosmo.Dataset.filter`, the filterin
 
    import opencosmo as oc
 
-   ds = oc.read("haloproperties.hdf5", units="scalefree")
+   ds = oc.read("haloproperties.hdf5").with_units("scalefree")
    ds_filtered = ds.filter(ds.col("fof_halo_mass") > 1e10)
    # This will filter out halos with mass greater than 1e10 * h^-1 Msun
    ds_comoving = ds.with_units("comoving")
@@ -43,7 +46,7 @@ If you change unit conventions after performing a filter, the filter will still 
 
    import opencosmo as oc
    
-   ds = oc.read("haloproperties.hdf5", units="scalefree")
+   ds = oc.read("haloproperties.hdf5").with_units("scalefree")
    ds_filtered = ds.filter(ds.col("fof_halo_mass") > 1e10).with_units("comoving")
    print(ds_filtered.data["fof_halo_mass"].min())
 
