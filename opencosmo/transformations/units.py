@@ -66,7 +66,10 @@ def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
 
 
 def get_unit_transition_transformations(
-    convention: str, unit_transformations: t.TransformationDict, cosmology: Cosmology, redshift: float = 0
+    convention: str,
+    unit_transformations: t.TransformationDict,
+    cosmology: Cosmology,
+    redshift: float = 0,
 ) -> t.TransformationDict:
     """
     Given a dataset, the user can request a transformation to a different unit

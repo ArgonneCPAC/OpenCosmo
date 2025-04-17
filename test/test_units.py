@@ -21,9 +21,11 @@ def add_column(tmp_path: Path, original_file: Path, column: Column):
             data[column.name].attrs["unit"] = str(column.unit)
     return new_path
 
+
 @pytest.fixture
 def haloproperties_step_path(data_path):
     return data_path / "haloproperties_step310.hdf5"
+
 
 @pytest.fixture
 def galaxy_input_path(data_path):
@@ -60,6 +62,7 @@ pytestmark = pytest.mark.parametrize(
     indirect=True,
 )
 
+
 def test_physcal_units(haloproperties_step_path, input_path):
     # need a redshift != 0 test set
     ds = read(haloproperties_step_path)
@@ -70,12 +73,12 @@ def test_physcal_units(haloproperties_step_path, input_path):
     data = ds.data
     cols = data.columns
     z = ds.header.file.redshift
-    
+
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     position_cols = filter(lambda col: "angmom" not in col, position_cols)
     assert z != 0
     for col in position_cols:
-        assert data_physical[col].unit == u.Mpc 
+        assert data_physical[col].unit == u.Mpc
         assert data[col].unit == u.Mpc
         assert np.all(
             data_physical[col].value == data[col].value * ds.cosmology.scale_factor(z)
