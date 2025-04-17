@@ -4,8 +4,9 @@ from typing import Iterable, Optional, Type
 
 from h5py import File, Group
 
-import opencosmo as oc
+from opencosmo import dataset as d
 from opencosmo import link as l
+from opencosmo import io
 from opencosmo.header import OpenCosmoHeader, read_header
 
 try:
@@ -100,8 +101,8 @@ def open_linked_files(*files: Path):
         if header.file.data_type == properties_file
     )
     properties_file = file_handles.pop(properties_index)
-    properties_dataset = oc.open(properties_file)
-    if not isinstance(properties_dataset, oc.Dataset):
+    properties_dataset = io.open(properties_file)
+    if not isinstance(properties_dataset, d.Dataset):
         raise ValueError(
             "Properties file must contain a single dataset, but found more"
         )
@@ -148,8 +149,8 @@ def open_linked_file(
     if not other_datasets:
         raise ValueError("No linked datasets found in file")
     linked_groups_by_type = {name: file_handle[name] for name in other_datasets}
-    properties_dataset = oc.open(file_handle[properties_name])
-    if not isinstance(properties_dataset, oc.Dataset):
+    properties_dataset = io.open(file_handle[properties_name])
+    if not isinstance(properties_dataset, d.Dataset):
         raise ValueError("Properties dataset must be a single dataset")
 
     return get_linked_datasets(
@@ -158,7 +159,7 @@ def open_linked_file(
 
 
 def get_linked_datasets(
-    properties_dataset: oc.Dataset,
+    properties_dataset: d.Dataset,
     linked_files_by_type: dict[str, File | Group],
     properties_file: File,
 ) -> l.StructureCollection:

@@ -39,19 +39,19 @@ def test_multi_filter(multi_path):
     collection = oc.read(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
 
-    for ds in collection.datasets():
+    for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
 
 
 def test_multi_filter_write(multi_path, tmp_path):
     collection = oc.read(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
-    for ds in collection.datasets():
+    for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
     oc.write(tmp_path / "filtered.hdf5", collection)
 
     collection = oc.read(tmp_path / "filtered.hdf5")
-    for ds in collection.datasets():
+    for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
 
 
@@ -91,8 +91,8 @@ def test_data_link_selection(halo_paths):
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
         10, at="random"
     )
-    collection = collection.select("dm_particles", ["x", "y", "z"])
-    collection = collection.select("halo_properties", ["fof_halo_tag", "sod_halo_mass"])
+    collection = collection.select( ["x", "y", "z"], dataset="dm_particles")
+    collection = collection.select(["fof_halo_tag", "sod_halo_mass"])
     found_dm_particles = False
     for properties, particles in collection.objects():
         assert set(properties.keys()) == {"fof_halo_tag", "sod_halo_mass"}

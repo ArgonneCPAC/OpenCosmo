@@ -49,6 +49,6 @@ class OpenCosmoDataHandler(Protocol):
     ) -> None: ...
     def get_data(
         self,
-        column_builders: dict[str, ColumnBuilder],
+        builders: dict[str, ColumnBuilder],
         index: DataIndex,
     ) -> Column | Table: ...
