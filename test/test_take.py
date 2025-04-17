@@ -12,7 +12,7 @@ def input_path(data_path):
 def test_take_front(input_path):
     ds = read(input_path)
     data = ds.data
-    ds = ds.take(10)
+    ds = ds.take(10, at="start")
     short_data = ds.data
 
     assert len(short_data) == 10
@@ -46,7 +46,7 @@ def test_take_random(input_path):
 def test_take_chain(input_path):
     ds = read(input_path)
     long_data = ds.data
-    ds = ds.take(50)
+    ds = ds.take(50, at="start")
     ds = ds.take(10, at="end")
     short_data = ds.data
     long_data = long_data[40:50]
