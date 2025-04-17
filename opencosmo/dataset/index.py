@@ -7,8 +7,10 @@ import numpy as np
 
 T = TypeVar("T", np.ndarray, h5py.Dataset)
 
+
 class EmptyMaskError(Exception):
     pass
+
 
 def all_are_chunked(
     others: tuple[DataIndex, ...],

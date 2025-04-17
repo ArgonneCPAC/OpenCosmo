@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional
 
+import astropy  # type: ignore
 from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo import link as l
-import astropy
 
 
 def filter_properties_by_dataset(
@@ -81,7 +81,6 @@ class StructureCollection:
         """
         return self.__properties
 
-
     def keys(self) -> list[str]:
         """
         Return the keys of the linked datasets.
@@ -127,21 +126,22 @@ class StructureCollection:
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
         """
-        Apply a filter to the properties dataset and propagate it to the linked 
-        datasets. Filters are constructed with :py:func:`opencosmo.col` and behave 
-        exactly as they would in `opencosmo.Dataset.filter`. 
+        Apply a filter to the properties dataset and propagate it to the linked
+        datasets. Filters are constructed with :py:func:`opencosmo.col` and behave
+        exactly as they would in `opencosmo.Dataset.filter`.
 
         If the collection contains both halos and galaxies, the filter can be applied to
-        the galaxy properties dataset by setting `on_galaxies=True`. However this will 
-        filter for *halos* that host galaxies that match this filter. As a result, 
-        galxies that do not match this filter will remain if another galaxy in their 
+        the galaxy properties dataset by setting `on_galaxies=True`. However this will
+        filter for *halos* that host galaxies that match this filter. As a result,
+        galxies that do not match this filter will remain if another galaxy in their
         host halo does match.
 
 
         Parameters
         ----------
         *filters: Mask
-            The filters to apply to the properties dataset constructed with :func:`opencosmo.col`.
+            The filters to apply to the properties dataset constructed with
+            :func:`opencosmo.col`.
 
         on_galaxies: bool, optional
             If True, the filter is applied to the galaxy properties dataset.
@@ -154,12 +154,15 @@ class StructureCollection:
         Raises
         -------
         ValueError
-            If on_galaxies is True but the collection does not contain 
+            If on_galaxies is True but the collection does not contain
             a galaxy properties dataset.
         """
         if not masks:
             return self
-        if not on_galaxies or self.__properties.header.file.data_type == "galaxy_properties":
+        if (
+            not on_galaxies
+            or self.__properties.header.file.data_type == "galaxy_properties"
+        ):
             filtered = self.__properties.filter(*masks)
         elif "galaxy_properties" not in self.__handlers:
             raise ValueError("Dataset galaxy_properties not found in collection.")
@@ -172,8 +175,9 @@ class StructureCollection:
             self.__handlers,
         )
 
-
-    def select(self, columns: str | Iterable[str], dataset: Optional[str] = None) -> StructureCollection:
+    def select(
+        self, columns: str | Iterable[str], dataset: Optional[str] = None
+    ) -> StructureCollection:
         """
         Update the linked collection to only include the columns specified
         in the given dataset. If no dataset is specified, the properties dataset
@@ -214,7 +218,7 @@ class StructureCollection:
 
     def with_units(self, convention: str):
         """
-        Apply the given unit convention to the collection. 
+        Apply the given unit convention to the collection.
         See :py:meth:`opencosmo.Dataset.with_units`
 
         Parameters
@@ -240,8 +244,8 @@ class StructureCollection:
 
     def take(self, n: int, at: str = "random"):
         """
-        Take some number of structures from the collection. 
-        See :py:meth:`opencosmo.Dataset.take`. 
+        Take some number of structures from the collection.
+        See :py:meth:`opencosmo.Dataset.take`.
 
         Parameters
         ----------
@@ -266,7 +270,7 @@ class StructureCollection:
         self, data_types: Optional[Iterable[str]] = None
     ) -> Iterable[tuple[dict[str, Any], oc.Dataset | dict[str, oc.Dataset]]]:
         """
-        Iterate over the objects in this collection as pairs of 
+        Iterate over the objects in this collection as pairs of
         (properties, datasets). For example, a halo collection could yield
         the halo properties and datasets for each of the associated partcles.
 
@@ -274,12 +278,13 @@ class StructureCollection:
         for example:
 
         .. code-block:: python
-            
-            for row, particles in collection.objects(data_types=["gas_particles", "star_particles"]):
+
+            for row, particles in
+                collection.objects(data_types=["gas_particles", "star_particles"]):
                 # do work
 
-        At each iteration, "row" will be a dictionary of halo properties with associated 
-        units, and "particles" will be a dictionary of datasets with the same keys as 
+        At each iteration, "row" will be a dictionary of halo properties with associated
+        units, and "particles" will be a dictionary of datasets with the same keys as
         the data types.
         """
         if data_types is None:
