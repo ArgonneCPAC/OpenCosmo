@@ -57,6 +57,11 @@ pytestmark = pytest.mark.parametrize(
     indirect=True,
 )
 
+def test_physcal_units(input_path):
+    # need a redshift != 0 test set
+    data = read(input_path).with_units("physical").data
+    assert data is not None
+    assert False
 
 def test_logarithmic_units(input_path):
     dataset = read(input_path)

@@ -268,7 +268,7 @@ class Dataset:
 
         """
         new_transformations = u.get_unit_transition_transformations(
-            convention, self.__base_unit_transformations, self.__header.cosmology
+            convention, self.__base_unit_transformations, self.__header.cosmology, self.__header.file.redshift
         )
         new_builders = get_column_builders(new_transformations, self.__builders.keys())
 
