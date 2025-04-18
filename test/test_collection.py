@@ -172,6 +172,12 @@ def test_link_write(halo_paths, tmp_path):
 
     assert n == 10
 
+def test_simulation_collection_broadcast_attribute(multi_path):
+    collection = oc.read(multi_path)
+    for key, value in collection.redshift.items():
+        assert isinstance(key, str)
+        assert isinstance(value, float)
+
 
 def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
     galaxies_1 = open_linked_files(*galaxy_paths)

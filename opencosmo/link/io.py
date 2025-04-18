@@ -113,7 +113,7 @@ def open_linked_files(*files: Path):
     if len(linked_files_by_type) != len(linked_files):
         raise ValueError("Linked files must have unique data types")
     return get_linked_datasets(
-        properties_dataset, linked_files_by_type, properties_file
+        properties_dataset, linked_files_by_type, properties_file, headers[properties_index]
     )
 
 
@@ -126,6 +126,8 @@ def open_linked_file(
     properties_name = list(
         filter(lambda name: "properties" in name, file_handle.keys())
     )
+
+    header = read_header(file_handle)
     if len(properties_name) == 2:
         if (
             "galaxy_properties" in properties_name
@@ -154,7 +156,7 @@ def open_linked_file(
         raise ValueError("Properties dataset must be a single dataset")
 
     return get_linked_datasets(
-        properties_dataset, linked_groups_by_type, file_handle[properties_name]
+        properties_dataset, linked_groups_by_type, file_handle[properties_name], header
     )
 
 
@@ -162,6 +164,7 @@ def get_linked_datasets(
     properties_dataset: d.Dataset,
     linked_files_by_type: dict[str, File | Group],
     properties_file: File,
+    header: OpenCosmoHeader
 ) -> l.StructureCollection:
     datasets = {}
     for dtype, pointer in linked_files_by_type.items():
@@ -171,7 +174,7 @@ def get_linked_datasets(
             datasets.update({dtype: pointer})
 
     link_handlers = get_link_handlers(
-        properties_file, datasets, properties_dataset.header
+        properties_file, datasets, header
     )
     output = {}
     for key, handler in link_handlers.items():
@@ -180,7 +183,7 @@ def get_linked_datasets(
         else:
             output[key] = handler
 
-    return l.StructureCollection(properties_dataset, output)
+    return l.StructureCollection(properties_dataset, header, output)
 
 
 def get_link_handlers(

@@ -12,12 +12,14 @@ except ImportError:
 
 import h5py
 
+from astropy.cosmology import Cosmology
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.link import StructureCollection
+from opencosmo.parameters import SimulationParameters
 from opencosmo.transformations import units as u
 
 
@@ -135,6 +137,7 @@ class SimulationCollection(dict):
             f"SimulationCollection({n_collections} collections, {n_datasets} datasets)"
         )
 
+
     @classmethod
     def open(
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
@@ -171,6 +174,44 @@ class SimulationCollection(dict):
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
         return SimulationCollection(output)
+
+    def __map_attribute(self, attribute):
+        return {k: getattr(v, attribute) for k, v in self.items()}
+
+    @property
+    def cosmology(self) -> dict[str, Cosmology]:
+        """
+        Get the cosmologies of the simulations in the collection
+
+        Returns:
+        --------
+        cosmologies: dict[str, astropy.cosmology.Cosmology]
+        """
+        return self.__map_attribute("cosmology")
+
+    @property
+    def redshift(self) -> dict[str, float]:
+        """
+        Get the redshift slices for the simulations in the collection
+
+        Returns:
+        --------
+        redshifts: dict[str, float]
+        """
+        return self.__map_attribute("redshift")
+
+    @property
+    def simulation(self) -> dict[str, SimulationParameters]:
+        """
+        Get the simulation parameters for the simulations in the collection
+
+        Returns:
+        --------
+        simulation_parameters: dict[str, opencosmo.parameters.SimulationParameters]
+        """
+
+        return self.__map_attribute("simulation")
+
 
     def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:
         """
