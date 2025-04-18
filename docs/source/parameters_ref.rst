@@ -1,7 +1,7 @@
 Simulation Parameters
 =====================
 
-You can access the parameters of the simulation any dataset is drawn from with :py:attr:`opencosmo.Dataset.simulation`. All datasets regardless of simulation will have the parameters in :py:class:`opencosmo.parameters.SimulationParameters`. Hydrodynamic simulations will additionally contain the parameters in :py:class:`opencosmo.parameters.SubgridParameters`
+You can access the parameters of the simulation any dataset is drawn from with :py:attr:`opencosmo.Dataset.simulation`. All datasets regardless of simulation will have the parameters in :py:class:`opencosmo.parameters.SimulationParameters`. Hydrodynamic simulations will additionally contain the parameters in :py:class:`opencosmo.parameters.HydroSimulationParameters`
 
 
 .. autoclass:: opencosmo.parameters.SimulationParameters
