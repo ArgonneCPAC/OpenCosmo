@@ -73,24 +73,13 @@ class Dataset:
         return self.__header.cosmology
 
     @property
-    def dtype(self) -> str:
+    def redshift(self) -> float:
         """
-        Get the data type of this dataset
+        The redshift slice this dataset was drawn from
 
         Returns
         -------
-        dtype: str
-        """
-        return self.__header.file.data_type
-
-    @property
-    def redshift(self) -> float:
-        """
-        Get the redshift slice this dataset was drawn from
-
-        Returns:
-        --------
-        redshift: gloat
+        redshift: float
 
         """
         return self.__header.file.redshift
@@ -98,7 +87,7 @@ class Dataset:
     @property
     def simulation(self) -> SimulationParameters:
         """
-        Get the parameters of the simulation this dataset is drawn
+        The parameters of the simulation this dataset is drawn
         from.
 
         Returns

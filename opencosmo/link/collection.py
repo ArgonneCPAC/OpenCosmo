@@ -59,6 +59,9 @@ class StructureCollection:
         dtype_str = ", ".join(self.__handlers.keys())
         return f"Collection of {structure_type} with linked datasets {dtype_str}"
 
+    def __len__(self):
+        return len(self.__properties)
+
     @classmethod
     def open(
         cls, file: File, datasets_to_get: Optional[Iterable[str]] = None

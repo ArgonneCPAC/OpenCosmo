@@ -11,8 +11,13 @@ def cosmology_resource_path(data_path):
 
 
 @pytest.fixture
-def properties_path(data_path):
+def halo_properties_path(data_path):
     return data_path / "haloproperties.hdf5"
+
+@pytest.fixture
+def galaxy_properties_path(data_path):
+    return data_path / "galaxyproperties.hdf5"
+
 
 
 def test_write_header(data_path, tmp_path):
@@ -32,8 +37,8 @@ def test_write_header(data_path, tmp_path):
     )
 
 
-def test_write_dataset(properties_path, tmp_path):
-    ds = read(properties_path)
+def test_write_dataset(halo_properties_path, tmp_path):
+    ds = read(halo_properties_path)
     new_path = tmp_path / "haloproperties.hdf5"
     write(new_path, ds)
 
@@ -41,8 +46,8 @@ def test_write_dataset(properties_path, tmp_path):
     assert all(ds.data == new_ds.data)
 
 
-def test_after_take_filter(properties_path, tmp_path):
-    ds = read(properties_path).take(10000)
+def test_after_take_filter(halo_properties_path, tmp_path):
+    ds = read(halo_properties_path).take(10000)
     ds = ds.filter(col("sod_halo_mass") > 0)
     filtered_data = ds.data
 
@@ -51,8 +56,8 @@ def test_after_take_filter(properties_path, tmp_path):
     assert all(filtered_data == new_ds.data)
 
 
-def test_after_take(properties_path, tmp_path):
-    ds = read(properties_path).take(10000)
+def test_after_take(halo_properties_path, tmp_path):
+    ds = read(halo_properties_path).take(10000)
     data = ds.data
     write(tmp_path / "haloproperties.hdf5", ds)
 
@@ -60,8 +65,8 @@ def test_after_take(properties_path, tmp_path):
     assert all(data == new_ds.data)
 
 
-def test_after_filter(properties_path, tmp_path):
-    ds = read(properties_path)
+def test_after_filter(halo_properties_path, tmp_path):
+    ds = read(halo_properties_path)
     data = ds.data
     ds = ds.filter(col("sod_halo_mass") > 0)
     filtered_data = ds.data
@@ -73,13 +78,13 @@ def test_after_filter(properties_path, tmp_path):
     assert all(filtered_data == new_ds.data)
 
 
-def test_after_unit_transform(properties_path, tmp_path):
-    ds = read(properties_path)
+def test_after_unit_transform(halo_properties_path, tmp_path):
+    ds = read(halo_properties_path)
     ds = ds.with_units("scalefree")
 
     # write should not change the data
     write(tmp_path / "haloproperties.hdf5", ds)
 
-    ds = read(properties_path)
+    ds = read(halo_properties_path)
     new_ds = read(tmp_path / "haloproperties.hdf5")
     assert all(ds.data == new_ds.data)
