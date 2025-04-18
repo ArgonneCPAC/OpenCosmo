@@ -11,7 +11,10 @@ from opencosmo.parameters import SimulationParameters
 
 
 def filter_properties_by_dataset(
-    dataset: oc.Dataset, properties: oc.Dataset, header: oc.header.OpenCosmoHeader, *masks
+    dataset: oc.Dataset,
+    properties: oc.Dataset,
+    header: oc.header.OpenCosmoHeader,
+    *masks,
 ) -> oc.Dataset:
     masked_dataset = dataset.filter(*masks)
     if header.file.data_type == "halo_properties":
@@ -189,10 +192,7 @@ class StructureCollection:
         """
         if not masks:
             return self
-        if (
-            not on_galaxies
-            or self.__properties.header.file.data_type == "galaxy_properties"
-        ):
+        if not on_galaxies or self.__properties.dtype == "galaxy_properties":
             filtered = self.__properties.filter(*masks)
         elif "galaxy_properties" not in self.__handlers:
             raise ValueError("Dataset galaxy_properties not found in collection.")

@@ -29,7 +29,7 @@ def open_simulation_files(**paths: Path) -> SimulationCollection:
         dataset = oc.open(path)
         if not isinstance(dataset, oc.Dataset):
             raise ValueError("All datasets must be of the same type.")
-    dtypes = set(dataset.header.file.data_type for dataset in datasets.values())
+    dtypes = set(dataset for dataset in datasets.values())
     if len(dtypes) != 1:
         raise ValueError("All datasets must be of the same type.")
     return SimulationCollection(datasets)

@@ -68,9 +68,20 @@ class Dataset:
 
         Returns
         -------
-        cosmology : astropy.cosmology.Cosmology
+        cosmology: astropy.cosmology.Cosmology
         """
         return self.__header.cosmology
+
+    @property
+    def dtype(self) -> str:
+        """
+        The data type of this dataset.
+
+        Returns
+        -------
+        dtype: str
+        """
+        return self.__header.file.data_type
 
     @property
     def redshift(self) -> float:
@@ -96,7 +107,6 @@ class Dataset:
         """
         return self.__header.simulation
 
-
     @property
     def data(self) -> Table | Column:
         """
@@ -111,9 +121,7 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(
-            builders=self.__builders, index=self.__index
-        )
+        return self.__handler.get_data(builders=self.__builders, index=self.__index)
 
     @property
     def index(self) -> DataIndex:
@@ -354,7 +362,7 @@ class Dataset:
             convention,
             self.__base_unit_transformations,
             self.__header.cosmology,
-            self.redshift
+            self.redshift,
         )
         new_builders = get_column_builders(new_transformations, self.__builders.keys())
 

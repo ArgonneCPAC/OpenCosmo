@@ -5,8 +5,8 @@ from typing import Iterable, Optional, Type
 from h5py import File, Group
 
 from opencosmo import dataset as d
-from opencosmo import link as l
 from opencosmo import io
+from opencosmo import link as l
 from opencosmo.header import OpenCosmoHeader, read_header
 
 try:
@@ -113,7 +113,10 @@ def open_linked_files(*files: Path):
     if len(linked_files_by_type) != len(linked_files):
         raise ValueError("Linked files must have unique data types")
     return get_linked_datasets(
-        properties_dataset, linked_files_by_type, properties_file, headers[properties_index]
+        properties_dataset,
+        linked_files_by_type,
+        properties_file,
+        headers[properties_index],
     )
 
 
@@ -164,7 +167,7 @@ def get_linked_datasets(
     properties_dataset: d.Dataset,
     linked_files_by_type: dict[str, File | Group],
     properties_file: File,
-    header: OpenCosmoHeader
+    header: OpenCosmoHeader,
 ) -> l.StructureCollection:
     datasets = {}
     for dtype, pointer in linked_files_by_type.items():
@@ -173,9 +176,7 @@ def get_linked_datasets(
         else:
             datasets.update({dtype: pointer})
 
-    link_handlers = get_link_handlers(
-        properties_file, datasets, header
-    )
+    link_handlers = get_link_handlers(properties_file, datasets, header)
     output = {}
     for key, handler in link_handlers.items():
         if key in LINK_ALIASES:

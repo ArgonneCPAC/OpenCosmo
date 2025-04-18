@@ -91,7 +91,7 @@ def test_data_link_selection(halo_paths):
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
         10, at="random"
     )
-    collection = collection.select( ["x", "y", "z"], dataset="dm_particles")
+    collection = collection.select(["x", "y", "z"], dataset="dm_particles")
     collection = collection.select(["fof_halo_tag", "sod_halo_mass"])
     found_dm_particles = False
     for properties, particles in collection.objects():
@@ -171,6 +171,7 @@ def test_link_write(halo_paths, tmp_path):
         oc.read(tmp_path / "linked.hdf5")
 
     assert n == 10
+
 
 def test_simulation_collection_broadcast_attribute(multi_path):
     collection = oc.read(multi_path)
