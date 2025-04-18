@@ -1,7 +1,7 @@
 Working with MPI
 ================
 
-OpenCosmo can read and write data inside an MPI environment. In general the API works exactly the same within an MPI context as it does otherwise, but there are some things to be aware of in the current version of the library (see below). More flexibility in working in an MPI context is planned for the next version of the library.
+OpenCosmo can read and write data in an MPI environment. In general the API works exactly the same within an MPI context as it does otherwise, but there are some things to be aware of in the current version of the library (see below). More flexibility in working in an MPI context is planned for the next version of the library.
 
 I/O with Parallel HDF5 and Select Operations
 --------------------------------------------
