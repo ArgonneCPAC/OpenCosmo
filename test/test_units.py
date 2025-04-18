@@ -72,7 +72,7 @@ def test_physcal_units(haloproperties_step_path, input_path):
     data_physical = ds_physical.data
     data = ds.data
     cols = data.columns
-    z = ds.header.file.redshift
+    z = ds.redshift
 
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     position_cols = filter(lambda col: "angmom" not in col, position_cols)

@@ -73,6 +73,29 @@ class Dataset:
         return self.__header.cosmology
 
     @property
+    def dtype(self) -> str:
+        """
+        Get the data type of this dataset
+
+        Returns
+        -------
+        dtype: str
+        """
+        return self.__header.file.data_type
+
+    @property
+    def redshift(self) -> float:
+        """
+        Get the redshift slice this dataset was drawn from
+
+        Returns:
+        --------
+        redshift: gloat
+
+        """
+        return self.__header.file.redshift
+
+    @property
     def simulation(self) -> SimulationParameters:
         """
         Get the parameters of the simulation this dataset is drawn
@@ -102,10 +125,6 @@ class Dataset:
         return self.__handler.get_data(
             builders=self.__builders, index=self.__index
         )
-
-    @property
-    def header(self) -> OpenCosmoHeader:
-        return self.__header
 
     @property
     def index(self) -> DataIndex:
@@ -346,7 +365,7 @@ class Dataset:
             convention,
             self.__base_unit_transformations,
             self.__header.cosmology,
-            self.__header.file.redshift,
+            self.redshift
         )
         new_builders = get_column_builders(new_transformations, self.__builders.keys())
 

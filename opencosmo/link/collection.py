@@ -7,15 +7,16 @@ from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo import link as l
+from opencosmo.parameters import SimulationParameters
 
 
 def filter_properties_by_dataset(
-    dataset: oc.Dataset, properties: oc.Dataset, *masks
+    dataset: oc.Dataset, properties: oc.Dataset, header: oc.header.OpenCosmoHeader, *masks
 ) -> oc.Dataset:
     masked_dataset = dataset.filter(*masks)
-    if properties.header.file.data_type == "halo_properties":
+    if header.file.data_type == "halo_properties":
         linked_column = "fof_halo_tag"
-    elif properties.header.file.data_type == "galaxy_properties":
+    elif header.file.data_type == "galaxy_properties":
         linked_column = "gal_tag"
 
     tags = masked_dataset.select(linked_column).data
@@ -37,6 +38,7 @@ class StructureCollection:
     def __init__(
         self,
         properties: oc.Dataset,
+        header: oc.header.OpenCosmoHeader,
         handlers: dict[str, l.LinkHandler],
         filters: Optional[dict[str, Any]] = {},
         *args,
@@ -47,12 +49,13 @@ class StructureCollection:
         """
 
         self.__properties = properties
+        self.__header = header
         self.__handlers = handlers
         self.__index = self.__properties.index
         self.__filters = filters
 
     def __repr__(self):
-        structure_type = self.__properties.header.file.data_type.split("_")[0] + "s"
+        structure_type = self.header.file.data_type.split("_")[0] + "s"
         dtype_str = ", ".join(self.__handlers.keys())
         return f"Collection of {structure_type} with linked datasets {dtype_str}"
 
@@ -74,6 +77,30 @@ class StructureCollection:
         return self.__properties.cosmology
 
     @property
+    def redshift(self) -> float:
+        """
+        Get the redshift slice this dataset was drawn from
+
+        Returns:
+        --------
+        redshift: gloat
+
+        """
+        return self.__header.file.redshift
+
+    @property
+    def simulation(self) -> SimulationParameters:
+        """
+        Get the parameters of the simulation this dataset is drawn
+        from.
+
+        Returns
+        -------
+        parameters: opencosmo.parameters.SimulationParameters
+        """
+        return self.__header.simulation
+
+    @property
     def properties(self) -> oc.Dataset:
         """
         The properties dataset of the collection. Either, halo properties
@@ -85,7 +112,7 @@ class StructureCollection:
         """
         Return the keys of the linked datasets.
         """
-        return list(self.__handlers.keys()) + [self.__properties.header.file.data_type]
+        return list(self.__handlers.keys()) + [self.__header.file.data_type]
 
     def values(self) -> list[oc.Dataset]:
         """
@@ -107,7 +134,7 @@ class StructureCollection:
         """
         Return the linked dataset with the given key.
         """
-        if key == self.__properties.header.file.data_type:
+        if key == self.__header.file.data_type:
             return self.__properties
         elif key not in self.__handlers:
             raise KeyError(f"Dataset {key} not found in collection.")
@@ -168,10 +195,11 @@ class StructureCollection:
             raise ValueError("Dataset galaxy_properties not found in collection.")
         else:
             filtered = filter_properties_by_dataset(
-                self["galaxy_properties"], self.__properties, *masks
+                self["galaxy_properties"], self.__properties, self.__header, *masks
             )
         return StructureCollection(
             filtered,
+            self.__header,
             self.__handlers,
         )
 
@@ -201,10 +229,11 @@ class StructureCollection:
         ValueError
             If the specified dataset is not found in the collection.
         """
-        if dataset is None or dataset == self.__properties.header.file.data_type:
+        if dataset is None or dataset == self.__header.file.data_type:
             new_properties = self.__properties.select(columns)
             return StructureCollection(
                 new_properties,
+                self.__header,
                 self.__handlers,
             )
 
@@ -213,7 +242,7 @@ class StructureCollection:
         handler = self.__handlers[dataset]
         new_handler = handler.select(columns)
         return StructureCollection(
-            self.__properties, {**self.__handlers, dataset: new_handler}
+            self.__properties, self.__header, {**self.__handlers, dataset: new_handler}
         )
 
     def with_units(self, convention: str):
@@ -239,6 +268,7 @@ class StructureCollection:
         }
         return StructureCollection(
             new_properties,
+            self.__header,
             new_handlers,
         )
 
@@ -263,6 +293,7 @@ class StructureCollection:
         new_properties = self.__properties.take(n, at)
         return StructureCollection(
             new_properties,
+            self.__header,
             self.__handlers,
         )
 
@@ -305,10 +336,9 @@ class StructureCollection:
                 yield row, output
 
     def write(self, file: File | Group):
-        header = self.__properties.header
-        header.write(file)
-        self.__properties.write(file, header.file.data_type)
-        link_group = file[header.file.data_type].create_group("data_linked")
+        self.__header.write(file)
+        self.__properties.write(file, self.__header.file.data_type)
+        link_group = file[self.__header.file.data_type].create_group("data_linked")
         keys = list(self.__handlers.keys())
         keys.sort()
         for key in keys:
