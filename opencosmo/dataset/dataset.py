@@ -14,6 +14,7 @@ from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
+from opencosmo.parameters import SimulationParameters
 
 
 class Dataset:
@@ -70,6 +71,19 @@ class Dataset:
         cosmology : astropy.cosmology.Cosmology
         """
         return self.__header.cosmology
+
+    @property
+    def simulation(self) -> SimulationParameters:
+        """
+        Get the parameters of the simulation this dataset is drawn
+        from.
+
+        Returns
+        -------
+        parameters: opencosmo.parameters.SimulationParameters
+        """
+        return self.__header.simulation
+
 
     @property
     def data(self) -> Table | Column:
