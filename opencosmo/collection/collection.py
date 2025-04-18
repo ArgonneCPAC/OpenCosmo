@@ -183,7 +183,7 @@ class SimulationCollection(dict):
         """
         Get the cosmologies of the simulations in the collection
 
-        Returns:
+        Returns
         --------
         cosmologies: dict[str, astropy.cosmology.Cosmology]
         """
@@ -194,7 +194,7 @@ class SimulationCollection(dict):
         """
         Get the redshift slices for the simulations in the collection
 
-        Returns:
+        Returns
         --------
         redshifts: dict[str, float]
         """
@@ -205,7 +205,7 @@ class SimulationCollection(dict):
         """
         Get the simulation parameters for the simulations in the collection
 
-        Returns:
+        Returns
         --------
         simulation_parameters: dict[str, opencosmo.parameters.SimulationParameters]
         """
@@ -254,6 +254,27 @@ class SimulationCollection(dict):
         """
         return self.__map("select", *args, **kwargs)
 
+    def take(self, n: int, at: str = "random") -> SimulationCollection:
+        """
+        Take a subest of rows from all datasets or collections in this collection.
+        This method will delegate to the underlying method in
+        :class:`opencosmo.Dataset`, or :class:`opencosmo.StructureCollection` depending 
+        on  the context. As such, behavior may vary depending on what this collection 
+        contains. See their documentation for more info.
+
+        Parameters
+        ----------
+        n: int
+            The number of rows to take
+        at: str, default = "random"
+            The method to use to take rows. Must be one of "start", "end", "random".
+
+        """
+        if any(len(ds) < n for ds in self.values()):
+            raise ValueError(f"Not all datasets in this collection have at least {n} rows!")
+        return self.__map("take", n, at)
+
+
     def with_units(self, convention: str) -> SimulationCollection:
         """
         Transform all datasets or collections to use the given unit convention. This
@@ -268,15 +289,6 @@ class SimulationCollection(dict):
         """
         return self.__map("with_units", convention)
 
-    def take(self, *args, **kwargs) -> SimulationCollection:
-        """
-        Take a subest of rows from all datasets or collections in this collection.
-        This method will delegate to the underlying method in
-        :class:`opencosmo.Dataset`, or :class:`opencosmo.Collection` depending on  the
-        context. As such, behaviormay vary depending on what this collection contains.
-        """
-
-        return self.__map("take", *args, **kwargs)
 
 
 def open_single_dataset(

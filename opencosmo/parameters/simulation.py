@@ -80,13 +80,16 @@ def empty_string_to_none(v):
 
 class SimulationParameters(BaseModel):
     box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
-    z_ini: float = Field(ge=0.01, description="Initial redshift")
-    z_end: float = Field(ge=0.0, description="Final redshift")
+    z_ini: float = Field(ge=0.01, description="Initial redshift of the simulation")
+    z_end: float = Field(ge=0.0, description="Final redshift of the simulation")
     n_gravity: Optional[int] = Field(
-        ge=2, description="Number of gravity-only particles (per dimension)"
+        ge=2, 
+        description=
+            "Number of gravity-only particles (per dimension). "
+            "In hydrodynamic simulations, this parameter will be replaced with \"n_dm\""
     )
     n_steps: int = Field(ge=1, description="Number of time steps")
-    pm_grid: int = Field(ge=2, description="Grid resolution (per dimension)")
+    pm_grid: int = Field(ge=2, description="Number of grid points (per dimension)")
     offset_gravity_ini: Optional[float] = Field(
         description="Lagrangian offset for gravity-only particles"
     )
@@ -104,6 +107,11 @@ class SimulationParameters(BaseModel):
 
     @cached_property
     def step_zs(self) -> list[float]:
+        """
+        Get the redshift of the steps in this simulation. Outputs such that
+        redshift[step_number] returns the redshift for that step. Keep in 
+        mind that steps go from high z -> low z.
+        """
         a_ini = 1 / (1 + self.z_ini)
         a_end = 1 / (1 + self.z_end)
         # Steps are evenly spaced in log(a)
@@ -123,9 +131,9 @@ class SubgridParameters(BaseModel):
     agn_kinetic_eps: float = Field(description="AGN feedback efficiency")
     agn_kinetic_jet_vel: float = Field(description="AGN feedback velocity")
     agn_nperh: float = Field(description="AGN sphere of influence")
-    agn_seed_mass: float = Field(description="AGN seed mass")
+    agn_seed_mass: float = Field(description="AGN seed mass (Msun / h)")
     wind_egy_w: float = Field(description="Wind mass loading factor")
-    wind_kappa_w: float = Field(description="Wind belovity")
+    wind_kappa_w: float = Field(description="Wind velocity")
 
 
 class HydroSimulationParameters(SimulationParameters):
@@ -142,6 +150,6 @@ class HydroSimulationParameters(SimulationParameters):
         description="Lagrangian offset for dark matter particles"
     )
     subgrid_parameters: SubgridParameters = Field(
-        description="Parameters for subgrid physics",
+        description="Parameters for subgrid hydrodynamic physics",
         exclude=True,
     )
