@@ -14,10 +14,10 @@ def cosmology_resource_path(data_path):
 def halo_properties_path(data_path):
     return data_path / "haloproperties.hdf5"
 
+
 @pytest.fixture
 def galaxy_properties_path(data_path):
     return data_path / "galaxyproperties.hdf5"
-
 
 
 def test_write_header(data_path, tmp_path):

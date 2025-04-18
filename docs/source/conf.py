@@ -14,7 +14,12 @@ release = "0.5.0"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["sphinx.ext.autodoc", "sphinx.ext.napoleon", "sphinx_rtd_theme", "sphinxcontrib.autodoc_pydantic"]
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx_rtd_theme",
+    "sphinxcontrib.autodoc_pydantic",
+]
 
 templates_path = ["_templates"]
 exclude_patterns = []
@@ -28,5 +33,5 @@ html_theme = "sphinx_rtd_theme"
 # -- Options for autodoc -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
 autodoc_typehints = "description"
-autodoc_pydantic_model_show_validator_summary=False
-autodoc_pydantic_field_list_validators=False
+autodoc_pydantic_model_show_validator_summary = False
+autodoc_pydantic_field_list_validators = False

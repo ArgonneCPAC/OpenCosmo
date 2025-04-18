@@ -11,8 +11,8 @@ except ImportError:
 
 
 import h5py
+from astropy.cosmology import Cosmology  # type: ignore
 
-from astropy.cosmology import Cosmology
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
@@ -137,7 +137,6 @@ class SimulationCollection(dict):
             f"SimulationCollection({n_collections} collections, {n_datasets} datasets)"
         )
 
-
     @classmethod
     def open(
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
@@ -212,7 +211,6 @@ class SimulationCollection(dict):
 
         return self.__map_attribute("simulation")
 
-
     def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:
         """
         Filter the datasets in the collection. This method behaves
@@ -258,8 +256,8 @@ class SimulationCollection(dict):
         """
         Take a subest of rows from all datasets or collections in this collection.
         This method will delegate to the underlying method in
-        :class:`opencosmo.Dataset`, or :class:`opencosmo.StructureCollection` depending 
-        on  the context. As such, behavior may vary depending on what this collection 
+        :class:`opencosmo.Dataset`, or :class:`opencosmo.StructureCollection` depending
+        on  the context. As such, behavior may vary depending on what this collection
         contains. See their documentation for more info.
 
         Parameters
@@ -271,9 +269,10 @@ class SimulationCollection(dict):
 
         """
         if any(len(ds) < n for ds in self.values()):
-            raise ValueError(f"Not all datasets in this collection have at least {n} rows!")
+            raise ValueError(
+                f"Not all datasets in this collection have at least {n} rows!"
+            )
         return self.__map("take", n, at)
-
 
     def with_units(self, convention: str) -> SimulationCollection:
         """
@@ -288,7 +287,6 @@ class SimulationCollection(dict):
 
         """
         return self.__map("with_units", convention)
-
 
 
 def open_single_dataset(

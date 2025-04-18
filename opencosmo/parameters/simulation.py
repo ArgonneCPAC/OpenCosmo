@@ -83,10 +83,9 @@ class SimulationParameters(BaseModel):
     z_ini: float = Field(ge=0.01, description="Initial redshift of the simulation")
     z_end: float = Field(ge=0.0, description="Final redshift of the simulation")
     n_gravity: Optional[int] = Field(
-        ge=2, 
-        description=
-            "Number of gravity-only particles (per dimension). "
-            "In hydrodynamic simulations, this parameter will be replaced with \"n_dm\""
+        ge=2,
+        description="Number of gravity-only particles (per dimension). "
+        'In hydrodynamic simulations, this parameter will be replaced with "n_dm"',
     )
     n_steps: int = Field(ge=1, description="Number of time steps")
     pm_grid: int = Field(ge=2, description="Number of grid points (per dimension)")
@@ -109,7 +108,7 @@ class SimulationParameters(BaseModel):
     def step_zs(self) -> list[float]:
         """
         Get the redshift of the steps in this simulation. Outputs such that
-        redshift[step_number] returns the redshift for that step. Keep in 
+        redshift[step_number] returns the redshift for that step. Keep in
         mind that steps go from high z -> low z.
         """
         a_ini = 1 / (1 + self.z_ini)
