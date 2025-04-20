@@ -58,7 +58,7 @@ class StructureCollection:
         self.__filters = filters
 
     def __repr__(self):
-        structure_type = self.header.file.data_type.split("_")[0] + "s"
+        structure_type = self.__header.file.data_type.split("_")[0] + "s"
         dtype_str = ", ".join(self.__handlers.keys())
         return f"Collection of {structure_type} with linked datasets {dtype_str}"
 
