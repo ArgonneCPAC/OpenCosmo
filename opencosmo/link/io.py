@@ -92,6 +92,10 @@ def open_linked_files(*files: Path):
     Open a collection of files that are linked together, such as a
     properties file and a particle file.
     """
+    if len(files) == 1 and isinstance(files[0], list):
+        return open_linked_files(*files[0])
+
+
     file_handles = [File(file, "r") for file in files]
     headers = [read_header(file) for file in file_handles]
     properties_file, linked_files = verify_links(*headers)
