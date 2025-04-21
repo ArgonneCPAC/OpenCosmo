@@ -28,7 +28,7 @@ Be sure you have run the "activate" command shown above before running the `ipyk
 
 ## Getting Started
 
-To get started, download the "haloproperites.hdf5" from the [OpenCosmo Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing) and set the environment variable. This file contains properties of dark-matter halos from a small hydrodynamical simulation run with HACC. You can easily read the data with the `open` command:
+To get started, download the "haloproperites.hdf5" from the [OpenCosmo Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing). This file contains properties of dark-matter halos from a small hydrodynamical simulation run with HACC. You can easily read the data with the `open` command:
 
 ```python
 import opencosmo as oc
