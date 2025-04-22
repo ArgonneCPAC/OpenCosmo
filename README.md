@@ -80,7 +80,7 @@ Although you can access data directly, `opencosmo` provides tools for querying a
 dataset = dataset
     .filter(oc.col("fof_halo_mass") > 1e13)
     .take(1000, at="random")
-    .select("fof_halo_mass", "sod_halo_cdelta")
+    .select(("fof_halo_mass", "sod_halo_cdelta"))
 
 print(dataset)
 
