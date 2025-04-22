@@ -1,5 +1,6 @@
 <h1 align="center">
-<img src="https://raw.githubusercontent.com/ArgonneCPAC/opencosmo/main/branding/opencosmo_light.png" width="600">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ArgonneCPAC/opencosmo/main/branding/opencosmo_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/ArgonneCPAC/opencosmo/main/branding/opencosmo_light.png">
 </h1><br>
 
 The OpenCosmo Python Toolkit provides utilities for reading, writing and manipulating data from cosmological simulations produced by the Cosmolgical Physics and Advanced Computing (CPAC) group at Argonne National Laboratory. It can be used to work with smaller quantities data retrieved with the CosmoExplorer, as well as the much larget datasets these queries draw from. The OpenCosmo toolkit integrates with standard tools such as AstroPy, and allows you to manipulate data in a fully-consistent cosmological context.
