@@ -20,8 +20,8 @@ There's a good chance the default version of Python on your system is less than 
 
 ```bash
 conda create -n opencosmo_env python=3.11
-pip install opencosmo
 conda activate opencosmo_env
+pip install opencosmo
 ```
 
 This will create a new environment called `opencosmo` with Python 3.11 and install the `opencosmo` package into it with all necessary dependencies. If you plan to use `opencosmo` in a Jupyter notebook, you can install the `ipykernel` package to make the environment available as a kernel:
