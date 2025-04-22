@@ -19,8 +19,9 @@ pip install opencosmo
 There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing `opencosmo` into a virtual environment. If you're using [Conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html), you can create a new environment with Python 3.11 and install `opencosmo` into it like so:
 
 ```bash
-conda create -n opencosmo python=3.11 opencosmo
-conda activate opencosmo
+conda create -n opencosmo_env python=3.11
+pip install opencosmo
+conda activate opencosmo_env
 ```
 
 This will create a new environment called `opencosmo` with Python 3.11 and install the `opencosmo` package into it with all necessary dependencies. If you plan to use `opencosmo` in a Jupyter notebook, you can install the `ipykernel` package to make the environment available as a kernel:
