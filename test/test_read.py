@@ -35,6 +35,7 @@ def test_read_multi(multi_path):
     dataset = oc.read(multi_path)
     assert isinstance(dataset, oc.collection.collection.SimulationCollection)
 
+
 def test_dataset_repr(input_path):
     dataset = oc.read(input_path)
     assert isinstance(dataset.__repr__(), str)

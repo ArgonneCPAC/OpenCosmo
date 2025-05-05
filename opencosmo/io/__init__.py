@@ -1,4 +1,3 @@
-from .io import read, write, open
-
+from .io import open, read, write
 
 __all__ = ["read", "write", "open"]
