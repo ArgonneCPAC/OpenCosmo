@@ -8,6 +8,7 @@ from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo import link as l
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.io.schema import LinkSchema
 
 try:
     from mpi4py import MPI
@@ -94,7 +95,6 @@ def open_linked_files(*files: Path):
     """
     if len(files) == 1 and isinstance(files[0], list):
         return open_linked_files(*files[0])
-
 
     file_handles = [File(file, "r") for file in files]
     headers = [read_header(file) for file in file_handles]
@@ -223,3 +223,16 @@ def get_link_handlers(
             index = links[f"{dtype}_idx"]
             output_links[key] = handler(linked_files[key], index, header)
     return output_links
+
+
+def get_link_schemas(
+    link_group: Group, names: list[str], n_rows: int
+) -> list[LinkSchema]:
+    link_schemas = []
+    link_names = list(link_group.keys())
+    for name in names:
+        link_datasets = list(filter(lambda g: g.name.startswith(name), link_names))
+        has_sizes = len(link_datasets) == 2
+        schema = LinkSchema(name, n_rows, has_sizes)
+        link_schemas.append(schema)
+    return link_schemas

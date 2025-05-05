@@ -42,9 +42,11 @@ def test_multi_filter(multi_path):
     for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
 
+
 def test_multi_repr(multi_path):
     collection = oc.read(multi_path)
     assert isinstance(collection.__repr__(), str)
+
 
 def test_multi_filter_write(multi_path, tmp_path):
     collection = oc.read(multi_path)
@@ -88,10 +90,10 @@ def test_data_linking(halo_paths):
     assert n_particles > 0
     assert n_profiles > 0
 
+
 def test_data_link_repr(halo_paths):
     collection = open_linked_files(halo_paths)
     assert isinstance(collection.__repr__(), str)
-
 
 
 def test_data_link_selection(halo_paths):
