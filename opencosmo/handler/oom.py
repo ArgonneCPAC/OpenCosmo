@@ -10,7 +10,7 @@ from opencosmo.dataset.index import DataIndex
 from opencosmo.spatial.tree import Tree
 from opencosmo.utils import write_index
 from opencosmo.io.schema import DatasetSchema
-from opencosmo.io.writer import FileWriter, make_dataset_schema
+from opencosmo.io.writer import FileWriter, make_dataset_schema, DatasetWriter
 from opencosmo.header import OpenCosmoHeader
 
 
@@ -82,7 +82,8 @@ class OutOfMemoryHandler:
         header: Optional[OpenCosmoHeader] = None,
     ) -> None:
         schema = make_dataset_schema(self.__group, columns, len(index))
-        writer.add_dataset(dataset_name, schema, self.__group, index, header)
+        ds_writer = DatasetWriter(schema, self.__group, index, header)
+        writer.add_dataset(dataset_name, ds_writer)
         return writer
         
 

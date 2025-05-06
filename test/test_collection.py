@@ -152,6 +152,7 @@ def test_link_write(halo_paths, tmp_path):
                 continue
             original_output[properties["fof_halo_tag"]].append(name)
 
+
     read_output = defaultdict(list)
     oc.write(tmp_path / "linked.hdf5", collection)
     written_data = oc.open(tmp_path / "linked.hdf5")

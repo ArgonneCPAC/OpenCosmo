@@ -4,8 +4,9 @@ from typing import Iterable, Optional, Protocol, Self
 import h5py
 import hdf5plugin
 
+import numpy as np
 from opencosmo.dataset.index import DataIndex
-from opencosmo.io.schema import ColumnSchema, DatasetSchema, IndexSchema, LinkSchema, FileSchema
+from opencosmo.io.schema import ColumnSchema, DatasetSchema, CollectionSchema, IndexSchema, FileSchema
 from opencosmo.header import OpenCosmoHeader
 
 
@@ -29,7 +30,6 @@ def make_dataset_schema(
     input_dataset_group: h5py.Group,
     column_names: Iterable[str],
     n_elements: int,
-    link_schemas: list[LinkSchema] = [],
     index_schemas: list[IndexSchema] = [],
     additional_columns: list[ColumnSchema] = [],
     include_header: bool = True,
@@ -48,28 +48,38 @@ def make_dataset_schema(
         column_schemas.append(ColumnSchema(name, new_shape, col.dtype))
 
     column_schemas.extend(additional_columns)
-    return DatasetSchema(column_schemas, link_schemas, index_schemas, include_header)
+    return DatasetSchema(column_schemas, index_schemas, include_header)
 
 class FileWriter:
     def __init__(self):
         self.schema = FileSchema()
         self.datasets: dict[str, DatasetWriter] = {}
 
-    def add_dataset(self, name: str, schema: DatasetSchema, source: h5py.Group, index: DataIndex, header: Optional[OpenCosmoHeader] = None):
-        self.schema.add_dataset(name, schema)
-        self.datasets[name] = DatasetWriter(schema, source, index, header)
+    def add_dataset(self, name: str, writer: "DatasetWriter"):
+        self.schema.add_dataset(name, writer.schema)
+        self.datasets[name] = writer
 
     def allocate(self, file: h5py.File):
         return self.schema.allocate(file)
 
     def write(self, file: h5py.File):
+        if len(self.datasets) == 1:
+            ds = next(iter(self.datasets.values()))
+            return ds.write(file)
         for name, dataset in self.datasets.items():
             dataset.write(file[name])
 
 
+class CollectionWriter:
+    def __init__(self, schema: CollectionSchema, source: h5py.Group, header: Optional[OpenCosmoHeader]):
+        self.source = source
+        self.schema = schema
+        self.header = header
+        self.datasets = {}
 
-
-    
+    def write(self, group: h5py.Group, range_: Optional[tuple[int,int]] = None):
+        for name, dataset in self.datasets.items():
+            dataset.write(group[name])
 
 class DatasetWriter:
     def __init__(self, schema: DatasetSchema, source: h5py.Group, index: DataIndex, header: Optional[OpenCosmoHeader] = None):
@@ -80,12 +90,13 @@ class DatasetWriter:
         self.header =  header
 
     def write(self, group: h5py.Group, range_: Optional[tuple[int,int]] = None):
+        data_group = group["data"]
         for column in self.columns:
-            dataset = group[column.schema.name]
+            dataset = data_group[column.schema.name]
             column.write(dataset, range_)
 
         for name, val in self.source.attrs.items():
-            group.attrs[gname] = val
+            group.attrs[name] = val
         if self.header is not None:
             self.header.write(group)
 
@@ -98,5 +109,8 @@ class ColumnWriter:
 
     def write(self, dataset: h5py.Dataset, range_: Optional[tuple[int,int]] = None):
         write_index(self.source, dataset, self.index, range_)
+        if self.source.name.endswith("fof_halo_tag"):
+            print(np.unique(dataset[:]))
+
         for name, val in self.source.attrs.items():
             dataset.attrs[name] = val
