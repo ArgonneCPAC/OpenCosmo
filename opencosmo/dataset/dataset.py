@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Generator, Iterable, Optional
+from typing import Generator, Iterable, Optional, Type
 
 import h5py
 from astropy import units  # type: ignore
@@ -11,6 +11,7 @@ import opencosmo.transformations as t
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
+from opencosmo.io.writer import FileWriter
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.header import OpenCosmoHeader, write_header
@@ -313,14 +314,14 @@ class Dataset:
             new_index,
         )
 
-    def write(
+    def prep_write(
         self,
-        file: h5py.File | h5py.Group,
-        dataset_name: Optional[str] = None,
+        writer: FileWriter,
+        dataset_name: str,
         with_header=True,
     ) -> None:
         """
-        Write the dataset to a file. This should not be called directly for the user.
+        Prep to write the dataset. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.
 
         Parameters
@@ -331,16 +332,8 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        if not isinstance(file, (h5py.File, h5py.Group)):
-            raise AttributeError(
-                "Dataset.write should not be called directly, "
-                "use opencosmo.write instead."
-            )
-
-        if with_header:
-            write_header(file, self.__header, dataset_name)
-
-        self.__handler.write(file, self.__index, self.__builders.keys(), dataset_name)
+        header = self.__header if with_header else None
+        return self.__handler.prep_write(writer, self.__index, self.__builders.keys(), dataset_name, header)
 
     def with_units(self, convention: str) -> Dataset:
         """
