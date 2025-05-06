@@ -7,7 +7,6 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.index import DataIndex
-from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
 from opencosmo.utils import write_index
 from opencosmo.io.schema import DatasetSchema
@@ -47,8 +46,7 @@ class OutOfMemoryHandler:
         self.__group = None
         return self.__file.close()
 
-    def collect(self, columns: Iterable[str], index: DataIndex) -> InMemoryHandler:
-        file_path = self.__file.filename
+    def collect(self, columns: Iterable[str], index: DataIndex) -> OutOfMemoryHandler:
         tree: Optional[Tree] = None
         if self.__tree is not None and len(index) == len(self):
             mask = np.zeros(len(self), dtype=bool)
@@ -58,16 +56,23 @@ class OutOfMemoryHandler:
         else:
             tree = self.__tree
 
-        with h5py.File(file_path, "r") as file:
-            return InMemoryHandler(
-                file,
-                tree,
-                group_name=self.__group_name,
-                columns=columns,
-                index=index,
-            )
+        file: h5py.File = h5py.File.in_memory()
+        group = file.require_group("data")
+        for colname in columns:
+            dataset = self.__group[colname]
+            data = index.get_data(dataset)
+            group.create_dataset(colname, data=data)
+            for name, value in dataset.attrs.items():
+                group[colname].attrs[name] = value
 
 
+
+        return OutOfMemoryHandler(
+            file,
+            tree,
+        )
+
+            
     def prep_write(
         self,
         writer: FileWriter,
