@@ -89,7 +89,6 @@ class ColumnSchema:
     def allocate(self, group: h5py.Group):
         group.require_dataset(self.name, self.shape, self.dtype)
 
-
 class LinkSchema:
     def __init__(self, name: str, n: int, has_sizes: bool = False):
         self.n = n
