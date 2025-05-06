@@ -9,6 +9,8 @@ from astropy.table import Column, Table  # type: ignore
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.file import get_data_structure
 from opencosmo.spatial.tree import Tree
+from opencosmo.header import OpenCosmoHeader
+from opencosmo.io.writer import FileWriter, make_dataset_schema
 
 
 class InMemoryHandler:
@@ -27,23 +29,22 @@ class InMemoryHandler:
         columns: Optional[Iterable[str]] = None,
         index: Optional[DataIndex] = None,
     ):
+        path = file.filename
+        file = h5py.File(path, driver="core")
         if group_name is None:
-            group = file["data"]
+            self.__group = file["data"]
         else:
-            group = file[f"{group_name}/data"]
-        self.__columns = get_data_structure(group)
+            self.__group = file[f"{group_name}/data"]
+        self.__columns = get_data_structure(self.__group)
         if columns is not None:
             self.__columns = {n: u for n, u in self.__columns.items() if n in columns}
         self.__tree = tree
         if index is None:
-            length = len(next(iter(group.values())))
+            length = len(next(iter(self.__group.values())))
             index = ChunkedIndex.from_size(length)
-        self.__data = {
-            colname: index.get_data(group[colname]) for colname in self.__columns
-        }
 
     def __len__(self) -> int:
-        return len(next(iter(self.__data.values())))
+        return len(next(iter(self.__group.values())))
 
     def __enter__(self):
         return self
@@ -57,7 +58,7 @@ class InMemoryHandler:
         the specified mask applied.
         """
         new_data = {
-            colname: index.get_data(self.__data[colname]) for colname in columns
+            colname: index.get_data(self.__group[colname]) for colname in columns
         }
         mask = np.zeros(len(self), dtype=bool)
         mask = index.set_data(mask, True)
@@ -67,29 +68,23 @@ class InMemoryHandler:
             tree = None
         return InMemoryHandler(new_data, tree)
 
-    def write(
+    def prep_write(
         self,
-        file: h5py.File,
+        writer: FileWriter,
         index: DataIndex,
         columns: Iterable[str],
-        dataset_name: Optional[str] = None,
-    ) -> None:
+        dataset_name: str,
+        header: Optional[OpenCosmoHeader] = None
+    ) -> FileWriter:
         """
         Write the data in the specified columns, with the specified mask, to the file.
         """
-        if dataset_name is None:
-            group = file
-        else:
-            group = file.require_group(dataset_name)
-        data_group = group.require_group("data")
-        for column in columns:
-            data_group.create_dataset(column, data=index.get_data(self.__data[column]))
-            if self.__columns[column] is not None:
-                data_group[column].attrs["unit"] = self.__columns[column]
-        mask = np.zeros(len(self), dtype=bool)
-        if self.__tree is not None:
-            tree = self.__tree.apply_mask(mask)
-            tree.write(group, dataset_name="index")
+        schema = make_dataset_schema(self.__group, columns, len(index))
+
+
+        writer.add_dataset(dataset_name, schema, self.__group, index, header)
+        return writer
+
 
     def get_data(
         self,
@@ -103,7 +98,7 @@ class InMemoryHandler:
 
         output = {}
         for column, builder in builders.items():
-            col = index.get_data(self.__data[column])
+            col = index.get_data(self.__group[column])
             output[column] = builder.build(Column(col, name=column))
 
         if len(output) == 1:

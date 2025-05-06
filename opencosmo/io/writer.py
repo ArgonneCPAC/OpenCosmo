@@ -67,6 +67,7 @@ class FileWriter:
             ds = next(iter(self.datasets.values()))
             ds.header.write(file)
             ds.header = None
+            return ds.write(file)
         for name, dataset in self.datasets.items():
             dataset.write(file[name])
 
@@ -79,8 +80,9 @@ class DatasetWriter:
         self.header =  header
 
     def write(self, group: h5py.Group, range_: Optional[tuple[int,int]] = None):
+        data_group = group["data"]
         for column in self.columns:
-            dataset = group[column.schema.name]
+            dataset = data_group[column.schema.name]
             column.write(dataset, range_)
 
         for name, val in self.source.attrs.items():

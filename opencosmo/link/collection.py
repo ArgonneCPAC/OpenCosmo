@@ -338,7 +338,7 @@ class StructureCollection:
             else:
                 yield row, output
 
-    def write(self, file: File | Group):
+    def prep_write(self, file: File | Group):
         self.__header.write(file)
         self.__properties.write(file, self.__header.file.data_type)
         link_group = file[self.__header.file.data_type].create_group("data_linked")

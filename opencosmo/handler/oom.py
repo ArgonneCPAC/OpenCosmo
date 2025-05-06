@@ -67,8 +67,6 @@ class OutOfMemoryHandler:
                 index=index,
             )
 
-    def get_schema(self, columns: Iterable[str], index: DataIndex):
-        return make_dataset_schema(self.__group, columns, len(index))
 
     def prep_write(
         self,

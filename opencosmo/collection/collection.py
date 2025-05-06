@@ -21,6 +21,7 @@ from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.link import StructureCollection
 from opencosmo.parameters import SimulationParameters
 from opencosmo.transformations import units as u
+from opencosmo.io.writer import FileWriter
 
 
 class Collection(Protocol):
@@ -52,7 +53,7 @@ class Collection(Protocol):
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]]
     ) -> Collection: ...
 
-    def prep_write(self, file: h5py.File): ...
+    def prep_write(self, writer: FileWriter): ...
 
     def __getitem__(self, key: str) -> oc.Dataset: ...
     def keys(self) -> Iterable[str]: ...
@@ -162,8 +163,11 @@ class SimulationCollection(dict):
         datasets = {name: read_single_dataset(file, name) for name in names}
         return cls(datasets)
 
-    def write(self, h5file: h5py.File):
-        return write_with_unique_headers(self, h5file)
+    def prep_write(self, writer: FileWriter, name: str):
+        for name, dataset in self.items():
+            writer = dataset.prep_write(writer, name, True)
+        return writer
+        
 
     def __map(self, method, *args, **kwargs):
         """
