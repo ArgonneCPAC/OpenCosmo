@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Union
 
 import h5py
 import numpy as np
@@ -8,25 +8,16 @@ ColumnShape = tuple[int, ...]
 
 
 def validate_shapes(
-    columns: Iterable["ColumnSchema"], links: Iterable["LinkSchema"] = []
+    columns: Iterable["ColumnSchema"]
 ):
     """
     Datasets should be representable as tables, so the first dimension
     of all shapes must be the same.
     """
     columns = list(columns)
-    links = list(links)
     n_rows = set(c.shape for c in columns)
     if len(n_rows) > 1:
         raise ValueError("All columns in a dataset must have the same length!")
-
-    if len(links) > 0:
-        validate_link_schemas(len(columns), links)
-
-
-def validate_link_schemas(n_cols: int, links: Iterable["LinkSchema"]):
-    if any(link.n > n_cols for link in links):
-        raise ValueError("All links must have the same length as the dataset!")
 
 
 
@@ -35,7 +26,7 @@ class FileSchema:
         self.datasets = {}
 
 
-    def add_dataset(self, name: str, schema: "DatasetSchema"):
+    def add_dataset(self, name: str, schema: Union["DatasetSchema", "CollectionSchema"]):
         if name in self.datasets:
             raise ValueError(f"Writer already has a dataset with name {name}")
         self.datasets[name] = schema
@@ -53,29 +44,40 @@ class FileSchema:
             ds_group = group.require_group(ds_name)
             ds.allocate(ds_group)
 
+class CollectionSchema:
+    def __init__(self):
+        self.datasets = {}
+
+    def add_dataset(self, name: str, schema: "DatasetSchema"):
+        self.datasets[name] = schema
+
+    def allocate(self, group: h5py.Group):
+        if len(self.datasets) == 1:
+            raise ValueError("A dataset collection cannot have only one member!")
+        for ds_name, ds in self.datasets.items():
+            ds_group = group.require_group(ds_name)
+            ds.allocate(ds_group)
+
+
 
 class DatasetSchema:
     def __init__(
         self,
         columns: Iterable["ColumnSchema"],
-        links: Iterable["LinkSchema"] = [],
         indices: Iterable["IndexSchema"] = [],
         has_header: bool = False,
     ):
         self.columns = list(columns)
         self.has_header = has_header
-        self.links = links
         self.indices = indices
         if len(set(c.name for c in self.columns)) != len(self.columns):
             raise ValueError("Column names must be unique!")
-        validate_shapes(self.columns, self.links)
+        validate_shapes(self.columns)
 
     def allocate(self, group: h5py.File | h5py.Group):
         data_group = group.require_group("data")
         for column in self.columns:
             column.allocate(data_group)
-        for link in self.links:
-            link.allocate(group)
         for index in self.indices:
             index.allocate(group)
 
@@ -88,22 +90,6 @@ class ColumnSchema:
 
     def allocate(self, group: h5py.Group):
         group.require_dataset(self.name, self.shape, self.dtype)
-
-class LinkSchema:
-    def __init__(self, name: str, n: int, has_sizes: bool = False):
-        self.n = n
-        self.has_sizes = has_sizes
-        self.name = name
-
-    def allocate(self, group: h5py.Group):
-        if self.has_sizes:
-            start_name = f"{self.name}_start"
-            size_name = f"{self.name}_size"
-            group.create_dataset(start_name, shape=(self.n,), dtype=np.uint64)
-            group.create_dataset(size_name, shape=(self.n,), dtype=np.uint64)
-        else:
-            name = f"{self.name}_idx"
-            group.create_dataset(name, shape=(self.n,), dtype=np.uint64)
 
 
 class IndexSchema:
