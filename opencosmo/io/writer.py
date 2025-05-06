@@ -63,13 +63,13 @@ class FileWriter:
         return self.schema.allocate(file)
 
     def write(self, file: h5py.File):
-        if len(self.datasets) == 1:
-            ds = next(iter(self.datasets.values()))
-            ds.header.write(file)
-            ds.header = None
-            return ds.write(file)
         for name, dataset in self.datasets.items():
             dataset.write(file[name])
+
+
+
+
+    
 
 class DatasetWriter:
     def __init__(self, schema: DatasetSchema, source: h5py.Group, index: DataIndex, header: Optional[OpenCosmoHeader] = None):
@@ -80,13 +80,12 @@ class DatasetWriter:
         self.header =  header
 
     def write(self, group: h5py.Group, range_: Optional[tuple[int,int]] = None):
-        data_group = group["data"]
         for column in self.columns:
-            dataset = data_group[column.schema.name]
+            dataset = group[column.schema.name]
             column.write(dataset, range_)
 
         for name, val in self.source.attrs.items():
-            group.attrs[name] = val
+            group.attrs[gname] = val
         if self.header is not None:
             self.header.write(group)
 

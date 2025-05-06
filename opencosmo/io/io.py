@@ -17,7 +17,7 @@ import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
+from opencosmo.handler import OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
 from .writer import FileWriter
@@ -154,7 +154,10 @@ def read(
     header = read_header(file)
     # tree = read_tree(file, header)
     tree = None
-    handler = InMemoryHandler(file, tree, group_name=datasets)
+    path = file.filename
+    file = h5py.File(path, driver="core")
+
+    handler = OutOfMemoryHandler(file, tree, group_name=datasets)
     index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
