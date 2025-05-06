@@ -10,6 +10,10 @@ from opencosmo.dataset.index import DataIndex
 from opencosmo.handler import InMemoryHandler
 from opencosmo.spatial.tree import Tree
 from opencosmo.utils import write_index
+from opencosmo.io.schema import DatasetSchema
+from opencosmo.io.writer import FileWriter, make_dataset_schema
+from opencosmo.header import OpenCosmoHeader
+
 
 
 class OutOfMemoryHandler:
@@ -63,28 +67,24 @@ class OutOfMemoryHandler:
                 index=index,
             )
 
-    def write(
+    def get_schema(self, columns: Iterable[str], index: DataIndex):
+        return make_dataset_schema(self.__group, columns, len(index))
+
+    def prep_write(
         self,
-        file: h5py.File,
+        writer: FileWriter,
         index: DataIndex,
         columns: Iterable[str],
-        dataset_name: Optional[str] = None,
+        dataset_name: str,
+        header: Optional[OpenCosmoHeader] = None,
     ) -> None:
-        if self.__group is None:
-            raise ValueError("This file has already been closed")
-        if dataset_name is None:
-            group = file
-        else:
-            group = file.require_group(dataset_name)
-        data_group = group.create_group("data")
-        for column in columns:
-            write_index(self.__group[column], data_group, index)
+        schema = make_dataset_schema(self.__group, columns, len(index))
+        writer.add_dataset(dataset_name, schema, self.__group, index, header)
+        return writer
+        
 
-        if self.__tree is not None:
-            tree_mask = np.zeros(len(self), dtype=bool)
-            tree_mask = index.set_data(tree_mask, True)
-            tree = self.__tree.apply_mask(tree_mask)
-            tree.write(group)
+
+
 
     def get_data(self, builders: dict, index: DataIndex) -> Column | Table:
         """ """

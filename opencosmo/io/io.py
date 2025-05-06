@@ -20,6 +20,7 @@ from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler import InMemoryHandler, OpenCosmoDataHandler, OutOfMemoryHandler
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
+from .writer import FileWriter
 
 
 def open(
@@ -181,4 +182,10 @@ def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
     FileNotFoundError
         If the parent folder of the ouput file does not exist
     """
-    dataset.write(file)
+    writer = FileWriter()
+    writer = dataset.prep_write(writer, "data")
+    writer.allocate(file)
+    writer.write(file)
+
+
+

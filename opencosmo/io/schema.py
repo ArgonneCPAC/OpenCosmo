@@ -29,19 +29,16 @@ def validate_link_schemas(n_cols: int, links: Iterable["LinkSchema"]):
         raise ValueError("All links must have the same length as the dataset!")
 
 
-def verify_file_schema(datasets: Iterable["DatasetSchema"], has_header: bool = False):
-    all_datasets_have_header = all(ds.has_header for ds in datasets)
-    if not has_header and not all_datasets_have_header:
-        raise ValueError(
-            "Either the top-level file must have a header, or all datsets must"
-        )
-
 
 class FileSchema:
-    def __init__(self, datasets: dict[str, "DatasetSchema"], has_header: bool = False):
-        self.datasets = datasets
-        self.has_header = has_header
-        verify_file_schema(self.datasets.values(), self.has_header)
+    def __init__(self):
+        self.datasets = {}
+
+
+    def add_dataset(self, name: str, schema: "DatasetSchema"):
+        if name in self.datasets:
+            raise ValueError(f"Writer already has a dataset with name {name}")
+        self.datasets[name] = schema
 
     def allocate(self, group: h5py.File):
         if not isinstance(group, h5py.File):

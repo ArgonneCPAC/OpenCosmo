@@ -54,7 +54,7 @@ class LinkHandler(Protocol):
         """
         pass
 
-    def write(
+    def prep_write(
         self, data_group: Group, link_group: Group, name: str, index: DataIndex
     ) -> None:
         """

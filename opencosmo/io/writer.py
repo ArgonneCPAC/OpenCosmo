@@ -2,12 +2,30 @@ from pathlib import Path
 from typing import Iterable, Optional, Protocol, Self
 
 import h5py
+import hdf5plugin
 
 from opencosmo.dataset.index import DataIndex
-from opencosmo.io.schema import ColumnSchema, DatasetSchema, IndexSchema, LinkSchema
+from opencosmo.io.schema import ColumnSchema, DatasetSchema, IndexSchema, LinkSchema, FileSchema
+from opencosmo.header import OpenCosmoHeader
 
 
-def generate_dataset_schema(
+def write_index(
+    input_ds: h5py.Dataset,
+    output_ds: h5py.Dataset,
+    index: DataIndex,
+    range_: Optional[tuple[int, int]] = None,
+):
+    if len(index) == 0:
+        raise ValueError("No indices provided to write")
+    data = index.get_data(input_ds)
+    output_ds[:] = data
+
+
+    attrs = input_ds.attrs
+    for key in attrs.keys():
+        output_ds.attrs[key] = attrs[key]
+
+def make_dataset_schema(
     input_dataset_group: h5py.Group,
     column_names: Iterable[str],
     n_elements: int,
@@ -17,15 +35,14 @@ def generate_dataset_schema(
     include_header: bool = True,
 ) -> DatasetSchema:
     column_schemas = []
-    input_data_group = input_dataset_group["data"]
-    input_column_names = set(input_data_group.keys())
+    input_column_names = set(input_dataset_group.keys())
     if not set(column_names).issubset(input_column_names):
         raise ValueError(
             "Dataset schema recieved columns that are not in the original dataset!"
         )
 
     for name in column_names:
-        col = input_data_group[name]
+        col = input_dataset_group[name]
         shape = col.shape
         new_shape = (n_elements,) + shape[1:]
         column_schemas.append(ColumnSchema(name, new_shape, col.dtype))
@@ -33,34 +50,52 @@ def generate_dataset_schema(
     column_schemas.extend(additional_columns)
     return DatasetSchema(column_schemas, link_schemas, index_schemas, include_header)
 
+class FileWriter:
+    def __init__(self):
+        self.schema = FileSchema()
+        self.datasets: dict[str, DatasetWriter] = {}
 
-class DataWriter(Protocol):
-    @classmethod
-    def prepare(cls, file: Path | h5py.File): ...
+    def add_dataset(self, name: str, schema: DatasetSchema, source: h5py.Group, index: DataIndex, header: Optional[OpenCosmoHeader] = None):
+        self.schema.add_dataset(name, schema)
+        self.datasets[name] = DatasetWriter(schema, source, index, header)
 
-    def write_dataset(
-        self,
-        data: h5py.Group,
-        index: DataIndex,
-        columns: Iterable[str],
-        dataset_path: Optional[str],
-    ): ...
+    def allocate(self, file: h5py.File):
+        return self.schema.allocate(file)
 
-    def allocate(): ...
+    def write(self, file: h5py.File):
+        if len(self.datasets) == 1:
+            ds = next(iter(self.datasets.values()))
+            ds.header.write(file)
+            ds.header = None
+        for name, dataset in self.datasets.items():
+            dataset.write(file[name])
 
-    def write_tree(): ...
+class DatasetWriter:
+    def __init__(self, schema: DatasetSchema, source: h5py.Group, index: DataIndex, header: Optional[OpenCosmoHeader] = None):
+        self.source = source
+        self.schema = schema
+        self.index = index
+        self.columns = [ColumnWriter(s, index, source[s.name]) for s in self.schema.columns]
+        self.header =  header
 
-    def write_header(): ...
+    def write(self, group: h5py.Group, range_: Optional[tuple[int,int]] = None):
+        for column in self.columns:
+            dataset = group[column.schema.name]
+            column.write(dataset, range_)
+
+        for name, val in self.source.attrs.items():
+            group.attrs[name] = val
+        if self.header is not None:
+            self.header.write(group)
 
 
-class SerialWriter:
-    def __init__(self, file: h5py.File):
-        self.__file = h5py.File
+class ColumnWriter:
+    def __init__(self, schema: ColumnSchema, index: DataIndex, source: h5py.Dataset):
+        self.schema = schema
+        self.source = source
+        self.index = index
 
-    @classmethod
-    def prepare(cls, file: Path | h5py.File) -> Self:
-        if isinstance(file, Path):
-            if file.exists():
-                raise FileExistsError(file)
-            file = h5py.File(file, "w")
-        return SerialWriter(file)
+    def write(self, dataset: h5py.Dataset, range_: Optional[tuple[int,int]] = None):
+        write_index(self.source, dataset, self.index, range_)
+        for name, val in self.source.attrs.items():
+            dataset.attrs[name] = val
