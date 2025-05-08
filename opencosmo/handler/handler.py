@@ -8,8 +8,8 @@ from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.dataset.index import DataIndex
-from opencosmo.io.schema import DatasetSchema
-from opencosmo.io.writer import FileWriter
+import opencosmo.io.protocols as iop
+from opencosmo.header import OpenCosmoHeader
 
 
 class OpenCosmoDataHandler(Protocol):
@@ -42,14 +42,14 @@ class OpenCosmoDataHandler(Protocol):
     def collect(
         self, columns: Iterable[str], index: DataIndex
     ) -> OpenCosmoDataHandler: ...
-    def get_schema(self, columns: Iterable[str], index: DataIndex) -> DatasetSchema: ...
     def prep_write(
         self,
-        writer: FileWriter,
+        writer: iop.DataWriter,
         index: DataIndex,
         columns: Iterable[str],
-        dataset_name: Optional[str] = None,
-    ) -> None: ...
+        dataset_name: str,
+        header: Optional[OpenCosmoHeader] = None,
+    ) -> iop.DataWriter: ...
     def get_data(
         self,
         builders: dict[str, ColumnBuilder],

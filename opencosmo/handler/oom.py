@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Iterable, Optional, TypeVar
 
 import h5py
 import numpy as np
@@ -9,9 +9,10 @@ from astropy.table import Column, Table  # type: ignore
 from opencosmo.dataset.index import DataIndex
 from opencosmo.spatial.tree import Tree
 from opencosmo.utils import write_index
-from opencosmo.io.schema import DatasetSchema
-from opencosmo.io.writer import FileWriter, make_dataset_schema, DatasetWriter
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.io.writers import DatasetWriter
+from opencosmo.io.utils import make_dataset_schema
+from opencosmo.io.schemas import DatasetSchema
 
 
 
@@ -75,21 +76,13 @@ class OutOfMemoryHandler:
             
     def prep_write(
         self,
-        writer: FileWriter,
         index: DataIndex,
         columns: Iterable[str],
         dataset_name: str,
         header: Optional[OpenCosmoHeader] = None,
-    ) -> None:
-        schema = make_dataset_schema(self.__group, columns, len(index))
-        ds_writer = DatasetWriter(schema, self.__group, index, header)
-        writer.add_dataset(dataset_name, ds_writer)
-        return writer
+    ) -> DatasetSchema:
+        return DatasetSchema.make_schema(self.__group, columns, index, header)
         
-
-
-
-
     def get_data(self, builders: dict, index: DataIndex) -> Column | Table:
         """ """
         if self.__group is None:

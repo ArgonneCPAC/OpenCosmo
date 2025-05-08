@@ -9,8 +9,8 @@ from h5py import File, Group
 import opencosmo as oc
 from opencosmo import link as l
 from opencosmo.parameters import SimulationParameters
-from opencosmo.io.writer import FileWriter, DatasetWriter
-from opencosmo.io.schema import CollectionSchema, DatasetSchema
+from opencosmo.io.writers import FileWriter, DatasetWriter
+from opencosmo.io.schemas import DatasetSchema
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.dataset.index import DataIndex
 
@@ -56,7 +56,7 @@ class StructureCollectionWriter:
         self.schema = StructureCollectionSchema()
         self.datasets: dict[str, DatasetWriter] = {}
         self.header = header
-        self.links = defaultdict(list)
+        self.links: dict[str, list[l.handler.LinkWriter]] = defaultdict(list)
 
     def add_dataset(self, name: str, dataset: DatasetWriter):
         self.schema.add_dataset(name, dataset.schema)

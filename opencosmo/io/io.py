@@ -11,17 +11,19 @@ try:
     from opencosmo.handler.mpi import partition
 except ImportError:
     MPI = None  # type: ignore
-from typing import Iterable, Optional
+from typing import Iterable, Optional, TYPE_CHECKING
 
 import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.handler import OpenCosmoDataHandler, OutOfMemoryHandler
+from opencosmo.handler.oom import OutOfMemoryHandler
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
-from .writer import FileWriter
+from .schemas import FileSchema
 
+if TYPE_CHECKING:
+    from opencosmo.handler import OpenCosmoDataHandler
 
 def open(
     file: str | Path | h5py.File | h5py.Group,
@@ -185,9 +187,11 @@ def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
     FileNotFoundError
         If the parent folder of the ouput file does not exist
     """
-    writer = FileWriter()
-    writer = dataset.prep_write(writer, "data")
-    writer.allocate(file)
+    schema = FileSchema()
+    dataset_schema = dataset.prep_write("data")
+    schema.add_child(dataset_schema, "data", "dataset")
+    schema.allocate(file)
+    writer = schema.into_writer()
     writer.write(file)
 
 

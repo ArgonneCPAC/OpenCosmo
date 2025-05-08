@@ -10,23 +10,6 @@ from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.link.builder import DatasetBuilder, OomDatasetBuilder
 
-class LinkSchema:
-    def __init__(self, name: str, n: int, has_sizes: bool = False):
-        self.n = n
-        self.has_sizes = has_sizes
-        self.name = name
-
-
-    def allocate(self, group: Group):
-        if self.has_sizes:
-            start_name = f"{self.name}_start"
-            size_name = f"{self.name}_size"
-            group.create_dataset(start_name, shape=(self.n,), dtype=np.uint64)
-            group.create_dataset(size_name, shape=(self.n,), dtype=np.uint64)
-        else:
-            name = f"{self.name}_idx"
-            group.create_dataset(name, shape=(self.n,), dtype=np.uint64)
-
 class LinkWriter:
     def __init__(self):
         self.schemas = []
@@ -47,14 +30,14 @@ class LinkWriter:
             if isinstance(source, tuple):
                 lengths = index.get_data(source[1])
                 new_starts = np.insert(np.cumsum(lengths), 0, 0)[:-1]
-                group[f"{schema.name}_start"][:] = new_starts
-                group[f"{schema.name}_size"][:] = lengths
+                group[f"{schema.name}_start"] = new_starts
+                group[f"{schema.name}_sizes"] = lengths
             else:
                 new_idxs = np.full(len(index), -1)
                 current_values = index.get_data(source)
                 has_data = current_values > 0
                 new_idxs[has_data] = np.arange(sum(has_data))
-                group[f"{schema.name}_idx"][:] = new_idxs
+                group[f"{schema.name}_idx"] = new_idxs
 
 
             
@@ -201,3 +184,24 @@ class OomLinkHandler:
         schema = LinkSchema(name, len(index), has_sizes)
         writer.add_link(schema, self.link, index)
         return writer
+
+
+
+    def write(self, group: Group, link_group: Group, name: str, index: DataIndex):
+        # Pack the indices
+        if not isinstance(self.link, tuple):
+            new_idxs = np.full(len(index), -1)
+            current_values = index.get_data(self.link)
+            has_data = current_values >= 0
+            new_idxs[has_data] = np.arange(sum(has_data))
+            link_group.create_dataset(f"sod_profile_idx", data=new_idxs, dtype=int)
+        else:
+            lengths = index.get_data(self.link[1])
+            new_starts = np.insert(np.cumsum(lengths), 0, 0)[:-1]
+            link_group.create_dataset(f"{name}_start", data=new_starts, dtype=int)
+            link_group.create_dataset(f"{name}_size", data=lengths, dtype=int)
+
+        dataset = self.get_data(index)
+
+        if len(dataset) > 0:
+            dataset.write(group, name)

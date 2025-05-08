@@ -9,6 +9,8 @@ from opencosmo import io
 from opencosmo import link as l
 from opencosmo.header import OpenCosmoHeader, read_header
 
+from opencosmo.io import schemas as ios
+
 try:
     from mpi4py import MPI
 
@@ -226,12 +228,12 @@ def get_link_handlers(
 
 def get_link_schemas(
     link_group: Group, names: list[str], n_rows: int
-) -> list[l.handler.LinkSchema]:
+) -> list[ios.LinkSchema]:
     link_schemas = []
     link_names = list(link_group.keys())
     for name in names:
         link_datasets = list(filter(lambda g: g.name.startswith(name), link_names))
         has_sizes = len(link_datasets) == 2
-        schema = l.handler.LinkSchema(name, n_rows, has_sizes)
+        schema = ios.LinkSchema(name, n_rows, has_sizes)
         link_schemas.append(schema)
     return link_schemas
