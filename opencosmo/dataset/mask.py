@@ -3,7 +3,7 @@ from __future__ import annotations
 import operator as op
 from collections import defaultdict
 from numbers import Real
-from typing import Callable, Iterable
+from typing import Callable, Iterable, TYPE_CHECKING
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -11,7 +11,10 @@ from astropy import table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.dataset.index import DataIndex
-from opencosmo.handler import OpenCosmoDataHandler
+
+
+if TYPE_CHECKING:
+    from opencosmo.handler import OpenCosmoDataHandler
 
 Comparison = Callable[[float, float], bool]
 

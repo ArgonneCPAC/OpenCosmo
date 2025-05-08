@@ -21,7 +21,7 @@ from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.link import StructureCollection
 from opencosmo.parameters import SimulationParameters
 from opencosmo.transformations import units as u
-from opencosmo.io.writer import FileWriter
+from opencosmo.io.writers import FileWriter
 
 
 class Collection(Protocol):
