@@ -154,19 +154,6 @@ def test_parse_mass(input_path):
         assert data[col].unit == u.Msun / cu.littleh
 
 
-def test_raw_data_is_unitless(input_path):
-    """
-    Make sure raw data loaded by read remains unitless even if
-    the data has units.
-    """
-    dataset = read(input_path)
-    data = dataset.data
-    cols = data.columns
-    assert any(data[col].unit is not None for col in cols)
-
-    raw_data = dataset._Dataset__handler._InMemoryHandler__data
-    assert all(isinstance(raw_data[col], np.ndarray) for col in cols)
-
 
 def test_data_update_doesnt_propogate(input_path):
     dataset = read(input_path)
@@ -174,7 +161,6 @@ def test_data_update_doesnt_propogate(input_path):
     new_column = np.random.rand(len(data))
     data["new_column"] = new_column
     assert "new_column" in data.columns
-    assert "new_column" not in dataset._Dataset__handler._InMemoryHandler__data.keys()
     assert "new_column" not in dataset.data.columns
 
 

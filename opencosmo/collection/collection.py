@@ -22,6 +22,7 @@ from opencosmo.link import StructureCollection
 from opencosmo.parameters import SimulationParameters
 from opencosmo.transformations import units as u
 from opencosmo.io.writers import FileWriter
+from opencosmo.io.schemas import SimCollectionSchema
 
 
 class Collection(Protocol):
@@ -163,10 +164,13 @@ class SimulationCollection(dict):
         datasets = {name: read_single_dataset(file, name) for name in names}
         return cls(datasets)
 
-    def prep_write(self, writer: FileWriter, name: str):
+    def make_schema(self, name: str):
+        schema = SimCollectionSchema()
         for name, dataset in self.items():
-            writer = dataset.prep_write(writer, name, True)
-        return writer
+            ds_schema = dataset.make_schema(name)
+            schema.add_child(ds_schema, name)
+
+        return schema
         
 
     def __map(self, method, *args, **kwargs):

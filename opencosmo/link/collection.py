@@ -5,12 +5,12 @@ from collections import defaultdict
 
 import astropy  # type: ignore
 from h5py import File, Group
+import numpy as np
 
 import opencosmo as oc
 from opencosmo import link as l
 from opencosmo.parameters import SimulationParameters
-from opencosmo.io.writers import FileWriter, DatasetWriter
-from opencosmo.io.schemas import DatasetSchema
+from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.dataset.index import DataIndex
 
@@ -30,53 +30,6 @@ def filter_properties_by_dataset(
     new_properties = properties.filter(oc.col(linked_column).isin(tags))
     return new_properties
 
-class StructureCollectionSchema:
-    def __init__(self):
-        self.datasets = {}
-        self.links = defaultdict(list)
-
-    def add_dataset(self, name: str, schema: "DatasetSchema"):
-        self.datasets[name] = schema
-
-    def add_link(self, dataset_name: str, link_schema: list[l.handler.LinkSchema]):
-        self.links[dataset_name].extend(link_schema)
-
-    def allocate(self, group: Group):
-        if len(self.datasets) == 1:
-            raise ValueError("A dataset collection cannot have only one member!")
-        for ds_name, ds in self.datasets.items():
-            ds_group = group.require_group(ds_name)
-            ds.allocate(ds_group)
-            for link in self.links[ds_name]:
-                link_group = ds_group.require_group("data_linked")
-                link.allocate(link_group)
-
-class StructureCollectionWriter:
-    def __init__(self, header: OpenCosmoHeader):
-        self.schema = StructureCollectionSchema()
-        self.datasets: dict[str, DatasetWriter] = {}
-        self.header = header
-        self.links: dict[str, list[l.handler.LinkWriter]] = defaultdict(list)
-
-    def add_dataset(self, name: str, dataset: DatasetWriter):
-        self.schema.add_dataset(name, dataset.schema)
-        self.datasets[name] = dataset
-
-    def add_link(self, dataset_name: str, link_writer: l.handler.LinkWriter):
-        if dataset_name not in self.datasets:
-            raise ValueError("Link writers must be attached to a dataset that is already in the collection writer")
-        self.links[dataset_name].append(link_writer)
-        self.schema.add_link(dataset_name, link_writer.schemas)
-
-    def write(self, group: File | Group):
-        for name, ds in self.datasets.items():
-            ds_group = group[name]
-            ds.write(ds_group)
-            for link in self.links[name]:
-                link.write(ds_group["data_linked"])
-
-        self.header.write(group)
-
 
 class StructureCollection:
     """
@@ -94,7 +47,6 @@ class StructureCollection:
         properties: oc.Dataset,
         header: oc.header.OpenCosmoHeader,
         handlers: dict[str, l.LinkHandler],
-        filters: Optional[dict[str, Any]] = {},
         *args,
         **kwargs,
     ):
@@ -106,7 +58,6 @@ class StructureCollection:
         self.__header = header
         self.__handlers = handlers
         self.__index = self.__properties.index
-        self.__filters = filters
 
     def __repr__(self):
         structure_type = self.__header.file.data_type.split("_")[0] + "s"
@@ -389,22 +340,22 @@ class StructureCollection:
             else:
                 yield row, output
 
-    def prep_write(self, writer: FileWriter, collection_name: str = "collection", *args) -> StructureCollectionWriter:
-        collection_writer = StructureCollectionWriter(header=self.__header)
+    def make_schema(self, name: str) -> StructCollectionSchema:
+        schema = StructCollectionSchema(self.__header)
+        properties_name = self.properties.dtype
         for name, dataset in self.items():
-            dataset.prep_write(collection_writer, name, with_header = False)
-        self.properties.prep_write(collection_writer, self.properties.dtype, True)
+            ds_schema = dataset.make_schema(name)
+            schema.add_child(ds_schema, name)
+        
+        properties_schema = self.properties.make_schema(properties_name)
+        schema.add_child(properties_schema, properties_name)
 
-        link_writer = l.handler.LinkWriter()
         for name, handler in self.__handlers.items():
-            link_writer = handler.prep_write(link_writer, name, self.__index)
+            link_schema = handler.make_schema(name, self.__index)
+            schema.insert(link_schema, f"{properties_name}.{name}")
 
-        collection_writer.add_link(self.__properties.dtype, link_writer)
-
-        writer.add_dataset(collection_name, collection_writer)
-        return writer
-
-
+        return schema
             
 
         
+

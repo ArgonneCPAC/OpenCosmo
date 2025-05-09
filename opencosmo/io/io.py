@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 import h5py
 
@@ -20,10 +21,13 @@ from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.handler.oom import OutOfMemoryHandler
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
+
 from .schemas import FileSchema
+from .protocols import DataSchema, Writeable
 
 if TYPE_CHECKING:
     from opencosmo.handler import OpenCosmoDataHandler
+
 
 def open(
     file: str | Path | h5py.File | h5py.Group,
@@ -169,7 +173,7 @@ def read(
 
 
 @file_writer
-def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
+def write(file: h5py.File, dataset: Writeable) -> None:
     """
     Write a dataset or collection to the file at the sepecified path.
 
@@ -188,9 +192,12 @@ def write(file: h5py.File, dataset: oc.Dataset | collection.Collection) -> None:
         If the parent folder of the ouput file does not exist
     """
     schema = FileSchema()
-    dataset_schema = dataset.prep_write("data")
-    schema.add_child(dataset_schema, "data", "dataset")
+    dataset_schema = dataset.make_schema("root")
+
+
+    schema.add_child(dataset_schema, "root")
     schema.allocate(file)
+
     writer = schema.into_writer()
     writer.write(file)
 

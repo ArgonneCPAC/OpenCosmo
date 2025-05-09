@@ -9,40 +9,7 @@ import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.link.builder import DatasetBuilder, OomDatasetBuilder
-
-class LinkWriter:
-    def __init__(self):
-        self.schemas = []
-        self.sources = []
-        self.indices = []
-
-    def add_link(self, schema: LinkSchema, source: Group, index: DataIndex):
-        self.schemas.append(schema)
-        self.sources.append(source)
-        self.indices.append(index)
-
-    def allocate(self, group: Group):
-        for schema in self.schemas:
-            schema.allocate(group)
-
-    def write(self, group: Group):
-        for schema, source, index in zip(self.schemas, self.sources, self.indices):
-            if isinstance(source, tuple):
-                lengths = index.get_data(source[1])
-                new_starts = np.insert(np.cumsum(lengths), 0, 0)[:-1]
-                group[f"{schema.name}_start"] = new_starts
-                group[f"{schema.name}_sizes"] = lengths
-            else:
-                new_idxs = np.full(len(index), -1)
-                current_values = index.get_data(source)
-                has_data = current_values > 0
-                new_idxs[has_data] = np.arange(sum(has_data))
-                group[f"{schema.name}_idx"] = new_idxs
-
-
-            
-
-
+from opencosmo.io import schemas as ios
 
 
 class LinkHandler(Protocol):
@@ -179,11 +146,8 @@ class OomLinkHandler:
             self.builder.with_units(convention),
         )
 
-    def prep_write(self, writer: LinkWriter, name: str, index: DataIndex) -> LinkWriter:
-        has_sizes = isinstance(self.link, tuple)
-        schema = LinkSchema(name, len(index), has_sizes)
-        writer.add_link(schema, self.link, index)
-        return writer
+    def make_schema(self, name: str, index: DataIndex) -> ios.LinkSchema:
+        return ios.LinkSchema(name, index, self.link)
 
 
 
