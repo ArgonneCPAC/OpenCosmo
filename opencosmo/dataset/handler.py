@@ -8,11 +8,15 @@ from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.index import DataIndex
 from opencosmo.spatial.tree import Tree
-from opencosmo.utils import write_index
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.io.writers import DatasetWriter
-from opencosmo.io.utils import make_dataset_schema
 from opencosmo.io.schemas import DatasetSchema
+
+try:
+    from mpi4py import MPI
+    if MPI.COMM_WORLD.Get_size() == 1:
+        MPI = None
+except ImportError:
+    MPI = None
 
 
 
@@ -47,29 +51,24 @@ class DatasetHandler:
         return self.__file.close()
 
     def collect(self, columns: Iterable[str], index: DataIndex) -> DatasetHandler:
-        tree: Optional[Tree] = None
-        if self.__tree is not None and len(index) == len(self):
-            mask = np.zeros(len(self), dtype=bool)
-            mask = index.set_data(mask, True)
-            tree = self.__tree.apply_mask(mask)
-
+        if MPI is not None:
+            indices = MPI.COMM_WORLD.allgather(index)
+            new_index = indices[0].concatenate(*indices[1:])
         else:
-            tree = self.__tree
-
+            new_index = index
         file: h5py.File = h5py.File.in_memory()
         group = file.require_group("data")
         for colname in columns:
             dataset = self.__group[colname]
-            data = index.get_data(dataset)
+            data = new_index.get_data(dataset)
             group.create_dataset(colname, data=data)
             for name, value in dataset.attrs.items():
                 group[colname].attrs[name] = value
 
 
-
         return DatasetHandler(
             file,
-            tree,
+            group_name = self.__group_name
         )
             
     def prep_write(

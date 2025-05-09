@@ -22,17 +22,13 @@ def write_index(
     input_ds: h5py.Dataset,
     output_ds: h5py.Dataset,
     index: DataIndex,
-    range_: Optional[tuple[int, int]] = None,
+    offset: int = 0
 ):
     if len(index) == 0:
         raise ValueError("No indices provided to write")
     data = index.get_data(input_ds)
-    output_ds[:] = data
+    output_ds[offset:offset+len(data)] = data
 
-
-    attrs = input_ds.attrs
-    for key in attrs.keys():
-        output_ds.attrs[key] = attrs[key]
 
 
 class FileWriter:
@@ -46,7 +42,7 @@ class FileWriter:
         if len(self.children) == 1:
             ds = next(iter(self.children.values()))
             return ds.write(file)
-        for name, dataset in self.datasets.items():
+        for name, dataset in self.children.items():
             dataset.write(file[name])
 
 
@@ -76,11 +72,11 @@ class DatasetWriter:
         self.header = header
         self.links = links
 
-    def write(self, group: h5py.Group, range_: Optional[tuple[int,int]] = None):
+    def write(self, group: h5py.Group):
         data_group = group["data"]
         for column in self.columns:
             dataset = data_group[column.name]
-            column.write(dataset, range_)
+            column.write(dataset)
 
         if self.links:
             link_group = group["data_linked"]
@@ -96,15 +92,17 @@ class ColumnWriter:
     """
     Writes a single column in a dataset
     """
-    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
+    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset, offset: int = 0):
         self.name = name
         self.source = source
         self.index = index
+        self.offset = offset
 
-    def write(self, dataset: h5py.Dataset, range_: Optional[tuple[int,int]] = None):
-        write_index(self.source, dataset, self.index, range_)
-        for name, val in self.source.attrs.items():
-            dataset.attrs[name] = val
+    def write(self, dataset: h5py.Dataset):
+        write_index(self.source, dataset, self.index, self.offset)
+        if self.offset == 0:
+            for name, val in self.source.attrs.items():
+                dataset.attrs[name] = val
 
 class IdxLinkWriter:
     """
@@ -116,12 +114,12 @@ class IdxLinkWriter:
         self.index = index
         self.source = source
 
-    def write(self, group: h5py.Group):
+    def write(self, group: h5py.Group, link_offset: int = 0, start_offset: int = 0):
         new_idxs = np.full(len(self.index), -1)
         current_values = self.index.get_data(self.source)
         has_data = current_values > 0
-        new_idxs[has_data] = np.arange(sum(has_data))
-        group[f"{self.name}_idx"][:] = new_idxs
+        new_idxs[has_data] = np.arange(sum(has_data)) + start_offset
+        group[f"{self.name}_idx"][link_offset:link_offset + len(new_idxs)] = new_idxs
 
 
 class StartSizeLinkWriter:
@@ -129,17 +127,19 @@ class StartSizeLinkWriter:
     Writer for links between datasets where each row in one datest
     corresponds to several rows in the other.
     """
-    def __init__(self, name: str, index: DataIndex, sizes: h5py.Dataset):
+    def __init__(self, name: str, index: DataIndex, sizes: h5py.Dataset, link_offset: int = 0, start_offset: int = 0):
         self.name = name
         self.index = index
         self.sizes = sizes
+        self.link_offset = link_offset
+        self.start_offset = start_offset
 
     def write(self, group: h5py.Group):
         new_sizes = self.index.get_data(self.sizes)
         new_starts = np.insert(np.cumsum(new_sizes), 0, 0)
-        new_starts = new_starts[:-1]
-        group[f"{self.name}_start"][:] = new_starts
-        group[f"{self.name}_size"][:] = new_sizes
+        new_starts = new_starts[:-1] + self.start_offset
+        group[f"{self.name}_start"][self.link_offset:self.link_offset + len(new_starts)] = new_starts
+        group[f"{self.name}_size"][self.link_offset:self.link_offset + len(new_starts)] = new_sizes
 
         
 

@@ -6,7 +6,7 @@ import h5py
 import opencosmo as oc
 from opencosmo import dataset as ds
 from opencosmo.collection import Collection, SimulationCollection
-from opencosmo.link.collection import StructureCollection
+from opencosmo.structure.collection import StructureCollection
 
 
 def open_simulation_files(**paths: Path) -> SimulationCollection:

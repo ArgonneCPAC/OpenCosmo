@@ -5,8 +5,7 @@ import pytest
 
 import opencosmo as oc
 from opencosmo.collection import SimulationCollection
-from opencosmo.link import open_linked_files
-from opencosmo.link.collection import StructureCollection
+from opencosmo import open_linked_files, StructureCollection
 
 
 @pytest.fixture

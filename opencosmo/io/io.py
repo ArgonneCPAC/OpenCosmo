@@ -1,32 +1,29 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
 
 import h5py
 
 try:
     from mpi4py import MPI
-
-    from opencosmo.handler import MPIHandler
-    from opencosmo.handler.mpi import partition
+    if MPI.COMM_WORLD.Get_size() == 1:
+        raise ImportError
+    from opencosmo.dataset.mpi import partition
 except ImportError:
-    MPI = None  # type: ignore
+    MPI = None
 from typing import Iterable, Optional, TYPE_CHECKING
 
 import opencosmo as oc
 from opencosmo import collection
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
+from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.dataset.handler import DatasetHandler 
+from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
 
 from .schemas import FileSchema
-from .protocols import DataSchema, Writeable
+from .protocols import Writeable
 
-if TYPE_CHECKING:
-    from opencosmo.handler import OpenCosmoDataHandler
 
 
 def open(
@@ -95,16 +92,12 @@ def open(
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
-    handler: OpenCosmoDataHandler
-    index: DataIndex
+    index: ChunkedIndex
+    handler = DatasetHandler(file_handle, group_name=datasets, tree=tree)
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        handler = MPIHandler(
-            file_handle, group_name=datasets, tree=tree, comm=MPI.COMM_WORLD
-        )
         start, size = partition(MPI.COMM_WORLD, len(handler))
         index = ChunkedIndex.single_chunk(start, size)
     else:
-        handler = DatasetHandler(file_handle, group_name=datasets, tree=tree)
         index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
@@ -173,7 +166,7 @@ def read(
 
 
 @file_writer
-def write(file: h5py.File, dataset: Writeable) -> None:
+def write(path: Path, dataset: Writeable) -> None:
     """
     Write a dataset or collection to the file at the sepecified path.
 
@@ -191,6 +184,13 @@ def write(file: h5py.File, dataset: Writeable) -> None:
     FileNotFoundError
         If the parent folder of the ouput file does not exist
     """
+    if MPI is not None:
+        print("WRITING IN PARALLEL")
+        return write_parallel(path, dataset)
+
+
+    file = h5py.File(path, "w")
+
     schema = FileSchema()
     dataset_schema = dataset.make_schema("root")
 
@@ -202,4 +202,7 @@ def write(file: h5py.File, dataset: Writeable) -> None:
     writer.write(file)
 
 
+def write_parallel(file: Path, dataset: Writeable) -> None:
+    schema = FileSchema()
+    dataset_schema = dataset.make_schema("root")
 

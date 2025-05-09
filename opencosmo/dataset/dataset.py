@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Generator, Iterable, Optional, Type
+from typing import Generator, Iterable, Optional, Type, TYPE_CHECKING
 
 import h5py
 from astropy import units  # type: ignore
@@ -12,11 +12,12 @@ import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
 from opencosmo.dataset.mask import Mask, apply_masks
-from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import OpenCosmoHeader, write_header
 from opencosmo.parameters import SimulationParameters
 from opencosmo.io.schemas import DatasetSchema
 
+if TYPE_CHECKING:
+    from opencosmo.dataset.handler import DatasetHandler
 
 
 class Dataset:
