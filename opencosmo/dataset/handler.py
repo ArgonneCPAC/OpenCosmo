@@ -16,7 +16,7 @@ from opencosmo.io.schemas import DatasetSchema
 
 
 
-class OutOfMemoryHandler:
+class DatasetHandler:
     """
     A handler for data that will not be stored in memory. Data will remain on
     disk until needed
@@ -47,7 +47,7 @@ class OutOfMemoryHandler:
         self.__group = None
         return self.__file.close()
 
-    def collect(self, columns: Iterable[str], index: DataIndex) -> OutOfMemoryHandler:
+    def collect(self, columns: Iterable[str], index: DataIndex) -> DatasetHandler:
         tree: Optional[Tree] = None
         if self.__tree is not None and len(index) == len(self):
             mask = np.zeros(len(self), dtype=bool)
@@ -68,11 +68,10 @@ class OutOfMemoryHandler:
 
 
 
-        return OutOfMemoryHandler(
+        return DatasetHandler(
             file,
             tree,
         )
-
             
     def prep_write(
         self,

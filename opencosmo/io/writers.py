@@ -109,6 +109,7 @@ class StartSizeLinkWriter:
         group[f"{self.name}_start"][:] = new_starts
         group[f"{self.name}_size"][:] = new_sizes
 
+        print(new_starts)
         
 
 

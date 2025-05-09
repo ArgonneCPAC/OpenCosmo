@@ -7,7 +7,7 @@ from h5py import File, Group
 import opencosmo as oc
 from opencosmo.dataset.column import get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
-from opencosmo.handler import OutOfMemoryHandler
+from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.transformations import units as u
 
@@ -114,7 +114,7 @@ class OomDatasetBuilder:
         if selected is not None:
             builders = {key: builders[key] for key in selected}
 
-        handler = OutOfMemoryHandler(file, tree=tree)
+        handler = DatasetHandler(file, tree=tree)
 
         if index is None:
             index = ChunkedIndex.from_size(len(handler))

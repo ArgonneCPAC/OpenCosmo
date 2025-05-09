@@ -3,9 +3,8 @@
 import hdf5plugin  # type: ignore # noqa: F401
 
 from .handler import OpenCosmoDataHandler
-from .oom import OutOfMemoryHandler
 
-__all__ = ["OpenCosmoDataHandler", "OutOfMemoryHandler"]
+__all__ = ["OpenCosmoDataHandler"]
 try:
     import mpi4py  # noqa: F401
 

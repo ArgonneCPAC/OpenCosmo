@@ -12,16 +12,17 @@ import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
 from opencosmo.dataset.mask import Mask, apply_masks
-from opencosmo.handler import OpenCosmoDataHandler
+from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import OpenCosmoHeader, write_header
 from opencosmo.parameters import SimulationParameters
 from opencosmo.io.schemas import DatasetSchema
 
 
+
 class Dataset:
     def __init__(
         self,
-        handler: OpenCosmoDataHandler,
+        handler: DatasetHandler,
         header: OpenCosmoHeader,
         builders: dict[str, ColumnBuilder],
         unit_transformations: dict[t.TransformationType, list[t.Transformation]],
