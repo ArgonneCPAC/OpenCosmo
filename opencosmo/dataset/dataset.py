@@ -314,7 +314,7 @@ class Dataset:
             new_index,
         )
 
-    def prep_write(
+    def make_schema(
         self,
         dataset_name: str,
         with_header: bool = True

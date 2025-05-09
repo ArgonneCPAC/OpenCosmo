@@ -25,6 +25,18 @@ def write_index(
     for key in attrs.keys():
         output_ds.attrs[key] = attrs[key]
 
+class CollectionWriter:
+    def __init__(self, children: dict[str, iop.DataWriter], header: Optional[OpenCosmoHeader] = None):
+        self.children = children
+        self.header = header
+
+    def write(self, file: h5py.File | h5py.Group):
+        for name, dataset in self.children.items():
+            dataset.write(file[name])
+
+        if self.header is not None:
+            self.header.write(file)
+
 class FileWriter:
     def __init__(self, children: dict[str, iop.DataWriter]): 
         self.children = children
@@ -36,10 +48,12 @@ class FileWriter:
         for name, dataset in self.datasets.items():
             dataset.write(file[name])
 
+
 class DatasetWriter:
-    def __init__(self, columns: list["ColumnWriter"], header: Optional[OpenCosmoHeader] = None):
+    def __init__(self, columns: list["ColumnWriter"], links: list = [], header: Optional[OpenCosmoHeader] = None):
         self.columns = columns
         self.header = header
+        self.links = links
 
     def write(self, group: h5py.Group, range_: Optional[tuple[int,int]] = None):
         data_group = group["data"]
@@ -47,9 +61,13 @@ class DatasetWriter:
             dataset = data_group[column.name]
             column.write(dataset, range_)
 
+        if self.links:
+            link_group = group["data_linked"]
+            for link in self.links:
+                link.write(link_group)
+
+
         if self.header is not None:
-            print("WRITING HEADER")
-            print(group)
             self.header.write(group)
 
 
@@ -63,3 +81,34 @@ class ColumnWriter:
         write_index(self.source, dataset, self.index, range_)
         for name, val in self.source.attrs.items():
             dataset.attrs[name] = val
+
+class IdxLinkWriter:
+    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
+        self.name = name
+        self.index = index
+        self.source = source
+
+    def write(self, group: h5py.Group):
+        new_idxs = np.full(len(self.index), -1)
+        current_values = self.index.get_data(self.source)
+        has_data = current_values > 0
+        new_idxs[has_data] = np.arange(sum(has_data))
+        group[f"{self.name}_idx"][:] = new_idxs
+
+
+class StartSizeLinkWriter:
+    def __init__(self, name: str, index: DataIndex, sizes: h5py.Dataset):
+        self.name = name
+        self.index = index
+        self.sizes = sizes
+
+    def write(self, group: h5py.Group):
+        new_sizes = self.index.get_data(self.sizes)
+        new_starts = np.insert(np.cumsum(new_sizes), 0, 0)
+        new_starts = new_starts[:-1]
+        group[f"{self.name}_start"][:] = new_starts
+        group[f"{self.name}_size"][:] = new_sizes
+
+        
+
+

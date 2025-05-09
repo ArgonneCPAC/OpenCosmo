@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from astropy.cosmology import units as cu
+import h5py
 
 from opencosmo import read
 
@@ -71,9 +72,10 @@ def test_select_doesnt_alter_raw(input_path):
     selected = dataset.select(selected_cols)
     selected_data = selected.data
 
-    raw_data = dataset._Dataset__handler._InMemoryHandler__data
-    assert all(isinstance(raw_data[col], np.ndarray) for col in cols)
+    raw_data = dataset._Dataset__handler._OutOfMemoryHandler__group
+    assert all(isinstance(raw_data[col], h5py.Dataset) for col in cols)
     assert all(data[col].unit == selected_data[col].unit for col in selected_cols)
+    assert not all(np.all(data[col].value == raw_data[col][:]) for col in selected_cols)
 
 
 def test_single_column_select(input_path):
