@@ -9,6 +9,15 @@ from opencosmo.io import protocols as iop
 from opencosmo.header import OpenCosmoHeader
 
 
+"""
+Writers work in tandem with schemas to create new files. All schemas must have
+an into_writer method, which returns a writer that can be used to put
+data into the new file.
+
+Because schemas allocate space in a file, the correct structure is always
+assumed to be there by the writer. If the writer itself fails, it is probably either
+a problem with the schema or there was a mixup in naming.
+"""
 def write_index(
     input_ds: h5py.Dataset,
     output_ds: h5py.Dataset,
@@ -25,19 +34,11 @@ def write_index(
     for key in attrs.keys():
         output_ds.attrs[key] = attrs[key]
 
-class CollectionWriter:
-    def __init__(self, children: dict[str, iop.DataWriter], header: Optional[OpenCosmoHeader] = None):
-        self.children = children
-        self.header = header
-
-    def write(self, file: h5py.File | h5py.Group):
-        for name, dataset in self.children.items():
-            dataset.write(file[name])
-
-        if self.header is not None:
-            self.header.write(file)
 
 class FileWriter:
+    """
+    Root writer for a file.
+    """
     def __init__(self, children: dict[str, iop.DataWriter]): 
         self.children = children
 
@@ -49,7 +50,27 @@ class FileWriter:
             dataset.write(file[name])
 
 
+
+class CollectionWriter:
+    """
+    Writes collections to a file or group
+    """
+    def __init__(self, children: dict[str, iop.DataWriter], header: Optional[OpenCosmoHeader] = None):
+        self.children = children
+        self.header = header
+
+    def write(self, file: h5py.File | h5py.Group):
+        for name, dataset in self.children.items():
+            dataset.write(file[name])
+
+        if self.header is not None:
+            self.header.write(file)
+
+
 class DatasetWriter:
+    """
+    Writes datasets to a file or group.
+    """
     def __init__(self, columns: list["ColumnWriter"], links: list = [], header: Optional[OpenCosmoHeader] = None):
         self.columns = columns
         self.header = header
@@ -72,6 +93,9 @@ class DatasetWriter:
 
 
 class ColumnWriter:
+    """
+    Writes a single column in a dataset
+    """
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
         self.name = name
         self.source = source
@@ -83,6 +107,10 @@ class ColumnWriter:
             dataset.attrs[name] = val
 
 class IdxLinkWriter:
+    """
+    Writer for links between datasets, where each row in one dataset corresponds
+    to a single row in the other.
+    """
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
         self.name = name
         self.index = index
@@ -97,6 +125,10 @@ class IdxLinkWriter:
 
 
 class StartSizeLinkWriter:
+    """
+    Writer for links between datasets where each row in one datest
+    corresponds to several rows in the other.
+    """
     def __init__(self, name: str, index: DataIndex, sizes: h5py.Dataset):
         self.name = name
         self.index = index
@@ -109,7 +141,6 @@ class StartSizeLinkWriter:
         group[f"{self.name}_start"][:] = new_starts
         group[f"{self.name}_size"][:] = new_sizes
 
-        print(new_starts)
         
 
 

@@ -1,3 +1,4 @@
+from itertools import chain
 from typing import Iterable, Type, Optional
 from enum import StrEnum
 import opencosmo.io.protocols as iop
@@ -36,27 +37,46 @@ hdf5.Group == opencosmo Dataset (sometimes)
 Schemas are NOT responsible for handling metadata. Those are handled by writers.
 """
 
-class FileSchemaChildren(StrEnum):
-    DATASET = "DATASET"
-    SIM_COLLECTION = "SIM_COLLECTION"
-    STRUCT_COLLECTION = "STRUCT_COLLECTION"
+class FileSchema:
 
-    def into(self) -> Type[iop.DataSchema]:
-        match self:
-            case FileSchemaChildren.DATASET:
-                return DatasetSchema
-            case FileSchemaChildren.SIM_COLLECTION:
-                return SimCollectionSchema
-            case FileSchemaChildren.STRUCT_COLLECTION:
-                return StructCollectionSchema
+    def __init__(self):
+        self.children = {}
 
-class SimCollectionChildren(StrEnum):
-    DATASET = "DATASET"
-    STRUCT_COLLECTION = "STRUCT_COLLECTION"
+    def add_child(self, child: iop.DataSchema, name: str):
+        if name in self.children:
+            raise ValueError(f"File schema already has child named {name}")
+        match child:
+            case SimCollectionSchema() | StructCollectionSchema() | DatasetSchema():
+                self.children[name] = child
+            case _:
+                raise ValueError(f"File schema cannot have children of type {type(child)}")
+
+    def allocate(self, group: h5py.File | h5py.Group):
+        self.verify()
+        if not isinstance(group, h5py.File):
+            raise ValueError(
+                "File Schema allocation must be done at the top level of a h5py file!"
+            )
+        if len(self.children) == 1:
+            ds = next(iter(self.children.values()))
+            return ds.allocate(group)
+
+        for ds_name, ds in self.children.items():
+            ds_group = group.require_group(ds_name)
+            ds.allocate(ds_group)
+
+    def verify(self):
+        if len(self.children) == 0:
+            raise ValueError("This file schema has no children!")
+        for child in self.children.values():
+            child.verify()
+
+    def into_writer(self):
+        children = {name: schema.into_writer() for name, schema in self.children.items()}
+        return iow.FileWriter(children)
+
 
 class SimCollectionSchema:
-    CHILD_TYPES = SimCollectionChildren
-    TYPE = "SIM_COLLECTION"
     def __init__(self):
         self.children = {}
 
@@ -70,10 +90,13 @@ class SimCollectionSchema:
             self.add_child(child, path, type_)
 
     def add_child(self, child: iop.DataSchema, name: str):
-        _ = self.CHILD_TYPES(child.TYPE)
         if name in self.children:
             raise ValueError(f"SimCollection already has a dataset with name {name}")
-        self.children[name] = child
+        match child:
+            case StructCollectionSchema() | DatasetSchema():
+                self.children[name] = child
+            case _:
+                raise ValueError(f"Sim collection cannot take children of type {type(child)}")
 
     def allocate(self, group: h5py.File | h5py.Group):
         if not isinstance(group, h5py.File):
@@ -85,10 +108,8 @@ class SimCollectionSchema:
             ds.allocate(ds_group)
 
     def verify(self):
-        if len(self.children) == 0:
-            raise ValueError("This file schema has no children!")
-        elif len(self.children) == 1:
-            raise ValueError("A SimulationCollection must have more than one simulation!")
+        if len(self.children) < 2:
+            raise ValueError("A SimulationCollection must have at least two children!")
         for child in self.children.values():
             child.verify()
 
@@ -97,16 +118,8 @@ class SimCollectionSchema:
         return iow.CollectionWriter(children)
 
 
-class StructCollectionChildren(StrEnum):
-    DATASET = "DATASET"
-    LINK = "LINK"
-
-
 
 class StructCollectionSchema:
-    TYPE = "STRUCT_COLLECTION"
-    CHILD_TYPES = StructCollectionChildren
-
     def __init__(self, header: OpenCosmoHeader):
         self.datasets = {}
         self.header = header
@@ -134,12 +147,16 @@ class StructCollectionSchema:
             
 
     def add_child(self, child: iop.DataSchema, name: str):
-        child_type = StructCollectionChildren(child.TYPE)
-        match child_type:
-            case self.CHILD_TYPES.DATASET:
+        if name in self.datasets:
+            raise ValueError(f"StructCollectionSchema already has child with name {name}")
+        match child:
+            case DatasetSchema():
                 self.datasets[name] = child
-            case _:
-                raise ValueError("Use StructCollectionSchema.add_links to add links")
+            case LinkSchema():
+                raise ValueError("LinkSchemas need to be added to a DatasetSchema directly. Perhaps you meant to call insert?")
+            case _: 
+                raise ValueError(f"StructCollectionSchema cannot take children of type {type(child)}")
+
 
     def allocate(self, group: h5py.Group):
         if len(self.datasets) == 1:
@@ -152,70 +169,13 @@ class StructCollectionSchema:
         dataset_writers = {key: val.into_writer() for key, val in self.datasets.items()}
         return iow.CollectionWriter(dataset_writers, self.header)
 
-
-
-
-class FileSchema:
-    CHILD_TYPES = FileSchemaChildren
-    TYPE = "FILE"
-    def __init__(self):
-        self.children = {}
-
-
-
-    def add_child(self, child: iop.DataSchema, name: str):
-        _= self.CHILD_TYPES(child.TYPE)
-        if name in self.children:
-            raise ValueError(f"Writer already has a dataset with name {name}")
-        self.children[name] = child
-
-    def allocate(self, group: h5py.File | h5py.Group):
-        self.verify()
-        if not isinstance(group, h5py.File):
-            raise ValueError(
-                "File Schema allocation must be done at the top level of a h5py file!"
-            )
-        if len(self.children) == 1:
-            ds = next(iter(self.children.values()))
-            return ds.allocate(group)
-
-        for ds_name, ds in self.children.items():
-            ds_group = group.require_group(ds_name)
-            ds.allocate(ds_group)
-
-    def verify(self):
-        if len(self.children) == 0:
-            raise ValueError("This file schema has no children!")
-        for child in self.children.values():
-            child.verify()
-
-    def into_writer(self):
-        children = {name: schema.into_writer() for name, schema in self.children.items()}
-        return iow.FileWriter(children)
-
-        
-
-class DatasetSchemaChildren(StrEnum):
-    COLUMN = "COLUMN"
-    LINK = "LINK"
-
-    def into(self):
-        match self:
-            case DatasetSchemaChildren.COLUMN:
-                return ColumnSchema
-            case DatasetSchemaChildren.LINK:
-                return LinkSchema
-
 class DatasetSchema:
-    CHILD_TYPES = DatasetSchemaChildren
-    TYPE = "DATASET"
-    
     def __init__(
         self,
         header: Optional[OpenCosmoHeader] = None,
     ):
-        self.columns: list[ColumnSchema] = []
-        self.links: list[LinkSchema] = []
+        self.columns: dict[str, ColumnSchema] = {}
+        self.links: dict[str, LinkSchema] = {}
         self.header = header
 
     @classmethod
@@ -235,46 +195,43 @@ class DatasetSchema:
 
 
     def add_child(self, child: iop.DataSchema, name: str):
-        child_type = self.CHILD_TYPES(child.TYPE).into()
-        if name in [c.name for c in self.columns]:
-            raise ValueError(f"Dataset already has a child with name {name}")
-        if child_type == LinkSchema:
-            self.links.append(child)
-        elif child_type == ColumnSchema:
-            self.columns.append(child)
+        if name in self.columns or name in self.links:
+            raise ValueError(f"DatasetScheema already has a child named {name}")
+        match child:
+            case LinkSchema():
+                self.links[name] = child
+            case ColumnSchema():
+                self.columns[name] = child
+            case _:
+                raise ValueError(f"Dataset schema cannot take children of type {type(child)}")
 
     def verify(self):
         if len(self.columns) == 0:
             raise ValueError("Datasets must have at least one column")
 
-        column_lengths = set(len(c.index) for c in self.columns)
+        column_lengths = set(len(c.index) for c in self.columns.values())
         if len(column_lengths) > 1:
             raise ValueError("Datasets columns must be the same length!")
 
-
-        for column in self.columns:
-            column.verify()
-        for link in self.links:
-            link.verify()
-
+        for child in chain(self.columns.values(), self.links.values()):
+            child.verify()
 
     def allocate(self, group: h5py.File | h5py.Group):
         data_group = group.require_group("data")
-        for column in self.columns:
+        for column in self.columns.values():
             column.allocate(data_group)
-        for link in self.links:
+        for link in self.links.values():
             link_group = group.require_group("data_linked")
             link.allocate(link_group)
 
     def into_writer(self):
-        column_writers = [col.into_writer() for col in self.columns]
-        link_writers = [link.into_writer() for link in self.links]
+        column_writers = [col.into_writer() for col in self.columns.values()]
+        link_writers = [link.into_writer() for link in self.links.values()]
         
         return iow.DatasetWriter(column_writers, link_writers, self.header)
 
 
 class ColumnSchema:
-    TYPE = "COLUMN"
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
         self.name = name
         self.index = index
@@ -298,7 +255,6 @@ class ColumnSchema:
         return iow.ColumnWriter(self.name, self.index, self.source)
 
 class LinkSchema:
-    TYPE = "LINK"
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset | tuple[h5py.Dataset, h5py.Dataset]):
         self.name = name
         self.source = source
