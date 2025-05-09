@@ -18,8 +18,7 @@ from opencosmo.io.schemas import DatasetSchema
 
 class DatasetHandler:
     """
-    A handler for data that will not be stored in memory. Data will remain on
-    disk until needed
+    Handler for opencosmo.Dataset
     """
 
     def __init__(
