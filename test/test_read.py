@@ -26,7 +26,7 @@ def test_read(input_path):
 
 def test_all_columns_included(input_path):
     dataset = oc.read(input_path)
-    cols = set(dataset._Dataset__handler._OutOfMemoryHandler__group.keys())
+    cols = set(dataset._Dataset__handler._DatasetHandler__group.keys())
     cols_read = set(dataset.data.columns)
     assert cols == cols_read
 

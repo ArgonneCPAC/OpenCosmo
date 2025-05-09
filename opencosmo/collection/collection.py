@@ -16,7 +16,8 @@ from astropy.cosmology import Cosmology  # type: ignore
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
-from opencosmo.handler import OpenCosmoDataHandler, OutOfMemoryHandler
+from opencosmo.handler import OpenCosmoDataHandler
+from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.link import StructureCollection
 from opencosmo.parameters import SimulationParameters
@@ -317,7 +318,7 @@ def open_single_dataset(
             file, tree=tree, comm=MPI.COMM_WORLD, group_name=dataset_key
         )
     else:
-        handler = OutOfMemoryHandler(file, tree=tree, group_name=dataset_key)
+        handler = DatasetHandler(file, tree=tree, group_name=dataset_key)
 
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header
@@ -342,7 +343,7 @@ def read_single_dataset(
     tree = None
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
-    handler = OutOfMemoryHandler(im_file, tree, dataset_key)
+    handler = DatasetHandler(im_file, tree, dataset_key)
 
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header

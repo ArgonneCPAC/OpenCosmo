@@ -18,7 +18,7 @@ import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.handler.oom import OutOfMemoryHandler
+from opencosmo.dataset.handler import DatasetHandler 
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
 
@@ -104,7 +104,7 @@ def open(
         start, size = partition(MPI.COMM_WORLD, len(handler))
         index = ChunkedIndex.single_chunk(start, size)
     else:
-        handler = OutOfMemoryHandler(file_handle, group_name=datasets, tree=tree)
+        handler = DatasetHandler(file_handle, group_name=datasets, tree=tree)
         index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
@@ -163,7 +163,7 @@ def read(
     path = file.filename
     file = h5py.File(path, driver="core")
 
-    handler = OutOfMemoryHandler(file, tree, group_name=datasets)
+    handler = DatasetHandler(file, tree, group_name=datasets)
     index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
