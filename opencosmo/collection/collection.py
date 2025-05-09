@@ -16,10 +16,9 @@ from astropy.cosmology import Cosmology  # type: ignore
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
-from opencosmo.handler import OpenCosmoDataHandler
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.link import StructureCollection
+from opencosmo.structure import StructureCollection
 from opencosmo.parameters import SimulationParameters
 from opencosmo.transformations import units as u
 from opencosmo.io.writers import FileWriter
@@ -312,7 +311,7 @@ def open_single_dataset(
 
     # tree = read_tree(file[dataset_key], header)
     tree = None
-    handler: OpenCosmoDataHandler
+    handler: DatasetHandler
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
         handler = MPIHandler(
             file, tree=tree, comm=MPI.COMM_WORLD, group_name=dataset_key

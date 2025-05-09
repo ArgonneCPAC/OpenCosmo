@@ -14,7 +14,7 @@ from opencosmo.dataset.index import DataIndex
 
 
 if TYPE_CHECKING:
-    from opencosmo.handler import OpenCosmoDataHandler
+    from opencosmo.dataset.handler import DatasetHandler
 
 Comparison = Callable[[float, float], bool]
 
@@ -24,7 +24,7 @@ def col(column_name: str) -> Column:
 
 
 def apply_masks(
-    handler: OpenCosmoDataHandler,
+    handler: DatasetHandler,
     column_builders: dict[str, ColumnBuilder],
     masks: Iterable[Mask],
     index: DataIndex,

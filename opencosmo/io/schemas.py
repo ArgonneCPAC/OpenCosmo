@@ -1,17 +1,12 @@
 from itertools import chain
-from typing import Iterable, Type, Optional
-from enum import StrEnum
+from typing import Iterable, Optional
 import opencosmo.io.protocols as iop
 import opencosmo.io.writers  as iow
 from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
-from collections import defaultdict
-
-import opencosmo as oc
 
 import h5py
 import numpy as np
-from numpy.typing import DTypeLike
 
 ColumnShape = tuple[int, ...]
 
@@ -87,7 +82,7 @@ class SimCollectionSchema:
                 raise ValueError(f"File schema has no child {child_name}")
             self.children[child_name].insert(child, remaining_path, type_)
         except ValueError:
-            self.add_child(child, path, type_)
+            self.add_child(child, path)
 
     def add_child(self, child: iop.DataSchema, name: str):
         if name in self.children:
@@ -121,7 +116,7 @@ class SimCollectionSchema:
 
 class StructCollectionSchema:
     def __init__(self, header: OpenCosmoHeader):
-        self.datasets = {}
+        self.datasets: dict[str, DatasetSchema] = {}
         self.header = header
 
     def insert(self, child: iop.DataSchema, path: str):

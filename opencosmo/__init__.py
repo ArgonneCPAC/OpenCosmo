@@ -1,7 +1,8 @@
+import hdf5plugin
 from .collection import SimulationCollection
 from .dataset import Dataset, col
 from .io import open, read, write
-from .link import StructureCollection, open_linked_files
+from .structure import StructureCollection, open_linked_files
 
 __all__ = [
     "read",

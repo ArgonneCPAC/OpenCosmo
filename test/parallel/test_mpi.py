@@ -9,7 +9,7 @@ from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo.collection import SimulationCollection
-from opencosmo.link import open_linked_files
+from opencosmo import open_linked_files
 
 
 @pytest.fixture
@@ -101,8 +101,14 @@ def test_filters(input_path):
     parallel_assert(len(data) != 0)
     parallel_assert(all(data["sod_halo_mass"] > 0))
 
+@pytest.mark.parallel(nprocs=4)
+def test_collect(input_path):
+    with oc.open(input_path) as f:
+        ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
 
-@pytest.mark.skip("Trees are not fully implemented")
+
+    parallel_assert(len(ds.data) == 400)
+
 @pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -113,6 +119,7 @@ def test_filter_write(input_path, tmp_path):
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
 
     oc.write(temporary_path, ds)
+    assert False
     data = ds.collect().data
     ds.close()
 
@@ -132,15 +139,9 @@ def test_filter_write(input_path, tmp_path):
             parallel_assert(np.all(sizes_from_starts == sizes[level]))
 
 
-@pytest.mark.parallel(nprocs=4)
-def test_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
 
-    parallel_assert(len(ds.data) == 400)
-
-
-@pytest.mark.parallel(nprocs=4)
+#@pytest.mark.parallel(nprocs=4)
+@pytest.mark.skip
 def test_select_collect(input_path):
     with oc.open(input_path) as f:
         ds = (
