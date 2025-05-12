@@ -9,8 +9,10 @@ try:
     if MPI.COMM_WORLD.Get_size() == 1:
         raise ImportError
     from opencosmo.dataset.mpi import partition
+    from opencosmo.io import mpi as mpiio
 except ImportError:
     MPI = None
+    mpiio = None
 from typing import Iterable, Optional, TYPE_CHECKING
 
 import opencosmo as oc
@@ -184,25 +186,41 @@ def write(path: Path, dataset: Writeable) -> None:
     FileNotFoundError
         If the parent folder of the ouput file does not exist
     """
-    if MPI is not None:
-        print("WRITING IN PARALLEL")
-        return write_parallel(path, dataset)
-
-
-    file = h5py.File(path, "w")
 
     schema = FileSchema()
     dataset_schema = dataset.make_schema("root")
-
-
     schema.add_child(dataset_schema, "root")
+
+    if MPI is not None:
+        return write_parallel(path, schema)
+
+
+
+    file = h5py.File(path, "w")
     schema.allocate(file)
 
     writer = schema.into_writer()
     writer.write(file)
 
 
-def write_parallel(file: Path, dataset: Writeable) -> None:
-    schema = FileSchema()
-    dataset_schema = dataset.make_schema("root")
+def write_parallel(file: Path, file_schema: FileSchema):
+    rank = MPI.COMM_WORLD.Get_rank()
+    try:
+        file_schema.verify()
+        results = MPI.COMM_WORLD.allgather(True)
+    except ValueError:
+        results = MPI.COMM_WORLD.allgather(False)
+    if not all(results):
+        raise ValueError("One or more ranks recieved invalid schemas!")
 
+    new_schema = mpiio.combine_file_schemas(file_schema)
+    if rank == 0:
+        new_schema.verify()
+        with h5py.File(file, "w") as f:
+            new_schema.allocate(f)
+
+    MPI.COMM_WORLD.Barrier()
+    writer = file_schema.into_writer()
+
+    with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
+        writer.write(f)

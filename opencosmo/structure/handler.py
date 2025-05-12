@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable, Optional, Protocol
 
 import numpy as np
-from h5py import File, Group
+import h5py
 
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
@@ -28,10 +28,11 @@ class LinkHandler(Protocol):
 
     def __init__(
         self,
-        file: File | Group,
-        link: Group | tuple[Group, Group],
+        file: h5py.File | h5py.Group,
+        link: h5py.Group | tuple[h5py.Group, h5py.Group],
         header: OpenCosmoHeader,
         builder: Optional[DatasetBuilder] = None,
+        output_alias: str = None,
         **kwargs,
     ):
         """
@@ -56,7 +57,7 @@ class LinkHandler(Protocol):
         pass
 
     def prep_write(
-        self, data_group: Group, link_group: Group, name: str, index: DataIndex
+        self, data_group: h5py.Group, link_group: h5py.Group, name: str, index: DataIndex
     ) -> None:
         """
         Write the linked data for the given indices to data_group.
@@ -85,8 +86,8 @@ class OomLinkHandler:
 
     def __init__(
         self,
-        file: File | Group,
-        link: Group | tuple[Group, Group],
+        file: h5py.File | h5py.Group,
+        link: h5py.Group | tuple[h5py.Group, h5py.Group],
         header: OpenCosmoHeader,
         builder: Optional[OomDatasetBuilder] = None,
     ):
@@ -147,7 +148,13 @@ class OomLinkHandler:
         )
 
     def make_schema(self, name: str, index: DataIndex) -> ios.LinkSchema:
-        return ios.LinkSchema(name, index, self.link)
+        if isinstance(self.link, h5py.Dataset):
+            return ios.IdxLinkSchema(name, index, self.link)
+        else:
+            return ios.StartSizeLinkSchema(name, index, *self.link)
+
+
+
 
 
 

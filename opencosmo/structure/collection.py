@@ -353,6 +353,7 @@ class StructureCollection:
         for name, handler in self.__handlers.items():
             link_schema = handler.make_schema(name, self.__index)
             schema.insert(link_schema, f"{properties_name}.{name}")
+            
 
         return schema
 
