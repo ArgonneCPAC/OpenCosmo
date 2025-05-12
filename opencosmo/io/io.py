@@ -11,8 +11,8 @@ try:
     from opencosmo.dataset.mpi import partition
     from opencosmo.io import mpi as mpiio
 except ImportError:
-    MPI = None
-    mpiio = None
+    MPI = None #type: ignore
+    mpiio = None #type: ignore
 from typing import Iterable, Optional, TYPE_CHECKING
 
 import opencosmo as oc

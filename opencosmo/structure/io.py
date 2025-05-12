@@ -190,7 +190,7 @@ def get_link_handlers(
     link_file: File | Group,
     linked_files: dict[str, File | Group],
     header: OpenCosmoHeader,
-) -> dict[str, s.LinkHandler]:
+) -> dict[str, s.LinkedDatasetHandler]:
     if "data_linked" not in link_file.keys():
         raise KeyError("No linked datasets found in the file.")
     links = link_file["data_linked"]

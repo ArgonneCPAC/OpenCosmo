@@ -14,9 +14,9 @@ from opencosmo.io.schemas import DatasetSchema
 try:
     from mpi4py import MPI
     if MPI.COMM_WORLD.Get_size() == 1:
-        MPI = None
+        MPI = None # type: ignore
 except ImportError:
-    MPI = None
+    MPI = None # type: ignore
 
 
 

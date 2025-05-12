@@ -6,8 +6,7 @@ from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 
 import h5py
-import hdf5plugin
-import numpy as np
+import hdf5plugin #type: ignore
 
 ColumnShape = tuple[int, ...]
 
@@ -39,20 +38,6 @@ class FileSchema:
 
     def __init__(self):
         self.children = {}
-
-    def concatenate(self, *others: "FileSchema"):
-        child_names = set(self.children.keys())
-        for other in others:
-            other_child_names = set(other.children.keys())
-            if other_child_names != child_names:
-                raise ValueError("File schemas are incompatible")
-
-        new_schema = FileSchema()
-        for name in child_names:
-            new_child_schema = self.children[name].concatenate(*[o.children[name] for o in others])
-            new_schema.add_child(name, new_child_schema)
-        return new_schema
-
 
     def add_child(self, child: iop.DataSchema, name: str):
         if name in self.children:
@@ -92,28 +77,12 @@ class SimCollectionSchema:
     def __init__(self):
         self.children = {}
 
-    def concatenate(self, *others: "SimCollectionSchema"):
-        child_names = set(self.children.keys())
-        for other in others:
-            other_child_names = set(other.children.keys())
-            if other_child_names != child_names:
-                raise ValueError("File schemas are incompatible")
-            if not isinstance(other, SimCollectionSchema):
-                raise ValueError("Tried to combine children of different types!")
-
-        new_schema = SimCollectionSchema()
-        for name in child_names:
-            new_child_schema = self.children[name].concatenate(*[o.children[name] for o in others])
-            new_schema.add_child(name, new_child_schema)
-        return new_schema
-
-
-    def insert(self, child: iop.DataSchema, path: str, type_: str):
+    def insert(self, child: iop.DataSchema, path: str):
         try:
             child_name, remaining_path = path.split(".", maxsplit=1)
             if child_name not in self.children:
                 raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path, type_)
+            self.children[child_name].insert(child, remaining_path)
         except ValueError:
             self.add_child(child, path)
 
@@ -151,26 +120,6 @@ class StructCollectionSchema:
     def __init__(self, header: OpenCosmoHeader):
         self.children: dict[str, DatasetSchema] = {}
         self.header = header
-
-    def concatenate(self, *others: "StructCollectionSchema"):
-        child_names = set(self.children.keys())
-        for other in others:
-            other_child_names = set(other.children.keys())
-            if other_child_names != child_names:
-                raise ValueError("File schemas are incompatible")
-            if not isinstance(other, StructCollectionSchema):
-                raise ValueError("Tried to combine children of different types!")
-
-            if other.header != self.header:
-                raise ValueError("Tried to combine struct collections with different headers!")
-            
-
-        new_schema = StructCollectionSchema()
-        for name in child_names:
-            new_child_schema = self.children[name].concatenate(*[o.children[name] for o in others])
-            new_schema.add_child(name, new_child_schema)
-        return new_schema
-
 
     def insert(self, child: iop.DataSchema, path: str):
         try:
@@ -360,3 +309,4 @@ class StartSizeLinkSchema:
     def into_writer(self):
         return iow.StartSizeLinkWriter(self.start.into_writer(), self.size.into_writer())
 
+LinkSchema = IdxLinkSchema | StartSizeLinkSchema

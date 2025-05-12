@@ -4,15 +4,12 @@ from typing import Any, Iterable, Optional
 from collections import defaultdict
 
 import astropy  # type: ignore
-from h5py import File, Group
-import numpy as np
+import h5py
 
 import opencosmo as oc
 from opencosmo import structure as s
 from opencosmo.parameters import SimulationParameters
 from opencosmo.io.schemas import StructCollectionSchema
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.dataset.index import DataIndex
 
 def filter_properties_by_dataset(
     dataset: oc.Dataset,
@@ -46,7 +43,7 @@ class StructureCollection:
         self,
         properties: oc.Dataset,
         header: oc.header.OpenCosmoHeader,
-        handlers: dict[str, s.LinkHandler],
+        handlers: dict[str, s.LinkedDatasetHandler],
         *args,
         **kwargs,
     ):
@@ -69,7 +66,7 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, file: File, datasets_to_get: Optional[Iterable[str]] = None
+        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
     ) -> StructureCollection:
         return s.open_linked_file(file, datasets_to_get)
 
@@ -340,7 +337,7 @@ class StructureCollection:
             else:
                 yield row, output
 
-    def make_schema(self, name: str) -> StructCollectionSchema:
+    def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema(self.__header)
         properties_name = self.properties.dtype
         for name, dataset in self.items():

@@ -12,9 +12,9 @@ from opencosmo.header import OpenCosmoHeader
 try:
     from mpi4py import MPI
     if MPI.COMM_WORLD.Get_size() == 1:
-        raise ImportError()
+        MPI = None #type: ignore
 except ImportError:
-    MPI = None
+    MPI = None #type: ignore
 
 
 """
@@ -88,7 +88,7 @@ class DatasetWriter:
     """
     Writes datasets to a file or group.
     """
-    def __init__(self, columns: dict[str, "ColumnWriter"], links: dict = [], header: Optional[OpenCosmoHeader] = None):
+    def __init__(self, columns: dict[str, "ColumnWriter"], links: dict[str, "LinkWriter"] = {}, header: Optional[OpenCosmoHeader] = None):
         self.columns = columns
         self.header = header
         self.links = links
@@ -182,7 +182,7 @@ class StartSizeLinkWriter:
         self.start.write(group, lambda _: start_link_updater(new_sizes))
 
 
-
+LinkWriter = IdxLinkWriter | StartSizeLinkWriter
 
         
 
