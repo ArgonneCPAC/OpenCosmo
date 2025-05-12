@@ -3,7 +3,7 @@ from __future__ import annotations
 import operator as op
 from collections import defaultdict
 from numbers import Real
-from typing import Callable, Iterable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Iterable
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -11,7 +11,6 @@ from astropy import table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
 from opencosmo.dataset.index import DataIndex
-
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler

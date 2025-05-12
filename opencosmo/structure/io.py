@@ -1,6 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable, Optional, Type
+from typing import Iterable, Optional
 
 from h5py import File, Group
 
@@ -8,8 +8,6 @@ from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo import structure as s
 from opencosmo.header import OpenCosmoHeader, read_header
-
-from opencosmo.io import schemas as ios
 
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
@@ -86,7 +84,7 @@ def open_linked_files(*files: Path):
     """
     Open a collection of files that are linked together, such as a
     properties file and a particle file.
-    
+
     """
     if len(files) == 1 and isinstance(files[0], list):
         return open_linked_files(*files[0])
@@ -208,10 +206,10 @@ def get_link_handlers(
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
 
-            output_links[key] = s.LinkedDatasetHandler(linked_files[key], (start, size), header)
+            output_links[key] = s.LinkedDatasetHandler(
+                linked_files[key], (start, size), header
+            )
         except KeyError:
             index = links[f"{dtype}_idx"]
             output_links[key] = s.LinkedDatasetHandler(linked_files[key], index, header)
     return output_links
-
-

@@ -6,16 +6,15 @@ import h5py
 from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo as oc
+from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
-from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.structure import StructureCollection
-from opencosmo.parameters import SimulationParameters
-from opencosmo.transformations import units as u
-from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.io.protocols import DataSchema
-
+from opencosmo.io.schemas import SimCollectionSchema
+from opencosmo.parameters import SimulationParameters
+from opencosmo.structure import StructureCollection
+from opencosmo.transformations import units as u
 
 
 class Collection(Protocol):
@@ -133,7 +132,6 @@ class SimulationCollection(dict):
             schema.add_child(ds_schema, name)
 
         return schema
-        
 
     def __map(self, method, *args, **kwargs):
         """
@@ -259,8 +257,6 @@ class SimulationCollection(dict):
         return self.__map("with_units", convention)
 
 
-
-
 def read_single_dataset(
     file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
 ):
@@ -284,4 +280,3 @@ def read_single_dataset(
     )
     index = ChunkedIndex.from_size(len(handler))
     return oc.Dataset(handler, header, builders, base_unit_transformations, index)
-

@@ -4,8 +4,8 @@ from typing import defaultdict
 import pytest
 
 import opencosmo as oc
+from opencosmo import StructureCollection, open_linked_files
 from opencosmo.collection import SimulationCollection
-from opencosmo import open_linked_files, StructureCollection
 
 
 @pytest.fixture
@@ -150,7 +150,6 @@ def test_link_write(halo_paths, tmp_path):
             if particle_species is None:
                 continue
             original_output[properties["fof_halo_tag"]].append(name)
-
 
     read_output = defaultdict(list)
     oc.write(tmp_path / "linked.hdf5", collection)

@@ -1,20 +1,19 @@
-from typing import Iterable, Optional, Protocol, TypeVar, Callable
+from typing import Callable, Optional
 
 import h5py
-
 import numpy as np
-from opencosmo.dataset.index import DataIndex
-from opencosmo.io import schemas as ios
-from opencosmo.io import protocols as iop
-from opencosmo.header import OpenCosmoHeader
 
+from opencosmo.dataset.index import DataIndex
+from opencosmo.header import OpenCosmoHeader
+from opencosmo.io import protocols as iop
 
 try:
     from mpi4py import MPI
+
     if MPI.COMM_WORLD.Get_size() == 1:
-        MPI = None #type: ignore
+        MPI = None  # type: ignore
 except ImportError:
-    MPI = None #type: ignore
+    MPI = None  # type: ignore
 
 
 """
@@ -26,12 +25,14 @@ Because schemas allocate space in a file, the correct structure is always
 assumed to be there by the writer. If the writer itself fails, it is probably either
 a problem with the schema or there was a mixup in naming.
 """
+
+
 def write_index(
     input_ds: h5py.Dataset,
     output_ds: h5py.Dataset,
     index: DataIndex,
     offset: int = 0,
-    updater: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    updater: Optional[Callable[[np.ndarray], np.ndarray]] = None,
 ):
     if len(index) == 0:
         raise ValueError("No indices provided to write")
@@ -41,20 +42,20 @@ def write_index(
 
     data = data.astype(input_ds.dtype)
 
-
     if MPI is not None:
         with output_ds.collective:
-            output_ds[offset:offset+len(data)] = data
+            output_ds[offset : offset + len(data)] = data
 
     else:
-        output_ds[offset:offset+len(data)] = data
+        output_ds[offset : offset + len(data)] = data
 
 
 class FileWriter:
     """
     Root writer for a file.
     """
-    def __init__(self, children: dict[str, iop.DataWriter]): 
+
+    def __init__(self, children: dict[str, iop.DataWriter]):
         self.children = children
 
     def write(self, file: h5py.File):
@@ -65,12 +66,16 @@ class FileWriter:
             dataset.write(file[name])
 
 
-
 class CollectionWriter:
     """
     Writes collections to a file or group
     """
-    def __init__(self, children: dict[str, iop.DataWriter], header: Optional[OpenCosmoHeader] = None):
+
+    def __init__(
+        self,
+        children: dict[str, iop.DataWriter],
+        header: Optional[OpenCosmoHeader] = None,
+    ):
         self.children = children
         self.header = header
 
@@ -88,7 +93,13 @@ class DatasetWriter:
     """
     Writes datasets to a file or group.
     """
-    def __init__(self, columns: dict[str, "ColumnWriter"], links: dict[str, "LinkWriter"] = {}, header: Optional[OpenCosmoHeader] = None):
+
+    def __init__(
+        self,
+        columns: dict[str, "ColumnWriter"],
+        links: dict[str, "LinkWriter"] = {},
+        header: Optional[OpenCosmoHeader] = None,
+    ):
         self.columns = columns
         self.header = header
         self.links = links
@@ -99,7 +110,6 @@ class DatasetWriter:
         names.sort()
         for colname in names:
             self.columns[colname].write(data_group)
-
 
         if self.links:
             link_group = group["data_linked"]
@@ -116,20 +126,27 @@ class ColumnWriter:
     """
     Writes a single column in a dataset
     """
-    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset, offset: int = 0):
+
+    def __init__(
+        self, name: str, index: DataIndex, source: h5py.Dataset, offset: int = 0
+    ):
         self.name = name
         self.source = source
         self.index = index
         self.offset = offset
 
-    def write(self, group: h5py.Group, updater: Optional[Callable[[np.ndarray], np.ndarray]] = None):
+    def write(
+        self,
+        group: h5py.Group,
+        updater: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    ):
         ds = group[self.name]
         write_index(self.source, ds, self.index, self.offset, updater)
         for name, val in self.source.attrs.items():
             ds.attrs[name] = val
 
-def idx_link_updater(input: np.ndarray) -> np.ndarray:
 
+def idx_link_updater(input: np.ndarray) -> np.ndarray:
     output = np.full(len(input), -1)
     has_data = input > 0
     offset = 0
@@ -147,12 +164,13 @@ class IdxLinkWriter:
     Writer for links between datasets, where each row in one dataset corresponds
     to a single row in the other.
     """
+
     def __init__(self, col_writer: ColumnWriter):
         self.writer = col_writer
 
-
     def write(self, group: h5py.Group):
         self.writer.write(group, idx_link_updater)
+
 
 def start_link_updater(sizes: np.ndarray):
     cumulative_sizes = np.cumsum(sizes)
@@ -167,11 +185,13 @@ def start_link_updater(sizes: np.ndarray):
     new_starts = new_starts[:-1] + offset
     return new_starts
 
+
 class StartSizeLinkWriter:
     """
     Writer for links between datasets where each row in one datest
     corresponds to several rows in the other.
     """
+
     def __init__(self, start: ColumnWriter, size: ColumnWriter):
         self.start = start
         self.sizes = size
@@ -183,7 +203,3 @@ class StartSizeLinkWriter:
 
 
 LinkWriter = IdxLinkWriter | StartSizeLinkWriter
-
-        
-
-

@@ -1,5 +1,6 @@
 from mpi4py import MPI
 
+
 def partition(comm: MPI.Comm, length: int) -> tuple[int, int]:
     nranks = comm.Get_size()
     rank = comm.Get_rank()
@@ -12,4 +13,3 @@ def partition(comm: MPI.Comm, length: int) -> tuple[int, int]:
     end = (rank + 1) * (length // nranks)
     size = end - start
     return (start, size)
-

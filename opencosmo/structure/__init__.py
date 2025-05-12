@@ -1,5 +1,5 @@
 from .collection import StructureCollection
-from .handler import LinkHandler, LinkedDatasetHandler
+from .handler import LinkedDatasetHandler, LinkHandler
 from .io import open_linked_file, open_linked_files
 
 __all__ = [

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Generator, Iterable, Optional, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator, Iterable
 
-import h5py
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
@@ -12,9 +11,9 @@ import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
 from opencosmo.dataset.mask import Mask, apply_masks
-from opencosmo.header import OpenCosmoHeader, write_header
-from opencosmo.parameters import SimulationParameters
+from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
+from opencosmo.parameters import SimulationParameters
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
@@ -316,11 +315,7 @@ class Dataset:
             new_index,
         )
 
-    def make_schema(
-        self,
-        dataset_name: str,
-        with_header: bool = True
-    ) -> DatasetSchema:
+    def make_schema(self, dataset_name: str, with_header: bool = True) -> DatasetSchema:
         """
         Prep to write the dataset. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.
@@ -334,7 +329,9 @@ class Dataset:
 
         """
         header = self.__header if with_header else None
-        return self.__handler.prep_write(self.__index, self.__builders.keys(), dataset_name, header)
+        return self.__handler.prep_write(
+            self.__index, self.__builders.keys(), dataset_name, header
+        )
 
     def with_units(self, convention: str) -> Dataset:
         """

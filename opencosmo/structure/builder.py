@@ -6,8 +6,8 @@ from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo.dataset.column import get_column_builders
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.dataset.handler import DatasetHandler
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.transformations import units as u
 

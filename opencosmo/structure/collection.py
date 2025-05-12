@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from typing import Any, Iterable, Optional
-from collections import defaultdict
 
 import astropy  # type: ignore
 import h5py
 
 import opencosmo as oc
 from opencosmo import structure as s
-from opencosmo.parameters import SimulationParameters
 from opencosmo.io.schemas import StructCollectionSchema
+from opencosmo.parameters import SimulationParameters
+
 
 def filter_properties_by_dataset(
     dataset: oc.Dataset,
@@ -132,7 +132,8 @@ class StructureCollection:
         Return the linked datasets as key-value pairs.
         """
         return [
-            (key, handler.get_data(self.__index)) for key, handler in self.__handlers.items()
+            (key, handler.get_data(self.__index))
+            for key, handler in self.__handlers.items()
         ]
 
     def __getitem__(self, key: str) -> oc.Dataset:
@@ -343,14 +344,12 @@ class StructureCollection:
         for name, dataset in self.items():
             ds_schema = dataset.make_schema(name)
             schema.add_child(ds_schema, name)
-        
+
         properties_schema = self.properties.make_schema(properties_name)
         schema.add_child(properties_schema, properties_name)
 
         for name, handler in self.__handlers.items():
             link_schema = handler.make_schema(name, self.__index)
             schema.insert(link_schema, f"{properties_name}.{name}")
-            
 
         return schema
-

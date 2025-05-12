@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, TypeVar
+from typing import Iterable, Optional
 
 import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.index import DataIndex
-from opencosmo.spatial.tree import Tree
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
+from opencosmo.spatial.tree import Tree
 
 try:
     from mpi4py import MPI
-    if MPI.COMM_WORLD.Get_size() == 1:
-        MPI = None # type: ignore
-except ImportError:
-    MPI = None # type: ignore
 
+    if MPI.COMM_WORLD.Get_size() == 1:
+        MPI = None  # type: ignore
+except ImportError:
+    MPI = None  # type: ignore
 
 
 class DatasetHandler:
@@ -65,12 +65,8 @@ class DatasetHandler:
             for name, value in dataset.attrs.items():
                 group[colname].attrs[name] = value
 
+        return DatasetHandler(file, group_name=self.__group_name)
 
-        return DatasetHandler(
-            file,
-            group_name = self.__group_name
-        )
-            
     def prep_write(
         self,
         index: DataIndex,
@@ -79,7 +75,7 @@ class DatasetHandler:
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
         return DatasetSchema.make_schema(self.__group, columns, index, header)
-        
+
     def get_data(self, builders: dict, index: DataIndex) -> Column | Table:
         """ """
         if self.__group is None:

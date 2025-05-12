@@ -8,8 +8,8 @@ import pytest
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-from opencosmo.collection import SimulationCollection
 from opencosmo import open_linked_files
+from opencosmo.collection import SimulationCollection
 
 
 @pytest.fixture
@@ -101,13 +101,14 @@ def test_filters(input_path):
     parallel_assert(len(data) != 0)
     parallel_assert(all(data["sod_halo_mass"] > 0))
 
+
 @pytest.mark.parallel(nprocs=4)
 def test_collect(input_path):
     with oc.open(input_path) as f:
         ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
 
-
     parallel_assert(len(ds.data) == 400)
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
@@ -125,10 +126,10 @@ def test_filter_write(input_path, tmp_path):
     ds = oc.read(temporary_path)
     written_data = ds.data
 
-
     assert all(data == written_data)
-    
-#@pytest.mark.parallel(nprocs=4)
+
+
+# @pytest.mark.parallel(nprocs=4)
 @pytest.mark.skip
 def test_select_collect(input_path):
     with oc.open(input_path) as f:
@@ -141,6 +142,7 @@ def test_select_collect(input_path):
 
     parallel_assert(len(ds.data) == 400)
     parallel_assert(set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
+
 
 @pytest.mark.parallel(nprocs=4)
 def test_link_read(all_paths):
@@ -163,6 +165,7 @@ def test_link_read(all_paths):
             assert len(halo_tags) == 1
             assert halo_tags[0] == halo_tag
 
+
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = open_linked_files(*all_paths)
@@ -179,7 +182,6 @@ def test_link_write(all_paths, tmp_path):
     for i, (properties, particles) in enumerate(collection.objects()):
         for key, ds in particles.items():
             written_data[properties["fof_halo_tag"]].append((key, len(ds)))
-
 
     oc.write(output_path, collection)
 
