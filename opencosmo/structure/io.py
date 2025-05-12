@@ -11,13 +11,6 @@ from opencosmo.header import OpenCosmoHeader, read_header
 
 from opencosmo.io import schemas as ios
 
-try:
-    from mpi4py import MPI
-
-    from opencosmo.structure.mpi import MpiLinkHandler
-except ImportError:
-    MPI = None  # type: ignore
-
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
     "sodbighaloparticles_dm_particles": "dm_particles",
@@ -93,6 +86,7 @@ def open_linked_files(*files: Path):
     """
     Open a collection of files that are linked together, such as a
     properties file and a particle file.
+    
     """
     if len(files) == 1 and isinstance(files[0], list):
         return open_linked_files(*files[0])
@@ -201,11 +195,6 @@ def get_link_handlers(
         raise KeyError("No linked datasets found in the file.")
     links = link_file["data_linked"]
 
-    handler: Type[s.LinkHandler]
-    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        handler = MpiLinkHandler
-    else:
-        handler = s.OomLinkHandler
     unique_dtypes = {key.rsplit("_", 1)[0] for key in links.keys()}
     output_links = {}
     for dtype in unique_dtypes:
@@ -219,10 +208,10 @@ def get_link_handlers(
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
 
-            output_links[key] = handler(linked_files[key], (start, size), header)
+            output_links[key] = s.LinkedDatasetHandler(linked_files[key], (start, size), header)
         except KeyError:
             index = links[f"{dtype}_idx"]
-            output_links[key] = handler(linked_files[key], index, header)
+            output_links[key] = s.LinkedDatasetHandler(linked_files[key], index, header)
     return output_links
 
 
