@@ -1,6 +1,6 @@
 from functools import cached_property
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
 import h5py
 

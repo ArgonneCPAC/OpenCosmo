@@ -1,7 +1,7 @@
+import h5py
 import numpy as np
 import pytest
 from astropy.cosmology import units as cu
-import h5py
 
 from opencosmo import read
 

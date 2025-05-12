@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Iterable, Optional, Protocol
 
-import numpy as np
 import h5py
+import numpy as np
 
 import opencosmo as oc
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.structure.builder import DatasetBuilder, OomDatasetBuilder
 from opencosmo.io import schemas as ios
+from opencosmo.structure.builder import DatasetBuilder, OomDatasetBuilder
 
 
 class LinkHandler(Protocol):
@@ -56,7 +56,11 @@ class LinkHandler(Protocol):
         pass
 
     def prep_write(
-        self, data_group: h5py.Group, link_group: h5py.Group, name: str, index: DataIndex
+        self,
+        data_group: h5py.Group,
+        link_group: h5py.Group,
+        name: str,
+        index: DataIndex,
     ) -> None:
         """
         Write the linked data for the given indices to data_group.
@@ -151,9 +155,3 @@ class LinkedDatasetHandler:
             return ios.IdxLinkSchema(name, index, self.link)
         else:
             return ios.StartSizeLinkSchema(name, index, *self.link)
-
-
-
-
-
-

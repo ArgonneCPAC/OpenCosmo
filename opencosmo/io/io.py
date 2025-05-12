@@ -6,26 +6,26 @@ import h5py
 
 try:
     from mpi4py import MPI
+
     if MPI.COMM_WORLD.Get_size() == 1:
         raise ImportError
     from opencosmo.dataset.mpi import partition
     from opencosmo.io import mpi as mpiio
 except ImportError:
-    MPI = None #type: ignore
-    mpiio = None #type: ignore
-from typing import Iterable, Optional, TYPE_CHECKING
+    MPI = None  # type: ignore
+    mpiio = None  # type: ignore
+from typing import Iterable, Optional
 
 import opencosmo as oc
 from opencosmo import collection
+from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.header import read_header
 from opencosmo.transformations import units as u
 
-from .schemas import FileSchema
 from .protocols import Writeable
-
+from .schemas import FileSchema
 
 
 def open(
@@ -193,8 +193,6 @@ def write(path: Path, dataset: Writeable) -> None:
 
     if MPI is not None:
         return write_parallel(path, schema)
-
-
 
     file = h5py.File(path, "w")
     schema.allocate(file)

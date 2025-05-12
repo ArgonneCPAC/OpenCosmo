@@ -154,7 +154,6 @@ def test_parse_mass(input_path):
         assert data[col].unit == u.Msun / cu.littleh
 
 
-
 def test_data_update_doesnt_propogate(input_path):
     dataset = read(input_path)
     data = dataset.data
