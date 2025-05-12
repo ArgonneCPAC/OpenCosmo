@@ -234,7 +234,7 @@ class ChunkedIndex:
             return self.concatenate(*simple_indices)
 
     @classmethod
-    def from_size(cls, size: int) -> DataIndex:
+    def from_size(cls, size: int) -> ChunkedIndex:
         """
         Create a ChunkedIndex from a size.
         """

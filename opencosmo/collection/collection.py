@@ -1,14 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Optional, Protocol
-
-try:
-    from mpi4py import MPI
-
-    from opencosmo.handler import MPIHandler
-except ImportError:
-    MPI = None  # type: ignore
-
+from typing import Iterable, Mapping, Optional, Protocol, Self
 
 import h5py
 from astropy.cosmology import Cosmology  # type: ignore
@@ -21,8 +13,9 @@ from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.structure import StructureCollection
 from opencosmo.parameters import SimulationParameters
 from opencosmo.transformations import units as u
-from opencosmo.io.writers import FileWriter
 from opencosmo.io.schemas import SimCollectionSchema
+from opencosmo.io.protocols import DataSchema
+
 
 
 class Collection(Protocol):
@@ -47,14 +40,14 @@ class Collection(Protocol):
     @classmethod
     def open(
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> Collection | oc.Dataset: ...
+    ) -> Self: ...
 
     @classmethod
     def read(
         cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]]
-    ) -> Collection: ...
+    ) -> Self: ...
 
-    def prep_write(self, writer: FileWriter): ...
+    def make_schema(self) -> DataSchema: ...
 
     def __getitem__(self, key: str) -> oc.Dataset: ...
     def keys(self) -> Iterable[str]: ...
@@ -62,41 +55,10 @@ class Collection(Protocol):
     def items(self) -> Iterable[tuple[str, oc.Dataset]]: ...
     def __enter__(self): ...
     def __exit__(self, *exc_details): ...
-    def filter(self, *masks: Mask) -> Collection: ...
-    def select(self, *args, **kwargs) -> Collection: ...
-    def with_units(self, convention: str) -> Collection: ...
-    def take(self, *args, **kwargs) -> Collection: ...
-
-
-def write_with_common_header(
-    collection: Collection, header: OpenCosmoHeader, file: h5py.File
-):
-    """
-    Write a collection to an HDF5 file when all datasets share
-    a common header.
-    """
-    # figure out if we have unique headers
-
-    header.write(file)
-    keys = list(collection.keys())
-    keys.sort()
-    for key in keys:
-        group = file.create_group(key)
-        collection[key].write(group, key, with_header=False)
-
-
-def write_with_unique_headers(collection: Collection, file: h5py.File):
-    """
-    Write the collection to an HDF5 file when each dattaset
-    has its own header.
-    """
-    # figure out if we have unique headers
-
-    keys = list(collection.keys())
-    keys.sort()
-    for key in keys:
-        group = file.create_group(key)
-        collection[key].write(group)
+    def filter(self, *masks: Mask) -> Self: ...
+    def select(self, *args, **kwargs) -> Self: ...
+    def with_units(self, convention: str) -> Self: ...
+    def take(self, *args, **kwargs) -> Self: ...
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
@@ -164,7 +126,7 @@ class SimulationCollection(dict):
         datasets = {name: read_single_dataset(file, name) for name in names}
         return cls(datasets)
 
-    def make_schema(self, name: str):
+    def make_schema(self) -> DataSchema:
         schema = SimCollectionSchema()
         for name, dataset in self.items():
             ds_schema = dataset.make_schema(name)
@@ -297,33 +259,6 @@ class SimulationCollection(dict):
         return self.__map("with_units", convention)
 
 
-def open_single_dataset(
-    file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
-) -> oc.Dataset:
-    """
-    Open a single dataset in a file with multiple datasets.
-    """
-    if dataset_key not in file.keys():
-        raise ValueError(f"No group named '{dataset_key}' found in file.")
-
-    if header is None:
-        header = read_header(file[dataset_key])
-
-    # tree = read_tree(file[dataset_key], header)
-    tree = None
-    handler: DatasetHandler
-    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        handler = MPIHandler(
-            file, tree=tree, comm=MPI.COMM_WORLD, group_name=dataset_key
-        )
-    else:
-        handler = DatasetHandler(file, tree=tree, group_name=dataset_key)
-
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        file[dataset_key], header
-    )
-    index = ChunkedIndex.from_size(len(handler))
-    return oc.Dataset(handler, header, builders, base_unit_transformations, index)
 
 
 def read_single_dataset(
@@ -349,3 +284,4 @@ def read_single_dataset(
     )
     index = ChunkedIndex.from_size(len(handler))
     return oc.Dataset(handler, header, builders, base_unit_transformations, index)
+

@@ -32,7 +32,6 @@ class LinkHandler(Protocol):
         link: h5py.Group | tuple[h5py.Group, h5py.Group],
         header: OpenCosmoHeader,
         builder: Optional[DatasetBuilder] = None,
-        output_alias: str = None,
         **kwargs,
     ):
         """
@@ -128,19 +127,19 @@ class LinkedDatasetHandler:
 
         return self.builder.build(self.file, self.header, new_index)
 
-    def select(self, columns: str | Iterable[str]) -> OomLinkHandler:
+    def select(self, columns: str | Iterable[str]) -> LinkedDatasetHandler:
         if isinstance(columns, str):
             columns = [columns]
         builder = self.builder.select(columns)
-        return OomLinkHandler(
+        return LinkedDatasetHandler(
             self.file,
             self.link,
             self.header,
             builder,
         )
 
-    def with_units(self, convention: str) -> OomLinkHandler:
-        return OomLinkHandler(
+    def with_units(self, convention: str) -> LinkedDatasetHandler:
+        return LinkedDatasetHandler(
             self.file,
             self.link,
             self.header,

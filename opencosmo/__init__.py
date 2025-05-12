@@ -1,4 +1,4 @@
-import hdf5plugin
+import hdf5plugin # type: ignore
 from .collection import SimulationCollection
 from .dataset import Dataset, col
 from .io import open, read, write

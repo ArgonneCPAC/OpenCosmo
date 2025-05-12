@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Type
 
 import h5py
 
@@ -55,7 +55,7 @@ def read_multi_dataset_file(
     return CollectionType.read(file, datasets)
 
 
-def get_collection_type(file: h5py.File) -> type[Collection]:
+def get_collection_type(file: h5py.File) -> Type[Collection]:
     """
     Determine the type of a single file containing multiple datasets. Currently
     we support multi_simulation, particle, and linked collections.
