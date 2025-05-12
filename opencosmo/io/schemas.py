@@ -6,6 +6,7 @@ from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 
 import h5py
+import hdf5plugin
 import numpy as np
 
 ColumnShape = tuple[int, ...]
@@ -32,10 +33,26 @@ hdf5.Group == opencosmo Dataset (sometimes)
 Schemas are NOT responsible for handling metadata. Those are handled by writers.
 """
 
+COMPRESSION = hdf5plugin.Blosc2()
+
 class FileSchema:
 
     def __init__(self):
         self.children = {}
+
+    def concatenate(self, *others: "FileSchema"):
+        child_names = set(self.children.keys())
+        for other in others:
+            other_child_names = set(other.children.keys())
+            if other_child_names != child_names:
+                raise ValueError("File schemas are incompatible")
+
+        new_schema = FileSchema()
+        for name in child_names:
+            new_child_schema = self.children[name].concatenate(*[o.children[name] for o in others])
+            new_schema.add_child(name, new_child_schema)
+        return new_schema
+
 
     def add_child(self, child: iop.DataSchema, name: str):
         if name in self.children:
@@ -74,6 +91,22 @@ class FileSchema:
 class SimCollectionSchema:
     def __init__(self):
         self.children = {}
+
+    def concatenate(self, *others: "SimCollectionSchema"):
+        child_names = set(self.children.keys())
+        for other in others:
+            other_child_names = set(other.children.keys())
+            if other_child_names != child_names:
+                raise ValueError("File schemas are incompatible")
+            if not isinstance(other, SimCollectionSchema):
+                raise ValueError("Tried to combine children of different types!")
+
+        new_schema = SimCollectionSchema()
+        for name in child_names:
+            new_child_schema = self.children[name].concatenate(*[o.children[name] for o in others])
+            new_schema.add_child(name, new_child_schema)
+        return new_schema
+
 
     def insert(self, child: iop.DataSchema, path: str, type_: str):
         try:
@@ -116,24 +149,44 @@ class SimCollectionSchema:
 
 class StructCollectionSchema:
     def __init__(self, header: OpenCosmoHeader):
-        self.datasets: dict[str, DatasetSchema] = {}
+        self.children: dict[str, DatasetSchema] = {}
         self.header = header
+
+    def concatenate(self, *others: "StructCollectionSchema"):
+        child_names = set(self.children.keys())
+        for other in others:
+            other_child_names = set(other.children.keys())
+            if other_child_names != child_names:
+                raise ValueError("File schemas are incompatible")
+            if not isinstance(other, StructCollectionSchema):
+                raise ValueError("Tried to combine children of different types!")
+
+            if other.header != self.header:
+                raise ValueError("Tried to combine struct collections with different headers!")
+            
+
+        new_schema = StructCollectionSchema()
+        for name in child_names:
+            new_child_schema = self.children[name].concatenate(*[o.children[name] for o in others])
+            new_schema.add_child(name, new_child_schema)
+        return new_schema
+
 
     def insert(self, child: iop.DataSchema, path: str):
         try:
             child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.datasets:
+            if child_name not in self.children:
                 raise ValueError(f"File schema has no child {child_name}")
-            self.datasets[child_name].insert(child, remaining_path)
+            self.children[child_name].insert(child, remaining_path)
         except ValueError:
             self.add_child(child, path)
 
     def verify(self):
-        if len(self.datasets) < 2:
+        if len(self.children) < 2:
             raise ValueError("StructCollection must have at least two children!")
 
         found_links = False
-        for child in self.datasets.values():
+        for child in self.children.values():
             child.verify()
             if child.links:
                 found_links = True
@@ -142,26 +195,26 @@ class StructCollectionSchema:
             
 
     def add_child(self, child: iop.DataSchema, name: str):
-        if name in self.datasets:
+        if name in self.children:
             raise ValueError(f"StructCollectionSchema already has child with name {name}")
         match child:
             case DatasetSchema():
-                self.datasets[name] = child
-            case LinkSchema():
+                self.children[name] = child
+            case IdxLinkSchema() | StartSizeLinkSchema():
                 raise ValueError("LinkSchemas need to be added to a DatasetSchema directly. Perhaps you meant to call insert?")
             case _: 
                 raise ValueError(f"StructCollectionSchema cannot take children of type {type(child)}")
 
 
     def allocate(self, group: h5py.Group):
-        if len(self.datasets) == 1:
+        if len(self.children) == 1:
             raise ValueError("A dataset collection cannot have only one member!")
-        for ds_name, ds in self.datasets.items():
+        for ds_name, ds in self.children.items():
             ds_group = group.require_group(ds_name)
             ds.allocate(ds_group)
 
     def into_writer(self):
-        dataset_writers = {key: val.into_writer() for key, val in self.datasets.items()}
+        dataset_writers = {key: val.into_writer() for key, val in self.children.items()}
         return iow.CollectionWriter(dataset_writers, self.header)
 
 class DatasetSchema:
@@ -170,7 +223,7 @@ class DatasetSchema:
         header: Optional[OpenCosmoHeader] = None,
     ):
         self.columns: dict[str, ColumnSchema] = {}
-        self.links: dict[str, LinkSchema] = {}
+        self.links: dict[str, IdxLinkSchema | StartSizeLinkSchema] = {}
         self.header = header
 
     @classmethod
@@ -193,7 +246,7 @@ class DatasetSchema:
         if name in self.columns or name in self.links:
             raise ValueError(f"DatasetScheema already has a child named {name}")
         match child:
-            case LinkSchema():
+            case IdxLinkSchema() | StartSizeLinkSchema():
                 self.links[name] = child
             case ColumnSchema():
                 self.columns[name] = child
@@ -220,8 +273,8 @@ class DatasetSchema:
             link.allocate(link_group)
 
     def into_writer(self):
-        column_writers = [col.into_writer() for col in self.columns.values()]
-        link_writers = [link.into_writer() for link in self.links.values()]
+        column_writers = {name: col.into_writer() for name, col in self.columns.items()}
+        link_writers = {name: link.into_writer() for name, link in self.links.items()}
         
         return iow.DatasetWriter(column_writers, link_writers, self.header)
 
@@ -231,10 +284,26 @@ class ColumnSchema:
         self.name = name
         self.index = index
         self.source = source
+        self.offset = 0
+
+    def concatenate(self, *others: "ColumnSchema"):
+        for other in others:
+            if other.name != self.name:
+                raise ValueError("Tried to combine columns with different names")
+            if self.source.shape[1:] != other.source.shape[1:]:
+                raise ValueError("Tried to combine columns with incompatible shapes")
+
+        new_index = self.index.concatenate(*[o.index for o in others])
+        return ColumnSchema(self.name, new_index, self.source)
+        
 
     def add_child(self, *args, **kwargs):
         raise TypeError("Columns do not take children!")
     insert = add_child
+
+    def set_offset(self, offset: int):
+        self.offset = offset
+
 
     def verify(self):
         if len(self.index) == 0:
@@ -244,44 +313,50 @@ class ColumnSchema:
 
     def allocate(self, group: h5py.Group):
         shape = (len(self.index),) + self.source.shape[1:]
-        group.require_dataset(self.name, shape, self.source.dtype)
+        group.create_dataset(self.name, shape, self.source.dtype, compression=COMPRESSION)
 
     def into_writer(self):
-        return iow.ColumnWriter(self.name, self.index, self.source)
+        return iow.ColumnWriter(self.name, self.index, self.source, self.offset)
 
-class LinkSchema:
-    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset | tuple[h5py.Dataset, h5py.Dataset]):
-        self.name = name
-        self.source = source
-        self.index = index
+class IdxLinkSchema:
+    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
+        self.column = ColumnSchema(f"{name}_idx", index, source)
+
+    def allocate(self, group: h5py.Group):
+        return self.column.allocate(group)
 
     def add_child(self, *args, **kwargs):
         raise TypeError("Links do not take children!")
     insert = add_child
 
     def verify(self):
-        if len(self.index) == 0:
-            raise ValueError("Links cannot have zero length")
-
-
-    def allocate(self, group: h5py.Group):
-        if isinstance(self.source, tuple):
-            start_name = f"{self.name}_start"
-            size_name = f"{self.name}_size"
-            group.create_dataset(start_name, shape=(len(self.index,)), dtype=np.uint64)
-            group.create_dataset(size_name, shape=(len(self.index,)), dtype=np.uint64)
-        else:
-            name = f"{self.name}_idx"
-            group.create_dataset(name, shape=(len(self.index),), dtype=np.uint64)
+        return self.column.verify()
 
     def into_writer(self):
-        if isinstance(self.source, tuple):
-            return iow.StartSizeLinkWriter(self.name, self.index, self.source[1])
-        else:
-            return iow.IdxLinkWriter(self.name, self.index, self.source)
-        
+        return iow.IdxLinkWriter(self.column.into_writer())
 
+class StartSizeLinkSchema:
+    def __init__(self, name: str, index: DataIndex, start: h5py.Dataset, size: h5py.Dataset, link_offset: int = 0, start_offset: int = 0):
+        self.name = name
+        self.index = index
+        self.start = ColumnSchema(f"{name}_start", index, start)
+        self.size = ColumnSchema(f"{name}_size", index, size)
+        self.start.set_offset(link_offset)
+        self.size.set_offset(link_offset)
+        self.start_offset = start_offset
 
+    def allocate(self, group: h5py.Group):
+        self.start.allocate(group)
+        self.size.allocate(group)
 
+    def add_child(self, *args, **kwargs):
+        raise TypeError("Links do not take children!")
+    insert = add_child
 
+    def verify(self):
+        self.start.verify()
+        self.size.verify()
+
+    def into_writer(self):
+        return iow.StartSizeLinkWriter(self.start.into_writer(), self.size.into_writer())
 

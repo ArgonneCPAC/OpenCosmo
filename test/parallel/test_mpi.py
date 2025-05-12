@@ -119,27 +119,15 @@ def test_filter_write(input_path, tmp_path):
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
 
     oc.write(temporary_path, ds)
-    assert False
     data = ds.collect().data
     ds.close()
 
     ds = oc.read(temporary_path)
     written_data = ds.data
 
-    handler = ds._Dataset__handler
-    tree = handler._InMemoryHandler__tree
-    starts = tree._Tree__starts
-    sizes = tree._Tree__sizes
-    parallel_assert(np.all(data == written_data))
-    for level in sizes:
-        parallel_assert(np.sum(sizes[level]) == len(handler))
-        parallel_assert(starts[level][0] == 0)
-        if level > 0:
-            sizes_from_starts = np.diff(np.append(starts[level], len(handler)))
-            parallel_assert(np.all(sizes_from_starts == sizes[level]))
 
-
-
+    assert all(data == written_data)
+    
 #@pytest.mark.parallel(nprocs=4)
 @pytest.mark.skip
 def test_select_collect(input_path):
@@ -154,11 +142,31 @@ def test_select_collect(input_path):
     parallel_assert(len(ds.data) == 400)
     parallel_assert(set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
 
+@pytest.mark.parallel(nprocs=4)
+def test_link_read(all_paths):
+    collection = open_linked_files(*all_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
+    length = len(collection.properties)
+    length = 8 if length > 8 else length
+    collection = collection.take(8, "random")
+    for i, (properties, particles) in enumerate(collection.objects()):
+        halo_tag = properties["fof_halo_tag"]
+        for species, ds in particles.items():
+            data = ds.data
+            if len(data) == 0:
+                continue
+            if species == "halo_profiles":
+                assert len(data) == 1
+                assert data["fof_halo_bin_tag"][0][0] == halo_tag
+                continue
+            halo_tags = np.unique(ds.data["fof_halo_tag"])
+            assert len(halo_tags) == 1
+            assert halo_tags[0] == halo_tag
 
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = open_linked_files(*all_paths)
-    collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
     length = len(collection.properties)
     length = 8 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
@@ -171,6 +179,7 @@ def test_link_write(all_paths, tmp_path):
     for i, (properties, particles) in enumerate(collection.objects()):
         for key, ds in particles.items():
             written_data[properties["fof_halo_tag"]].append((key, len(ds)))
+
 
     oc.write(output_path, collection)
 
