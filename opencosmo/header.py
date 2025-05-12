@@ -1,5 +1,6 @@
 from functools import cached_property
 from typing import Optional
+from pathlib import Path
 
 import h5py
 
@@ -73,7 +74,7 @@ class OpenCosmoHeader:
 
 @file_writer
 def write_header(
-    file: h5py.File, header: OpenCosmoHeader, dataset_name: Optional[str] = None
+    path: Path, header: OpenCosmoHeader, dataset_name: Optional[str] = None
 ) -> None:
     """
     Write the header of an OpenCosmo file
@@ -86,11 +87,12 @@ def write_header(
         The header information to write
 
     """
-    if dataset_name is not None:
-        group = file.require_group(dataset_name)
-    else:
-        group = file
-    header.write(group)
+    with h5py.File(path, "w") as f:
+        if dataset_name is not None:
+            group = f.require_group(dataset_name)
+        else:
+            group = f
+        header.write(group)
 
 
 @broadcast_read
