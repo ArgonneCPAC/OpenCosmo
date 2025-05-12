@@ -79,7 +79,7 @@ class LinkHandler(Protocol):
         pass
 
 
-class OomLinkHandler:
+class LinkedDatasetHandler:
     """
     Links are currently only supported out-of-memory.
     """
