@@ -128,7 +128,7 @@ class SimulationCollection(dict):
     def make_schema(self) -> DataSchema:
         schema = SimCollectionSchema()
         for name, dataset in self.items():
-            ds_schema = dataset.make_schema(name)
+            ds_schema = dataset.make_schema()
             schema.add_child(ds_schema, name)
 
         return schema

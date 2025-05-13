@@ -188,7 +188,7 @@ def write(path: Path, dataset: Writeable) -> None:
     """
 
     schema = FileSchema()
-    dataset_schema = dataset.make_schema("root")
+    dataset_schema = dataset.make_schema()
     schema.add_child(dataset_schema, "root")
 
     if MPI is not None:
