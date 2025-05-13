@@ -9,5 +9,5 @@ jobs:
   lint:
     uses: ./.github/workflows/test.yaml
   test:
-    users: ./.github/workflows/test.yaml
+    uses: ./.github/workflows/test.yaml
 
