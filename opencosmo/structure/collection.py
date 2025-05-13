@@ -342,10 +342,10 @@ class StructureCollection:
         schema = StructCollectionSchema(self.__header)
         properties_name = self.properties.dtype
         for name, dataset in self.items():
-            ds_schema = dataset.make_schema(name)
+            ds_schema = dataset.make_schema()
             schema.add_child(ds_schema, name)
 
-        properties_schema = self.properties.make_schema(properties_name)
+        properties_schema = self.properties.make_schema()
         schema.add_child(properties_schema, properties_name)
 
         for name, handler in self.__handlers.items():
