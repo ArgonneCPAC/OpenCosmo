@@ -14,6 +14,7 @@ target "dev-mpich" {
   dockerfile = "Dockerfile"
   platforms = ["linux/amd64", "linux/arm64"]
   tags = ["docker.io/astropatty/opencosmo:latest"]
+
 }
 
 target "dev-openmpi" {
@@ -21,7 +22,7 @@ target "dev-openmpi" {
   platforms = ["linux/amd64", "linux/arm64"]
   tags = ["docker.io/astropatty/opencosmo:latest-openmpi"]
   args = {
-    MPI_IMPL = "openmpi-bin libopenmpi-dev"
+    MPI_IMPL = "openmpi"
   }
 }
 
