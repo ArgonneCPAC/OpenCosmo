@@ -15,6 +15,15 @@ from .schemas import (
     StartSizeLinkSchema,
     StructCollectionSchema,
 )
+"""
+When working with MPI, datasets are chunked across ranks. Here we combine the schemas
+from several ranks into a single schema that can be allocated by rank 0. Each 
+rank will then write it's own data to the specific section of the file 
+it is responsible for.
+
+As with schemas and writers, everything is very hierarcical here. A function
+does some consistency checks, then calls a function that combines its children.
+"""
 
 
 def verify_structure(schemas: Mapping[str, DataSchema], comm: MPI.Comm):

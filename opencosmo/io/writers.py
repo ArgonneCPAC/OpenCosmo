@@ -21,9 +21,9 @@ Writers work in tandem with schemas to create new files. All schemas must have
 an into_writer method, which returns a writer that can be used to put
 data into the new file.
 
-Because schemas allocate space in a file, the correct structure is always
-assumed to be there by the writer. If the writer itself fails, it is probably either
-a problem with the schema or there was a mixup in naming.
+Schemas are responsible for validating and building the file structure 
+as well as allocating space.  As a result, writers ASSUME the correct structure exists, 
+and that all the datasets have the correct size, datatype, etc.
 """
 
 
@@ -34,6 +34,10 @@ def write_index(
     offset: int = 0,
     updater: Optional[Callable[[np.ndarray], np.ndarray]] = None,
 ):
+    """
+    Helper function to take elements from one h5py.Dataset using an index
+    and put it in a different one.
+    """
     if len(index) == 0:
         raise ValueError("No indices provided to write")
     data = index.get_data(input_ds)
@@ -52,7 +56,7 @@ def write_index(
 
 class FileWriter:
     """
-    Root writer for a file.
+    Root writer for a file. Pretty much just calls the child writers.
     """
 
     def __init__(self, children: dict[str, iop.DataWriter]):
@@ -68,7 +72,8 @@ class FileWriter:
 
 class CollectionWriter:
     """
-    Writes collections to a file or group
+    Writes collections to a file or grous. Also pretty much just calls
+    the child writers.
     """
 
     def __init__(
@@ -124,7 +129,8 @@ class DatasetWriter:
 
 class ColumnWriter:
     """
-    Writes a single column in a dataset
+    Writes a single column in a dataset. This is the only writer that actually moves
+    real data.
     """
 
     def __init__(
@@ -147,6 +153,10 @@ class ColumnWriter:
 
 
 def idx_link_updater(input: np.ndarray) -> np.ndarray:
+    """
+    Helper function to update data from an 1-to-1 index
+    link.
+    """
     output = np.full(len(input), -1)
     has_data = input > 0
     offset = 0
@@ -173,6 +183,10 @@ class IdxLinkWriter:
 
 
 def start_link_updater(sizes: np.ndarray):
+    """
+    Helper function to update the starts of a start-size
+    link.
+    """
     cumulative_sizes = np.cumsum(sizes)
     if MPI is not None:
         offsets = np.cumsum(MPI.COMM_WORLD.allgather(cumulative_sizes[-1]))
