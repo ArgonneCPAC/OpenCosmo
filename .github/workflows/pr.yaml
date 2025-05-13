@@ -1,4 +1,4 @@
-name: Merge Request Checks
+name: opencosmo CI
 on:
   pull_request:
     branches:
@@ -9,7 +9,3 @@ jobs:
   test:
     uses: ./.github/workflows/test.yaml
     secrets: inherit
-  test:
-    users: ./.github/workflows/build.yaml
-
-
