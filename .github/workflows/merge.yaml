@@ -11,6 +11,7 @@ jobs:
     uses: ./.github/workflows/build.yaml
     with:
       push-docker: true
+    secrets:
       docker-username: ${{ secrets.DOCKER_USERNAME }}
       docker-access-key: ${{ secrets.DOCKER_ACCESS_KEY }}
       
