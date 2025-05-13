@@ -6,8 +6,8 @@ group "dev" {
   targets = ["dev-mpich", "dev-openmpi"]
 }
 
-args = {
-  GITHUB_REF_NAME = "${GITHUB_REF_NAME}"  
+variable "GITHUB_REF_NAME" {
+  default = "none"
 }
 
 target "dev-mpich" {
@@ -16,7 +16,7 @@ target "dev-mpich" {
   tags = ["docker.io/astropatty/opencosmo:latest"]
 }
 
-target "dev-ompi" {
+target "dev-openmpi" {
   dockerfile = "Dockerfile"
   platforms = ["linux/amd64", "linux/arm64"]
   tags = ["docker.io/astropatty/opencosmo:latest-openmpi"]
