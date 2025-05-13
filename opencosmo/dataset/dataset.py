@@ -315,7 +315,7 @@ class Dataset:
             new_index,
         )
 
-    def make_schema(self, dataset_name: str, with_header: bool = True) -> DatasetSchema:
+    def make_schema(self, with_header: bool = True) -> DatasetSchema:
         """
         Prep to write the dataset. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.
@@ -330,7 +330,7 @@ class Dataset:
         """
         header = self.__header if with_header else None
         return self.__handler.prep_write(
-            self.__index, self.__builders.keys(), dataset_name, header
+            self.__index, self.__builders.keys(), header
         )
 
     def with_units(self, convention: str) -> Dataset:

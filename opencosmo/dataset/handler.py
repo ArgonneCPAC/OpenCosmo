@@ -71,7 +71,6 @@ class DatasetHandler:
         self,
         index: DataIndex,
         columns: Iterable[str],
-        dataset_name: str,
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
         return DatasetSchema.make_schema(self.__group, columns, index, header)
