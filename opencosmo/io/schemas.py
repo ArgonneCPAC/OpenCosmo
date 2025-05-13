@@ -17,26 +17,34 @@ Schemas represent the hierarchy of groups and datasets in a given hdf file.
 Schemas may have child schemas, and must be able to allocate themselves
 in an open HDF5 file. Allocation may look as simple as creating a particular
 group and passing that group to child allocators. In the case of a ColumnSchema,
-actual of hdf5 datasets is performed.
+actual creation of hdf5 datasets is performed, complete with its length, dtype
+and compressin.
 
 Any validaty tests across multiple children must be performed by the parent schema.
 For example, an OpenCosmoDataset must have columns with compatible shapes. It is the
 responsibility of the DatasetSchema to enforce this.
 
-Some schemas are defined elsewhere in the library.
 
 Note that "Dataset" is used in the opencosmo sense here so:
 
 hdf5.Dataset == opencosmo Column
 hdf5.Group == opencosmo Dataset (sometimes)
 
-Schemas are NOT responsible for handling metadata. Those are handled by writers.
+Schemas also must define an into_writer method that creates the object that will
+actually put data into the file. As a result, certain schemas must hold references
+to the underlying data they reference.
+
+See opencosmo.io.protocols for required methods.
 """
 
 COMPRESSION = hdf5plugin.Blosc2()
 
 
 class FileSchema:
+    """
+    Always the top level of schema. Has very few responsibilites
+    besides holding children.
+    """
     def __init__(self):
         self.children = {}
 
@@ -79,6 +87,11 @@ class FileSchema:
 
 
 class SimCollectionSchema:
+    """
+    A schema for simulation collections. Like FileSchema, it has very few
+    responsibilites outside of holding children and making sure they are
+    valid types.
+    """
     def __init__(self):
         self.children = {}
 
@@ -123,6 +136,14 @@ class SimCollectionSchema:
 
 
 class StructCollectionSchema:
+    """
+    Schema for structure collections. Actual linking data is held by datasets,
+    so the main responsibility of this schema is to ensure that at least one
+    link exists across all its datasets.
+
+    Structure collections always have a header, because they always
+    contain several datasets from the same simulation.
+    """
     def __init__(self, header: OpenCosmoHeader):
         self.children: dict[str, DatasetSchema] = {}
         self.header = header
@@ -179,6 +200,11 @@ class StructCollectionSchema:
 
 
 class DatasetSchema:
+    """
+    A schema for an opencosmo.dataset. This schema may or may not have a header. 
+    For example, a StructureCollection has a single collection for all datasets,
+    so it does not need to be handled by the datasets it holds.
+    """
     def __init__(
         self,
         header: Optional[OpenCosmoHeader] = None,
@@ -248,6 +274,11 @@ class DatasetSchema:
 
 
 class ColumnSchema:
+    """
+    This is where the magic actually happens. The ColumnSchema actually allocates
+    space in the file holds a reference to the data that will eventually be written. 
+    It is also used eternally by the link schemas.
+    """
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
         self.name = name
         self.index = index
@@ -289,6 +320,9 @@ class ColumnSchema:
 
 
 class IdxLinkSchema:
+    """
+    Schema for links that are one-to-one in rows.
+    """
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
         self.column = ColumnSchema(f"{name}_idx", index, source)
 
@@ -308,6 +342,10 @@ class IdxLinkSchema:
 
 
 class StartSizeLinkSchema:
+    """
+    Schema for links that define a start and size for a group of rows
+    in a different dataset.
+    """
     def __init__(
         self,
         name: str,
