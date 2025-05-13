@@ -9,11 +9,9 @@ on:
         type: bool
     secrets:
       docker-username:
-        default: "_"
         required: false
         type: str
       docker-access-key:
-        default: "_"
         required: false
         type: str
 
