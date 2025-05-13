@@ -1,4 +1,4 @@
-name: build
+name: build dev
 on: workflow_call
 
 jobs:
@@ -28,6 +28,4 @@ jobs:
         with:
           push: false
           targets: dev
-        env:
-          GITHUB_REF_NAME: ${{ github.ref_name }}
 
