@@ -1,0 +1,16 @@
+name: merge CI
+on:
+  push:
+    branches:
+      - main
+jobs:
+  test:
+    uses: ./.github/workflows/test.yaml
+    secrets: inherit
+  build:
+    uses: ./.github/workflows/build.yaml
+    with:
+      push-docker: true
+      docker-username: ${{ secrets.DOCKER_USERNAME }}
+      docker-access-key = ${{ secrets.DOCKER_ACCESS_KEY }}
+      
