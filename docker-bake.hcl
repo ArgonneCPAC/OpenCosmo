@@ -6,6 +6,10 @@ group "dev" {
   targets = ["dev-mpich", "dev-openmpi"]
 }
 
+args = {
+  GITHUB_REF_NAME = "${GITHUB_REF_NAME}"  
+}
+
 target "dev-mpich" {
   dockerfile = "Dockerfile"
   platforms = ["linux/amd64", "linux/arm64"]
