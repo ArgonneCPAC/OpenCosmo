@@ -9,7 +9,7 @@ jobs:
   test:
     uses: ./.github/workflows/test.yaml
     secrets: inherit
-  test:
+  build:
     uses: ./.github/workflows/build.yaml
 
 
