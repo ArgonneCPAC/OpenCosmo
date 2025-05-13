@@ -4,7 +4,7 @@ ARG HDF5_VERSION="1.14.6"
 ARG HDF5_LIB="https://github.com/HDFGroup/hdf5/releases/download/hdf5_${HDF5_VERSION}/hdf5.tar.gz"
 ARG MPI_IMPL="mpich"
 
-RUN apt-get update && apt-get -y install ${MPI_IMPL} wget make
+RUN apt-get update && apt-get -y install build-essential ${MPI_IMPL} wget make
 
 WORKDIR /install
 RUN wget ${HDF5_LIB} && tar -xvzf hdf5.tar.gz && mv hdf5-${HDF5_VERSION} hdf5
