@@ -12,5 +12,5 @@ jobs:
     with:
       push-docker: true
       docker-username: ${{ secrets.DOCKER_USERNAME }}
-      docker-access-key = ${{ secrets.DOCKER_ACCESS_KEY }}
+      docker-access-key: ${{ secrets.DOCKER_ACCESS_KEY }}
       
