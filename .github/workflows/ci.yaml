@@ -1,0 +1,13 @@
+name: opencosmo CI
+on:
+  pull_request:
+    branches:
+      - main
+
+
+jobs:
+  lint:
+    uses: ./.github/workflows/test.yaml
+  test:
+    users: ./.github/workflows/test.yaml
+
