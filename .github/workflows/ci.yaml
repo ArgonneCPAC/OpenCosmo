@@ -7,7 +7,11 @@ on:
 
 jobs:
   lint:
-    uses: ./.github/workflows/test.yaml
+    uses: ./.github/workflows/lint.yaml
+
   test:
     uses: ./.github/workflows/test.yaml
-
+    secrets:
+      - TEST_DATA_ACCESS_KEY: ${{ secrets.TEST_DATA_ACCESS_KEY }}
+      - TEST_DATA_SECRET_KEY: ${{ secrets.TEST_DATA_SECRET_KEY }}
+      - TEST_DATA_BUCKET: ${{ secrets.TEST_DATA_BUCKET }}

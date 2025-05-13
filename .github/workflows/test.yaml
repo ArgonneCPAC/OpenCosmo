@@ -1,5 +1,13 @@
 name: test opencosmo
-on: workflow_call
+on: 
+  workflow_call:
+    secrets:
+      - TEST_DATA_ACCESS_KEY:
+        required: true
+      - TEST_DATA_SECRET_KEY:
+        required: true
+      - TEST_DATA_BUCKET:
+        required: true
 
 jobs:
   get-test-data:
