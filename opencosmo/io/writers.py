@@ -130,7 +130,7 @@ class DatasetWriter:
 class ColumnWriter:
     """
     Writes a single column in a dataset. This is the only writer that actually moves
-    real data.
+    real data around.
     """
 
     def __init__(
