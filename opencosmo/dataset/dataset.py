@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generator, Iterable
+from typing import TYPE_CHECKING, Generator, Iterable, Optional
 
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
@@ -14,6 +14,8 @@ from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.parameters import SimulationParameters
+from opencosmo.spatial.region import BoxRegion
+from opencosmo.spatial.tree import Tree
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
@@ -27,12 +29,14 @@ class Dataset:
         builders: dict[str, ColumnBuilder],
         unit_transformations: dict[t.TransformationType, list[t.Transformation]],
         index: DataIndex,
+        tree: Optional[Tree] = None,
     ):
         self.__handler = handler
         self.__header = header
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
         self.__index = index
+        self.__tree = tree
 
     def __repr__(self):
         """
@@ -139,6 +143,21 @@ class Dataset:
     @property
     def index(self) -> DataIndex:
         return self.__index
+
+    def crop(self, region: BoxRegion):
+        if self.__tree is None:
+            raise AttributeError(
+                "Your dataset does not contain a spatial index, "
+                "so querying is not available"
+            )
+        new_index = self.__tree.query(region)
+        return Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            new_index,
+        )
 
     def filter(self, *masks: Mask) -> Dataset:
         """
@@ -372,6 +391,7 @@ class Dataset:
             new_builders,
             self.__base_unit_transformations,
             self.__index,
+            self.__tree,
         )
 
     def collect(self) -> Dataset:

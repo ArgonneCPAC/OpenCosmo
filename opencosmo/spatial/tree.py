@@ -5,15 +5,21 @@ from typing import TYPE_CHECKING, Optional
 import h5py
 import numpy as np
 
+try:
+    from mpi4py import MPI
+except ImportError:
+    MPI = None  # type: ignore
+
+from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.spatial.index import SpatialIndex
 from opencosmo.spatial.octree import OctTreeIndex
+from opencosmo.spatial.region import BoxRegion
 
 if TYPE_CHECKING:
     from mpi4py import MPI
 
 
-def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
+def open_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
     """
     Read a tree from an HDF5 file and the associated
     header. The tree is just a mapping between a spatial
@@ -35,8 +41,8 @@ def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
             group = file[f"index/level_{level}"]
         except KeyError:
             break
-        level_starts = group["start"][()]
-        level_sizes = group["size"][()]
+        level_starts = group["start"]
+        level_sizes = group["size"]
         starts[level] = level_starts
         sizes[level] = level_sizes
 
@@ -115,13 +121,29 @@ class Tree:
 
     def __init__(
         self,
-        index: SpatialIndex,
+        index: OctTreeIndex,
         starts: dict[int, np.ndarray],
         sizes: dict[int, np.ndarray],
     ):
         self.__index = index
         self.__starts = starts
         self.__sizes = sizes
+        self.__max_level = max(starts.keys())
+
+    def query(self, region: BoxRegion) -> ChunkedIndex:
+        indices = self.__index.query(region, self.__max_level)
+        total_length = sum(map(lambda level: len(level), indices.values()))
+        starts = np.zeros(total_length, dtype=int)
+        sizes = np.zeros(total_length, dtype=int)
+        running_total = 0
+        for level, index in indices.items():
+            starts = index.get_data(self.__starts[level])
+            sizes = index.get_data(self.__sizes[level])
+            n = len(starts)
+            starts[running_total : running_total + n]
+            sizes[running_total : running_total + n] = sizes
+            running_total += n
+        return ChunkedIndex(starts, sizes)
 
     def apply_mask(
         self,

@@ -13,6 +13,7 @@ from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import SimulationParameters
+from opencosmo.spatial.tree import open_tree
 from opencosmo.structure import StructureCollection
 from opencosmo.transformations import units as u
 
@@ -269,14 +270,13 @@ def read_single_dataset(
     if header is None:
         header = read_header(file[dataset_key])
 
-    # tree = read_tree(file[dataset_key], header)
-    tree = None
+    tree = open_tree(file[dataset_key], header)
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
-    handler = DatasetHandler(im_file, tree, dataset_key)
+    handler = DatasetHandler(im_file, dataset_key)
 
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header
     )
     index = ChunkedIndex.from_size(len(handler))
-    return oc.Dataset(handler, header, builders, base_unit_transformations, index)
+    return oc.Dataset(handler, header, builders, base_unit_transformations, index, tree)
