@@ -1,4 +1,12 @@
+import pytest
+
+import opencosmo as oc
 from opencosmo.spatial.region import BoxRegion
+
+
+@pytest.fixture
+def halo_properties_path(data_path):
+    return data_path / "haloproperties.hdf5"
 
 
 def test_contains():
@@ -24,3 +32,18 @@ def test_neither():
     assert not reg2.intersects(reg1)
     assert not reg1.contains(reg2)
     assert not reg2.contains(reg1)
+
+
+def test_box_query(halo_properties_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    reg1 = BoxRegion((100, 100, 100), 15)
+    ds = ds.crop(reg1)
+    data = ds.data
+    for dim in ["x", "y", "z"]:
+        col = data[f"fof_halo_center_{dim}"]
+        min = col.min()
+        max = col.max()
+        print(min)
+        print(max)
+        assert min >= 85
+        assert max <= 115

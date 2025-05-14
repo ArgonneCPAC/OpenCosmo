@@ -9,7 +9,6 @@ from astropy.table import Column, Table  # type: ignore
 from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
-from opencosmo.spatial.tree import Tree
 
 try:
     from mpi4py import MPI
@@ -28,7 +27,6 @@ class DatasetHandler:
     def __init__(
         self,
         file: h5py.File,
-        tree: Optional[Tree] = None,
         group_name: Optional[str] = None,
     ):
         self.__group_name = group_name
@@ -37,7 +35,6 @@ class DatasetHandler:
             self.__group = file["data"]
         else:
             self.__group = file[f"{group_name}/data"]
-        self.__tree = tree
 
     def __len__(self) -> int:
         first_column_name = next(iter(self.__group.keys()))

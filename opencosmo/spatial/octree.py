@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from copy import copy
 from functools import cache
 from itertools import product
 from typing import Iterable, Optional, TypeGuard
 
+import numpy as np
+
+from opencosmo.dataset.index import SimpleIndex
 from opencosmo.spatial.region import BoxRegion, Point3d
 
 Index3d = tuple[int, int, int]
@@ -36,7 +40,7 @@ def get_index3d(p: Point3d, level: int, box_size: float) -> Index3d:
     return int(p[0] // block_size), int(p[1] // block_size), int(p[2] // block_size)
 
 
-def get_octtree_index(idx: Index3d, level: int, box_size: float) -> int:
+def get_octtree_index(idx: Index3d, level: int) -> int:
     oct_idx = 0
     idx_ = copy(idx)
     for i in range(level):
@@ -64,8 +68,26 @@ class OctTreeIndex:
         root = Octant((0, 0, 0), (halfwidth, halfwidth, halfwidth), halfwidth)
         return OctTreeIndex(root)
 
-    def query(self, reg: BoxRegion):
-        pass
+    def query(self, region: BoxRegion, max_level: int) -> dict[int, SimpleIndex]:
+        new_root = self.root.query(region, 0, max_level)
+        if new_root is None:
+            raise ValueError("Query region is not within the actual simulation box!")
+        output = {}
+        for level, indices in make_octree_indices(new_root, 0).items():
+            output[level] = SimpleIndex(indices)
+        return output
+
+
+def make_octree_indices(oct: Octant, current_level: int) -> dict[int, np.ndarray]:
+    if not oct.children:
+        return {current_level: np.array([get_octtree_index(oct.idx, current_level)])}
+    output: dict[int, np.ndarray] = defaultdict(lambda: np.array([], dtype=int))
+    for child in oct.children:
+        child_output = make_octree_indices(child, current_level + 1)
+        for key, indices in child_output.items():
+            output[key] = np.append(output[key], indices)
+
+    return output
 
 
 class Octant:
