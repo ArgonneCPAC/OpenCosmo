@@ -45,6 +45,7 @@ class FileSchema:
     Always the top level of schema. Has very few responsibilites
     besides holding children.
     """
+
     def __init__(self):
         self.children = {}
 
@@ -92,6 +93,7 @@ class SimCollectionSchema:
     responsibilites outside of holding children and making sure they are
     valid types.
     """
+
     def __init__(self):
         self.children = {}
 
@@ -144,6 +146,7 @@ class StructCollectionSchema:
     Structure collections always have a header, because they always
     contain several datasets from the same simulation.
     """
+
     def __init__(self, header: OpenCosmoHeader):
         self.children: dict[str, DatasetSchema] = {}
         self.header = header
@@ -201,10 +204,11 @@ class StructCollectionSchema:
 
 class DatasetSchema:
     """
-    A schema for an opencosmo.dataset. This schema may or may not have a header. 
+    A schema for an opencosmo.dataset. This schema may or may not have a header.
     For example, a StructureCollection has a single collection for all datasets,
     so it does not need to be handled by the datasets it holds.
     """
+
     def __init__(
         self,
         header: Optional[OpenCosmoHeader] = None,
@@ -276,9 +280,10 @@ class DatasetSchema:
 class ColumnSchema:
     """
     This is where the magic actually happens. The ColumnSchema actually allocates
-    space in the file holds a reference to the data that will eventually be written. 
+    space in the file holds a reference to the data that will eventually be written.
     It is also used eternally by the link schemas.
     """
+
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
         self.name = name
         self.index = index
@@ -323,6 +328,7 @@ class IdxLinkSchema:
     """
     Schema for links that are one-to-one in rows.
     """
+
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
         self.column = ColumnSchema(f"{name}_idx", index, source)
 
@@ -346,6 +352,7 @@ class StartSizeLinkSchema:
     Schema for links that define a start and size for a group of rows
     in a different dataset.
     """
+
     def __init__(
         self,
         name: str,
