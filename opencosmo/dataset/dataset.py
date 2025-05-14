@@ -63,6 +63,17 @@ class Dataset:
         return self.__handler.__exit__()
 
     @property
+    def columns(self) -> list[str]:
+        """
+        The names of the columns in this dataset.
+
+        Returns
+        -------
+        columns: list[str]
+        """
+        return list(self.__builders.keys())
+
+    @property
     def cosmology(self) -> Cosmology:
         """
         The cosmology of the simulation this dataset is drawn from as
