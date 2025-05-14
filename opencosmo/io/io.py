@@ -13,6 +13,7 @@ from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
 from opencosmo.mpi import get_comm_world
+from opencosmo.spatial.tree import open_tree
 from opencosmo.transformations import units as u
 
 from .protocols import Writeable
@@ -90,8 +91,7 @@ def open(
         group = file_handle
 
     header = read_header(file_handle)
-    # tree = read_tree(file_handle, header)
-    tree = None
+    tree = open_tree(file_handle, header)
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
@@ -107,7 +107,9 @@ def open(
         group, header
     )
 
-    dataset = oc.Dataset(handler, header, builders, base_unit_transformations, index)
+    dataset = oc.Dataset(
+        handler, header, builders, base_unit_transformations, index, tree=tree
+    )
     return dataset
 
 
@@ -155,18 +157,17 @@ def read(
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
     header = read_header(file)
-    # tree = read_tree(file, header)
-    tree = None
+    tree = open_tree(file, header)
     path = file.filename
     file = h5py.File(path, driver="core")
 
-    handler = DatasetHandler(file, tree, group_name=datasets)
+    handler = DatasetHandler(file, group_name=datasets)
     index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
 
-    return oc.Dataset(handler, header, builders, base_unit_transformations, index)
+    return oc.Dataset(handler, header, builders, base_unit_transformations, index, tree)
 
 
 @file_writer

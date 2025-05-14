@@ -10,7 +10,6 @@ from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
-from opencosmo.spatial.tree import Tree
 
 
 class DatasetHandler:
@@ -21,7 +20,6 @@ class DatasetHandler:
     def __init__(
         self,
         file: h5py.File,
-        tree: Optional[Tree] = None,
         group_name: Optional[str] = None,
     ):
         self.__group_name = group_name
@@ -30,7 +28,6 @@ class DatasetHandler:
             self.__group = file["data"]
         else:
             self.__group = file[f"{group_name}/data"]
-        self.__tree = tree
 
     def __len__(self) -> int:
         first_column_name = next(iter(self.__group.keys()))
