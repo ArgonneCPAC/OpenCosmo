@@ -150,7 +150,7 @@ jobs:
         run: poetry install --with test,mpi,test-mpi
       - name: Run tests with pytest
         run: |
-          poetry run mpiexec --use-hwthread-cpus -n 4 pytest -m parallel test/parallel
+          poetry run mpiexec -n 4 pytest -m parallel test/parallel
         env:
           OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
  
