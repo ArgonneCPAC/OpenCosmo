@@ -49,7 +49,6 @@ def write_index(
     if output_ds.file.driver == "mpio":
         with output_ds.collective:
             output_ds[offset : offset + len(data)] = data
-
     else:
         output_ds[offset : offset + len(data)] = data
 
