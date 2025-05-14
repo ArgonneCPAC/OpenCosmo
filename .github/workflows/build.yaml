@@ -14,7 +14,7 @@ on:
         required: false
 
 jobs:
-  build:
+  build-wheel:
     name: build
     runs-on: ubuntu-latest
     steps:
@@ -47,3 +47,10 @@ jobs:
           push: ${{ inputs.push-docker }}
           targets: dev
 
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ammaraskar/sphinx-action@master
+        with:
+          docs-folder: "docs"
