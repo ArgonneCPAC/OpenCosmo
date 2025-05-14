@@ -329,9 +329,7 @@ class Dataset:
 
         """
         header = self.__header if with_header else None
-        return self.__handler.prep_write(
-            self.__index, self.__builders.keys(), header
-        )
+        return self.__handler.prep_write(self.__index, self.__builders.keys(), header)
 
     def with_units(self, convention: str) -> Dataset:
         """

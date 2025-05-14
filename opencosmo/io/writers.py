@@ -46,7 +46,7 @@ def write_index(
 
     data = data.astype(input_ds.dtype)
 
-    if MPI is not None:
+    if output_ds.file.driver == "mpio":
         with output_ds.collective:
             output_ds[offset : offset + len(data)] = data
 
@@ -152,21 +152,28 @@ class ColumnWriter:
             ds.attrs[name] = val
 
 
-def idx_link_updater(input: np.ndarray) -> np.ndarray:
+def idx_link_updater(input: np.ndarray, offset: int = 0) -> np.ndarray:
+    output = np.full(len(input), -1)
+    good = input >= 0
+    output[good] = np.arange(sum(good)) + offset
+    return output
+
+
+def make_idx_link_updater(input: ColumnWriter) -> Callable[[np.ndarray], np.ndarray]:
     """
     Helper function to update data from an 1-to-1 index
     link.
     """
-    output = np.full(len(input), -1)
-    has_data = input > 0
+    arr = input.index.get_data(input.source)
+
+    has_data = arr > 0
     offset = 0
     n_good = sum(has_data)
     if MPI is not None:
         all_sizes = MPI.COMM_WORLD.allgather(n_good)
         offsets = np.insert(np.cumsum(all_sizes), 0, 0)
         offset = offsets[MPI.COMM_WORLD.Get_rank()]
-    output[has_data] = np.arange(sum(has_data)) + offset
-    return output
+    return lambda arr_: idx_link_updater(arr_, offset)
 
 
 class IdxLinkWriter:
@@ -177,16 +184,29 @@ class IdxLinkWriter:
 
     def __init__(self, col_writer: ColumnWriter):
         self.writer = col_writer
+        self.updater = make_idx_link_updater(self.writer)
 
     def write(self, group: h5py.Group):
-        self.writer.write(group, idx_link_updater)
+        self.writer.write(group, self.updater)
 
 
-def start_link_updater(sizes: np.ndarray):
+def start_link_updater(sizes: np.ndarray, offset: int = 0) -> np.ndarray:
+    cumulative_sizes = np.cumsum(sizes)
+
+    new_starts = np.insert(cumulative_sizes, 0, 0)
+    new_starts = new_starts[:-1] + offset
+    return new_starts
+
+
+def make_start_link_updater(
+    size_writer: ColumnWriter,
+) -> Callable[[np.ndarray], np.ndarray]:
     """
     Helper function to update the starts of a start-size
-    link.
+    link. Required to work this way so that we can write
+    in an MPI context WITHOUT using parallel hdf5
     """
+    sizes = size_writer.index.get_data(size_writer.source)
     cumulative_sizes = np.cumsum(sizes)
     if MPI is not None:
         offsets = np.cumsum(MPI.COMM_WORLD.allgather(cumulative_sizes[-1]))
@@ -195,9 +215,7 @@ def start_link_updater(sizes: np.ndarray):
     else:
         offset = 0
 
-    new_starts = np.insert(cumulative_sizes, 0, 0)
-    new_starts = new_starts[:-1] + offset
-    return new_starts
+    return lambda arr_: start_link_updater(arr_, offset)
 
 
 class StartSizeLinkWriter:
@@ -209,11 +227,12 @@ class StartSizeLinkWriter:
     def __init__(self, start: ColumnWriter, size: ColumnWriter):
         self.start = start
         self.sizes = size
+        self.updater = make_start_link_updater(size)
 
     def write(self, group: h5py.Group):
         self.sizes.write(group)
         new_sizes = self.sizes.index.get_data(self.sizes.source)
-        self.start.write(group, lambda _: start_link_updater(new_sizes))
+        self.start.write(group, lambda _: self.updater(new_sizes))
 
 
 LinkWriter = IdxLinkWriter | StartSizeLinkWriter

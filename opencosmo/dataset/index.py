@@ -144,7 +144,6 @@ class SimpleIndex:
         if len(self) == 0:
             return np.array([], dtype=data.dtype)
 
-
         min_index = self.__index.min()
         max_index = self.__index.max()
         output = data[min_index : max_index + 1]
