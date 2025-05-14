@@ -40,7 +40,7 @@ def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
         starts[level] = level_starts
         sizes[level] = level_sizes
 
-    spatial_index = OctTreeIndex(header.simulation, max_level)
+    spatial_index = OctTreeIndex.from_box_size(header.simulation.box_size)
     return Tree(spatial_index, starts, sizes)
 
 
