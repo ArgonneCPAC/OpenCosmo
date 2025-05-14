@@ -220,5 +220,14 @@ def write_parallel(file: Path, file_schema: FileSchema):
     MPI.COMM_WORLD.Barrier()
     writer = file_schema.into_writer()
 
-    with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
-        writer.write(f)
+    try:
+        with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
+            writer.write(f)
+    except ValueError: # parallell hdf5 not available
+        nranks = MPI.COMM_WORLD.Get_size()
+        rank = MPI.COMM_WORLD.Get_rank()
+        for i in range(nranks):
+            if i == rank:
+                with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
+                    writer.write(f)
+            MPI.COMM_WORLD.Barrier()
