@@ -27,13 +27,13 @@ Be sure you have run the :code:`activate` command shown above before running the
 Installing with MPI Support
 ---------------------------
 
-:code:`opencosmo` can leverage MPI to distribute analysis on a very large dataset across multiple cores or nodes. If you just need to open datasets in an MPI context, you simply need to install the :code:`mpi4py` package:
+:code:`opencosmo` can leverage MPI to distribute analysis on a very large dataset across multiple cores or nodes. You simply need to install the :code:`mpi4py` package:
 
 .. code-block:: bash
 
    pip install mpi4py
 
-However to *write* datasets in an MPI context, you will need to install the :code:`h5py` package with MPI support. Pre-built wheels with MPI support are not generally available on PyPI, so you will need to build :code:`h5py` from source against a version of the HDF5 library that was built with MPI support. Many HPC systems have an optimized MPI-enabled version of HDF5 available. For example, on Polaris at the Argonne Leadership Computing Facility (ALCF), run the follwing commands in the Python environment you plan to use with :code:`opencosmo`:
+:code:`opencosmo` Can both read and write data in an MPI context with no additional setup. By default, ranks must write to the file one at a time. This may result in poor performance if the data being written is large. This can be improved by installing the :code:`h5py` package with MPI support. Pre-built wheels with MPI support are not generally available on PyPI, so you will need to build :code:`h5py` from source against a version of the HDF5 library that was built with MPI support. Many HPC systems have an optimized MPI-enabled version of HDF5 available. For example, on Polaris at the Argonne Leadership Computing Facility (ALCF), run the follwing commands in the Python environment you plan to use with :code:`opencosmo`:
 
 .. code-block:: bash
 

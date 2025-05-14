@@ -222,7 +222,7 @@ def write_parallel(file: Path, file_schema: FileSchema):
 
     try:
         with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
-            writer.write(f)
+            return writer.write(f)
     except ValueError:  # parallell hdf5 not available
         nranks = MPI.COMM_WORLD.Get_size()
         rank = MPI.COMM_WORLD.Get_rank()
