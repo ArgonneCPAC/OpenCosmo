@@ -47,6 +47,10 @@ optional = true
 [tool.poetry.group.test-mpi.dependencies]
 mpi-pytest = "^2025.4.0"
 
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^4.2.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
