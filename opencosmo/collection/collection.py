@@ -9,6 +9,7 @@ import opencosmo as oc
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
+from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
@@ -270,7 +271,10 @@ def read_single_dataset(
     if header is None:
         header = read_header(file[dataset_key])
 
-    tree = open_tree(file[dataset_key], header)
+    try:
+        tree = open_tree(file[dataset_key], header)
+    except ValueError:
+        tree = None
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
     handler = DatasetHandler(im_file, dataset_key)
@@ -279,4 +283,8 @@ def read_single_dataset(
         file[dataset_key], header
     )
     index = ChunkedIndex.from_size(len(handler))
-    return oc.Dataset(handler, header, builders, base_unit_transformations, index, tree)
+    state = DatasetState(
+        base_unit_transformations, builders, index, u.UnitConvention.COMOVING
+    )
+
+    return oc.Dataset(handler, header, state, tree)

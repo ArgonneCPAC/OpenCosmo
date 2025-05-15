@@ -20,6 +20,7 @@ import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.index import ChunkedIndex
+from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
 from opencosmo.spatial.tree import open_tree
@@ -90,7 +91,10 @@ def open(
         group = file_handle
 
     header = read_header(file_handle)
-    tree = open_tree(file_handle, header)
+    try:
+        tree = open_tree(file_handle, header)
+    except ValueError:
+        tree = None
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
@@ -104,14 +108,14 @@ def open(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
+    state = DatasetState(
+        base_unit_transformations, builders, index, u.UnitConvention.COMOVING
+    )
 
     dataset = oc.Dataset(
         handler,
         header,
-        builders,
-        base_unit_transformations,
-        index,
-        u.UnitConvention.SCALEFREE,
+        state,
         tree=tree,
     )
     return dataset
@@ -161,7 +165,10 @@ def read(
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
     header = read_header(file)
-    tree = open_tree(file, header)
+    try:
+        tree = open_tree(file, header)
+    except ValueError:
+        tree = None
     path = file.filename
     file = h5py.File(path, driver="core")
 
@@ -170,8 +177,11 @@ def read(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
+    state = DatasetState(
+        base_unit_transformations, builders, index, u.UnitConvention.COMOVING
+    )
 
-    return oc.Dataset(handler, header, builders, base_unit_transformations, index, tree)
+    return oc.Dataset(handler, header, state, tree)
 
 
 @file_writer

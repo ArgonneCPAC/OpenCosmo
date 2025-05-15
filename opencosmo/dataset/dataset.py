@@ -6,11 +6,9 @@ from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-import opencosmo.transformations as t
-import opencosmo.transformations.units as u
-from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
 from opencosmo.dataset.mask import Mask, apply_masks
+from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.parameters import SimulationParameters
@@ -27,18 +25,12 @@ class Dataset:
         self,
         handler: DatasetHandler,
         header: OpenCosmoHeader,
-        builders: dict[str, ColumnBuilder],
-        unit_transformations: dict[t.TransformationType, list[t.Transformation]],
-        index: DataIndex,
-        convention: u.UnitConvention,
+        state: DatasetState,
         tree: Optional[Tree] = None,
     ):
         self.__handler = handler
         self.__header = header
-        self.__builders = builders
-        self.__base_unit_transformations = unit_transformations
-        self.__index = index
-        self.__convention = convention
+        self.__state = state
         self.__tree = tree
 
     def __repr__(self):
@@ -57,7 +49,7 @@ class Dataset:
         return head + cosmo_repr + table_head + table_repr
 
     def __len__(self):
-        return len(self.__index)
+        return len(self.__state.index)
 
     def __enter__(self):
         # Need to write tests
@@ -78,7 +70,7 @@ class Dataset:
         -------
         columns: list[str]
         """
-        return list(self.__builders.keys())
+        return list(self.__state.builders.keys())
 
     @property
     def cosmology(self) -> Cosmology:
@@ -141,11 +133,13 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(builders=self.__builders, index=self.__index)
+        return self.__handler.get_data(
+            builders=self.__state.builders, index=self.__state.index
+        )
 
     @property
     def index(self) -> DataIndex:
-        return self.__index
+        return self.__state.index
 
     def crop(self, region: BoxRegion, select_by: Optional[str] = None):
         if self.__tree is None:
@@ -154,16 +148,15 @@ class Dataset:
                 "so spatial querying is not available"
             )
         check_region = region.into_scalefree(
-            self.__convention, self.cosmology, self.redshift
+            self.__state.convention, self.cosmology, self.redshift
         )
         contained_index, intersects_index = self.__tree.query(check_region)
+
+        check_state = self.__state.with_index(intersects_index)
         check_dataset = Dataset(
             self.__handler,
             self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            intersects_index,
-            self.__convention,
+            check_state,
             self.__tree,
         ).with_units("scalefree")
         mask = check.check_containment(
@@ -173,13 +166,12 @@ class Dataset:
 
         new_index = contained_index.concatenate(new_intersects_index)
 
+        new_state = self.__state.with_index(new_index)
+
         return Dataset(
             self.__handler,
             self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_index,
-            self.__convention,
+            new_state,
             self.__tree,
         )
 
@@ -207,18 +199,17 @@ class Dataset:
 
         try:
             new_index = apply_masks(
-                self.__handler, self.__builders, masks, self.__index
+                self.__handler, self.__state.builders, masks, self.__state.index
             )
         except EmptyMaskError:
             raise ValueError("No rows matched the given filters!")
 
+        new_state = self.__state.with_index(new_index)
+
         return Dataset(
             self.__handler,
             self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_index,
-            self.__convention,
+            new_state,
             self.__tree,
         )
 
@@ -267,29 +258,11 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        if isinstance(columns, str):
-            columns = [columns]
-
-        # numpy compatability
-        columns = [str(col) for col in columns]
-
-        try:
-            new_builders = {col: self.__builders[col] for col in columns}
-        except KeyError:
-            known_columns = set(self.__builders.keys())
-            unknown_columns = set(columns) - known_columns
-            raise ValueError(
-                "Tried to select columns that aren't in this dataset! Missing columns "
-                + ", ".join(unknown_columns)
-            )
-
+        new_state = self.__state.select(columns)
         return Dataset(
             self.__handler,
             self.__header,
-            new_builders,
-            self.__base_unit_transformations,
-            self.__index,
-            self.__convention,
+            new_state,
             self.__tree,
         )
 
@@ -320,15 +293,12 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        new_index = self.__index.take(n, at)
+        new_state = self.__state.take(n, at)
 
         return Dataset(
             self.__handler,
             self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_index,
-            self.__convention,
+            new_state,
             self.__tree,
         )
 
@@ -355,25 +325,12 @@ class Dataset:
             or if end is greater than start.
 
         """
-        if start < 0 or end < 0:
-            raise ValueError("start and end must be positive.")
-        if end < start:
-            raise ValueError("end must be greater than start.")
-        if end > len(self):
-            raise ValueError("end must be less than the length of the dataset.")
-
-        if start < 0 or end > len(self):
-            raise ValueError("start and end must be within the bounds of the dataset.")
-
-        new_index = self.__index.take_range(start, end)
+        new_state = self.__state.take_range(start, end)
 
         return Dataset(
             self.__handler,
             self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_index,
-            self.__convention,
+            new_state,
             self.__tree,
         )
 
@@ -391,7 +348,9 @@ class Dataset:
 
         """
         header = self.__header if with_header else None
-        return self.__handler.prep_write(self.__index, self.__builders.keys(), header)
+        return self.__handler.prep_write(
+            self.__state.index, self.__state.builders.keys(), header
+        )
 
     def with_units(self, convention: str) -> Dataset:
         """
@@ -409,22 +368,12 @@ class Dataset:
             The new dataset with the requested unit convention.
 
         """
-        new_transformations = u.get_unit_transition_transformations(
-            convention,
-            self.__base_unit_transformations,
-            self.__header.cosmology,
-            self.redshift,
-        )
-        convention_ = u.UnitConvention(convention)
-        new_builders = get_column_builders(new_transformations, self.__builders.keys())
+        new_state = self.__state.with_units(convention, self.cosmology, self.redshift)
 
         return Dataset(
             self.__handler,
             self.__header,
-            new_builders,
-            self.__base_unit_transformations,
-            self.__index,
-            convention_,
+            new_state,
             self.__tree,
         )
 
@@ -451,14 +400,14 @@ class Dataset:
 
         If working in an MPI context, all ranks will recieve the same data.
         """
-        new_handler = self.__handler.collect(self.__builders.keys(), self.__index)
+        new_handler = self.__handler.collect(
+            self.__state.builders.keys(), self.__state.index
+        )
         new_index = ChunkedIndex.from_size(len(new_handler))
+        new_state = self.__state.with_index(new_index)
         return Dataset(
             new_handler,
             self.__header,
-            self.__builders,
-            self.__base_unit_transformations,
-            new_index,
-            self.__convention,
+            new_state,
             self.__tree,
         )
