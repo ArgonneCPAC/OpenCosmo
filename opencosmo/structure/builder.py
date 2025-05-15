@@ -8,6 +8,7 @@ import opencosmo as oc
 from opencosmo.dataset.column import get_column_builders
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
+from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial.tree import open_tree
 from opencosmo.transformations import units as u
@@ -88,7 +89,10 @@ class OomDatasetBuilder:
         header: OpenCosmoHeader,
         index: Optional[DataIndex] = None,
     ) -> oc.Dataset:
-        tree = open_tree(file, header)
+        try:
+            tree = open_tree(file, header)
+        except ValueError:
+            tree = None
         builders, base_unit_transformations = u.get_default_unit_transformations(
             file, header
         )
@@ -113,13 +117,17 @@ class OomDatasetBuilder:
 
         if index is None:
             index = ChunkedIndex.from_size(len(handler))
+        state = DatasetState(
+            base_unit_transformations,
+            builders,
+            index,
+            u.UnitConvention(self.unit_convention),
+        )
 
         dataset = oc.Dataset(
             handler,
             header,
-            builders,
-            base_unit_transformations,
-            index,
+            state,
             tree,
         )
         return dataset
