@@ -14,6 +14,7 @@ from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.parameters import SimulationParameters
+from opencosmo.spatial import check
 from opencosmo.spatial.region import BoxRegion
 from opencosmo.spatial.tree import Tree
 
@@ -29,6 +30,7 @@ class Dataset:
         builders: dict[str, ColumnBuilder],
         unit_transformations: dict[t.TransformationType, list[t.Transformation]],
         index: DataIndex,
+        convention: u.UnitConvention,
         tree: Optional[Tree] = None,
     ):
         self.__handler = handler
@@ -36,6 +38,7 @@ class Dataset:
         self.__builders = builders
         self.__base_unit_transformations = unit_transformations
         self.__index = index
+        self.__convention = convention
         self.__tree = tree
 
     def __repr__(self):
@@ -144,19 +147,40 @@ class Dataset:
     def index(self) -> DataIndex:
         return self.__index
 
-    def crop(self, region: BoxRegion):
+    def crop(self, region: BoxRegion, select_by: Optional[str] = None):
         if self.__tree is None:
             raise AttributeError(
                 "Your dataset does not contain a spatial index, "
-                "so querying is not available"
+                "so spatial querying is not available"
             )
-        new_index = self.__tree.query(region)
+        check_region = region.into_scalefree(
+            self.__convention, self.cosmology, self.redshift
+        )
+        contained_index, intersects_index = self.__tree.query(check_region)
+        check_dataset = Dataset(
+            self.__handler,
+            self.__header,
+            self.__builders,
+            self.__base_unit_transformations,
+            intersects_index,
+            self.__convention,
+            self.__tree,
+        ).with_units("scalefree")
+        mask = check.check_containment(
+            check_dataset, check_region, self.__header.file.data_type
+        )
+        new_intersects_index = intersects_index.mask(mask)
+
+        new_index = contained_index.concatenate(new_intersects_index)
+
         return Dataset(
             self.__handler,
             self.__header,
             self.__builders,
             self.__base_unit_transformations,
             new_index,
+            self.__convention,
+            self.__tree,
         )
 
     def filter(self, *masks: Mask) -> Dataset:
@@ -194,6 +218,8 @@ class Dataset:
             self.__builders,
             self.__base_unit_transformations,
             new_index,
+            self.__convention,
+            self.__tree,
         )
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
@@ -263,6 +289,8 @@ class Dataset:
             new_builders,
             self.__base_unit_transformations,
             self.__index,
+            self.__convention,
+            self.__tree,
         )
 
     def take(self, n: int, at: str = "random") -> Dataset:
@@ -300,6 +328,8 @@ class Dataset:
             self.__builders,
             self.__base_unit_transformations,
             new_index,
+            self.__convention,
+            self.__tree,
         )
 
     def take_range(self, start: int, end: int) -> Table:
@@ -343,6 +373,8 @@ class Dataset:
             self.__builders,
             self.__base_unit_transformations,
             new_index,
+            self.__convention,
+            self.__tree,
         )
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
@@ -383,6 +415,7 @@ class Dataset:
             self.__header.cosmology,
             self.redshift,
         )
+        convention_ = u.UnitConvention(convention)
         new_builders = get_column_builders(new_transformations, self.__builders.keys())
 
         return Dataset(
@@ -391,6 +424,7 @@ class Dataset:
             new_builders,
             self.__base_unit_transformations,
             self.__index,
+            convention_,
             self.__tree,
         )
 
@@ -425,4 +459,6 @@ class Dataset:
             self.__builders,
             self.__base_unit_transformations,
             new_index,
+            self.__convention,
+            self.__tree,
         )

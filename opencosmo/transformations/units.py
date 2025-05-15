@@ -221,7 +221,9 @@ class apply_unit:
         self.__name = column_name
         self.unit = unit
 
-    def __call__(self, input: Column) -> Optional[Column]:
+    def __call__(self, input: Column | float) -> Optional[Column | float]:
+        if isinstance(input, float) or input.unit is None:
+            return input * self.unit
         if input.unit is None:
             return input * self.unit
         return input

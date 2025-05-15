@@ -43,7 +43,18 @@ def test_box_query(halo_properties_path):
         col = data[f"fof_halo_center_{dim}"]
         min = col.min()
         max = col.max()
-        print(min)
-        print(max)
-        assert min >= 85
-        assert max <= 115
+        assert min >= 85 and min <= 85.1
+        assert max <= 115 and max >= 114.9
+
+
+def test_box_query_physical(halo_properties_path):
+    ds = oc.open(halo_properties_path).with_units("physical")
+    reg1 = BoxRegion((100, 100, 100), 15)
+    ds = ds.crop(reg1)
+    data = ds.data
+    for dim in ["x", "y", "z"]:
+        col = data[f"fof_halo_center_{dim}"]
+        min = col.min()
+        max = col.max()
+        assert min >= 85 and min <= 85.1
+        assert max <= 115 and max >= 114.9

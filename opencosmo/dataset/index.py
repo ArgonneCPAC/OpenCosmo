@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, TypeGuard, TypeVar
+from typing import Protocol, TypeGuard, TypeVar
 
 import h5py
 import numpy as np
@@ -18,20 +18,19 @@ def all_are_chunked(
     """
     Check if all elements in the tuple are instances of ChunkedIndex.
     """
-    return all(isinstance(other, ChunkedIndex) for other in others)
+    return all(isinstance(other, ChunkedIndex) for other in others) or not others
 
 
 def all_are_simple(others: tuple[DataIndex, ...]) -> TypeGuard[tuple[SimpleIndex, ...]]:
     """
     Check if all elements in the tuple are instances of SimpleIndex.
     """
-    return all(isinstance(other, SimpleIndex) for other in others)
+    return all(isinstance(other, SimpleIndex) for other in others) or not others
 
 
 class DataIndex(Protocol):
     @classmethod
     def from_size(cls, size: int) -> DataIndex: ...
-    def set_data(self, data: np.ndarray, value: Any) -> np.ndarray: ...
     def get_data(self, data: h5py.Dataset | np.ndarray) -> np.ndarray: ...
     def take(self, n: int, at: str = "random") -> DataIndex: ...
     def take_range(self, start: int, end: int) -> DataIndex: ...
@@ -53,6 +52,10 @@ class SimpleIndex:
     @classmethod
     def from_size(cls, size: int) -> DataIndex:
         return SimpleIndex(np.arange(size))
+
+    @classmethod
+    def empty(cls):
+        return SimpleIndex(np.array([], dtype=int))
 
     def __len__(self) -> int:
         return len(self.__index)
@@ -205,6 +208,8 @@ class ChunkedIndex:
         """
         Convert the ChunkedIndex to a SimpleIndex.
         """
+        if len(self) == 0:
+            return SimpleIndex.empty()
         idxs = np.concatenate(
             [
                 np.arange(start, start + size)
@@ -217,6 +222,7 @@ class ChunkedIndex:
     def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:
             return self
+
         if all_are_chunked(others):
             new_starts = np.concatenate(
                 [self.__starts] + [other.__starts for other in others]
@@ -231,7 +237,7 @@ class ChunkedIndex:
                 lambda x: x.to_simple_index() if isinstance(x, ChunkedIndex) else x,
                 others,
             )
-            return self.concatenate(*simple_indices)
+            return self.to_simple_index().concatenate(*simple_indices)
 
     @classmethod
     def from_size(cls, size: int) -> ChunkedIndex:
@@ -258,6 +264,12 @@ class ChunkedIndex:
         starts = np.array([start])
         sizes = np.array([size])
         return ChunkedIndex(starts, sizes)
+
+    @classmethod
+    def empty(cls):
+        start = np.array([], dtype=int)
+        size = np.array([], dtype=int)
+        return ChunkedIndex(start, size)
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
         """
