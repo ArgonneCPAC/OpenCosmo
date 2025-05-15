@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
@@ -34,6 +34,9 @@ class AllColumnTransformation(Protocol):
     def __call__(self, input: Column) -> Optional[Column]: ...
 
 
+T = TypeVar("T", Column, float)
+
+
 class ColumnTransformation(Protocol):
     """
     A transformation that is applied to a single column, producing
@@ -49,7 +52,8 @@ class ColumnTransformation(Protocol):
     @property
     def column_name(self) -> Optional[str]: ...
 
-    def __call__(self, input: Column) -> Optional[Column]: ...
+    def __call__(self, input: T) -> Optional[T]: ...
+    def single_value(self, input: float) -> Any: ...
 
 
 class FilterTransformation(Protocol):

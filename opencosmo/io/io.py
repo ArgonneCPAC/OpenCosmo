@@ -108,7 +108,13 @@ def open(
     )
 
     dataset = oc.Dataset(
-        handler, header, builders, base_unit_transformations, index, tree=tree
+        handler,
+        header,
+        builders,
+        base_unit_transformations,
+        index,
+        u.UnitConvention.SCALEFREE,
+        tree=tree,
     )
     return dataset
 

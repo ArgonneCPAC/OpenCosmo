@@ -130,20 +130,24 @@ class Tree:
         self.__sizes = sizes
         self.__max_level = max(starts.keys())
 
-    def query(self, region: BoxRegion) -> ChunkedIndex:
+    def query(self, region: BoxRegion) -> tuple[ChunkedIndex, ChunkedIndex]:
         indices = self.__index.query(region, self.__max_level)
-        total_length = sum(map(lambda level: len(level), indices.values()))
-        starts = np.zeros(total_length, dtype=int)
-        sizes = np.zeros(total_length, dtype=int)
-        running_total = 0
-        for level, index in indices.items():
-            starts = index.get_data(self.__starts[level])
-            sizes = index.get_data(self.__sizes[level])
-            n = len(starts)
-            starts[running_total : running_total + n]
-            sizes[running_total : running_total + n] = sizes
-            running_total += n
-        return ChunkedIndex(starts, sizes)
+
+        contains = [ChunkedIndex.empty()]
+        intersects = [ChunkedIndex.empty()]
+        for level, (cidx, iidx) in indices.items():
+            c_starts = cidx.get_data(self.__starts[level])
+            c_sizes = cidx.get_data(self.__sizes[level])
+            i_starts = iidx.get_data(self.__starts[level])
+            i_sizes = iidx.get_data(self.__sizes[level])
+            c_idx = ChunkedIndex(c_starts, c_sizes)
+            i_idx = ChunkedIndex(i_starts, i_sizes)
+            contains.append(c_idx)
+            intersects.append(i_idx)
+
+        c_ = contains[0].concatenate(*contains[1:])
+        i_ = intersects[0].concatenate(*intersects[1:])
+        return c_, i_
 
     def apply_mask(
         self,
