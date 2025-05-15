@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from copy import copy
+from enum import Enum
 from functools import cache
 from itertools import product
 from typing import Iterable, Optional, TypeGuard
@@ -68,26 +69,57 @@ class OctTreeIndex:
         root = Octant((0, 0, 0), (halfwidth, halfwidth, halfwidth), halfwidth)
         return OctTreeIndex(root)
 
-    def query(self, region: BoxRegion, max_level: int) -> dict[int, SimpleIndex]:
-        new_root = self.root.query(region, 0, max_level)
+    def query(
+        self, region: BoxRegion, max_level: int
+    ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]:
+        containment: dict[Octant, Intersection] = {}
+        new_root = self.root.query(region, 0, max_level, containment)
         if new_root is None:
             raise ValueError("Query region is not within the actual simulation box!")
         output = {}
-        for level, indices in make_octree_indices(new_root, 0).items():
-            output[level] = SimpleIndex(indices)
+        for level, (cidx, iidx) in make_octree_indices(
+            new_root, 0, containment
+        ).items():
+            output[level] = (SimpleIndex(cidx), SimpleIndex(iidx))
         return output
 
 
-def make_octree_indices(oct: Octant, current_level: int) -> dict[int, np.ndarray]:
-    if not oct.children:
-        return {current_level: np.array([get_octtree_index(oct.idx, current_level)])}
-    output: dict[int, np.ndarray] = defaultdict(lambda: np.array([], dtype=int))
-    for child in oct.children:
-        child_output = make_octree_indices(child, current_level + 1)
-        for key, indices in child_output.items():
-            output[key] = np.append(output[key], indices)
+def make_octree_indices(
+    oct: Octant, current_level: int, containment: dict[Octant, Intersection]
+) -> dict[int, tuple[np.ndarray, np.ndarray]]:
+    """
+    Returns two arrays per level. One for regions that are fully contained.
+    The other for regions that only intersect.
+    """
+    oct_intersection = containment[oct]
+    current_level_output = (np.array([], dtype=int), np.array([], dtype=int))
+    idx = get_octtree_index(oct.idx, current_level)
+    output: dict[int, tuple[np.ndarray, np.ndarray]] = defaultdict(
+        lambda: (np.array([], dtype=int), np.array([], dtype=int))
+    )
+    if oct_intersection == Intersection.CONTAINED:
+        current_level_output = (np.array([idx], dtype=int), np.array([], dtype=int))
+        output[current_level] = current_level_output
 
+    elif oct_intersection == Intersection.INTERSECTS and len(oct.children) == 0:
+        current_level_output = (np.array([], dtype=int), np.array([idx], dtype=int))
+        output[current_level] = current_level_output
+
+    elif oct_intersection == Intersection.INTERSECTS:
+        for child in oct.children:
+            child_output = make_octree_indices(child, current_level + 1, containment)
+            for key, indices in child_output.items():
+                current_output = output[key]
+                new_contains = np.append(current_output[0], indices[0])
+                new_intersects = np.append(current_output[1], indices[1])
+                output[key] = (new_contains, new_intersects)
     return output
+
+
+class Intersection(Enum):
+    NONE = 0
+    INTERSECTS = 1
+    CONTAINED = 2
 
 
 class Octant:
@@ -105,6 +137,20 @@ class Octant:
 
     def __repr__(self):
         return f"{self.idx}: {self.bounding_box()}"
+
+    def __hash__(self):
+        return hash((self.idx, self.center, self.halfwidth))
+
+    def __eq__(self, other):
+        if not isinstance(other, Octant):
+            return False
+
+        output = (
+            self.idx == other.idx
+            and self.center == other.center
+            and self.halfwidth == other.halfwidth
+        )
+        return output
 
     def make_children(self):
         if len(self.children) != 0:
@@ -126,16 +172,25 @@ class Octant:
         return BoxRegion(self.center, self.halfwidth)
 
     def query(
-        self, region: BoxRegion, current_level: int, max_level: int
+        self,
+        region: BoxRegion,
+        current_level: int,
+        max_level: int,
+        containment: dict[Octant, Intersection],
     ) -> Optional[Octant]:
-        if region.contains(self.bounding_box()) | (
-            region.intersects(self.bounding_box()) and current_level == max_level
-        ):
+        if region.contains(self.bounding_box()):
+            containment[self] = Intersection.CONTAINED
             return Octant(self.idx, self.center, self.halfwidth)
         if region.intersects(self.bounding_box()):
+            containment[self] = Intersection.INTERSECTS
+            if current_level == max_level:
+                return Octant(self.idx, self.center, self.halfwidth)
+
             self.make_children()
             queried_children = map(
-                lambda reg: reg.query(region, current_level + 1, max_level),
+                lambda reg: reg.query(
+                    region, current_level + 1, max_level, containment
+                ),
                 self.children,
             )
 
@@ -145,4 +200,5 @@ class Octant:
             new_children: list[Octant] = list(filter(is_not_none, queried_children))
             return Octant(self.idx, self.center, self.halfwidth, new_children)
 
+        containment[self] = Intersection.NONE
         return None
