@@ -1,5 +1,5 @@
+from collections import defaultdict
 from pathlib import Path
-from typing import defaultdict
 
 import pytest
 
@@ -35,7 +35,7 @@ def galaxy_paths_2(data_path: Path):
 
 
 def test_multi_filter(multi_path):
-    collection = oc.read(multi_path)
+    collection = oc.open(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
 
     for ds in collection.values():
@@ -43,12 +43,12 @@ def test_multi_filter(multi_path):
 
 
 def test_multi_repr(multi_path):
-    collection = oc.read(multi_path)
+    collection = oc.open(multi_path)
     assert isinstance(collection.__repr__(), str)
 
 
 def test_multi_filter_write(multi_path, tmp_path):
-    collection = oc.read(multi_path)
+    collection = oc.open(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
     for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
