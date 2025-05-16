@@ -32,6 +32,7 @@ class DataIndex(Protocol):
     @classmethod
     def from_size(cls, size: int) -> DataIndex: ...
     def get_data(self, data: h5py.Dataset | np.ndarray) -> np.ndarray: ...
+    def n_in_range(self, start: int, end: int) -> int: ...
     def take(self, n: int, at: str = "random") -> DataIndex: ...
     def take_range(self, start: int, end: int) -> DataIndex: ...
     def mask(self, mask: np.ndarray) -> DataIndex: ...
@@ -81,6 +82,12 @@ class SimpleIndex:
                 others,
             )
             return self.concatenate(*simple_indices)
+
+    def n_in_range(self, start: int, end: int) -> int:
+        if start >= end:
+            raise ValueError("End must be greater than start!")
+        in_range = (self.__index > start) & (self.__index < end)
+        return sum(in_range)
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
         """
@@ -418,6 +425,24 @@ class ChunkedIndex:
             output[start:end] = data
 
         return output
+
+    def n_in_range(self, start: int, end: int) -> int:
+        """
+        Return the number of elements in this index that fall within
+        a specified data range. Used to mask spatial index.
+        """
+        if start >= end:
+            raise ValueError("Start must be less than end!")
+        ends = self.__starts + self.__sizes - 1
+        in_range = ~(self.__starts > ends | ends < start)
+
+        starts_in_range = self.__starts[in_range]
+        ends_in_range = ends[in_range]
+
+        starts_in_range[starts_in_range < start] = start
+        ends_in_range[ends_in_range < ends] = start
+
+        return sum(ends_in_range - starts_in_range)
 
     def __getitem__(self, item: int) -> DataIndex:
         """

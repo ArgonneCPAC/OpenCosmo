@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
+from itertools import count
 
 import h5py
 import numpy as np
@@ -10,8 +11,8 @@ try:
 except ImportError:
     MPI = None  # type: ignore
 
-from opencosmo.dataset.index import ChunkedIndex
-from opencosmo.header import OpenCosmoHeader
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
+from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
 from opencosmo.spatial.octree import OctTreeIndex
 from opencosmo.spatial.region import BoxRegion
 
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from mpi4py import MPI
 
 
-def open_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
+def open_tree(file: h5py.File | h5py.Group, box_size: int):
     """
     Read a tree from an HDF5 file and the associated
     header. The tree is just a mapping between a spatial
@@ -32,26 +33,13 @@ def open_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
     The max level in the header is the maximum level in the full
     dataset, so this is the HIGHEST it can be.
     """
-    max_level = header.reformat.max_level
-    starts = {}
-    sizes = {}
+    try:
+        group = file["index"]
+    except KeyError:
+        raise ValueError("This file does not have a spatial index!")
 
-    for level in range(max_level + 1):
-        try:
-            group = file[f"index/level_{level}"]
-        except KeyError:
-            break
-        level_starts = group["start"]
-        level_sizes = group["size"]
-        starts[level] = level_starts
-        sizes[level] = level_sizes
-
-    spatial_index = OctTreeIndex.from_box_size(header.simulation.box_size)
-    return Tree(spatial_index, starts, sizes)
-
-
-def write_tree(file: h5py.File, tree: Tree, dataset_name: str = "index"):
-    tree.write(file, dataset_name)
+    spatial_index = OctTreeIndex.from_box_size(box_size)
+    return Tree(spatial_index, group)
 
 
 def apply_range_mask(
@@ -119,16 +107,16 @@ class Tree:
     spatial queries
     """
 
-    def __init__(
-        self,
-        index: OctTreeIndex,
-        starts: dict[int, np.ndarray],
-        sizes: dict[int, np.ndarray],
-    ):
+    def __init__(self, index: OctTreeIndex, data: h5py.File | h5py.Group):
         self.__index = index
-        self.__starts = starts
-        self.__sizes = sizes
-        self.__max_level = max(starts.keys())
+        self.__data = data
+        for i in count():
+            try:
+                _ = self.__data["level_{i}"]["start"]
+                _ = self.__data["level_{i}"]["size"]
+            except KeyError:
+                self.__max_level = i - 1
+                break
 
     def query(self, region: BoxRegion) -> tuple[ChunkedIndex, ChunkedIndex]:
         indices = self.__index.query(region, self.__max_level)
@@ -136,10 +124,13 @@ class Tree:
         contains = [ChunkedIndex.empty()]
         intersects = [ChunkedIndex.empty()]
         for level, (cidx, iidx) in indices.items():
-            c_starts = cidx.get_data(self.__starts[level])
-            c_sizes = cidx.get_data(self.__sizes[level])
-            i_starts = iidx.get_data(self.__starts[level])
-            i_sizes = iidx.get_data(self.__sizes[level])
+            level_key = f"level_{level}"
+            level_starts = self.__data[level_key]["start"]
+            level_sizes = self.__data[level_key]["size"]
+            c_starts = cidx.get_data(level_starts)
+            c_sizes = cidx.get_data(level_sizes)
+            i_starts = iidx.get_data(level_starts)
+            i_sizes = iidx.get_data(level_sizes)
             c_idx = ChunkedIndex(c_starts, c_sizes)
             i_idx = ChunkedIndex(i_starts, i_sizes)
             contains.append(c_idx)
@@ -159,33 +150,32 @@ class Tree:
         Given a boolean mask, create a new tree with slices adjusted to
         only include the elements where the mask is True. This is used
         when writing filtered datasets to file, or collecting.
-
-        The mask will have the same shape as the original data.
         """
+    def apply_index(self, index: DataIndex, min_counts: int = 100) -> Tree:
+        max_level_starts = self.__data[f"level_{self.__max_level}"]["start"][:]
+        max_level_ends = (
+            max_level_starts + self.__data[f"level_{self.__max_level}"]["size"][:]
+        )
+        n_in_range = np.zeros(len(max_level_starts), dtype=int)
+        it = np.nditer([max_level_starts, max_level_ends], ("c_index",))
 
-        if comm is not None and range_ is not None:
-            return self.__apply_rank_mask(mask, comm, range_)
-        if np.all(mask):
-            return self
-        output_starts = {}
-        output_sizes = {}
-        for level in self.__starts:
-            start = self.__starts[level]
-            size = self.__sizes[level]
-            offsets = np.zeros_like(size)
-            for i in range(len(start)):
-                # Create a slice object for the current level
-                s = slice(start[i], start[i] + size[i])
-                slice_mask = mask[s]  # Apply the slice to the mask
-                offsets[i] = np.sum(slice_mask)  # Count the number of True values
-            level_starts = np.cumsum(np.insert(offsets, 0, 0))[
-                :-1
-            ]  # Cumulative sum to get new starts
-            level_sizes = offsets
-            output_starts[level] = level_starts
-            output_sizes[level] = level_sizes
+        for start, end in it:
+            idx = it.index
+            n_in_range[idx] = index.n_in_range(cast(int, start), cast(int, end))
 
-        return Tree(self.__index, output_starts, output_sizes)
+        return build_tree_from_level(
+            n_in_range, self.__max_level, self.__index, min_counts=100
+        )
+
+    def make_schema(self):
+        schema = SpatialIndexSchema()
+        for level in range(self.__max_level + 1):
+            level_schema = SpatialIndexLevelSchema(
+                self.__data[f"level_{level}"]["start"],
+                self.__data[f"level_{level}"]["size"],
+            )
+            schema.add_child(level_schema, level)
+        return schema
 
     def __apply_rank_mask(
         self, mask: np.ndarray, comm: "MPI.Comm", range_: tuple[int, int]
@@ -211,3 +201,30 @@ class Tree:
             level_group = group.require_group(f"level_{level}")
             level_group.create_dataset("start", data=self.__starts[level])
             level_group.create_dataset("size", data=self.__sizes[level])
+
+def build_tree_from_level(
+    counts: np.ndarray, level: int, index: OctTreeIndex, min_counts: int = 100
+) -> Tree:
+    if len(counts) != 8**level:
+        raise ValueError("Recieved invalid count array for this level!")
+    target = h5py.File("temp.hdf5", "w", driver="core", backing_store=False)
+    if level < 1:
+        raise ValueError(f"Recieved invalid level {level}")
+    result = combine_upwards(counts, level, target, min_counts)
+    return Tree(index, result)
+
+
+def combine_upwards(
+    counts: np.ndarray, level: int, target: h5py.File, min_counts: int = 100
+) -> h5py.File:
+    if np.mean(counts) < min_counts and level != 0:
+        return combine_upwards(counts, level - 1, target, min_counts)
+
+    group = target.require_group(f"level_{level}")
+    new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
+    group.create_dataset("start", data=new_starts)
+    group.create_dataset("size", data=counts)
+    if level != 0:
+        new_counts = counts.reshape(-1, 8).sum(axis=1)
+        return combine_upwards(new_counts, level - 1, target, min_counts)
+    return target

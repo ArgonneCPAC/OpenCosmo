@@ -167,12 +167,13 @@ class Dataset:
         new_index = contained_index.concatenate(new_intersects_index)
 
         new_state = self.__state.with_index(new_index)
+        new_tree = self.__tree.apply_index(new_index)
 
         return Dataset(
             self.__handler,
             self.__header,
             new_state,
-            self.__tree,
+            new_tree,
         )
 
     def filter(self, *masks: Mask) -> Dataset:
@@ -348,9 +349,13 @@ class Dataset:
 
         """
         header = self.__header if with_header else None
-        return self.__handler.prep_write(
+        schema = self.__handler.prep_write(
             self.__state.index, self.__state.builders.keys(), header
         )
+        if self.__tree is not None:
+            spat_idx_schema = self.__tree.make_schema()
+            schema.add_child(spat_idx_schema, "index")
+        return schema
 
     def with_units(self, convention: str) -> Dataset:
         """
