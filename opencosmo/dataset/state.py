@@ -1,6 +1,6 @@
 from typing import Iterable
 
-from astropy.cosmology import Cosmology
+from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders

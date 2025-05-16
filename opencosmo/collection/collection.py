@@ -273,7 +273,7 @@ def read_single_dataset(
         header = read_header(file[dataset_key])
 
     try:
-        tree = open_tree(file[dataset_key], header)
+        tree = open_tree(file[dataset_key], header.simulation.box_size)
     except ValueError:
         tree = None
     box_halfwidth = header.simulation.box_size / 2.0
