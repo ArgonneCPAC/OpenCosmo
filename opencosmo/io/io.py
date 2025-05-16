@@ -101,7 +101,7 @@ def open(
         raise ValueError("Asked for multiple datasets, but file has only one")
 
     box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = BoxRegion((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+    sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
 
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets, tree=tree)
@@ -176,7 +176,7 @@ def read(
     except ValueError:
         tree = None
     box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = BoxRegion((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+    sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
 
     path = file.filename
     file = h5py.File(path, driver="core")

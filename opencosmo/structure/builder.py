@@ -10,7 +10,6 @@ from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.spatial.region import BoxRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.transformations import units as u
 
@@ -95,9 +94,7 @@ class OomDatasetBuilder:
         except ValueError:
             tree = None
         box_halfwidth = header.simulation.box_size / 2.0
-        sim_box = BoxRegion(
-            (box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth
-        )
+        sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
         builders, base_unit_transformations = u.get_default_unit_transformations(
             file, header
         )
