@@ -9,6 +9,7 @@ from typing import Iterable, Optional, TypeGuard
 
 import numpy as np
 
+import opencosmo as oc
 from opencosmo.dataset.index import SimpleIndex
 from opencosmo.spatial.region import BoxRegion, Point3d
 
@@ -81,6 +82,7 @@ class OctTreeIndex:
             new_root, 0, containment
         ).items():
             output[level] = (SimpleIndex(cidx), SimpleIndex(iidx))
+
         return output
 
 
@@ -113,6 +115,7 @@ def make_octree_indices(
                 new_contains = np.append(current_output[0], indices[0])
                 new_intersects = np.append(current_output[1], indices[1])
                 output[key] = (new_contains, new_intersects)
+
     return output
 
 
@@ -169,7 +172,7 @@ class Octant:
 
     @cache
     def bounding_box(self):
-        return BoxRegion(self.center, self.halfwidth)
+        return oc.Box(self.center, 2 * self.halfwidth)
 
     def query(
         self,

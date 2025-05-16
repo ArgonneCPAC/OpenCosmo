@@ -1,7 +1,9 @@
+import random
+
+import numpy as np
 import pytest
 
 import opencosmo as oc
-from opencosmo.spatial.region import BoxRegion
 
 
 @pytest.fixture
@@ -10,24 +12,24 @@ def halo_properties_path(data_path):
 
 
 def test_contains():
-    reg1 = BoxRegion((100, 100, 100), 15)
-    reg2 = BoxRegion((90, 90, 90), 2.5)
-    reg3 = BoxRegion((90, 90, 90), 10)
+    reg1 = oc.Box((100, 100, 100), 30)
+    reg2 = oc.Box((90, 90, 90), 5)
+    reg3 = oc.Box((90, 90, 90), 20)
     assert reg1.contains(reg2)
     assert not reg1.contains(reg3)
     assert not reg2.contains(reg1)
 
 
 def test_interesects():
-    reg1 = BoxRegion((100, 100, 100), 20)
-    reg2 = BoxRegion((90, 90, 90), 20)
+    reg1 = oc.Box((100, 100, 100), 20)
+    reg2 = oc.Box((90, 90, 90), 20)
     assert reg1.intersects(reg2)
     assert reg2.intersects(reg1)
 
 
 def test_neither():
-    reg1 = BoxRegion((100, 100, 100), 15)
-    reg2 = BoxRegion((75, 75, 75), 5)
+    reg1 = oc.Box((100, 100, 100), 15)
+    reg2 = oc.Box((75, 75, 75), 5)
     assert not reg1.intersects(reg2)
     assert not reg2.intersects(reg1)
     assert not reg1.contains(reg2)
@@ -36,25 +38,73 @@ def test_neither():
 
 def test_box_query(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
-    reg1 = BoxRegion((100, 100, 100), 15)
+    center = tuple(random.uniform(30, 60) for _ in range(3))
+    width = tuple(random.uniform(10, 20) for _ in range(3))
+    reg1 = oc.Box(center, width)
     ds = ds.crop(reg1)
     data = ds.data
-    for dim in ["x", "y", "z"]:
+    for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
+        min_ = center[i] - width[i] / 2
+        max_ = center[i] + width[i] / 2
         min = col.min()
         max = col.max()
-        assert min >= 85 and min <= 85.1
-        assert max <= 115 and max >= 114.9
+        assert min >= min_ and np.isclose(min, min_, 0.1)
+        assert max <= max_ and np.isclose(max, max_, 0.1)
 
 
 def test_box_query_physical(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("physical")
-    reg1 = BoxRegion((100, 100, 100), 15)
+    center = tuple(random.uniform(30, 60) for _ in range(3))
+    width = tuple(random.uniform(10, 20) for _ in range(3))
+    reg1 = oc.Box(center, width)
     ds = ds.crop(reg1)
     data = ds.data
-    for dim in ["x", "y", "z"]:
+    for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
         min = col.min()
         max = col.max()
-        assert min >= 85 and min <= 85.1
-        assert max <= 115 and max >= 114.9
+        min_ = center[i] - width[i] / 2
+        max_ = center[i] + width[i] / 2
+        assert min >= min_ and np.isclose(min, min_, 0.1)
+        assert max <= max_ and np.isclose(max, max_, 0.1)
+
+
+def test_box_query_chain(halo_properties_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    center1 = (30, 40, 50)
+    width1 = (10, 15, 20)
+    reg1 = oc.Box(center1, width1)
+
+    center2 = (31, 41, 51)
+    width2 = (5, 7.5, 10)
+    reg2 = oc.Box(center2, width2)
+
+    ds = ds.crop(reg1)
+    ds = ds.crop(reg2)
+    data = ds.data
+    for i, dim in enumerate(["x", "y", "z"]):
+        col = data[f"fof_halo_center_{dim}"]
+        min_ = center2[i] - width2[i] / 2
+        max_ = center2[i] + width2[i] / 2
+        min = col.min()
+        max = col.max()
+        assert min >= min_ and np.isclose(min, min_, 0.1)
+        assert max <= max_ and np.isclose(max, max_, 0.1)
+
+        assert max <= max_ and np.isclose(max, max_, 0.1)
+
+
+def test_box_query_chain_failure(halo_properties_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    center1 = (30, 30, 30)
+    width1 = (10, 10, 10)
+    reg1 = oc.Box(center1, width1)
+
+    center2 = (70, 70, 70)
+    width2 = (10, 10, 10)
+    reg2 = oc.Box(center2, width2)
+
+    ds = ds.crop(reg1)
+    with pytest.raises(ValueError):
+        ds = ds.crop(reg2)

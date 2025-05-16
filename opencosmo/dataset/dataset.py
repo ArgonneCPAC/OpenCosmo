@@ -6,7 +6,7 @@ from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.index import ChunkedIndex, DataIndex, EmptyMaskError
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
@@ -150,7 +150,12 @@ class Dataset:
         check_region = region.into_scalefree(
             self.__state.convention, self.cosmology, self.redshift
         )
+        contained_index: DataIndex
+        intersects_index: DataIndex
         contained_index, intersects_index = self.__tree.query(check_region)
+
+        contained_index = contained_index.intersection(self.__state.index)
+        intersects_index = intersects_index.intersection(self.__state.index)
 
         check_state = self.__state.with_index(intersects_index)
         check_dataset = Dataset(
@@ -165,15 +170,16 @@ class Dataset:
         new_intersects_index = intersects_index.mask(mask)
 
         new_index = contained_index.concatenate(new_intersects_index)
+        if len(new_index) == 0:
+            raise ValueError("No objects found in this region!")
 
         new_state = self.__state.with_index(new_index)
-        new_tree = self.__tree.apply_index(new_index)
 
         return Dataset(
             self.__handler,
             self.__header,
             new_state,
-            new_tree,
+            self.__tree,
         )
 
     def filter(self, *masks: Mask) -> Dataset:
@@ -198,11 +204,10 @@ class Dataset:
 
         """
 
-        try:
-            new_index = apply_masks(
-                self.__handler, self.__state.builders, masks, self.__state.index
-            )
-        except EmptyMaskError:
+        new_index = apply_masks(
+            self.__handler, self.__state.builders, masks, self.__state.index
+        )
+        if len(new_index) == 0:
             raise ValueError("No rows matched the given filters!")
 
         new_state = self.__state.with_index(new_index)

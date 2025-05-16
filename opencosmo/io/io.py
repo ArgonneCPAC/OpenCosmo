@@ -23,7 +23,6 @@ from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
-from opencosmo.spatial.region import BoxRegion
 from opencosmo.spatial.tree import open_tree, read_tree
 from opencosmo.transformations import units as u
 
@@ -100,7 +99,7 @@ def open(
         raise ValueError("Asked for multiple datasets, but file has only one")
 
     box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = BoxRegion((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+    sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
 
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets)
@@ -174,7 +173,7 @@ def read(
     except ValueError:
         tree = None
     box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = BoxRegion((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+    sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
 
     path = file.filename
     file = h5py.File(path, driver="core")
