@@ -5,6 +5,7 @@ from astropy.cosmology import Cosmology
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.index import DataIndex
+from opencosmo.spatial.region import Region
 
 
 class DatasetState:
@@ -19,11 +20,13 @@ class DatasetState:
         builders: dict[str, ColumnBuilder],
         index: DataIndex,
         convention: u.UnitConvention,
+        region: Region,
     ):
         self.__base_unit_transformations = base_unit_transformations
         self.__builders = builders
         self.__index = index
         self.__convention = convention
+        self.__region = region
 
     @property
     def index(self):
@@ -39,12 +42,20 @@ class DatasetState:
 
     def with_index(self, index: DataIndex):
         return DatasetState(
-            self.__base_unit_transformations, self.__builders, index, self.__convention
+            self.__base_unit_transformations,
+            self.__builders,
+            index,
+            self.__convention,
+            self.__region,
         )
 
     def with_builders(self, builders: dict[str, ColumnBuilder]):
         return DatasetState(
-            self.__base_unit_transformations, builders, self.__index, self.__convention
+            self.__base_unit_transformations,
+            builders,
+            self.__index,
+            self.__convention,
+            self.__region,
         )
 
     def select(self, columns: str | Iterable[str]):
@@ -66,6 +77,7 @@ class DatasetState:
             new_builders,
             self.__index,
             self.__convention,
+            self.__region,
         )
 
     def take(self, n: int, at: str):
@@ -93,5 +105,9 @@ class DatasetState:
         convention_ = u.UnitConvention(convention)
         new_builders = get_column_builders(new_transformations, self.__builders.keys())
         return DatasetState(
-            self.__base_unit_transformations, new_builders, self.__index, convention_
+            self.__base_unit_transformations,
+            new_builders,
+            self.__index,
+            convention_,
+            self.__region,
         )

@@ -23,6 +23,7 @@ from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
+from opencosmo.spatial.region import BoxRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.transformations import units as u
 
@@ -98,6 +99,9 @@ def open(
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
+    box_halfwidth = header.simulation.box_size / 2.0
+    sim_box = BoxRegion((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets)
     if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
@@ -109,7 +113,7 @@ def open(
         group, header
     )
     state = DatasetState(
-        base_unit_transformations, builders, index, u.UnitConvention.COMOVING
+        base_unit_transformations, builders, index, u.UnitConvention.COMOVING, sim_box
     )
 
     dataset = oc.Dataset(
@@ -169,6 +173,9 @@ def read(
         tree = open_tree(file, header)
     except ValueError:
         tree = None
+    box_halfwidth = header.simulation.box_size / 2.0
+    sim_box = BoxRegion((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+
     path = file.filename
     file = h5py.File(path, driver="core")
 
@@ -178,7 +185,7 @@ def read(
         group, header
     )
     state = DatasetState(
-        base_unit_transformations, builders, index, u.UnitConvention.COMOVING
+        base_unit_transformations, builders, index, u.UnitConvention.COMOVING, sim_box
     )
 
     return oc.Dataset(handler, header, state, tree)

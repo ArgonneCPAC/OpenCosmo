@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import partial, singledispatchmethod
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 from astropy.cosmology import FLRW  # type: ignore
@@ -12,9 +12,10 @@ Point3d = tuple[float, float, float]
 
 
 class Region(Protocol):
-    def contains(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray: ...
+    def contains(self, other: Any) -> bool | np.ndarray: ...
+
     def bounding_box(self) -> BoxRegion: ...
-    def into_scalefree(self, from_: str, to: str, h: float): ...
+    def into_scalefree(self, from_: UnitConvention, cosmology: FLRW, z: float): ...
 
 
 def physical_to_scalefree(value: float, cosmology: FLRW, z: float):
@@ -53,14 +54,17 @@ class BoxRegion:
         new_halfwidth = fn(self.halfwidth)
         return BoxRegion(new_center, new_halfwidth)
 
+    def contains(self, other: Any) -> bool | np.ndarray:
+        return self.__contains(other)
+
     @singledispatchmethod
-    def contains(self, other: BoxRegion):
+    def __contains(self, other: BoxRegion):
         for b1, b2 in zip(self.bounds, other.bounds):
             if b1[0] > b2[0] or b1[1] < b2[1]:
                 return False
         return True
 
-    @contains.register
+    @__contains.register
     def _(self, coords: np.ndarray):
         if coords.shape[0] != 3:
             raise ValueError("Expected a coordinate array!")
