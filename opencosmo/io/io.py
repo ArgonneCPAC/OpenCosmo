@@ -15,7 +15,7 @@ from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.region import BoxRegion
-from opencosmo.spatial.tree import open_tree
+from opencosmo.spatial.tree import open_tree, read_tree
 from opencosmo.transformations import units as u
 
 from .protocols import Writeable
@@ -172,7 +172,7 @@ def read(
         raise ValueError("Asked for multiple datasets, but file has only one")
     header = read_header(file)
     try:
-        tree = open_tree(file, header.simulation.box_size)
+        tree = read_tree(file, header.simulation.box_size)
     except ValueError:
         tree = None
     box_halfwidth = header.simulation.box_size / 2.0

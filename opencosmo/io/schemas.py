@@ -365,7 +365,7 @@ class SpatialIndexSchema:
 
     def allocate(self, group: h5py.Group):
         for level_num, level in self.levels.items():
-            level_group = group.require_group("level_{level}")
+            level_group = group.require_group(f"level_{level_num}")
             level.allocate(level_group)
 
     def into_writer(self):
