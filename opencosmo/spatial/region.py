@@ -9,6 +9,7 @@ from astropy.cosmology import FLRW  # type: ignore
 from opencosmo.transformations.units import UnitConvention
 
 Point3d = tuple[float, float, float]
+BoxSize = tuple[float, float, float]
 
 
 class Region(Protocol):
@@ -31,13 +32,18 @@ def comoving_to_scalefree(value: float, cosmology: FLRW):
 
 
 class BoxRegion:
-    def __init__(self, center: Point3d, halfwidth: float):
+    def __init__(self, center: Point3d, halfwidths: BoxSize):
         self.center = center
-        self.halfwidth = halfwidth
-        self.bounds = [(c - self.halfwidth, c + self.halfwidth) for c in self.center]
+        self.halfwidths = halfwidths
+        self.bounds: list[tuple[float, float]] = [
+            (c - hw, c + hw) for c, hw in zip(self.center, self.halfwidths)
+        ]
 
     def __repr__(self):
-        return f"center: {self.center}, width: {self.halfwidth * 2}"
+        return (
+            f"Box centered at {self.center} with widths "
+            f"{tuple(2 * hw for hw in self.halfwidths)}"
+        )
 
     def bounding_box(self) -> BoxRegion:
         return self
@@ -51,7 +57,7 @@ class BoxRegion:
             case UnitConvention.PHYSICAL:
                 fn = partial(physical_to_scalefree, cosmology=cosmology, z=z)
         new_center = tuple(fn(dim) for dim in self.center)
-        new_halfwidth = fn(self.halfwidth)
+        new_halfwidth = tuple(fn(dim) for dim in self.halfwidths)
         return BoxRegion(new_center, new_halfwidth)
 
     def contains(self, other: Any) -> bool | np.ndarray:

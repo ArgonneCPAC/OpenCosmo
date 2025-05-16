@@ -35,6 +35,8 @@ class DataIndex(Protocol):
     def n_in_range(self, start: int, end: int) -> int: ...
     def take(self, n: int, at: str = "random") -> DataIndex: ...
     def take_range(self, start: int, end: int) -> DataIndex: ...
+    def intersection(self, other: DataIndex) -> DataIndex: ...
+    def into_mask(self) -> np.ndarray: ...
     def mask(self, mask: np.ndarray) -> DataIndex: ...
     def range(self) -> tuple[int, int]: ...
     def concatenate(self, *others: DataIndex) -> DataIndex: ...
@@ -66,6 +68,11 @@ class SimpleIndex:
         Guranteed to be sorted
         """
         return self.__index[0], self.__index[-1]
+
+    def into_mask(self):
+        mask = np.zeros(self.__index[-1] + 1, dtype=bool)
+        mask[self.__index] = True
+        return mask
 
     def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:
@@ -128,6 +135,17 @@ class SimpleIndex:
 
         return SimpleIndex(self.__index[start:end])
 
+    def intersection(self, other: DataIndex) -> DataIndex:
+        if len(self) == 0 or len(other) == 0:
+            return SimpleIndex.empty()
+        other_mask = other.into_mask()
+        self_mask = self.into_mask()
+        length = max(len(other_mask), len(self_mask))
+        self_mask.resize(length)
+        other_mask.resize(length)
+        new_idx = np.where(self_mask & other_mask)[0]
+        return SimpleIndex(new_idx)
+
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:
             raise np.exceptions.AxisError(
@@ -138,7 +156,7 @@ class SimpleIndex:
             raise TypeError(f"Mask dtype {mask.dtype} is not boolean")
 
         if not mask.any():
-            raise EmptyMaskError("Mask is all False")
+            return SimpleIndex.empty()
 
         if mask.all():
             return self
@@ -225,6 +243,24 @@ class ChunkedIndex:
         )
         idxs = np.unique(idxs)
         return SimpleIndex(idxs)
+
+    def into_mask(self) -> np.ndarray:
+        ends = self.__starts + self.__sizes + 1
+        mask = np.zeros(np.max(ends), dtype=bool)
+        for start, end in np.nditer([self.__starts, ends]):
+            mask[start:end] = True
+        return mask
+
+    def intersection(self, other: DataIndex) -> DataIndex:
+        if len(self) == 0 or len(other) == 0:
+            return SimpleIndex.empty()
+        other_mask = other.into_mask()
+        self_mask = self.into_mask()
+        length = max(len(other_mask), len(self_mask))
+        self_mask.resize(length)
+        other_mask.resize(length)
+        new_idx = np.where(self_mask & other_mask)[0]
+        return SimpleIndex(new_idx)
 
     def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:
@@ -366,7 +402,7 @@ class ChunkedIndex:
             raise ValueError(f"Mask dtype {mask.dtype} is not boolean")
 
         if not mask.any():
-            raise EmptyMaskError("Mask is all False")
+            return SimpleIndex.empty()
 
         if mask.all():
             return self
@@ -457,3 +493,6 @@ class ChunkedIndex:
         start = self.__starts[index]
         offset = item - sums[index - 1] if index > 0 else item
         return SimpleIndex(np.array([start + offset]))
+
+
+d: DataIndex = ChunkedIndex.empty()

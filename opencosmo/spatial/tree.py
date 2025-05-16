@@ -230,14 +230,14 @@ def build_tree_from_level(
 def combine_upwards(
     counts: np.ndarray, level: int, target: h5py.File, min_counts: int = 100
 ) -> h5py.File:
-    if np.mean(counts) < min_counts and level != 0:
-        return combine_upwards(counts, level - 1, target, min_counts)
+    if np.max(counts) > min_counts or level == 0:
+        group = target.require_group(f"level_{level}")
+        new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
+        group.create_dataset("start", data=new_starts)
+        group.create_dataset("size", data=counts)
 
-    group = target.require_group(f"level_{level}")
-    new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
-    group.create_dataset("start", data=new_starts)
-    group.create_dataset("size", data=counts)
-    if level != 0:
+    if level > 0:
         new_counts = counts.reshape(-1, 8).sum(axis=1)
         return combine_upwards(new_counts, level - 1, target, min_counts)
+
     return target
