@@ -6,7 +6,7 @@ import hdf5plugin  # type: ignore
 
 import opencosmo.io.protocols as iop
 import opencosmo.io.writers as iow
-from opencosmo.dataset.index import DataIndex
+from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.header import OpenCosmoHeader
 
 if TYPE_CHECKING:
@@ -222,6 +222,7 @@ class DatasetSchema:
     ):
         self.columns: dict[str, ColumnSchema] = {}
         self.links: dict[str, IdxLinkSchema | StartSizeLinkSchema] = {}
+        self.spatial_index: Optional[SpatialIndexSchema] = None
         self.header = header
 
     @classmethod
@@ -253,6 +254,11 @@ class DatasetSchema:
                 self.links[name] = child
             case ColumnSchema():
                 self.columns[name] = child
+            case SpatialIndexSchema():
+                if self.spatial_index is None:
+                    self.spatial_index = child
+                else:
+                    raise ValueError("This writer already has a spatial index!")
             case _:
                 raise ValueError(
                     f"Dataset schema cannot take children of type {type(child)}"
@@ -284,8 +290,13 @@ class DatasetSchema:
         link_writers = {
             name: link.into_writer(comm) for name, link in self.links.items()
         }
+        spatial_index = (
+            self.spatial_index.into_writer() if self.spatial_index is not None else None
+        )
 
-        return iow.DatasetWriter(column_writers, link_writers, self.header)
+        return iow.DatasetWriter(
+            column_writers, link_writers, spatial_index, self.header
+        )
 
 
 class ColumnSchema:
@@ -333,6 +344,58 @@ class ColumnSchema:
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.ColumnWriter(self.name, self.index, self.source, self.offset)
+
+
+class SpatialIndexSchema:
+    def __init__(self):
+        self.levels = {}
+
+    def add_child(self, child: iop.DataSchema, child_id: int):
+        if not isinstance(child, SpatialIndexLevelSchema):
+            raise ValueError(
+                "SpatialIndexSchema only takes SpatialIndexLevelIndex as children"
+            )
+        if child_id in self.levels:
+            raise ValueError("Already have a spatial index schema at this level!")
+        self.levels[child_id] = child
+
+    def verify(self):
+        for level in self.levels.values():
+            level.verify()
+
+    def allocate(self, group: h5py.Group):
+        for level_num, level in self.levels.items():
+            level_group = group.require_group("level_{level}")
+            level.allocate(level_group)
+
+    def into_writer(self):
+        levels = {n: level.into_writer() for n, level in self.levels.items()}
+        return iow.SpatialIndexWriter(levels)
+
+
+class SpatialIndexLevelSchema:
+    def __init__(self, source: h5py.Group):
+        index = ChunkedIndex.from_size(len(source["start"]))
+        self.start = ColumnSchema("start", index, source["start"])
+        self.size = ColumnSchema("size", index, source["size"])
+
+    def allocate(self, group: h5py.Group):
+        self.start.allocate(group)
+        self.size.allocate(group)
+
+    def add_child(self, *args, **kwargs):
+        raise TypeError("Links do not take children!")
+
+    insert = add_child
+
+    def verify(self):
+        self.start.verify()
+        self.size.verify()
+
+    def into_writer(self):
+        return iow.SpatialIndexLevelWriter(
+            self.start.into_writer(), self.size.into_writer()
+        )
 
 
 class IdxLinkSchema:

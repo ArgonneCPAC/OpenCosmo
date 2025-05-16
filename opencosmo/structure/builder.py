@@ -91,7 +91,7 @@ class OomDatasetBuilder:
         index: Optional[DataIndex] = None,
     ) -> oc.Dataset:
         try:
-            tree = open_tree(file, header)
+            tree = open_tree(file, header.simulation.box_size)
         except ValueError:
             tree = None
         box_halfwidth = header.simulation.box_size / 2.0

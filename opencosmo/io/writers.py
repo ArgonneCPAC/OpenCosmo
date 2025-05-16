@@ -96,11 +96,13 @@ class DatasetWriter:
         self,
         columns: dict[str, "ColumnWriter"],
         links: dict[str, "LinkWriter"] = {},
+        spatial_index: Optional["SpatialIndexWriter"] = None,
         header: Optional[OpenCosmoHeader] = None,
     ):
         self.columns = columns
         self.header = header
         self.links = links
+        self.spatial_index = spatial_index
 
     def write(self, group: h5py.Group):
         data_group = group["data"]
@@ -115,6 +117,10 @@ class DatasetWriter:
             link_names.sort()
             for name in link_names:
                 self.links[name].write(link_group)
+
+        if self.spatial_index is not None:
+            index_group = group["index"]
+            self.spatial_index.write(index_group)
 
         if self.header is not None:
             self.header.write(group)
@@ -169,6 +175,29 @@ def make_idx_link_updater(
         offsets = np.insert(np.cumsum(all_sizes), 0, 0)
         offset = offsets[comm.Get_rank()]
     return lambda arr_: idx_link_updater(arr_, offset)
+
+
+class SpatialIndexWriter:
+    def __init__(self, levels: dict[int, "SpatialIndexLevelWriter"]):
+        self.levels = levels
+
+    def write(self, group: h5py.Group):
+        for (
+            level_num,
+            writer,
+        ) in self.levels.items():
+            level_group = group[f"level_{level_num}"]
+            writer.write(level_group)
+
+
+class SpatialIndexLevelWriter:
+    def __init__(self, start: ColumnWriter, size: ColumnWriter):
+        self.start = start
+        self.size = size
+
+    def write(self, group: h5py.Group):
+        self.start.write(group)
+        self.size.write(group)
 
 
 class IdxLinkWriter:

@@ -94,7 +94,7 @@ def open(
 
     header = read_header(file_handle)
     try:
-        tree = open_tree(file_handle, header)
+        tree = open_tree(file_handle, header.simulation.box_size)
     except ValueError:
         tree = None
     if datasets is not None and not isinstance(datasets, str):
@@ -172,7 +172,7 @@ def read(
         raise ValueError("Asked for multiple datasets, but file has only one")
     header = read_header(file)
     try:
-        tree = open_tree(file, header)
+        tree = open_tree(file, header.simulation.box_size)
     except ValueError:
         tree = None
     box_halfwidth = header.simulation.box_size / 2.0
