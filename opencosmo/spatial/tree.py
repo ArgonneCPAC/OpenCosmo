@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, cast
 from itertools import count
+from uuid import uuid1
 
 import h5py
 import numpy as np
@@ -40,6 +41,19 @@ def open_tree(file: h5py.File | h5py.Group, box_size: int):
 
     spatial_index = OctTreeIndex.from_box_size(box_size)
     return Tree(spatial_index, group)
+
+
+def read_tree(file: h5py.File | h5py.Group, box_size: int):
+    try:
+        group = file["index"]
+    except KeyError:
+        raise ValueError("This file does not have a spatial index!")
+
+    f = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
+    for ds in group.keys():
+        group.copy(ds, f)
+    spatial_index = OctTreeIndex.from_box_size(box_size)
+    return Tree(spatial_index, f)
 
 
 def apply_range_mask(
@@ -112,11 +126,13 @@ class Tree:
         self.__data = data
         for i in count():
             try:
-                _ = self.__data["level_{i}"]["start"]
-                _ = self.__data["level_{i}"]["size"]
+                _ = self.__data[f"level_{i}"]["start"]
+                _ = self.__data[f"level_{i}"]["size"]
             except KeyError:
                 self.__max_level = i - 1
                 break
+        if self.__max_level == -1:
+            raise ValueError("Tried to read a tree but no levels were found!")
 
     def query(self, region: BoxRegion) -> tuple[ChunkedIndex, ChunkedIndex]:
         indices = self.__index.query(region, self.__max_level)
@@ -170,10 +186,7 @@ class Tree:
     def make_schema(self):
         schema = SpatialIndexSchema()
         for level in range(self.__max_level + 1):
-            level_schema = SpatialIndexLevelSchema(
-                self.__data[f"level_{level}"]["start"],
-                self.__data[f"level_{level}"]["size"],
-            )
+            level_schema = SpatialIndexLevelSchema(self.__data[f"level_{level}"])
             schema.add_child(level_schema, level)
         return schema
 
@@ -207,7 +220,7 @@ def build_tree_from_level(
 ) -> Tree:
     if len(counts) != 8**level:
         raise ValueError("Recieved invalid count array for this level!")
-    target = h5py.File("temp.hdf5", "w", driver="core", backing_store=False)
+    target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
     if level < 1:
         raise ValueError(f"Recieved invalid level {level}")
     result = combine_upwards(counts, level, target, min_counts)
