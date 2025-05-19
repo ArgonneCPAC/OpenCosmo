@@ -3,6 +3,7 @@ import yt  # type: ignore
 from yt.units import Msun, Mpc, h  # type: ignore
 from astropy.table import Table  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
+from yt.visualization.plot_window import PlotWindow # type: ignore
 from re import sub
 
 def create_yt_dataset(data: Table) -> YT_Dataset:
@@ -61,3 +62,12 @@ def create_yt_dataset(data: Table) -> YT_Dataset:
     )
 
     return ds
+
+def particle_projection_plot(*args, **kwargs) -> PlotWindow:
+    return yt.ParticleProjectionPlot(*args, **kwargs)
+
+def profile_plot(*args, **kwargs) -> PlotWindow:
+    return yt.ProfilePlot(*args, **kwargs)
+
+def phase_plot(*args, **kwargs) -> PlotWindow:
+    return yt.PhasePlot(*args, **kwargs)
