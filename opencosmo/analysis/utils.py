@@ -3,7 +3,7 @@ import yt  # type: ignore
 from yt.units import Msun, Mpc, h  # type: ignore
 from astropy.table import Table  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
-import re
+from re import sub
 
 def create_yt_dataset(data: Table) -> YT_Dataset:
     data_dict = {}
@@ -29,7 +29,7 @@ def create_yt_dataset(data: Table) -> YT_Dataset:
             return "dimensionless"
 
         unit = str(unit).replace("solMass", "Msun").replace(" / ", "/").replace(" ", "*")
-        return re.sub(r"(\d+)", r"**\1", unit)
+        return sub(r"(\d+)", r"**\1", unit)
 
     for ptype in data.keys():
         if "particles" not in ptype:
