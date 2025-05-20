@@ -13,7 +13,8 @@ pydantic = "^2.10.6"
 hdf5plugin = "^5.0.0"
 healpy = "^1.18.1"
 deprecated = "^1.2.18"
-yt = "^4.0.0"
+yt = "^4.2.0"
+pyxsim = "^4.2.0"
 
 [tool.poetry.group.test]
 optional = true
