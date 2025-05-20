@@ -141,7 +141,14 @@ class Dataset:
     def index(self) -> DataIndex:
         return self.__state.index
 
-    def crop(self, region: BoxRegion, select_by: Optional[str] = None):
+    def bound(self, region: BoxRegion, select_by: Optional[str] = None):
+        """
+        Restrict the dataset to some subregion. The subregion will always be evaluated
+        in the same units as the current dataset. For example, if the dataset is
+        in the default "comoving" unit convention, positions are always in units of
+        comoving Mpc. However Region objects themselves do not carry units.
+
+        """
         if self.__tree is None:
             raise AttributeError(
                 "Your dataset does not contain a spatial index, "
@@ -358,7 +365,8 @@ class Dataset:
             self.__state.index, self.__state.builders.keys(), header
         )
         if self.__tree is not None:
-            spat_idx_schema = self.__tree.make_schema()
+            tree = self.__tree.apply_index(self.__state.index)
+            spat_idx_schema = tree.make_schema()
             schema.add_child(spat_idx_schema, "index")
         return schema
 
