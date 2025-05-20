@@ -11,7 +11,8 @@ h5py = "^3.12.1"
 astropy = "^7.0.1"
 pydantic = "^2.10.6"
 hdf5plugin = "^5.0.0"
-yt = "^4.0.0"
+yt = "^4.2.0"
+pyxsim = "^4.2.0"
 
 [tool.poetry.group.test]
 optional = true
