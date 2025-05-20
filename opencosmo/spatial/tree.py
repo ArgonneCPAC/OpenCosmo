@@ -128,6 +128,7 @@ class Tree:
             except KeyError:
                 self.__max_level = i - 1
                 break
+
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
 
