@@ -66,7 +66,9 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
+        cls,
+        file: h5py.File,
+        datasets_to_get: Optional[Iterable[str]] = None,
     ) -> StructureCollection:
         return s.open_linked_file(file, datasets_to_get)
 
@@ -301,7 +303,8 @@ class StructureCollection:
         )
 
     def objects(
-        self, data_types: Optional[Iterable[str]] = None
+        self,
+        data_types: Optional[Iterable[str]] = None,
     ) -> Iterable[tuple[dict[str, Any], oc.Dataset | dict[str, oc.Dataset]]]:
         """
         Iterate over the objects in this collection as pairs of

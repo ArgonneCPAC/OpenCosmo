@@ -118,7 +118,8 @@ def open_linked_files(*files: Path):
 
 
 def open_linked_file(
-    file_handle: File, datasets_to_get: Optional[Iterable[str]] = None
+    file_handle: File,
+    datasets_to_get: Optional[Iterable[str]] = None,
 ) -> s.StructureCollection:
     """
     Open a single file that contains both properties and linked datasets.

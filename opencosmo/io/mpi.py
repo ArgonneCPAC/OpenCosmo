@@ -1,5 +1,5 @@
 from copy import copy
-from typing import Iterable, Mapping, TypeVar, cast
+from typing import Iterable, Mapping, Optional, TypeVar, cast
 
 import numpy as np
 from mpi4py import MPI
@@ -12,6 +12,7 @@ from .schemas import (
     IdxLinkSchema,
     LinkSchema,
     SimCollectionSchema,
+    SpatialIndexSchema,
     StartSizeLinkSchema,
     StructCollectionSchema,
 )
@@ -63,6 +64,7 @@ def combine_file_schemas(
         child = schema.children[child_name_]
         new_child = combine_file_child(child, comm)
         new_schema.add_child(new_child, child_name)
+
     return new_schema
 
 
@@ -94,7 +96,34 @@ def combine_dataset_schemas(schema: DatasetSchema, comm: MPI.Comm) -> DatasetSch
         new_links = combine_links(schema.links, comm)
         for name, link in new_links.items():
             new_schema.add_child(link, name)
+
+    new_spatial_idx_schema = combine_spatial_index_schema(schema.spatial_index, comm)
+    if new_spatial_idx_schema is not None:
+        new_schema.add_child(new_spatial_idx_schema, "index")
+
     return new_schema
+
+
+def combine_spatial_index_schema(
+    schema: Optional[SpatialIndexSchema], comm: MPI.Comm = MPI.COMM_WORLD
+):
+    has_schema = schema is not None
+    all_has_schema = comm.allgather(has_schema)
+
+    if not any(all_has_schema):
+        return None
+
+    elif not all(all_has_schema):
+        raise ValueError("Some of the datasets have spatial indices and others don't!")
+
+    schema = cast(SpatialIndexSchema, schema)
+
+    n_levels = max(schema.levels)
+    all_max_levels = comm.allgather(n_levels)
+    if len(set(all_max_levels)) != 1:
+        raise ValueError("Schemas for all ranks must have the same number of levels!")
+
+    return schema
 
 
 def combine_links(

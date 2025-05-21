@@ -70,6 +70,19 @@ class OctTreeIndex:
         root = Octant((0, 0, 0), (halfwidth, halfwidth, halfwidth), halfwidth)
         return OctTreeIndex(root)
 
+    def partition(self, n: int):
+        level = 0
+        n_ = n
+        while n_ != 1:
+            level += 1
+            n_ = int(n_ / 8) if n_ > 8 else 1
+        partitions = self.root.partition(n)
+        partition_indices = [
+            SimpleIndex(np.array([get_octtree_index(r.idx, level) for r in p]))
+            for p in partitions
+        ]
+        return partition_indices, level
+
     def query(
         self, region: BoxRegion, max_level: int
     ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]:
@@ -155,8 +168,25 @@ class Octant:
         )
         return output
 
+    def partition(self, n: int) -> list[list[Octant]]:
+        # Note, n is guaranteed to be a power of 2 at this point
+        self.make_children()
+        if n == 1:
+            return [[self]]
+        elif n == 2 or n == 4:
+            return [self.children[n * i : n * (i + 1)] for i in range(8 // n)]
+        elif n == 8:
+            return [[child] for child in self.children]
+
+        subidivisons_per_octant = n // 8
+        partitions = []
+        for child in self.children:
+            partitions += child.partition(subidivisons_per_octant)
+
+        return partitions
+
     def make_children(self):
-        if len(self.children) != 0:
+        if len(self.children) == 8:
             return
 
         child_halfwidth = self.halfwidth / 2.0

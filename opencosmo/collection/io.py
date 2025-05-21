@@ -36,7 +36,8 @@ def open_simulation_files(**paths: Path) -> SimulationCollection:
 
 
 def open_multi_dataset_file(
-    file: h5py.File, datasets: Optional[Iterable[str]]
+    file: h5py.File,
+    datasets: Optional[Iterable[str]],
 ) -> Collection | ds.Dataset:
     """
     Open a file with multiple datasets.

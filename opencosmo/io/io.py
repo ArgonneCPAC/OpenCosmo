@@ -103,9 +103,8 @@ def open(
 
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets)
-    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        start, size = partition(MPI.COMM_WORLD, len(handler))
-        index = ChunkedIndex.single_chunk(start, size)
+    if MPI is not None:
+        index = partition(MPI.COMM_WORLD, len(handler), tree)
     else:
         index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(

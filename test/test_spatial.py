@@ -103,6 +103,25 @@ def test_box_query_chain(halo_properties_path):
         assert max <= max_ and np.isclose(max, max_, 0.1)
 
 
+def test_write_tree(halo_properties_path, tmp_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    center1 = (30, 40, 50)
+    width1 = (10, 15, 20)
+    reg1 = oc.Box(center1, width1)
+
+    ds = ds.bound(reg1)
+    oc.write(tmp_path / "bound_dataset.hdf5", ds)
+
+    ds = oc.open(tmp_path / "bound_dataset.hdf5").with_units("scalefree")
+    tree_data = ds._Dataset__tree._Tree__data
+    for i in range(3):
+        level = tree_data[f"level_{i}"]
+        starts = level["start"][:]
+        sizes = level["size"][:]
+        assert np.sum(sizes) == len(ds)
+        assert np.all(np.insert(np.cumsum(sizes), 0, 0)[:-1] == starts)
+
+
 def test_box_query_chain_with_write(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     center1 = (30, 40, 50)
@@ -121,17 +140,13 @@ def test_box_query_chain_with_write(halo_properties_path, tmp_path):
     ds = ds.bound(reg2)
     ds2 = ds2.bound(reg2)
 
-    data = ds2.data
+    data = ds.data
+    data2 = ds2.data
+
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
-        min_ = center2[i] - width2[i] / 2
-        max_ = center2[i] + width2[i] / 2
-        min = col.min()
-        max = col.max()
-        assert min >= min_ and np.isclose(min, min_, 0.1)
-        assert max <= max_ and np.isclose(max, max_, 0.1)
-
-        assert max <= max_ and np.isclose(max, max_, 0.1)
+        col2 = data2[f"fof_halo_center_{dim}"]
+        assert np.all(col == col2)
 
 
 def test_box_query_chain_failure(halo_properties_path):

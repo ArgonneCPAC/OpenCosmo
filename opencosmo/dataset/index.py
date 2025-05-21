@@ -91,9 +91,9 @@ class SimpleIndex:
             return self.concatenate(*simple_indices)
 
     def n_in_range(self, start: int, end: int) -> int:
-        if start >= end:
+        if start > end:
             raise ValueError("End must be greater than start!")
-        in_range = (self.__index > start) & (self.__index < end)
+        in_range = (self.__index >= start) & (self.__index < end)
         return sum(in_range)
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
@@ -245,7 +245,7 @@ class ChunkedIndex:
         return SimpleIndex(idxs)
 
     def into_mask(self) -> np.ndarray:
-        ends = self.__starts + self.__sizes + 1
+        ends = self.__starts + self.__sizes
         mask = np.zeros(np.max(ends), dtype=bool)
         for start, end in np.nditer([self.__starts, ends]):
             mask[start:end] = True
@@ -300,10 +300,11 @@ class ChunkedIndex:
         """
         Create a ChunkedIndex with a single chunk.
         """
-        if size <= 0:
-            raise ValueError(f"Size must be positive, got {size}")
         if start < 0:
             raise ValueError(f"Start must be non-negative, got {start}")
+
+        if not size:
+            return ChunkedIndex.empty()
         starts = np.array([start])
         sizes = np.array([size])
         return ChunkedIndex(starts, sizes)
@@ -375,8 +376,11 @@ class ChunkedIndex:
                 f"Range {start}:{end} is out of bounds for index of size {len(self)}"
             )
 
-        if start >= end:
+        if start > end:
             raise ValueError(f"Start {start} must be less than end {end}")
+
+        if start == end:
+            return ChunkedIndex.empty()
 
         # Get the indices of the chunks that are in the range
         idxs = np.concatenate(
@@ -466,17 +470,27 @@ class ChunkedIndex:
         """
         Return the number of elements in this index that fall within
         a specified data range. Used to mask spatial index.
+
+
+        As with numpy, this is the half-open range [start, end)
         """
-        if start >= end:
+        if start > end:
             raise ValueError("Start must be less than end!")
+
+        if start == end or len(self) == 0:
+            return 0
         ends = self.__starts + self.__sizes - 1
-        in_range = ~(self.__starts > ends | ends < start)
+        not_in_range = (self.__starts > end) | (ends < start)
+        in_range = ~not_in_range
+
+        if not np.any(in_range):
+            return 0
 
         starts_in_range = self.__starts[in_range]
         ends_in_range = ends[in_range]
 
         starts_in_range[starts_in_range < start] = start
-        ends_in_range[ends_in_range < ends] = start
+        ends_in_range[ends_in_range > end] = end
 
         return sum(ends_in_range - starts_in_range)
 
