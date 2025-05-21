@@ -177,17 +177,11 @@ class Dataset:
         new_intersects_index = intersects_index.mask(mask)
 
         new_index = contained_index.concatenate(new_intersects_index)
-        if len(new_index) == 0:
-            raise ValueError("No objects found in this region!")
 
         new_state = self.__state.with_index(new_index)
+        new_tree = self.__tree.apply_index(new_index)
 
-        return Dataset(
-            self.__handler,
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        return Dataset(self.__handler, self.__header, new_state, new_tree)
 
     def filter(self, *masks: Mask) -> Dataset:
         """
