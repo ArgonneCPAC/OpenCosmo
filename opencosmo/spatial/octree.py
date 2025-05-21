@@ -174,7 +174,8 @@ class Octant:
         if n == 1:
             return [[self]]
         elif n == 2 or n == 4:
-            return [self.children[n * i : n * (i + 1)] for i in range(8 // n)]
+            n_per = 8 // n
+            return [self.children[n_per * i : n_per * (i + 1)] for i in range(n)]
         elif n == 8:
             return [[child] for child in self.children]
 

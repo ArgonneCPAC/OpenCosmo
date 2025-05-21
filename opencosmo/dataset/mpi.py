@@ -8,7 +8,8 @@ from opencosmo.spatial.tree import Tree
 
 def partition(comm: MPI.Comm, length: int, tree: Optional[Tree]) -> ChunkedIndex:
     if tree is not None:
-        return tree.partition(comm.Get_size())[comm.Get_rank()]
+        partitions = tree.partition(comm.Get_size())
+        return partitions[comm.Get_rank()]
 
     nranks = comm.Get_size()
     rank = comm.Get_rank()

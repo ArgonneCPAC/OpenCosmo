@@ -1,3 +1,4 @@
+import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -205,6 +206,38 @@ def test_link_write(all_paths, tmp_path):
 
     with pytest.raises(NotImplementedError):
         oc.read(output_path)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_box_query_collect(input_path):
+    ds = oc.open(input_path)
+    center = tuple(random.uniform(30, 60) for _ in range(3))
+    width = tuple(random.uniform(10, 20) for _ in range(3))
+
+    center = mpi4py.MPI.COMM_WORLD.bcast(center)
+    width = mpi4py.MPI.COMM_WORLD.bcast(width)
+
+    reg1 = oc.Box(center, width)
+    original_data = ds.data
+    ds = ds.bound(reg1)
+    ds = ds.collect()
+    data = ds.data
+    for i, dim in enumerate(["x", "y", "z"]):
+        name = f"fof_halo_center_{dim}"
+        min_ = center[i] - width[i] / 2
+        max_ = center[i] + width[i] / 2
+        original_col = original_data[name]
+        mask = (original_col < max_) & (original_col > min_)
+        original_data = original_data[mask]
+
+        col = data[name]
+        min = col.min()
+        max = col.max()
+        parallel_assert(min >= min_ and np.isclose(min, min_, 0.1))
+        parallel_assert(max <= max_ and np.isclose(max, max_, 0.1))
+
+    length = mpi4py.MPI.COMM_WORLD.bcast(len(ds))
+    parallel_assert(len(ds) == length)
 
 
 @pytest.mark.parallel(nprocs=4)
