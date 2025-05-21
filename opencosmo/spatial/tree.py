@@ -135,6 +135,26 @@ class Tree:
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
 
+    def partition(self, n: int):
+        """
+        Partition into n trees, where each tree contains an equally sized
+        region of space. The number of partitions must be a power of 2.
+
+        This function is used primarily in an MPI context.
+        """
+        if (n & (n - 1)) != 0 or n < 0:
+            raise ValueError("Trees can only be partitioned with powers of 2")
+        partitions, level = self.__index.partition(n)
+        output_indices = []
+        for p in partitions:
+            level_key = f"level_{level}"
+            starts = self.__data[level_key]["start"]
+            sizes = self.__data[level_key]["size"]
+            start_idx = p.get_data(starts)[0]
+            size = np.sum(p.get_data(sizes))
+            output_indices.append(ChunkedIndex.single_chunk(start_idx, size))
+        return output_indices
+
     def query(self, region: BoxRegion) -> tuple[ChunkedIndex, ChunkedIndex]:
         indices = self.__index.query(region, self.__max_level)
 
@@ -224,21 +244,18 @@ def build_tree_from_level(
     target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
     if level < 1:
         raise ValueError(f"Recieved invalid level {level}")
-    result = combine_upwards(counts, level, target, min_counts)
+    result = combine_upwards(counts, level, target)
     return Tree(index, result)
 
 
-def combine_upwards(
-    counts: np.ndarray, level: int, target: h5py.File, min_counts: int = 100
-) -> h5py.File:
-    if np.max(counts) > min_counts or level == 0:
-        group = target.require_group(f"level_{level}")
-        new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
-        group.create_dataset("start", data=new_starts)
-        group.create_dataset("size", data=counts)
+def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:
+    group = target.require_group(f"level_{level}")
+    new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
+    group.create_dataset("start", data=new_starts)
+    group.create_dataset("size", data=counts)
 
     if level > 0:
         new_counts = counts.reshape(-1, 8).sum(axis=1)
-        return combine_upwards(new_counts, level - 1, target, min_counts)
+        return combine_upwards(new_counts, level - 1, target)
 
     return target

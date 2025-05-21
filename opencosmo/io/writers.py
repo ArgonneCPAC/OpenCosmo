@@ -196,8 +196,8 @@ class SpatialIndexLevelWriter:
         self.size = size
 
     def write(self, group: h5py.Group):
-        self.start.write(group)
-        self.size.write(group)
+        self.size.write(group, updater=sum_updater)
+        self.start.write(group, updater=sum_updater)
 
 
 class IdxLinkWriter:
@@ -212,6 +212,14 @@ class IdxLinkWriter:
 
     def write(self, group: h5py.Group):
         self.writer.write(group, self.updater)
+
+
+def sum_updater(data: np.ndarray):
+    if MPI is not None:
+        recvbuf = np.zeros_like(data)
+        MPI.COMM_WORLD.Allreduce(data, recvbuf, MPI.SUM)
+        return recvbuf
+    return data
 
 
 def start_link_updater(sizes: np.ndarray, offset: int = 0) -> np.ndarray:

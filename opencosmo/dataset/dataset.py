@@ -240,7 +240,7 @@ class Dataset:
         max = len(self)
         chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
         if len(chunk_ranges) == 0:
-            chunk_ranges = [(0, 0)]
+            raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
 
