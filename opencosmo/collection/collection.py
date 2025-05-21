@@ -14,7 +14,6 @@ from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import SimulationParameters
-from opencosmo.spatial.region import BoxRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.structure import StructureCollection
 from opencosmo.transformations import units as u
@@ -277,7 +276,7 @@ def read_single_dataset(
     except ValueError:
         tree = None
     box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = BoxRegion((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+    sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
     handler = DatasetHandler(im_file, dataset_key)
