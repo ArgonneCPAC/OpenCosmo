@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Generator, Iterable, Optional
+from warnings import warn
 
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
@@ -157,6 +158,19 @@ class Dataset:
         check_region = region.into_scalefree(
             self.__state.convention, self.cosmology, self.redshift
         )
+        if not self.__state.region.intersects(region):
+            raise ValueError(
+                "Tried to query with a region that is fully outside the region "
+                "that contains this dataset."
+            )
+        if not self.__state.region.contains(region):
+            warn(
+                "You're querying with a region that is not fully contained by the "
+                "region this dataset is in. This may result in unexpected behavior"
+            )
+
+        print(self.__state.region.bounding_box())
+
         contained_index: DataIndex
         intersects_index: DataIndex
         contained_index, intersects_index = self.__tree.query(check_region)
@@ -179,9 +193,9 @@ class Dataset:
         new_index = contained_index.concatenate(new_intersects_index)
 
         new_state = self.__state.with_index(new_index)
-        new_tree = self.__tree.apply_index(new_index)
+        new_state = new_state.with_region(region)
 
-        return Dataset(self.__handler, self.__header, new_state, new_tree)
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def filter(self, *masks: Mask) -> Dataset:
         """
