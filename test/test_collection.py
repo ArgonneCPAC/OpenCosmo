@@ -9,28 +9,28 @@ from opencosmo.collection import SimulationCollection
 
 
 @pytest.fixture
-def multi_path(data_path):
-    return data_path / "haloproperties_multi.hdf5"
+def multi_path(snapshot_path):
+    return snapshot_path / "haloproperties_multi.hdf5"
 
 
 @pytest.fixture
-def halo_paths(data_path: Path):
+def halo_paths(snapshot_path: Path):
     files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
-    hdf_files = [data_path / file for file in files]
+    hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
 
 @pytest.fixture
-def galaxy_paths(data_path: Path):
+def galaxy_paths(snapshot_path: Path):
     files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
-    hdf_files = [data_path / file for file in files]
+    hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
 
 @pytest.fixture
-def galaxy_paths_2(data_path: Path):
+def galaxy_paths_2(snapshot_path: Path):
     files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
-    hdf_files = [data_path / file for file in files]
+    hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
 

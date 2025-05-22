@@ -14,13 +14,13 @@ from opencosmo.collection import SimulationCollection
 
 
 @pytest.fixture
-def input_path(data_path):
-    return data_path / "haloproperties.hdf5"
+def input_path(snapshot_path):
+    return snapshot_path / "haloproperties.hdf5"
 
 
 @pytest.fixture
-def particle_path(data_path):
-    return data_path / "haloparticles.hdf5"
+def particle_path(snapshot_path):
+    return snapshot_path / "haloparticles.hdf5"
 
 
 @pytest.fixture
@@ -30,24 +30,24 @@ def malformed_header_path(input_path, tmp_path):
 
 
 @pytest.fixture
-def galaxy_paths(data_path: Path):
+def galaxy_paths(snapshot_path: Path):
     files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
-    hdf_files = [data_path / file for file in files]
+    hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
 
 @pytest.fixture
-def galaxy_paths_2(data_path: Path):
+def galaxy_paths_2(snapshot_path: Path):
     files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
-    hdf_files = [data_path / file for file in files]
+    hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
 
 @pytest.fixture
-def all_paths(data_path: Path):
+def all_paths(snapshot_path: Path):
     files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
 
-    hdf_files = [data_path / file for file in files]
+    hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
 

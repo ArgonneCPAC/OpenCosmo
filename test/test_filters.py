@@ -6,8 +6,8 @@ from opencosmo import col, read
 
 
 @pytest.fixture
-def input_path(data_path):
-    return data_path / "haloproperties.hdf5"
+def input_path(snapshot_path):
+    return snapshot_path / "haloproperties.hdf5"
 
 
 @pytest.fixture

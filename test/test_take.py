@@ -5,8 +5,8 @@ from opencosmo import read
 
 
 @pytest.fixture
-def input_path(data_path):
-    return data_path / "galaxyproperties.hdf5"
+def input_path(snapshot_path):
+    return snapshot_path / "galaxyproperties.hdf5"
 
 
 def test_take_front(input_path):

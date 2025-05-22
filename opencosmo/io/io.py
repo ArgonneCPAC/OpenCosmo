@@ -94,7 +94,9 @@ def open(
 
     header = read_header(file_handle)
     try:
-        tree = open_tree(file_handle, header.simulation.box_size)
+        tree = open_tree(
+            file_handle, header.simulation.box_size, header.file.is_lightcone
+        )
     except ValueError:
         tree = None
     if datasets is not None and not isinstance(datasets, str):

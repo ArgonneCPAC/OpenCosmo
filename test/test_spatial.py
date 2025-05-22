@@ -7,8 +7,8 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def halo_properties_path(data_path):
-    return data_path / "haloproperties.hdf5"
+def halo_properties_path(snapshot_path):
+    return snapshot_path / "haloproperties.hdf5"
 
 
 def test_contains():

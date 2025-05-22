@@ -5,13 +5,13 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def input_path(data_path):
-    return data_path / "haloproperties.hdf5"
+def input_path(snapshot_path):
+    return snapshot_path / "haloproperties.hdf5"
 
 
 @pytest.fixture
-def particle_path(data_path):
-    return data_path / "haloparticles.hdf5"
+def particle_path(snapshot_path):
+    return snapshot_path / "haloparticles.hdf5"
 
 
 @pytest.fixture
