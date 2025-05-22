@@ -67,6 +67,8 @@ class SimpleIndex:
         """
         Guranteed to be sorted
         """
+        if len(self) == 0:
+            return 0, 0
         return self.__index[0], self.__index[-1]
 
     def into_mask(self):
