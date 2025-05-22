@@ -5,23 +5,23 @@ from opencosmo.header import read_header, write_header
 
 
 @pytest.fixture
-def cosmology_resource_path(data_path):
-    p = data_path / "header.hdf5"
+def cosmology_resource_path(snapshot_path):
+    p = snapshot_path / "header.hdf5"
     return p
 
 
 @pytest.fixture
-def halo_properties_path(data_path):
-    return data_path / "haloproperties.hdf5"
+def halo_properties_path(snapshot_path):
+    return snapshot_path / "haloproperties.hdf5"
 
 
 @pytest.fixture
-def galaxy_properties_path(data_path):
-    return data_path / "galaxyproperties.hdf5"
+def galaxy_properties_path(snapshot_path):
+    return snapshot_path / "galaxyproperties.hdf5"
 
 
-def test_write_header(data_path, tmp_path):
-    header = read_header(data_path / "galaxyproperties.hdf5")
+def test_write_header(snapshot_path, tmp_path):
+    header = read_header(snapshot_path / "galaxyproperties.hdf5")
     new_path = tmp_path / "header.hdf5"
     write_header(new_path, header)
 

@@ -5,18 +5,18 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def input_path(data_path):
-    return data_path / "galaxyproperties.hdf5"
+def input_path(snapshot_path):
+    return snapshot_path / "galaxyproperties.hdf5"
 
 
 @pytest.fixture
-def multi_path(data_path):
-    return data_path / "haloproperties_multi.hdf5"
+def multi_path(snapshot_path):
+    return snapshot_path / "haloproperties_multi.hdf5"
 
 
 @pytest.fixture
-def particle_path(data_path):
-    return data_path / "haloparticles.hdf5"
+def particle_path(snapshot_path):
+    return snapshot_path / "haloparticles.hdf5"
 
 
 def test_read(input_path):

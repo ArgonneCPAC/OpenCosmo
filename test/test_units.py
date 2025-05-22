@@ -23,28 +23,28 @@ def add_column(tmp_path: Path, original_file: Path, column: Column):
 
 
 @pytest.fixture
-def haloproperties_step_path(data_path):
-    return data_path / "haloproperties_step310.hdf5"
+def haloproperties_step_path(snapshot_path):
+    return snapshot_path / "haloproperties_step310.hdf5"
 
 
 @pytest.fixture
-def galaxy_input_path(data_path):
-    return data_path / "galaxyproperties.hdf5"
+def galaxy_input_path(snapshot_path):
+    return snapshot_path / "galaxyproperties.hdf5"
 
 
 @pytest.fixture
-def halo_input_path(data_path):
-    return data_path / "haloproperties.hdf5"
+def halo_input_path(snapshot_path):
+    return snapshot_path / "haloproperties.hdf5"
 
 
 @pytest.fixture
-def sod_particle_input_path(data_path):
-    return data_path / "sodbighaloparticles.hdf5"
+def sod_particle_input_path(snapshot_path):
+    return snapshot_path / "sodbighaloparticles.hdf5"
 
 
 @pytest.fixture
-def sod_properties_input_path(data_path):
-    return data_path / "sodproperties.hdf5"
+def sod_properties_input_path(snapshot_path):
+    return snapshot_path / "sodproperties.hdf5"
 
 
 @pytest.fixture

@@ -8,8 +8,8 @@ from opencosmo.cosmology import read_cosmology
 
 
 @pytest.fixture
-def cosmology_resource_path(data_path):
-    p = data_path / "galaxyproperties.hdf5"
+def cosmology_resource_path(snapshot_path):
+    p = snapshot_path / "galaxyproperties.hdf5"
     return p
 
 

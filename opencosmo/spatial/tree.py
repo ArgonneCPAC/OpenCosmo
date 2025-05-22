@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from mpi4py import MPI
 
 
-def open_tree(file: h5py.File | h5py.Group, box_size: int):
+def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):
     """
     Read a tree from an HDF5 file and the associated
     header. The tree is just a mapping between a spatial
