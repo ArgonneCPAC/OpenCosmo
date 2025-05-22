@@ -40,6 +40,10 @@ class DatasetState:
     def convention(self):
         return self.__convention
 
+    @property
+    def region(self):
+        return self.__region
+
     def with_index(self, index: DataIndex):
         return DatasetState(
             self.__base_unit_transformations,
@@ -56,6 +60,15 @@ class DatasetState:
             self.__index,
             self.__convention,
             self.__region,
+        )
+
+    def with_region(self, region: Region):
+        return DatasetState(
+            self.__base_unit_transformations,
+            self.__builders,
+            self.__index,
+            self.__convention,
+            region,
         )
 
     def select(self, columns: str | Iterable[str]):
