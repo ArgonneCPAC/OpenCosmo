@@ -11,6 +11,7 @@ h5py = "^3.12.1"
 astropy = "^7.0.1"
 pydantic = "^2.10.6"
 hdf5plugin = "^5.0.0"
+healpy = "^1.18.1"
 
 [tool.poetry.group.test]
 optional = true

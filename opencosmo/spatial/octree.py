@@ -7,10 +7,12 @@ from functools import cache
 from itertools import product
 from typing import Iterable, Optional, TypeGuard
 
+import h5py
 import numpy as np
 
 import opencosmo as oc
 from opencosmo.dataset.index import SimpleIndex
+from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.region import BoxRegion, Point3d
 
 Index3d = tuple[int, int, int]
@@ -64,6 +66,21 @@ class OctTreeIndex:
     def __init__(self, root: Octant):
         self.root = root
 
+    @staticmethod
+    def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:
+        if len(counts) != 8**level:
+            raise ValueError("Recieved invalid number of counts!")
+        group = target.require_group(f"level_{level}")
+        new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
+        group.create_dataset("start", data=new_starts)
+        group.create_dataset("size", data=counts)
+
+        if level > 0:
+            new_counts = counts.reshape(-1, 8).sum(axis=1)
+            return OctTreeIndex.combine_upwards(new_counts, level - 1, target)
+
+        return target
+
     @classmethod
     def from_box_size(cls, box_size: int):
         halfwidth = box_size / 2
@@ -84,7 +101,7 @@ class OctTreeIndex:
         return partition_indices, level
 
     def query(
-        self, region: BoxRegion, max_level: int
+        self, region: Region, max_level: int
     ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]:
         containment: dict[Octant, Intersection] = {}
         new_root = self.root.query(region, 0, max_level, containment)
@@ -207,11 +224,13 @@ class Octant:
 
     def query(
         self,
-        region: BoxRegion,
+        region: Region,
         current_level: int,
         max_level: int,
         containment: dict[Octant, Intersection],
     ) -> Optional[Octant]:
+        if not isinstance(Region, BoxRegion):
+            raise ValueError("Did not recieve a 3d region!")
         if region.contains(self.bounding_box()):
             containment[self] = Intersection.CONTAINED
             return Octant(self.idx, self.center, self.halfwidth)
