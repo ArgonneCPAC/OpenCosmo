@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import operator as op
 from collections import defaultdict
-from numbers import Real
 from typing import TYPE_CHECKING, Callable, Iterable
 
 import astropy.units as u  # type: ignore
@@ -66,25 +65,25 @@ class Column:
         self.column_name = column_name
 
     # mypy doesn't reason about eq and neq correctly
-    def __eq__(self, other: Real | u.Quantity) -> Mask:  # type: ignore
+    def __eq__(self, other: float | u.Quantity) -> Mask:  # type: ignore
         return Mask(self.column_name, other, op.eq)
 
-    def __ne__(self, other: Real | u.Quantity) -> Mask:  # type: ignore
+    def __ne__(self, other: float | u.Quantity) -> Mask:  # type: ignore
         return Mask(self.column_name, other, op.ne)
 
-    def __gt__(self, other: Real | u.Quantity) -> Mask:
+    def __gt__(self, other: float | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.gt)
 
-    def __ge__(self, other: Real | u.Quantity) -> Mask:
+    def __ge__(self, other: float | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.ge)
 
-    def __lt__(self, other: Real | u.Quantity) -> Mask:
+    def __lt__(self, other: float | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.lt)
 
-    def __le__(self, other: Real | u.Quantity) -> Mask:
+    def __le__(self, other: float | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.le)
 
-    def isin(self, other: Iterable[Real | u.Quantity]) -> Mask:
+    def isin(self, other: Iterable[float | u.Quantity]) -> Mask:
         return Mask(self.column_name, other, np.isin)
 
 

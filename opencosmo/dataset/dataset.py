@@ -155,9 +155,13 @@ class Dataset:
                 "Your dataset does not contain a spatial index, "
                 "so spatial querying is not available"
             )
-        check_region = region.into_scalefree(
-            self.__state.convention, self.cosmology, self.redshift
-        )
+
+        try:
+            check_region = region.into_scalefree(
+                self.__state.convention, self.cosmology, self.redshift
+            )
+        except AttributeError:
+            check_region = region
         if not self.__state.region.intersects(region):
             raise ValueError(
                 "Tried to query with a region that is fully outside the region "
@@ -168,8 +172,6 @@ class Dataset:
                 "You're querying with a region that is not fully contained by the "
                 "region this dataset is in. This may result in unexpected behavior"
             )
-
-        print(self.__state.region.bounding_box())
 
         contained_index: DataIndex
         intersects_index: DataIndex
@@ -185,9 +187,7 @@ class Dataset:
             check_state,
             self.__tree,
         ).with_units("scalefree")
-        mask = check.check_containment(
-            check_dataset, check_region, self.__header.file.data_type
-        )
+        mask = check.check_containment(check_dataset, check_region, self.__header.file)
         new_intersects_index = intersects_index.mask(mask)
 
         new_index = contained_index.concatenate(new_intersects_index)

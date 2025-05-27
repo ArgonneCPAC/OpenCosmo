@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 from functools import partial, singledispatchmethod
-from typing import Any, Protocol
+from typing import Any
 
+import astropy.units as u
 import numpy as np
+from astropy.coordinates import SkyCoord
 from astropy.cosmology import FLRW  # type: ignore
 
 from opencosmo.transformations.units import UnitConvention
 
 Point3d = tuple[float, float, float]
+Point2d = tuple[u.Quantity, u.Quantity]
 BoxSize = tuple[float, float, float]
-
-
-class Region(Protocol):
-    def intersects(self, other: Region) -> bool: ...
-
-    def bounding_box(self) -> BoxRegion: ...
-    def into_scalefree(self, from_: UnitConvention, cosmology: FLRW, z: float): ...
 
 
 def physical_to_scalefree(value: float, cosmology: FLRW, z: float):
@@ -29,6 +25,60 @@ def comoving_to_scalefree(value: float, cosmology: FLRW):
     h = cosmology.h
     scalefree_value = value * h
     return scalefree_value
+
+
+class FullSkyRegion:
+    def __init__(self):
+        pass
+
+    def intersects(self, other: Any):
+        return True
+
+    def contains(self, other: Any):
+        return True
+
+
+class ConeRegion:
+    """
+    Cone region for querying lightcones.
+
+    Raw data: -pi < phi < pi, 0 < theta < pi
+    RA/Dec: 0 < RA < 2*pi, -pi < dec < pi
+
+
+    """
+
+    def __init__(self, center: Point2d, radius: u.Quantity):
+        self.__center = SkyCoord(*(c.to(u.deg) for c in center))
+        self.__radius = radius.to(u.deg)
+
+    @property
+    def center(self):
+        return self.__center
+
+    @property
+    def radius(self):
+        return self.__radius
+
+    def to_healpix(self):
+        pass
+
+    def intersects(self, other: ConeRegion):
+        dtheta = self.center.separation(other.center)
+        return dtheta < (self.__radius + other.__radius)
+
+    def contains(self, other: Any):
+        return self.__contains(other)
+
+    @singledispatchmethod
+    def __contains(self, other: ConeRegion):
+        dtheta = self.__center.separation(other.center)
+        return self.__radius > (dtheta + other.__radius)
+
+    @__contains.register
+    def _(self, coords: SkyCoord):  # coords are assumed to be in radians
+        seps = self.__center.separation(coords)
+        return seps < self.__radius
 
 
 class BoxRegion:

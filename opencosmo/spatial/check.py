@@ -1,25 +1,47 @@
 from typing import TYPE_CHECKING, Optional
 
+import astropy.units as u
 import numpy as np
+from astropy.coordinates import SkyCoord
 
-ALLOWED_COORDINATES = {
-    "halo_properties": {
+from opencosmo.parameters import FileParameters
+
+ALLOWED_COORDINATES_3D = {
+    "default": {
         "fof": "fof_halo_center_",
         "mass": "fof_halo_com_",
         "sod": "sod_halo_com_",
     }
 }
 
+ALLOWED_COORDINATES_2D = {"default": set(["theta", "phi"])}
+
 
 if TYPE_CHECKING:
     from opencosmo.dataset.dataset import Dataset
-    from opencosmo.spatial.region import BoxRegion
+    from opencosmo.spatial.protocols import Region
 
 
 def check_containment(
-    ds: "Dataset", region: "BoxRegion", dtype: str, select_by: Optional[str] = None
+    ds: "Dataset",
+    region: Region,
+    parameters: FileParameters,
+    select_by: Optional[str] = None,
 ):
-    allowed_coordinates = ALLOWED_COORDINATES[dtype]
+    dtype = str(parameters.data_type)
+    if parameters.is_lightcone:
+        return __check_containment_2d(ds, region, dtype)
+    else:
+        return __check_containment_3d(ds, region, dtype)
+
+
+def __check_containment_3d(
+    ds: "Dataset", region: Region, dtype: str, select_by: Optional[str] = None
+):
+    try:
+        allowed_coordinates = ALLOWED_COORDINATES_3D[dtype]
+    except KeyError:
+        allowed_coordinates = ALLOWED_COORDINATES_3D["default"]
     if select_by is None:
         column_name_base = next(iter(allowed_coordinates.values()))
     else:
@@ -37,3 +59,24 @@ def check_containment(
 
     data = np.vstack(tuple(col.data for col in ds.data.itercols()))
     return region.contains(data)
+
+
+def __check_containment_2d(
+    ds: "Dataset", region: Region, dtype: str, select_by: Optional[str] = None
+):
+    try:
+        allowed_coordinates = ALLOWED_COORDINATES_2D[dtype]
+    except KeyError:
+        allowed_coordinates = ALLOWED_COORDINATES_2D["default"]
+    cols = set(ds.columns)
+    if cols.intersection(allowed_coordinates) != allowed_coordinates:
+        raise ValueError(
+            "Unable to find the correct coordinate columns in this dataset!"
+        )
+
+    coord_values = ds.select(allowed_coordinates).data
+    ra = coord_values["phi"]
+    dec = np.pi / 2 - coord_values["theta"]
+
+    coords = SkyCoord(ra, dec, unit=u.rad)
+    return region.contains(coords)

@@ -10,7 +10,7 @@ def lightcone_path():
         p = os.environ["OPENCOSMO_DATA_PATH"]
     except KeyError:
         pytest.exit("OPENCOSMO_DATA_PATH environment variable not set")
-    return Path(p / "lightcone")
+    return Path(p) / "lightcone"
 
 
 @pytest.fixture(scope="session")

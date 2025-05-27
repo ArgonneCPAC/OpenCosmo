@@ -14,8 +14,9 @@ except ImportError:
 
 from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
+from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
-from opencosmo.spatial.region import BoxRegion
+from opencosmo.spatial.protocols import Region, SpatialIndex
 
 if TYPE_CHECKING:
     from mpi4py import MPI
@@ -39,7 +40,10 @@ def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = 
     except KeyError:
         raise ValueError("This file does not have a spatial index!")
 
-    spatial_index = OctTreeIndex.from_box_size(box_size)
+    if is_lightcone:
+        spatial_index = HealPixIndex()
+    else:
+        spatial_index = OctTreeIndex.from_box_size(box_size)
     return Tree(spatial_index, group)
 
 
@@ -121,7 +125,7 @@ class Tree:
     spatial queries
     """
 
-    def __init__(self, index: OctTreeIndex, data: h5py.File | h5py.Group):
+    def __init__(self, index: SpatialIndex, data: h5py.File | h5py.Group):
         self.__index = index
         self.__data = data
         for i in count():
@@ -155,7 +159,7 @@ class Tree:
             output_indices.append(ChunkedIndex.single_chunk(start_idx, size))
         return output_indices
 
-    def query(self, region: BoxRegion) -> tuple[ChunkedIndex, ChunkedIndex]:
+    def query(self, region: Region) -> tuple[ChunkedIndex, ChunkedIndex]:
         indices = self.__index.query(region, self.__max_level)
 
         contains = [ChunkedIndex.empty()]
@@ -200,9 +204,9 @@ class Tree:
             idx = it.index
             n_in_range[idx] = index.n_in_range(cast(int, start), cast(int, end))
 
-        return build_tree_from_level(
-            n_in_range, self.__max_level, self.__index, min_counts=100
-        )
+        target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
+        result = self.__index.combine_upwards(n_in_range, self.__max_level, target)
+        return Tree(self.__index, result)
 
     def make_schema(self):
         schema = SpatialIndexSchema()
@@ -210,6 +214,7 @@ class Tree:
             level_schema = SpatialIndexLevelSchema(self.__data[f"level_{level}"])
             schema.add_child(level_schema, level)
         return schema
+<<<<<<< HEAD
 
     def __apply_rank_mask(
         self, mask: np.ndarray, comm: "MPI.Comm", range_: tuple[int, int]
@@ -259,3 +264,5 @@ def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.F
         return combine_upwards(new_counts, level - 1, target)
 
     return target
+=======
+>>>>>>> 93a4c55 (Healpix Spatial Indexing Works)

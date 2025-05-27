@@ -14,7 +14,7 @@ from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
 from opencosmo.mpi import get_comm_world
-from opencosmo.spatial.region import BoxRegion
+from opencosmo.spatial.region import FullSkyRegion
 from opencosmo.spatial.tree import open_tree, read_tree
 from opencosmo.transformations import units as u
 
@@ -102,9 +102,12 @@ def open(
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
-    box_size = header.simulation.box_size
-    box_halfwidth = box_size / 2
-    sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_size)
+    if header.file.is_lightcone:
+        sim_region = FullSkyRegion()
+    else:
+        box_size = header.simulation.box_size
+        box_halfwidth = box_size / 2
+        sim_region = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_size)
 
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets, tree=tree)
@@ -118,7 +121,11 @@ def open(
         group, header
     )
     state = DatasetState(
-        base_unit_transformations, builders, index, u.UnitConvention.COMOVING, sim_box
+        base_unit_transformations,
+        builders,
+        index,
+        u.UnitConvention.COMOVING,
+        sim_region,
     )
 
     dataset = oc.Dataset(
