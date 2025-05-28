@@ -28,7 +28,7 @@ class HealPixIndex:
 
         return target
 
-    def partition(self, n: int):
+    def partition(self, n_partitions: int, max_level: int):
         raise NotImplementedError()
 
     def query(

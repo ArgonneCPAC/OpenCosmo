@@ -87,13 +87,13 @@ class OctTreeIndex:
         root = Octant((0, 0, 0), (halfwidth, halfwidth, halfwidth), halfwidth)
         return OctTreeIndex(root)
 
-    def partition(self, n: int):
+    def partition(self, n_partitions: int, max_level: int):
         level = 0
-        n_ = n
-        while n_ != 1:
+        n_ = n_partitions
+        while n_ != 1 and level != max_level:
             level += 1
             n_ = int(n_ / 8) if n_ > 8 else 1
-        partitions = self.root.partition(n)
+        partitions = self.root.partition(n_partitions, level=0, max_level=max_level)
         partition_indices = [
             SimpleIndex(np.array([get_octtree_index(r.idx, level) for r in p]))
             for p in partitions
@@ -185,21 +185,25 @@ class Octant:
         )
         return output
 
-    def partition(self, n: int) -> list[list[Octant]]:
+    def partition(
+        self, n_partitions: int, level: int, max_level: int
+    ) -> list[list[Octant]]:
         # Note, n is guaranteed to be a power of 2 at this point
         self.make_children()
-        if n == 1:
+        if n_partitions == 1:
             return [[self]]
-        elif n == 2 or n == 4:
-            n_per = 8 // n
-            return [self.children[n_per * i : n_per * (i + 1)] for i in range(n)]
-        elif n == 8:
+        elif n_partitions in [2, 3]:
+            n_per = 8 // n_partitions
+            return [
+                self.children[n_per * i : n_per * (i + 1)] for i in range(n_partitions)
+            ]
+        elif n_partitions == 8 or level == max_level:
             return [[child] for child in self.children]
 
-        subidivisons_per_octant = n // 8
+        subidivisons_per_octant = n_partitions // 8
         partitions = []
         for child in self.children:
-            partitions += child.partition(subidivisons_per_octant)
+            partitions += child.partition(subidivisons_per_octant, level + 1, max_level)
 
         return partitions
 

@@ -37,7 +37,9 @@ class Region3d(Region, Protocol):
 
 
 class SpatialIndex(Protocol):
-    def partition(self, level: int) -> tuple[list[DataIndex], int]: ...
+    def partition(
+        self, n_partitions: int, max_level: int
+    ) -> tuple[list[DataIndex], int]: ...
     @staticmethod
     def combine_upwards(
         counts: np.ndarray, level: int, target: h5py.File
