@@ -163,12 +163,14 @@ class Dataset:
             )
         except AttributeError:
             check_region = region
-        if not self.__state.region.intersects(region):
+        if not self.__state.region.intersects(check_region):
             raise ValueError(
                 "Tried to query with a region that is fully outside the region "
                 "that contains this dataset."
             )
-        if not self.__state.region.contains(region):
+        if not self.__state.region.contains(check_region):
+            print(check_region.bounds)
+            print(self.__state.region.bounds)
             warn(
                 "You're querying with a region that is not fully contained by the "
                 "region this dataset is in. This may result in unexpected behavior"
@@ -193,8 +195,7 @@ class Dataset:
 
         new_index = contained_index.concatenate(new_intersects_index)
 
-        new_state = self.__state.with_index(new_index)
-        new_state = new_state.with_region(region)
+        new_state = self.__state.with_index(new_index).with_region(check_region)
 
         new_header = copy(self.__header)
         region_model = check_region.into_model()
