@@ -229,7 +229,7 @@ class Octant:
         max_level: int,
         containment: dict[Octant, Intersection],
     ) -> Optional[Octant]:
-        if not isinstance(Region, BoxRegion):
+        if not isinstance(region, BoxRegion):
             raise ValueError("Did not recieve a 3d region!")
         if region.contains(self.bounding_box()):
             containment[self] = Intersection.CONTAINED

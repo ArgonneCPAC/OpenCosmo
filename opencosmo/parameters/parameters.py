@@ -25,15 +25,11 @@ def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseM
     group = file.require_group(f"header/{header_path}")
     pars = parameters.model_dump(by_alias=True)
     for key, value in pars.items():
-        if isinstance(value, dict):
-            write_header_attributes(
-                file, f"{header_path}/{key}", getattr(parameters, key)
-            )
-            continue
         if value is None:
             group.attrs[key] = ""
         else:
             group.attrs[key] = value
+
     return None
 
 

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 def check_containment(
     ds: "Dataset",
-    region: Region,
+    region: "Region",
     parameters: FileParameters,
     select_by: Optional[str] = None,
 ):
@@ -36,7 +36,7 @@ def check_containment(
 
 
 def __check_containment_3d(
-    ds: "Dataset", region: Region, dtype: str, select_by: Optional[str] = None
+    ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
 ):
     try:
         allowed_coordinates = ALLOWED_COORDINATES_3D[dtype]
@@ -62,7 +62,7 @@ def __check_containment_3d(
 
 
 def __check_containment_2d(
-    ds: "Dataset", region: Region, dtype: str, select_by: Optional[str] = None
+    ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
 ):
     try:
         allowed_coordinates = ALLOWED_COORDINATES_2D[dtype]
