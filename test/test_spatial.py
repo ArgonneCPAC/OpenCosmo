@@ -63,19 +63,28 @@ def test_box_query(halo_properties_path):
 
 def test_box_query_physical(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("physical")
+
     center = tuple(random.uniform(30, 60) for _ in range(3))
     width = tuple(random.uniform(10, 20) for _ in range(3))
     reg1 = oc.Box(center, width)
+
+    original_data = ds.data
     ds = ds.bound(reg1)
+
     data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
+        original_col = original_data[f"fof_halo_center_{dim}"]
         min = col.min()
         max = col.max()
         min_ = center[i] - width[i] / 2
         max_ = center[i] + width[i] / 2
-        assert min >= min_ and np.isclose(min, min_, 0.1)
-        assert max <= max_ and np.isclose(max, max_, 0.1)
+        original_data_mask = (original_col > min_) & (original_col < max_)
+        original_data = original_data[original_data_mask]
+        assert min >= min_
+        assert max <= max_
+
+    assert set(data["fof_halo_tag"]) == set(original_data["fof_halo_tag"])
 
 
 def test_box_query_chain(halo_properties_path):

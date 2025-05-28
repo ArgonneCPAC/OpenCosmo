@@ -105,7 +105,9 @@ class BoxRegion:
         )
 
     def into_model(self) -> BoxRegionModel:
-        return BoxRegionModel(center=self.center, halfwidth=self.halfwidths)
+        return BoxRegionModel(
+            center=self.center, halfwidth=tuple(hw * 2 for hw in self.halfwidths)
+        )
 
     def bounding_box(self) -> BoxRegion:
         return self
