@@ -1,8 +1,8 @@
-from typing import Protocol, Self, Union
+from typing import Protocol, Union
 
 import h5py
 import numpy as np
-from astropy.cosmology import FLRW
+from astropy.cosmology import FLRW  # type: ignore
 from numpy.typing import NDArray
 
 from opencosmo.dataset.index import DataIndex, SimpleIndex
@@ -23,6 +23,9 @@ class Region(Protocol):
 
     def intersects(self, other: "Region") -> bool: ...
     def contains(self, other: SpatialObject): ...
+    def into_scalefree(
+        self, from_: UnitConvention, cosmology: FLRW, redshift: float
+    ): ...
 
 
 class Region2d(Region):
@@ -31,9 +34,6 @@ class Region2d(Region):
 
 class Region3d(Region, Protocol):
     def bounding_box(self) -> BoxRegion: ...
-    def into_scalefree(
-        self, from_: UnitConvention, cosmology: FLRW, z: float
-    ) -> Self: ...
 
 
 class SpatialIndex(Protocol):

@@ -15,7 +15,7 @@ from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.parameters import SimulationParameters
 from opencosmo.spatial import check
-from opencosmo.spatial.region import BoxRegion
+from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import Tree
 
 if TYPE_CHECKING:
@@ -143,7 +143,7 @@ class Dataset:
     def index(self) -> DataIndex:
         return self.__state.index
 
-    def bound(self, region: BoxRegion, select_by: Optional[str] = None):
+    def bound(self, region: Region, select_by: Optional[str] = None):
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -157,20 +157,16 @@ class Dataset:
                 "so spatial querying is not available"
             )
 
-        try:
-            check_region = region.into_scalefree(
-                self.__state.convention, self.cosmology, self.redshift
-            )
-        except AttributeError:
-            check_region = region
+        check_region = region.into_scalefree(
+            self.__state.convention, self.cosmology, self.redshift
+        )
+
         if not self.__state.region.intersects(check_region):
             raise ValueError(
                 "Tried to query with a region that is fully outside the region "
                 "that contains this dataset."
             )
         if not self.__state.region.contains(check_region):
-            print(check_region.bounds)
-            print(self.__state.region.bounds)
             warn(
                 "You're querying with a region that is not fully contained by the "
                 "region this dataset is in. This may result in unexpected behavior"

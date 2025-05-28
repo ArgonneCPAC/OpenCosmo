@@ -1,8 +1,8 @@
-import astropy.units as u
+import astropy.units as u  # type: ignore
 import h5py
 import numpy as np
-from healpy import query_disc
-from healpy.pixelfunc import ang2vec
+from healpy import query_disc  # type: ignore
+from healpy.pixelfunc import ang2vec  # type: ignore
 
 from opencosmo.dataset.index import SimpleIndex
 from opencosmo.spatial.protocols import Region

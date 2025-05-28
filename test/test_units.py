@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from astropy.table import Column
 
-from opencosmo import read
+import opencosmo as oc
 
 
 def add_column(tmp_path: Path, original_file: Path, column: Column):
@@ -65,7 +65,7 @@ pytestmark = pytest.mark.parametrize(
 
 def test_physcal_units(haloproperties_step_path, input_path):
     # need a redshift != 0 test set
-    ds = read(haloproperties_step_path)
+    ds = oc.open(haloproperties_step_path)
 
     ds_physical = ds.with_units("physical")
 
@@ -86,7 +86,7 @@ def test_physcal_units(haloproperties_step_path, input_path):
 
 
 def test_logarithmic_units(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = data.columns
     for col in cols:
@@ -95,7 +95,7 @@ def test_logarithmic_units(input_path):
 
 
 def test_parse_velocities(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = data.columns
     velocity_cols = list(
@@ -106,8 +106,8 @@ def test_parse_velocities(input_path):
 
 
 def test_comoving_vs_scalefree(input_path):
-    comoving = read(input_path).with_units("comoving")
-    scalefree = read(input_path).with_units("scalefree")
+    comoving = oc.open(input_path).with_units("comoving")
+    scalefree = oc.open(input_path).with_units("scalefree")
     cols = comoving.data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     position_cols = filter(lambda col: "angmom" not in col, position_cols)
@@ -121,7 +121,7 @@ def test_comoving_vs_scalefree(input_path):
 
 
 def test_angular_momentum(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     dataset = dataset.with_units("scalefree")
     data = dataset.data
     cols = data.columns
@@ -132,7 +132,7 @@ def test_angular_momentum(input_path):
 
 
 def test_parse_positions(input_path):
-    dataset = read(input_path).with_units("scalefree")
+    dataset = oc.open(input_path).with_units("scalefree")
     data = dataset.data
     cols = data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
@@ -142,7 +142,7 @@ def test_parse_positions(input_path):
 
 
 def test_parse_mass(input_path):
-    dataset = read(input_path).with_units("scalefree")
+    dataset = oc.open(input_path).with_units("scalefree")
     data = dataset.data
     cols = data.columns
     mass_cols = filter(
@@ -155,7 +155,7 @@ def test_parse_mass(input_path):
 
 
 def test_data_update_doesnt_propogate(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     new_column = np.random.rand(len(data))
     data["new_column"] = new_column
@@ -164,14 +164,14 @@ def test_data_update_doesnt_propogate(input_path):
 
 
 def test_unitless_convention(input_path):
-    dataset = read(input_path).with_units("unitless")
+    dataset = oc.open(input_path).with_units("unitless")
     data = dataset.data
     cols = data.columns
     assert all(data[col].unit is None for col in cols)
 
 
 def test_unit_conversion(input_path):
-    dataset = read(input_path).with_units("unitless")
+    dataset = oc.open(input_path).with_units("unitless")
     data = dataset.data
     cols = data.columns
 
@@ -194,4 +194,4 @@ def test_unit_conversion(input_path):
 
 def test_invalid_unit_convention(input_path):
     with pytest.raises(ValueError):
-        read(input_path).with_units("invalid_unit")
+        oc.open(input_path).with_units("invalid_unit")

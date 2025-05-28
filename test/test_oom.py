@@ -16,14 +16,14 @@ def particle_path(snapshot_path):
 
 @pytest.fixture
 def max_mass(input_path):
-    ds = oc.read(input_path)
+    ds = oc.open(input_path)
     sod_mass = ds.data["sod_halo_mass"]
     sod_mass_unit = sod_mass.unit
     return 0.95 * sod_mass.max() * sod_mass_unit
 
 
 def test_open(input_path):
-    read_data = oc.read(input_path).data
+    read_data = oc.open(input_path).data
     with oc.open(input_path) as f:
         open_data = f.data
 

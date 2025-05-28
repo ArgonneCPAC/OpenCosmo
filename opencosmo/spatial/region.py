@@ -3,9 +3,9 @@ from __future__ import annotations
 from functools import partial, singledispatchmethod
 from typing import Any, TypeVar
 
-import astropy.units as u
+import astropy.units as u  # type: ignore
 import numpy as np
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import FLRW  # type: ignore
 
 from opencosmo.parameters.file import BoxRegionModel, ConeRegionModel
@@ -54,6 +54,9 @@ class ConeRegion:
     def __init__(self, center: SkyCoord, radius: u.Quantity):
         self.__center = center
         self.__radius = radius
+
+    def into_scalefree(self, *args, **kwargs):
+        return self
 
     def into_model(self) -> ConeRegionModel:
         return ConeRegionModel(
@@ -105,9 +108,7 @@ class BoxRegion:
         )
 
     def into_model(self) -> BoxRegionModel:
-        return BoxRegionModel(
-            center=self.center, halfwidth=tuple(hw * 2 for hw in self.halfwidths)
-        )
+        return BoxRegionModel(center=self.center, halfwidth=self.halfwidths)
 
     def bounding_box(self) -> BoxRegion:
         return self

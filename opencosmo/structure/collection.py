@@ -9,6 +9,7 @@ import opencosmo as oc
 from opencosmo import structure as s
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import SimulationParameters
+from opencosmo.spatial.protocols import Region
 
 
 def filter_properties_by_dataset(
@@ -158,6 +159,12 @@ class StructureCollection:
                 dataset.__exit__(*args)
             except AttributeError:
                 continue
+
+    def bound(
+        self, region: Region, select_by: Optional[str] = None
+    ) -> StructureCollection:
+        bounded = self.__properties.bound(region, select_by)
+        return StructureCollection(bounded, self.__header, self.__handlers)
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
         """

@@ -1,7 +1,7 @@
 from typing import cast
 
-import astropy.units as u
-from astropy.coordinates import SkyCoord
+import astropy.units as u  # type: ignore
+from astropy.coordinates import SkyCoord  # type: ignore
 from pydantic import BaseModel
 
 from opencosmo.parameters.file import BoxRegionModel, ConeRegionModel
@@ -13,7 +13,8 @@ def from_model(model: BaseModel):
         case ConeRegionModel():
             return Cone(model.center, model.radius)
         case BoxRegionModel():
-            return Box(model.center, model.halfwidth)
+            hw1, hw2, hw3 = model.halfwidth
+            return Box(model.center, (2 * hw1, 2 * hw2, 2 * hw3))
         case _:
             raise ValueError(f"Invalid region model type {type(model)}")
 

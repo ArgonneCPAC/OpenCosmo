@@ -19,23 +19,23 @@ def particle_path(snapshot_path):
     return snapshot_path / "haloparticles.hdf5"
 
 
-def test_read(input_path):
-    dataset = oc.read(input_path)
+def test_oc_open(input_path):
+    dataset = oc.open(input_path)
     assert isinstance(dataset.data, Table)
 
 
 def test_all_columns_included(input_path):
-    dataset = oc.read(input_path)
+    dataset = oc.open(input_path)
     cols = set(dataset._Dataset__handler._DatasetHandler__group.keys())
     cols_read = set(dataset.columns)
     assert cols == cols_read
 
 
 def test_read_multi(multi_path):
-    dataset = oc.read(multi_path)
+    dataset = oc.open(multi_path)
     assert isinstance(dataset, oc.collection.collection.SimulationCollection)
 
 
 def test_dataset_repr(input_path):
-    dataset = oc.read(input_path)
+    dataset = oc.open(input_path)
     assert isinstance(dataset.__repr__(), str)

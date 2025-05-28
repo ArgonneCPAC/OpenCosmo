@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from astropy.cosmology import units as cu
 
-from opencosmo import read
+import opencosmo as oc
 
 
 @pytest.fixture
@@ -12,7 +12,7 @@ def input_path(snapshot_path):
 
 
 def test_select(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -26,7 +26,7 @@ def test_select(input_path):
 
 
 def test_chained_select(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -42,7 +42,7 @@ def test_chained_select(input_path):
 
 
 def test_select_unit_transformation(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -64,7 +64,7 @@ def test_select_derived_column():
 
 
 def test_select_doesnt_alter_raw(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
@@ -79,7 +79,7 @@ def test_select_doesnt_alter_raw(input_path):
 
 
 def test_single_column_select(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 1 column at random
@@ -91,7 +91,7 @@ def test_single_column_select(input_path):
 
 
 def test_select_invalid_column(input_path):
-    dataset = read(input_path)
+    dataset = oc.open(input_path)
     data = dataset.data
     cols = list(data.columns)
     # select 10 columns at random
