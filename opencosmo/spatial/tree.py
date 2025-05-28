@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, cast
 from itertools import count
+from typing import Sequence, cast
 from uuid import uuid1
 
 import h5py
@@ -139,16 +140,16 @@ class Tree:
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
 
-    def partition(self, n: int):
+    def partition(self, n: int) -> Sequence[DataIndex]:
         """
         Partition into n trees, where each tree contains an equally sized
-        region of space. The number of partitions must be a power of 2.
+        region of space.
 
         This function is used primarily in an MPI context.
         """
         if (n & (n - 1)) != 0 or n < 0:
             raise ValueError("Trees can only be partitioned with powers of 2")
-        partitions, level = self.__index.partition(n)
+        partitions, level = self.__index.partition(n, self.__max_level)
         output_indices = []
         for p in partitions:
             level_key = f"level_{level}"
@@ -164,7 +165,6 @@ class Tree:
 
         contains = [ChunkedIndex.empty()]
         intersects = [ChunkedIndex.empty()]
-        print(self.__data)
         for level, (cidx, iidx) in indices.items():
             level_key = f"level_{level}"
             level_starts = self.__data[level_key]["start"]
@@ -265,5 +265,3 @@ def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.F
         return combine_upwards(new_counts, level - 1, target)
 
     return target
-=======
->>>>>>> 93a4c55 (Healpix Spatial Indexing Works)

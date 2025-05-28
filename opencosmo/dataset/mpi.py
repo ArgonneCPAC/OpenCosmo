@@ -1,4 +1,5 @@
 from typing import Optional
+from warnings import warn
 
 from mpi4py import MPI
 
@@ -9,7 +10,15 @@ from opencosmo.spatial.tree import Tree
 def partition(comm: MPI.Comm, length: int, tree: Optional[Tree]) -> ChunkedIndex:
     if tree is not None:
         partitions = tree.partition(comm.Get_size())
-        return partitions[comm.Get_rank()]
+        try:
+            part = partitions[comm.Get_rank()]
+        except IndexError:
+            warn(
+                "This MPI Rank recieved no data. "
+                "The tree doesn't have enough subdivisions to serve every rank!"
+            )
+            part = ChunkedIndex.empty()
+        return part
 
     nranks = comm.Get_size()
     rank = comm.Get_rank()
