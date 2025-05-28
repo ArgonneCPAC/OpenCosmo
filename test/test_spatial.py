@@ -162,3 +162,22 @@ def test_box_query_chain_failure(halo_properties_path):
     ds = ds.bound(reg1)
     with pytest.raises(ValueError):
         ds = ds.bound(reg2)
+
+
+def test_box_query_chain_write_failure(halo_properties_path, tmp_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    center1 = (30, 30, 30)
+    width1 = (10, 10, 10)
+    reg1 = oc.Box(center1, width1)
+
+    center2 = (70, 70, 70)
+    width2 = (10, 10, 10)
+    reg2 = oc.Box(center2, width2)
+
+    ds = ds.bound(reg1)
+    output_path = tmp_path / "bound_dataset.hdf5"
+    oc.write(output_path, ds)
+
+    new_ds = oc.open(output_path)
+    with pytest.raises(ValueError):
+        new_ds.bound(reg2)

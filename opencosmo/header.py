@@ -66,6 +66,10 @@ class OpenCosmoHeader:
     def file(self):
         return self.__file_pars
 
+    @property
+    def cosmotools(self):
+        return self.__cosmotools_pars
+
 
 @file_writer
 def write_header(

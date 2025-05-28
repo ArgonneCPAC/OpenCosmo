@@ -1,3 +1,3 @@
-from .builders import Box
+from .builders import Box, Cone
 
-__all__ = ["Box"]
+__all__ = ["Box", "Cone"]

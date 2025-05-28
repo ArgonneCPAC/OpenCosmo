@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy
 from typing import TYPE_CHECKING, Generator, Iterable, Optional
 from warnings import warn
 
@@ -195,7 +196,17 @@ class Dataset:
         new_state = self.__state.with_index(new_index)
         new_state = new_state.with_region(region)
 
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        new_header = copy(self.__header)
+        region_model = check_region.into_model()
+        new_file_pars = new_header.file.model_copy(update={"region": region_model})
+        new_header = OpenCosmoHeader(
+            new_file_pars,
+            self.__header.simulation,
+            self.__header.reformat,
+            self.__header.cosmotools,
+        )
+
+        return Dataset(self.__handler, new_header, new_state, self.__tree)
 
     def filter(self, *masks: Mask) -> Dataset:
         """

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from functools import partial, singledispatchmethod
-from typing import Any
+from typing import Any, TypeVar
 
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import FLRW  # type: ignore
 
+from opencosmo.parameters.file import BoxRegionModel, ConeRegionModel
 from opencosmo.transformations.units import UnitConvention
 
+T = TypeVar("T", float, u.Quantity)
+
 Point3d = tuple[float, float, float]
-Point2d = tuple[u.Quantity, u.Quantity]
+Point2d = tuple[T, T]
 BoxSize = tuple[float, float, float]
 
 
@@ -48,9 +51,15 @@ class ConeRegion:
 
     """
 
-    def __init__(self, center: Point2d, radius: u.Quantity):
-        self.__center = SkyCoord(*(c.to(u.deg) for c in center))
-        self.__radius = radius.to(u.deg)
+    def __init__(self, center: SkyCoord, radius: u.Quantity):
+        self.__center = center
+        self.__radius = radius
+
+    def into_model(self) -> ConeRegionModel:
+        return ConeRegionModel(
+            center=(self.center.ra.value, self.center.dec.value),
+            radius=self.__radius.value,
+        )
 
     @property
     def center(self):
@@ -94,6 +103,9 @@ class BoxRegion:
             f"Box centered at {self.center} with widths "
             f"{tuple(2 * hw for hw in self.halfwidths)}"
         )
+
+    def into_model(self) -> BoxRegionModel:
+        return BoxRegionModel(center=self.center, halfwidth=self.halfwidths)
 
     def bounding_box(self) -> BoxRegion:
         return self

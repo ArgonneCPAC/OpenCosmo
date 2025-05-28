@@ -14,6 +14,7 @@ from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
 from opencosmo.mpi import get_comm_world
+from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
 from opencosmo.spatial.tree import open_tree, read_tree
 from opencosmo.transformations import units as u
@@ -102,8 +103,12 @@ def open(
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
 
-    if header.file.is_lightcone:
+    if header.file.region is not None:
+        sim_region = from_model(header.file.region)
+
+    elif header.file.is_lightcone:
         sim_region = FullSkyRegion()
+
     else:
         box_size = header.simulation.box_size
         box_halfwidth = box_size / 2
