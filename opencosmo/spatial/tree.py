@@ -140,7 +140,7 @@ class Tree:
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
 
-    def partition(self, n: int) -> Sequence[DataIndex]:
+    def partition(self, n: int) -> Sequence[ChunkedIndex]:
         """
         Partition into n trees, where each tree contains an equally sized
         region of space.
