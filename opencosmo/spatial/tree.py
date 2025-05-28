@@ -164,6 +164,7 @@ class Tree:
 
         contains = [ChunkedIndex.empty()]
         intersects = [ChunkedIndex.empty()]
+        print(self.__data)
         for level, (cidx, iidx) in indices.items():
             level_key = f"level_{level}"
             level_starts = self.__data[level_key]["start"]

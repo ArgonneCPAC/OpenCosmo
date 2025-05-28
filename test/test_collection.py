@@ -1,6 +1,8 @@
+import random
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import opencosmo as oc
@@ -54,7 +56,7 @@ def test_multi_filter_write(multi_path, tmp_path):
         assert all(ds.data["sod_halo_mass"] > 0)
     oc.write(tmp_path / "filtered.hdf5", collection)
 
-    collection = oc.read(tmp_path / "filtered.hdf5")
+    collection = oc.open(tmp_path / "filtered.hdf5")
     for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
 
@@ -88,6 +90,20 @@ def test_data_linking(halo_paths):
         assert halo_tags.pop() == properties["fof_halo_tag"]
     assert n_particles > 0
     assert n_profiles > 0
+
+
+def test_data_linking_bound(halo_paths):
+    collection = open_linked_files(*halo_paths)
+    center = tuple(random.uniform(30, 60) for _ in range(3))
+    width = tuple(random.uniform(10, 20) for _ in range(3))
+    region = oc.Box(center, width)
+    collection = collection.bound(region)
+
+    for properties, particles in collection.objects():
+        for i, dim in enumerate(["x", "y", "z"]):
+            val = properties[f"fof_halo_center_{dim}"].value
+            assert val <= center[i] + (width[i] / 2)
+            assert val >= center[i] - (width[i] / 2)
 
 
 def test_data_link_repr(halo_paths):
@@ -176,17 +192,27 @@ def test_link_write(halo_paths, tmp_path):
     for key in original_output.keys():
         assert set(original_output[key]) == set(read_output[key])
 
-    with pytest.raises(NotImplementedError):
-        oc.read(tmp_path / "linked.hdf5")
-
-    assert n == 10
-
 
 def test_simulation_collection_broadcast_attribute(multi_path):
-    collection = oc.read(multi_path)
+    collection = oc.open(multi_path)
     for key, value in collection.redshift.items():
         assert isinstance(key, str)
         assert isinstance(value, float)
+
+
+def test_simulation_collection_bound(multi_path):
+    collection = oc.open(multi_path)
+    center = tuple(random.uniform(30, 60) for _ in range(3))
+    width = tuple(random.uniform(10, 20) for _ in range(3))
+    region = oc.Box(center, width)
+    collection = collection.bound(region)
+
+    for name, properties in collection.items():
+        data = properties.data
+        for i, dim in enumerate(["x", "y", "z"]):
+            val = data[f"fof_halo_center_{dim}"].value
+            assert np.all(val <= center[i] + (width[i] / 2))
+            assert np.all(val >= center[i] - (width[i] / 2))
 
 
 def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):

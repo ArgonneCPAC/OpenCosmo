@@ -14,6 +14,7 @@ from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import SimulationParameters
+from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import open_tree
 from opencosmo.structure import StructureCollection
 from opencosmo.transformations import units as u
@@ -181,6 +182,11 @@ class SimulationCollection(dict):
 
         return self.__map_attribute("simulation")
 
+    def bound(
+        self, region: Region, select_by: Optional[str] = None
+    ) -> SimulationCollection:
+        return self.__map("bound", region, select_by)
+
     def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:
         """
         Filter the datasets in the collection. This method behaves
@@ -276,7 +282,9 @@ def read_single_dataset(
     except ValueError:
         tree = None
     box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+    sim_box = oc.Box(
+        (box_halfwidth, box_halfwidth, box_halfwidth), header.simulation.box_size
+    )
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
     handler = DatasetHandler(im_file, dataset_key)

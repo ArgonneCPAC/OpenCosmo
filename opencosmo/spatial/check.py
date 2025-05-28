@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING, Optional
 
-import astropy.units as u
+import astropy.units as u  # type: ignore
 import numpy as np
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord  # type: ignore
 
 from opencosmo.parameters import FileParameters
 

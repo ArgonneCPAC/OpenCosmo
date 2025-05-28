@@ -124,7 +124,7 @@ def test_filter_write(input_path, tmp_path):
     data = ds.collect().data
     ds.close()
 
-    ds = oc.read(temporary_path)
+    ds = oc.open(temporary_path)
     written_data = ds.data
 
     assert all(data == written_data)
@@ -204,7 +204,7 @@ def test_link_write(all_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
     with pytest.raises(NotImplementedError):
-        oc.read(output_path)
+        oc.open(output_path)
 
 
 @pytest.mark.parallel(nprocs=4)

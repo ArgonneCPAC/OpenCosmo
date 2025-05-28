@@ -1,6 +1,7 @@
 import pytest
 
-from opencosmo import col, read, write
+import opencosmo as oc
+from opencosmo import col, write
 from opencosmo.header import read_header, write_header
 
 
@@ -38,35 +39,35 @@ def test_write_header(snapshot_path, tmp_path):
 
 
 def test_write_dataset(halo_properties_path, tmp_path):
-    ds = read(halo_properties_path)
+    ds = oc.open(halo_properties_path)
     new_path = tmp_path / "haloproperties.hdf5"
     write(new_path, ds)
 
-    new_ds = read(new_path)
+    new_ds = oc.open(new_path)
     assert all(ds.data == new_ds.data)
 
 
 def test_after_take_filter(halo_properties_path, tmp_path):
-    ds = read(halo_properties_path).take(10000)
+    ds = oc.open(halo_properties_path).take(10000)
     ds = ds.filter(col("sod_halo_mass") > 0)
     filtered_data = ds.data
 
     write(tmp_path / "haloproperties.hdf5", ds)
-    new_ds = read(tmp_path / "haloproperties.hdf5")
+    new_ds = oc.open(tmp_path / "haloproperties.hdf5")
     assert all(filtered_data == new_ds.data)
 
 
 def test_after_take(halo_properties_path, tmp_path):
-    ds = read(halo_properties_path).take(10000)
+    ds = oc.open(halo_properties_path).take(10000)
     data = ds.data
     write(tmp_path / "haloproperties.hdf5", ds)
 
-    new_ds = read(tmp_path / "haloproperties.hdf5")
+    new_ds = oc.open(tmp_path / "haloproperties.hdf5")
     assert all(data == new_ds.data)
 
 
 def test_after_filter(halo_properties_path, tmp_path):
-    ds = read(halo_properties_path)
+    ds = oc.open(halo_properties_path)
     data = ds.data
     ds = ds.filter(col("sod_halo_mass") > 0)
     filtered_data = ds.data
@@ -74,17 +75,17 @@ def test_after_filter(halo_properties_path, tmp_path):
 
     write(tmp_path / "haloproperties.hdf5", ds)
 
-    new_ds = read(tmp_path / "haloproperties.hdf5")
+    new_ds = oc.open(tmp_path / "haloproperties.hdf5")
     assert all(filtered_data == new_ds.data)
 
 
 def test_after_unit_transform(halo_properties_path, tmp_path):
-    ds = read(halo_properties_path)
+    ds = oc.open(halo_properties_path)
     ds = ds.with_units("scalefree")
 
     # write should not change the data
     write(tmp_path / "haloproperties.hdf5", ds)
 
-    ds = read(halo_properties_path)
-    new_ds = read(tmp_path / "haloproperties.hdf5")
+    ds = oc.open(halo_properties_path)
+    new_ds = oc.open(tmp_path / "haloproperties.hdf5")
     assert all(ds.data == new_ds.data)

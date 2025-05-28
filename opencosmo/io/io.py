@@ -6,6 +6,19 @@ from typing import Callable, Iterable, Optional
 
 import h5py
 
+try:
+    from mpi4py import MPI
+
+    if MPI.COMM_WORLD.Get_size() == 1:
+        raise ImportError
+    from opencosmo.dataset.mpi import partition
+    from opencosmo.io import mpi as mpiio
+except ImportError:
+    MPI = None  # type: ignore
+    mpiio = None  # type: ignore
+
+from deprecated import deprecated  # type: ignore
+
 import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset.handler import DatasetHandler
@@ -142,6 +155,11 @@ def open(
     return dataset
 
 
+@deprecated(
+    version="0.7",
+    reason="oc.read is deprecated and will be removed in version 1.0. "
+    "Please use oc.open instead",
+)
 @file_reader
 def read(
     file: h5py.File, datasets: Optional[str | Iterable[str]] = None

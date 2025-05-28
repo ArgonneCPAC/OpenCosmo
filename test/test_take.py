@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from opencosmo import read
+import opencosmo as oc
 
 
 @pytest.fixture
@@ -10,7 +10,7 @@ def input_path(snapshot_path):
 
 
 def test_take_front(input_path):
-    ds = read(input_path)
+    ds = oc.open(input_path)
     data = ds.data
     ds = ds.take(10, at="start")
     short_data = ds.data
@@ -22,7 +22,7 @@ def test_take_front(input_path):
 
 
 def test_take_back(input_path):
-    ds = read(input_path)
+    ds = oc.open(input_path)
     data = ds.data
     ds = ds.take(10, at="end")
     short_data = ds.data
@@ -34,7 +34,7 @@ def test_take_back(input_path):
 
 
 def test_take_random(input_path):
-    ds = read(input_path)
+    ds = oc.open(input_path)
     front = ds.take(10).data
     end = ds.take(10, at="end").data
     short_data = ds.take(10, at="random").data
@@ -44,7 +44,7 @@ def test_take_random(input_path):
 
 
 def test_take_chain(input_path):
-    ds = read(input_path)
+    ds = oc.open(input_path)
     long_data = ds.data
     ds = ds.take(50, at="start")
     ds = ds.take(10, at="end")
@@ -54,7 +54,7 @@ def test_take_chain(input_path):
 
 
 def test_take_too_many(input_path):
-    ds = read(input_path)
+    ds = oc.open(input_path)
     length = len(ds.data)
     with pytest.raises(ValueError):
         ds.take(length + 1)
