@@ -30,4 +30,5 @@ def partition(comm: MPI.Comm, length: int, tree: Optional[Tree]) -> ChunkedIndex
     start = rank * (length // nranks)
     end = (rank + 1) * (length // nranks)
     size = end - start
+
     return ChunkedIndex.single_chunk(start, size)
