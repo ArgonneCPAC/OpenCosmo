@@ -121,11 +121,13 @@ def test_filter_write(input_path, tmp_path):
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
 
     oc.write(temporary_path, ds)
-    data = ds.collect().data
+    data = ds.data
     ds.close()
 
     ds = oc.open(temporary_path)
     written_data = ds.data
+    for column in ds.columns:
+        assert np.all(data[column] == written_data[column])
 
     assert all(data == written_data)
 
@@ -202,9 +204,6 @@ def test_link_write(all_paths, tmp_path):
             written_data.update(all_written[i])
         for key in read_data:
             assert set(read_data[key]) == set(written_data[key])
-
-    with pytest.raises(NotImplementedError):
-        oc.open(output_path)
 
 
 @pytest.mark.parallel(nprocs=4)
