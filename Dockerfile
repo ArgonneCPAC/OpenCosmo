@@ -1,6 +1,8 @@
 ARG MPI_IMPL="mpich"
 
-FROM astropatty/parallel-h5py:3.13.0-${MPI_IMPL}
+FROM astropatty/mpipy:mpich
+COPY . /app/deps/opencosmo
 
-RUN python -m pip install opencosmo
+RUN pip install -e /app/deps/opencosmo
+RUN pip install mpi4py
 

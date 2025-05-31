@@ -269,9 +269,16 @@ def write_parallel(file: Path, file_schema: FileSchema):
     rank = comm.Get_rank()
     try:
         file_schema.verify()
+<<<<<<< HEAD
         results = comm.allgather(True)
     except ValueError:
         results = comm.allgather(False)
+=======
+        results = MPI.COMM_WORLD.allgather(True)
+    except ValueError as e:
+        results = MPI.COMM_WORLD.allgather(False)
+        raise e
+>>>>>>> 66bd0c8 (incremental commit)
     if not all(results):
         raise ValueError("One or more ranks recieved invalid schemas!")
 
@@ -287,8 +294,13 @@ def write_parallel(file: Path, file_schema: FileSchema):
     writer = file_schema.into_writer(comm)
 
     try:
+<<<<<<< HEAD
         with h5py.File(file, "a", driver="mpio", comm=comm) as f:
             return writer.write(f)
+=======
+        with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
+            writer.write(f)
+>>>>>>> 66bd0c8 (incremental commit)
     except ValueError:  # parallell hdf5 not available
         nranks = comm.Get_size()
         rank = comm.Get_rank()

@@ -331,8 +331,6 @@ class ColumnSchema:
         self.offset = offset
 
     def verify(self):
-        if len(self.index) == 0:
-            raise ValueError("Columns cannot have zero length!")
         if len(self.index) > len(self.source):
             raise ValueError("The index is longer than its source!")
 
