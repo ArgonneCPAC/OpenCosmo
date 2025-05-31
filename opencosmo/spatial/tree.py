@@ -215,7 +215,6 @@ class Tree:
             level_schema = SpatialIndexLevelSchema(self.__data[f"level_{level}"])
             schema.add_child(level_schema, level)
         return schema
-<<<<<<< HEAD
 
     def __apply_rank_mask(
         self, mask: np.ndarray, comm: "MPI.Comm", range_: tuple[int, int]
@@ -242,26 +241,4 @@ class Tree:
             level_group.create_dataset("start", data=self.__starts[level])
             level_group.create_dataset("size", data=self.__sizes[level])
 
-def build_tree_from_level(
-    counts: np.ndarray, level: int, index: OctTreeIndex, min_counts: int = 100
-) -> Tree:
-    if len(counts) != 8**level:
-        raise ValueError("Recieved invalid count array for this level!")
-    target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
-    if level < 1:
-        raise ValueError(f"Recieved invalid level {level}")
-    result = combine_upwards(counts, level, target)
-    return Tree(index, result)
 
-
-def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:
-    group = target.require_group(f"level_{level}")
-    new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
-    group.create_dataset("start", data=new_starts)
-    group.create_dataset("size", data=counts)
-
-    if level > 0:
-        new_counts = counts.reshape(-1, 8).sum(axis=1)
-        return combine_upwards(new_counts, level - 1, target)
-
-    return target

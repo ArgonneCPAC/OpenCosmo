@@ -29,7 +29,26 @@ class HealPixIndex:
         return target
 
     def partition(self, n_partitions: int, max_level: int):
-        raise NotImplementedError()
+        level = 0
+        n_per = 0.0
+        for i in range(max_level + 1):
+            n_cells = 12 * (4**i)
+            if n_cells < n_partitions:
+                continue
+            n_per = n_cells / n_partitions
+            level = i
+            break
+        if n_per == 0.0:
+            raise NotImplementedError()
+        if n_per.is_integer():
+            n_per = int(n_per)
+            partition_indices = [
+                SimpleIndex(np.arange(i * n_per, (i + 1) * n_per))
+                for i in range(n_partitions)
+            ]
+        else:
+            raise NotImplementedError()
+        return partition_indices, level
 
     def query(
         self, region: Region, level: int = 1

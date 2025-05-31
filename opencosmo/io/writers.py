@@ -32,13 +32,13 @@ def write_index(
     Helper function to take elements from one h5py.Dataset using an index
     and put it in a different one.
     """
-    if len(index) == 0:
-        raise ValueError("No indices provided to write")
-    data = index.get_data(input_ds)
-    if updater is not None:
-        data = updater(data)
+    data = np.array([])
+    if len(index) > 0:
+        data = index.get_data(input_ds)
+        if updater is not None:
+            data = updater(data)
 
-    data = data.astype(input_ds.dtype)
+        data = data.astype(input_ds.dtype)
 
     if output_ds.file.driver == "mpio":
         with output_ds.collective:
@@ -146,6 +146,7 @@ class ColumnWriter:
         updater: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     ):
         ds = group[self.name]
+
         write_index(self.source, ds, self.index, self.offset, updater)
         for name, val in self.source.attrs.items():
             ds.attrs[name] = val
