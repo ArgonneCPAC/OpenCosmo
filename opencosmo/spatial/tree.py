@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import h5py
 import numpy as np
@@ -9,10 +9,8 @@ from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial.index import SpatialIndex
 from opencosmo.spatial.octree import OctTreeIndex
 
-try:
+if TYPE_CHECKING:
     from mpi4py import MPI
-except ImportError:
-    MPI = None
 
 
 def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):

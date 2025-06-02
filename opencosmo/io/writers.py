@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import h5py
 import numpy as np
@@ -7,10 +7,8 @@ from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import protocols as iop
 
-try:
+if TYPE_CHECKING:
     from mpi4py import MPI
-except ImportError:
-    MPI = None
 
 """
 Writers work in tandem with schemas to create new files. All schemas must have

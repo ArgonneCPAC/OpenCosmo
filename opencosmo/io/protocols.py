@@ -5,7 +5,7 @@ import h5py
 try:
     from mpi4py import MPI
 except ImportError:
-    MPI = None
+    MPI = None  # type: ignore
 
 
 class DataSchema(Protocol):
