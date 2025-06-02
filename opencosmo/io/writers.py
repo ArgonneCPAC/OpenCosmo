@@ -6,15 +6,7 @@ import numpy as np
 from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import protocols as iop
-
-try:
-    from mpi4py import MPI
-
-    if MPI.COMM_WORLD.Get_size() == 1:
-        MPI = None  # type: ignore
-except ImportError:
-    MPI = None  # type: ignore
-
+from opencosmo.mpi import get_comm_world
 
 """
 Writers work in tandem with schemas to create new files. All schemas must have
@@ -168,10 +160,10 @@ def make_idx_link_updater(input: ColumnWriter) -> Callable[[np.ndarray], np.ndar
     has_data = arr > 0
     offset = 0
     n_good = sum(has_data)
-    if MPI is not None:
-        all_sizes = MPI.COMM_WORLD.allgather(n_good)
+    if (comm := get_comm_world()) is not None:
+        all_sizes = comm.allgather(n_good)
         offsets = np.insert(np.cumsum(all_sizes), 0, 0)
-        offset = offsets[MPI.COMM_WORLD.Get_rank()]
+        offset = offsets[comm.Get_rank()]
     return lambda arr_: idx_link_updater(arr_, offset)
 
 
@@ -207,10 +199,10 @@ def make_start_link_updater(
     """
     sizes = size_writer.index.get_data(size_writer.source)
     cumulative_sizes = np.cumsum(sizes)
-    if MPI is not None:
-        offsets = np.cumsum(MPI.COMM_WORLD.allgather(cumulative_sizes[-1]))
+    if (comm := get_comm_world()) is not None:
+        offsets = np.cumsum(comm.allgather(cumulative_sizes[-1]))
         offsets = np.insert(offsets, 0, 0)
-        offset = offsets[MPI.COMM_WORLD.Get_rank()]
+        offset = offsets[comm.Get_rank()]
     else:
         offset = 0
 

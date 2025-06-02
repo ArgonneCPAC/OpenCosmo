@@ -9,15 +9,8 @@ from astropy.table import Column, Table  # type: ignore
 from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.schemas import DatasetSchema
+from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.tree import Tree
-
-try:
-    from mpi4py import MPI
-
-    if MPI.COMM_WORLD.Get_size() == 1:
-        MPI = None  # type: ignore
-except ImportError:
-    MPI = None  # type: ignore
 
 
 class DatasetHandler:
@@ -51,8 +44,8 @@ class DatasetHandler:
         return self.__file.close()
 
     def collect(self, columns: Iterable[str], index: DataIndex) -> DatasetHandler:
-        if MPI is not None:
-            indices = MPI.COMM_WORLD.allgather(index)
+        if (comm := get_comm_world()) is not None:
+            indices = comm.allgather(index)
             new_index = indices[0].concatenate(*indices[1:])
         else:
             new_index = index
