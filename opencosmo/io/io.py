@@ -1,20 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import ModuleType
+from typing import Callable, Iterable, Optional
 
 import h5py
-
-try:
-    from mpi4py import MPI
-
-    if MPI.COMM_WORLD.Get_size() == 1:
-        raise ImportError
-    from opencosmo.dataset.mpi import partition
-    from opencosmo.io import mpi as mpiio
-except ImportError:
-    MPI = None  # type: ignore
-    mpiio = None  # type: ignore
-from typing import Iterable, Optional
 
 import opencosmo as oc
 from opencosmo import collection
@@ -22,10 +12,21 @@ from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
+from opencosmo.mpi import get_comm_world
 from opencosmo.transformations import units as u
 
 from .protocols import Writeable
 from .schemas import FileSchema
+
+mpiio: Optional[ModuleType]
+partition: Optional[Callable]
+
+if get_comm_world() is not None:
+    from opencosmo.dataset.mpi import partition
+    from opencosmo.io import mpi as mpiio
+else:
+    mpiio = None
+    partition = None
 
 
 def open(
@@ -96,8 +97,9 @@ def open(
 
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets, tree=tree)
-    if MPI is not None and MPI.COMM_WORLD.Get_size() > 1:
-        start, size = partition(MPI.COMM_WORLD, len(handler))
+    if (comm := get_comm_world()) is not None:
+        assert partition is not None
+        start, size = partition(comm, len(handler))
         index = ChunkedIndex.single_chunk(start, size)
     else:
         index = ChunkedIndex.from_size(len(handler))
@@ -191,7 +193,7 @@ def write(path: Path, dataset: Writeable) -> None:
     dataset_schema = dataset.make_schema()
     schema.add_child(dataset_schema, "root")
 
-    if MPI is not None:
+    if mpiio is not None:
         return write_parallel(path, schema)
 
     file = h5py.File(path, "w")
@@ -202,14 +204,19 @@ def write(path: Path, dataset: Writeable) -> None:
 
 
 def write_parallel(file: Path, file_schema: FileSchema):
-    rank = MPI.COMM_WORLD.Get_rank()
+    comm = get_comm_world()
+    if comm is None:
+        raise ValueError("Got a null comm!")
+    rank = comm.Get_rank()
     try:
         file_schema.verify()
-        results = MPI.COMM_WORLD.allgather(True)
+        results = comm.allgather(True)
     except ValueError:
-        results = MPI.COMM_WORLD.allgather(False)
+        results = comm.allgather(False)
     if not all(results):
         raise ValueError("One or more ranks recieved invalid schemas!")
+
+    assert mpiio is not None
 
     new_schema = mpiio.combine_file_schemas(file_schema)
     if rank == 0:
@@ -217,17 +224,17 @@ def write_parallel(file: Path, file_schema: FileSchema):
         with h5py.File(file, "w") as f:
             new_schema.allocate(f)
 
-    MPI.COMM_WORLD.Barrier()
+    comm.Barrier()
     writer = file_schema.into_writer()
 
     try:
-        with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
+        with h5py.File(file, "a", driver="mpio", comm=comm) as f:
             return writer.write(f)
     except ValueError:  # parallell hdf5 not available
-        nranks = MPI.COMM_WORLD.Get_size()
-        rank = MPI.COMM_WORLD.Get_rank()
+        nranks = comm.Get_size()
+        rank = comm.Get_rank()
         for i in range(nranks):
             if i == rank:
                 with h5py.File(file, "a") as f:
                     writer.write(f)
-            MPI.COMM_WORLD.Barrier()
+            comm.Barrier()
