@@ -87,7 +87,7 @@ class FileSchema:
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         children = {
-            name: schema.into_writer() for name, schema in self.children.items()
+            name: schema.into_writer(comm) for name, schema in self.children.items()
         }
         return iow.FileWriter(children)
 
@@ -138,7 +138,9 @@ class SimCollectionSchema:
             child.verify()
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        children = {name: child.into_writer() for name, child in self.children.items()}
+        children = {
+            name: child.into_writer(comm) for name, child in self.children.items()
+        }
         return iow.CollectionWriter(children)
 
 
@@ -203,7 +205,9 @@ class StructCollectionSchema:
             ds.allocate(ds_group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        dataset_writers = {key: val.into_writer() for key, val in self.children.items()}
+        dataset_writers = {
+            key: val.into_writer(comm) for key, val in self.children.items()
+        }
         return iow.CollectionWriter(dataset_writers, self.header)
 
 
@@ -276,8 +280,12 @@ class DatasetSchema:
             link.allocate(link_group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        column_writers = {name: col.into_writer() for name, col in self.columns.items()}
-        link_writers = {name: link.into_writer() for name, link in self.links.items()}
+        column_writers = {
+            name: col.into_writer(comm) for name, col in self.columns.items()
+        }
+        link_writers = {
+            name: link.into_writer(comm) for name, link in self.links.items()
+        }
 
         return iow.DatasetWriter(column_writers, link_writers, self.header)
 
@@ -349,7 +357,7 @@ class IdxLinkSchema:
         return self.column.verify()
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.IdxLinkWriter(self.column.into_writer())
+        return iow.IdxLinkWriter(self.column.into_writer(comm))
 
 
 class StartSizeLinkSchema:
@@ -390,7 +398,7 @@ class StartSizeLinkSchema:
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.StartSizeLinkWriter(
-            self.start.into_writer(), self.size.into_writer()
+            self.start.into_writer(comm), self.size.into_writer()
         )
 
 
