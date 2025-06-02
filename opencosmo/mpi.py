@@ -8,7 +8,7 @@ except ImportError:
 
 
 @cache
-def get_comm_world() -> Optional[MPI.Comm]:
+def get_comm_world() -> Optional["MPI.Comm"]:
     if MPI is None or MPI.COMM_WORLD.Get_size() == 1:
         return None
     return MPI.COMM_WORLD.Dup()
