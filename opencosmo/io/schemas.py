@@ -357,7 +357,7 @@ class IdxLinkSchema:
         return self.column.verify()
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.IdxLinkWriter(self.column.into_writer(comm))
+        return iow.IdxLinkWriter(self.column.into_writer(comm), comm)
 
 
 class StartSizeLinkSchema:
@@ -398,7 +398,7 @@ class StartSizeLinkSchema:
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.StartSizeLinkWriter(
-            self.start.into_writer(comm), self.size.into_writer()
+            self.start.into_writer(comm), self.size.into_writer(), comm
         )
 
 
