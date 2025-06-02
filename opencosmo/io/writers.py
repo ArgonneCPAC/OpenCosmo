@@ -6,7 +6,11 @@ import numpy as np
 from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import protocols as iop
-from opencosmo.mpi import get_comm_world
+
+try:
+    from mpi4py import MPI
+except ImportError:
+    MPI = None
 
 """
 Writers work in tandem with schemas to create new files. All schemas must have
@@ -150,7 +154,9 @@ def idx_link_updater(input: np.ndarray, offset: int = 0) -> np.ndarray:
     return output
 
 
-def make_idx_link_updater(input: ColumnWriter) -> Callable[[np.ndarray], np.ndarray]:
+def make_idx_link_updater(
+    input: ColumnWriter, comm: Optional["MPI.Comm"]
+) -> Callable[[np.ndarray], np.ndarray]:
     """
     Helper function to update data from an 1-to-1 index
     link.
@@ -160,7 +166,7 @@ def make_idx_link_updater(input: ColumnWriter) -> Callable[[np.ndarray], np.ndar
     has_data = arr > 0
     offset = 0
     n_good = sum(has_data)
-    if (comm := get_comm_world()) is not None:
+    if comm is not None:
         all_sizes = comm.allgather(n_good)
         offsets = np.insert(np.cumsum(all_sizes), 0, 0)
         offset = offsets[comm.Get_rank()]
@@ -173,9 +179,9 @@ class IdxLinkWriter:
     to a single row in the other.
     """
 
-    def __init__(self, col_writer: ColumnWriter):
+    def __init__(self, col_writer: ColumnWriter, comm: Optional["MPI.Comm"] = None):
         self.writer = col_writer
-        self.updater = make_idx_link_updater(self.writer)
+        self.updater = make_idx_link_updater(self.writer, comm)
 
     def write(self, group: h5py.Group):
         self.writer.write(group, self.updater)
@@ -190,7 +196,7 @@ def start_link_updater(sizes: np.ndarray, offset: int = 0) -> np.ndarray:
 
 
 def make_start_link_updater(
-    size_writer: ColumnWriter,
+    size_writer: ColumnWriter, comm: Optional["MPI.Comm"]
 ) -> Callable[[np.ndarray], np.ndarray]:
     """
     Helper function to update the starts of a start-size
@@ -199,7 +205,7 @@ def make_start_link_updater(
     """
     sizes = size_writer.index.get_data(size_writer.source)
     cumulative_sizes = np.cumsum(sizes)
-    if (comm := get_comm_world()) is not None:
+    if comm is not None:
         offsets = np.cumsum(comm.allgather(cumulative_sizes[-1]))
         offsets = np.insert(offsets, 0, 0)
         offset = offsets[comm.Get_rank()]
@@ -215,10 +221,12 @@ class StartSizeLinkWriter:
     corresponds to several rows in the other.
     """
 
-    def __init__(self, start: ColumnWriter, size: ColumnWriter):
+    def __init__(
+        self, start: ColumnWriter, size: ColumnWriter, comm: Optional["MPI.Comm"] = None
+    ):
         self.start = start
         self.sizes = size
-        self.updater = make_start_link_updater(size)
+        self.updater = make_start_link_updater(size, comm)
 
     def write(self, group: h5py.Group):
         self.sizes.write(group)
