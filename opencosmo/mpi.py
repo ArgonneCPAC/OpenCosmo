@@ -4,7 +4,7 @@ from typing import Optional
 try:
     from mpi4py import MPI
 except ImportError:
-    MPI = None
+    MPI = None  # type: ignore
 
 
 @cache

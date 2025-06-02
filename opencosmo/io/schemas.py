@@ -1,5 +1,5 @@
 from itertools import chain
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
@@ -9,10 +9,8 @@ import opencosmo.io.writers as iow
 from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 
-try:
+if TYPE_CHECKING:
     from mpi4py import MPI
-except ImportError:
-    MPI = None
 
 ColumnShape = tuple[int, ...]
 
