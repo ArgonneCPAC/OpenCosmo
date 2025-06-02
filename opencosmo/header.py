@@ -8,11 +8,6 @@ from opencosmo import cosmology as cosmo
 from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
 
-try:
-    from mpi4py import MPI
-except ImportError:
-    MPI = None  # type: ignore
-
 
 class OpenCosmoHeader:
     """
