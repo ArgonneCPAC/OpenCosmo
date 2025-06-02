@@ -9,6 +9,11 @@ import opencosmo.io.writers as iow
 from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 
+try:
+    from mpi4py import MPI
+except ImportError:
+    MPI = None
+
 ColumnShape = tuple[int, ...]
 
 """
@@ -80,7 +85,7 @@ class FileSchema:
         for child in self.children.values():
             child.verify()
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
         children = {
             name: schema.into_writer() for name, schema in self.children.items()
         }
@@ -132,7 +137,7 @@ class SimCollectionSchema:
         for child in self.children.values():
             child.verify()
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
         children = {name: child.into_writer() for name, child in self.children.items()}
         return iow.CollectionWriter(children)
 
@@ -197,7 +202,7 @@ class StructCollectionSchema:
             ds_group = group.require_group(ds_name)
             ds.allocate(ds_group)
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
         dataset_writers = {key: val.into_writer() for key, val in self.children.items()}
         return iow.CollectionWriter(dataset_writers, self.header)
 
@@ -270,7 +275,7 @@ class DatasetSchema:
             link_group = group.require_group("data_linked")
             link.allocate(link_group)
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
         column_writers = {name: col.into_writer() for name, col in self.columns.items()}
         link_writers = {name: link.into_writer() for name, link in self.links.items()}
 
@@ -320,7 +325,7 @@ class ColumnSchema:
             self.name, shape, self.source.dtype, compression=COMPRESSION
         )
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.ColumnWriter(self.name, self.index, self.source, self.offset)
 
 
@@ -343,7 +348,7 @@ class IdxLinkSchema:
     def verify(self):
         return self.column.verify()
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.IdxLinkWriter(self.column.into_writer())
 
 
@@ -383,7 +388,7 @@ class StartSizeLinkSchema:
         self.start.verify()
         self.size.verify()
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.StartSizeLinkWriter(
             self.start.into_writer(), self.size.into_writer()
         )
