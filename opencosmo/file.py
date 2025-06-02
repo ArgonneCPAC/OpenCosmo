@@ -5,10 +5,10 @@ from typing import Any, Callable, Concatenate, TypeVar
 
 import h5py
 
-try:
-    import mpi4py.MPI as MPI
-except ImportError:
-    MPI = None  # type: ignore
+from opencosmo.mpi import get_comm_world, get_mpi
+
+MPI = get_mpi()
+
 
 H5Resource = TypeVar("H5Resource", h5py.File, h5py.Group, h5py.Dataset)
 H5Reader = Callable[Concatenate[H5Resource, ...], Any]
@@ -73,7 +73,7 @@ def broadcast_read(func: H5Reader) -> H5Reader:
     @wraps(func)
     def wrapper(file: h5py.File | Path | str, *args, **kwargs):
         output = None
-        if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
+        if MPI is None or get_comm_world().Get_rank() == 0:
             try:
                 output = func(file, *args, **kwargs)
             except Exception as e:
@@ -81,7 +81,7 @@ def broadcast_read(func: H5Reader) -> H5Reader:
         if MPI is not None:
             # Broadcasting the error ensures other ranks
             # will raise the exception and quit.
-            output = MPI.COMM_WORLD.bcast(output, root=0)
+            output = get_comm_world().bcast(output, root=0)
         if isinstance(output, Exception):
             raise output
         return output

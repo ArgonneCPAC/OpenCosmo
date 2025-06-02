@@ -11,11 +11,6 @@ from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.transformations import units as u
 
-try:
-    from mpi4py import MPI
-except ImportError:
-    MPI = None  # type: ignore
-
 
 class DatasetBuilder(Protocol):
     """

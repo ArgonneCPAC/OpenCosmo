@@ -5,14 +5,14 @@ from typing import Optional
 import h5py
 import numpy as np
 
-try:
-    from mpi4py import MPI
-except ImportError:
-    MPI = None  # type: ignore
-
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.spatial.index import SpatialIndex
 from opencosmo.spatial.octree import OctTreeIndex
+
+try:
+    from mpi4py import MPI
+except ImportError:
+    MPI = None
 
 
 def read_tree(file: h5py.File | h5py.Group, header: OpenCosmoHeader):
@@ -128,7 +128,7 @@ class Tree:
     def apply_mask(
         self,
         mask: np.ndarray,
-        comm: Optional[MPI.Comm] = None,
+        comm: Optional["MPI.Comm"] = None,
         range_: Optional[tuple] = None,
     ) -> Tree:
         """
@@ -164,7 +164,7 @@ class Tree:
         return Tree(self.__index, output_starts, output_sizes)
 
     def __apply_rank_mask(
-        self, mask: np.ndarray, comm: MPI.Comm, range_: tuple[int, int]
+        self, mask: np.ndarray, comm: "MPI.Comm", range_: tuple[int, int]
     ) -> Tree:
         """
         Given a range and a mask, apply the mask to the tree. The mask
@@ -179,10 +179,7 @@ class Tree:
         """
         Write the tree to an HDF5 file. Note that this function
         is not responsible for applying masking. The routine calling this
-        funct
-        MPI = None
-        MPI = None
-        MPI = Noneion should first create a new tree with apply_mask if
+        function should first create a new tree with apply_mask if
         necessary.
         """
         group = file.require_group(dataset_name)
