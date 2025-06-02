@@ -7,6 +7,9 @@ version: 2
 # Set the OS, Python version, and other tools you might need
 build:
   os: ubuntu-24.04
+  apt_packages:
+    - openmpi-bin
+    - libopenmpi-dev
   tools:
     python: "3.13"
 
