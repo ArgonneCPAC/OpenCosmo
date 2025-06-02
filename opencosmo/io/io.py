@@ -225,7 +225,7 @@ def write_parallel(file: Path, file_schema: FileSchema):
             new_schema.allocate(f)
 
     comm.Barrier()
-    writer = file_schema.into_writer()
+    writer = file_schema.into_writer(comm)
 
     try:
         with h5py.File(file, "a", driver="mpio", comm=comm) as f:
