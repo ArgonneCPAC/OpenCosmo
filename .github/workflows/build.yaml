@@ -46,12 +46,3 @@ jobs:
           push: ${{ inputs.push-docker }}
           targets: dev
 
-  build-docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: setup mpi
-        uses: mpi4py/setup-mpi@v1
-      - uses: ammaraskar/sphinx-action@master
-        with:
-          docs-folder: "docs"
