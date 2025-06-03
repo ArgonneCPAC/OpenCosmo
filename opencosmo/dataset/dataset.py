@@ -230,9 +230,6 @@ class Dataset:
         new_index = apply_masks(
             self.__handler, self.__state.builders, masks, self.__state.index
         )
-        if len(new_index) == 0:
-            raise ValueError("No rows matched the given filters!")
-
         new_state = self.__state.with_index(new_index)
 
         return Dataset(

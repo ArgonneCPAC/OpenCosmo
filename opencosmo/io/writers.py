@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import Callable, Optional
 
 import h5py
 import numpy as np
@@ -7,8 +7,10 @@ from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import protocols as iop
 
-if TYPE_CHECKING:
+try:
     from mpi4py import MPI
+except ImportError:
+    MPI = None
 
 """
 Writers work in tandem with schemas to create new files. All schemas must have
@@ -192,13 +194,16 @@ class SpatialIndexWriter:
 
 
 class SpatialIndexLevelWriter:
-    def __init__(self, start: ColumnWriter, size: ColumnWriter):
+    def __init__(
+        self, start: ColumnWriter, size: ColumnWriter, comm: Optional["MPI.Comm"] = None
+    ):
         self.start = start
         self.size = size
+        self.updater = lambda data: sum_updater(data, comm)
 
     def write(self, group: h5py.Group):
-        self.size.write(group, updater=sum_updater)
-        self.start.write(group, updater=sum_updater)
+        self.size.write(group, updater=self.updater)
+        self.start.write(group, updater=self.updater)
 
 
 class IdxLinkWriter:
@@ -215,10 +220,10 @@ class IdxLinkWriter:
         self.writer.write(group, self.updater)
 
 
-def sum_updater(data: np.ndarray):
-    if MPI is not None:
+def sum_updater(data: np.ndarray, comm: Optional["MPI.Comm"] = None):
+    if comm is not None:
         recvbuf = np.zeros_like(data)
-        MPI.COMM_WORLD.Allreduce(data, recvbuf, MPI.SUM)
+        comm.Allreduce(data, recvbuf, MPI.SUM)
         return recvbuf
     return data
 

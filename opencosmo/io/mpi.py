@@ -1,8 +1,13 @@
 from copy import copy
+from enum import Enum
+from pathlib import Path
 from typing import Iterable, Mapping, Optional, TypeVar, cast
 
+import h5py
 import numpy as np
 from mpi4py import MPI
+
+from opencosmo.mpi import get_comm_world
 
 from .protocols import DataSchema
 from .schemas import (
@@ -15,6 +20,7 @@ from .schemas import (
     SpatialIndexSchema,
     StartSizeLinkSchema,
     StructCollectionSchema,
+    ZeroLengthError,
 )
 
 """
@@ -26,6 +32,65 @@ it is responsible for.
 As with schemas and writers, everything is very hierarcical here. A function
 does some consistency checks, then calls a function that combines its children.
 """
+
+
+class CombineState(Enum):
+    VALID = 1
+    ZERO_LENGTH = 2
+    INVALID = 3
+
+
+def write_parallel(file: Path, file_schema: FileSchema):
+    comm = get_comm_world()
+    if comm is None:
+        raise ValueError("Got a null comm!")
+    try:
+        file_schema.verify()
+        results = comm.allgather(CombineState.VALID)
+    except ValueError:
+        results = comm.allgather(CombineState.INVALID)
+    except ZeroLengthError:
+        results = comm.allgather(CombineState.ZERO_LENGTH)
+    if not all(results):
+        raise ValueError("One or more ranks recieved invalid schemas!")
+
+    has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
+    group = comm.Get_group()
+    new_group = group.Incl(has_data)
+    new_comm = comm.Create(new_group)
+    if new_comm == MPI.COMM_NULL:
+        return cleanup_mpi(comm, new_comm, new_group)
+    rank = new_comm.Get_rank()
+
+    new_schema = combine_file_schemas(file_schema, new_comm)
+    if rank == 0:
+        new_schema.verify()
+        with h5py.File(file, "w") as f:
+            new_schema.allocate(f)
+
+    new_comm.Barrier()
+    writer = file_schema.into_writer(comm)
+
+    try:
+        with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
+            writer.write(f)
+    except ValueError:  # parallell hdf5 not available
+        nranks = new_comm.Get_size()
+        rank = new_comm.Get_rank()
+        for i in range(nranks):
+            if i == rank:
+                with h5py.File(file, "a") as f:
+                    writer.write(f)
+            new_comm.Barrier()
+    cleanup_mpi(comm, new_comm, new_group)
+
+
+def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Group):
+    assert False
+    comm_world.Barrier()
+    if comm_write != MPI.COMM_NULL:
+        comm_write.Free()
+    group_write.Free()
 
 
 def verify_structure(schemas: Mapping[str, DataSchema], comm: MPI.Comm):
@@ -52,10 +117,10 @@ def verify_types(schemas: Mapping[str, DataSchema], comm: MPI.Comm):
         )
 
 
-def combine_file_schemas(
-    schema: FileSchema, comm: MPI.Comm = MPI.COMM_WORLD
-) -> FileSchema:
+def combine_file_schemas(schema: FileSchema, comm: MPI.Comm) -> FileSchema:
     verify_structure(schema.children, comm)
+    if comm.Get_size() == 1:
+        return schema
 
     new_schema = FileSchema()
 

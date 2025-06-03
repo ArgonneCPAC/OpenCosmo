@@ -127,7 +127,35 @@ def test_filter_write(input_path, tmp_path):
     ds = oc.open(temporary_path)
     written_data = ds.data
     for column in ds.columns:
-        assert np.all(data[column] == written_data[column])
+        parallel_assert(np.all(data[column] == written_data[column]))
+
+    parallel_assert(all(data == written_data))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_filter_zerolength(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "filtered.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+
+    ds = oc.open(input_path)
+    ds = ds.filter(oc.col("sod_halo_mass") > 0)
+    rank = comm.Get_rank()
+    if rank == 1:
+        ds = ds.filter(oc.col("sod_halo_mass") > 1e20)
+
+    oc.write(temporary_path, ds)
+    data = ds.data
+    ds.close()
+
+    ds = oc.open(temporary_path)
+    written_data = ds.data
+
+    if rank == 1:
+        assert len(written_data) == 0
+    else:
+        for column in ds.columns:
+            assert np.all(data[column] == written_data[column])
 
     assert all(data == written_data)
 

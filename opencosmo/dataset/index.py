@@ -313,8 +313,8 @@ class ChunkedIndex:
 
     @classmethod
     def empty(cls):
-        start = np.array([], dtype=int)
-        size = np.array([], dtype=int)
+        start = np.array([0], dtype=int)
+        size = np.array([0], dtype=int)
         return ChunkedIndex(start, size)
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
