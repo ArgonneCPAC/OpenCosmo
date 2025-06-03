@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, cast
 from itertools import count
-from typing import Sequence, cast
+from typing import TYPE_CHECKING, Sequence, cast
 from uuid import uuid1
 
 import h5py
@@ -20,7 +19,7 @@ from opencosmo.spatial.octree import OctTreeIndex
 from opencosmo.spatial.protocols import Region, SpatialIndex
 
 if TYPE_CHECKING:
-    from mpi4py import MPI
+    pass
 
 
 def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):
@@ -182,17 +181,6 @@ class Tree:
         i_ = intersects[0].concatenate(*intersects[1:])
         return c_, i_
 
-    def apply_mask(
-        self,
-        mask: np.ndarray,
-        comm: Optional["MPI.Comm"] = None,
-        range_: Optional[tuple] = None,
-    ) -> Tree:
-        """
-        Given a boolean mask, create a new tree with slices adjusted to
-        only include the elements where the mask is True. This is used
-        when writing filtered datasets to file, or collecting.
-        """
     def apply_index(self, index: DataIndex, min_counts: int = 100) -> Tree:
         max_level_starts = self.__data[f"level_{self.__max_level}"]["start"][:]
         max_level_ends = (
@@ -215,30 +203,3 @@ class Tree:
             level_schema = SpatialIndexLevelSchema(self.__data[f"level_{level}"])
             schema.add_child(level_schema, level)
         return schema
-
-    def __apply_rank_mask(
-        self, mask: np.ndarray, comm: "MPI.Comm", range_: tuple[int, int]
-    ) -> Tree:
-        """
-        Given a range and a mask, apply the mask to the tree. The mask
-        will have the same shape as the original data.
-        """
-        new_sizes = apply_range_mask(mask, range_, self.__starts, self.__sizes)
-        all_new_sizes = comm.allgather(new_sizes)
-        output_starts, output_sizes = pack_masked_ranges(self.__starts, all_new_sizes)
-        return Tree(self.__index, output_starts, output_sizes)
-
-    def write(self, file: h5py.File, dataset_name: str = "index"):
-        """
-        Write the tree to an HDF5 file. Note that this function
-        is not responsible for applying masking. The routine calling this
-        function should first create a new tree with apply_mask if
-        necessary.
-        """
-        group = file.require_group(dataset_name)
-        for level in self.__starts:
-            level_group = group.require_group(f"level_{level}")
-            level_group.create_dataset("start", data=self.__starts[level])
-            level_group.create_dataset("size", data=self.__sizes[level])
-
-

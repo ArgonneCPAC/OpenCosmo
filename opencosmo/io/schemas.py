@@ -209,6 +209,10 @@ class StructCollectionSchema:
         return iow.CollectionWriter(dataset_writers, self.header)
 
 
+class ZeroLengthError(Exception):
+    pass
+
+
 class DatasetSchema:
     """
     A schema for an opencosmo.dataset. This schema may or may not have a header.
@@ -272,6 +276,9 @@ class DatasetSchema:
         if len(column_lengths) > 1:
             raise ValueError("Datasets columns must be the same length!")
 
+        if column_lengths.pop() == 0:
+            raise ZeroLengthError()
+
         for child in chain(self.columns.values(), self.links.values()):
             child.verify()
 
@@ -282,6 +289,9 @@ class DatasetSchema:
         for link in self.links.values():
             link_group = group.require_group("data_linked")
             link.allocate(link_group)
+        if self.spatial_index is not None:
+            idx_group = group.require_group("index")
+            self.spatial_index.allocate(idx_group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         column_writers = {
@@ -291,7 +301,9 @@ class DatasetSchema:
             name: link.into_writer(comm) for name, link in self.links.items()
         }
         spatial_index = (
-            self.spatial_index.into_writer() if self.spatial_index is not None else None
+            self.spatial_index.into_writer(comm)
+            if self.spatial_index is not None
+            else None
         )
 
         return iow.DatasetWriter(
@@ -366,8 +378,8 @@ class SpatialIndexSchema:
             level_group = group.require_group(f"level_{level_num}")
             level.allocate(level_group)
 
-    def into_writer(self):
-        levels = {n: level.into_writer() for n, level in self.levels.items()}
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
+        levels = {n: level.into_writer(comm) for n, level in self.levels.items()}
         return iow.SpatialIndexWriter(levels)
 
 
@@ -390,9 +402,9 @@ class SpatialIndexLevelSchema:
         self.start.verify()
         self.size.verify()
 
-    def into_writer(self):
+    def into_writer(self, comm: Optional["MPI.Comm"]):
         return iow.SpatialIndexLevelWriter(
-            self.start.into_writer(), self.size.into_writer()
+            self.start.into_writer(), self.size.into_writer(), comm
         )
 
 

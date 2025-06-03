@@ -5,18 +5,6 @@ from types import ModuleType
 from typing import Callable, Iterable, Optional
 
 import h5py
-
-try:
-    from mpi4py import MPI
-
-    if MPI.COMM_WORLD.Get_size() == 1:
-        raise ImportError
-    from opencosmo.dataset.mpi import partition
-    from opencosmo.io import mpi as mpiio
-except ImportError:
-    MPI = None  # type: ignore
-    mpiio = None  # type: ignore
-
 from deprecated import deprecated  # type: ignore
 
 import opencosmo as oc
@@ -128,11 +116,10 @@ def open(
         sim_region = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_size)
 
     index: ChunkedIndex
-    handler = DatasetHandler(file_handle, group_name=datasets, tree=tree)
+    handler = DatasetHandler(file_handle, group_name=datasets)
     if (comm := get_comm_world()) is not None:
         assert partition is not None
-        start, size = partition(comm, len(handler))
-        index = ChunkedIndex.single_chunk(start, size)
+        index = partition(comm, len(handler), tree)
     else:
         index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
@@ -253,59 +240,10 @@ def write(path: Path, dataset: Writeable) -> None:
     schema.add_child(dataset_schema, "root")
 
     if mpiio is not None:
-        return write_parallel(path, schema)
+        return mpiio.write_parallel(path, schema)
 
     file = h5py.File(path, "w")
     schema.allocate(file)
 
     writer = schema.into_writer()
     writer.write(file)
-
-
-def write_parallel(file: Path, file_schema: FileSchema):
-    comm = get_comm_world()
-    if comm is None:
-        raise ValueError("Got a null comm!")
-    rank = comm.Get_rank()
-    try:
-        file_schema.verify()
-<<<<<<< HEAD
-        results = comm.allgather(True)
-    except ValueError:
-        results = comm.allgather(False)
-=======
-        results = MPI.COMM_WORLD.allgather(True)
-    except ValueError as e:
-        results = MPI.COMM_WORLD.allgather(False)
-        raise e
->>>>>>> 66bd0c8 (incremental commit)
-    if not all(results):
-        raise ValueError("One or more ranks recieved invalid schemas!")
-
-    assert mpiio is not None
-
-    new_schema = mpiio.combine_file_schemas(file_schema)
-    if rank == 0:
-        new_schema.verify()
-        with h5py.File(file, "w") as f:
-            new_schema.allocate(f)
-
-    comm.Barrier()
-    writer = file_schema.into_writer(comm)
-
-    try:
-<<<<<<< HEAD
-        with h5py.File(file, "a", driver="mpio", comm=comm) as f:
-            return writer.write(f)
-=======
-        with h5py.File(file, "a", driver="mpio", comm=MPI.COMM_WORLD) as f:
-            writer.write(f)
->>>>>>> 66bd0c8 (incremental commit)
-    except ValueError:  # parallell hdf5 not available
-        nranks = comm.Get_size()
-        rank = comm.Get_rank()
-        for i in range(nranks):
-            if i == rank:
-                with h5py.File(file, "a") as f:
-                    writer.write(f)
-            comm.Barrier()
