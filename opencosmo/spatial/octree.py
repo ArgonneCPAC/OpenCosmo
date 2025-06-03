@@ -224,7 +224,10 @@ class Octant:
 
     @cache
     def bounding_box(self):
-        return oc.Box(self.center, 2 * self.halfwidth)
+        p1 = tuple(ci - self.halfwidth for ci in self.center)
+        p2 = tuple(ci + self.halfwidth for ci in self.center)
+
+        return oc.Box(p1, p2)
 
     def query(
         self,

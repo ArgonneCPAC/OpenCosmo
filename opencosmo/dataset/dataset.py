@@ -150,6 +150,22 @@ class Dataset:
         in the default "comoving" unit convention, positions are always in units of
         comoving Mpc. However Region objects themselves do not carry units.
 
+        Parameters:
+        -----------
+        region: opencosmo.spatial.Region
+
+        Returns:
+        --------
+        dataset: opencosmo.Dataset
+            The portion of the dataset inside the selected region
+
+        Raises:
+        -------
+        ValueError
+            If the query region does not overlap with the region this dataset resides
+            in
+        AttributeError:
+            If the dataset does not contain a spatial index
         """
         if self.__tree is None:
             raise AttributeError(
