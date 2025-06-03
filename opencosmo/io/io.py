@@ -111,9 +111,9 @@ def open(
         sim_region = FullSkyRegion()
 
     else:
-        box_size = header.simulation.box_size
-        box_halfwidth = box_size / 2
-        sim_region = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_size)
+        p1 = (0, 0, 0)
+        p2 = tuple(header.simulation.box_size for _ in range(3))
+        sim_region = oc.Box(p1, p2)
 
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets)
@@ -195,10 +195,9 @@ def read(
         tree = read_tree(file, header.simulation.box_size)
     except ValueError:
         tree = None
-    box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = oc.Box(
-        (box_halfwidth, box_halfwidth, box_halfwidth), header.simulation.box_size
-    )
+    p1 = (0, 0, 0)
+    p2 = tuple(header.simulation.box_size for _ in range(3))
+    sim_box = oc.Box(p1, p2)
 
     path = file.filename
     file = h5py.File(path, driver="core")

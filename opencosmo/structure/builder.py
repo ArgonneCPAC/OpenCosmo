@@ -93,8 +93,10 @@ class OomDatasetBuilder:
             tree = open_tree(file, header.simulation.box_size)
         except ValueError:
             tree = None
-        box_halfwidth = header.simulation.box_size / 2.0
-        sim_box = oc.Box((box_halfwidth, box_halfwidth, box_halfwidth), box_halfwidth)
+
+        p1 = (0, 0, 0)
+        p2 = tuple(header.simulation.box_size for _ in range(3))
+        sim_box = oc.Box(p1, p2)
         builders, base_unit_transformations = u.get_default_unit_transformations(
             file, header
         )

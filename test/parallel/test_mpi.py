@@ -237,21 +237,21 @@ def test_link_write(all_paths, tmp_path):
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_collect(input_path):
     ds = oc.open(input_path)
-    center = tuple(random.uniform(30, 60) for _ in range(3))
-    width = tuple(random.uniform(10, 20) for _ in range(3))
+    p1 = tuple(random.uniform(30, 40) for _ in range(3))
+    p2 = tuple(random.uniform(50, 60) for _ in range(3))
 
-    center = mpi4py.MPI.COMM_WORLD.bcast(center)
-    width = mpi4py.MPI.COMM_WORLD.bcast(width)
+    p1 = mpi4py.MPI.COMM_WORLD.bcast(p1)
+    p2 = mpi4py.MPI.COMM_WORLD.bcast(p2)
 
-    reg1 = oc.Box(center, width)
+    reg1 = oc.Box(p1, p2)
     original_data = ds.data
     ds = ds.bound(reg1)
     ds = ds.collect()
     data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
         name = f"fof_halo_center_{dim}"
-        min_ = center[i] - width[i] / 2
-        max_ = center[i] + width[i] / 2
+        min_ = p1[i]
+        max_ = p2[i]
         original_col = original_data[name]
         mask = (original_col < max_) & (original_col > min_)
         original_data = original_data[mask]
@@ -269,13 +269,14 @@ def test_box_query_collect(input_path):
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
-    center1 = (30, 40, 50)
-    width1 = (10, 15, 20)
-    reg1 = oc.Box(center1, width1)
+    p1 = (25, 32.5, 40)
+    p2 = (35, 47.5, 60)
 
-    center2 = (31, 41, 51)
-    width2 = (5, 7.5, 10)
-    reg2 = oc.Box(center2, width2)
+    reg1 = oc.Box(p1, p2)
+
+    p1 = (29, 38, 46)
+    p2 = (34, 44.5, 57)
+    reg2 = oc.Box(p1, p2)
 
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
@@ -284,8 +285,8 @@ def test_box_query_chain(input_path):
     data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
-        min_ = center2[i] - width2[i] / 2
-        max_ = center2[i] + width2[i] / 2
+        min_ = p1[i]
+        max_ = p2[i]
         min = col.min()
         max = col.max()
         parallel_assert(min >= min_ and np.isclose(min, min_, 0.1))

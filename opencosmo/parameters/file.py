@@ -11,8 +11,8 @@ from pydantic import (
 
 
 class BoxRegionModel(BaseModel):
-    center: tuple[float, float, float]
-    halfwidth: tuple[float, float, float]
+    p1: tuple[float, float, float]
+    p2: tuple[float, float, float]
 
 
 class ConeRegionModel(BaseModel):

@@ -281,10 +281,9 @@ def read_single_dataset(
         tree = open_tree(file[dataset_key], header.simulation.box_size)
     except ValueError:
         tree = None
-    box_halfwidth = header.simulation.box_size / 2.0
-    sim_box = oc.Box(
-        (box_halfwidth, box_halfwidth, box_halfwidth), header.simulation.box_size
-    )
+    p1 = (0, 0, 0)
+    p2 = tuple(header.simulation.box_size for _ in range(3))
+    sim_box = oc.Box(p1, p2)
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
     handler = DatasetHandler(im_file, dataset_key)
