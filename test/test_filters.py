@@ -128,8 +128,8 @@ def test_invalid_filter(input_path):
     data = ds.data
     sod_mass = data["sod_halo_mass"]
     sod_mass_max = sod_mass.max()
-    with pytest.raises(ValueError):
-        ds = ds.filter(col("sod_halo_mass") > sod_mass_max + 1)
+    ds = ds.filter(col("sod_halo_mass") > sod_mass_max + 1)
+    assert len(ds) == 0
 
 
 def test_filter_invalid_column(input_path):

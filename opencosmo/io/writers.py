@@ -221,7 +221,7 @@ class IdxLinkWriter:
 
 
 def sum_updater(data: np.ndarray, comm: Optional["MPI.Comm"] = None):
-    if comm is not None:
+    if comm is not None and comm.Get_size():
         recvbuf = np.zeros_like(data)
         comm.Allreduce(data, recvbuf, MPI.SUM)
         return recvbuf

@@ -69,7 +69,7 @@ def write_parallel(file: Path, file_schema: FileSchema):
             new_schema.allocate(f)
 
     new_comm.Barrier()
-    writer = file_schema.into_writer(comm)
+    writer = file_schema.into_writer(new_comm)
 
     try:
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
@@ -86,7 +86,6 @@ def write_parallel(file: Path, file_schema: FileSchema):
 
 
 def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Group):
-    assert False
     comm_world.Barrier()
     if comm_write != MPI.COMM_NULL:
         comm_write.Free()
