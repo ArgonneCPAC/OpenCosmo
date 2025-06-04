@@ -94,16 +94,16 @@ def test_data_linking(halo_paths):
 
 def test_data_linking_bound(halo_paths):
     collection = open_linked_files(*halo_paths)
-    center = tuple(random.uniform(30, 60) for _ in range(3))
-    width = tuple(random.uniform(10, 20) for _ in range(3))
-    region = oc.make_box(center, width)
+    p1 = tuple(random.uniform(30, 40) for _ in range(3))
+    p2 = tuple(random.uniform(50, 60) for _ in range(3))
+    region = oc.make_box(p1, p2)
     collection = collection.bound(region)
 
     for properties, particles in collection.objects():
         for i, dim in enumerate(["x", "y", "z"]):
             val = properties[f"fof_halo_center_{dim}"].value
-            assert val <= center[i] + (width[i] / 2)
-            assert val >= center[i] - (width[i] / 2)
+            assert val <= p2[i]
+            assert val >= p1[i]
 
 
 def test_data_link_repr(halo_paths):
@@ -202,17 +202,17 @@ def test_simulation_collection_broadcast_attribute(multi_path):
 
 def test_simulation_collection_bound(multi_path):
     collection = oc.open(multi_path)
-    center = tuple(random.uniform(30, 60) for _ in range(3))
-    width = tuple(random.uniform(10, 20) for _ in range(3))
-    region = oc.make_box(center, width)
+    p1 = tuple(random.uniform(10, 20) for _ in range(3))
+    p2 = tuple(random.uniform(30, 40) for _ in range(3))
+    region = oc.make_box(p1, p2)
     collection = collection.bound(region)
 
     for name, properties in collection.items():
         data = properties.data
         for i, dim in enumerate(["x", "y", "z"]):
             val = data[f"fof_halo_center_{dim}"].value
-            assert np.all(val <= center[i] + (width[i] / 2))
-            assert np.all(val >= center[i] - (width[i] / 2))
+            assert np.all(val <= p2[i])
+            assert np.all(val >= p1[i])
 
 
 def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
