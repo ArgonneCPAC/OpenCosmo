@@ -113,7 +113,7 @@ def open(
     else:
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation.box_size for _ in range(3))
-        sim_region = oc.Box(p1, p2)
+        sim_region = oc.make_box(p1, p2)
 
     index: ChunkedIndex
     handler = DatasetHandler(file_handle, group_name=datasets)
@@ -197,7 +197,7 @@ def read(
         tree = None
     p1 = (0, 0, 0)
     p2 = tuple(header.simulation.box_size for _ in range(3))
-    sim_box = oc.Box(p1, p2)
+    sim_box = oc.make_box(p1, p2)
 
     path = file.filename
     file = h5py.File(path, driver="core")

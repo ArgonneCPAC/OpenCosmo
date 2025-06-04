@@ -96,7 +96,7 @@ class OomDatasetBuilder:
 
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation.box_size for _ in range(3))
-        sim_box = oc.Box(p1, p2)
+        sim_box = oc.make_box(p1, p2)
         builders, base_unit_transformations = u.get_default_unit_transformations(
             file, header
         )

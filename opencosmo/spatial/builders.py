@@ -11,34 +11,34 @@ from opencosmo.spatial.region import BoxRegion, BoxSize, ConeRegion, Point2d, Po
 def from_model(model: BaseModel):
     match model:
         case ConeRegionModel():
-            return Cone(model.center, model.radius)
+            return make_cone(model.center, model.radius)
         case BoxRegionModel():
-            return Box(model.p1, model.p2)
+            return make_box(model.p1, model.p2)
         case _:
             raise ValueError(f"Invalid region model type {type(model)}")
 
 
-def Box(p1: Point3d, p2: Point3d):
+def make_box(p1: Point3d, p2: Point3d):
     """
     Create a 3-Dimensional box region of arbitrary size.
     The quantities of the box region are unitless, but will be converted
     to the unit convention of any dataset they interact with.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     p1: (float, float, float)
         3D Point definining one corner of the box
     p1: (float, float, float)
         3D Point definining the other corner of the box
 
-    Returns:
-    --------
-    region: BoxRegion
+    Returns
+    -------
+    region: :py:class:`opencosmo.spatial.BoxRegion`
         The constructed region
 
 
-    Raises:
-    -------
+    Raises
+    ------
     ValueError
         If the region has zero length in any dimension
     """
@@ -61,7 +61,27 @@ def Box(p1: Point3d, p2: Point3d):
     return BoxRegion(center, halfwidth)
 
 
-def Cone(center: Point2d | SkyCoord, radius: float | u.Quantity):
+def make_cone(center: Point2d | SkyCoord, radius: float | u.Quantity):
+    """
+    Construct a cone region used for querying lightcones. A cone
+    region is defined by a location on the sky and an angular size,
+    which is used as a radius.
+
+    Parameters
+    ----------
+    center: astropy.coordinates.SkyCord | tuple[float, float]
+        The center of the cone region. If a unitless tuple is passed,
+        the values are assumed to be in degrees.
+
+    radius: astropy.units.Quantity | float
+        The radius of the region. If a unitless value is passed,
+        it is assumed to be in degrees.
+
+    Returns
+    -------
+    region: :py:class:`opencosmo.spatial.ConeRegion`
+        The constructed region
+    """
     coord: SkyCoord
     match center:
         case SkyCoord():

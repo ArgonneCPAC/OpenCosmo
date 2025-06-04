@@ -283,7 +283,7 @@ def read_single_dataset(
         tree = None
     p1 = (0, 0, 0)
     p2 = tuple(header.simulation.box_size for _ in range(3))
-    sim_box = oc.Box(p1, p2)
+    sim_box = oc.make_box(p1, p2)
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
     handler = DatasetHandler(im_file, dataset_key)
