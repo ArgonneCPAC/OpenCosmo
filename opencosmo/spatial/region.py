@@ -199,8 +199,8 @@ class BoxRegion:
         )
 
     def into_model(self) -> BoxRegionModel:
-        p1 = (b[0] for b in self.__bounds)
-        p2 = (b[1] for b in self.__bounds)
+        p1 = (b[0] for b in self.bounds)
+        p2 = (b[1] for b in self.bounds)
         return BoxRegionModel(p1=p1, p2=p2)
 
     def bounding_box(self) -> BoxRegion:
@@ -263,7 +263,7 @@ class BoxRegion:
             raise ValueError("Expected a coordinate array!")
 
         mask = np.ones(coords.shape[1], dtype=bool)
-        for bound, col in zip(self.__bounds, coords):
+        for bound, col in zip(self.bounds, coords):
             mask &= (col > bound[0]) & (col < bound[1])
 
         return mask
@@ -294,7 +294,7 @@ class BoxRegion:
         if not isinstance(other, BoxRegion):
             raise ValueError(f"Expected a 3D region, but got {type(other)}")
 
-        for b1, b2 in zip(self.__bounds, other.bounds):
+        for b1, b2 in zip(self.bounds, other.bounds):
             if b1[0] > b2[1] or b1[1] < b2[0]:
                 return False
         return True
@@ -302,7 +302,7 @@ class BoxRegion:
 
 @BoxRegion._contains.register  # type: ignore
 def _(self, other: BoxRegion):
-    for b1, b2 in zip(self.__bounds, other.bounds):
+    for b1, b2 in zip(self.bounds, other.bounds):
         if b1[0] > b2[0] or b1[1] < b2[1]:
             return False
     return True
