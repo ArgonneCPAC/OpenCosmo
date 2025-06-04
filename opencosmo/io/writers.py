@@ -10,7 +10,7 @@ from opencosmo.io import protocols as iop
 try:
     from mpi4py import MPI
 except ImportError:
-    MPI = None
+    MPI = None  # type: ignore
 
 """
 Writers work in tandem with schemas to create new files. All schemas must have

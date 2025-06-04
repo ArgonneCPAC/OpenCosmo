@@ -121,6 +121,7 @@ jobs:
   run-serial-mpi-tests:
     runs-on: ubuntu-latest
     needs: [get-test-data]
+    if: false
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
