@@ -33,7 +33,7 @@ def comoving_to_scalefree(value: float, cosmology: FLRW):
 class ConeRegion:
     """
     Cone region for querying lightcones. Defined by RA/Dec coordinate and an angular
-    size. Should always be constructed with :py:meth:`opencosmo.Cone`
+    size. Should always be constructed with :py:meth:`opencosmo.make_cone`
 
     Note that the underlying coordinate representation of the data may or may not be
     in RA and Dec. Spatial queries handle all the necessary conversions, but this may
@@ -177,7 +177,7 @@ class BoxRegion:
     """
     A region representing a 3-dimensional box of arbitrary length, width, and depth. A
     BoxRegion can be used to query snapshot data. BoxRegions can be constructed with
-    :py:meth`oc.make_box`.
+    :py:meth:`opencosmo.make_box`
 
     When used in a spatial query, the values defining a box region will always be
     interpreted in the same unit convention as the dataset it is being used to query.
