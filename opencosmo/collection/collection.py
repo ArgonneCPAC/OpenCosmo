@@ -185,6 +185,26 @@ class SimulationCollection(dict):
     def bound(
         self, region: Region, select_by: Optional[str] = None
     ) -> SimulationCollection:
+        """
+        Restrict the datasets to some region. Note that the SimulationCollection does
+        not do any checking to ensure its members have identical boxes. As a result
+        this method can in principle fail for some of the simulations in the
+        collection and not others. This should never happen when working with official
+        OpenCosmo data products.
+
+        See :doc:`spatial_ref` for details of how to construct regions.
+
+        Parameters
+        ----------
+        region: opencosmo.spatial.Region
+            The region to query
+
+        Returns
+        -------
+        dataset: opencosmo.Dataset
+            The portion of the dataset inside the selected region
+
+        """
         return self.__map("bound", region, select_by)
 
     def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:

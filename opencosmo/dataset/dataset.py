@@ -149,10 +149,12 @@ class Dataset:
         in the same units as the current dataset. For example, if the dataset is
         in the default "comoving" unit convention, positions are always in units of
         comoving Mpc. However Region objects themselves do not carry units.
+        See :doc:`spatial_ref` for details of how to construct regions.
 
         Parameters
         ----------
         region: opencosmo.spatial.Region
+            The region to query.
 
         Returns
         -------

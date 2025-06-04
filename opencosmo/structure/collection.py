@@ -163,6 +163,31 @@ class StructureCollection:
     def bound(
         self, region: Region, select_by: Optional[str] = None
     ) -> StructureCollection:
+        """
+        Restrict this collection to only contain structures in the specified region.
+        Querying will be done based on the halo centers, meaning some particles may
+        fall outside the given region.
+
+        See :doc:`spatial_ref` for details of how to construct regions.
+
+        Parameters
+        ----------
+        region: opencosmo.spatial.Region
+
+        Returns
+        -------
+        dataset: opencosmo.Dataset
+            The portion of the dataset inside the selected region
+
+        Raises
+        ------
+        ValueError
+            If the query region does not overlap with the region this dataset resides
+            in
+        AttributeError:
+            If the dataset does not contain a spatial index
+        """
+
         bounded = self.__properties.bound(region, select_by)
         return StructureCollection(bounded, self.__header, self.__handlers)
 
