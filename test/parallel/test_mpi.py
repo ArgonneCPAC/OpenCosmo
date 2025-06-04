@@ -243,7 +243,7 @@ def test_box_query_collect(input_path):
     p1 = mpi4py.MPI.COMM_WORLD.bcast(p1)
     p2 = mpi4py.MPI.COMM_WORLD.bcast(p2)
 
-    reg1 = oc.Box(p1, p2)
+    reg1 = oc.make_box(p1, p2)
     original_data = ds.data
     ds = ds.bound(reg1)
     ds = ds.collect()
@@ -272,11 +272,11 @@ def test_box_query_chain(input_path):
     p1 = (25, 32.5, 40)
     p2 = (35, 47.5, 60)
 
-    reg1 = oc.Box(p1, p2)
+    reg1 = oc.make_box(p1, p2)
 
     p1 = (29, 38, 46)
     p2 = (34, 44.5, 57)
-    reg2 = oc.Box(p1, p2)
+    reg2 = oc.make_box(p1, p2)
 
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)

@@ -150,17 +150,17 @@ class Dataset:
         in the default "comoving" unit convention, positions are always in units of
         comoving Mpc. However Region objects themselves do not carry units.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         region: opencosmo.spatial.Region
 
-        Returns:
-        --------
+        Returns
+        -------
         dataset: opencosmo.Dataset
             The portion of the dataset inside the selected region
 
-        Raises:
-        -------
+        Raises
+        ------
         ValueError
             If the query region does not overlap with the region this dataset resides
             in

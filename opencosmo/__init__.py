@@ -3,7 +3,7 @@ import hdf5plugin  # type: ignore # noqa: F401
 from .collection import SimulationCollection
 from .dataset import Dataset, col
 from .io import open, read, write
-from .spatial import Box, Cone
+from .spatial import make_box, make_cone
 from .structure import StructureCollection, open_linked_files
 
 __all__ = [
@@ -15,6 +15,6 @@ __all__ = [
     "StructureCollection",
     "SimulationCollection",
     "open_linked_files",
-    "Box",
-    "Cone",
+    "make_box",
+    "make_cone",
 ]

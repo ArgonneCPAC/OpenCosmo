@@ -227,7 +227,7 @@ class Octant:
         p1 = tuple(ci - self.halfwidth for ci in self.center)
         p2 = tuple(ci + self.halfwidth for ci in self.center)
 
-        return oc.Box(p1, p2)
+        return oc.make_box(p1, p2)
 
     def query(
         self,
@@ -237,7 +237,7 @@ class Octant:
         containment: dict[Octant, Intersection],
     ) -> Optional[Octant]:
         if not isinstance(region, BoxRegion):
-            raise ValueError("Did not recieve a 3d region!")
+            raise ValueError("Did not recieve a 3D region!")
         if region.contains(self.bounding_box()):
             containment[self] = Intersection.CONTAINED
             return Octant(self.idx, self.center, self.halfwidth)

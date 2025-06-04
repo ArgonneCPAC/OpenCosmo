@@ -72,7 +72,7 @@ class HealPixIndex:
         This is why we can't have nice things
         """
         if not isinstance(region, ConeRegion):
-            raise ValueError("Didn't recieve a 2d region!")
+            raise ValueError("Didn't recieve a 2D region!")
         ra = region.center.ra.to(u.radian).value
         dec = region.center.dec.to(u.radian).value
         phi = ra  # SkyCoords casts negative RAs to their positive equivalent

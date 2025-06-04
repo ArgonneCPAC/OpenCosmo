@@ -12,24 +12,24 @@ def halo_properties_path(snapshot_path):
 
 
 def test_contains():
-    reg1 = oc.Box((85, 85, 85), (115, 115, 115))
-    reg2 = oc.Box((87.5, 87.5, 87.5), (92.5, 92.5, 92.5))
-    reg3 = oc.Box((80, 80, 80), (100, 100, 100))
+    reg1 = oc.make_box((85, 85, 85), (115, 115, 115))
+    reg2 = oc.make_box((87.5, 87.5, 87.5), (92.5, 92.5, 92.5))
+    reg3 = oc.make_box((80, 80, 80), (100, 100, 100))
     assert reg1.contains(reg2)
     assert not reg1.contains(reg3)
     assert not reg2.contains(reg1)
 
 
 def test_interesects():
-    reg1 = oc.Box((90, 90, 90), (110, 110, 110))
-    reg2 = oc.Box((80, 80, 80), (100, 100, 100))
+    reg1 = oc.make_box((90, 90, 90), (110, 110, 110))
+    reg2 = oc.make_box((80, 80, 80), (100, 100, 100))
     assert reg1.intersects(reg2)
     assert reg2.intersects(reg1)
 
 
 def test_neither():
-    reg1 = oc.Box((92.5, 92.5, 92.5), (107.5, 107.5, 107.5))
-    reg2 = oc.Box((72.5, 72.5, 72.5), (77.5, 77.5, 77.5))
+    reg1 = oc.make_box((92.5, 92.5, 92.5), (107.5, 107.5, 107.5))
+    reg2 = oc.make_box((72.5, 72.5, 72.5), (77.5, 77.5, 77.5))
     assert not reg1.intersects(reg2)
     assert not reg2.intersects(reg1)
     assert not reg1.contains(reg2)
@@ -40,7 +40,7 @@ def test_box_query(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     p1 = tuple(random.uniform(30, 40) for _ in range(3))
     p2 = tuple(random.uniform(40, 50) for _ in range(3))
-    reg1 = oc.Box(p1, p2)
+    reg1 = oc.make_box(p1, p2)
 
     original_data = ds.data
     ds = ds.bound(reg1)
@@ -67,7 +67,7 @@ def test_box_query_physical(halo_properties_path):
 
     p1 = tuple(random.uniform(30, 40) for _ in range(3))
     p2 = tuple(random.uniform(50, 60) for _ in range(3))
-    reg1 = oc.Box(p1, p2)
+    reg1 = oc.make_box(p1, p2)
 
     original_data = ds.data
     ds = ds.bound(reg1)
@@ -92,11 +92,11 @@ def test_box_query_chain(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     p11 = (25, 32.5, 40)
     p12 = (35, 47.5, 60)
-    reg1 = oc.Box(p11, p12)
+    reg1 = oc.make_box(p11, p12)
 
     p21 = (28.5, 37, 46)
     p22 = (33.5, 45, 56)
-    reg2 = oc.Box(p21, p22)
+    reg2 = oc.make_box(p21, p22)
 
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
@@ -117,7 +117,7 @@ def test_write_tree(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     p1 = (25, 32.5, 40)
     p2 = (35, 47.5, 60)
-    reg1 = oc.Box(p1, p2)
+    reg1 = oc.make_box(p1, p2)
 
     ds = ds.bound(reg1)
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
@@ -136,11 +136,11 @@ def test_box_query_chain_with_write(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     p11 = (25, 32.5, 40)
     p12 = (35, 47.5, 60)
-    reg1 = oc.Box(p11, p12)
+    reg1 = oc.make_box(p11, p12)
 
     p21 = (28.5, 37, 46)
     p22 = (33.5, 45, 56)
-    reg2 = oc.Box(p21, p22)
+    reg2 = oc.make_box(p21, p22)
     ds = ds.bound(reg1)
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
 
@@ -162,12 +162,12 @@ def test_box_query_chain_failure(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     p1 = (25, 25, 25)
     p2 = (35, 35, 35)
-    reg1 = oc.Box(p1, p2)
+    reg1 = oc.make_box(p1, p2)
 
     p1 = (65, 65, 65)
     p2 = (75, 75, 75)
 
-    reg2 = oc.Box(p1, p2)
+    reg2 = oc.make_box(p1, p2)
 
     ds = ds.bound(reg1)
     with pytest.raises(ValueError):
@@ -178,12 +178,12 @@ def test_box_query_chain_write_failure(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     p1 = (25, 25, 25)
     p2 = (35, 35, 35)
-    reg1 = oc.Box(p1, p2)
+    reg1 = oc.make_box(p1, p2)
 
     p1 = (65, 65, 65)
     p2 = (75, 75, 75)
 
-    reg2 = oc.Box(p1, p2)
+    reg2 = oc.make_box(p1, p2)
 
     ds = ds.bound(reg1)
     output_path = tmp_path / "bound_dataset.hdf5"
