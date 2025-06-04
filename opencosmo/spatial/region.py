@@ -121,14 +121,14 @@ class ConeRegion:
 
 @ConeRegion._contains.register  # type: ignore
 def _(self, other: ConeRegion):
-    dtheta = self.__center.separation(other.center)
-    return self.__radius > (dtheta + other.__radius)
+    dtheta = self.center.separation(other.center)
+    return self.radius > (dtheta + other.radius)
 
 
 @ConeRegion._intersects.register  # type: ignore
 def _(self, other: ConeRegion):
     dtheta = self.center.separation(other.center)
-    return dtheta < (self.__radius + other.__radius)
+    return dtheta < (self.radius + other.radius)
 
 
 class FullSkyRegion:
@@ -149,6 +149,9 @@ class FullSkyRegion:
     @_intersects.register
     def _(self, coords: SkyCoord):
         return True
+
+    def contains(self, other: Any):
+        return self._contains(other)
 
     @singledispatchmethod
     def _contains(self, other: Any):

@@ -15,3 +15,20 @@ Currently, OpenCosmo does not support writing data in an MPI context unless all 
 
 When a dataset is opened in an MPI context, the data is chunked across all ranks. :py:meth:`opencosmo.Dataset.take` operations will always operate on the data that is local to the given rank. For example, taking 100 rows at random on all ranks will actually take 100*N_ranks rows, distributed evenly across the ranks. Taking 100 rows with :code:`at = "start"` will take the first 100 rows on each rank.
 
+Spatial Queries
+---------------
+In OpenCosmo, raw data is ordered according to its location in the spatial index. When a dataset is loaded with MPI, each rank recieves an equal share of the regions in the spatial index. As a result, most spatial queries are likely to return no data for most ranks. Ranks that fall completely outside the query region will return a zero-length dataset. There are three primary options for handling spatial queries in an MPI context.
+
+**Collect**
+
+Calling :meth:`opencosmo.Dataset.collect` will
+
+**Redistribute**
+
+Calling :meth:`opencosmo.Dataset.distribute` will redistribute the data 
+
+
+
+
+
+

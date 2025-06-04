@@ -75,6 +75,9 @@ def write_parallel(file: Path, file_schema: FileSchema):
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
             writer.write(f)
     except ValueError:  # parallell hdf5 not available
+        raise NotImplementedError(
+            "MPI writes without paralell hdf5 are not yet supported"
+        )
         nranks = new_comm.Get_size()
         rank = new_comm.Get_rank()
         for i in range(nranks):
