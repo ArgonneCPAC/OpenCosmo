@@ -3,11 +3,11 @@ Main Transformations API
 
 :code:`opencosmo` provides a simple but powerful API for transforming and querying datasets and collections. Both the main :py:class:`opencosmo.Dataset` type and the various collection types use the same basic vocabulary to describe these transformations, although the details of how they behave will differ. See :doc:`collections` for more info. The main Dataset transformations are:
 
+- :code:`with_units`: Change the unit convention of the dataset.
 - :code:`filter`: Filter the dataset based on the value of one more more columns.
 - :code:`select`: Select a subset of columns from the dataset.
 - :code:`take`: Select a subset of rows from the dataset.
-- :code:`with_units`: Change the unit convention of the dataset.
-- :code:`crop`: Limit the dataset to a given spatial region (not yet implemented).
+- :code:`bound`: Limit the dataset to a given spatial region.
 
 Each of these transformations is returns a new dataset or collection with the transformations applied. Because transformations are applied lazily, chaining them together is efficient:
 
@@ -105,7 +105,7 @@ Filters operate on columns of a given dataset and return a new dataset that only
 - Less than or equal to: :code:`col("column_name") <= value`
 - Membership: :code:`col("column_name").isin([value1, value2, ...])`
 
-When passed to a dataset with the :py:meth:`opencosmo.Dataset.filter` transformation, numerical filters are always applied in the unit convention that is currently active. For a newly constructed dataset, this is always the "comoving" unit convention. See above for an example of applying a filter between unit conventions.
+When passed to a dataset with the :meth:`opencosmo.Dataset.filter` transformation, numerical filters are always applied in the unit convention that is currently active. For a newly constructed dataset, this is always the "comoving" unit convention. See above for an example of applying a filter between unit conventions.
 
 
 
@@ -116,7 +116,7 @@ The behavior of filters on collections depends on the collection type. See the :
 Selecting Columns
 -----------------
 
-For small datasets, it is usually not an issue to request all the columns in a given dataset. However for large datasets, loading everything into memory is slow and consumes singificant quantities of memory. We can use the :py:meth:`opencosmo.Dataset.select` transformation to select only the subset of columns from the dataset that are useful for our analysis. Select transformations can be applied sequentially, in which case the second select will only work if it contains columns that were selected in the first select. For example:
+For small datasets, it is usually not an issue to request all the columns in a given dataset. However for large datasets, loading everything into memory is slow and consumes singificant quantities of memory. We can use the :meth:`opencosmo.Dataset.select` transformation to select only the subset of columns from the dataset that are useful for our analysis. Select transformations can be applied sequentially, in which case the second select will only work if it contains columns that were selected in the first select. For example:
 
 .. code-block:: python
 
@@ -176,7 +176,7 @@ but this will raise an error:
 Taking Rows
 -----------
 
-The :py:meth:`opencosmo.Dataset.take` transformation is used to select a subset of rows from a dataset. The :code:`at` argument can be used to specify how the rows are selected. The available options are:
+The :meth:`opencosmo.Dataset.take` transformation is used to select a subset of rows from a dataset. The :code:`at` argument can be used to specify how the rows are selected. The available options are:
 
 - :code:`at="random"`: Select a random subset of n rows from the dataset.
 - :code:`at="start"`: Select the first n rows from the dataset.
@@ -195,7 +195,7 @@ As with the `select` transformations, `take` transformations can be chained toge
 
 
 
-You can also take a range of rows with :py:meth:`opencosmo.Dataset.take_range`. As with all other transformations, this creates a new dataset so the following is valid:  
+You can also take a range of rows with :meth:`opencosmo.Dataset.take_range`. As with all other transformations, this creates a new dataset so the following is valid:  
 
 .. code-block:: python
 
@@ -207,9 +207,39 @@ You can also take a range of rows with :py:meth:`opencosmo.Dataset.take_range`. 
 
 This will take the rows 500-1000 from the original dataset, and then take the first 100 rows from that new dataset. The original dataset is unchanged.
 
-Iterating Over Rows:
+Spatial Querying
+-----------------
+OpenCosmo data contains a spatial index which makes it efficient to perform spatial queries on the data. These queries can be performed by defining a region, and then passing it into :meth:`opencosmo.Dataset.bound`:
+
+.. code-block:: python
+
+   ds = oc.load("haloproperties.hdf5")
+   region = oc.make_box((20,20,20), (40,40,40))
+   bound_ds = ds.bound(region)
+
+For lightcone data, spatial queries are performed using two dimensional regions on the sky. For example:
+
+.. code-block:: python
+
+   import astropy.units as u
+   from astropy.coordinates import SkyCoord
+
+   ds = oc.load("lc_haloproperties.hdf5")
+   center = SkyCoord(45*u.deg, -30*u.deg)
+   radius = 30*u.arcmin
+   region = opencosmo.make_cone(center, radius)
+   bound_ds = ds.bound(region)
+
+See :doc:`spatial_ref` for more information about constructing regions.
+
+As with other transformations, spatial queries can be chained together to build complex query pipelines. If a given region contains no data, the spatial query will return a dataset with length zero. 
+
+There are some complications that arise when working with spatial queries in an MPI context. See :doc:`mpi` for more details.
+
+
+Iterating Over Rows
 --------------------
-If you want to work row-by-row, you can always iterate over the dataset with :py:meth:`opencosmo.Dataset.rows`
+If you want to work row-by-row, you can always iterate over the dataset with :meth:`opencosmo.Dataset.rows`
 
 .. code-block:: python
 
@@ -219,5 +249,6 @@ If you want to work row-by-row, you can always iterate over the dataset with :py
       # Do something with the row
       print(row["fof_halo_mass"], row["fof_halo_center_x"])
 
-At each iteration, the row will be a dictionary of values for the specified rows with units applied. If you only need a subset of the columns, consider using :py:meth:`opencosmo.Dataset.select` to select only those columns before iteration.
+At each iteration, the row will be a dictionary of values for the specified rows with units applied. If you only need a subset of the columns, consider using :meth:`opencosmo.Dataset.select` to select only those columns before iteration.
+
 

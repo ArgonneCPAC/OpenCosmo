@@ -1,10 +1,10 @@
 Regions
 -------
 
-Regions can be used to spatially query datasets and collections. Regions are constructed with :py:meth:`opencosmo.Box` or :py:meth:`opencosmo.Cone`.
+Regions can be used to spatially query datasets and collections. Regions are constructed with :py:meth:`opencosmo.make_box` or :py:meth:`opencosmo.make_cone`.
 
-.. autofunction:: opencosmo.Box
-.. autofunction:: opencosmo.Cone
+.. autofunction:: opencosmo.make_box 
+.. autofunction:: opencosmo.make_cone
 
 .. autoclass:: opencosmo.spatial.BoxRegion
    :members:
