@@ -192,7 +192,7 @@ class Octant:
         self.make_children()
         if n_partitions == 1:
             return [[self]]
-        elif n_partitions in [2, 3]:
+        elif n_partitions in [2, 4]:
             n_per = 8 // n_partitions
             return [
                 self.children[n_per * i : n_per * (i + 1)] for i in range(n_partitions)

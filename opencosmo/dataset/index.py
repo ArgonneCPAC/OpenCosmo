@@ -4,6 +4,7 @@ from typing import Protocol, TypeGuard, TypeVar
 
 import h5py
 import numpy as np
+from numpy.typing import NDArray
 
 T = TypeVar("T", np.ndarray, h5py.Dataset)
 
@@ -32,7 +33,9 @@ class DataIndex(Protocol):
     @classmethod
     def from_size(cls, size: int) -> DataIndex: ...
     def get_data(self, data: h5py.Dataset | np.ndarray) -> np.ndarray: ...
-    def n_in_range(self, start: int, end: int) -> int: ...
+    def n_in_range(
+        self, start: NDArray[np.int_], end: NDArray[np.int_]
+    ) -> NDArray[np.int_]: ...
     def take(self, n: int, at: str = "random") -> DataIndex: ...
     def take_range(self, start: int, end: int) -> DataIndex: ...
     def intersection(self, other: DataIndex) -> DataIndex: ...
@@ -92,11 +95,25 @@ class SimpleIndex:
             )
             return self.concatenate(*simple_indices)
 
-    def n_in_range(self, start: int, end: int) -> int:
-        if start > end:
-            raise ValueError("End must be greater than start!")
-        in_range = (self.__index >= start) & (self.__index < end)
-        return sum(in_range)
+    def n_in_range(
+        self, start: NDArray[np.int_], size: NDArray[np.int_]
+    ) -> NDArray[np.int_]:
+        if len(start) != len(size):
+            raise ValueError("Start and size arrays must have the same length")
+        if np.any(size < 0):
+            raise ValueError("Sizes must greater than or equal to zero")
+        if len(self) == 0:
+            return np.zeros_like(start)
+
+        end = start + size
+        mask = self.into_mask()
+        l_ = len(mask)
+        end = np.clip(end, a_min=None, a_max=l_)
+        start = np.clip(start, a_min=None, a_max=l_)
+        sums = np.zeros(len(mask) + 1, dtype=int)
+        sums[1:] = np.cumsum(mask)
+
+        return sums[end] - sums[start]
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
         """
@@ -313,8 +330,8 @@ class ChunkedIndex:
 
     @classmethod
     def empty(cls):
-        start = np.array([0], dtype=int)
-        size = np.array([0], dtype=int)
+        start = np.array([], dtype=int)
+        size = np.array([], dtype=int)
         return ChunkedIndex(start, size)
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
@@ -468,7 +485,9 @@ class ChunkedIndex:
 
         return output
 
-    def n_in_range(self, start: int, end: int) -> int:
+    def n_in_range(
+        self, start: NDArray[np.int_], size: NDArray[np.int_]
+    ) -> NDArray[np.int_]:
         """
         Return the number of elements in this index that fall within
         a specified data range. Used to mask spatial index.
@@ -476,25 +495,22 @@ class ChunkedIndex:
 
         As with numpy, this is the half-open range [start, end)
         """
-        if start > end:
-            raise ValueError("Start must be less than end!")
+        if len(start) != len(size):
+            raise ValueError("Start and size arrays must have the same length")
+        if np.any(size < 0):
+            raise ValueError("Sizes must greater than or equal to zero")
+        if len(self) == 0:
+            return np.zeros_like(start)
+        end = start + size
 
-        if start == end or len(self) == 0:
-            return 0
-        ends = self.__starts + self.__sizes - 1
-        not_in_range = (self.__starts > end) | (ends < start)
-        in_range = ~not_in_range
+        mask = self.into_mask()
 
-        if not np.any(in_range):
-            return 0
-
-        starts_in_range = self.__starts[in_range]
-        ends_in_range = ends[in_range]
-
-        starts_in_range[starts_in_range < start] = start
-        ends_in_range[ends_in_range > end] = end
-
-        return sum(ends_in_range - starts_in_range)
+        l_ = len(mask)
+        end = np.clip(end, a_min=None, a_max=l_)
+        start = np.clip(start, a_min=None, a_max=l_)
+        sums = np.zeros(len(mask) + 1, dtype=int)
+        sums[1:] = np.cumsum(mask)
+        return sums[end] - sums[start]
 
     def __getitem__(self, item: int) -> DataIndex:
         """
