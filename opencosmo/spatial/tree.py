@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import count
-from typing import TYPE_CHECKING, Sequence, cast
+from typing import TYPE_CHECKING, Sequence
 from uuid import uuid1
 
 import h5py
@@ -183,16 +183,8 @@ class Tree:
 
     def apply_index(self, index: DataIndex, min_counts: int = 100) -> Tree:
         max_level_starts = self.__data[f"level_{self.__max_level}"]["start"][:]
-        max_level_ends = (
-            max_level_starts + self.__data[f"level_{self.__max_level}"]["size"][:]
-        )
-        n_in_range = np.zeros(len(max_level_starts), dtype=int)
-        it = np.nditer([max_level_starts, max_level_ends], ("c_index",))
-
-        for start, end in it:
-            idx = it.index
-            n_in_range[idx] = index.n_in_range(cast(int, start), cast(int, end))
-
+        max_level_sizes = self.__data[f"level_{self.__max_level}"]["size"][:]
+        n_in_range = index.n_in_range(max_level_starts, max_level_sizes)
         target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
         result = self.__index.combine_upwards(n_in_range, self.__max_level, target)
         return Tree(self.__index, result)

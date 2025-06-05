@@ -202,8 +202,8 @@ class BoxRegion:
         )
 
     def into_model(self) -> BoxRegionModel:
-        p1 = (b[0] for b in self.bounds)
-        p2 = (b[1] for b in self.bounds)
+        p1 = tuple(b[0] for b in self.bounds)
+        p2 = tuple(b[1] for b in self.bounds)
         return BoxRegionModel(p1=p1, p2=p2)
 
     def bounding_box(self) -> BoxRegion:
