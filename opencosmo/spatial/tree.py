@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import count
-from typing import TYPE_CHECKING, Sequence
+from typing import Sequence
 from uuid import uuid1
 
 import h5py
@@ -17,9 +17,6 @@ from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
 from opencosmo.spatial.protocols import Region, SpatialIndex
-
-if TYPE_CHECKING:
-    pass
 
 
 def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):

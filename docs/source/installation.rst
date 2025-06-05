@@ -1,7 +1,7 @@
 Installation
 ============
 
-The OpenCosmo library is available for Python 3.11 and later and can be installed with :code:`pip`:
+The OpenCosmo library is available for Python 3.11 and later on Linux and MacOS (and Windows via `WSL <https://learn.microsoft.com/en-us/windows/wsl/setup/environment>`_). It can be installed with :code:`pip`:
 
 .. code-block:: bash
 
