@@ -5,7 +5,7 @@ import numpy as np
 from astropy.cosmology import FLRW  # type: ignore
 from numpy.typing import NDArray
 
-from opencosmo.dataset.index import DataIndex, SimpleIndex
+from opencosmo.index import DataIndex, SimpleIndex
 from opencosmo.transformations.units import UnitConvention
 
 if TYPE_CHECKING:

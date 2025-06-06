@@ -1,25 +1,13 @@
-from typing import Protocol
-
-from h5py import Dataset, Group
+import h5py
 
 from opencosmo.file import broadcast_read
-from opencosmo.transformations import transformation as t
-
-
-class TransformationGenerator(Protocol):
-    """
-    A transformation generator is a callable that returns a transformation
-    or set of transformations based on information stored in the attributes of a given
-    dataset. Examples include units stored as attributes
-    """
-
-    def __call__(self, input: Dataset) -> t.TransformationDict: ...
+from opencosmo.transformations import protocols as t
 
 
 @broadcast_read
 def generate_transformations(
-    input: Group,
-    generators: list[TransformationGenerator],
+    input: h5py.Group,
+    generators: list[t.TransformationGenerator],
     existing: t.TransformationDict = {},
 ) -> t.TransformationDict:
     """

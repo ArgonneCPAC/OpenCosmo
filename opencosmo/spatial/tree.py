@@ -12,7 +12,7 @@ try:
 except ImportError:
     MPI = None  # type: ignore
 
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
+from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex

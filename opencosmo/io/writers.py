@@ -3,8 +3,8 @@ from typing import Callable, Optional
 import h5py
 import numpy as np
 
-from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import DataIndex
 from opencosmo.io import protocols as iop
 
 try:

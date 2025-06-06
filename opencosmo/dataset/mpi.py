@@ -3,7 +3,7 @@ from warnings import warn
 
 from mpi4py import MPI
 
-from opencosmo.dataset.index import ChunkedIndex
+from opencosmo.index import ChunkedIndex
 from opencosmo.spatial.protocols import TreePartition
 from opencosmo.spatial.tree import Tree
 

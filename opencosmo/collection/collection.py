@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Optional, Protocol, Self
+from typing import Iterable, Mapping, Optional
 
 import h5py
 from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection.protocols import Collection
 from opencosmo.dataset.handler import DatasetHandler
-from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.mask import Mask
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.index import ChunkedIndex
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import SimulationParameters
@@ -18,49 +19,6 @@ from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import open_tree
 from opencosmo.structure import StructureCollection
 from opencosmo.transformations import units as u
-
-
-class Collection(Protocol):
-    """
-    Collections represent a group of datasets that are related in some way. They
-    support higher-level operations that are applied across all datasets in the
-    collection, sometimes in a non-obvious way.
-
-    This protocol defines methods a collection must implement. Most notably they
-    must include  __getitem__, keys, values and __items__, which allows
-    a collection to behave like a read-only dictionary.
-
-
-    Note that the "open" and "read" methods are used in the case an entire collection
-    is located within a single file. Multi-file collections are handled
-    in the collection.io module. Most complexity is hidden from the user
-    who simply calls "oc.read" and "oc.open" to get a collection. The io
-    module also does sanity checking to ensure files are structurally valid,
-    so we do not have to do it here.
-    """
-
-    @classmethod
-    def open(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> Self: ...
-
-    @classmethod
-    def read(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]]
-    ) -> Self: ...
-
-    def make_schema(self) -> DataSchema: ...
-
-    def __getitem__(self, key: str) -> oc.Dataset: ...
-    def keys(self) -> Iterable[str]: ...
-    def values(self) -> Iterable[oc.Dataset]: ...
-    def items(self) -> Iterable[tuple[str, oc.Dataset]]: ...
-    def __enter__(self): ...
-    def __exit__(self, *exc_details): ...
-    def filter(self, *masks: Mask) -> Self: ...
-    def select(self, *args, **kwargs) -> Self: ...
-    def with_units(self, convention: str) -> Self: ...
-    def take(self, *args, **kwargs) -> Self: ...
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):

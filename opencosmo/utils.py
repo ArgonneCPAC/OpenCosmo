@@ -7,7 +7,7 @@ from typing import Optional
 import hdf5plugin  # type: ignore
 from h5py import Dataset, Group
 
-from opencosmo.dataset.index import DataIndex
+from opencosmo.index import DataIndex
 
 
 def write_index(

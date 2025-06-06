@@ -1,39 +1,17 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Protocol, Self
+from typing import Iterable, Optional
 
 from h5py import File, Group
 
 import opencosmo as oc
 from opencosmo.dataset.column import get_column_builders
 from opencosmo.dataset.handler import DatasetHandler
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.spatial.tree import open_tree
 from opencosmo.transformations import units as u
-
-
-class DatasetBuilder(Protocol):
-    """
-    A DatasetBuilder is responsible for building a dataset from a file. It
-    contains the logic for selecting columns and applying transformations to
-    the data.
-    """
-
-    def with_units(self, convention: str) -> Self:
-        pass
-
-    def select(self, selected: str | Iterable[str]) -> Self:
-        pass
-
-    def build(
-        self,
-        file: File | Group,
-        header: OpenCosmoHeader,
-        index: Optional[DataIndex] = None,
-    ) -> oc.Dataset:
-        pass
 
 
 class OomDatasetBuilder:

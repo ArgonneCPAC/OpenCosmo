@@ -4,14 +4,15 @@ from .apply import (
     apply_filter_transformations,
     apply_table_transformations,
 )
-from .generator import TransformationGenerator, generate_transformations
-from .transformation import (
+from .generator import generate_transformations
+from .protocols import (
     AllColumnTransformation,
     ColumnTransformation,
     FilterTransformation,
     TableTransformation,
     Transformation,
     TransformationDict,
+    TransformationGenerator,
     TransformationType,
 )
 
