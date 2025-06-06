@@ -114,7 +114,7 @@ jobs:
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
         run: |
-          poetry run mpiexec --use-hwthread-cpus -n 4 pytest -m parallel test/parallel
+          poetry run mpiexec --use-hwthread-cpus -n 4 pytest -m parallel test/parallel -x
         env:
           OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
  
