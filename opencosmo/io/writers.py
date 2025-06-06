@@ -68,7 +68,8 @@ class FileWriter:
 class CollectionWriter:
     """
     Writes collections to a file or grous. Also pretty much just calls
-    the child writers.
+    the child writers. May or may not recieve a header to write, depending
+    on they type of collection.
     """
 
     def __init__(
@@ -91,7 +92,12 @@ class CollectionWriter:
 
 class DatasetWriter:
     """
-    Writes datasets to a file or group.
+    Writes datasets to a file or group. Datasets must have at least one column.
+    If the datset is being written alone or as part of SimulationCollection, it will
+    be responsible for writing a header.
+
+    It may or may not have a spatial index. It also may or may not have links
+    to other datasets.
     """
 
     def __init__(
@@ -154,33 +160,11 @@ class ColumnWriter:
             ds.attrs[name] = val
 
 
-def idx_link_updater(input: np.ndarray, offset: int = 0) -> np.ndarray:
-    output = np.full(len(input), -1)
-    good = input >= 0
-    output[good] = np.arange(sum(good)) + offset
-    return output
-
-
-def make_idx_link_updater(
-    input: ColumnWriter, comm: Optional["MPI.Comm"]
-) -> Callable[[np.ndarray], np.ndarray]:
-    """
-    Helper function to update data from an 1-to-1 index
-    link.
-    """
-    arr = input.index.get_data(input.source)
-
-    has_data = arr > 0
-    offset = 0
-    n_good = sum(has_data)
-    if comm is not None:
-        all_sizes = comm.allgather(n_good)
-        offsets = np.insert(np.cumsum(all_sizes), 0, 0)
-        offset = offsets[comm.Get_rank()]
-    return lambda arr_: idx_link_updater(arr_, offset)
-
-
 class SpatialIndexWriter:
+    """
+    Writer for spatial indices. Mostly responsible for calling its children
+    """
+
     def __init__(self, levels: dict[int, "SpatialIndexLevelWriter"]):
         self.levels = levels
 
@@ -194,6 +178,11 @@ class SpatialIndexWriter:
 
 
 class SpatialIndexLevelWriter:
+    """
+    Writer for writing a single level of the spatial index. If this operation is being
+    performed in an MPI context, the spatial indices must be summed.
+    """
+
     def __init__(
         self, start: ColumnWriter, size: ColumnWriter, comm: Optional["MPI.Comm"] = None
     ):
@@ -206,10 +195,19 @@ class SpatialIndexLevelWriter:
         self.start.write(group, updater=self.updater)
 
 
+def sum_updater(data: np.ndarray, comm: Optional["MPI.Comm"] = None):
+    if comm is not None and comm.Get_size():
+        recvbuf = np.zeros_like(data)
+        comm.Allreduce(data, recvbuf, MPI.SUM)
+        return recvbuf
+    return data
+
+
 class IdxLinkWriter:
     """
     Writer for links between datasets, where each row in one dataset corresponds
-    to a single row in the other.
+    to a single row in the other. When the dataset is filtered, this link must be
+    updated.
     """
 
     def __init__(self, col_writer: ColumnWriter, comm: Optional["MPI.Comm"] = None):
@@ -220,40 +218,30 @@ class IdxLinkWriter:
         self.writer.write(group, self.updater)
 
 
-def sum_updater(data: np.ndarray, comm: Optional["MPI.Comm"] = None):
-    if comm is not None and comm.Get_size():
-        recvbuf = np.zeros_like(data)
-        comm.Allreduce(data, recvbuf, MPI.SUM)
-        return recvbuf
-    return data
+def idx_link_updater(input: np.ndarray, offset: int = 0) -> np.ndarray:
+    output = np.full(len(input), -1)
+    good = input >= 0
+    output[good] = np.arange(sum(good)) + offset
+    return output
 
 
-def start_link_updater(sizes: np.ndarray, offset: int = 0) -> np.ndarray:
-    cumulative_sizes = np.cumsum(sizes)
-
-    new_starts = np.insert(cumulative_sizes, 0, 0)
-    new_starts = new_starts[:-1] + offset
-    return new_starts
-
-
-def make_start_link_updater(
-    size_writer: ColumnWriter, comm: Optional["MPI.Comm"]
+def make_idx_link_updater(
+    input: ColumnWriter, comm: Optional["MPI.Comm"]
 ) -> Callable[[np.ndarray], np.ndarray]:
     """
-    Helper function to update the starts of a start-size
-    link. Required to work this way so that we can write
-    in an MPI context WITHOUT using parallel hdf5
+    Helper function to update data from a 1-to-1 index
+    link.
     """
-    sizes = size_writer.index.get_data(size_writer.source)
-    cumulative_sizes = np.cumsum(sizes)
-    if comm is not None:
-        offsets = np.cumsum(comm.allgather(cumulative_sizes[-1]))
-        offsets = np.insert(offsets, 0, 0)
-        offset = offsets[comm.Get_rank()]
-    else:
-        offset = 0
+    arr = input.index.get_data(input.source)
 
-    return lambda arr_: start_link_updater(arr_, offset)
+    has_data = arr > 0
+    offset = 0
+    n_good = sum(has_data)
+    if comm is not None:
+        all_sizes = comm.allgather(n_good)
+        offsets = np.insert(np.cumsum(all_sizes), 0, 0)
+        offset = offsets[comm.Get_rank()]
+    return lambda arr_: idx_link_updater(arr_, offset)
 
 
 class StartSizeLinkWriter:
@@ -273,6 +261,33 @@ class StartSizeLinkWriter:
         self.sizes.write(group)
         new_sizes = self.sizes.index.get_data(self.sizes.source)
         self.start.write(group, lambda _: self.updater(new_sizes))
+
+
+def start_link_updater(sizes: np.ndarray, offset: int = 0) -> np.ndarray:
+    cumulative_sizes = np.cumsum(sizes)
+
+    new_starts = np.insert(cumulative_sizes, 0, 0)
+    new_starts = new_starts[:-1] + offset
+    return new_starts
+
+
+def make_start_link_updater(
+    size_writer: ColumnWriter, comm: Optional["MPI.Comm"]
+) -> Callable[[np.ndarray], np.ndarray]:
+    """
+    Helper function to update the starts of a start-size
+    link.
+    """
+    sizes = size_writer.index.get_data(size_writer.source)
+    cumulative_sizes = np.cumsum(sizes)
+    if comm is not None:
+        offsets = np.cumsum(comm.allgather(cumulative_sizes[-1]))
+        offsets = np.insert(offsets, 0, 0)
+        offset = offsets[comm.Get_rank()]
+    else:
+        offset = 0
+
+    return lambda arr_: start_link_updater(arr_, offset)
 
 
 LinkWriter = IdxLinkWriter | StartSizeLinkWriter
