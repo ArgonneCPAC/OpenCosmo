@@ -85,6 +85,7 @@ def make_indices(octants: list[Octant], level):
 def make_partitions(
     octant_splits: list[list[Octant]], level: int
 ) -> list[TreePartition]:
+    print(level)
     regions = map(get_region, octant_splits)
     indices = map(lambda oct: make_indices(oct, level), octant_splits)
     return list(
@@ -221,8 +222,10 @@ class Octant:
             octants = [
                 self.children[n_per * i : n_per * (i + 1)] for i in range(n_partitions)
             ]
+            level += 1
         elif n_partitions == 8 or level == max_level:
             octants = [[child] for child in self.children]
+            level += 1
 
         else:
             subidivisons_per_octant = n_partitions // 8
