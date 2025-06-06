@@ -10,7 +10,11 @@ from astropy.cosmology import FLRW  # type: ignore
 from healpy import ang2vec, query_disc  # type: ignore
 from numpy.typing import NDArray
 
-from opencosmo.parameters.file import BoxRegionModel, ConeRegionModel
+from opencosmo.parameters.file import (
+    BoxRegionModel,
+    ConeRegionModel,
+    HealPixRegionModel,
+)
 from opencosmo.spatial.protocols import Region
 from opencosmo.transformations.units import UnitConvention
 
@@ -153,6 +157,9 @@ class HealPixRegion:
 
     def into_scalefree(self, *args, **kwargs):
         return self
+
+    def into_model(self):
+        return HealPixRegionModel(pixels=self.__idxs, nside=self.nside)
 
     @property
     def pixels(self):
