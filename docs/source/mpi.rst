@@ -23,10 +23,6 @@ In OpenCosmo, raw data is ordered according to its location in the spatial index
 
 Calling :meth:`opencosmo.Dataset.collect` will
 
-**Redistribute**
-
-Calling :meth:`opencosmo.Dataset.distribute` will redistribute the data 
-
 
 
 

@@ -1,4 +1,4 @@
-from typing import Protocol, Union
+from typing import TYPE_CHECKING, NamedTuple, Optional, Protocol, Union
 
 import h5py
 import numpy as np
@@ -6,8 +6,10 @@ from astropy.cosmology import FLRW  # type: ignore
 from numpy.typing import NDArray
 
 from opencosmo.dataset.index import DataIndex, SimpleIndex
-from opencosmo.spatial.region import BoxRegion
 from opencosmo.transformations.units import UnitConvention
+
+if TYPE_CHECKING:
+    from opencosmo.spatial.region import BoxRegion
 
 Point3d = tuple[float, float, float]
 Point2d = tuple[float, float]
@@ -30,16 +32,21 @@ class Region(Protocol):
 
 class Region2d(Region):
     def bounds(self): ...
+    def get_healpix_intersections(self, nside: int): ...
 
 
 class Region3d(Region, Protocol):
-    def bounding_box(self) -> BoxRegion: ...
+    def bounding_box(self) -> "BoxRegion": ...
+
+
+class TreePartition(NamedTuple):
+    idx: DataIndex
+    region: Optional[Region]
+    level: Optional[int]
 
 
 class SpatialIndex(Protocol):
-    def partition(
-        self, n_partitions: int, max_level: int
-    ) -> tuple[list[DataIndex], int]: ...
+    def partition(self, n_partitions: int, max_level: int) -> list[TreePartition]: ...
     @staticmethod
     def combine_upwards(
         counts: np.ndarray, level: int, target: h5py.File

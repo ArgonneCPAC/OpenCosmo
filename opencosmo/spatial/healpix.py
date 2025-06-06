@@ -1,12 +1,9 @@
-import astropy.units as u  # type: ignore
 import h5py
 import numpy as np
-from healpy import query_disc  # type: ignore
-from healpy.pixelfunc import ang2vec  # type: ignore
 
 from opencosmo.dataset.index import SimpleIndex
-from opencosmo.spatial.protocols import Region
-from opencosmo.spatial.region import ConeRegion
+from opencosmo.spatial.protocols import Region, TreePartition
+from opencosmo.spatial.region import HealPixRegion
 
 
 class HealPixIndex:
@@ -28,7 +25,7 @@ class HealPixIndex:
 
         return target
 
-    def partition(self, n_partitions: int, max_level: int):
+    def partition(self, n_partitions: int, max_level: int) -> list[TreePartition]:
         level = 0
         n_per = 0.0
         for i in range(max_level + 1):
@@ -40,15 +37,19 @@ class HealPixIndex:
             break
         if n_per == 0.0:
             raise NotImplementedError()
-        if n_per.is_integer():
-            n_per = int(n_per)
-            partition_indices = [
-                SimpleIndex(np.arange(i * n_per, (i + 1) * n_per))
-                for i in range(n_partitions)
-            ]
-        else:
+        if not n_per.is_integer():
             raise NotImplementedError()
-        return partition_indices, level
+
+        n_per = int(n_per)
+        ranges = list(
+            map(lambda i: np.arange(i * n_per, (i + 1) * n_per), range(n_partitions))
+        )
+        indices = map(lambda arr: SimpleIndex(arr), ranges)
+        regions = map(lambda arr: HealPixRegion(arr, 2**i), ranges)
+        partitions = map(
+            lambda in_: TreePartition(in_[0], in_[1], level), zip(indices, regions)
+        )
+        return list(partitions)
 
     def query(
         self, region: Region, level: int = 1
@@ -71,17 +72,8 @@ class HealPixIndex:
 
         This is why we can't have nice things
         """
-        if not isinstance(region, ConeRegion):
+        if not hasattr(region, "get_healpix_intersections"):
             raise ValueError("Didn't recieve a 2D region!")
-        ra = region.center.ra.to(u.radian).value
-        dec = region.center.dec.to(u.radian).value
-        phi = ra  # SkyCoords casts negative RAs to their positive equivalent
-        # declination of north pole is +pi / 2
-        # Theta of north pole is 0
-        theta = np.pi / 2 - dec
-
-        vec = ang2vec(theta, phi)
-        radius = region.radius.to(u.rad).value
         nside = 2**level
-        intersects = query_disc(nside, vec, radius, inclusive=True, nest=True)
+        intersects = region.get_healpix_intersections(nside)
         return {level: (SimpleIndex.empty(), SimpleIndex(intersects))}

@@ -4,10 +4,11 @@ from warnings import warn
 from mpi4py import MPI
 
 from opencosmo.dataset.index import ChunkedIndex
+from opencosmo.spatial.protocols import TreePartition
 from opencosmo.spatial.tree import Tree
 
 
-def partition(comm: MPI.Comm, length: int, tree: Optional[Tree]) -> ChunkedIndex:
+def partition(comm: MPI.Comm, length: int, tree: Optional[Tree]) -> TreePartition:
     if tree is not None:
         partitions = tree.partition(comm.Get_size())
         try:
@@ -25,10 +26,13 @@ def partition(comm: MPI.Comm, length: int, tree: Optional[Tree]) -> ChunkedIndex
     if rank == nranks - 1:
         start = rank * (length // nranks)
         size = length - start
-        return ChunkedIndex.single_chunk(start, size)
+        index = ChunkedIndex.single_chunk(start, size)
 
-    start = rank * (length // nranks)
-    end = (rank + 1) * (length // nranks)
-    size = end - start
+    else:
+        start = rank * (length // nranks)
+        end = (rank + 1) * (length // nranks)
+        size = end - start
 
-    return ChunkedIndex.single_chunk(start, size)
+        index = ChunkedIndex.single_chunk(start, size)
+
+    return TreePartition(index, None, None)

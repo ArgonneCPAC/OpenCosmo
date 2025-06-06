@@ -110,6 +110,20 @@ class Dataset:
         return self.__header.file.redshift
 
     @property
+    def region(self) -> Region:
+        """
+        The region this dataset is contained in. If no spatial
+        queries have been performed, this will be the entire
+        simulation box for snapshots or the full sky for lightcones
+
+        Returns
+        -------
+        region: opencosmo.spatial.Region
+
+        """
+        return self.__state.region
+
+    @property
     def simulation(self) -> SimulationParameters:
         """
         The parameters of the simulation this dataset is drawn

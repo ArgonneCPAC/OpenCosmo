@@ -269,19 +269,18 @@ def test_box_query_collect(input_path):
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
-    p1 = (25, 32.5, 40)
-    p2 = (35, 47.5, 60)
-
+    bounds = ds.region.bounds
+    widths = tuple(b[1] - b[0] for b in bounds)
+    p1 = tuple(b[0] + w / 4 for b, w in zip(bounds, widths))
+    p2 = tuple(b[0] + 3 * w / 4 for b, w in zip(bounds, widths))
     reg1 = oc.make_box(p1, p2)
 
-    p1 = (29, 38, 46)
-    p2 = (34, 44.5, 57)
+    p1 = tuple(b[0] + w / 3 for b, w in zip(bounds, widths))
+    p2 = tuple(b[0] + 2 * w / 3 for b, w in zip(bounds, widths))
     reg2 = oc.make_box(p1, p2)
-
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
 
-    ds = ds.collect()
     data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
@@ -293,9 +292,6 @@ def test_box_query_chain(input_path):
         parallel_assert(max <= max_ and np.isclose(max, max_, 0.1))
 
         parallel_assert(max <= max_ and np.isclose(max, max_, 0.1))
-
-    size = mpi4py.MPI.COMM_WORLD.bcast(len(ds))
-    parallel_assert(len(ds) == size)
 
 
 @pytest.mark.parallel(nprocs=4)
