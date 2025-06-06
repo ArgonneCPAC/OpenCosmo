@@ -20,6 +20,11 @@ class ConeRegionModel(BaseModel):
     radius: float
 
 
+class HealPixRegionModel(BaseModel):
+    pixels: list[int]
+    nside: int
+
+
 def empty_string_to_none(value: str) -> Optional[str]:
     if type(value) is str and value == "":
         return None
@@ -40,7 +45,7 @@ class FileParameters(BaseModel):
     is_lightcone: bool
     redshift: float
     step: int
-    region: Optional[BoxRegionModel | ConeRegionModel] = None
+    region: Optional[BoxRegionModel | ConeRegionModel | HealPixRegionModel] = None
 
     @model_validator(mode="before")
     @classmethod

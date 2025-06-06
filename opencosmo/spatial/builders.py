@@ -1,11 +1,23 @@
 from typing import cast
 
 import astropy.units as u  # type: ignore
+import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from pydantic import BaseModel
 
-from opencosmo.parameters.file import BoxRegionModel, ConeRegionModel
-from opencosmo.spatial.region import BoxRegion, BoxSize, ConeRegion, Point2d, Point3d
+from opencosmo.parameters.file import (
+    BoxRegionModel,
+    ConeRegionModel,
+    HealPixRegionModel,
+)
+from opencosmo.spatial.region import (
+    BoxRegion,
+    BoxSize,
+    ConeRegion,
+    HealPixRegion,
+    Point2d,
+    Point3d,
+)
 
 
 def from_model(model: BaseModel):
@@ -14,6 +26,8 @@ def from_model(model: BaseModel):
             return make_cone(model.center, model.radius)
         case BoxRegionModel():
             return make_box(model.p1, model.p2)
+        case HealPixRegionModel():
+            return HealPixRegion(np.array(model.pixels), model.nside)
         case _:
             raise ValueError(f"Invalid region model type {type(model)}")
 
