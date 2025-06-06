@@ -46,11 +46,34 @@ class TreePartition(NamedTuple):
 
 
 class SpatialIndex(Protocol):
-    def partition(self, n_partitions: int, max_level: int) -> list[TreePartition]: ...
+    def partition(self, n_partitions: int, max_level: int) -> list[TreePartition]:
+        """
+        Partition the spatial index into n_partitions. For now, the Tree object mandates
+        that the number of  partitions be a power of two. This partitioning will always
+        be done so that each partition contains a contiguous set of indices.
+        """
+        ...
+
     @staticmethod
-    def combine_upwards(
-        counts: np.ndarray, level: int, target: h5py.File
-    ) -> h5py.File: ...
+    def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:
+        """
+        Given a count of the number of items in each region at a given level, write the
+        starts and sizes to and hdf5 dataset and recursively work upwards until the
+        top level of the index is reached. The index should verify that the length of
+        the initial array it recieves is the correct length for the given level.
+        """
+        ...
+
     def query(
         self, region: Region, max_level: int
-    ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]: ...
+    ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]:
+        """
+        Given a region in space, return a dictionary where each key is a level and each
+        value is a tuple of DataIndexes. The first DataIndex corresponds to the regions
+        that are fully contained by the given region, and the second corresponds to
+        regions that only overlap.
+
+        If a given subvolume is full contained by the query region, this method should
+        NOT return any sub-sub volumes.
+        """
+        ...

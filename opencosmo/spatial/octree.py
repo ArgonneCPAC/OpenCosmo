@@ -98,6 +98,9 @@ def make_partitions(
 
 class OctTreeIndex:
     def __init__(self, root: Octant):
+        """
+        An octree index is used to spatialy index snapshot data.
+        """
         self.root = root
 
     @staticmethod
