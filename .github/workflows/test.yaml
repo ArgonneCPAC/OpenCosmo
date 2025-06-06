@@ -85,7 +85,7 @@ jobs:
         uses: mpi4py/setup-mpi@v1
 
       - name: install parallel hdf5
-        run: sudo apt install -y libhdf5-mpich-dev
+        run: sudo apt install -y libhdf5-mpi-dev
       - name: get test data
         uses: actions/cache@v4
         with:
