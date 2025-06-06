@@ -2,6 +2,7 @@ import astropy.units as u
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+from healpy import pix2ang
 from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
@@ -13,14 +14,17 @@ def haloproperties_path(lightcone_path):
     return lightcone_path / "step_600" / "haloproperties.hdf5"
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_index(haloproperties_path):
     ds = oc.open(haloproperties_path)
-    raw_data = ds.collect().data
+    raw_data = ds.data
 
-    center = (45 * u.deg, -45 * u.deg)
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
+
     radius = 2 * u.deg
-    center_coord = SkyCoord(*center)
+    center_coord = SkyCoord(*center, unit="deg")
 
     raw_data_coords = SkyCoord(
         raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
@@ -29,7 +33,7 @@ def test_healpix_index(haloproperties_path):
     n_raw = np.sum(raw_data_seps < radius)
 
     region = oc.make_cone(center, radius)
-    data = ds.bound(region).collect().data
+    data = ds.bound(region).data
     ra = data["phi"]
     dec = np.pi / 2 - data["theta"]
 
@@ -40,6 +44,7 @@ def test_healpix_index(haloproperties_path):
     parallel_assert(len(data) == n_raw)
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_index_chain_failure(haloproperties_path):
     ds = oc.open(haloproperties_path)
@@ -50,20 +55,20 @@ def test_healpix_index_chain_failure(haloproperties_path):
 
     region1 = oc.make_cone(center1, radius)
     region2 = oc.make_cone(center2, radius)
-    ds = ds.bound(region1).collect()
     with pytest.raises(ValueError):
-        ds = ds.bound(region2)
+        ds = ds.bound(region1).bound(region2)
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_write(haloproperties_path, tmp_path):
     ds = oc.open(haloproperties_path)
     path = MPI.COMM_WORLD.bcast(tmp_path)
 
-    center = (45, -45)
-    radius = 4 * u.deg
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
 
-    region = oc.make_cone(center, radius)
+    region = oc.make_cone(center, 2 * u.deg)
     ds = ds.bound(region)
 
     oc.write(path / "lightcone_test.hdf5", ds)

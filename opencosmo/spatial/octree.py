@@ -12,7 +12,7 @@ import numpy as np
 
 import opencosmo as oc
 from opencosmo.dataset.index import SimpleIndex
-from opencosmo.spatial.protocols import Region
+from opencosmo.spatial.protocols import Region, TreePartition
 from opencosmo.spatial.region import BoxRegion, Point3d
 
 Index3d = tuple[int, int, int]
@@ -62,6 +62,39 @@ def get_children(idx: Index3d) -> Iterable[Index3d]:
     )
 
 
+def get_region(octants: list[Octant]) -> BoxRegion:
+    """
+    Return the region that encloses this list of octants
+    """
+    if len(octants) == 1:
+        return octants[0].bounding_box()
+    bounds = map(lambda oct: np.array(oct.bounding_box().bounds), octants)
+    bound_arr = np.stack(list(bounds))
+
+    mins = bound_arr[:, :, 0].min(axis=0)
+    maxs = bound_arr[:, :, 1].max(axis=0)
+    return oc.make_box(tuple(mins), tuple(maxs))
+
+
+def make_indices(octants: list[Octant], level):
+    return SimpleIndex(
+        np.fromiter((get_octtree_index(oct.idx, level) for oct in octants), np.int_)
+    )
+
+
+def make_partitions(
+    octant_splits: list[list[Octant]], level: int
+) -> list[TreePartition]:
+    regions = map(get_region, octant_splits)
+    indices = map(lambda oct: make_indices(oct, level), octant_splits)
+    return list(
+        map(
+            lambda in_: TreePartition(idx=in_[0], region=in_[1], level=level),
+            zip(indices, regions),
+        )
+    )
+
+
 class OctTreeIndex:
     def __init__(self, root: Octant):
         self.root = root
@@ -87,18 +120,8 @@ class OctTreeIndex:
         root = Octant((0, 0, 0), (halfwidth, halfwidth, halfwidth), halfwidth)
         return OctTreeIndex(root)
 
-    def partition(self, n_partitions: int, max_level: int):
-        level = 0
-        n_ = n_partitions
-        while n_ != 1 and level != max_level:
-            level += 1
-            n_ = int(n_ / 8) if n_ > 8 else 1
-        partitions = self.root.partition(n_partitions, level=0, max_level=max_level)
-        partition_indices = [
-            SimpleIndex(np.array([get_octtree_index(r.idx, level) for r in p]))
-            for p in partitions
-        ]
-        return partition_indices, level
+    def partition(self, n_partitions: int, max_level: int) -> list[TreePartition]:
+        return self.root.partition(n_partitions, level=0, max_level=max_level)
 
     def query(
         self, region: Region, max_level: int
@@ -187,25 +210,30 @@ class Octant:
 
     def partition(
         self, n_partitions: int, level: int, max_level: int
-    ) -> list[list[Octant]]:
+    ) -> list[TreePartition]:
         # Note, n is guaranteed to be a power of 2 at this point
-        self.make_children()
         if n_partitions == 1:
-            return [[self]]
-        elif n_partitions in [2, 4]:
+            octants = [[self]]
+        self.make_children()
+
+        if n_partitions in [2, 4]:
             n_per = 8 // n_partitions
-            return [
+            octants = [
                 self.children[n_per * i : n_per * (i + 1)] for i in range(n_partitions)
             ]
         elif n_partitions == 8 or level == max_level:
-            return [[child] for child in self.children]
+            octants = [[child] for child in self.children]
 
-        subidivisons_per_octant = n_partitions // 8
-        partitions = []
-        for child in self.children:
-            partitions += child.partition(subidivisons_per_octant, level + 1, max_level)
+        else:
+            subidivisons_per_octant = n_partitions // 8
+            partitions = []
+            for child in self.children:
+                partitions += child.partition(
+                    subidivisons_per_octant, level + 1, max_level
+                )
+            return partitions
 
-        return partitions
+        return make_partitions(octants, level)
 
     def make_children(self):
         if len(self.children) == 8:

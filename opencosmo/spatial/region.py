@@ -7,8 +7,11 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import FLRW  # type: ignore
+from healpy import ang2vec, query_disc  # type: ignore
+from numpy.typing import NDArray
 
 from opencosmo.parameters.file import BoxRegionModel, ConeRegionModel
+from opencosmo.spatial.protocols import Region
 from opencosmo.transformations.units import UnitConvention
 
 T = TypeVar("T", float, u.Quantity)
@@ -105,6 +108,18 @@ class ConeRegion:
         """
         return self._intersects(other)
 
+    def get_healpix_intersections(self, nside: int):
+        phi = self.center.ra.to(u.radian).value
+        dec = self.center.dec.to(u.radian).value
+        # SkyCoords casts negative RAs to their positive equivalent
+        # declination of north pole is +pi / 2
+        # Theta of north pole is 0
+        theta = np.pi / 2 - dec
+
+        vec = ang2vec(theta, phi)
+        radius = self.radius.to(u.rad).value
+        return query_disc(nside, vec, radius, inclusive=True, nest=True)
+
     @singledispatchmethod
     def _intersects(self, other: Any):
         raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
@@ -129,6 +144,45 @@ def _(self, other: ConeRegion):
 def _(self, other: ConeRegion):
     dtheta = self.center.separation(other.center)
     return dtheta < (self.radius + other.radius)
+
+
+class HealPixRegion:
+    def __init__(self, idxs: NDArray[np.int_], nside: int):
+        self.__idxs = idxs
+        self.__nside = nside
+
+    def into_scalefree(self, *args, **kwargs):
+        return self
+
+    @property
+    def pixels(self):
+        return self.__idxs
+
+    @property
+    def nside(self):
+        return self.__nside
+
+    def contains(self, other: Any):
+        return False
+
+    def intersects(self, other: Any):
+        return self._intersects(other)
+
+    @singledispatchmethod
+    def _intersects(self, other: Any):
+        raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
+
+    @_intersects.register
+    def _(self, other: ConeRegion):
+        intersections = other.get_healpix_intersections(self.__nside)
+        return np.any(np.isin(self.__idxs, intersections))
+
+
+@HealPixRegion._intersects.register  # type: ignore
+def _(self, other: HealPixRegion):
+    self_pixels = self.pixels
+    other_pixels = other.pixels
+    return np.any(np.isin(self_pixels, other_pixels))
 
 
 class FullSkyRegion:
@@ -196,10 +250,7 @@ class BoxRegion:
         ]
 
     def __repr__(self):
-        return (
-            f"Box centered at {self.center} with widths "
-            f"{tuple(2 * hw for hw in self.halfwidths)}"
-        )
+        return f"Box with bounds {self.bounds}"
 
     def into_model(self) -> BoxRegionModel:
         p1 = tuple(b[0] for b in self.bounds)
@@ -271,7 +322,7 @@ class BoxRegion:
 
         return mask
 
-    def intersects(self, other: BoxRegion) -> bool:
+    def intersects(self, other: Region) -> bool:
         """
         Check if this BoxRegion intersects another BoxRegion. This function
         returns true of the regions intersect in any way, including if one

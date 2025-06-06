@@ -119,7 +119,9 @@ def open(
     handler = DatasetHandler(file_handle, group_name=datasets)
     if (comm := get_comm_world()) is not None:
         assert partition is not None
-        index = partition(comm, len(handler), tree)
+        part = partition(comm, len(handler), tree)
+        index = part.index
+        sim_region = part.region if part.region is not None else sim_region
     else:
         index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
