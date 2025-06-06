@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from h5py import File, Group
+import h5py
 
 import opencosmo as oc
 from opencosmo.dataset.column import get_column_builders
@@ -63,7 +63,7 @@ class OomDatasetBuilder:
 
     def build(
         self,
-        file: File | Group,
+        file: h5py.File | h5py.Group,
         header: OpenCosmoHeader,
         index: Optional[DataIndex] = None,
     ) -> oc.Dataset:

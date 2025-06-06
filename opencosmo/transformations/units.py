@@ -5,11 +5,10 @@ from warnings import warn
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
+import h5py
 from astropy.constants import m_p  # type: ignore
 from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
-from h5py import Dataset as h5Dataset
-from h5py import File, Group  # type: ignore
 
 from opencosmo import transformations as t
 from opencosmo.dataset.column import get_column_builders
@@ -99,7 +98,9 @@ def get_unit_transition_transformations(
     return update_transformations
 
 
-def get_default_unit_transformations(file: File | Group, header: OpenCosmoHeader):
+def get_default_unit_transformations(
+    file: h5py.File | h5py.Group, header: OpenCosmoHeader
+):
     base_unit_transformations = get_base_unit_transformations(file["data"], header)
     to_comoving_transformations = get_unit_transition_transformations(
         "comoving", base_unit_transformations, header.cosmology
@@ -112,7 +113,7 @@ def get_default_unit_transformations(file: File | Group, header: OpenCosmoHeader
 
 
 def get_base_unit_transformations(
-    input: h5Dataset,
+    input: h5py.Dataset,
     header: OpenCosmoHeader,
 ) -> t.TransformationDict:
     """
@@ -181,7 +182,7 @@ def comoving_to_physical(
 
 
 def generate_attribute_unit_transformations(
-    input: h5Dataset,
+    input: h5py.Dataset,
 ) -> t.TransformationDict:
     """
     Check the attributes of an hdf5 dataset to see if information about units is stored
