@@ -2,7 +2,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Iterable, Optional
 
-from h5py import File, Group
+import h5py
 
 from opencosmo import dataset as d
 from opencosmo import io
@@ -20,7 +20,7 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "galaxyparticles_star_particles": "star_particles",
 }
 
-ALLOWED_LINKS = {  # Files that can serve as a link holder and
+ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles", "galaxy_properties"],
     "galaxy_properties": ["galaxy_particles"],
 }
@@ -89,7 +89,7 @@ def open_linked_files(*files: Path):
     if len(files) == 1 and isinstance(files[0], list):
         return open_linked_files(*files[0])
 
-    file_handles = [File(file, "r") for file in files]
+    file_handles = [h5py.File(file, "r") for file in files]
     headers = [read_header(file) for file in file_handles]
     properties_file, linked_files = verify_links(*headers)
     properties_index = next(
@@ -118,7 +118,7 @@ def open_linked_files(*files: Path):
 
 
 def open_linked_file(
-    file_handle: File,
+    file_handle: h5py.File,
     datasets_to_get: Optional[Iterable[str]] = None,
 ) -> s.StructureCollection:
     """
@@ -163,8 +163,8 @@ def open_linked_file(
 
 def get_linked_datasets(
     properties_dataset: d.Dataset,
-    linked_files_by_type: dict[str, File | Group],
-    properties_file: File,
+    linked_files_by_type: dict[str, h5py.File | h5py.Group],
+    properties_file: h5py.File,
     header: OpenCosmoHeader,
 ) -> s.StructureCollection:
     datasets = {}
@@ -186,8 +186,8 @@ def get_linked_datasets(
 
 
 def get_link_handlers(
-    link_file: File | Group,
-    linked_files: dict[str, File | Group],
+    link_file: h5py.File | h5py.Group,
+    linked_files: dict[str, h5py.File | h5py.Group],
     header: OpenCosmoHeader,
 ) -> dict[str, s.LinkedDatasetHandler]:
     if "data_linked" not in link_file.keys():

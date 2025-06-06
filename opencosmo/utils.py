@@ -4,15 +4,15 @@ I/O utilities for hdf5
 
 from typing import Optional
 
+import h5py
 import hdf5plugin  # type: ignore
-from h5py import Dataset, Group
 
 from opencosmo.index import DataIndex
 
 
 def write_index(
-    input_ds: Dataset,
-    output_group: Group,
+    input_ds: h5py.Dataset,
+    output_group: h5py.Group,
     index: DataIndex,
     range_: Optional[tuple[int, int]] = None,
 ):
