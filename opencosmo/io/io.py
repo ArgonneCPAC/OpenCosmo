@@ -120,10 +120,11 @@ def open(
     if (comm := get_comm_world()) is not None:
         assert partition is not None
         part = partition(comm, len(handler), tree)
-        index = part.index
+        index = part.idx
         sim_region = part.region if part.region is not None else sim_region
     else:
         index = ChunkedIndex.from_size(len(handler))
+
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )

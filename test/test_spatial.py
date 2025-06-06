@@ -56,10 +56,10 @@ def test_box_query(halo_properties_path):
         col = data[name]
         col_min = col.min()
         col_max = col.max()
-        assert col_min >= min_ and np.isclose(col_min, min_, 0.1)
-        assert col_max <= max_ and np.isclose(col_max, max_, 0.1)
+        assert col_min >= min_
+        assert col_max <= max_
 
-    assert len(original_data) == len(data)
+    assert set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"])
 
 
 def test_box_query_physical(halo_properties_path):
@@ -97,20 +97,24 @@ def test_box_query_chain(halo_properties_path):
     p21 = (28.5, 37, 46)
     p22 = (33.5, 45, 56)
     reg2 = oc.make_box(p21, p22)
+    original_data = ds.data
 
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
     data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
-        col = data[f"fof_halo_center_{dim}"]
+        colname = f"fof_halo_center_{dim}"
+        col = data[colname]
         min_ = p21[i]
         max_ = p22[i]
+        mask = (original_data[colname] > min_) & (original_data[colname] < max_)
+        original_data = original_data[mask]
         min = col.min()
         max = col.max()
-        assert min >= min_ and np.isclose(min, min_, 0.1)
-        assert max <= max_ and np.isclose(max, max_, 0.1)
+        assert min >= min_
+        assert max <= max_
 
-        assert max <= max_ and np.isclose(max, max_, 0.1)
+    assert set(data["fof_halo_tag"]) == set(original_data["fof_halo_tag"])
 
 
 def test_write_tree(halo_properties_path, tmp_path):

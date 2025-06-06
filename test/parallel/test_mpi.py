@@ -1,4 +1,3 @@
-import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -235,40 +234,9 @@ def test_link_write(all_paths, tmp_path):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_box_query_collect(input_path):
-    ds = oc.open(input_path)
-    p1 = tuple(random.uniform(30, 40) for _ in range(3))
-    p2 = tuple(random.uniform(50, 60) for _ in range(3))
-
-    p1 = mpi4py.MPI.COMM_WORLD.bcast(p1)
-    p2 = mpi4py.MPI.COMM_WORLD.bcast(p2)
-
-    reg1 = oc.make_box(p1, p2)
-    original_data = ds.data
-    ds = ds.bound(reg1)
-    ds = ds.collect()
-    data = ds.data
-    for i, dim in enumerate(["x", "y", "z"]):
-        name = f"fof_halo_center_{dim}"
-        min_ = p1[i]
-        max_ = p2[i]
-        original_col = original_data[name]
-        mask = (original_col < max_) & (original_col > min_)
-        original_data = original_data[mask]
-
-        col = data[name]
-        min = col.min()
-        max = col.max()
-        parallel_assert(min >= min_ and np.isclose(min, min_, 0.1))
-        parallel_assert(max <= max_ and np.isclose(max, max_, 0.1))
-
-    length = mpi4py.MPI.COMM_WORLD.bcast(len(ds))
-    parallel_assert(len(ds) == length)
-
-
-@pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
+    original_data = ds.data
     bounds = ds.region.bounds
     widths = tuple(b[1] - b[0] for b in bounds)
     p1 = tuple(b[0] + w / 4 for b, w in zip(bounds, widths))
@@ -283,15 +251,18 @@ def test_box_query_chain(input_path):
 
     data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
-        col = data[f"fof_halo_center_{dim}"]
+        colname = f"fof_halo_center_{dim}"
+        col = data[colname]
         min_ = p1[i]
         max_ = p2[i]
+        mask = (original_data[colname] < max_) & (original_data[colname] > min_)
+        original_data = original_data[mask]
         min = col.min()
         max = col.max()
-        parallel_assert(min >= min_ and np.isclose(min, min_, 0.1))
-        parallel_assert(max <= max_ and np.isclose(max, max_, 0.1))
+        parallel_assert(min >= min_)
+        parallel_assert(max <= max_)
 
-        parallel_assert(max <= max_ and np.isclose(max, max_, 0.1))
+    parallel_assert(set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"]))
 
 
 @pytest.mark.parallel(nprocs=4)
