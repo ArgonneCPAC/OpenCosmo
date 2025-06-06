@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.dataset.index import SimpleIndex
+from opencosmo.index import SimpleIndex
 from opencosmo.spatial.protocols import Region, TreePartition
 from opencosmo.spatial.region import BoxRegion, Point3d
 

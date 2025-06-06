@@ -4,7 +4,7 @@ from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
-from opencosmo.dataset.index import DataIndex
+from opencosmo.index import DataIndex
 from opencosmo.spatial.protocols import Region
 
 

@@ -6,8 +6,8 @@ import hdf5plugin  # type: ignore
 
 import opencosmo.io.protocols as iop
 import opencosmo.io.writers as iow
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import ChunkedIndex, DataIndex
 
 if TYPE_CHECKING:
     from mpi4py import MPI

@@ -1,7 +1,7 @@
 import numpy as np
 from astropy.table import Table  # type: ignore
 
-from opencosmo.transformations import transformation as t
+from opencosmo.transformations import protocols as t
 
 """
 Routines for applying transformations tables. The table that is

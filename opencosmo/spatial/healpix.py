@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 
-from opencosmo.dataset.index import SimpleIndex
+from opencosmo.index import SimpleIndex
 from opencosmo.spatial.protocols import Region, TreePartition
 from opencosmo.spatial.region import HealPixRegion
 

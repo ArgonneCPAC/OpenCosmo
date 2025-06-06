@@ -7,12 +7,24 @@ import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from numpy.typing import NDArray
 
+import opencosmo as oc
+
 
 class TransformationType(Enum):
     TABLE = "table"
     COLUMN = "column"
     ALL_COLUMNS = "all_columns"
     FILTER = "filter"
+
+
+class TransformationGenerator(Protocol):
+    """
+    A transformation generator is a callable that returns a transformation
+    or set of transformations based on information stored in the attributes of a given
+    dataset. Examples include units stored as attributes
+    """
+
+    def __call__(self, input: oc.Dataset) -> TransformationDict: ...
 
 
 class TableTransformation(Protocol):

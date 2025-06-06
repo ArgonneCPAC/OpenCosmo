@@ -10,10 +10,10 @@ from deprecated import deprecated  # type: ignore
 import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset.handler import DatasetHandler
-from opencosmo.dataset.index import ChunkedIndex
 from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
+from opencosmo.index import ChunkedIndex
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion

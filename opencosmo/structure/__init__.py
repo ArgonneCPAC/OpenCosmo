@@ -1,6 +1,7 @@
 from .collection import StructureCollection
-from .handler import LinkedDatasetHandler, LinkHandler
+from .handler import LinkedDatasetHandler
 from .io import open_linked_file, open_linked_files
+from .protocols import LinkHandler
 
 __all__ = [
     "StructureCollection",

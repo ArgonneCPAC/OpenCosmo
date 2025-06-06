@@ -6,8 +6,8 @@ import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.index import DataIndex
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import DataIndex
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
 

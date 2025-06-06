@@ -8,10 +8,10 @@ from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.index import ChunkedIndex, DataIndex
 from opencosmo.dataset.mask import Mask, apply_masks
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.parameters import SimulationParameters
 from opencosmo.spatial import check

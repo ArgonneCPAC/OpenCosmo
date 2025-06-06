@@ -9,7 +9,7 @@ import numpy as np
 from astropy import table  # type: ignore
 
 from opencosmo.dataset.column import ColumnBuilder
-from opencosmo.dataset.index import DataIndex
+from opencosmo.index import DataIndex
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
