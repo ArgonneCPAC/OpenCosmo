@@ -238,6 +238,16 @@ class ChunkedIndex:
 
         return simple.SimpleIndex(masked_idxs)
 
+    def write_dataset(self, data: np.ndarray, output_dataset: h5py.Dataset):
+        if len(data) != len(self):
+            raise ValueError(
+                "Chunked dataset cannot write data that is of a different length!"
+            )
+        ends = self.__starts + self.__sizes
+        chunks = [data[s:e] for s, e in zip(self.__sizes[:-1], self.__sizes[1:])]
+        for chunk, start, end in zip(chunks, self.__starts, ends):
+            output_dataset[start:end] = chunk
+
     def get_data(self, data: h5py.Dataset | np.ndarray) -> np.ndarray:
         """
         Get the data from the dataset using the index. We want to perform as few reads
