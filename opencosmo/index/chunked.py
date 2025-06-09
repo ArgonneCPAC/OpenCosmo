@@ -244,7 +244,8 @@ class ChunkedIndex:
                 "Chunked dataset cannot write data that is of a different length!"
             )
         ends = self.__starts + self.__sizes
-        chunks = [data[s:e] for s, e in zip(self.__sizes[:-1], self.__sizes[1:])]
+        ranges = np.insert(np.cumsum(self.__sizes), 0, 0)
+        chunks = [data[s:e] for s, e in zip(ranges[:-1], ranges[1:])]
         for chunk, start, end in zip(chunks, self.__starts, ends):
             output_dataset[start:end] = chunk
 

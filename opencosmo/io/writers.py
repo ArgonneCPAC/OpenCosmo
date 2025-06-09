@@ -4,7 +4,8 @@ import h5py
 import numpy as np
 
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
+from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index.map import IndexMap
 from opencosmo.io import protocols as iop
 
 try:
@@ -34,19 +35,14 @@ def write_index(
     Helper function to take elements from one h5py.Dataset using an index
     and put it in a different one.
     """
-    data = np.array([])
-    if len(index) > 0:
-        data = index.get_data(input_ds)
-        if updater is not None:
-            data = updater(data)
-
-        data = data.astype(input_ds.dtype)
-
+    output_index = ChunkedIndex.single_chunk(offset, offset + len(index))
+    index_map = IndexMap(index, output_index)
     if output_ds.file.driver == "mpio":
         with output_ds.collective:
-            output_ds[offset : offset + len(data)] = data
+            index_map.transfer(input_ds, output_ds, updater)
+
     else:
-        output_ds[offset : offset + len(data)] = data
+        index_map.transfer(input_ds, output_ds, updater)
 
 
 class FileWriter:

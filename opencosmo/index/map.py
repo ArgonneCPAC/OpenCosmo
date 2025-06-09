@@ -26,17 +26,14 @@ class IndexMap:
     is that all datasets that exist in the input also exist with the output.
     """
 
-    def __init__(
-        self, in_: DataIndex, out: ChunkedIndex, updater: Optional[Updater] = None
-    ):
+    def __init__(self, in_: DataIndex, out: ChunkedIndex):
         if len(in_) != len(out):
             raise ValueError("IndexMap recieved indices that were not the same length!")
         self.input = in_
         self.output = out
-        self.updater = updater
 
-    def transfer(self, data_in: T, data_out: T) -> T:
-        pass
+    def transfer(self, data_in: T, data_out: T, updater: Optional[Updater]) -> T:
+        return transfer_data(data_in, self.input, data_out, self.output, updater)
 
 
 @singledispatch
@@ -52,11 +49,6 @@ def _(
     index_out: ChunkedIndex,
     updater: Optional[Updater],
 ):
-    if data_in.name != data_out.name or data_in.dtype != data_out.dtype:
-        raise ValueError(
-            "Input and output datasets must have the same name and datatype!"
-        )
-
     data = index_in.get_data(data_in)
     if updater is not None:
         data = updater(data)
