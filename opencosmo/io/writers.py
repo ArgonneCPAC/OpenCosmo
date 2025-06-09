@@ -35,7 +35,7 @@ def write_index(
     Helper function to take elements from one h5py.Dataset using an index
     and put it in a different one.
     """
-    output_index = ChunkedIndex.single_chunk(offset, offset + len(index))
+    output_index = ChunkedIndex.single_chunk(offset, len(index))
     index_map = IndexMap(index, output_index)
     if output_ds.file.driver == "mpio":
         with output_ds.collective:
@@ -261,10 +261,10 @@ class StartSizeLinkWriter:
 
 def start_link_updater(sizes: np.ndarray, offset: int = 0) -> np.ndarray:
     cumulative_sizes = np.cumsum(sizes)
-
     new_starts = np.insert(cumulative_sizes, 0, 0)
     new_starts = new_starts[:-1] + offset
-    return new_starts
+    # For some reason, sizes were written as uint32
+    return new_starts.astype(np.int64)
 
 
 def make_start_link_updater(
@@ -277,7 +277,8 @@ def make_start_link_updater(
     sizes = size_writer.index.get_data(size_writer.source)
     cumulative_sizes = np.cumsum(sizes)
     if comm is not None:
-        offsets = np.cumsum(comm.allgather(cumulative_sizes[-1]))
+        all_sizes = np.array(comm.allgather(cumulative_sizes[-1]), dtype=sizes.dtype)
+        offsets = np.cumsum(all_sizes)
         offsets = np.insert(offsets, 0, 0)
         offset = offsets[comm.Get_rank()]
     else:

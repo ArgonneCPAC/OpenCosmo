@@ -53,3 +53,4 @@ def test_simulation_step_to_redshift(header_resource_path):
     assert step_zs[0] == 200.0
     assert step_zs[-1] == 0.0
     assert all(step_zs[i] > step_zs[i + 1] for i in range(len(step_zs) - 1))
+    assert step_zs[310] == 1.003

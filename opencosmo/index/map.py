@@ -52,6 +52,7 @@ def _(
     data = index_in.get_data(data_in)
     if updater is not None:
         data = updater(data)
+        print(data_in)
     index_out.write_dataset(data, data_out)
 
 
