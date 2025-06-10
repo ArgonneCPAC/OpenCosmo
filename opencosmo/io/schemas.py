@@ -1,5 +1,5 @@
 from itertools import chain
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
@@ -8,9 +8,12 @@ import opencosmo.io.protocols as iop
 import opencosmo.io.writers as iow
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index.map import IndexMap
 
-if TYPE_CHECKING:
+try:
     from mpi4py import MPI
+except ImportError:
+    MPI = None
 
 ColumnShape = tuple[int, ...]
 
@@ -63,7 +66,9 @@ class FileSchema:
                     f"File schema cannot have children of type {type(child)}"
                 )
 
-    def allocate(self, group: h5py.File | h5py.Group):
+    def allocate(
+        self, group: h5py.File | h5py.Group, comm: Optional["MPI.Comm"] = None
+    ):
         self.verify()
         if not isinstance(group, h5py.File):
             raise ValueError(
@@ -71,11 +76,11 @@ class FileSchema:
             )
         if len(self.children) == 1:
             ds = next(iter(self.children.values()))
-            return ds.allocate(group)
+            return ds.allocate(group, comm=comm)
 
         for ds_name, ds in self.children.items():
             ds_group = group.require_group(ds_name)
-            ds.allocate(ds_group)
+            ds.allocate(ds_group, comm)
 
     def verify(self):
         if len(self.children) == 0:
@@ -120,14 +125,16 @@ class SimCollectionSchema:
                     f"Sim collection cannot take children of type {type(child)}"
                 )
 
-    def allocate(self, group: h5py.File | h5py.Group):
+    def allocate(
+        self, group: h5py.File | h5py.Group, comm: Optional["MPI.Comm"] = None
+    ):
         if not isinstance(group, h5py.File):
             raise ValueError(
                 "File Schema allocation must be done at the top level of a h5py file!"
             )
         for ds_name, ds in self.children.items():
             ds_group = group.require_group(ds_name)
-            ds.allocate(ds_group)
+            ds.allocate(ds_group, comm)
 
     def verify(self):
         if len(self.children) < 2:
@@ -195,12 +202,12 @@ class StructCollectionSchema:
                     f"StructCollectionSchema cannot take children of type {type(child)}"
                 )
 
-    def allocate(self, group: h5py.Group):
+    def allocate(self, group: h5py.Group, comm: Optional["MPI.Comm"] = None):
         if len(self.children) == 1:
             raise ValueError("A dataset collection cannot have only one member!")
         for ds_name, ds in self.children.items():
             ds_group = group.require_group(ds_name)
-            ds.allocate(ds_group)
+            ds.allocate(ds_group, comm)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         dataset_writers = {
@@ -238,10 +245,12 @@ class DatasetSchema:
         header: Optional[OpenCosmoHeader] = None,
     ):
         schema = DatasetSchema(header)
+        output_index = ChunkedIndex.from_size(len(index))
+        imap = IndexMap(index, output_index)
         for colname in columns:
             if colname not in source.keys():
                 raise ValueError("Dataset source is missing some columns!")
-            column_schema = ColumnSchema(colname, index, source[colname])
+            column_schema = ColumnSchema(colname, imap, source[colname])
             schema.add_child(column_schema, colname)
         return schema
 
@@ -272,7 +281,7 @@ class DatasetSchema:
         if len(self.columns) == 0:
             raise ValueError("Datasets must have at least one column")
 
-        column_lengths = set(len(c.index) for c in self.columns.values())
+        column_lengths = set(len(c.map) for c in self.columns.values())
         if len(column_lengths) > 1:
             raise ValueError("Datasets columns must be the same length!")
 
@@ -282,16 +291,18 @@ class DatasetSchema:
         for child in chain(self.columns.values(), self.links.values()):
             child.verify()
 
-    def allocate(self, group: h5py.File | h5py.Group):
+    def allocate(
+        self, group: h5py.File | h5py.Group, comm: Optional["MPI.Comm"] = None
+    ):
         data_group = group.require_group("data")
         for column in self.columns.values():
-            column.allocate(data_group)
+            column.allocate(data_group, comm)
         for link in self.links.values():
             link_group = group.require_group("data_linked")
-            link.allocate(link_group)
+            link.allocate(link_group, comm)
         if self.spatial_index is not None:
             idx_group = group.require_group("index")
-            self.spatial_index.allocate(idx_group)
+            self.spatial_index.allocate(idx_group, comm)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         column_writers = {
@@ -318,42 +329,35 @@ class ColumnSchema:
     It is also used eternally by the link schemas.
     """
 
-    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
+    def __init__(self, name: str, imap: IndexMap, source: h5py.Dataset):
         self.name = name
-        self.index = index
+        self.__map = imap
         self.source = source
-        self.offset = 0
 
-    def concatenate(self, *others: "ColumnSchema"):
-        for other in others:
-            if other.name != self.name:
-                raise ValueError("Tried to combine columns with different names")
-            if self.source.shape[1:] != other.source.shape[1:]:
-                raise ValueError("Tried to combine columns with incompatible shapes")
-
-        new_index = self.index.concatenate(*[o.index for o in others])
-        return ColumnSchema(self.name, new_index, self.source)
+    @property
+    def map(self):
+        return self.__map
 
     def add_child(self, *args, **kwargs):
         raise TypeError("Columns do not take children!")
 
     insert = add_child
 
-    def set_offset(self, offset: int):
-        self.offset = offset
-
     def verify(self):
-        if len(self.index) > len(self.source):
+        if len(self.map) > len(self.source):
             raise ValueError("The index is longer than its source!")
 
-    def allocate(self, group: h5py.Group):
-        shape = (len(self.index),) + self.source.shape[1:]
+    def allocate(self, group: h5py.Group, comm: Optional["MPI.Comm"] = None):
+        shape = (len(self.map),) + self.source.shape[1:]
+        if comm is not None:
+            length = comm.allreduce(shape[0], MPI.SUM)
+            shape = (length,) + shape[1:]
         group.create_dataset(
             self.name, shape, self.source.dtype, compression=COMPRESSION
         )
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.ColumnWriter(self.name, self.index, self.source, self.offset)
+        return iow.ColumnWriter(self.name, self.map, self.source)
 
 
 class SpatialIndexSchema:
@@ -373,10 +377,10 @@ class SpatialIndexSchema:
         for level in self.levels.values():
             level.verify()
 
-    def allocate(self, group: h5py.Group):
+    def allocate(self, group: h5py.Group, comm: Optional["MPI.Comm"] = None):
         for level_num, level in self.levels.items():
             level_group = group.require_group(f"level_{level_num}")
-            level.allocate(level_group)
+            level.allocate(level_group, comm)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         levels = {n: level.into_writer(comm) for n, level in self.levels.items()}
@@ -385,13 +389,13 @@ class SpatialIndexSchema:
 
 class SpatialIndexLevelSchema:
     def __init__(self, source: h5py.Group):
-        index = ChunkedIndex.from_size(len(source["start"]))
-        self.start = ColumnSchema("start", index, source["start"])
-        self.size = ColumnSchema("size", index, source["size"])
+        imap = IndexMap.one_to_one(len(source["start"]))
+        self.start = ColumnSchema("start", imap, source["start"])
+        self.size = ColumnSchema("size", imap, source["size"])
 
-    def allocate(self, group: h5py.Group):
-        self.start.allocate(group)
-        self.size.allocate(group)
+    def allocate(self, group: h5py.Group, comm: Optional["MPI.Comm"] = None):
+        self.start.allocate(group, comm)
+        self.size.allocate(group, comm)
 
     def add_child(self, *args, **kwargs):
         raise TypeError("Links do not take children!")
@@ -414,10 +418,11 @@ class IdxLinkSchema:
     """
 
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
-        self.column = ColumnSchema(f"{name}_idx", index, source)
+        map = IndexMap(index, ChunkedIndex.from_size(len(index)))
+        self.column = ColumnSchema(f"{name}_idx", map, source)
 
-    def allocate(self, group: h5py.Group):
-        return self.column.allocate(group)
+    def allocate(self, group: h5py.Group, comm: Optional["MPI.Comm"] = None):
+        return self.column.allocate(group, comm)
 
     def add_child(self, *args, **kwargs):
         raise TypeError("Links do not take children!")
@@ -443,20 +448,16 @@ class StartSizeLinkSchema:
         index: DataIndex,
         start: h5py.Dataset,
         size: h5py.Dataset,
-        link_offset: int = 0,
-        start_offset: int = 0,
     ):
+        map = IndexMap(index, ChunkedIndex.from_size(len(index)))
         self.name = name
         self.index = index
-        self.start = ColumnSchema(f"{name}_start", index, start)
-        self.size = ColumnSchema(f"{name}_size", index, size)
-        self.start.set_offset(link_offset)
-        self.size.set_offset(link_offset)
-        self.start_offset = start_offset
+        self.start = ColumnSchema(f"{name}_start", map, start)
+        self.size = ColumnSchema(f"{name}_size", map, size)
 
-    def allocate(self, group: h5py.Group):
-        self.start.allocate(group)
-        self.size.allocate(group)
+    def allocate(self, group: h5py.Group, comm: Optional["MPI.Comm"] = None):
+        self.start.allocate(group, comm)
+        self.size.allocate(group, comm)
 
     def add_child(self, *args, **kwargs):
         raise TypeError("Links do not take children!")

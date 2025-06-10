@@ -110,6 +110,11 @@ class SimpleIndex:
 
         return SimpleIndex(self.__index[start:end])
 
+    def project(self, start: int, size: int):
+        mask = (self.__index > start) & (self.__index < start + size)
+        idxs = self.__index[mask] - start
+        return SimpleIndex(idxs)
+
     def intersection(self, other: DataIndex) -> DataIndex:
         if len(self) == 0 or len(other) == 0:
             return SimpleIndex.empty()

@@ -7,7 +7,7 @@ from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.protocols import Collection
-from opencosmo.dataset.handler import DatasetHandler
+from opencosmo.dataset.handler import SingleDatasetHandler
 from opencosmo.dataset.mask import Mask
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader, read_header
@@ -264,7 +264,7 @@ def read_single_dataset(
     sim_box = oc.make_box(p1, p2)
     im_file = h5py.File.in_memory()
     file.copy(dataset_key, im_file)
-    handler = DatasetHandler(im_file, dataset_key)
+    handler = SingleDatasetHandler(im_file, dataset_key)
 
     builders, base_unit_transformations = u.get_default_unit_transformations(
         file[dataset_key], header

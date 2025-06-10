@@ -4,11 +4,22 @@ import pytest
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
+from opencosmo.lightcone.stack import open_lightcone_files
 
 
 @pytest.fixture
 def haloproperties_path(lightcone_path):
     return lightcone_path / "step_600" / "haloproperties.hdf5"
+
+
+@pytest.fixture
+def haloproperties_path_2(lightcone_path):
+    return lightcone_path / "step_600" / "haloproperties.hdf5"
+
+
+def test_open_multiple(haloproperties_path, haloproperties_path_2):
+    ds = open_lightcone_files(haloproperties_path, haloproperties_path_2)
+    _ = ds.take(1000).data
 
 
 def test_healpix_index(haloproperties_path):

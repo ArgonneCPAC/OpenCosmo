@@ -6,7 +6,7 @@ import h5py
 
 import opencosmo as oc
 from opencosmo.dataset.column import get_column_builders
-from opencosmo.dataset.handler import DatasetHandler
+from opencosmo.dataset.handler import SingleDatasetHandler
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
@@ -95,7 +95,7 @@ class OomDatasetBuilder:
         if selected is not None:
             builders = {key: builders[key] for key in selected}
 
-        handler = DatasetHandler(file)
+        handler = SingleDatasetHandler(file)
 
         if index is None:
             index = ChunkedIndex.from_size(len(handler))

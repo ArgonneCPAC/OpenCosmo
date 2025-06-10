@@ -4,7 +4,6 @@ import h5py
 import numpy as np
 
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.index.map import IndexMap
 from opencosmo.io import protocols as iop
 
@@ -27,22 +26,19 @@ and that all the datasets have the correct size, datatype, etc.
 def write_index(
     input_ds: h5py.Dataset,
     output_ds: h5py.Dataset,
-    index: DataIndex,
-    offset: int = 0,
+    imap: IndexMap,
     updater: Optional[Callable[[np.ndarray], np.ndarray]] = None,
 ):
     """
     Helper function to take elements from one h5py.Dataset using an index
     and put it in a different one.
     """
-    output_index = ChunkedIndex.single_chunk(offset, len(index))
-    index_map = IndexMap(index, output_index)
     if output_ds.file.driver == "mpio":
         with output_ds.collective:
-            index_map.transfer(input_ds, output_ds, updater)
+            imap.transfer(input_ds, output_ds, updater)
 
     else:
-        index_map.transfer(input_ds, output_ds, updater)
+        imap.transfer(input_ds, output_ds, updater)
 
 
 class FileWriter:
@@ -136,13 +132,10 @@ class ColumnWriter:
     real data around.
     """
 
-    def __init__(
-        self, name: str, index: DataIndex, source: h5py.Dataset, offset: int = 0
-    ):
+    def __init__(self, name: str, imap: IndexMap, source: h5py.Dataset):
         self.name = name
         self.source = source
-        self.index = index
-        self.offset = offset
+        self.map = imap
 
     def write(
         self,
@@ -151,7 +144,7 @@ class ColumnWriter:
     ):
         ds = group[self.name]
 
-        write_index(self.source, ds, self.index, self.offset, updater)
+        write_index(self.source, ds, self.map, updater)
         for name, val in self.source.attrs.items():
             ds.attrs[name] = val
 
@@ -228,7 +221,7 @@ def make_idx_link_updater(
     Helper function to update data from a 1-to-1 index
     link.
     """
-    arr = input.index.get_data(input.source)
+    arr = input.map.get_data(input.source)
 
     has_data = arr > 0
     offset = 0
@@ -255,7 +248,7 @@ class StartSizeLinkWriter:
 
     def write(self, group: h5py.Group):
         self.sizes.write(group)
-        new_sizes = self.sizes.index.get_data(self.sizes.source)
+        new_sizes = self.sizes.map.get_data(self.sizes.source)
         self.start.write(group, lambda _: self.updater(new_sizes))
 
 
@@ -274,7 +267,7 @@ def make_start_link_updater(
     Helper function to update the starts of a start-size
     link.
     """
-    sizes = size_writer.index.get_data(size_writer.source)
+    sizes = size_writer.map.get_data(size_writer.source)
     cumulative_sizes = np.cumsum(sizes)
     if comm is not None:
         all_sizes = np.array(comm.allgather(cumulative_sizes[-1]), dtype=sizes.dtype)

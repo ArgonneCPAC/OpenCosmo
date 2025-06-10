@@ -19,13 +19,13 @@ from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import Tree
 
 if TYPE_CHECKING:
-    from opencosmo.dataset.handler import DatasetHandler
+    from opencosmo.dataset.handler import SingleDatasetHandler
 
 
 class Dataset:
     def __init__(
         self,
-        handler: DatasetHandler,
+        handler: SingleDatasetHandler,
         header: OpenCosmoHeader,
         state: DatasetState,
         tree: Optional[Tree] = None,
@@ -41,7 +41,7 @@ class Dataset:
         """
         length = len(self)
         take_length = length if length < 10 else 10
-        repr_ds = self.take(take_length)
+        repr_ds = self.take(take_length, at="start")
         table_repr = repr_ds.data.__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
@@ -406,7 +406,7 @@ class Dataset:
 
         """
         header = self.__header if with_header else None
-        schema = self.__handler.prep_write(
+        schema = self.__handler.make_schema(
             self.__state.index, self.__state.builders.keys(), header
         )
         if self.__tree is not None:

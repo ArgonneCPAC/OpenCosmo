@@ -9,7 +9,7 @@ from deprecated import deprecated  # type: ignore
 
 import opencosmo as oc
 from opencosmo import collection
-from opencosmo.dataset.handler import DatasetHandler
+from opencosmo.dataset.handler import SingleDatasetHandler
 from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
@@ -116,7 +116,7 @@ def open(
         sim_region = oc.make_box(p1, p2)
 
     index: ChunkedIndex
-    handler = DatasetHandler(file_handle, group_name=datasets)
+    handler = SingleDatasetHandler(file_handle, group_name=datasets)
     if (comm := get_comm_world()) is not None:
         assert partition is not None
         part = partition(comm, len(handler), tree)
@@ -205,7 +205,7 @@ def read(
     path = file.filename
     file = h5py.File(path, driver="core")
 
-    handler = DatasetHandler(file, group_name=datasets)
+    handler = SingleDatasetHandler(file, group_name=datasets)
     index = ChunkedIndex.from_size(len(handler))
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header

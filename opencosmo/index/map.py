@@ -29,11 +29,31 @@ class IndexMap:
     def __init__(self, in_: DataIndex, out: ChunkedIndex):
         if len(in_) != len(out):
             raise ValueError("IndexMap recieved indices that were not the same length!")
-        self.input = in_
-        self.output = out
+        self.__input = in_
+        self.__output = out
+
+    @property
+    def input(self):
+        return self.__input
+
+    @property
+    def output(self):
+        return self.__output
+
+    @classmethod
+    def one_to_one(cls, size: int):
+        in_ = ChunkedIndex.from_size(size)
+        out = ChunkedIndex.from_size(size)
+        return IndexMap(in_, out)
+
+    def get_data(self, dataset: h5py.Dataset):
+        return self.input.get_data(dataset)
+
+    def __len__(self):
+        return len(self.__input)
 
     def transfer(self, data_in: T, data_out: T, updater: Optional[Updater]) -> T:
-        return transfer_data(data_in, self.input, data_out, self.output, updater)
+        return transfer_data(data_in, self.__input, data_out, self.__output, updater)
 
 
 @singledispatch
@@ -52,7 +72,7 @@ def _(
     data = index_in.get_data(data_in)
     if updater is not None:
         data = updater(data)
-        print(data_in)
+
     index_out.write_dataset(data, data_out)
 
 

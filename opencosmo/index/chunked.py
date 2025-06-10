@@ -94,7 +94,6 @@ class ChunkedIndex:
 
         else:
             indexes = np.concatenate([o.into_array() for o in others])
-            print(indexes)
             indexes = np.concatenate(self.into_array(), indexes)
             return simple.SimpleIndex(indexes)
 
@@ -293,6 +292,19 @@ class ChunkedIndex:
             output[start:end] = data
 
         return output
+
+    def project(self, start: int, size: int):
+        """
+        Project this data index onto some range, where that range indexes into
+        the underlying (unmasked) dataset:
+        """
+        starts = self.__starts - start
+        ends = self.__starts + self.__sizes - start
+        starts = np.clip(starts, a_min=0, a_max=None)
+        ends = np.clip(ends, a_min=None, a_max=start + size)
+        sizes = ends - starts
+        mask = sizes > 0
+        return ChunkedIndex(starts[mask], sizes[mask])
 
     def n_in_range(
         self, start: NDArray[np.int_], size: NDArray[np.int_]

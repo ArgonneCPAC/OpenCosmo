@@ -7,6 +7,8 @@ import h5py
 import numpy as np
 from mpi4py import MPI
 
+from opencosmo.index.chunked import ChunkedIndex
+from opencosmo.index.map import IndexMap
 from opencosmo.mpi import get_comm_world
 
 from .protocols import DataSchema
@@ -63,13 +65,12 @@ def write_parallel(file: Path, file_schema: FileSchema):
     rank = new_comm.Get_rank()
 
     new_schema = combine_file_schemas(file_schema, new_comm)
-    if rank == 0:
-        new_schema.verify()
-        with h5py.File(file, "w") as f:
-            new_schema.allocate(f)
+    new_schema.verify()
+    with h5py.File(file, "w", driver="mpio", comm=new_comm) as f:
+        new_schema.allocate(f, new_comm)
 
     new_comm.Barrier()
-    writer = file_schema.into_writer(new_comm)
+    writer = new_schema.into_writer(new_comm)
 
     try:
         f = h5py.File(file, "a", driver="mpio", comm=new_comm)
@@ -285,12 +286,11 @@ def combine_structcollection_schema(
 
 def combine_column_schemas(schema: ColumnSchema, comm: MPI.Comm) -> ColumnSchema:
     rank = comm.Get_rank()
-    lengths = comm.allgather(len(schema.index))
+    lengths = comm.allgather(len(schema.map))
     rank_offsets = np.insert(np.cumsum(lengths), 0, 0)[:-1]
     rank_offset = rank_offsets[rank]
-    schema.set_offset(rank_offset)
+    input_index = schema.map.input
+    output_index = ChunkedIndex.single_chunk(rank_offset, len(input_index))
+    imap = IndexMap(input_index, output_index)
 
-    indices = comm.allgather(schema.index)
-    new_index = indices[0].concatenate(*indices[1:])
-
-    return ColumnSchema(schema.name, new_index, schema.source)
+    return ColumnSchema(schema.name, imap, schema.source)

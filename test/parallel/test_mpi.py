@@ -219,18 +219,9 @@ def test_link_write(all_paths, tmp_path):
     for properties, particles in read_ds.objects():
         for key, ds in particles.items():
             read_data[properties["fof_halo_tag"]].append((key, len(ds)))
-
-    all_read = comm.gather(read_data, root=0)
-    all_written = comm.gather(written_data, root=0)
     # merge the dictionaries
-    if comm.Get_rank() == 0:
-        read_data = {}
-        written_data = {}
-        for i in range(len(all_read)):
-            read_data.update(all_read[i])
-            written_data.update(all_written[i])
-        for key in read_data:
-            assert set(read_data[key]) == set(written_data[key])
+    for key in read_data:
+        assert set(read_data[key]) == set(written_data[key])
 
 
 @pytest.mark.parallel(nprocs=4)
