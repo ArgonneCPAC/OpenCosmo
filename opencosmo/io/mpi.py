@@ -57,6 +57,7 @@ def write_parallel(file: Path, file_schema: FileSchema):
         raise ValueError("One or more ranks recieved invalid schemas!")
 
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
+    print(has_data)
     group = comm.Get_group()
     new_group = group.Incl(has_data)
     new_comm = comm.Create(new_group)

@@ -102,8 +102,10 @@ class ChunkedIndex:
         """
         Create a ChunkedIndex from a size.
         """
-        if size <= 0:
+        if size < 0:
             raise ValueError(f"Size must be positive, got {size}")
+        if size == 0:
+            return ChunkedIndex.empty()
         # Create an array of chunk sizes
 
         starts = np.array([0])
