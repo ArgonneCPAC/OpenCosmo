@@ -38,9 +38,10 @@ def create_yt_dataset(
         "rho": "density",
         "hh": "smoothing_length",
         "uu": "internal_energy",
-        "zmet": "metal_fraction"
     }
 
+    # TODO: just use val.from_astropy instead of manually converting unit string?
+    
     def yt_unit(unit):
         """Converts Astropy units to yt-compatible units."""
         if unit is None:
@@ -104,6 +105,13 @@ def create_yt_dataset(
     )
 
     ds.add_field(
+        ("gas", "xh"),
+        function=_h_fraction,
+        units="",
+        sampling_type="particle"
+    )
+
+    ds.add_field(
         ("gas", "metallicity"),
         function=_metallicity,
         units="Zsun",
@@ -130,7 +138,8 @@ def create_yt_dataset(
             "nbins": 1000,
             "Zmet": ("gas","metallicity"), # Zsun
             "temperature_field": ("gas", "temperature"),
-            "emission_measure_field": ("gas", "emission_measure")
+            "emission_measure_field": ("gas", "emission_measure"),
+            "h_fraction": "xh",
         }
 
         if source_model_kwargs is None:
@@ -168,9 +177,10 @@ def _mmw(field, data):
     # is 1.0 with units of kg, which is wrong.
     Y = data['gas','yhe'].d
     X = 1-Y
-    Z = data['gas','metal_fraction'].d
+    Z = data['gas','zmet'].d * solar_metallicity
 
-    return 1 / (X + 0.25*Y + 0.0625*Z) # metals weighted by 1/16 assuming oxygen-dominated
+    # MMW for fully ionized gas
+    return 1 / (2*X + 0.75*Y + Z/(2*16))
 
 def _temperature(field, data):
     gamma = 5/3
@@ -181,12 +191,17 @@ def _number_density(field, data):
 
 def _metallicity(field, data):
     # metallicity in solar units
-    return data["gas","metal_fraction"] / solar_metallicity
+    return data["gas","zmet"]
+
+def _h_fraction(field, data):
+    return 1 - data['gas','yhe']
 
 def _emission_measure(field, data):
     # emission_measure = ne**2 * particle_volume
 
-    # assume ne=nH -- safe assumption for cluster scale objects where gas is fully ionized
-    ne = (1-data['gas','yhe'].d)*data['gas','number_density']
-    return ne**2 * (data['gas','particle_mass']/data['gas','density']).to('cm**3')
+    # assume gas is fully ionized -- safe assumption for cluster scale objects
+    ne = (1-0.5*data['gas','yhe'].d)*data['gas','density'].to('g/cm**3') / mp
+    nH = (1-data['gas','yhe'].d)*data['gas','density'].to('g/cm**3') / mp
+
+    return ne*nH * (data['gas','particle_mass']/data['gas','density']).to('cm**3')
     
