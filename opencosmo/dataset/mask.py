@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import operator as op
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Iterable
+from functools import partialmethod
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Union
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -50,6 +51,112 @@ def apply_masks(
     return output_index
 
 
+ColumnOrScalar = Union["Column", "DerivedColumn", int, float]
+
+
+class DerivedColumn:
+    """
+    A derived column represents a combination of multiple columns that already exist in
+    the dataset through multiplication or division by other columns or scalars, which
+    may or may not have units of their own.
+
+    In general this is dangerous, because we cannot necessarily infer how a particular
+    unit is supposed to respond to unit transformations. For the moment, we only allow
+    for combinations of columns that already exist in the dataset.
+
+    In general, columns that exist in the dataset are materialized first. Derived
+    columns are then computed from these. The order of creation of the derived columns
+    must be kept constant, in case you get another column which is derived from a
+    derived column.
+    """
+
+    def __init__(self, lhs: ColumnOrScalar, rhs: ColumnOrScalar, operation: Callable):
+        self.lhs = lhs
+        self.rhs = rhs
+        self.operation = operation
+
+    def check_parent_existance(self, names: set[str]):
+        if isinstance(self.rhs, Column):
+            rhs_valid = self.rhs.column_name in names
+        elif isinstance(self.rhs, DerivedColumn):
+            rhs_valid = self.rhs.check_parent_existance(names)
+        else:
+            raise ValueError(f"Unknown type for rhs {type(self.rhs)}")
+
+        if isinstance(self.lhs, Column):
+            lhs_valid = self.lhs.column_name in names
+        elif isinstance(self.lhs, DerivedColumn):
+            lhs_valid = self.lhs.check_parent_existance(names)
+        else:
+            raise ValueError(f"Unknown type for rhs {type(self.rhs)}")
+
+        return lhs_valid and rhs_valid
+
+    def combine_on_left(self, other: Column | DerivedColumn, operation: Callable):
+        """
+        Combine such that this column becomes the lhs of a new derived column.
+        """
+        match other:
+            case Column() | DerivedColumn():
+                return DerivedColumn(self, other, operation)
+            case _:
+                raise NotImplementedError()
+
+    def combine_on_right(self, other: Column | DerivedColumn, operation: Callable):
+        """
+        Combine such that this column becomes the rhs of a new derived column.
+        """
+        match other:
+            case Column() | DerivedColumn():
+                return DerivedColumn(other, self, operation)
+            case _:
+                raise NotImplementedError()
+
+    __mul__ = partialmethod(combine_on_left, operation=op.mul)
+    __rmul__ = partialmethod(combine_on_right, operation=op.mul)
+    __truediv__ = partialmethod(combine_on_left, operation=op.truediv)
+    __rtruediv__ = partialmethod(combine_on_right, operation=op.truediv)
+
+    def evaluate(self, data: table.Table) -> table.Column:
+        match self.rhs:
+            case DerivedColumn():
+                rhs = self.rhs.evaluate(data)
+                rhs_unit = rhs.unit
+            case Column():
+                rhs = data[self.rhs.column_name]
+                rhs_unit = rhs.unit
+            case int() | float():
+                rhs = self.rhs
+                rhs_unit = None
+        match self.lhs:
+            case DerivedColumn():
+                lhs = self.lhs.evaluate(data)
+                lhs_unit = lhs.unit
+            case Column():
+                lhs = data[self.lhs.column_name]
+                lhs_unit = lhs.unit
+            case int() | float():
+                lhs = self.rhs
+                lhs_unit = None
+
+        match (lhs_unit, rhs_unit):
+            case (None, None):
+                unit = None
+            case (_, None):
+                unit = lhs_unit
+            case (None, _):
+                unit = rhs_unit
+            case _:
+                unit = self.operation(lhs_unit, rhs_unit)
+
+        # Astropy delegates __mul__ to the underlying numpy array, so we have
+        # to manually handle units
+        values = self.operation(lhs.data, rhs.data)
+        if unit is not None:
+            values *= unit
+        return table.Column(values)
+
+
 class Column:
     """
     A column representa a column in the table. This is used first and foremost
@@ -82,6 +189,20 @@ class Column:
 
     def __le__(self, other: float | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.le)
+
+    def __mul__(self, other: Any) -> DerivedColumn:
+        match other:
+            case int() | float() | u.Quantity() | Column():
+                return DerivedColumn(self, other, op.mul)
+            case _:
+                return NotImplemented
+
+    def __truediv__(self, other: Any) -> DerivedColumn:
+        match other:
+            case int() | float() | u.Quantity() | Column():
+                return DerivedColumn(self, other, op.truediv)
+            case _:
+                return NotImplemented
 
     def isin(self, other: Iterable[float | u.Quantity]) -> Mask:
         return Mask(self.column_name, other, np.isin)
