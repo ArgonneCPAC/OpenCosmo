@@ -4,11 +4,12 @@ from copy import copy
 from typing import TYPE_CHECKING, Generator, Iterable, Optional
 from warnings import warn
 
+import numpy as np
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.mask import DerivedColumn, Mask, apply_masks
+from opencosmo.dataset.mask import DerivedColumn, Mask
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
@@ -261,18 +262,13 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-
-        new_index = apply_masks(
-            self.__handler, self.__state.builders, masks, self.__state.index
-        )
-        new_state = self.__state.with_index(new_index)
-
-        return Dataset(
-            self.__handler,
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        required_columns = set(m.column_name for m in masks)
+        data = self.select(required_columns).data
+        print(data)
+        bool_mask = np.ones(len(data), dtype=bool)
+        for mask in masks:
+            bool_mask &= mask.apply(data)
+        assert False
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """

@@ -1,3 +1,4 @@
+from functools import reduce
 from typing import Iterable
 
 from astropy import table
@@ -59,6 +60,7 @@ class DatasetState:
             index,
             self.__convention,
             self.__region,
+            self.__derived,
         )
 
     def with_derived_columns(self, **new_columns: DerivedColumn):
@@ -96,6 +98,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             self.__region,
+            self.__derived,
         )
 
     def with_region(self, region: Region):
@@ -105,28 +108,43 @@ class DatasetState:
             self.__index,
             self.__convention,
             region,
+            self.__derived,
         )
 
     def select(self, columns: str | Iterable[str]):
         if isinstance(columns, str):
             columns = [columns]
-        columns = [str(col) for col in columns]
 
-        try:
-            new_builders = {col: self.__builders[col] for col in columns}
-        except KeyError:
-            known_columns = set(self.__builders.keys())
-            unknown_columns = set(columns) - known_columns
+        columns = set(columns)
+
+        known_builders = set(self.__builders.keys())
+        known_derived = set(self.__derived.keys())
+        unknown_columns = columns - known_builders - known_derived
+        if unknown_columns:
             raise ValueError(
                 "Tried to select columns that aren't in this dataset! Missing columns "
                 + ", ".join(unknown_columns)
             )
+
+        required_builders = known_builders.intersection(columns)
+        new_builders = {b: self.__builders[b] for b in required_builders}
+        new_derived = {
+            d: self.__derived[d] for d in known_derived.intersection(columns)
+        }
+
+        required_columns: set[str] = reduce(
+            lambda s, derived: s.union(derived.requires()), new_derived.values(), set()
+        )
+        if required_columns - required_builders:
+            raise NotImplementedError
+
         return DatasetState(
             self.__base_unit_transformations,
             new_builders,
             self.__index,
             self.__convention,
             self.__region,
+            new_derived,
         )
 
     def take(self, n: int, at: str):
@@ -159,4 +177,5 @@ class DatasetState:
             self.__index,
             convention_,
             self.__region,
+            self.__derived,
         )
