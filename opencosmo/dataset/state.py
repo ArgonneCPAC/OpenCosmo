@@ -1,9 +1,11 @@
 from typing import Iterable
 
+from astropy import table
 from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
+from opencosmo.dataset.mask import DerivedColumn
 from opencosmo.index import DataIndex
 from opencosmo.spatial.protocols import Region
 
@@ -21,12 +23,14 @@ class DatasetState:
         index: DataIndex,
         convention: u.UnitConvention,
         region: Region,
+        derived: dict[str, DerivedColumn] = {},
     ):
         self.__base_unit_transformations = base_unit_transformations
         self.__builders = builders
         self.__index = index
         self.__convention = convention
         self.__region = region
+        self.__derived: dict[str, DerivedColumn] = derived
 
     @property
     def index(self):
@@ -44,6 +48,10 @@ class DatasetState:
     def region(self):
         return self.__region
 
+    @property
+    def columns(self) -> list[str]:
+        return list(self.__builders.keys()) + list(self.__derived.keys())
+
     def with_index(self, index: DataIndex):
         return DatasetState(
             self.__base_unit_transformations,
@@ -52,6 +60,34 @@ class DatasetState:
             self.__convention,
             self.__region,
         )
+
+    def with_derived_columns(self, **new_columns: DerivedColumn):
+        column_names = set(self.builders.keys()) | set(self.__derived.keys())
+        for name, new_col in new_columns.items():
+            if name in column_names:
+                raise ValueError(f"Dataset already has column named {name}")
+            elif not new_col.check_parent_existance(column_names):
+                raise ValueError(
+                    f"Derived column {name} is derived from columns "
+                    "that are not in the dataset!"
+                )
+            column_names.add(name)
+
+        new_derived = self.__derived | new_columns
+        return DatasetState(
+            self.__base_unit_transformations,
+            self.__builders,
+            self.__index,
+            self.__convention,
+            self.__region,
+            new_derived,
+        )
+
+    def add_derived_columns(self, data: table.Table) -> table.Table:
+        for colname, column in self.__derived.items():
+            new_column = column.evaluate(data)
+            data[colname] = new_column
+        return data
 
     def with_builders(self, builders: dict[str, ColumnBuilder]):
         return DatasetState(

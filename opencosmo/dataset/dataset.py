@@ -8,7 +8,7 @@ from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.mask import Mask, apply_masks
+from opencosmo.dataset.mask import DerivedColumn, Mask, apply_masks
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
@@ -72,7 +72,7 @@ class Dataset:
         -------
         columns: list[str]
         """
-        return list(self.__state.builders.keys())
+        return self.__state.columns
 
     @property
     def cosmology(self) -> Cosmology:
@@ -149,9 +149,12 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(
+        data = self.__handler.get_data(
             builders=self.__state.builders, index=self.__state.index
         )
+        if isinstance(data, Table):
+            data = self.__state.add_derived_columns(data)
+        return data
 
     @property
     def index(self) -> DataIndex:
@@ -391,6 +394,14 @@ class Dataset:
             new_state,
             self.__tree,
         )
+
+    def update(self, **new_columns: DerivedColumn):
+        """
+        Update the dataset with columns that are derived from columns already in
+        the dataset.
+        """
+        new_state = self.__state.with_derived_columns(**new_columns)
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
         """
