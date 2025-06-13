@@ -65,7 +65,7 @@ class DatasetHandler:
     ) -> DatasetSchema:
         return DatasetSchema.make_schema(self.__group, columns, index, header)
 
-    def get_data(self, builders: dict, index: DataIndex) -> Column | Table:
+    def get_data(self, builders: dict, index: DataIndex) -> Table:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
@@ -74,8 +74,6 @@ class DatasetHandler:
             col = Column(index.get_data(self.__group[column]))
             output[column] = builder.build(col)
 
-        if len(output) == 1:
-            return next(iter(output.values()))
         return Table(output)
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:

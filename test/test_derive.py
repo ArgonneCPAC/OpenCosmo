@@ -145,4 +145,33 @@ def test_derive_mask(input_path):
     comoving_data = ds.data["fof_halo_px"]
     val = 0.5 * (comoving_data.max() - comoving_data.min()) + comoving_data.min()
     ds_masked = ds.filter(oc.col("fof_halo_px") > val)
-    print(ds_masked)
+    assert all(ds_masked.data["fof_halo_px"].value > val)
+
+
+def test_derive_children(input_path):
+    ds = oc.open(input_path)
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.insert(fof_halo_px=derived)
+    derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
+    ds = ds.insert(derived2=derived2)
+    data = ds.data
+    assert np.all(
+        np.isclose(
+            data["derived2"], 0.5 * data["fof_halo_mass"] * data["fof_halo_com_vx"] ** 2
+        )
+    )
+
+
+def test_derive_children_select(input_path):
+    ds = oc.open(input_path)
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.insert(fof_halo_px=derived)
+    derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
+    ds = ds.insert(derived2=derived2)
+    derived_data = ds.data["derived2"]
+
+    to_select = ["fof_halo_com_vy", "derived2"]
+    ds = ds.select(to_select)
+    data = ds.data
+    assert data.columns == to_select
+    assert np.all(derived_data == data["derived2"])

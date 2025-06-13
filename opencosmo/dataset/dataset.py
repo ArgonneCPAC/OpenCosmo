@@ -150,11 +150,7 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        data = self.__handler.get_data(
-            builders=self.__state.builders, index=self.__state.index
-        )
-        if isinstance(data, Table):
-            data = self.__state.build_derived_columns(data)
+        data = self.__state.get_data(self.__handler)
         return data
 
     @property
@@ -264,11 +260,13 @@ class Dataset:
         """
         required_columns = set(m.column_name for m in masks)
         data = self.select(required_columns).data
-        print(data)
         bool_mask = np.ones(len(data), dtype=bool)
         for mask in masks:
             bool_mask &= mask.apply(data)
-        assert False
+
+        new_index = self.__state.index.mask(bool_mask)
+        new_state = self.__state.with_index(new_index)
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
