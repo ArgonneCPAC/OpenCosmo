@@ -94,6 +94,24 @@ class DerivedColumn:
 
         return lhs_valid and rhs_valid
 
+    def requires(self):
+        """
+        Return the raw data columns required to make this column
+        """
+        vals = set()
+        match self.lhs:
+            case Column():
+                vals.add(self.lhs.column_name)
+            case DerivedColumn():
+                vals = vals | self.lhs.requires()
+        match self.rhs:
+            case Column():
+                vals.add(self.rhs.column_name)
+            case DerivedColumn():
+                vals = vals | self.rhs.requires()
+
+        return vals
+
     def combine_on_left(self, other: Column | DerivedColumn, operation: Callable):
         """
         Combine such that this column becomes the lhs of a new derived column.
@@ -280,11 +298,13 @@ class Mask:
         self.value = value
         self.operator = operator
 
-    def apply(self, column: table.Column) -> np.ndarray:
+    def apply(self, column: table.Column | table.Table) -> np.ndarray:
         """
         mask the dataset based on the mask.
         """
         # Astropy's errors are good enough here
+        if isinstance(column, table.Table):
+            column = column[self.column_name]
         value = self.value
         if not isinstance(value, u.Quantity) and column.unit is not None:
             value *= column.unit

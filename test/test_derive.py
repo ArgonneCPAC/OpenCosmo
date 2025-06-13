@@ -115,3 +115,34 @@ def test_power(input_path):
             ),
         )
     )
+
+
+def test_derive_unit_change(input_path):
+    ds = oc.open(input_path)
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.insert(fof_halo_px=derived)
+    comoving_data = ds.data
+    comoving_unit = comoving_data["fof_halo_px"].unit
+    ds = ds.with_units("scalefree")
+    scalefree_data = ds.data
+    scalefree_unit = scalefree_data["fof_halo_px"].unit
+    assert comoving_unit != scalefree_unit
+    assert comoving_unit == (
+        comoving_data["fof_halo_mass"].unit * comoving_data["fof_halo_com_vx"].unit
+    )
+    assert scalefree_unit == (
+        scalefree_data["fof_halo_mass"].unit * scalefree_data["fof_halo_com_vx"].unit
+    )
+    assert not np.any(
+        comoving_data["fof_halo_px"].value == scalefree_data["fof_halo_px"].value
+    )
+
+
+def test_derive_mask(input_path):
+    ds = oc.open(input_path)
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.insert(fof_halo_px=derived)
+    comoving_data = ds.data["fof_halo_px"]
+    val = 0.5 * (comoving_data.max() - comoving_data.min()) + comoving_data.min()
+    ds_masked = ds.filter(oc.col("fof_halo_px") > val)
+    print(ds_masked)
