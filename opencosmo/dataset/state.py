@@ -1,5 +1,5 @@
 from functools import reduce
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from astropy import table
 from astropy.cosmology import Cosmology  # type: ignore
@@ -9,6 +9,9 @@ from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.mask import DerivedColumn
 from opencosmo.index import DataIndex
 from opencosmo.spatial.protocols import Region
+
+if TYPE_CHECKING:
+    from opencosmo.dataset.handler import DatasetHandler
 
 
 class DatasetState:
@@ -24,6 +27,7 @@ class DatasetState:
         index: DataIndex,
         convention: u.UnitConvention,
         region: Region,
+        hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
         self.__base_unit_transformations = base_unit_transformations
@@ -31,6 +35,7 @@ class DatasetState:
         self.__index = index
         self.__convention = convention
         self.__region = region
+        self.__hidden = hidden
         self.__derived: dict[str, DerivedColumn] = derived
 
     @property
@@ -53,6 +58,13 @@ class DatasetState:
     def columns(self) -> list[str]:
         return list(self.__builders.keys()) + list(self.__derived.keys())
 
+    def get_data(self, handler: "DatasetHandler"):
+        data = handler.get_data(builders=self.__builders, index=self.__index)
+        data = self.build_derived_columns(data)
+        if self.__hidden:
+            data.remove_columns(self.__hidden)
+        return data
+
     def with_index(self, index: DataIndex):
         return DatasetState(
             self.__base_unit_transformations,
@@ -60,6 +72,7 @@ class DatasetState:
             index,
             self.__convention,
             self.__region,
+            self.__hidden,
             self.__derived,
         )
 
@@ -82,6 +95,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             self.__region,
+            self.__hidden,
             new_derived,
         )
 
@@ -98,6 +112,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             self.__region,
+            self.__hidden,
             self.__derived,
         )
 
@@ -108,6 +123,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             region,
+            self.__hidden,
             self.__derived,
         )
 
@@ -126,17 +142,22 @@ class DatasetState:
                 + ", ".join(unknown_columns)
             )
 
+        required_derived = known_derived.intersection(columns)
         required_builders = known_builders.intersection(columns)
-        new_builders = {b: self.__builders[b] for b in required_builders}
-        new_derived = {
-            d: self.__derived[d] for d in known_derived.intersection(columns)
-        }
 
-        required_columns: set[str] = reduce(
-            lambda s, derived: s.union(derived.requires()), new_derived.values(), set()
+        additional_columns: set[str] = reduce(
+            lambda s, derived: s.union(self.__derived[derived].requires()),
+            required_derived,
+            set(),
         )
-        if required_columns - required_builders:
-            raise NotImplementedError
+        required_derived |= additional_columns.intersection(known_derived)
+        required_builders |= additional_columns.intersection(known_builders)
+        all_required = required_derived | required_builders
+
+        new_derived = {d: self.__derived[d] for d in required_derived}
+        new_builders = {b: self.__builders[b] for b in required_builders}
+
+        new_hidden = self.__hidden | (all_required - columns)
 
         return DatasetState(
             self.__base_unit_transformations,
@@ -144,6 +165,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             self.__region,
+            new_hidden,
             new_derived,
         )
 
@@ -177,5 +199,6 @@ class DatasetState:
             self.__index,
             convention_,
             self.__region,
+            self.__hidden,
             self.__derived,
         )
