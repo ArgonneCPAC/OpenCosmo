@@ -83,7 +83,7 @@ class DatasetState:
             new_derived,
         )
 
-    def add_derived_columns(self, data: table.Table) -> table.Table:
+    def build_derived_columns(self, data: table.Table) -> table.Table:
         for colname, column in self.__derived.items():
             new_column = column.evaluate(data)
             data[colname] = new_column

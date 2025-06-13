@@ -153,7 +153,7 @@ class Dataset:
             builders=self.__state.builders, index=self.__state.index
         )
         if isinstance(data, Table):
-            data = self.__state.add_derived_columns(data)
+            data = self.__state.build_derived_columns(data)
         return data
 
     @property
@@ -395,7 +395,7 @@ class Dataset:
             self.__tree,
         )
 
-    def update(self, **new_columns: DerivedColumn):
+    def insert(self, **new_columns: DerivedColumn):
         """
         Update the dataset with columns that are derived from columns already in
         the dataset.
