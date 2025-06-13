@@ -76,19 +76,21 @@ class DerivedColumn:
         self.operation = operation
 
     def check_parent_existance(self, names: set[str]):
-        if isinstance(self.rhs, Column):
-            rhs_valid = self.rhs.column_name in names
-        elif isinstance(self.rhs, DerivedColumn):
-            rhs_valid = self.rhs.check_parent_existance(names)
-        else:
-            raise ValueError(f"Unknown type for rhs {type(self.rhs)}")
+        match self.rhs:
+            case Column():
+                rhs_valid = self.rhs.column_name in names
+            case DerivedColumn():
+                rhs_valid = self.rhs.check_parent_existance(names)
+            case _:
+                rhs_valid = True
 
-        if isinstance(self.lhs, Column):
-            lhs_valid = self.lhs.column_name in names
-        elif isinstance(self.lhs, DerivedColumn):
-            lhs_valid = self.lhs.check_parent_existance(names)
-        else:
-            raise ValueError(f"Unknown type for rhs {type(self.rhs)}")
+        match self.lhs:
+            case Column():
+                lhs_valid = self.lhs.column_name in names
+            case DerivedColumn():
+                lhs_valid = self.lhs.check_parent_existance(names)
+            case _:
+                lhs_valid = True
 
         return lhs_valid and rhs_valid
 
@@ -97,61 +99,80 @@ class DerivedColumn:
         Combine such that this column becomes the lhs of a new derived column.
         """
         match other:
-            case Column() | DerivedColumn():
+            case Column() | DerivedColumn() | int() | float():
                 return DerivedColumn(self, other, operation)
             case _:
-                raise NotImplementedError()
+                return NotImplemented
 
     def combine_on_right(self, other: Column | DerivedColumn, operation: Callable):
         """
         Combine such that this column becomes the rhs of a new derived column.
         """
         match other:
-            case Column() | DerivedColumn():
+            case Column() | DerivedColumn() | int() | float():
                 return DerivedColumn(other, self, operation)
             case _:
-                raise NotImplementedError()
+                return NotImplemented
 
     __mul__ = partialmethod(combine_on_left, operation=op.mul)
     __rmul__ = partialmethod(combine_on_right, operation=op.mul)
     __truediv__ = partialmethod(combine_on_left, operation=op.truediv)
     __rtruediv__ = partialmethod(combine_on_right, operation=op.truediv)
+    __pow__ = partialmethod(combine_on_left, operation=op.pow)
+    __add__ = partialmethod(combine_on_left, operation=op.add)
+    __radd__ = partialmethod(combine_on_right, operation=op.add)
+    __sub__ = partialmethod(combine_on_left, operation=op.sub)
+    __rsub__ = partialmethod(combine_on_right, operation=op.sub)
 
     def evaluate(self, data: table.Table) -> table.Column:
         match self.rhs:
             case DerivedColumn():
                 rhs = self.rhs.evaluate(data)
+                rhs_data = rhs.value
                 rhs_unit = rhs.unit
             case Column():
                 rhs = data[self.rhs.column_name]
+                rhs_data = rhs.value
                 rhs_unit = rhs.unit
             case int() | float():
-                rhs = self.rhs
+                rhs_data = self.rhs
                 rhs_unit = None
         match self.lhs:
             case DerivedColumn():
                 lhs = self.lhs.evaluate(data)
+                lhs_data = lhs.value
                 lhs_unit = lhs.unit
             case Column():
                 lhs = data[self.lhs.column_name]
+                lhs_data = lhs.value
                 lhs_unit = lhs.unit
             case int() | float():
-                lhs = self.rhs
+                lhs_data = self.lhs
                 lhs_unit = None
 
-        match (lhs_unit, rhs_unit):
-            case (None, None):
-                unit = None
-            case (_, None):
-                unit = lhs_unit
-            case (None, _):
-                unit = rhs_unit
-            case _:
-                unit = self.operation(lhs_unit, rhs_unit)
+        if self.operation in (op.add, op.sub):
+            if lhs_unit != rhs_unit:
+                raise ValueError("To add and subtract columns, units must be the same!")
+            unit = lhs_unit
+        elif self.operation == op.pow:
+            if rhs_unit is not None:
+                raise ValueError("Cannot raise values to powers with units!")
+            unit = self.operation(lhs_unit, rhs_data)
+
+        else:
+            match (lhs_unit, rhs_unit):
+                case (None, None):
+                    unit = None
+                case (_, None):
+                    unit = lhs_unit
+                case (None, _):
+                    unit = rhs_unit
+                case _:
+                    unit = self.operation(lhs_unit, rhs_unit)
 
         # Astropy delegates __mul__ to the underlying numpy array, so we have
         # to manually handle units
-        values = self.operation(lhs.data, rhs.data)
+        values = self.operation(lhs_data, rhs_data)
         if unit is not None:
             values *= unit
         return table.Column(values)
@@ -190,17 +211,52 @@ class Column:
     def __le__(self, other: float | u.Quantity) -> Mask:
         return Mask(self.column_name, other, op.le)
 
+    def __rmul__(self, other: Any) -> DerivedColumn:
+        match other:
+            case int() | float():
+                return self * other
+            case _:
+                return NotImplemented
+
     def __mul__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | u.Quantity() | Column():
+            case int() | float() | Column():
                 return DerivedColumn(self, other, op.mul)
+            case _:
+                return NotImplemented
+
+    def __rtruediv__(self, other: Any) -> DerivedColumn:
+        match other:
+            case int() | float():
+                return DerivedColumn(other, self, op.truediv)
             case _:
                 return NotImplemented
 
     def __truediv__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | u.Quantity() | Column():
+            case int() | float() | Column():
                 return DerivedColumn(self, other, op.truediv)
+            case _:
+                return NotImplemented
+
+    def __pow__(self, other: Any) -> DerivedColumn:
+        match other:
+            case int() | float():
+                return DerivedColumn(self, other, op.pow)
+            case _:
+                return NotImplemented
+
+    def __add__(self, other: Any) -> DerivedColumn:
+        match other:
+            case Column():
+                return DerivedColumn(self, other, op.add)
+            case _:
+                return NotImplemented
+
+    def __sub__(self, other: Any) -> DerivedColumn:
+        match other:
+            case Column():
+                return DerivedColumn(self, other, op.sub)
             case _:
                 return NotImplemented
 
