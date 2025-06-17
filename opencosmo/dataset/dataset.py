@@ -270,9 +270,9 @@ class Dataset:
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
-        Iterate over the rows in the dataset. Yields
-        for each row, with associated units. For performance it is recommended
-        that you first select the columns you need to work with.
+        Iterate over the rows in the dataset. Rows are returned as a dictionary
+        For performance, it is recommended to first select the columns you need to
+        work with.
 
         Yields
         -------
@@ -296,7 +296,7 @@ class Dataset:
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
-        Select a subset of columns from the dataset.
+        Create a new dataset from a subset of columns in this dataset
 
         Parameters
         ----------
@@ -323,7 +323,7 @@ class Dataset:
 
     def take(self, n: int, at: str = "random") -> Dataset:
         """
-        Take some number of rows from the dataset.
+        Create a new dataset from some number of rows from this dataset.
 
         Can take the first n rows, the last n rows, or n random rows
         depending on the value of 'at'.
@@ -359,7 +359,7 @@ class Dataset:
 
     def take_range(self, start: int, end: int) -> Table:
         """
-        Get a range of rows from the dataset.
+        Create a new dataset from a row range in this dataset.
 
         Parameters
         ----------
@@ -389,15 +389,14 @@ class Dataset:
             self.__tree,
         )
 
-    def add_columns(self, **new_columns: DerivedColumn):
+    def with_columns(self, **new_columns: DerivedColumn):
         """
-        Update the dataset with new columns that are derived from columns
+        Create a new dataset with additional columns.
         already in the dataset, or a numpy array. When a column is derived from other
         columns in the dataset, it will behave appropriately under unit transformations.
 
         Parameters:
-        **columns : opencosmo.DerivedColumn | np.ndarray
-            The columns to add to the dataset
+        ** columns : opencosmo.DerivedColumn | np.ndarray
         """
         new_state = self.__state.with_derived_columns(**new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
