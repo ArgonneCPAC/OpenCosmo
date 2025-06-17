@@ -17,7 +17,7 @@ def particle_path(snapshot_path):
 def test_derive_multiply(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.insert(fof_halo_px=derived)
+    ds = ds.add_columns(fof_halo_px=derived)
     data = ds.data
     assert "fof_halo_px" in data.columns
     assert (
@@ -33,7 +33,7 @@ def test_derive_multiply(input_path):
 def test_derive_divide(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") / oc.col("fof_halo_com_vx")
-    ds = ds.insert(fof_halo_px=derived)
+    ds = ds.add_columns(fof_halo_px=derived)
     data = ds.data
     assert "fof_halo_px" in data.columns
     assert (
@@ -51,7 +51,7 @@ def test_derive_chain(input_path):
     derived = oc.col("fof_halo_mass") * (
         oc.col("fof_halo_com_vx") * oc.col("fof_halo_com_vy")
     )
-    ds = ds.insert(fof_halo_p_sqr=derived)
+    ds = ds.add_columns(fof_halo_p_sqr=derived)
     data = ds.data
     assert "fof_halo_p_sqr" in data.columns
     assert (
@@ -78,7 +78,7 @@ def test_scalars(input_path):
     derived2 = 3.0 * oc.col("fof_halo_mass")
     derived3 = 1 / oc.col("fof_halo_mass")
     derived4 = oc.col("fof_halo_mass") / 2.0
-    ds = ds.insert(
+    ds = ds.add_columns(
         derived1=derived1, derived2=derived2, derived3=derived3, derived4=derived4
     )
 
@@ -97,7 +97,7 @@ def test_power(input_path):
         + oc.col("fof_halo_com_vz") ** 2
     ) ** 0.5
     ke = 0.5 * oc.col("fof_halo_mass") * total_speed**2
-    ds = ds.insert(ke=ke)
+    ds = ds.add_columns(ke=ke)
     data = ds.data
     assert (
         data["ke"].unit
@@ -120,7 +120,7 @@ def test_power(input_path):
 def test_derive_unit_change(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.insert(fof_halo_px=derived)
+    ds = ds.add_columns(fof_halo_px=derived)
     comoving_data = ds.data
     comoving_unit = comoving_data["fof_halo_px"].unit
     ds = ds.with_units("scalefree")
@@ -141,7 +141,7 @@ def test_derive_unit_change(input_path):
 def test_derive_mask(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.insert(fof_halo_px=derived)
+    ds = ds.add_columns(fof_halo_px=derived)
     comoving_data = ds.data["fof_halo_px"]
     val = 0.5 * (comoving_data.max() - comoving_data.min()) + comoving_data.min()
     ds_masked = ds.filter(oc.col("fof_halo_px") > val)
@@ -151,9 +151,9 @@ def test_derive_mask(input_path):
 def test_derive_children(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.insert(fof_halo_px=derived)
+    ds = ds.add_columns(fof_halo_px=derived)
     derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
-    ds = ds.insert(derived2=derived2)
+    ds = ds.add_columns(derived2=derived2)
     data = ds.data
     assert np.all(
         np.isclose(
@@ -165,9 +165,9 @@ def test_derive_children(input_path):
 def test_derive_children_select(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.insert(fof_halo_px=derived)
+    ds = ds.add_columns(fof_halo_px=derived)
     derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
-    ds = ds.insert(derived2=derived2)
+    ds = ds.add_columns(derived2=derived2)
     derived_data = ds.data["derived2"]
 
     to_select = ["fof_halo_com_vy", "derived2"]

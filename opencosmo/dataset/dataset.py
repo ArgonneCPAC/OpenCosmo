@@ -389,10 +389,15 @@ class Dataset:
             self.__tree,
         )
 
-    def insert(self, **new_columns: DerivedColumn):
+    def add_columns(self, **new_columns: DerivedColumn):
         """
-        Update the dataset with columns that are derived from columns already in
-        the dataset.
+        Update the dataset with new columns that are derived from columns
+        already in the dataset, or a numpy array. When a column is derived from other
+        columns in the dataset, it will behave appropriately under unit transformations.
+
+        Parameters:
+        **columns : opencosmo.DerivedColumn | np.ndarray
+            The columns to add to the dataset
         """
         new_state = self.__state.with_derived_columns(**new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
