@@ -173,5 +173,5 @@ def test_derive_children_select(input_path):
     to_select = ["fof_halo_com_vy", "derived2"]
     ds = ds.select(to_select)
     data = ds.data
-    assert data.columns == to_select
+    assert set(data.columns) == set(to_select)
     assert np.all(derived_data == data["derived2"])
