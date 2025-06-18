@@ -389,11 +389,11 @@ class Dataset:
             self.__tree,
         )
 
-    def with_columns(self, **new_columns: DerivedColumn):
+    def add_columns(self, **new_columns: DerivedColumn):
         """
-        Create a new dataset with additional columns.
-        already in the dataset, or a numpy array. When a column is derived from other
-        columns in the dataset, it will behave appropriately under unit transformations.
+        Create a new dataset with additional columns. These new columns can be derived
+        from columns already in the dataset, or a numpy array. When a column is derived
+        from other columns, it will behave appropriately under unit transformations.
 
         Parameters:
         ** columns : opencosmo.DerivedColumn | np.ndarray
@@ -416,7 +416,7 @@ class Dataset:
         """
         header = self.__header if with_header else None
         schema = self.__handler.prep_write(
-            self.__state.index, self.__state.builders.keys(), header
+            self.__state.index, self.__state.columns, header
         )
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.index)

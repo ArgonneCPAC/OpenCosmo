@@ -30,6 +30,17 @@ def test_derive_multiply(input_path):
     )
 
 
+def test_derive_write(input_path, tmp_path):
+    ds = oc.open(input_path)
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.add_columns(fof_halo_px=derived)
+    data = ds.data
+    oc.write(tmp_path / "test.hdf5", ds)
+    written_data = oc.open(tmp_path / "test.hdf5").data
+
+    assert np.all(data["fof_halo_px"] == written_data["fof_halo_px"])
+
+
 def test_derive_divide(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") / oc.col("fof_halo_com_vx")
