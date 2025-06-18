@@ -56,7 +56,8 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        return list(self.__builders.keys()) + list(self.__derived.keys())
+        columns = set(self.__builders.keys()) | set(self.__derived.keys())
+        return list(columns - self.__hidden)
 
     def get_data(self, handler: "DatasetHandler"):
         """
