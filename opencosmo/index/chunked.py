@@ -298,16 +298,38 @@ class ChunkedIndex:
             raise ValueError("Sizes must greater than or equal to zero")
         if len(self) == 0:
             return np.zeros_like(start)
-        end = start + size
 
-        mask = self.into_mask()
+        required_memory = len(start) * len(self.__starts) * 8
+        MEMORY_LIMIT = 2_000_000_000
+        if required_memory > MEMORY_LIMIT:
+            chunk_size = MEMORY_LIMIT // (8 * len(self.__starts))
+            n_chunks = np.ceil(len(start) / chunk_size)
+        else:
+            n_chunks = 1
 
-        l_ = len(mask)
-        end = np.clip(end, a_min=None, a_max=l_)
-        start = np.clip(start, a_min=None, a_max=l_)
-        sums = np.zeros(len(mask) + 1, dtype=int)
-        sums[1:] = np.cumsum(mask)
-        return sums[end] - sums[start]
+        ends = start + size
+        self_ends = self.__starts + self.__sizes
+
+        rs = 0
+        output = np.zeros_like(start)
+        for arr in np.array_split(start, n_chunks):
+            in_range_starts = np.clip(
+                self.__starts[:, np.newaxis],
+                a_min=start[rs : rs + len(arr)],
+                a_max=ends[rs : rs + len(arr)],
+            )
+            in_range_ends = np.clip(
+                self_ends[:, np.newaxis],
+                a_min=start[rs : rs + len(arr)],
+                a_max=ends[rs : rs + len(arr)],
+            )
+            output[rs : rs + len(arr)] = np.sum(in_range_ends - in_range_starts, axis=0)
+            rs += len(arr)
+
+        return output
+        # example: row[0] in in_range_starts tells me what happens if I clip the 0th
+        # element in self.__starts to each of the values in the start and end array
+        # that have been provided in the call.
 
     def __getitem__(self, item: int) -> DataIndex:
         """

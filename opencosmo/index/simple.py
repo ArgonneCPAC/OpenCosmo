@@ -61,15 +61,13 @@ class SimpleIndex:
         if len(self) == 0:
             return np.zeros_like(start)
 
-        end = start + size
-        mask = self.into_mask()
-        l_ = len(mask)
-        end = np.clip(end, a_min=None, a_max=l_)
-        start = np.clip(start, a_min=None, a_max=l_)
-        sums = np.zeros(len(mask) + 1, dtype=int)
-        sums[1:] = np.cumsum(mask)
+        ends = start + size
 
-        return sums[end] - sums[start]
+        in_range = ~(
+            (self.__index[:, np.newaxis] >= ends)
+            | (self.__index[:, np.newaxis] < start)
+        )
+        return np.sum(in_range, axis=0)
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
         """
