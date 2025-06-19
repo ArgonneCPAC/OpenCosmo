@@ -19,10 +19,48 @@ solar_metallicity = 0.012899 # value used internally in HACC
 
 def create_yt_dataset(
     data: Table, 
-    compute_xray_fields: Optional[bool] = None,
-    return_source_model: Optional[bool] = None,
+    compute_xray_fields: Optional[bool] = False,
+    return_source_model: Optional[bool] = False,
     source_model_kwargs: Optional[Dict[str, Any]] = {}
-) -> YT_Dataset:
+) -> Union[YT_Dataset, Tuple[YT_Dataset, CIESourceModel]]:
+
+    """
+    Converts particle data to a `yt` dataset. Note that `yt`
+    is generally developed with AMR codes in mind, but support for
+    SPH codes is continually being added. `yt's` documentation can
+    be found `here <https://yt-project.org/doc/index.html>`_. 
+
+    If `compute_xray_fields` is enabled, X-ray emissivity and luminosity fields
+    will be added using `pyxsim <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/index.html#>`_, 
+    which generates photon samples from gas properties.
+
+    Parameters
+    ----------
+    data : astropy.table.Table
+        A table of particle data. Must include at least positions and masses.
+    compute_xray_fields : bool, optional
+        Whether or not to compute X-ray luminosities with `pyxsim`.
+        Uses `CIESourceModel`, which considers thermal emission from gas assuming 
+        collisional ionization equilibrium.
+    return_source_model : bool, optional
+        Whether or not to return the `pyxsim` source model for further interaction,
+        such as computing additional luminosities in different frequency bands
+        or generating synthetic observations.
+    source_model_kwargs : dict, optional
+        Keyword arguments passed to the `CIESourceModel` constructor in `pyxsim`. 
+        These can include parameters like `emin`, `emax`, `nbins`, `abund_table`, etc., 
+        to control the spectral resolution and emission model behavior. If `None`, default
+        values will be used for all source model parameters.
+
+    Returns
+    -------
+    ds : yt.data_objects.static_output.Dataset
+        A `yt` dataset built from the input particle data, with additional fields
+        (e.g., X-ray luminosities) if requested.
+
+    source_model : pyxsim.source_models.CIESourceModel, optional
+        Returned only if `return_source_model=True`.
+    """
 
     data_dict = {}
     minx, maxx = np.inf, -np.inf
@@ -160,13 +198,70 @@ def create_yt_dataset(
     return ds
 
 def particle_projection_plot(*args, **kwargs) -> PlotWindow:
+    """
+    Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ProjectionPlot>`_.
+
+    Creates a 2D projection plot of particle-based data along a specified axis.
+
+    Parameters
+    ----------
+    *args :
+        Positional arguments passed directly to `yt.ParticleProjectionPlot`.
+    **kwargs :
+        Keyword arguments passed directly to `yt.ParticleProjectionPlot`.
+
+    Returns
+    -------
+    yt.visualization.plot_window.PlotWindow
+        A PlotWindow object containing the particle projection plot.
+    """
     return yt.ParticleProjectionPlot(*args, **kwargs)
 
+
 def profile_plot(*args, **kwargs) -> PlotWindow:
+    """
+    Wrapper for `yt.ProfilePlot <https://yt-project.org/doc/reference/api/yt.visualization.particle_plots.html#yt.visualization.particle_plots.ParticleProjectionPlot>`_.
+
+    Creates a bin-averaged profile of a dependent variable
+    as a function of one or more independent variables.
+
+    Parameters
+    ----------
+    *args :
+        Positional arguments passed directly to `yt.ProfilePlot`.
+    **kwargs :
+        Keyword arguments passed directly to `yt.ProfilePlot`.
+
+    Returns
+    -------
+    yt.visualization.plot_window.PlotWindow
+        A PlotWindow object containing the profile plot.
+    """
     return yt.ProfilePlot(*args, **kwargs)
 
+
 def phase_plot(*args, **kwargs) -> PlotWindow:
+    """
+    Wrapper for `yt.PhasePlot <https://yt-project.org/doc/reference/api/yt.visualization.profile_plotter.html#yt.visualization.profile_plotter.PhasePlot>`_.
+
+    Creates a 2D histogram (phase plot) showing how one quantity varies as a function
+    of two others, useful for visualizing thermodynamic or structural relationships
+    (e.g., temperature vs. density colored by mass).
+
+    Parameters
+    ----------
+    *args :
+        Positional arguments passed directly to `yt.PhasePlot`.
+    **kwargs :
+        Keyword arguments passed directly to `yt.PhasePlot`.
+
+    Returns
+    -------
+    yt.visualization.plot_window.PlotWindow
+        A PlotWindow object containing the phase plot.
+    """
     return yt.PhasePlot(*args, **kwargs)
+
 
 
 
