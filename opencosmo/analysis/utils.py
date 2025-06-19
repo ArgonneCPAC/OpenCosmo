@@ -6,7 +6,7 @@ from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
 from yt.visualization.plot_window import PlotWindow # type: ignore
 from re import sub
 from pyxsim import CIESourceModel # type: ignore
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union, Tuple
 
 
 
