@@ -391,6 +391,10 @@ class Dataset:
             self.__tree,
         )
 
+    def with_index(self, index: DataIndex):
+        new_state = self.__state.with_index(index)
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+
     def add_columns(self, **new_columns: DerivedColumn):
         """
         Create a new dataset with additional columns. These new columns can be derived
