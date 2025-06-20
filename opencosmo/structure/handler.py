@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.dataset.mask import DerivedColumn
+from opencosmo.dataset.col import DerivedColumn
 from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 

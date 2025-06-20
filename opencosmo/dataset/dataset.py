@@ -9,7 +9,7 @@ from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.mask import DerivedColumn, Mask
+from opencosmo.dataset.col import DerivedColumn, Mask
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
@@ -402,7 +402,14 @@ class Dataset:
         from other columns, it will behave appropriately under unit transformations.
 
         Parameters:
-        ** columns : opencosmo.DerivedColumn | np.ndarray
+        -----------
+        ** columns : opencosmo.DerivedColumn
+
+        Returns
+        -------
+        dataset : opencosmo.Dataset
+            This dataset with the columns added
+
         """
         new_state = self.__state.with_derived_columns(**new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
