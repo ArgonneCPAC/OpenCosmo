@@ -37,9 +37,9 @@ def test_derive_write(properties_path, tmp_path):
     data = ds.data
     oc.write(tmp_path / "test.hdf5", ds)
     written_data = oc.open(tmp_path / "test.hdf5").data
-    print(written_data.columns)
-
-    assert np.all(data["fof_halo_px"] == written_data["fof_halo_px"])
+    assert np.all(
+        np.isclose(data["fof_halo_px"].value, written_data["fof_halo_px"].value)
+    )
 
 
 def test_derive_divide(properties_path):

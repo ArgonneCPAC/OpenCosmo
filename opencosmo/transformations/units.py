@@ -184,10 +184,14 @@ def get_raw_units(column: h5py.Dataset):
     if "unit" in column.attrs:
         if (us := column.attrs["unit"]) == "None" or us == "":
             return None
+        if (unit := UNIT_MAP.get(us)) is not None:
+            return unit
         try:
             return u.Unit(us)
         except ValueError:
-            return UNIT_MAP.get(us)
+            return None
+
+    return None
 
 
 def generate_attribute_unit_transformations(
