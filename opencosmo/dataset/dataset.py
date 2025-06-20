@@ -151,6 +151,8 @@ class Dataset:
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
         data = self.__state.get_data(self.__handler)
+        if len(data.columns) == 1:
+            return next(data.itercols())
         return data
 
     @property
