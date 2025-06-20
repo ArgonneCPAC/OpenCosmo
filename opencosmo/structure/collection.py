@@ -7,7 +7,7 @@ import h5py
 
 import opencosmo as oc
 from opencosmo import structure as s
-from opencosmo.dataset.mask import DerivedColumn
+from opencosmo.dataset.col import DerivedColumn
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import SimulationParameters
 from opencosmo.spatial.protocols import Region
