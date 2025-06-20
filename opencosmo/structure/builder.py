@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Optional
 
 import h5py
 
 import opencosmo as oc
-from opencosmo.dataset.column import get_column_builders
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
@@ -14,103 +13,39 @@ from opencosmo.spatial.tree import open_tree
 from opencosmo.transformations import units as u
 
 
-class OomDatasetBuilder:
-    __allowed_conventions = {
-        "unitless",
-        "scalefree",
-        "comoving",
-        "physical",
-    }
+def build_dataset(
+    file: h5py.File | h5py.Group,
+    header: OpenCosmoHeader,
+    index: Optional[DataIndex] = None,
+) -> oc.Dataset:
+    try:
+        tree = open_tree(file, header.simulation.box_size)
+    except ValueError:
+        tree = None
 
-    def __init__(
-        self,
-        selected: Optional[set[str]] = None,
-        unit_convention: Optional[str] = None,
-        *args,
-        **kwargs,
-    ):
-        self.selected = selected
-        self.unit_convention = (
-            unit_convention if unit_convention is not None else "comoving"
-        )
+    p1 = (0, 0, 0)
+    p2 = tuple(header.simulation.box_size for _ in range(3))
+    sim_box = oc.make_box(p1, p2)
+    builders, base_unit_transformations = u.get_default_unit_transformations(
+        file, header
+    )
 
-    def with_units(self, convention: str) -> OomDatasetBuilder:
-        if convention not in self.__allowed_conventions:
-            raise ValueError(
-                f"Unit convention must be one of {self.__allowed_conventions}"
-            )
-        return OomDatasetBuilder(
-            selected=self.selected,
-            unit_convention=convention,
-        )
+    handler = DatasetHandler(file)
 
-    def select(self, selected: Iterable[str]) -> OomDatasetBuilder:
-        selected = set(selected)
-        if self.selected is None:
-            return OomDatasetBuilder(
-                selected=set(selected),
-                unit_convention=self.unit_convention,
-            )
+    if index is None:
+        index = ChunkedIndex.from_size(len(handler))
+    state = DatasetState(
+        base_unit_transformations,
+        builders,
+        index,
+        u.UnitConvention.SCALEFREE,
+        sim_box,
+    )
 
-        if not selected.issubset(self.selected):
-            raise ValueError(
-                "Selected columns must be a subset of the already selected columns."
-            )
-        return OomDatasetBuilder(
-            selected=selected,
-            unit_convention=self.unit_convention,
-        )
-
-    def build(
-        self,
-        file: h5py.File | h5py.Group,
-        header: OpenCosmoHeader,
-        index: Optional[DataIndex] = None,
-    ) -> oc.Dataset:
-        try:
-            tree = open_tree(file, header.simulation.box_size)
-        except ValueError:
-            tree = None
-
-        p1 = (0, 0, 0)
-        p2 = tuple(header.simulation.box_size for _ in range(3))
-        sim_box = oc.make_box(p1, p2)
-        builders, base_unit_transformations = u.get_default_unit_transformations(
-            file, header
-        )
-        if self.selected is not None:
-            selected = self.selected
-        else:
-            selected = builders.keys()
-
-        if self.unit_convention != "comoving":
-            new_transformations = u.get_unit_transition_transformations(
-                self.unit_convention,
-                base_unit_transformations,
-                header.cosmology,
-                header.file.redshift,
-            )
-            builders = get_column_builders(new_transformations, selected)
-
-        if selected is not None:
-            builders = {key: builders[key] for key in selected}
-
-        handler = DatasetHandler(file)
-
-        if index is None:
-            index = ChunkedIndex.from_size(len(handler))
-        state = DatasetState(
-            base_unit_transformations,
-            builders,
-            index,
-            u.UnitConvention(self.unit_convention),
-            sim_box,
-        )
-
-        dataset = oc.Dataset(
-            handler,
-            header,
-            state,
-            tree,
-        )
-        return dataset
+    dataset = oc.Dataset(
+        handler,
+        header,
+        state,
+        tree,
+    )
+    return dataset

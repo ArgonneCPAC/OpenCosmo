@@ -127,7 +127,7 @@ class StructureCollection:
         Return the linked datasets.
         """
         return [self.__properties] + [
-            handler.get_data(self.__index) for handler in self.__handlers.values()
+            handler.get_dataset(self.__index) for handler in self.__handlers.values()
         ]
 
     def items(self) -> list[tuple[str, oc.Dataset]]:
@@ -135,7 +135,7 @@ class StructureCollection:
         Return the linked datasets as key-value pairs.
         """
         return [
-            (key, handler.get_data(self.__index))
+            (key, handler.get_dataset(self.__index))
             for key, handler in self.__handlers.items()
         ]
 
@@ -148,7 +148,7 @@ class StructureCollection:
         elif key not in self.__handlers:
             raise KeyError(f"Dataset {key} not found in collection.")
         index = self.__properties.index
-        return self.__handlers[key].get_data(index)
+        return self.__handlers[key].get_dataset(index)
 
     def __enter__(self):
         return self
@@ -365,7 +365,9 @@ class StructureCollection:
 
         for i, row in enumerate(self.__properties.rows()):
             index = self.__properties.index[i]
-            output = {key: handler.get_data(index) for key, handler in handlers.items()}
+            output = {
+                key: handler.get_dataset(index) for key, handler in handlers.items()
+            }
             if not any(len(v) for v in output.values()):
                 continue
             if len(output) == 1:
