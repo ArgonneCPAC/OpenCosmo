@@ -414,10 +414,9 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
+
         header = self.__header if with_header else None
-        schema = self.__handler.prep_write(
-            self.__state.index, self.__state.columns, header
-        )
+        schema = self.__state.make_schema(self.__handler, header)
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.index)
             spat_idx_schema = tree.make_schema()

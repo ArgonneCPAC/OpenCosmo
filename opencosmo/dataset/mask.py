@@ -94,6 +94,24 @@ class DerivedColumn:
 
         return lhs_valid and rhs_valid
 
+    def get_units(self, units: dict[str, u.Unit]):
+        match self.lhs:
+            case Column():
+                lhs_unit = 1 * units[self.lhs.column_name]
+            case DerivedColumn():
+                lhs_unit = 1 * self.lhs.get_units(units)
+            case _:
+                lhs_unit = 1
+        match self.rhs:
+            case Column():
+                rhs_unit = 1 * units[self.rhs.column_name]
+            case DerivedColumn():
+                rhs_unit = 1 * self.rhs.get_units(units)
+            case _:
+                rhs_unit = 1
+
+        return self.operation(lhs_unit, rhs_unit).unit
+
     def requires(self):
         """
         Return the raw data columns required to make this column

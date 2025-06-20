@@ -5,17 +5,17 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def input_path(snapshot_path):
+def properties_path(snapshot_path):
     return snapshot_path / "haloproperties.hdf5"
 
 
 @pytest.fixture
-def particle_path(snapshot_path):
+def particles_path(snapshot_path):
     return snapshot_path / "haloparticles.hdf5"
 
 
-def test_derive_multiply(input_path):
-    ds = oc.open(input_path)
+def test_derive_multiply(properties_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.add_columns(fof_halo_px=derived)
     data = ds.data
@@ -30,19 +30,20 @@ def test_derive_multiply(input_path):
     )
 
 
-def test_derive_write(input_path, tmp_path):
-    ds = oc.open(input_path)
+def test_derive_write(properties_path, tmp_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.add_columns(fof_halo_px=derived)
     data = ds.data
     oc.write(tmp_path / "test.hdf5", ds)
     written_data = oc.open(tmp_path / "test.hdf5").data
+    print(written_data.columns)
 
     assert np.all(data["fof_halo_px"] == written_data["fof_halo_px"])
 
 
-def test_derive_divide(input_path):
-    ds = oc.open(input_path)
+def test_derive_divide(properties_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") / oc.col("fof_halo_com_vx")
     ds = ds.add_columns(fof_halo_px=derived)
     data = ds.data
@@ -57,8 +58,8 @@ def test_derive_divide(input_path):
     )
 
 
-def test_derive_chain(input_path):
-    ds = oc.open(input_path)
+def test_derive_chain(properties_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * (
         oc.col("fof_halo_com_vx") * oc.col("fof_halo_com_vy")
     )
@@ -83,8 +84,8 @@ def test_derive_chain(input_path):
     )
 
 
-def test_scalars(input_path):
-    ds = oc.open(input_path)
+def test_scalars(properties_path):
+    ds = oc.open(properties_path)
     derived1 = oc.col("fof_halo_mass") * 5
     derived2 = 3.0 * oc.col("fof_halo_mass")
     derived3 = 1 / oc.col("fof_halo_mass")
@@ -100,8 +101,8 @@ def test_scalars(input_path):
     assert np.all(data["derived4"] == data["fof_halo_mass"] / 2)
 
 
-def test_power(input_path):
-    ds = oc.open(input_path)
+def test_power(properties_path):
+    ds = oc.open(properties_path)
     total_speed = (
         oc.col("fof_halo_com_vx") ** 2
         + oc.col("fof_halo_com_vy") ** 2
@@ -128,8 +129,8 @@ def test_power(input_path):
     )
 
 
-def test_derive_unit_change(input_path):
-    ds = oc.open(input_path)
+def test_derive_unit_change(properties_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.add_columns(fof_halo_px=derived)
     comoving_data = ds.data
@@ -149,8 +150,8 @@ def test_derive_unit_change(input_path):
     )
 
 
-def test_derive_mask(input_path):
-    ds = oc.open(input_path)
+def test_derive_mask(properties_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.add_columns(fof_halo_px=derived)
     comoving_data = ds.data["fof_halo_px"]
@@ -159,8 +160,8 @@ def test_derive_mask(input_path):
     assert all(ds_masked.data["fof_halo_px"].value > val)
 
 
-def test_derive_children(input_path):
-    ds = oc.open(input_path)
+def test_derive_children(properties_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.add_columns(fof_halo_px=derived)
     derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
@@ -173,8 +174,8 @@ def test_derive_children(input_path):
     )
 
 
-def test_derive_children_select(input_path):
-    ds = oc.open(input_path)
+def test_derive_children_select(properties_path):
+    ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.add_columns(fof_halo_px=derived)
     derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
@@ -186,3 +187,12 @@ def test_derive_children_select(input_path):
     data = ds.data
     assert set(data.columns) == set(to_select)
     assert np.all(derived_data == data["derived2"])
+
+
+def test_derive_structure_collection(properties_path, particles_path):
+    ds = oc.structure.open_linked_files(properties_path, particles_path)
+    ds["dm_particles"].add_columns(gpe=oc.col("mass") * oc.col("phi"))
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
+    ds = ds.take(1, at="random")
+    for properties, particles in ds.objects(["dm_particles"]):
+        assert "gpe" in particles.columns
