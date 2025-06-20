@@ -102,6 +102,7 @@ def test_box_query_chain(halo_properties_path):
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
     data = ds.data
+
     for i, dim in enumerate(["x", "y", "z"]):
         colname = f"fof_halo_center_{dim}"
         col = data[colname]

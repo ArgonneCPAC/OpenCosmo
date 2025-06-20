@@ -48,16 +48,17 @@ def __check_containment_3d(
         column_name_base = allowed_coordinates[dtype]
 
     cols = set(filter(lambda colname: colname.startswith(column_name_base), ds.columns))
-    expected_cols = set(column_name_base + dim for dim in ["x", "y", "z"])
-    if cols != expected_cols:
+    expected_cols = [column_name_base + dim for dim in ["x", "y", "z"]]
+    if cols != set(expected_cols):
         raise ValueError(
             "Unable to find the correct coordinate columns in this dataset! "
             f"Found {cols} but expected {expected_cols}"
         )
 
-    ds = ds.select([column_name_base + dim for dim in ["x", "y", "z"]])
+    ds = ds.select(expected_cols)
+    data = ds.data
 
-    data = np.vstack(tuple(col.data for col in ds.data.itercols()))
+    data = np.vstack(tuple(data[col].data for col in expected_cols))
     return region.contains(data)
 
 
