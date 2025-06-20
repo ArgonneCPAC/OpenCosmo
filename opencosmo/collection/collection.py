@@ -228,6 +228,14 @@ class SimulationCollection(dict):
             )
         return self.__map("take", n, at)
 
+    def with_new_columns(self, *args, **kwargs):
+        """
+        Update the datasets within this collection with a set of new columns.
+        This method simply calls :py:meth:`opencosmo.Dataset.with_new_columns` or
+        :py:meth:`opencosmo.StructureCollection.with_new_columns`, as appropriate.
+        """
+        return self.__map("with_new_columns", *args, **kwargs)
+
     def with_units(self, convention: str) -> SimulationCollection:
         """
         Transform all datasets or collections to use the given unit convention. This

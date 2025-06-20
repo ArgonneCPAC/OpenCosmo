@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Iterable
 
 import h5py
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.header import OpenCosmoHeader
+from opencosmo.dataset.mask import DerivedColumn
 from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io import schemas as ios
-from opencosmo.structure.builder import build_dataset
 
 
 class LinkedDatasetHandler:
@@ -18,17 +17,9 @@ class LinkedDatasetHandler:
     """
 
     def __init__(
-        self,
-        file: h5py.File | h5py.Group,
-        link: h5py.Group | tuple[h5py.Group, h5py.Group],
-        header: OpenCosmoHeader,
-        dataset: Optional[oc.Dataset] = None,
+        self, link: h5py.Group | tuple[h5py.Group, h5py.Group], dataset: oc.Dataset
     ):
-        self.file = file
         self.link = link
-        self.header = header
-        if dataset is None:
-            dataset = build_dataset(file, header)
         self.dataset = dataset
 
     def get_all_data(self) -> oc.Dataset:
@@ -57,14 +48,17 @@ class LinkedDatasetHandler:
         if isinstance(columns, str):
             columns = [columns]
         dataset = self.dataset.select(columns)
-        return LinkedDatasetHandler(self.file, self.link, self.header, dataset)
+        return LinkedDatasetHandler(self.link, dataset)
 
     def with_units(self, convention: str) -> LinkedDatasetHandler:
         return LinkedDatasetHandler(
-            self.file,
             self.link,
-            self.header,
             self.dataset.with_units(convention),
+        )
+
+    def with_new_columns(self, **new_columns: DerivedColumn):
+        return LinkedDatasetHandler(
+            self.link, self.dataset.with_new_columns(**new_columns)
         )
 
     def make_schema(self, name: str, index: DataIndex) -> ios.LinkSchema:

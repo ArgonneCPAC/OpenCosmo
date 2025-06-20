@@ -7,6 +7,7 @@ import h5py
 
 import opencosmo as oc
 from opencosmo import structure as s
+from opencosmo.dataset.mask import DerivedColumn
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import SimulationParameters
 from opencosmo.spatial.protocols import Region
@@ -120,7 +121,7 @@ class StructureCollection:
         """
         Return the keys of the linked datasets.
         """
-        return list(self.__handlers.keys())
+        return list(self.__handlers.keys()) + [self.__properties.dtype]
 
     def values(self) -> list[oc.Dataset]:
         """
@@ -333,6 +334,50 @@ class StructureCollection:
             self.__header,
             self.__handlers,
         )
+
+    def with_new_columns(self, dataset: str, **new_columns: DerivedColumn):
+        """
+        Add new column(s) to one of the datasets in this collection. This behaves
+        exactly like :py:meth:`oc.Dataset.with_new_columns`, except that you must
+        specify which dataset the columns should refer too.
+
+        .. code-block:: python
+
+            pe = oc.col("phi") * oc.col("mass")
+            collection = collection.with_new_columns("dm_particles", pe=pe)
+
+        Parameters
+        ----------
+        dataset : str
+            The name of the dataset to add columns to
+
+        ** columns: opencosmo.DerivedColumn
+            The new columns
+
+        Returns
+        -------
+        new_collection : opencosmo.StructureCollection
+            This collection with the additional columns added
+
+        Raise
+        -----
+        ValueError
+            If the dataset is not found in this collection
+        """
+        if dataset == self.__properties.dtype:
+            new_properties = self.__properties.with_new_columns(**new_columns)
+            return StructureCollection(new_properties, self.__header, self.__handlers)
+        elif dataset not in self.__handlers.keys():
+            raise ValueError(f"Dataset {dataset} not found in this collection!")
+
+        new_handlers = {
+            dataset: self.__handlers[dataset].with_new_columns(**new_columns)
+        }
+        for key, handler in self.__handlers.items():
+            if key == dataset:
+                continue
+            new_handlers[key] = handler
+        return StructureCollection(self.__properties, self.__header, new_handlers)
 
     def objects(
         self,

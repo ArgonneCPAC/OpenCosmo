@@ -395,7 +395,7 @@ class Dataset:
         new_state = self.__state.with_index(index)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
-    def add_columns(self, **new_columns: DerivedColumn):
+    def with_new_columns(self, **new_columns: DerivedColumn):
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, or a numpy array. When a column is derived
