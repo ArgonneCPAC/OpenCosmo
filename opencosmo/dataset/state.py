@@ -1,7 +1,7 @@
 from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional
 
-from astropy import table
+from astropy import table  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo.transformations.units as u
