@@ -10,6 +10,7 @@ from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
+from opencosmo.transformations.units import get_raw_units
 
 
 class DatasetHandler:
@@ -56,6 +57,9 @@ class DatasetHandler:
                 group[colname].attrs[name] = value
 
         return DatasetHandler(file, group_name=self.__group_name)
+
+    def get_raw_units(self, columns: Iterable[str]):
+        return {col: get_raw_units(self.__group[col]) for col in columns}
 
     def prep_write(
         self,

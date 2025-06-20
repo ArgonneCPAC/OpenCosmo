@@ -1,7 +1,6 @@
 from enum import Enum
 from functools import partial
 from typing import Optional
-from warnings import warn
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
@@ -181,8 +180,15 @@ def comoving_to_physical(
     return column
 
 
+def get_raw_units(column: h5py.Dataset):
+    if "unit" in column.attrs:
+        if (us := column.attrs["unit"]) == "None" or us == "":
+            return None
+        return UNIT_MAP.get(us)
+
+
 def generate_attribute_unit_transformations(
-    input: h5py.Dataset,
+    column: h5py.Dataset,
 ) -> t.TransformationDict:
     """
     Check the attributes of an hdf5 dataset to see if information about units is stored
@@ -193,20 +199,12 @@ def generate_attribute_unit_transformations(
     store it in our standard format without losing unit information and we cannot rely
     on them following our naming conventions.
     """
-    if "unit" in input.attrs:
-        if (us := input.attrs["unit"]) == "None" or us == "":
-            return {}
-        try:
-            unit = UNIT_MAP[us]
-            apply_func: t.Transformation = apply_unit(
-                column_name=input.name.split("/")[-1], unit=unit
-            )
-            return {t.TransformationType.COLUMN: [apply_func]}
-        except KeyError:
-            warn(
-                f"Invalid unit {us} in column {input.name}. Values will be unitless..."
-            )
-            return {}
+    unit = get_raw_units(column)
+    if unit is not None:
+        apply_func: t.Transformation = apply_unit(
+            column_name=column.name.split("/")[-1], unit=unit
+        )
+        return {t.TransformationType.COLUMN: [apply_func]}
     return {}
 
 

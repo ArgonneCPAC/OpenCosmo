@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Callable, Mapping, Optional
 
 import h5py
 import numpy as np
@@ -141,11 +141,17 @@ class ColumnWriter:
     """
 
     def __init__(
-        self, name: str, index: DataIndex, source: h5py.Dataset, offset: int = 0
+        self,
+        name: str,
+        index: DataIndex,
+        source: h5py.Dataset,
+        attrs: Mapping,
+        offset: int = 0,
     ):
         self.name = name
         self.source = source
         self.index = index
+        self.attrs = attrs
         self.offset = offset
 
     def write(
@@ -156,7 +162,7 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, updater)
-        for name, val in self.source.attrs.items():
+        for name, val in self.attrs.items():
             ds.attrs[name] = val
 
 

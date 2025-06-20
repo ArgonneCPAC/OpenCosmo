@@ -1,5 +1,5 @@
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Optional
 
 from astropy import table
 from astropy.cosmology import Cosmology  # type: ignore
@@ -7,7 +7,9 @@ from astropy.cosmology import Cosmology  # type: ignore
 import opencosmo.transformations.units as u
 from opencosmo.dataset.column import ColumnBuilder, get_column_builders
 from opencosmo.dataset.mask import DerivedColumn
+from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
+from opencosmo.io import schemas as ios
 from opencosmo.spatial.protocols import Region
 
 if TYPE_CHECKING:
@@ -82,6 +84,29 @@ class DatasetState:
             self.__hidden,
             self.__derived,
         )
+
+    def make_schema(
+        self, handler: "DatasetHandler", header: Optional[OpenCosmoHeader] = None
+    ):
+        builder_names = set(self.__builders.keys())
+        schema = handler.prep_write(self.__index, builder_names - self.__hidden, header)
+        derived_names = set(self.__derived.keys()) - self.__hidden
+        derived_data = (
+            self.select(derived_names)
+            .with_units("unitless", None, None)
+            .get_data(handler)
+        )
+        units = handler.get_raw_units(builder_names)
+        for dn, derived in self.__derived.items():
+            units[dn] = derived.get_units(units)
+
+        for colname in derived_names:
+            attrs = {"unit": str(units[colname])}
+            coldata = derived_data[colname].value
+            colschema = ios.ColumnSchema(colname, self.__index, coldata, attrs)
+            schema.add_child(colschema, colname)
+
+        return schema
 
     def with_derived_columns(self, **new_columns: DerivedColumn):
         """
