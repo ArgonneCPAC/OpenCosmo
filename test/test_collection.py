@@ -193,6 +193,16 @@ def test_link_write(halo_paths, tmp_path):
         assert set(original_output[key]) == set(read_output[key])
 
 
+def test_simulation_collection_derive(multi_path):
+    collection = oc.open(multi_path)
+    collection = collection.with_new_columns(
+        fof_halo_px=oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    )
+    for ds in collection.values():
+        assert "fof_halo_px" in ds.columns
+        assert "fof_halo_px" in ds.data.columns
+
+
 def test_simulation_collection_broadcast_attribute(multi_path):
     collection = oc.open(multi_path)
     for key, value in collection.redshift.items():

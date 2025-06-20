@@ -1,8 +1,9 @@
 from itertools import chain
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
+from numpy.typing import NDArray
 
 import opencosmo.io.protocols as iop
 import opencosmo.io.writers as iow
@@ -241,7 +242,9 @@ class DatasetSchema:
         for colname in columns:
             if colname not in source.keys():
                 raise ValueError("Dataset source is missing some columns!")
-            column_schema = ColumnSchema(colname, index, source[colname])
+            column_schema = ColumnSchema(
+                colname, index, source[colname], source[colname].attrs
+            )
             schema.add_child(column_schema, colname)
         return schema
 
@@ -318,10 +321,17 @@ class ColumnSchema:
     It is also used eternally by the link schemas.
     """
 
-    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
+    def __init__(
+        self,
+        name: str,
+        index: DataIndex,
+        source: h5py.Dataset | NDArray,
+        attrs: dict[str, Any],
+    ):
         self.name = name
         self.index = index
         self.source = source
+        self.attrs = attrs
         self.offset = 0
 
     def concatenate(self, *others: "ColumnSchema"):
@@ -332,7 +342,7 @@ class ColumnSchema:
                 raise ValueError("Tried to combine columns with incompatible shapes")
 
         new_index = self.index.concatenate(*[o.index for o in others])
-        return ColumnSchema(self.name, new_index, self.source)
+        return ColumnSchema(self.name, new_index, self.source, self.attrs)
 
     def add_child(self, *args, **kwargs):
         raise TypeError("Columns do not take children!")
@@ -353,7 +363,9 @@ class ColumnSchema:
         )
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.ColumnWriter(self.name, self.index, self.source, self.offset)
+        return iow.ColumnWriter(
+            self.name, self.index, self.source, self.attrs, self.offset
+        )
 
 
 class SpatialIndexSchema:
@@ -386,8 +398,10 @@ class SpatialIndexSchema:
 class SpatialIndexLevelSchema:
     def __init__(self, source: h5py.Group):
         index = ChunkedIndex.from_size(len(source["start"]))
-        self.start = ColumnSchema("start", index, source["start"])
-        self.size = ColumnSchema("size", index, source["size"])
+        self.start = ColumnSchema(
+            "start", index, source["start"], source["start"].attrs
+        )
+        self.size = ColumnSchema("size", index, source["size"], source["size"].attrs)
 
     def allocate(self, group: h5py.Group):
         self.start.allocate(group)
@@ -414,7 +428,7 @@ class IdxLinkSchema:
     """
 
     def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
-        self.column = ColumnSchema(f"{name}_idx", index, source)
+        self.column = ColumnSchema(f"{name}_idx", index, source, source.attrs)
 
     def allocate(self, group: h5py.Group):
         return self.column.allocate(group)
@@ -448,8 +462,8 @@ class StartSizeLinkSchema:
     ):
         self.name = name
         self.index = index
-        self.start = ColumnSchema(f"{name}_start", index, start)
-        self.size = ColumnSchema(f"{name}_size", index, size)
+        self.start = ColumnSchema(f"{name}_start", index, start, start.attrs)
+        self.size = ColumnSchema(f"{name}_size", index, size, size.attrs)
         self.start.set_offset(link_offset)
         self.size.set_offset(link_offset)
         self.start_offset = start_offset

@@ -9,8 +9,8 @@ from deprecated import deprecated  # type: ignore
 
 import opencosmo as oc
 from opencosmo import collection
+from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import DatasetHandler
-from opencosmo.dataset.state import DatasetState
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
 from opencosmo.header import read_header
 from opencosmo.index import ChunkedIndex
@@ -128,7 +128,7 @@ def open(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
-    state = DatasetState(
+    state = dss.DatasetState(
         base_unit_transformations,
         builders,
         index,
@@ -210,7 +210,7 @@ def read(
     builders, base_unit_transformations = u.get_default_unit_transformations(
         group, header
     )
-    state = DatasetState(
+    state = dss.DatasetState(
         base_unit_transformations, builders, index, u.UnitConvention.COMOVING, sim_box
     )
 

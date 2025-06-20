@@ -3,7 +3,7 @@ from typing import Iterable, Optional, Protocol, Self
 import h5py
 
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.mask import Mask
+from opencosmo.dataset.col import Mask
 from opencosmo.io.protocols import DataSchema
 
 

@@ -3,11 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
+import h5py
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 from numpy.typing import NDArray
-
-import opencosmo as oc
 
 
 class TransformationType(Enum):
@@ -24,7 +23,7 @@ class TransformationGenerator(Protocol):
     dataset. Examples include units stored as attributes
     """
 
-    def __call__(self, input: oc.Dataset) -> TransformationDict: ...
+    def __call__(self, column: h5py.Dataset) -> TransformationDict: ...
 
 
 class TableTransformation(Protocol):

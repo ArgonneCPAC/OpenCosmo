@@ -7,6 +7,7 @@ import h5py
 
 import opencosmo as oc
 from opencosmo import structure as s
+from opencosmo.dataset.col import DerivedColumn
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import SimulationParameters
 from opencosmo.spatial.protocols import Region
@@ -120,14 +121,14 @@ class StructureCollection:
         """
         Return the keys of the linked datasets.
         """
-        return list(self.__handlers.keys())
+        return list(self.__handlers.keys()) + [self.__properties.dtype]
 
     def values(self) -> list[oc.Dataset]:
         """
         Return the linked datasets.
         """
         return [self.__properties] + [
-            handler.get_data(self.__index) for handler in self.__handlers.values()
+            handler.get_dataset(self.__index) for handler in self.__handlers.values()
         ]
 
     def items(self) -> list[tuple[str, oc.Dataset]]:
@@ -135,7 +136,7 @@ class StructureCollection:
         Return the linked datasets as key-value pairs.
         """
         return [
-            (key, handler.get_data(self.__index))
+            (key, handler.get_dataset(self.__index))
             for key, handler in self.__handlers.items()
         ]
 
@@ -148,7 +149,7 @@ class StructureCollection:
         elif key not in self.__handlers:
             raise KeyError(f"Dataset {key} not found in collection.")
         index = self.__properties.index
-        return self.__handlers[key].get_data(index)
+        return self.__handlers[key].get_dataset(index)
 
     def __enter__(self):
         return self
@@ -334,6 +335,50 @@ class StructureCollection:
             self.__handlers,
         )
 
+    def with_new_columns(self, dataset: str, **new_columns: DerivedColumn):
+        """
+        Add new column(s) to one of the datasets in this collection. This behaves
+        exactly like :py:meth:`oc.Dataset.with_new_columns`, except that you must
+        specify which dataset the columns should refer too.
+
+        .. code-block:: python
+
+            pe = oc.col("phi") * oc.col("mass")
+            collection = collection.with_new_columns("dm_particles", pe=pe)
+
+        Parameters
+        ----------
+        dataset : str
+            The name of the dataset to add columns to
+
+        ** columns: opencosmo.DerivedColumn
+            The new columns
+
+        Returns
+        -------
+        new_collection : opencosmo.StructureCollection
+            This collection with the additional columns added
+
+        Raise
+        -----
+        ValueError
+            If the dataset is not found in this collection
+        """
+        if dataset == self.__properties.dtype:
+            new_properties = self.__properties.with_new_columns(**new_columns)
+            return StructureCollection(new_properties, self.__header, self.__handlers)
+        elif dataset not in self.__handlers.keys():
+            raise ValueError(f"Dataset {dataset} not found in this collection!")
+
+        new_handlers = {
+            dataset: self.__handlers[dataset].with_new_columns(**new_columns)
+        }
+        for key, handler in self.__handlers.items():
+            if key == dataset:
+                continue
+            new_handlers[key] = handler
+        return StructureCollection(self.__properties, self.__header, new_handlers)
+
     def objects(
         self,
         data_types: Optional[Iterable[str]] = None,
@@ -365,7 +410,9 @@ class StructureCollection:
 
         for i, row in enumerate(self.__properties.rows()):
             index = self.__properties.index[i]
-            output = {key: handler.get_data(index) for key, handler in handlers.items()}
+            output = {
+                key: handler.get_dataset(index) for key, handler in handlers.items()
+            }
             if not any(len(v) for v in output.values()):
                 continue
             if len(output) == 1:

@@ -10,6 +10,7 @@ from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
+from opencosmo.transformations.units import get_raw_units
 
 
 class DatasetHandler:
@@ -57,6 +58,9 @@ class DatasetHandler:
 
         return DatasetHandler(file, group_name=self.__group_name)
 
+    def get_raw_units(self, columns: Iterable[str]):
+        return {col: get_raw_units(self.__group[col]) for col in columns}
+
     def prep_write(
         self,
         index: DataIndex,
@@ -65,7 +69,7 @@ class DatasetHandler:
     ) -> DatasetSchema:
         return DatasetSchema.make_schema(self.__group, columns, index, header)
 
-    def get_data(self, builders: dict, index: DataIndex) -> Column | Table:
+    def get_data(self, builders: dict, index: DataIndex) -> Table:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
@@ -74,8 +78,6 @@ class DatasetHandler:
             col = Column(index.get_data(self.__group[column]))
             output[column] = builder.build(col)
 
-        if len(output) == 1:
-            return next(iter(output.values()))
         return Table(output)
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:

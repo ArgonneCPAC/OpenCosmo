@@ -4,11 +4,12 @@ from copy import copy
 from typing import TYPE_CHECKING, Generator, Iterable, Optional
 from warnings import warn
 
+import numpy as np
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.mask import Mask, apply_masks
+from opencosmo.dataset.col import DerivedColumn, Mask
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
@@ -72,7 +73,7 @@ class Dataset:
         -------
         columns: list[str]
         """
-        return list(self.__state.builders.keys())
+        return self.__state.columns
 
     @property
     def cosmology(self) -> Cosmology:
@@ -149,9 +150,10 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.__handler.get_data(
-            builders=self.__state.builders, index=self.__state.index
-        )
+        data = self.__state.get_data(self.__handler)
+        if len(data.columns) == 1:
+            return next(data.itercols())
+        return data
 
     @property
     def index(self) -> DataIndex:
@@ -258,24 +260,21 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
+        required_columns = set(m.column_name for m in masks)
+        data = self.select(required_columns).data
+        bool_mask = np.ones(len(data), dtype=bool)
+        for mask in masks:
+            bool_mask &= mask.apply(data)
 
-        new_index = apply_masks(
-            self.__handler, self.__state.builders, masks, self.__state.index
-        )
+        new_index = self.__state.index.mask(bool_mask)
         new_state = self.__state.with_index(new_index)
-
-        return Dataset(
-            self.__handler,
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
         """
-        Iterate over the rows in the dataset. Yields
-        for each row, with associated units. For performance it is recommended
-        that you first select the columns you need to work with.
+        Iterate over the rows in the dataset. Rows are returned as a dictionary
+        For performance, it is recommended to first select the columns you need to
+        work with.
 
         Yields
         -------
@@ -299,7 +298,7 @@ class Dataset:
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
-        Select a subset of columns from the dataset.
+        Create a new dataset from a subset of columns in this dataset
 
         Parameters
         ----------
@@ -326,7 +325,7 @@ class Dataset:
 
     def take(self, n: int, at: str = "random") -> Dataset:
         """
-        Take some number of rows from the dataset.
+        Create a new dataset from some number of rows from this dataset.
 
         Can take the first n rows, the last n rows, or n random rows
         depending on the value of 'at'.
@@ -362,7 +361,7 @@ class Dataset:
 
     def take_range(self, start: int, end: int) -> Table:
         """
-        Get a range of rows from the dataset.
+        Create a new dataset from a row range in this dataset.
 
         Parameters
         ----------
@@ -392,6 +391,29 @@ class Dataset:
             self.__tree,
         )
 
+    def with_index(self, index: DataIndex):
+        new_state = self.__state.with_index(index)
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+
+    def with_new_columns(self, **new_columns: DerivedColumn):
+        """
+        Create a new dataset with additional columns. These new columns can be derived
+        from columns already in the dataset, or a numpy array. When a column is derived
+        from other columns, it will behave appropriately under unit transformations.
+
+        Parameters:
+        -----------
+        ** columns : opencosmo.DerivedColumn
+
+        Returns
+        -------
+        dataset : opencosmo.Dataset
+            This dataset with the columns added
+
+        """
+        new_state = self.__state.with_derived_columns(**new_columns)
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
         """
         Prep to write the dataset. This should not be called directly for the user.
@@ -405,10 +427,9 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
+
         header = self.__header if with_header else None
-        schema = self.__handler.prep_write(
-            self.__state.index, self.__state.builders.keys(), header
-        )
+        schema = self.__state.make_schema(self.__handler, header)
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.index)
             spat_idx_schema = tree.make_schema()

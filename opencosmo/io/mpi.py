@@ -290,4 +290,4 @@ def combine_column_schemas(schema: ColumnSchema, comm: MPI.Comm) -> ColumnSchema
     indices = comm.allgather(schema.index)
     new_index = indices[0].concatenate(*indices[1:])
 
-    return ColumnSchema(schema.name, new_index, schema.source)
+    return ColumnSchema(schema.name, new_index, schema.source, schema.attrs)

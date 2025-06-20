@@ -8,6 +8,7 @@ from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo import structure as s
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.structure.builder import build_dataset
 
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
@@ -203,14 +204,17 @@ def get_link_handlers(
         key = LINK_ALIASES.get(dtype, dtype)
         if "data" not in linked_files[key].keys():
             raise KeyError(f"No data group found in linked file for dtype '{dtype}'")
+
+        dataset = build_dataset(linked_files[key], header)
         try:
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
 
             output_links[key] = s.LinkedDatasetHandler(
-                linked_files[key], (start, size), header
+                (start, size),
+                dataset,
             )
         except KeyError:
             index = links[f"{dtype}_idx"]
-            output_links[key] = s.LinkedDatasetHandler(linked_files[key], index, header)
+            output_links[key] = s.LinkedDatasetHandler(index, dataset)
     return output_links
