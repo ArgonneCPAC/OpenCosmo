@@ -91,7 +91,7 @@ The :code:`with_units` transformation is used to change the unit convention of t
 - :code:`comoving`: Factors of `h` are absorbed into the values, but positions and velocities still use comoving coordinates.
 - :code:`physical`: Factors of `h` are absorbed into the values, and positions and velocities are converted to physical coordinates.
 
-When you initially load a dataset, it always uses the "comoving" unit convention. You can change this at any time on any dataset or collection by simply calling :code:`with_units` with the desired unit convention. For more information, see :doc:`Working with Units`
+When you initially load a dataset, it always uses the "comoving" unit convention. You can change this at any time on any dataset or collection by simply calling :code:`with_units` with the desired unit convention. For more information, see :ref:`Working with Units`
 
 Filtering
 ---------
