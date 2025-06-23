@@ -76,8 +76,8 @@ Although you can access data directly, :code:`opencosmo` provides tools for quer
 
 We could then plot the data, or perform further transformations. 
 
-Working with Collections
-------------------------
+Data Collections
+----------------
 
 This is cool on its own, but the real power of :code:`opencosmo` comes from its ability to work with different data types. Go ahead and download the "haloparticles" file from the [OpenCosmo Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing) and try the following:
 

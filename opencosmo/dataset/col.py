@@ -19,6 +19,22 @@ Comparison = Callable[[float, float], bool]
 
 
 def col(column_name: str) -> Column:
+    """
+    Create a reference to a column with a given name. These references can be combined
+    to produce new columns or express queries that operate on the values in a given
+    dataset. For example:
+
+    .. code-block:: python
+
+        import opencosmo as oc
+        ds = oc.open("haloproperties.hdf5")
+        query = oc.col("fof_halo_mass") > 1e14
+        px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+        ds = ds.with_new_columns(fof_halo_com_px = px).filter(query)
+
+    For more advanced usage, see :doc:`cols`
+
+    """
     return Column(column_name)
 
 

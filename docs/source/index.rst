@@ -20,6 +20,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
 
    io
    main_api
+   cols
    collections
    units
 
