@@ -51,6 +51,7 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
     links = defaultdict(list)  # {file: [link_header, ...]}
     for file in properties_files:
         for link in ALLOWED_LINKS[file]:
+            print(link)
             try:
                 link_header = dtypes_to_headers[link]
                 # Check that the headers come from the same simulation

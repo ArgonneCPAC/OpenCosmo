@@ -8,6 +8,7 @@ Main Transformations API
 - :code:`select`: Select a subset of columns from the dataset.
 - :code:`take`: Select a subset of rows from the dataset.
 - :code:`bound`: Limit the dataset to a given spatial region.
+- :code:`with_new_columns`: Combine columns in the dataset into a new column with automatic unit handling.
 
 Each of these transformations is returns a new dataset or collection with the transformations applied. Because transformations are applied lazily, chaining them together is efficient:
 
@@ -95,7 +96,7 @@ When you initially load a dataset, it always uses the "comoving" unit convention
 Filtering
 ---------
 
-Filters operate on columns of a given dataset and return a new dataset that only contains the rows that satisfy the filter. Filters are constructed using the :py:func:`opencosmo.col` function, so they can be constructed independently of any single dataset. Available filters include:
+Filters operate on columns of a given dataset and return a new dataset that only contains the rows that satisfy the filter. Filters are constructed using the :meth:`opencosmo.col` function, so they can be constructed independently of any single dataset. Available filters include:
 
 - Equality: :code:`col("column_name") == value`
 - Inequality: :code:`col("column_name") != value`
@@ -235,7 +236,6 @@ See :doc:`spatial_ref` for more information about constructing regions.
 As with other transformations, spatial queries can be chained together to build complex query pipelines. If a given region contains no data, the spatial query will return a dataset with length zero. 
 
 There are some complications that arise when working with spatial queries in an MPI context. See :doc:`mpi` for more details.
-
 
 Iterating Over Rows
 --------------------
