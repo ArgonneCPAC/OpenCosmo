@@ -284,3 +284,22 @@ def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
             gal_tags = set(particles.data["gal_tag"])
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_derive_multiply(input_path):
+    ds = oc.open(input_path)
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.with_new_columns(fof_halo_px=derived)
+    data = ds.data
+    parallel_assert("fof_halo_px" in data.columns)
+    parallel_assert(
+        data["fof_halo_px"].unit
+        == data["fof_halo_mass"].unit * data["fof_halo_com_vx"].unit
+    )
+    parallel_assert(
+        np.all(
+            data["fof_halo_px"].value
+            == data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
+        )
+    )
