@@ -233,7 +233,6 @@ class Dataset:
         new_header = OpenCosmoHeader(
             new_file_pars,
             self.__header.simulation,
-            self.__header.reformat,
             self.__header.cosmotools,
         )
 
