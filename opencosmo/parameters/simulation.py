@@ -26,7 +26,10 @@ def read_simulation_parameters(file: h5py.File) -> SimulationParameters:
     """
     n_dm = file["header/simulation/parameters"].attrs.get("n_dm", 0)
     n_bar = file["header/simulation/parameters"].attrs.get("n_bar", 0)
-    if n_dm > 0 and n_bar > 0:
+    n_gravity = file["header/simulation/parameters"].attrs.get("n_gravity", 0)
+    if n_gravity:
+        is_hydro = False
+    elif n_dm > 0 and n_bar > 0:
         is_hydro = True
     elif n_dm > 0:
         is_hydro = False
