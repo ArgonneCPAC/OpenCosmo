@@ -90,7 +90,11 @@ A single file may contain multiple OpenCosmo Datasets partitioned into groups. F
 /header
 ```
 
-Note the presence of the "header" group, which will be discussed below. 
+Note the presence of the "header" group, which will be discussed below. The "halo_properties" group contains a "data_linked" group which allows the toolkit to associate rows in "halo_properties" to rows in "halo_particles."
+
+## The Header
+
+The "header" group contains information about the file and the OpenCosmo datasets it contains. In general, this header will be mostly identical for any set of OpenCosmo datasets which are drawn from a single simulation (more documentation to come)...
 
 
 
