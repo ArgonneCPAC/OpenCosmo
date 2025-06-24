@@ -22,7 +22,7 @@ class OpenCosmoHeader:
         self,
         file_pars: parameters.FileParameters,
         simulation_pars: parameters.SimulationParameters,
-        cosmotools_pars: parameters.CosmoToolsParameters,
+        cosmotools_pars: Optional[parameters.CosmoToolsParameters],
     ):
         self.__file_pars = file_pars
         self.__simulation_pars = simulation_pars
@@ -34,9 +34,10 @@ class OpenCosmoHeader:
         parameters.write_header_attributes(
             file, "simulation/parameters", self.__simulation_pars
         )
-        parameters.write_header_attributes(
-            file, "simulation/cosmotools", self.__cosmotools_pars
-        )
+        if self.__cosmotools_pars is not None:
+            parameters.write_header_attributes(
+                file, "simulation/cosmotools", self.__cosmotools_pars
+            )
         parameters.write_header_attributes(
             file, "simulation/cosmology", self.__simulation_pars.cosmology_parameters
         )
@@ -131,12 +132,8 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
         cosmotools_parameters = parameters.read_header_attributes(
             file, "simulation/cosmotools", parameters.CosmoToolsParameters
         )
-    except KeyError as e:
-        raise KeyError(
-            "This file does not appear to have cosmotools information. "
-            "Are you sure it is an OpenCosmo file?\n"
-            f"Error: {e}"
-        )
+    except KeyError:
+        cosmotools_parameters = None
     return OpenCosmoHeader(
         file_parameters,
         simulation_parameters,
