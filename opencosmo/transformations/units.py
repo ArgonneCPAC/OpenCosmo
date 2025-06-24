@@ -167,15 +167,16 @@ def comoving_to_physical(
     Convert comoving coordinates to physical coordinates. This is the
     second step after parsing the units themselves.
     """
-    if isinstance(redshift, tuple):
-        try:
-            a = table["fof_halo_center_a"]
-        except KeyError:
+
+    try:
+        a = table["fof_halo_center_a"]
+    except KeyError:
+        if isinstance(redshift, tuple):
             raise NotImplementedError(
                 "Expected column fof_halo_center_a to get object redshift"
             )
-    else:
         a = cosmology.scale_factor(redshift)
+
     for colname in table.columns:
         if (unit := table[colname].unit) is not None:
             # Check if the units have distances in them
