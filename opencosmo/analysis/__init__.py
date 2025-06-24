@@ -1,8 +1,8 @@
-from .utils import create_yt_dataset, particle_projection_plot, profile_plot, phase_plot
+from .yt_utils import create_yt_dataset, ParticleProjectionPlot, ProfilePlot, PhasePlot
 
 __all__ = [
     "create_yt_dataset",
-    "particle_projection_plot",
-    "profile_plot",
-    "phase_plot",
+    "ParticleProjectionPlot",
+    "ProfilePlot",
+    "PhasePlot",
 ]

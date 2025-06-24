@@ -1,6 +1,6 @@
 import numpy as np
 import yt  # type: ignore
-from unyt import unyt_quantity # type: ignore
+from unyt import unyt_quantity, unyt_array # type: ignore
 from astropy.table import Table  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
 from yt.visualization.plot_window import PlotWindow # type: ignore
@@ -80,13 +80,16 @@ def create_yt_dataset(
 
     # TODO: just use val.from_astropy instead of manually converting unit string?
     
-    def yt_unit(unit):
-        """Converts Astropy units to yt-compatible units."""
-        if unit is None:
-            return "dimensionless"
+    def astropy_to_yt(array):
+        """
+        Converts from astropy format to yt format. 
+        Basically just reformats the units.
+        """
 
-        unit = str(unit).replace("solMass", "Msun").replace(" / ", "/").replace(" ", "*")
-        return sub(r"(\d+)", r"**\1", unit)
+        if array.unit is None:
+            return unyt_array(array.data, "dimensionless")
+
+        return unyt_array.from_astropy(array)
 
     for ptype in data.keys():
         if "particles" not in ptype:
@@ -97,7 +100,7 @@ def create_yt_dataset(
 
         for field in particle_data.keys():
             yt_field_name = special_fields.get(field, field)
-            data_dict[(ptype_short, yt_field_name)] = (particle_data[field], yt_unit(particle_data[field].unit))
+            data_dict[(ptype_short, yt_field_name)] = astropy_to_yt(particle_data[field])
 
         minx, maxx = min(minx, min(particle_data['x'])), max(maxx, max(particle_data['x']))
         miny, maxy = min(miny, min(particle_data['y'])), max(maxy, max(particle_data['y']))
@@ -197,7 +200,7 @@ def create_yt_dataset(
 
     return ds
 
-def particle_projection_plot(*args, **kwargs) -> PlotWindow:
+def ParticleProjectionPlot(*args, **kwargs) -> PlotWindow:
     """
     Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ProjectionPlot>`_.
 
@@ -218,7 +221,7 @@ def particle_projection_plot(*args, **kwargs) -> PlotWindow:
     return yt.ParticleProjectionPlot(*args, **kwargs)
 
 
-def profile_plot(*args, **kwargs) -> PlotWindow:
+def ProfilePlot(*args, **kwargs) -> PlotWindow:
     """
     Wrapper for `yt.ProfilePlot <https://yt-project.org/doc/reference/api/yt.visualization.particle_plots.html#yt.visualization.particle_plots.ParticleProjectionPlot>`_.
 
@@ -240,7 +243,7 @@ def profile_plot(*args, **kwargs) -> PlotWindow:
     return yt.ProfilePlot(*args, **kwargs)
 
 
-def phase_plot(*args, **kwargs) -> PlotWindow:
+def PhasePlot(*args, **kwargs) -> PlotWindow:
     """
     Wrapper for `yt.PhasePlot <https://yt-project.org/doc/reference/api/yt.visualization.profile_plotter.html#yt.visualization.profile_plotter.PhasePlot>`_.
 
