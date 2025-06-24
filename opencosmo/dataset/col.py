@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import operator as op
 from functools import partialmethod
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Union
+from typing import Any, Callable, Iterable, Union
 
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import table  # type: ignore
-
-if TYPE_CHECKING:
-    pass
 
 Comparison = Callable[[float, float], bool]
 
