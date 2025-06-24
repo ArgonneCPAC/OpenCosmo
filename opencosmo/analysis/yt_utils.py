@@ -75,11 +75,8 @@ def create_yt_dataset(
         "mass": "particle_mass",
         "rho": "density",
         "hh": "smoothing_length",
-        "uu": "internal_energy",
     }
 
-    # TODO: just use val.from_astropy instead of manually converting unit string?
-    
     def astropy_to_yt(array):
         """
         Converts from astropy format to yt format. 
@@ -117,8 +114,19 @@ def create_yt_dataset(
         data_dict,
         length_unit="Mpc",
         mass_unit="Msun",
-        bbox=bbox
+        bbox=bbox,
     )
+
+    # set cosmology parameters
+    cosmo = data[ptype].cosmology
+    
+    ds.cosmological_simulation = 1
+    ds.current_redshift = data[ptype].redshift
+    ds.hubble_constant= 0.01*cosmo.H0.value
+    ds.omega_matter=cosmo.Om0
+    ds.omega_lambda=cosmo.Ode0
+    ds.omega_curvature=cosmo.Ok0
+    ds.omega_radiation=cosmo.Onu0 + cosmo.Ogamma0
 
     # add derived fields
 
@@ -171,7 +179,6 @@ def create_yt_dataset(
             sampling_type="particle"
         )
 
-        #TODO: Make sure redshift is passed into this list
         default_kwargs = {
             "model": "apec",
             "emin": 0.1,  # keV
@@ -282,7 +289,7 @@ def _mmw(field, data):
 
 def _temperature(field, data):
     gamma = 5/3
-    return data['gas','MMW'] * mp * data['gas','internal_energy'].to('cm**2/s**2') / kB * (gamma-1)
+    return data['gas','MMW'] * mp * data['gas','uu'].to('cm**2/s**2') / kB * (gamma-1)
 
 def _number_density(field, data):
     return data['gas','density'].to('g/cm**3') / (data['gas','MMW']*mp)
