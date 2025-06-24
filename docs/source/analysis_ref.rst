@@ -5,6 +5,10 @@ Analysis
 
 .. autofunction:: opencosmo.analysis.ParticleProjectionPlot
 
+.. autofunction:: opencosmo.analysis.ProjectionPlot
+
+.. autofunction:: opencosmo.analysis.SlicePlot
+
 .. autofunction:: opencosmo.analysis.ProfilePlot
 
 .. autofunction:: opencosmo.analysis.PhasePlot

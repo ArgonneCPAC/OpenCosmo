@@ -117,6 +117,8 @@ def create_yt_dataset(
         bbox=bbox,
     )
 
+    ds.sph_smoothing_style = "gather" # seems to give more reliable results
+
     # set cosmology parameters
     cosmo = data[ptype].cosmology
     
@@ -209,7 +211,7 @@ def create_yt_dataset(
 
 def ParticleProjectionPlot(*args, **kwargs) -> PlotWindow:
     """
-    Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ProjectionPlot>`_.
+    Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ParticleProjectionPlot>`_.
 
     Creates a 2D projection plot of particle-based data along a specified axis.
 
@@ -227,6 +229,47 @@ def ParticleProjectionPlot(*args, **kwargs) -> PlotWindow:
     """
     return yt.ParticleProjectionPlot(*args, **kwargs)
 
+def ProjectionPlot(*args, **kwargs) -> PlotWindow:
+    """
+    Wrapper for `yt.ProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ProjectionPlot>`_.
+
+    Creates a 2D projection plot of particle-based data along a specified axis.
+    Smoothing is applied to SPH particle data over the smoothing length
+
+    Parameters
+    ----------
+    *args :
+        Positional arguments passed directly to `yt.ProjectionPlot`.
+    **kwargs :
+        Keyword arguments passed directly to `yt.ProjectionPlot`.
+
+    Returns
+    -------
+    yt.visualization.plot_window.PlotWindow
+        A PlotWindow object containing the smoothed particle projection plot.
+    """
+    return yt.ProjectionPlot(*args, **kwargs)
+
+def SlicePlot(*args, **kwargs) -> PlotWindow:
+    """
+    Wrapper for `yt.SlicePlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.SlicePlot>`_.
+
+    Creates a 2D slice plot of particle-based data along a specified axis.
+    Smoothing is applied to SPH particle data over the smoothing length
+
+    Parameters
+    ----------
+    *args :
+        Positional arguments passed directly to `yt.SlicePlot`.
+    **kwargs :
+        Keyword arguments passed directly to `yt.SlicePlot`.
+
+    Returns
+    -------
+    yt.visualization.plot_window.PlotWindow
+        A PlotWindow object containing the particle slice plot.
+    """
+    return yt.SlicePlot(*args, **kwargs)
 
 def ProfilePlot(*args, **kwargs) -> PlotWindow:
     """
