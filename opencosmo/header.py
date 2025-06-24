@@ -22,20 +22,15 @@ class OpenCosmoHeader:
         self,
         file_pars: parameters.FileParameters,
         simulation_pars: parameters.SimulationParameters,
-        reformat_pars: parameters.ReformatParamters,
         cosmotools_pars: parameters.CosmoToolsParameters,
     ):
         self.__file_pars = file_pars
         self.__simulation_pars = simulation_pars
-        self.__reformat_pars = reformat_pars
         self.__cosmotools_pars = cosmotools_pars
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         parameters.write_header_attributes(file, "file", self.__file_pars)
 
-        parameters.write_header_attributes(
-            file, "reformat_hacc/config", self.__reformat_pars
-        )
         parameters.write_header_attributes(
             file, "simulation/parameters", self.__simulation_pars
         )
@@ -57,10 +52,6 @@ class OpenCosmoHeader:
     @property
     def simulation(self):
         return self.__simulation_pars
-
-    @property
-    def reformat(self):
-        return self.__reformat_pars
 
     @property
     def file(self):
@@ -126,20 +117,12 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
             f"Error: {e}"
         )
     try:
-        reformat_parameters = parameters.read_header_attributes(
-            file, "reformat_hacc/config", parameters.ReformatParamters
-        )
-    except KeyError as e:
-        raise KeyError(
-            "File header is malformed. Are you sure it is an OpenCosmo file?\n "
-            f"Error: {e}"
-        )
-    try:
         simulation_parameters = parameters.read_simulation_parameters(file)
 
-    except KeyError as e:
-        raise KeyError(
-            "This file does not appear to have simulation information. "
+    except (TypeError, KeyError) as e:
+        raise ValueError(
+            "This file does not appear to have simulation information, or the "
+            "simulation information is malformed. "
             "Are you sure it is an OpenCosmo file?\n"
             f"Error: {e}"
         )
@@ -157,6 +140,5 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
     return OpenCosmoHeader(
         file_parameters,
         simulation_parameters,
-        reformat_parameters,
         cosmotools_parameters,
     )

@@ -24,19 +24,17 @@ def read_simulation_parameters(file: h5py.File) -> SimulationParameters:
     ----------
 
     """
-    is_hydro = file["header/reformat_hacc/config"].attrs.get("is_hydro", None)
-    if is_hydro is None:
-        n_dm = file["header/simulation/parameters"].attrs.get("n_dm", 0)
-        n_bar = file["header/simulation/parameters"].attrs.get("n_bar", 0)
-        if n_dm > 0 and n_bar > 0:
-            is_hydro = True
-        elif n_dm > 0:
-            is_hydro = False
-        else:
-            raise KeyError(
-                "Could not determine if this simulation is hydro or gravity-only from "
-                "the header. Are you sure it is an OpenCosmo file?"
-            )
+    n_dm = file["header/simulation/parameters"].attrs.get("n_dm", 0)
+    n_bar = file["header/simulation/parameters"].attrs.get("n_bar", 0)
+    if n_dm > 0 and n_bar > 0:
+        is_hydro = True
+    elif n_dm > 0:
+        is_hydro = False
+    else:
+        raise KeyError(
+            "Could not determine if this simulation is hydro or gravity-only from "
+            "the header. Are you sure it is an OpenCosmo file?"
+        )
 
     try:
         cosmology_parameters = parameters.read_header_attributes(
@@ -114,7 +112,7 @@ class SimulationParameters(BaseModel):
         a_ini = 1 / (1 + self.z_ini)
         a_end = 1 / (1 + self.z_end)
         # Steps are evenly spaced in log(a)
-        step_as = np.logspace(np.log10(a_ini), np.log10(a_end), self.n_steps)
+        step_as = np.linspace(a_ini, a_end, self.n_steps + 1)[1:]
         return np.round(1 / step_as - 1, 3).tolist()  # type: ignore
 
 
