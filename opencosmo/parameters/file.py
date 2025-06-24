@@ -43,7 +43,7 @@ class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
     data_type: FileType
     is_lightcone: bool
-    redshift: float
+    redshift: float | tuple[float, float]
     step: int
     region: Optional[BoxRegionModel | ConeRegionModel | HealPixRegionModel] = None
 

@@ -86,13 +86,15 @@ class StructureCollection:
         return self.__properties.cosmology
 
     @property
-    def redshift(self) -> float:
+    def redshift(self) -> float | tuple[float, float]:
         """
-        Get the redshift slice this dataset was drawn from
+        For snapshots, return the redshift of the slice
+        this dataset was drawn from. For lightcones, return the redshift
+        range.
 
         Returns:
         --------
-        redshift: gloat
+        redshift: float | tuple[float, float]
 
         """
         return self.__header.file.redshift

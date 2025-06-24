@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import operator as op
-from collections import defaultdict
 from functools import partialmethod
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Union
 
@@ -9,11 +8,8 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import table  # type: ignore
 
-from opencosmo.dataset.column import ColumnBuilder
-from opencosmo.index import DataIndex
-
 if TYPE_CHECKING:
-    from opencosmo.dataset.handler import DatasetHandler
+    pass
 
 Comparison = Callable[[float, float], bool]
 
@@ -36,35 +32,6 @@ def col(column_name: str) -> Column:
 
     """
     return Column(column_name)
-
-
-def apply_masks(
-    handler: DatasetHandler,
-    column_builders: dict[str, ColumnBuilder],
-    masks: Iterable[Mask],
-    index: DataIndex,
-) -> DataIndex:
-    masks_by_column = defaultdict(list)
-    for f in masks:
-        masks_by_column[f.column_name].append(f)
-
-    column_names = set(column_builders.keys())
-    mask_column_names = set(masks_by_column.keys())
-    if not mask_column_names.issubset(column_names):
-        raise ValueError(
-            "masks were applied to columns that do not exist in the dataset: "
-            f"{mask_column_names - column_names}"
-        )
-    output_index = index
-
-    for column_name, column_masks in masks_by_column.items():
-        column_mask = np.ones(len(output_index), dtype=bool)
-        builder = column_builders[column_name]
-        column = handler.get_data({column_name: builder}, output_index)
-        for f in column_masks:
-            column_mask &= f.apply(column)
-        output_index = output_index.mask(column_mask)
-    return output_index
 
 
 ColumnOrScalar = Union["Column", "DerivedColumn", int, float]

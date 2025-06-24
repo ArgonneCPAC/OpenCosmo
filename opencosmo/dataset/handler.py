@@ -4,8 +4,9 @@ from typing import Iterable, Optional
 
 import h5py
 import numpy as np
-from astropy.table import Column, Table  # type: ignore
+from astropy.table import Table  # type: ignore
 
+from opencosmo.dataset.column import TableBuilder
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
 from opencosmo.io.schemas import DatasetSchema
@@ -69,16 +70,15 @@ class DatasetHandler:
     ) -> DatasetSchema:
         return DatasetSchema.make_schema(self.__group, columns, index, header)
 
-    def get_data(self, builders: dict, index: DataIndex) -> Table:
+    def get_data(self, builder: TableBuilder, index: DataIndex) -> Table:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
-        output = {}
-        for column, builder in builders.items():
-            col = Column(index.get_data(self.__group[column]))
-            output[column] = builder.build(col)
+        data = {}
+        for colname in builder.columns:
+            data[colname] = index.get_data(self.__group[colname])
 
-        return Table(output)
+        return builder.build(data)
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
         if start < 0 or end > len(indices):

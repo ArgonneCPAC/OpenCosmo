@@ -267,7 +267,11 @@ class BoxRegion:
     def bounding_box(self) -> BoxRegion:
         return self
 
-    def into_scalefree(self, from_: UnitConvention, cosmology: FLRW, z: float):
+    def into_scalefree(
+        self, from_: UnitConvention, cosmology: FLRW, z: float | tuple[float, float]
+    ):
+        if isinstance(z, tuple):
+            raise ValueError("Expected a single value of redshift for 3D regions")
         match from_:
             case UnitConvention.SCALEFREE | UnitConvention.UNITLESS:
                 return self
