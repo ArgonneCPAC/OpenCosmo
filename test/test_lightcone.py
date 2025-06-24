@@ -110,3 +110,18 @@ def test_healpix_write_fail(haloproperties_path, tmp_path):
     region2 = oc.make_cone(center2, radius)
     with pytest.raises(ValueError):
         new_ds = new_ds.bound(region2)
+
+
+def test_lightcone_physical_units(haloproperties_path):
+    ds_comoving = oc.open(haloproperties_path)
+    ds_physical = ds_comoving.with_units("physical")
+    data_comoving = ds_comoving.data
+    data_physical = ds_physical.data
+    assert np.all(
+        data_physical["fof_halo_com_x"]
+        == (data_comoving["fof_halo_com_x"] * data_comoving["fof_halo_center_a"])
+    )
+    assert np.all(
+        data_physical["fof_halo_com_vx"]
+        == (data_comoving["fof_halo_com_vx"] * data_comoving["fof_halo_center_a"])
+    )

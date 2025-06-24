@@ -28,6 +28,11 @@ def haloproperties_step_path(snapshot_path):
 
 
 @pytest.fixture
+def haloproperties_lc_path(lightcone_path):
+    return lightcone_path / "step_600" / "haloproperties.hdf5"
+
+
+@pytest.fixture
 def galaxy_input_path(snapshot_path):
     return snapshot_path / "galaxyproperties.hdf5"
 
