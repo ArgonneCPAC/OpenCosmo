@@ -6,7 +6,7 @@ from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo.transformations.units as u
 from opencosmo.dataset.col import DerivedColumn
-from opencosmo.dataset.column import ColumnBuilder, get_column_builders
+from opencosmo.dataset.column import TableBuilder, get_table_builder
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
 from opencosmo.io import schemas as ios
@@ -25,7 +25,7 @@ class DatasetState:
     def __init__(
         self,
         base_unit_transformations: dict,
-        builders: dict[str, ColumnBuilder],
+        builder: TableBuilder,
         index: DataIndex,
         convention: u.UnitConvention,
         region: Region,
@@ -33,7 +33,7 @@ class DatasetState:
         derived: dict[str, DerivedColumn] = {},
     ):
         self.__base_unit_transformations = base_unit_transformations
-        self.__builders = builders
+        self.__builder = builder
         self.__index = index
         self.__convention = convention
         self.__region = region
@@ -45,8 +45,8 @@ class DatasetState:
         return self.__index
 
     @property
-    def builders(self):
-        return self.__builders
+    def builder(self):
+        return self.__builder
 
     @property
     def convention(self):
@@ -58,14 +58,14 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        columns = set(self.__builders.keys()) | set(self.__derived.keys())
+        columns = set(self.__builder.columns) | set(self.__derived.keys())
         return list(columns - self.__hidden)
 
     def get_data(self, handler: "DatasetHandler"):
         """
         Get the data for a given handler.
         """
-        data = handler.get_data(builders=self.__builders, index=self.__index)
+        data = handler.get_data(builder=self.__builder, index=self.__index)
         data = self.__build_derived_columns(data)
         if self.__hidden:
             data.remove_columns(self.__hidden)
@@ -77,7 +77,7 @@ class DatasetState:
         """
         return DatasetState(
             self.__base_unit_transformations,
-            self.__builders,
+            self.__builder,
             index,
             self.__convention,
             self.__region,
@@ -88,7 +88,7 @@ class DatasetState:
     def make_schema(
         self, handler: "DatasetHandler", header: Optional[OpenCosmoHeader] = None
     ):
-        builder_names = set(self.__builders.keys())
+        builder_names = set(self.__builder.columns)
         schema = handler.prep_write(self.__index, builder_names - self.__hidden, header)
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (
@@ -113,7 +113,7 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        column_names = set(self.builders.keys()) | set(self.__derived.keys())
+        column_names = set(self.builder.columns) | set(self.__derived.keys())
         for name, new_col in new_columns.items():
             if name in column_names:
                 raise ValueError(f"Dataset already has column named {name}")
@@ -127,7 +127,7 @@ class DatasetState:
         new_derived = self.__derived | new_columns
         return DatasetState(
             self.__base_unit_transformations,
-            self.__builders,
+            self.__builder,
             self.__index,
             self.__convention,
             self.__region,
@@ -150,7 +150,7 @@ class DatasetState:
         """
         return DatasetState(
             self.__base_unit_transformations,
-            self.__builders,
+            self.__builder,
             self.__index,
             self.__convention,
             region,
@@ -173,7 +173,7 @@ class DatasetState:
 
         columns = set(columns)
 
-        known_builders = set(self.__builders.keys())
+        known_builders = set(self.__builder.columns)
         known_derived = set(self.__derived.keys())
         unknown_columns = columns - known_builders - known_derived
         if unknown_columns:
@@ -204,13 +204,13 @@ class DatasetState:
         # to ensure chains of derived columns work correctly
         new_derived = {k: v for k, v in self.__derived.items() if k in required_derived}
         # Builders can be performed in any order
-        new_builders = {b: self.__builders[b] for b in required_builders}
+        new_builder = self.__builder.with_columns(required_builders)
 
         new_hidden = all_required - columns
 
         return DatasetState(
             self.__base_unit_transformations,
-            new_builders,
+            new_builder,
             self.__index,
             self.__convention,
             self.__region,
@@ -242,7 +242,12 @@ class DatasetState:
         new_index = self.__index.take_range(start, end)
         return self.with_index(new_index)
 
-    def with_units(self, convention: str, cosmology: Cosmology, redshift: float):
+    def with_units(
+        self,
+        convention: str,
+        cosmology: Cosmology,
+        redshift: float | tuple[float, float],
+    ):
         """
         Change the unit convention
         """
@@ -250,10 +255,10 @@ class DatasetState:
             convention, self.__base_unit_transformations, cosmology, redshift
         )
         convention_ = u.UnitConvention(convention)
-        new_builders = get_column_builders(new_transformations, self.__builders.keys())
+        new_builder = get_table_builder(new_transformations, self.__builder.columns)
         return DatasetState(
             self.__base_unit_transformations,
-            new_builders,
+            new_builder,
             self.__index,
             convention_,
             self.__region,

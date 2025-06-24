@@ -10,7 +10,7 @@ from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo import transformations as t
-from opencosmo.dataset.column import get_column_builders
+from opencosmo.dataset.column import get_table_builder
 from opencosmo.header import OpenCosmoHeader
 
 _ = u.add_enabled_units(cu)
@@ -67,7 +67,7 @@ def get_unit_transition_transformations(
     convention: str,
     unit_transformations: t.TransformationDict,
     cosmology: Cosmology,
-    redshift: float = 0,
+    redshift: float | tuple[float, float] = 0.0,
 ) -> t.TransformationDict:
     """
     Given a dataset, the user can request a transformation to a different unit
@@ -84,7 +84,8 @@ def get_unit_transition_transformations(
             update_transformations = {t.TransformationType.ALL_COLUMNS: [remove_h]}
         case UnitConvention.PHYSICAL:
             update_transformations = {
-                t.TransformationType.ALL_COLUMNS: [remove_h, comoving_to_phys]
+                t.TransformationType.ALL_COLUMNS: [remove_h],
+                t.TransformationType.TABLE: [comoving_to_phys],
             }
         case UnitConvention.SCALEFREE:
             update_transformations = {}
@@ -94,6 +95,7 @@ def get_unit_transition_transformations(
     for ttype in unit_transformations:
         existing = update_transformations.get(ttype, [])
         update_transformations[ttype] = unit_transformations[ttype] + existing
+
     return update_transformations
 
 
@@ -106,9 +108,9 @@ def get_default_unit_transformations(
     )
 
     column_names = list(str(col) for col in file["data"].keys())
-    builders = get_column_builders(to_comoving_transformations, column_names)
+    builder = get_table_builder(to_comoving_transformations, column_names)
 
-    return builders, base_unit_transformations
+    return builder, base_unit_transformations
 
 
 def get_base_unit_transformations(
@@ -159,25 +161,34 @@ def remove_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:
 
 
 def comoving_to_physical(
-    column: Column, cosmology: Cosmology, redshift: float
+    table: Table, cosmology: Cosmology, redshift: float | tuple[float, float]
 ) -> Optional[Table]:
     """
     Convert comoving coordinates to physical coordinates. This is the
     second step after parsing the units themselves.
     """
-    if (unit := column.unit) is not None:
-        # Check if the units have distances in them
-        decomposed = unit.decompose()
+    if isinstance(redshift, tuple):
         try:
-            index = decomposed.bases.index(u.m)
-        except (ValueError, AttributeError):
-            return None
-        power = decomposed.powers[index]
-        # multiply by the scale factor to the same power as the distance
+            a = table["fof_halo_center_a"]
+        except KeyError:
+            raise NotImplementedError(
+                "Expected column fof_halo_center_a to get object redshift"
+            )
+    else:
         a = cosmology.scale_factor(redshift)
-        column = column * a**power
+    for colname in table.columns:
+        if (unit := table[colname].unit) is not None:
+            # Check if the units have distances in them
+            decomposed = unit.decompose()
+            try:
+                index = decomposed.bases.index(u.m)
+            except (ValueError, AttributeError):
+                continue
+            power = decomposed.powers[index]
+            # multiply by the scale factor to the same power as the distance
+            table[colname] = table[colname] * a**power
 
-    return column
+    return table
 
 
 def get_raw_units(column: h5py.Dataset):

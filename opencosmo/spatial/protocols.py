@@ -26,7 +26,10 @@ class Region(Protocol):
     def intersects(self, other: "Region") -> bool: ...
     def contains(self, other: SpatialObject): ...
     def into_scalefree(
-        self, from_: UnitConvention, cosmology: FLRW, redshift: float
+        self,
+        from_: UnitConvention,
+        cosmology: FLRW,
+        redshift: float | tuple[float, float],
     ): ...
 
 
