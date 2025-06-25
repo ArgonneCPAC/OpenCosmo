@@ -106,7 +106,7 @@ jobs:
 
       - name: build hdf5 in paralell
         run: |
-          CC="mpicc" HDF5_MPI="ON" poetry run pip install --no-binary=h5py h5py==3.13
+          CC="mpicc" HDF5_MPI="ON" poetry run pip install --no-binary=h5py
 
       - name: install project
         run: poetry install --with test,mpi,test-mpi
