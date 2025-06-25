@@ -12,14 +12,14 @@ variable "GITHUB_REF_NAME" {
 
 target "dev-mpich" {
   dockerfile = "Dockerfile"
-  platforms = ["linux/amd64", "linux/arm64"]
+  platforms = ["linux/amd64"]
   tags = ["docker.io/astropatty/opencosmo:latest"]
 
 }
 
 target "dev-openmpi" {
   dockerfile = "Dockerfile"
-  platforms = ["linux/amd64", "linux/arm64"]
+  platforms = ["linux/amd64"]
   tags = ["docker.io/astropatty/opencosmo:latest-openmpi"]
   args = {
     MPI_IMPL = "openmpi"
@@ -28,7 +28,7 @@ target "dev-openmpi" {
 
 target "versioned" {
   dockerfile = "Dockerfile"
-  platforms = ["linux/amd64", "linux/arm64"]
+  platforms = ["linux/amd64"]
   tags = ["docker.io/astropatty/opencosmo:${GITHUB_REF_NAME}"]
   filters = {
     ref = "refs/tags/[0-9]*"
