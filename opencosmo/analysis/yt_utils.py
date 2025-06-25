@@ -96,9 +96,10 @@ def create_yt_dataset(
 
         for field in particle_data.keys():
             yt_field_name = special_fields.get(field, field)
-            data_dict[(ptype_short, yt_field_name)] = astropy_to_yt(
-                particle_data[field]
-            )
+            yt_particle_data = astropy_to_yt(particle_data[field])
+           
+            data_dict[(ptype_short, yt_field_name)] = \
+                (yt_particle_data.d, str(yt_particle_data.units))
 
         minx, maxx = (
             min(minx, min(particle_data["x"])),
