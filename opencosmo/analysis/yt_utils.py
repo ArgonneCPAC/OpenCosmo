@@ -18,7 +18,7 @@ solar_metallicity = 0.012899 # value used internally in HACC
 
 
 def create_yt_dataset(
-    data: Table, 
+    data: Dict[str, Table], 
     compute_xray_fields: Optional[bool] = False,
     return_source_model: Optional[bool] = False,
     source_model_kwargs: Optional[Dict[str, Any]] = {}
@@ -36,8 +36,8 @@ def create_yt_dataset(
 
     Parameters
     ----------
-    data : astropy.table.Table
-        A table of particle data. Must include at least positions and masses.
+    data : dict of astropy.table.Table
+        A dictionary of particle datasets. Must include at least positions and masses.
     compute_xray_fields : bool, optional
         Whether or not to compute X-ray luminosities with `pyxsim`.
         Uses `CIESourceModel`, which considers thermal emission from gas assuming 
