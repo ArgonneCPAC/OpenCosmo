@@ -61,7 +61,11 @@ def create_yt_dataset(
         Returned only if `return_source_model=True`.
     """
 
-    data_dict = {}
+    data_dict: Dict[
+        Tuple[str,str],
+        Tuple[np.ndarray, str]
+    ] = {}
+
     minx, maxx = np.inf, -np.inf
     miny, maxy = np.inf, -np.inf
     minz, maxz = np.inf, -np.inf
