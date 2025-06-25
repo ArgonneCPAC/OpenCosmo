@@ -37,8 +37,6 @@ optional = true
 sphinx = "^8.1.3"
 sphinx-rtd-theme = "^3.0.2"
 autodoc-pydantic = "^2.2.0"
-autodoc-mock-imports = ["pyxsim","yt"]
-
 
 [tool.poetry.group.mpi]
 optional = true
