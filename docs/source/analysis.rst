@@ -47,7 +47,7 @@ For introductory tutorials, see:
 Simulating X-ray Emission with pyXSIM
 =====================================
 
-To include synthetic X-ray emissivity and luminosity fields in your yt dataset, you can enable the ``compute_xray_fields`` flag when calling :func:`opencosmo.analysis.create_yt_dataset`. This integrates with `pyXSIM <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/>`_, a toolkit for generating synthetic X-ray observations from simulation data.
+To include synthetic X-ray emissivity and luminosity fields from gas particles in your yt dataset, you can enable the ``compute_xray_fields`` flag when calling :func:`opencosmo.analysis.create_yt_dataset`. This integrates with `pyXSIM <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/>`_, a toolkit for generating synthetic X-ray observations from simulation data.
 
 When ``compute_xray_fields=True``, the function internally creates a :class:`pyxsim.CIESourceModel` using the particle data and attaches the following derived fields to the `yt` dataset:
 
