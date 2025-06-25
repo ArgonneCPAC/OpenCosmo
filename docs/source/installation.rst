@@ -7,6 +7,12 @@ The OpenCosmo library is available for Python 3.11 and later on Linux and MacOS 
 
    pip install opencosmo
 
+If you are interested in the tools in the :doc:`analysis <analysis>` module, they need to be installed seperately:
+
+.. code-block:: bash
+
+   pip install opencosmo[analysis]
+
 There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing :code:`opencosmo` into a virtual environment. If you're using `Conda <https://docs.conda.io/projects/conda/en/stable/:code:user-guide/getting-started.html>`_ you can create a new environment with Python 3.11 and install :code:`opencosmo` into it like so:
 
 .. code-block:: bash
