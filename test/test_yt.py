@@ -5,27 +5,28 @@ from opencosmo.analysis import create_yt_dataset
 
 
 @pytest.fixture
-def data(data_path):
+def data(snapshot_path):
     """Fetch particle data for a couple of halos"""
-    haloproperties = data_path / "haloproperties.hdf5"
-    haloparticles = data_path / "haloparticles.hdf5"
-    
-    d = ( 
+    haloproperties = snapshot_path / "haloproperties.hdf5"
+    haloparticles = snapshot_path / "haloparticles.hdf5"
+
+    d = (
         oc.open_linked_files([haloproperties, haloparticles])
         .filter(oc.col("sod_halo_mass") > 5e13)
         .take(3, at="start")
     )
 
     assert len(list(d.objects())) > 0
-    
+
     return d
+
 
 def test_create_dataset(data):
     """Check that a yt dataset is created without X-ray fields."""
-    
+
     for _, particle_data in data.objects():
         ds = create_yt_dataset(particle_data)
-        
+
         assert ds is not None
         assert hasattr(ds, "all_data")
 
@@ -35,9 +36,7 @@ def test_create_dataset_with_xray_fields(data):
 
     for _, particle_data in data.objects():
         ds, source_model = create_yt_dataset(
-            particle_data,
-            compute_xray_fields=True,
-            return_source_model=True
+            particle_data, compute_xray_fields=True, return_source_model=True
         )
 
         assert ds is not None
@@ -56,7 +55,7 @@ def test_xray_fields_present(data):
                 "emin": 0.5,
                 "emax": 2.0,
                 "nbins": 50,
-            }
+            },
         )
 
         required_fields = [

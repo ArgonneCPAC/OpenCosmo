@@ -1,37 +1,34 @@
+from typing import Any, Dict, Optional, Tuple, Union
+
 import numpy as np
 import yt  # type: ignore
-from unyt import unyt_quantity, unyt_array # type: ignore
 from astropy.table import Table  # type: ignore
+from pyxsim import CIESourceModel  # type: ignore
+from unyt import unyt_array, unyt_quantity  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
-from yt.visualization.plot_window import PlotWindow # type: ignore
-from re import sub
-from pyxsim import CIESourceModel # type: ignore
-from typing import Optional, Dict, Any, Union, Tuple
-
-
+from yt.visualization.plot_window import PlotWindow  # type: ignore
 
 # ---- define some constants ---- #
-mp = unyt_quantity(1.67262192595e-24, 'g')
-kB = unyt_quantity(1.380649e-16, 'erg/K')
-solar_metallicity = 0.012899 # value used internally in HACC
+mp = unyt_quantity(1.67262192595e-24, "g")
+kB = unyt_quantity(1.380649e-16, "erg/K")
+solar_metallicity = 0.012899  # value used internally in HACC
 # ------------------------------- #
 
 
 def create_yt_dataset(
-    data: Dict[str, Table], 
+    data: Dict[str, Table],
     compute_xray_fields: Optional[bool] = False,
     return_source_model: Optional[bool] = False,
-    source_model_kwargs: Optional[Dict[str, Any]] = {}
+    source_model_kwargs: Optional[Dict[str, Any]] = {},
 ) -> Union[YT_Dataset, Tuple[YT_Dataset, CIESourceModel]]:
-
     """
     Converts particle data to a `yt` dataset. Note that `yt`
     is generally developed with AMR codes in mind, but support for
     SPH codes is continually being added. `yt's` documentation can
-    be found `here <https://yt-project.org/doc/index.html>`_. 
+    be found `here <https://yt-project.org/doc/index.html>`_.
 
     If `compute_xray_fields` is enabled, X-ray emissivity and luminosity fields
-    will be added using `pyxsim <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/index.html#>`_, 
+    will be added using `pyxsim <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/index.html#>`_,
     which generates photon samples from gas properties.
 
     Parameters
@@ -40,17 +37,17 @@ def create_yt_dataset(
         A dictionary of particle datasets. Must include at least positions and masses.
     compute_xray_fields : bool, optional
         Whether or not to compute X-ray luminosities with `pyxsim`.
-        Uses `CIESourceModel`, which considers thermal emission from gas assuming 
+        Uses `CIESourceModel`, which considers thermal emission from gas assuming
         collisional ionization equilibrium.
     return_source_model : bool, optional
         Whether or not to return the `pyxsim` source model for further interaction,
         such as computing additional luminosities in different frequency bands
         or generating synthetic observations.
     source_model_kwargs : dict, optional
-        Keyword arguments passed to the `CIESourceModel` constructor in `pyxsim`. 
-        These can include parameters like `emin`, `emax`, `nbins`, `abund_table`, etc., 
-        to control the spectral resolution and emission model behavior. If `None`, default
-        values will be used for all source model parameters.
+        Keyword arguments passed to the `CIESourceModel` constructor in `pyxsim`.
+        These can include parameters like `emin`, `emax`, `nbins`, `abund_table`, etc.,
+        to control the spectral resolution and emission model behavior. If `None`,
+        default values will be used for all source model parameters.
 
     Returns
     -------
@@ -79,7 +76,7 @@ def create_yt_dataset(
 
     def astropy_to_yt(array):
         """
-        Converts from astropy format to yt format. 
+        Converts from astropy format to yt format.
         Basically just reformats the units.
         """
 
@@ -97,18 +94,31 @@ def create_yt_dataset(
 
         for field in particle_data.keys():
             yt_field_name = special_fields.get(field, field)
-            data_dict[(ptype_short, yt_field_name)] = astropy_to_yt(particle_data[field])
+            data_dict[(ptype_short, yt_field_name)] = astropy_to_yt(
+                particle_data[field]
+            )
 
-        minx, maxx = min(minx, min(particle_data['x'])), max(maxx, max(particle_data['x']))
-        miny, maxy = min(miny, min(particle_data['y'])), max(maxy, max(particle_data['y']))
-        minz, maxz = min(minz, min(particle_data['z'])), max(maxz, max(particle_data['z']))
+        minx, maxx = (
+            min(minx, min(particle_data["x"])),
+            max(maxx, max(particle_data["x"])),
+        )
+        miny, maxy = (
+            min(miny, min(particle_data["y"])),
+            max(maxy, max(particle_data["y"])),
+        )
+        minz, maxz = (
+            min(minz, min(particle_data["z"])),
+            max(maxz, max(particle_data["z"])),
+        )
 
     bbox = [[minx, maxx], [miny, maxy], [minz, maxz]]
 
     # Raise error if any bound is still infinite
     if any(np.isinf(bound) for axis in bbox for bound in axis):
-        raise ValueError("Bounding box coordinates contain infinite values."
-                         "Check input data for missing or invalid positions.")
+        raise ValueError(
+            "Bounding box coordinates contain infinite values."
+            "Check input data for missing or invalid positions."
+        )
 
     ds = yt.load_particles(
         data_dict,
@@ -117,18 +127,18 @@ def create_yt_dataset(
         bbox=bbox,
     )
 
-    ds.sph_smoothing_style = "gather" # seems to give more reliable results
+    ds.sph_smoothing_style = "gather"  # seems to give more reliable results
 
     # set cosmology parameters
     cosmo = data[ptype].cosmology
-    
+
     ds.cosmological_simulation = 1
     ds.current_redshift = data[ptype].redshift
-    ds.hubble_constant= 0.01*cosmo.H0.value
-    ds.omega_matter=cosmo.Om0
-    ds.omega_lambda=cosmo.Ode0
-    ds.omega_curvature=cosmo.Ok0
-    ds.omega_radiation=cosmo.Onu0 + cosmo.Ogamma0
+    ds.hubble_constant = 0.01 * cosmo.H0.value
+    ds.omega_matter = cosmo.Om0
+    ds.omega_lambda = cosmo.Ode0
+    ds.omega_curvature = cosmo.Ok0
+    ds.omega_radiation = cosmo.Onu0 + cosmo.Ogamma0
 
     # add derived fields
 
@@ -144,7 +154,7 @@ def create_yt_dataset(
         ("gas", "temperature"),
         function=_temperature,
         units="K",
-        sampling_type="particle"
+        sampling_type="particle",
     )
 
     ds.add_field(
@@ -152,33 +162,30 @@ def create_yt_dataset(
         function=_number_density,
         units="cm**-3",
         sampling_type="particle",
-        force_override=True
+        force_override=True,
     )
 
     ds.add_field(
-        ("gas", "xh"),
-        function=_h_fraction,
-        units="",
-        sampling_type="particle"
+        ("gas", "xh"), function=_h_fraction, units="", sampling_type="particle"
     )
 
     ds.add_field(
         ("gas", "metallicity"),
         function=_metallicity,
         units="Zsun",
-        sampling_type="particle"
+        sampling_type="particle",
     )
 
     if compute_xray_fields:
         # compute xray luminosities, emissivities, etc. using pyxsim.
         # This calls CIESourceModel, which assumes ionization equilibrium.
-        # User can define custom parameters 
+        # User can define custom parameters
 
         ds.add_field(
             ("gas", "emission_measure"),
             function=_emission_measure,
             units="cm**-3",
-            sampling_type="particle"
+            sampling_type="particle",
         )
 
         default_kwargs = {
@@ -186,7 +193,7 @@ def create_yt_dataset(
             "emin": 0.1,  # keV
             "emax": 10.0,  # keV
             "nbins": 1000,
-            "Zmet": ("gas","metallicity"), # Zsun
+            "Zmet": ("gas", "metallicity"),  # Zsun
             "temperature_field": ("gas", "temperature"),
             "emission_measure_field": ("gas", "emission_measure"),
             "h_fraction": "xh",
@@ -194,20 +201,24 @@ def create_yt_dataset(
 
         if source_model_kwargs is None:
             source_model_kwargs = {}
-        
+
         # update with user-defined settings
         source_model_kwargs = {**default_kwargs, **source_model_kwargs}
 
-        # define xray source model (NOTE: this will download a few fits files needed for the analysis)
+        # define xray source model (
+        # NOTE: this will download a few fits files needed for the analysis)
         source = CIESourceModel(**source_model_kwargs)
 
         # populate yt dataset with xray fields
-        source.make_source_fields(ds, source_model_kwargs["emin"], source_model_kwargs["emax"])
+        source.make_source_fields(
+            ds, source_model_kwargs["emin"], source_model_kwargs["emax"]
+        )
 
         if return_source_model:
             return ds, source
 
     return ds
+
 
 def ParticleProjectionPlot(*args, **kwargs) -> PlotWindow:
     """
@@ -228,6 +239,7 @@ def ParticleProjectionPlot(*args, **kwargs) -> PlotWindow:
         A PlotWindow object containing the particle projection plot.
     """
     return yt.ParticleProjectionPlot(*args, **kwargs)
+
 
 def ProjectionPlot(*args, **kwargs) -> PlotWindow:
     """
@@ -250,6 +262,7 @@ def ProjectionPlot(*args, **kwargs) -> PlotWindow:
     """
     return yt.ProjectionPlot(*args, **kwargs)
 
+
 def SlicePlot(*args, **kwargs) -> PlotWindow:
     """
     Wrapper for `yt.SlicePlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.SlicePlot>`_.
@@ -270,6 +283,7 @@ def SlicePlot(*args, **kwargs) -> PlotWindow:
         A PlotWindow object containing the particle slice plot.
     """
     return yt.SlicePlot(*args, **kwargs)
+
 
 def ProfilePlot(*args, **kwargs) -> PlotWindow:
     """
@@ -316,40 +330,45 @@ def PhasePlot(*args, **kwargs) -> PlotWindow:
     return yt.PhasePlot(*args, **kwargs)
 
 
-
-
 # ---------- DERIVED FIELDS -------------- #
+
 
 def _mmw(field, data):
     # Recompute mean molecular weight. The "mu" field currently stored
     # is 1.0 with units of kg, which is wrong.
-    Y = data['gas','yhe'].d
-    X = 1-Y
-    Z = data['gas','zmet'].d * solar_metallicity
+    Y = data["gas", "yhe"].d
+    X = 1 - Y
+    Z = data["gas", "zmet"].d * solar_metallicity
 
     # MMW for fully ionized gas
-    return 1 / (2*X + 0.75*Y + Z/(2*16))
+    return 1 / (2 * X + 0.75 * Y + Z / (2 * 16))
+
 
 def _temperature(field, data):
-    gamma = 5/3
-    return data['gas','MMW'] * mp * data['gas','uu'].to('cm**2/s**2') / kB * (gamma-1)
+    gamma = 5 / 3
+    return (
+        data["gas", "MMW"] * mp * data["gas", "uu"].to("cm**2/s**2") / kB * (gamma - 1)
+    )
+
 
 def _number_density(field, data):
-    return data['gas','density'].to('g/cm**3') / (data['gas','MMW']*mp)
+    return data["gas", "density"].to("g/cm**3") / (data["gas", "MMW"] * mp)
+
 
 def _metallicity(field, data):
     # metallicity in solar units
-    return data["gas","zmet"]
+    return data["gas", "zmet"]
+
 
 def _h_fraction(field, data):
-    return 1 - data['gas','yhe']
+    return 1 - data["gas", "yhe"]
+
 
 def _emission_measure(field, data):
     # emission_measure = ne**2 * particle_volume
 
     # assume gas is fully ionized -- safe assumption for cluster scale objects
-    ne = (1-0.5*data['gas','yhe'].d)*data['gas','density'].to('g/cm**3') / mp
-    nH = (1-data['gas','yhe'].d)*data['gas','density'].to('g/cm**3') / mp
+    ne = (1 - 0.5 * data["gas", "yhe"].d) * data["gas", "density"].to("g/cm**3") / mp
+    nH = (1 - data["gas", "yhe"].d) * data["gas", "density"].to("g/cm**3") / mp
 
-    return ne*nH * (data['gas','particle_mass']/data['gas','density']).to('cm**3')
-    
+    return ne * nH * (data["gas", "particle_mass"] / data["gas", "density"]).to("cm**3")
