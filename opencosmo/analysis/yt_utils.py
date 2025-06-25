@@ -2,11 +2,12 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import yt  # type: ignore
-from astropy.table import Table  # type: ignore
 from pyxsim import CIESourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
 from yt.visualization.plot_window import PlotWindow  # type: ignore
+
+import opencosmo as oc
 
 # ---- define some constants ---- #
 mp = unyt_quantity(1.67262192595e-24, "g")
@@ -16,7 +17,7 @@ solar_metallicity = 0.012899  # value used internally in HACC
 
 
 def create_yt_dataset(
-    data: Dict[str, Table],
+    data: Dict[str, oc.Dataset],
     compute_xray_fields: Optional[bool] = False,
     return_source_model: Optional[bool] = False,
     source_model_kwargs: Optional[Dict[str, Any]] = {},
