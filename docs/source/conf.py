@@ -27,8 +27,6 @@ exclude_patterns: list[str] = []
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 
-autodoc-mock-imports = ["pyxsim","yt"]
-
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
