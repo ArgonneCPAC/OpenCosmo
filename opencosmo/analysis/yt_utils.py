@@ -5,7 +5,8 @@ import yt  # type: ignore
 from pyxsim import CIESourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
-from yt.visualization.plot_window import PlotWindow  # type: ignore
+from yt.visualization.plot_window import NormalPlot  # type: ignore
+from yt.visualization.plot_container import PlotContainer, ImagePlotContainer # type: ignore
 
 import opencosmo as oc
 
@@ -221,7 +222,7 @@ def create_yt_dataset(
     return ds
 
 
-def ParticleProjectionPlot(*args, **kwargs) -> PlotWindow:
+def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
     """
     Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ParticleProjectionPlot>`_.
 
@@ -236,13 +237,13 @@ def ParticleProjectionPlot(*args, **kwargs) -> PlotWindow:
 
     Returns
     -------
-    yt.visualization.plot_window.PlotWindow
-        A PlotWindow object containing the particle projection plot.
+    yt.visualization.plot_window.ParticleProjectionPlot
+        A ParticleProjectionPlot object containing the particle projection plot.
     """
     return yt.ParticleProjectionPlot(*args, **kwargs)
 
 
-def ProjectionPlot(*args, **kwargs) -> PlotWindow:
+def ProjectionPlot(*args, **kwargs) -> NormalPlot:
     """
     Wrapper for `yt.ProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ProjectionPlot>`_.
 
@@ -258,13 +259,13 @@ def ProjectionPlot(*args, **kwargs) -> PlotWindow:
 
     Returns
     -------
-    yt.visualization.plot_window.PlotWindow
-        A PlotWindow object containing the smoothed particle projection plot.
+    yt.visualization.plot_window.ProjectionPlot
+        A ProjectionPlot object containing the smoothed particle projection plot.
     """
     return yt.ProjectionPlot(*args, **kwargs)
 
 
-def SlicePlot(*args, **kwargs) -> PlotWindow:
+def SlicePlot(*args, **kwargs) -> NormalPlot:
     """
     Wrapper for `yt.SlicePlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.SlicePlot>`_.
 
@@ -280,13 +281,13 @@ def SlicePlot(*args, **kwargs) -> PlotWindow:
 
     Returns
     -------
-    yt.visualization.plot_window.PlotWindow
-        A PlotWindow object containing the particle slice plot.
+    yt.visualization.plot_window.SlicePlot
+        A SlicePlot object containing the smoothed particle slice plot.
     """
     return yt.SlicePlot(*args, **kwargs)
 
 
-def ProfilePlot(*args, **kwargs) -> PlotWindow:
+def ProfilePlot(*args, **kwargs) -> PlotContainer:
     """
     Wrapper for `yt.ProfilePlot <https://yt-project.org/doc/reference/api/yt.visualization.particle_plots.html#yt.visualization.particle_plots.ParticleProjectionPlot>`_.
 
@@ -302,13 +303,13 @@ def ProfilePlot(*args, **kwargs) -> PlotWindow:
 
     Returns
     -------
-    yt.visualization.plot_window.PlotWindow
-        A PlotWindow object containing the profile plot.
+    yt.visualization.profile_plotter.ProfilePlot
+        A ProfilePlot object containing the profile plot.
     """
     return yt.ProfilePlot(*args, **kwargs)
 
 
-def PhasePlot(*args, **kwargs) -> PlotWindow:
+def PhasePlot(*args, **kwargs) -> ImagePlotContainer:
     """
     Wrapper for `yt.PhasePlot <https://yt-project.org/doc/reference/api/yt.visualization.profile_plotter.html#yt.visualization.profile_plotter.PhasePlot>`_.
 
@@ -325,8 +326,8 @@ def PhasePlot(*args, **kwargs) -> PlotWindow:
 
     Returns
     -------
-    yt.visualization.plot_window.PlotWindow
-        A PlotWindow object containing the phase plot.
+    yt.visualization.profile_plotter.PhasePlot
+        A PhasePlot object containing the phase plot.
     """
     return yt.PhasePlot(*args, **kwargs)
 
