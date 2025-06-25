@@ -62,8 +62,8 @@ def create_yt_dataset(
     """
 
     data_dict: Dict[
-        Tuple[str,str],
-        Tuple[np.ndarray, str]
+        Union[Tuple[str, str], str],
+        Union[np.ndarray, Tuple[np.ndarray, str]]
     ] = {}
 
     minx, maxx = np.inf, -np.inf
