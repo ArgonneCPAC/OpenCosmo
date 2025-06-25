@@ -64,7 +64,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: poetry
       - name: Install dependencies
-        run: poetry install -E test
+        run: poetry install -E test -E analysis
 
       - name: Run tests with pytest
         run: |
