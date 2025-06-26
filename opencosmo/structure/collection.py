@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from typing import Any, Generator, Iterable, Mapping, Optional
 
 import astropy  # type: ignore
 import h5py
@@ -8,14 +8,17 @@ import h5py
 import opencosmo as oc
 from opencosmo import structure as s
 from opencosmo.dataset.col import DerivedColumn
+from opencosmo.index import DataIndex
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import SimulationParameters
 from opencosmo.spatial.protocols import Region
 
+from .handler import LinkedDatasetHandler
 
-def filter_properties_by_dataset(
+
+def filter_source_by_dataset(
     dataset: oc.Dataset,
-    properties: oc.Dataset,
+    source: oc.Dataset,
     header: oc.header.OpenCosmoHeader,
     *masks,
 ) -> oc.Dataset:
@@ -26,8 +29,8 @@ def filter_properties_by_dataset(
         linked_column = "gal_tag"
 
     tags = masked_dataset.select(linked_column).data
-    new_properties = properties.filter(oc.col(linked_column).isin(tags))
-    return new_properties
+    new_source = source.filter(oc.col(linked_column).isin(tags))
+    return new_source
 
 
 class StructureCollection:
@@ -43,9 +46,10 @@ class StructureCollection:
 
     def __init__(
         self,
-        properties: oc.Dataset,
+        source: oc.Dataset,
         header: oc.header.OpenCosmoHeader,
-        handlers: dict[str, s.LinkedDatasetHandler],
+        datasets: Mapping[str, oc.Dataset | StructureCollection],
+        links: dict[str, LinkedDatasetHandler],
         *args,
         **kwargs,
     ):
@@ -53,18 +57,19 @@ class StructureCollection:
         Initialize a linked collection with the provided datasets and links.
         """
 
-        self.__properties = properties
+        self.__source = source
         self.__header = header
-        self.__handlers = handlers
-        self.__index = self.__properties.index
+        self.__datasets = datasets
+        self.__links = links
+        self.__index = self.__source.index
 
     def __repr__(self):
         structure_type = self.__header.file.data_type.split("_")[0] + "s"
-        dtype_str = ", ".join(self.__handlers.keys())
+        dtype_str = ", ".join(self.__datasets.keys())
         return f"Collection of {structure_type} with linked datasets {dtype_str}"
 
     def __len__(self):
-        return len(self.__properties)
+        return len(self.__source)
 
     @classmethod
     def open(
@@ -83,7 +88,7 @@ class StructureCollection:
         """
         The cosmology of the structure collection
         """
-        return self.__properties.cosmology
+        return self.__source.cosmology
 
     @property
     def redshift(self) -> float | tuple[float, float]:
@@ -111,47 +116,41 @@ class StructureCollection:
         """
         return self.__header.simulation
 
-    @property
-    def properties(self) -> oc.Dataset:
+    def keys(self) -> Generator[str]:
         """
-        The properties dataset of the collection. Either, halo properties
-        or galaxy properties.
+        Return the keys of the datasets in this collection.
         """
-        return self.__properties
+        yield self.__source.dtype
+        for key in self.__datasets.keys():
+            yield key
 
-    def keys(self) -> list[str]:
-        """
-        Return the keys of the linked datasets.
-        """
-        return list(self.__handlers.keys()) + [self.__properties.dtype]
-
-    def values(self) -> list[oc.Dataset]:
+    def values(self) -> Generator[oc.Dataset | StructureCollection]:
         """
         Return the linked datasets.
         """
-        return [self.__properties] + [
-            handler.get_dataset(self.__index) for handler in self.__handlers.values()
-        ]
+        yield self.__source
+        for name in self.keys():
+            yield self[name]
 
-    def items(self) -> list[tuple[str, oc.Dataset]]:
+    def items(self) -> Generator[tuple[str, oc.Dataset | StructureCollection]]:
         """
         Return the linked datasets as key-value pairs.
         """
-        return [
-            (key, handler.get_dataset(self.__index))
-            for key, handler in self.__handlers.items()
-        ]
+
+        for k, v in zip(self.keys(), self.values()):
+            yield k, v
 
     def __getitem__(self, key: str) -> oc.Dataset:
         """
         Return the linked dataset with the given key.
         """
         if key == self.__header.file.data_type:
-            return self.__properties
-        elif key not in self.__handlers:
+            return self.__source
+        elif key not in self.__datasets:
             raise KeyError(f"Dataset {key} not found in collection.")
-        index = self.__properties.index
-        return self.__handlers[key].get_dataset(index)
+
+        index = self.__links[key].make_index(self.__index)
+        return self.__datasets[key].with_index(index)
 
     def __enter__(self):
         return self
@@ -191,8 +190,10 @@ class StructureCollection:
             If the dataset does not contain a spatial index
         """
 
-        bounded = self.__properties.bound(region, select_by)
-        return StructureCollection(bounded, self.__header, self.__handlers)
+        bounded = self.__source.bound(region, select_by)
+        return StructureCollection(
+            bounded, self.__header, self.__datasets, self.__links
+        )
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
         """
@@ -229,18 +230,16 @@ class StructureCollection:
         """
         if not masks:
             return self
-        if not on_galaxies or self.__properties.dtype == "galaxy_properties":
-            filtered = self.__properties.filter(*masks)
-        elif "galaxy_properties" not in self.__handlers:
+        if not on_galaxies or self.__source.dtype == "galaxy_properties":
+            filtered = self.__source.filter(*masks)
+        elif "galaxy_properties" not in self.__datasets:
             raise ValueError("Dataset galaxy_properties not found in collection.")
         else:
-            filtered = filter_properties_by_dataset(
-                self["galaxy_properties"], self.__properties, self.__header, *masks
+            filtered = filter_source_by_dataset(
+                self["galaxy_properties"], self.__source, self.__header, *masks
             )
         return StructureCollection(
-            filtered,
-            self.__header,
-            self.__handlers,
+            filtered, self.__header, self.__datasets, self.__links
         )
 
     def select(
@@ -270,19 +269,20 @@ class StructureCollection:
             If the specified dataset is not found in the collection.
         """
         if dataset is None or dataset == self.__header.file.data_type:
-            new_properties = self.__properties.select(columns)
+            new_source = self.__source.select(columns)
             return StructureCollection(
-                new_properties,
-                self.__header,
-                self.__handlers,
+                new_source, self.__header, self.__datasets, self.__links
             )
 
-        elif dataset not in self.__handlers:
+        elif dataset not in self.__datasets:
             raise ValueError(f"Dataset {dataset} not found in collection.")
-        handler = self.__handlers[dataset]
-        new_handler = handler.select(columns)
+        output_ds = self.__datasets[dataset]
+        new_dataset = output_ds.select(columns)
         return StructureCollection(
-            self.__properties, self.__header, {**self.__handlers, dataset: new_handler}
+            self.__source,
+            self.__header,
+            {**self.__datasets, dataset: new_dataset},
+            self.__links,
         )
 
     def with_units(self, convention: str):
@@ -301,15 +301,13 @@ class StructureCollection:
         StructureCollection
             A new collection with the unit convention applied.
         """
-        new_properties = self.__properties.with_units(convention)
-        new_handlers = {
-            key: handler.with_units(convention)
-            for key, handler in self.__handlers.items()
+        new_source = self.__source.with_units(convention)
+        new_datasets = {
+            key: dataset.with_units(convention)
+            for key, dataset in self.__datasets.items()
         }
         return StructureCollection(
-            new_properties,
-            self.__header,
-            new_handlers,
+            new_source, self.__header, new_datasets, self.__links
         )
 
     def take(self, n: int, at: str = "random"):
@@ -330,11 +328,18 @@ class StructureCollection:
         StructureCollection
             A new collection with the structures taken from the original.
         """
-        new_properties = self.__properties.take(n, at)
+        new_source = self.__source.take(n, at)
         return StructureCollection(
-            new_properties,
+            new_source,
             self.__header,
-            self.__handlers,
+            self.__datasets,
+            self.__links,
+        )
+
+    def take_range(self, start: int, end: int):
+        new_source = self.__source.take_range(start, end)
+        return StructureCollection(
+            new_source, self.__header, self.__datasets, self.__links
         )
 
     def with_new_columns(self, dataset: str, **new_columns: DerivedColumn):
@@ -347,6 +352,18 @@ class StructureCollection:
 
             pe = oc.col("phi") * oc.col("mass")
             collection = collection.with_new_columns("dm_particles", pe=pe)
+
+        Structure collections can hold other structure collections. For example, a
+        collection of Halos may hold a structure collection that contians the galaxies
+        of those halos. To update datasets within these collections, use dot syntax
+        to specify a path:
+
+        .. code-block:: python
+
+            pe = oc.col("phi") * oc.col("mass")
+            collection = collection.with_new_columns("galaxies.star_particles", pe=pe)
+
+
 
         Parameters
         ----------
@@ -366,20 +383,50 @@ class StructureCollection:
         ValueError
             If the dataset is not found in this collection
         """
-        if dataset == self.__properties.dtype:
-            new_properties = self.__properties.with_new_columns(**new_columns)
-            return StructureCollection(new_properties, self.__header, self.__handlers)
-        elif dataset not in self.__handlers.keys():
+        path = dataset.split(".")
+        if len(path) > 1:
+            collection_name = path[0]
+            if collection_name not in self.keys():
+                raise ValueError(f"No collection {collection_name} found!")
+            new_collection = self.__datasets[collection_name]
+            if not isinstance(new_collection, StructureCollection):
+                raise ValueError(f"{collection_name} is not a collection!")
+            new_collection = new_collection.with_new_columns(
+                ".".join(path[1:]), **new_columns
+            )
+            return StructureCollection(
+                self.__source,
+                self.__header,
+                {**self.__datasets, collection_name: new_collection},
+                self.__links,
+            )
+
+        if dataset == self.__source.dtype:
+            new_source = self.__source.with_new_columns(**new_columns)
+            return StructureCollection(
+                new_source, self.__header, self.__datasets, self.__links
+            )
+        elif dataset not in self.__datasets.keys():
             raise ValueError(f"Dataset {dataset} not found in this collection!")
 
-        new_handlers = {
-            dataset: self.__handlers[dataset].with_new_columns(**new_columns)
-        }
-        for key, handler in self.__handlers.items():
-            if key == dataset:
-                continue
-            new_handlers[key] = handler
-        return StructureCollection(self.__properties, self.__header, new_handlers)
+        ds = self.__datasets[dataset]
+
+        if not isinstance(ds, oc.Dataset):
+            raise ValueError(f"{dataset} is not a dataset!")
+
+        new_ds = ds.with_new_columns(**new_columns)
+        return StructureCollection(
+            self.__source,
+            self.__header,
+            {**self.__datasets, dataset: new_ds},
+            self.__links,
+        )
+
+    def with_index(self, index: DataIndex):
+        new_source = self.__source.with_index(index)
+        return StructureCollection(
+            new_source, self.__header, self.__datasets, self.__links
+        )
 
     def objects(
         self,
@@ -404,16 +451,19 @@ class StructureCollection:
         the data types.
         """
         if data_types is None:
-            handlers = self.__handlers
-        elif not all(dt in self.__handlers for dt in data_types):
-            raise ValueError("Some data types are not linked in the collection.")
-        else:
-            handlers = {dt: self.__handlers[dt] for dt in data_types}
+            data_types = self.__datasets.keys()
 
-        for i, row in enumerate(self.__properties.rows()):
-            index = self.__properties.index[i]
+        data_types = list(data_types)
+        if not all(dt in self.__datasets for dt in data_types):
+            raise ValueError("Some data types are not linked in the collection.")
+
+        for i, row in enumerate(self.__source.rows()):
+            index = self.__source.index[i]
             output = {
-                key: handler.get_dataset(index) for key, handler in handlers.items()
+                key: self.__datasets[key].with_index(
+                    self.__links[key].make_index(index)
+                )
+                for key in data_types
             }
             if not any(len(v) for v in output.values()):
                 continue
@@ -424,16 +474,16 @@ class StructureCollection:
 
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema(self.__header)
-        properties_name = self.properties.dtype
+        source_name = self.__source.dtype
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
             schema.add_child(ds_schema, name)
 
-        properties_schema = self.properties.make_schema()
-        schema.add_child(properties_schema, properties_name)
+        source_schema = self.__source.make_schema()
+        schema.add_child(source_schema, source_name)
 
-        for name, handler in self.__handlers.items():
-            link_schema = handler.make_schema(name, self.__index)
-            schema.insert(link_schema, f"{properties_name}.{name}")
+        for name, handler in self.__datasets.items():
+            link_schema = handler.make_schema(name, self.__index)  # type: ignore
+            schema.insert(link_schema, f"{source_name}.{name}")
 
         return schema
