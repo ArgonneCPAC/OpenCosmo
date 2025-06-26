@@ -177,7 +177,7 @@ def test_select_collect(input_path):
 def test_link_read(all_paths):
     collection = open_linked_files(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
-    length = len(collection.properties)
+    length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
     collection = collection.take(8, "random")
     for i, (properties, particles) in enumerate(collection.objects()):
@@ -199,7 +199,7 @@ def test_link_read(all_paths):
 def test_link_write(all_paths, tmp_path):
     collection = open_linked_files(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
-    length = len(collection.properties)
+    length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
     output_path = tmp_path / "random_linked.hdf5"
