@@ -121,14 +121,13 @@ class StructureCollection:
         Return the keys of the datasets in this collection.
         """
         yield self.__source.dtype
-        for key in self.__datasets.keys():
+        for key in sorted(self.__datasets.keys()):
             yield key
 
     def values(self) -> Generator[oc.Dataset | StructureCollection]:
         """
         Return the linked datasets.
         """
-        yield self.__source
         for name in self.keys():
             yield self[name]
 
@@ -479,11 +478,8 @@ class StructureCollection:
             ds_schema = dataset.make_schema()
             schema.add_child(ds_schema, name)
 
-        source_schema = self.__source.make_schema()
-        schema.add_child(source_schema, source_name)
-
-        for name, handler in self.__datasets.items():
-            link_schema = handler.make_schema(name, self.__index)  # type: ignore
+        for name, handler in self.__links.items():
+            link_schema = handler.make_schema(name, self.__index)
             schema.insert(link_schema, f"{source_name}.{name}")
 
         return schema
