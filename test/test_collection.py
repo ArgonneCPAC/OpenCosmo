@@ -72,6 +72,7 @@ def test_data_linking(halo_paths):
     for properties, particles in collection.objects():
         halo_tags = set()
         for name, particle_species in particles.items():
+            print(particle_species)
             if len(particle_species) == 0:
                 continue
             try:
@@ -86,6 +87,7 @@ def test_data_linking(halo_paths):
                 halo_tags.update(bin_tags)
                 n_profiles += 1
 
+        print(halo_tags)
         assert len(set(halo_tags)) == 1
         assert halo_tags.pop() == properties["fof_halo_tag"]
     assert n_particles > 0

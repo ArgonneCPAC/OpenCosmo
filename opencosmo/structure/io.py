@@ -175,7 +175,7 @@ def get_linked_datasets(
         else:
             datasets.update({dtype: pointer})
 
-    link_handlers = get_link_handlers(properties_file, datasets, header)
+    datasets, link_handlers = get_link_handlers(properties_file, datasets, header)
     output = {}
     for key, handler in link_handlers.items():
         if key in LINK_ALIASES:
@@ -183,20 +183,21 @@ def get_linked_datasets(
         else:
             output[key] = handler
 
-    return s.StructureCollection(properties_dataset, header, output)
+    return s.StructureCollection(properties_dataset, header, datasets, link_handlers)
 
 
 def get_link_handlers(
     link_file: h5py.File | h5py.Group,
     linked_files: dict[str, h5py.File | h5py.Group],
     header: OpenCosmoHeader,
-) -> dict[str, s.LinkedDatasetHandler]:
+) -> tuple[dict[str, d.Dataset], dict[str, s.LinkedDatasetHandler]]:
     if "data_linked" not in link_file.keys():
         raise KeyError("No linked datasets found in the file.")
     links = link_file["data_linked"]
 
     unique_dtypes = {key.rsplit("_", 1)[0] for key in links.keys()}
     output_links = {}
+    output_datasets = {}
     for dtype in unique_dtypes:
         if dtype not in linked_files and LINK_ALIASES.get(dtype) not in linked_files:
             continue  # Skip if the linked file is not provided
@@ -212,9 +213,10 @@ def get_link_handlers(
 
             output_links[key] = s.LinkedDatasetHandler(
                 (start, size),
-                dataset,
             )
+            output_datasets[key] = dataset
         except KeyError:
             index = links[f"{dtype}_idx"]
-            output_links[key] = s.LinkedDatasetHandler(index, dataset)
-    return output_links
+            output_links[key] = s.LinkedDatasetHandler(index)
+            output_datasets[key] = dataset
+    return output_datasets, output_links
