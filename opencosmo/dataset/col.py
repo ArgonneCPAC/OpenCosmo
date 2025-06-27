@@ -173,7 +173,10 @@ class DerivedColumn:
         elif self.operation == op.pow:
             if rhs_unit is not None:
                 raise ValueError("Cannot raise values to powers with units!")
-            unit = self.operation(lhs_unit, rhs_data)
+            if lhs_unit is not None:
+                unit = self.operation(lhs_unit, rhs_data)
+            else:
+                unit = None
 
         else:
             match (lhs_unit, rhs_unit):
