@@ -120,20 +120,17 @@ class StructureCollection:
         """
         return self.__header.simulation
 
-    def keys(self) -> Generator[str]:
+    def keys(self) -> list[str]:
         """
         Return the keys of the datasets in this collection.
         """
-        yield self.__source.dtype
-        for key in sorted(self.__datasets.keys()):
-            yield key
+        return [self.__source.dtype] + list(self.__datasets.keys())
 
-    def values(self) -> Generator[oc.Dataset | StructureCollection]:
+    def values(self) -> list[oc.Dataset | StructureCollection]:
         """
         Return the linked datasets.
         """
-        for name in self.keys():
-            yield self[name]
+        return [self[name] for name in self.keys()]
 
     def items(self) -> Generator[tuple[str, oc.Dataset | StructureCollection]]:
         """
@@ -434,7 +431,7 @@ class StructureCollection:
     def objects(
         self,
         data_types: Optional[Iterable[str]] = None,
-    ) -> Iterable[tuple[dict[str, Any], oc.Dataset | dict[str, oc.Dataset]]]:
+    ) -> Iterable[dict[str, Any]]:
         """
         Iterate over the objects in this collection as pairs of
         (properties, datasets). For example, a halo collection could yield
@@ -468,12 +465,8 @@ class StructureCollection:
                 )
                 for key in data_types
             }
-            if not any(len(v) for v in output.values()):
-                continue
-            if len(output) == 1:
-                yield row, next(iter(output.values()))
-            else:
-                yield row, output
+            output.update({self.__source.dtype: row})
+            yield output
 
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema(self.__header)
