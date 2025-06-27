@@ -254,3 +254,16 @@ def test_multiple_properties(galaxy_paths, halo_paths):
     galaxy_path = galaxy_paths[0]
     ds = open_linked_files(galaxy_path, *halo_paths)
     assert isinstance(ds, StructureCollection)
+
+
+def test_chain_link(galaxy_paths, halo_paths):
+    ds = open_linked_files(*galaxy_paths, *halo_paths)
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(5)
+    for props, particles in ds.objects():
+        print(props["fof_halo_tag"])
+        for a, b in particles["galaxy_properties"].objects():
+            print(a["fof_halo_tag"])
+            break
+        break
+
+    assert False

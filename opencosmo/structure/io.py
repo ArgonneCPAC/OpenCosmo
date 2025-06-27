@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import h5py
+import networkx as nx  # type: ignore
 
 from opencosmo import dataset as d
 from opencosmo import io
@@ -27,7 +28,7 @@ ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
 }
 
 
-def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
+def verify_links(*headers: OpenCosmoHeader) -> tuple[list[str], dict[str, list[str]]]:
     """
     Verify that the links in the headers are valid. This means that the
     link holder has a corresponding link target and that the link target
@@ -62,10 +63,7 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
 
     has_links = [file in links for file in properties_files]
     # Properties files also need to have the same simulation
-    if len(properties_files) > 1:
-        # need exactly one true (for now)
-        if sum(has_links) != 1:
-            raise NotImplementedError("Chained links are not yet supported")
+
     for file in properties_files:
         if (
             dtypes_to_headers[file].simulation
@@ -74,11 +72,11 @@ def verify_links(*headers: OpenCosmoHeader) -> tuple[str, list[str]]:
             raise ValueError(
                 f"Simulation mismatch between {file} and {properties_files[0]}"
             )
-    properties_files = [
+    property_files = [
         file for file, has_link in zip(properties_files, has_links) if has_link
     ]
-    property_file = properties_files[0]
-    return property_file, links[property_file]
+
+    return property_files, links
 
 
 def open_linked_files(*files: Path):
@@ -91,30 +89,58 @@ def open_linked_files(*files: Path):
         return open_linked_files(*files[0])
 
     file_handles = [h5py.File(file, "r") for file in files]
-    headers = [read_header(file) for file in file_handles]
-    properties_file, linked_files = verify_links(*headers)
-    properties_index = next(
-        index
-        for index, header in enumerate(headers)
-        if header.file.data_type == properties_file
-    )
-    properties_file = file_handles.pop(properties_index)
-    properties_dataset = io.open(properties_file)
-    if not isinstance(properties_dataset, d.Dataset):
-        raise ValueError(
-            "Properties file must contain a single dataset, but found more"
-        )
+    files_by_type = {f["header"]["file"].attrs["data_type"]: f for f in file_handles}
 
-    linked_files_by_type = {
-        file["header"]["file"].attrs["data_type"]: file for file in file_handles
+    headers = [read_header(file) for file in file_handles]
+    property_files, linked_files = verify_links(*headers)
+    g = nx.DiGraph(linked_files)
+    source_linked_datasets = {}
+
+    source = [n for n in g.nodes if g.in_degree(n) == 0]
+    if len(source) != 1:
+        raise ValueError("Invalid setup for linked files: No unique source")
+
+    source_name = source[0]
+    other_collections = [
+        n for n in g.nodes if g.out_degree(n) > 0 and g.in_degree(n) > 0
+    ]
+    known_datasets: set[str] = set()
+    for collection_name in other_collections:
+        src_dataset = io.open(files_by_type[collection_name])
+        if not isinstance(src_dataset, d.Dataset):
+            raise ValueError("Expected a single dataset for source")
+        properties_file = files_by_type[collection_name]
+
+        linked_files_by_type = {
+            key: files_by_type[key] for key in linked_files[collection_name]
+        }
+        property_header = read_header(properties_file)
+
+        col = build_structure_collection(
+            src_dataset, linked_files_by_type, properties_file, property_header
+        )
+        source_linked_datasets[collection_name] = col
+        known_datasets.update(col.keys())
+
+    src_dataset = io.open(files_by_type[source_name])
+    if not isinstance(src_dataset, d.Dataset):
+        raise ValueError("Expected a dataset for the link source")
+
+    src_header = read_header(files_by_type[source_name])
+    src_linked_files = {
+        key: files_by_type[key]
+        for key in linked_files[source_name]
+        if key not in source_linked_datasets
     }
-    if len(linked_files_by_type) != len(linked_files):
-        raise ValueError("Linked files must have unique data types")
-    return get_linked_datasets(
-        properties_dataset,
-        linked_files_by_type,
-        properties_file,
-        headers[properties_index],
+    datasets = get_linked_datasets(src_linked_files, src_header)
+    datasets = {k: v for k, v in datasets.items() if k not in known_datasets}
+    source_linked_datasets = datasets | source_linked_datasets
+    link_handlers = get_link_handlers(
+        files_by_type[source_name], source_linked_datasets.keys(), src_header
+    )
+
+    return s.StructureCollection(
+        src_dataset, src_header, source_linked_datasets, link_handlers
     )
 
 
@@ -153,29 +179,45 @@ def open_linked_file(
     if not other_datasets:
         raise ValueError("No linked datasets found in file")
     linked_groups_by_type = {name: file_handle[name] for name in other_datasets}
-    properties_dataset = io.open(file_handle[properties_name])
-    if not isinstance(properties_dataset, d.Dataset):
+    source_ds = io.open(file_handle[properties_name])
+    if not isinstance(source_ds, d.Dataset):
         raise ValueError("Properties dataset must be a single dataset")
 
-    return get_linked_datasets(
-        properties_dataset, linked_groups_by_type, file_handle[properties_name], header
+    linked_datasets = get_linked_datasets(linked_groups_by_type, header)
+    link_handlers = get_link_handlers(
+        file_handle[properties_name], other_datasets, header
     )
+    return s.StructureCollection(source_ds, header, linked_datasets, link_handlers)
 
 
 def get_linked_datasets(
+    linked_files_by_type: dict[str, h5py.File | h5py.Group],
+    header: OpenCosmoHeader,
+):
+    datasets = {}
+    for dtype, pointer in linked_files_by_type.items():
+        if "data" not in pointer.keys():
+            datasets.update(
+                {
+                    k: build_dataset(pointer[k], header)
+                    for k in pointer.keys()
+                    if k != "header"
+                }
+            )
+        else:
+            datasets.update({dtype: build_dataset(pointer, header)})
+    return datasets
+
+
+def build_structure_collection(
     properties_dataset: d.Dataset,
     linked_files_by_type: dict[str, h5py.File | h5py.Group],
     properties_file: h5py.File,
     header: OpenCosmoHeader,
 ) -> s.StructureCollection:
-    datasets = {}
-    for dtype, pointer in linked_files_by_type.items():
-        if "data" not in pointer.keys():
-            datasets.update({k: pointer[k] for k in pointer.keys() if k != "header"})
-        else:
-            datasets.update({dtype: pointer})
+    datasets = get_linked_datasets(linked_files_by_type, header)
+    link_handlers = get_link_handlers(properties_file, datasets, header)
 
-    datasets, link_handlers = get_link_handlers(properties_file, datasets, header)
     output = {}
     for key, handler in link_handlers.items():
         if key in LINK_ALIASES:
@@ -188,25 +230,21 @@ def get_linked_datasets(
 
 def get_link_handlers(
     link_file: h5py.File | h5py.Group,
-    linked_files: dict[str, h5py.File | h5py.Group],
+    linked_files: Iterable[str],
     header: OpenCosmoHeader,
-) -> tuple[dict[str, d.Dataset], dict[str, s.LinkedDatasetHandler]]:
+) -> dict[str, s.LinkedDatasetHandler]:
     if "data_linked" not in link_file.keys():
         raise KeyError("No linked datasets found in the file.")
     links = link_file["data_linked"]
 
+    linked_files = list(linked_files)
     unique_dtypes = {key.rsplit("_", 1)[0] for key in links.keys()}
     output_links = {}
-    output_datasets = {}
     for dtype in unique_dtypes:
         if dtype not in linked_files and LINK_ALIASES.get(dtype) not in linked_files:
             continue  # Skip if the linked file is not provided
 
         key = LINK_ALIASES.get(dtype, dtype)
-        if "data" not in linked_files[key].keys():
-            raise KeyError(f"No data group found in linked file for dtype '{dtype}'")
-
-        dataset = build_dataset(linked_files[key], header)
         try:
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
@@ -214,9 +252,7 @@ def get_link_handlers(
             output_links[key] = s.LinkedDatasetHandler(
                 (start, size),
             )
-            output_datasets[key] = dataset
         except KeyError:
             index = links[f"{dtype}_idx"]
             output_links[key] = s.LinkedDatasetHandler(index)
-            output_datasets[key] = dataset
-    return output_datasets, output_links
+    return output_links
