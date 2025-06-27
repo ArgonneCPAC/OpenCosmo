@@ -263,10 +263,22 @@ class ChunkedIndex:
 
         shape = (len(self),) + data.shape[1:]
         temp = np.zeros(shape, dtype=data.dtype)
+        chunk_size = 10
+        chunked_starts = np.array_split(new_starts, chunk_size)
+        chunked_sizes = np.array_split(new_sizes, chunk_size)
+
         running_index = 0
-        for i, (start, size) in enumerate(zip(packed_starts, packed_sizes)):
-            temp[running_index : running_index + size] = data[start : start + size]
-            running_index += size
+
+        for i, (start, size) in enumerate(zip(chunked_starts, chunked_sizes)):
+            tmp_data = data[start[0] : start[-1] + size[-1]]
+            slices = [slice(st, st + si) for st, si in zip(start - start[0], size)]
+            tmp_data = [tmp_data[s] for s in slices]
+            if len(tmp_data) == 1:
+                output = tmp_data[0]
+            else:
+                output = np.concatenate(tmp_data)
+            temp[running_index : running_index + len(output)] = output
+            running_index += len(output)
 
         output = np.zeros(len(self), dtype=data.dtype)
         cumulative_sorted_sizes = np.insert(np.cumsum(new_sizes), 0, 0)
