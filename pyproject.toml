@@ -35,7 +35,7 @@ develop = [
 docs = [
   "sphinx>=8.1.3,<9.0.0",
   "sphinx-rtd-theme>=3.0.2,<4.0.0",
-  "autodoc-pydantic>=2.2.0,<3.0.0"
+  "autodoc-pydantic>=2.2.0,<3.0.0",
 ]
 mpi = [
   "mpi4py>=4.0.3,<5.0.0"
@@ -58,3 +58,5 @@ plugins = ["numpy.typing.mypy_plugin"]
 [[tool.mypy.overrides]]
 module = ["h5py"]
 follow_untyped_imports = true
+
+
