@@ -266,15 +266,19 @@ def combine_structcollection_schema(
     new_schema = StructCollectionSchema(schema.header)
     child_names = list(child_names)
     child_names.sort()
+    new_child: DatasetSchema | StructCollectionSchema
 
     for i, name in enumerate(child_names):
         cn = comm.bcast(name)
         child = schema.children[cn]
-        if not isinstance(child, DatasetSchema):
+        if isinstance(child, DatasetSchema):
+            new_child = combine_dataset_schemas(child, comm)
+        elif isinstance(child, StructCollectionSchema):
+            new_child = combine_structcollection_schema(child, comm)
+        else:
             raise ValueError(
                 "Found a child of a structure collection that was not a Dataset!"
             )
-        new_child = combine_dataset_schemas(child, comm)
         new_schema.add_child(new_child, cn)
 
     return new_schema
