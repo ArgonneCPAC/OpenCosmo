@@ -263,9 +263,9 @@ class ChunkedIndex:
 
         shape = (len(self),) + data.shape[1:]
         temp = np.zeros(shape, dtype=data.dtype)
-        chunk_size = 10
-        chunked_starts = np.array_split(new_starts, chunk_size)
-        chunked_sizes = np.array_split(new_sizes, chunk_size)
+        n_chunks = np.ceil(len(new_starts) / 10.0)
+        chunked_starts = np.array_split(new_starts, n_chunks)
+        chunked_sizes = np.array_split(new_sizes, n_chunks)
 
         running_index = 0
 

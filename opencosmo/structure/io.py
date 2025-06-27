@@ -184,8 +184,9 @@ def build_structure_collection(
             output[source] = s.StructureCollection(
                 src_dataset, headers[source], linked_datasets, link_handlers
             )
+            final_source = source
 
-    return output[source]
+    return output[final_source]
 
 
 def get_link_handlers(

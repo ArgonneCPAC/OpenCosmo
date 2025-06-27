@@ -174,8 +174,7 @@ class StructCollectionSchema:
         for child in self.children.values():
             child.verify()
             try:
-                found_links = len(child.links) > 0
-                break
+                found_links = len(child.links) > 0 or found_links
             except AttributeError:
                 continue
         if not found_links:

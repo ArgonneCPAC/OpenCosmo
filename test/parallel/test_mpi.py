@@ -234,6 +234,44 @@ def test_link_write(all_paths, tmp_path):
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_chain_link(all_paths, galaxy_paths, tmp_path):
+    collection = open_linked_files(*all_paths, *galaxy_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
+    length = len(collection["halo_properties"])
+    length = 8 if length > 8 else length
+    comm = mpi4py.MPI.COMM_WORLD
+    output_path = tmp_path / "random_linked.hdf5"
+    output_path = comm.bcast(output_path, root=0)
+
+    collection = collection.take(length, at="random")
+    written_data = defaultdict(list)
+
+    for i, (properties, particles) in enumerate(collection.objects()):
+        for key, ds in particles.items():
+            written_data[properties["fof_halo_tag"]].append((key, len(ds)))
+
+    oc.write(output_path, collection)
+
+    read_data = defaultdict(list)
+    read_ds = oc.open(output_path)
+    for properties, particles in read_ds.objects():
+        for key, ds in particles.items():
+            read_data[properties["fof_halo_tag"]].append((key, len(ds)))
+
+    all_read = comm.gather(read_data, root=0)
+    all_written = comm.gather(written_data, root=0)
+    # merge the dictionaries
+    if comm.Get_rank() == 0:
+        read_data = {}
+        written_data = {}
+        for i in range(len(all_read)):
+            read_data.update(all_read[i])
+            written_data.update(all_written[i])
+        for key in read_data:
+            assert set(read_data[key]) == set(written_data[key])
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
     original_data = ds.data
