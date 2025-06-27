@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Generator, Iterable, Mapping, Optional
+from typing import Any, Generator, Iterable, Optional
 
 import astropy  # type: ignore
 import h5py
@@ -48,7 +48,7 @@ class StructureCollection:
         self,
         source: oc.Dataset,
         header: oc.header.OpenCosmoHeader,
-        datasets: Mapping[str, oc.Dataset | StructureCollection],
+        datasets: dict[str, oc.Dataset | StructureCollection],
         links: dict[str, LinkedDatasetHandler],
         *args,
         **kwargs,
@@ -62,6 +62,10 @@ class StructureCollection:
         self.__datasets = datasets
         self.__links = links
         self.__index = self.__source.index
+
+        if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
+            self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
+            self.__links["galaxies"] = self.__links.pop("galaxy_properties")
 
     def __repr__(self):
         structure_type = self.__header.file.data_type.split("_")[0] + "s"
@@ -474,11 +478,17 @@ class StructureCollection:
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema(self.__header)
         source_name = self.__source.dtype
+
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
+            if name == "galaxies":
+                name = "galaxy_properties"
+
             schema.add_child(ds_schema, name)
 
         for name, handler in self.__links.items():
+            if name == "galaxies":
+                name = "galaxy_properties"
             link_schema = handler.make_schema(name, self.__index)
             schema.insert(link_schema, f"{source_name}.{name}")
 

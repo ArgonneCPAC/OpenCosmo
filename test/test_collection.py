@@ -293,7 +293,7 @@ def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
 
             assert len(tags) == 1
             assert tags.pop() == halo_tag
-        for gal_properties, gal_particles in particles["galaxy_properties"].objects():
+        for gal_properties, gal_particles in particles["galaxies"].objects():
             gal_tag = gal_properties["gal_tag"]
             assert gal_properties["fof_halo_tag"] == halo_tag
             gal_tags = set(gal_particles.select("gal_tag").data)
