@@ -114,6 +114,7 @@ class DatasetWriter:
 
     def write(self, group: h5py.Group):
         data_group = group["data"]
+
         names = list(self.columns.keys())
         names.sort()
         for colname in names:
@@ -123,6 +124,7 @@ class DatasetWriter:
             link_group = group["data_linked"]
             link_names = list(self.links.keys())
             link_names.sort()
+
             for name in link_names:
                 self.links[name].write(link_group)
 
@@ -162,6 +164,7 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, updater)
+
         for name, val in self.attrs.items():
             ds.attrs[name] = val
 

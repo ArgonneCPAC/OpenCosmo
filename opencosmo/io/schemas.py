@@ -154,7 +154,7 @@ class StructCollectionSchema:
     """
 
     def __init__(self, header: OpenCosmoHeader):
-        self.children: dict[str, DatasetSchema] = {}
+        self.children: dict[str, DatasetSchema | StructCollectionSchema] = {}
         self.header = header
 
     def insert(self, child: iop.DataSchema, path: str):
@@ -173,8 +173,11 @@ class StructCollectionSchema:
         found_links = False
         for child in self.children.values():
             child.verify()
-            if child.links:
-                found_links = True
+            try:
+                found_links = len(child.links) > 0
+                break
+            except AttributeError:
+                continue
         if not found_links:
             raise ValueError("StructCollection must get at least one link!")
 
@@ -184,7 +187,7 @@ class StructCollectionSchema:
                 f"StructCollectionSchema already has child with name {name}"
             )
         match child:
-            case DatasetSchema():
+            case DatasetSchema() | StructCollectionSchema():
                 self.children[name] = child
             case IdxLinkSchema() | StartSizeLinkSchema():
                 raise ValueError(
