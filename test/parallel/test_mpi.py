@@ -303,3 +303,29 @@ def test_derive_multiply(input_path):
             == data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
         )
     )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_derive_write(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "derived.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+
+    ds = oc.open(input_path)
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.with_new_columns(fof_halo_px=derived)
+    oc.write(temporary_path, ds)
+    original_data = ds.data
+    written_data = oc.open(temporary_path).data
+
+    parallel_assert("fof_halo_px" in written_data.columns)
+    parallel_assert(
+        written_data["fof_halo_px"].unit == original_data["fof_halo_px"].unit
+    )
+    parallel_assert(
+        np.all(
+            np.isclose(
+                written_data["fof_halo_px"].value, original_data["fof_halo_px"].value
+            )
+        )
+    )
