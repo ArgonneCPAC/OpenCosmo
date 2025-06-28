@@ -266,6 +266,23 @@ def test_box_query_chain(input_path):
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_box_query_zerolength(input_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    ds = oc.open(input_path)
+    p1 = (3, 3, 3)
+    p2 = (10, 10, 10)
+    reg1 = oc.make_box(p1, p2)
+
+    ds = ds.bound(reg1)
+    if rank == 0:
+        assert len(ds) > 0
+
+    parallel_assert(len(ds) == 0, participating=rank > 0)
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
     galaxies_1 = open_linked_files(*galaxy_paths)
     galaxies_2 = open_linked_files(*galaxy_paths_2)
