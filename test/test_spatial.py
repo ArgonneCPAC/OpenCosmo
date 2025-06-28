@@ -175,12 +175,12 @@ def test_box_query_chain_failure(halo_properties_path):
     reg2 = oc.make_box(p1, p2)
 
     ds = ds.bound(reg1)
-    with pytest.raises(ValueError):
-        ds = ds.bound(reg2)
+    ds = ds.bound(reg2)
+    assert len(ds) == 0
 
 
 def test_box_query_chain_write_failure(halo_properties_path, tmp_path):
-    ds = oc.open(halo_properties_path).with_units("scalefree")
+    ds = oc.open(halo_properties_path)
     p1 = (25, 25, 25)
     p2 = (35, 35, 35)
     reg1 = oc.make_box(p1, p2)
@@ -195,5 +195,5 @@ def test_box_query_chain_write_failure(halo_properties_path, tmp_path):
     oc.write(output_path, ds)
 
     new_ds = oc.open(output_path)
-    with pytest.raises(ValueError):
-        new_ds.bound(reg2)
+    new_ds = new_ds.bound(reg2)
+    assert len(new_ds) == 0
