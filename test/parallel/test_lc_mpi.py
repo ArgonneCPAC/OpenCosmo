@@ -55,8 +55,8 @@ def test_healpix_index_chain_failure(haloproperties_path):
 
     region1 = oc.make_cone(center1, radius)
     region2 = oc.make_cone(center2, radius)
-    with pytest.raises(ValueError):
-        ds = ds.bound(region1).bound(region2)
+    ds = ds.bound(region1).bound(region2)
+    parallel_assert(len(ds) == 0)
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")

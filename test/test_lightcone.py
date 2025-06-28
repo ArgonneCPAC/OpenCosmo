@@ -47,8 +47,8 @@ def test_healpix_index_chain_failure(haloproperties_path):
     region1 = oc.make_cone(center1, radius)
     region2 = oc.make_cone(center2, radius)
     ds = ds.bound(region1)
-    with pytest.raises(ValueError):
-        ds = ds.bound(region2)
+    ds = ds.bound(region2)
+    assert len(ds) == 0
 
 
 def test_healpix_index_chain(haloproperties_path):
@@ -108,8 +108,8 @@ def test_healpix_write_fail(haloproperties_path, tmp_path):
 
     center2 = (45 * u.deg, 45 * u.deg)
     region2 = oc.make_cone(center2, radius)
-    with pytest.raises(ValueError):
-        new_ds = new_ds.bound(region2)
+    new_ds = new_ds.bound(region2)
+    assert len(new_ds) == 0
 
 
 def test_lightcone_physical_units(haloproperties_path):
