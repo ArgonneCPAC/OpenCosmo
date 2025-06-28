@@ -8,7 +8,7 @@ import opencosmo.transformations.units as u
 from opencosmo.dataset.col import DerivedColumn
 from opencosmo.dataset.column import TableBuilder, get_table_builder
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
+from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io import schemas as ios
 from opencosmo.spatial.protocols import Region
 
@@ -103,7 +103,9 @@ class DatasetState:
         for colname in derived_names:
             attrs = {"unit": str(units[colname])}
             coldata = derived_data[colname].value
-            colschema = ios.ColumnSchema(colname, self.__index, coldata, attrs)
+            colschema = ios.ColumnSchema(
+                colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
+            )
             schema.add_child(colschema, colname)
 
         return schema

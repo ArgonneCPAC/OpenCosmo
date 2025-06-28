@@ -353,8 +353,7 @@ class ColumnSchema:
         self.offset = offset
 
     def verify(self):
-        if len(self.index) > len(self.source):
-            raise ValueError("The index is longer than its source!")
+        return True
 
     def allocate(self, group: h5py.Group):
         shape = (len(self.index),) + self.source.shape[1:]

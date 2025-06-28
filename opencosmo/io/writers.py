@@ -24,7 +24,7 @@ and that all the datasets have the correct size, datatype, etc.
 
 
 def write_index(
-    input_ds: h5py.Dataset,
+    input_ds: h5py.Dataset | np.ndarray,
     output_ds: h5py.Dataset,
     index: DataIndex,
     offset: int = 0,
