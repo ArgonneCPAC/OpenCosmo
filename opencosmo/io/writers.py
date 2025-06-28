@@ -165,6 +165,8 @@ class ColumnWriter:
         for name, val in self.attrs.items():
             ds.attrs[name] = val
 
+        ds.file.flush()
+
 
 class SpatialIndexWriter:
     """

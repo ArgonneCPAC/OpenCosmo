@@ -41,14 +41,19 @@ class Dataset:
         A basic string representation of the dataset
         """
         length = len(self)
-        take_length = length if length < 10 else 10
-        repr_ds = self.take(take_length)
+
+        if len(self) < 10:
+            repr_ds = self
+            table_head = ""
+        else:
+            repr_ds = self.take(10, at="start")
+            table_head = "First 10 rows:\n"
+
         table_repr = repr_ds.data.__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
         head = f"OpenCosmo Dataset (length={length})\n"
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
-        table_head = f"First {take_length} rows:\n"
         return head + cosmo_repr + table_head + table_repr
 
     def __len__(self):
@@ -194,12 +199,20 @@ class Dataset:
         check_region = region.into_scalefree(
             self.__state.convention, self.cosmology, self.redshift
         )
+        new_header = copy(self.__header)
+        region_model = check_region.into_model()
+        new_file_pars = new_header.file.model_copy(update={"region": region_model})
+        new_header = OpenCosmoHeader(
+            new_file_pars,
+            self.__header.simulation,
+            self.__header.cosmotools,
+        )
 
         if not self.__state.region.intersects(check_region):
-            raise ValueError(
-                "Tried to query with a region that is fully outside the region "
-                "that contains this dataset."
-            )
+            new_index = ChunkedIndex.empty()
+            new_state = self.__state.with_index(new_index)
+            return Dataset(self.__handler, new_header, new_state, self.__tree)
+
         if not self.__state.region.contains(check_region):
             warn(
                 "You're querying with a region that is not fully contained by the "
@@ -220,6 +233,7 @@ class Dataset:
             check_state,
             self.__tree,
         ).with_units("scalefree")
+
         mask = check.check_containment(check_dataset, check_region, self.__header.file)
         new_intersects_index = intersects_index.mask(mask)
 
@@ -227,9 +241,7 @@ class Dataset:
 
         new_state = self.__state.with_index(new_index).with_region(check_region)
 
-        new_header = copy(self.__header)
         region_model = check_region.into_model()
-        new_file_pars = new_header.file.model_copy(update={"region": region_model})
         new_header = OpenCosmoHeader(
             new_file_pars,
             self.__header.simulation,
