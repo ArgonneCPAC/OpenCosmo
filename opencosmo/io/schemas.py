@@ -299,12 +299,15 @@ class DatasetSchema:
             self.spatial_index.allocate(idx_group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
+        colnames = list(self.columns.keys())
+        linknames = list(self.links.keys())
+        colnames.sort()
+        linknames.sort()
+
         column_writers = {
-            name: col.into_writer(comm) for name, col in self.columns.items()
+            name: self.columns[name].into_writer(comm) for name in colnames
         }
-        link_writers = {
-            name: link.into_writer(comm) for name, link in self.links.items()
-        }
+        link_writers = {name: self.links[name].into_writer(comm) for name in linknames}
         spatial_index = (
             self.spatial_index.into_writer(comm)
             if self.spatial_index is not None
