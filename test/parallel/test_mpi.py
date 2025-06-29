@@ -208,17 +208,34 @@ def test_link_write(all_paths, tmp_path):
     collection = collection.take(length, at="random")
     written_data = defaultdict(list)
 
-    for i, (properties, particles) in enumerate(collection.objects()):
-        for key, ds in particles.items():
-            written_data[properties["fof_halo_tag"]].append((key, len(ds)))
+    lens = []
+    for i, structure in enumerate(collection.objects()):
+        halo_properties = structure.pop("halo_properties")
+        for key, ds in structure.items():
+            if key == "dm_particles":
+                lens.append(len(ds))
+            written_data[halo_properties["fof_halo_tag"]].append((key, len(ds)))
+            try:
+                tag = halo_properties["fof_halo_tag"]
+                tags = set(ds.select("fof_halo_tag").data)
+                parallel_assert(len(tags) == 1 and tags.pop() == tag)
+            except ValueError:
+                continue
 
     oc.write(output_path, collection)
-
     read_data = defaultdict(list)
     read_ds = oc.open(output_path)
-    for properties, particles in read_ds.objects():
-        for key, ds in particles.items():
-            read_data[properties["fof_halo_tag"]].append((key, len(ds)))
+
+    for i, structure in enumerate(read_ds.objects()):
+        halo_properties = structure.pop("halo_properties")
+        for key, ds in structure.items():
+            read_data[halo_properties["fof_halo_tag"]].append((key, len(ds)))
+            try:
+                tag = halo_properties["fof_halo_tag"]
+                tags = set(ds.select("fof_halo_tag").data)
+                parallel_assert(len(tags) == 1 and tags.pop() == tag)
+            except ValueError:
+                continue
 
     all_read = comm.gather(read_data, root=0)
     all_written = comm.gather(written_data, root=0)
