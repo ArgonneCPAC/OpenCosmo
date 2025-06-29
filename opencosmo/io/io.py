@@ -248,4 +248,5 @@ def write(path: Path, dataset: Writeable) -> None:
     schema.allocate(file)
 
     writer = schema.into_writer()
+
     writer.write(file)

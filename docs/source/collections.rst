@@ -3,6 +3,9 @@ Working with collections
 
 Multiple datasets can be grouped together into *collections.* A collection allows you to perform high-level operations across many datasets at a time, and link related datasets together. In general, collections implement the same :doc:`main_api` as the :py:class:`opencosmo.Dataset` class, with some important caveats (see below).
 
+Datasets behave a lot like dictionaries. You can get the names of the dataset with ``collection.keys()``, the datasets themselves with ``collection.values()``, or both with ``collection.items()``. A given dataset within the collection can always be accessed with ``collection[dataset_name]``.
+
+
 Types of Collections
 --------------------
 
@@ -23,20 +26,36 @@ A Structure Collection contains datasets of multiple types that are linked toget
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open("haloparticles.hdf5")
-   for halo, particles in data.objects():
-      print(halo, particles)
+   data = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   for structure in data.structure():
+      print(structures)
 
-At each iteration of the loop, "halo" will be a dictionary of the properties of a singlee halo (with units), while "particles" will be a dictionary of :py:class:`oc.Dataset`, one for each particle species. If there is only one particles specie in the collection, :code:`particles` will simply be a dataset.
+At each iteration of the loop, `structures` will contain a dictionary of properties and datasets associated with the given halo. 
 
 If you don't need all the particle species, you can always select one or multiple that you actually care about when you do the iteration:
 
 .. code-block:: python
 
-   for halo, dm_particles in data.objects(["dm_particles"]):
+   for structure in data.objects(["dm_particles", "gas_particles"]):
       # do work
 
-Where :code:`dm_particles` will now be a dataset containing the dark matter particles for the given halo. Because the dataset(s) in :code:`dm_particles` are just regular :py:class:`opencosmo.Dataset` objects, you can use all the standard transformations from the :doc:`main_api`.
+Where :code:`structure` will now be a dictionary containing three things:
+
+* ``structure["halo_properties"]`` will be a dictionary of high-level halo properties (such as total mass)
+* ``structure["dm_particles"]`` will be an :meth:`opencosmo.Dataset` with the dark matter particles associated with the halo
+* ``structure["gas_particles"]`` will be an :meth:`opencosmo.Dataset` with the gas particles associated with the halo
+
+It is also possible for structure collections to contain other structure collections. For example, in a hydro simulation a single halo may contain more than one galaxy. 
+
+.. code-block:: python
+
+   import opencosmo as oc
+   data = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
+   for structure in data.structure():
+        galaxies = structure["galaxies"]
+      
+You can now iterate through galaxies in the galaxies in the halo just as you would iterate through halos in your full dataset.
+
 
 Transformations on Structure Collections
 ----------------------------------------

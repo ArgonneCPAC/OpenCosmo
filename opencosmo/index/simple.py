@@ -85,6 +85,9 @@ class SimpleIndex:
         """
         if n > len(self):
             raise ValueError(f"Cannot take {n} elements from index of size {len(self)}")
+        elif n == 0:
+            return SimpleIndex.empty()
+
         if at == "random":
             return SimpleIndex(np.random.choice(self.__index, n, replace=False))
         elif at == "start":

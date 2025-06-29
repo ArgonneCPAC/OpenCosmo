@@ -72,6 +72,7 @@ def test_data_linking(halo_paths):
     for properties, particles in collection.objects():
         halo_tags = set()
         for name, particle_species in particles.items():
+            print(particle_species)
             if len(particle_species) == 0:
                 continue
             try:
@@ -86,6 +87,7 @@ def test_data_linking(halo_paths):
                 halo_tags.update(bin_tags)
                 n_profiles += 1
 
+        print(halo_tags)
         assert len(set(halo_tags)) == 1
         assert halo_tags.pop() == properties["fof_halo_tag"]
     assert n_particles > 0
@@ -168,6 +170,7 @@ def test_link_write(halo_paths, tmp_path):
             original_output[properties["fof_halo_tag"]].append(name)
 
     read_output = defaultdict(list)
+
     oc.write(tmp_path / "linked.hdf5", collection)
     written_data = oc.open(tmp_path / "linked.hdf5")
     n = 0
@@ -252,3 +255,47 @@ def test_multiple_properties(galaxy_paths, halo_paths):
     galaxy_path = galaxy_paths[0]
     ds = open_linked_files(galaxy_path, *halo_paths)
     assert isinstance(ds, StructureCollection)
+
+
+def test_chain_link(galaxy_paths, halo_paths):
+    ds = open_linked_files(*galaxy_paths, *halo_paths)
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(10)
+    for props, particles in ds.objects():
+        halo_tag = props["fof_halo_tag"]
+        for pds in particles.values():
+            try:
+                tags = set(pds.select("fof_halo_tag").data)
+            except (ValueError, AttributeError):
+                continue
+
+            assert len(tags) == 1
+            assert tags.pop() == halo_tag
+        for gal_properties, gal_particles in particles["galaxies"].objects():
+            gal_tag = gal_properties["gal_tag"]
+            assert gal_properties["fof_halo_tag"] == halo_tag
+            gal_tags = set(gal_particles.select("gal_tag").data)
+            assert len(gal_tags) == 1
+            assert gal_tags.pop() == gal_tag
+
+
+def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
+    ds = open_linked_files(*galaxy_paths, *halo_paths)
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(10)
+    oc.write(tmp_path / "linked.hdf5", ds)
+    ds = oc.open(tmp_path / "linked.hdf5")
+    for props, particles in ds.objects():
+        halo_tag = props["fof_halo_tag"]
+        for pds in particles.values():
+            try:
+                tags = set(pds.select("fof_halo_tag").data)
+            except (ValueError, AttributeError):
+                continue
+
+            assert len(tags) == 1
+            assert tags.pop() == halo_tag
+        for gal_properties, gal_particles in particles["galaxies"].objects():
+            gal_tag = gal_properties["gal_tag"]
+            assert gal_properties["fof_halo_tag"] == halo_tag
+            gal_tags = set(gal_particles.select("gal_tag").data)
+            assert len(gal_tags) == 1
+            assert gal_tags.pop() == gal_tag

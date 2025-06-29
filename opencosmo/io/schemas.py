@@ -154,7 +154,7 @@ class StructCollectionSchema:
     """
 
     def __init__(self, header: OpenCosmoHeader):
-        self.children: dict[str, DatasetSchema] = {}
+        self.children: dict[str, DatasetSchema | StructCollectionSchema] = {}
         self.header = header
 
     def insert(self, child: iop.DataSchema, path: str):
@@ -173,8 +173,10 @@ class StructCollectionSchema:
         found_links = False
         for child in self.children.values():
             child.verify()
-            if child.links:
-                found_links = True
+            try:
+                found_links = len(child.links) > 0 or found_links
+            except AttributeError:
+                continue
         if not found_links:
             raise ValueError("StructCollection must get at least one link!")
 
@@ -184,7 +186,7 @@ class StructCollectionSchema:
                 f"StructCollectionSchema already has child with name {name}"
             )
         match child:
-            case DatasetSchema():
+            case DatasetSchema() | StructCollectionSchema():
                 self.children[name] = child
             case IdxLinkSchema() | StartSizeLinkSchema():
                 raise ValueError(
@@ -297,12 +299,15 @@ class DatasetSchema:
             self.spatial_index.allocate(idx_group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
+        colnames = list(self.columns.keys())
+        linknames = list(self.links.keys())
+        colnames.sort()
+        linknames.sort()
+
         column_writers = {
-            name: col.into_writer(comm) for name, col in self.columns.items()
+            name: self.columns[name].into_writer(comm) for name in colnames
         }
-        link_writers = {
-            name: link.into_writer(comm) for name, link in self.links.items()
-        }
+        link_writers = {name: self.links[name].into_writer(comm) for name in linknames}
         spatial_index = (
             self.spatial_index.into_writer(comm)
             if self.spatial_index is not None
