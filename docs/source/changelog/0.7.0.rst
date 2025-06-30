@@ -33,3 +33,7 @@ Bug Fixes
 
 * Fixed a bug that caused StructureCollections to not write properly in MPI contexts
 * Fixed a bug that that could cause memory overflow when writing large colelctions.
+
+Deprecations
+============
+* opencosmo.read is now deprecated and will be removed in a later version, use :py:func:`opencosmo.open`
