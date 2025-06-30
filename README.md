@@ -46,7 +46,7 @@ To get started, download the "haloproperites.hdf5" from the [OpenCosmo Google Dr
 ```python
 import opencosmo as oc
 
-dataset = oc.read("haloproperties.hdf5")
+dataset = oc.open("haloproperties.hdf5")
 print(dataset)
 ```
 
@@ -70,7 +70,7 @@ int32       float32             float32      ...   float32      int64
     0             58.09235          6.072006 ...    1.5439711     576648
 ```
 
-The `read` function returns a `Dataset` object, which holds the raw data as well as information about the simulation. You can easily access the data and cosmology as Astropy objects:
+The `open` function returns a `Dataset` object, which holds the raw data as well as information about the simulation. You can easily access the data and cosmology as Astropy objects:
 ```python
 dataset.data
 dataset.cosmology
