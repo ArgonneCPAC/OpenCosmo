@@ -37,3 +37,4 @@ Bug Fixes
 Deprecations
 ============
 * opencosmo.read is now deprecated and will be removed in a later version, use :py:func:`opencosmo.open`
+* Native Windows support has been dropped due to the addition of healpy as a dependency. Windows use via WSL is unaffected.
