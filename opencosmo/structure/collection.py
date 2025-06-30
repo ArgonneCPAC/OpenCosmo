@@ -69,8 +69,12 @@ class StructureCollection:
 
     def __repr__(self):
         structure_type = self.__header.file.data_type.split("_")[0] + "s"
-        dtype_str = ", ".join(self.__datasets.keys())
-        return f"Collection of {structure_type} with linked datasets {dtype_str}"
+        keys = list(self.keys())
+        if len(keys) == 2:
+            dtype_str = " and ".join(keys)
+        else:
+            dtype_str = ", ".join(keys[:-1]) + ", and" + keys[-1]
+        return f"Collection of {structure_type} with {dtype_str}"
 
     def __len__(self):
         return len(self.__source)
