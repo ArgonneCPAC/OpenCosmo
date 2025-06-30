@@ -31,6 +31,7 @@ html_css_files = ["custom.css"]
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "sphinx_rtd_theme"
+html_title = "OpenCosmo Documentation"
 
 # -- Options for autodoc -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
