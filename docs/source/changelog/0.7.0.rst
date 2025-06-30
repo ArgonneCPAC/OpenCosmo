@@ -1,0 +1,35 @@
+0.7.0
+-----
+
+Features
+========
+
+* Spatial queries are now available using the :py:meth:`bound <opencosmo.Dataset.bound>` function. Note: datasets retrieved from the CosmoExplorer online query tool prior to the release of 0.7.0 will not contain the necessary information for spatial queries.
+
+* You can now create YT datasets out of StructureCollections using for visualization purposes using :py:meth:`opencosmo.analysis.create_yt_dataset`
+
+* Columns can now be added to a dataset by combining columns that already exist in the dataset. These new columns transform under changes of unit convention and can be filtered on. See :ref:`Creating New Columns`
+
+* Structure collections can now contain other structure collections. For example when iterating through halos, you might recieve a StructureCollection of galaxies that are hosted by the given halo.
+
+* The names of the columns in a dataset can now be directly accessed with :py:attr:`opencosmo.Dataset.columns`
+
+
+
+API Changes
+===========
+
+* :py:meth:`opencosmo.StructureCollection.objects` now simply returns a single dictionary, rather than a tuple (note, this is a breaking change). See :ref:`Structure Collections`
+* You can now use :py:meth:`opencosmo.StructureCollection.halos` or :py:meth:`opencosmo.StructureCollection.galaxies` in place of `opencosmo.StructureCollection.objects` based on depending on the type of structures in the collection.
+
+
+Improvements
+============
+* Output handling has been rewritten from the ground up, and is now much more well-behaved particularly in MPI contexts.
+* MPICH-enabled containers with OpenCosmo and parallel HDF5 installed are now available on DockerHub at astropatty/opencosmo
+
+Bug Fixes
+=========
+
+* Fixed a bug that caused StructureCollections to not write properly in MPI contexts
+* Fixed a bug that that could cause memory overflow when writing large colelctions.

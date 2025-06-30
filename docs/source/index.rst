@@ -47,4 +47,12 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    spatial_ref
    analysis_ref
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Changelog
+   :glob:
+
+   changelog/*.*.*
+
+
 

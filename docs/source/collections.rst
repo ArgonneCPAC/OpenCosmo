@@ -1,4 +1,4 @@
-Working with collections
+Working with Collections
 ========================
 
 Multiple datasets can be grouped together into *collections.* A collection allows you to perform high-level operations across many datasets at a time, and link related datasets together. In general, collections implement the same :doc:`main_api` as the :py:class:`opencosmo.Dataset` class, with some important caveats (see below).
