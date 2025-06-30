@@ -354,9 +354,10 @@ def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
     dataset = oc.open(tmp_path)
     dataset = dataset.filter(oc.col("gal_mass") > 10**12).take(10, at="random")
     for ds in dataset.values():
-        for props, particles in ds.objects():
+        for galaxy in ds.galaxies():
+            props = galaxy.pop("galaxy_properties")
             gal_tag = props["gal_tag"]
-            gal_tags = set(particles.data["gal_tag"])
+            gal_tags = set(galaxy["star_particles"].select("gal_tag").data)
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
 
