@@ -5,18 +5,24 @@ OpenCosmo defines a data format for storing simulation data in hdf5 files. A dat
 Options for Reading Data
 ------------------------
 
-OpenCosmo provides two functions for reading data from a file. :py:func:`opencosmo.read` and :py:func:`opencosmo.open`. Both return :py:class:`opencosmo.Dataset` objects. The only difference is that :py:func:`opencosmo.read` immediately loads all data into memory, while :py:func:`opencosmo.open` keeps an open file handle and only loads the data from the file when it is actually neeeded.
+Any single opencosmo file can be open with :py:meth:`opencosmo.open`. This function will parse the structure of the file and return the appropriate object, such as an :py:class`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection`
+
+.. code-block:: python
+
+   import opencosmo as oc
+
+   ds = oc.open("haloproperties.hdf5")
 
 You can also use open as a context manager to automatically close the file when you're done with it:
 
 .. code-block:: python
 
    import opencosmo as oc
-
    with oc.open("galaxyproperties.hdf5") as ds:
        print(ds.data)
 
-Some collections can only be opened with :py:func:`opencosmo.open`, so we recommend it for general usage.
+
+When opening multiple files that are linked to each other, use :py:meth:`opencosmo.open_linked_files`
 
 Writing Data
 ------------
@@ -27,6 +33,6 @@ Writing data to a new file is straightforward:
 
    oc.write("my_output.hdf5", ds)
 
-Transformations applied to the data will propogate to the file when written, with the exception of :py:meth:`oc.Dataset.with_units`. Data is always stored in the scale-free unit convention, and can be readily transformed to a new convention once it is read.
+Transformations applied to the data will propogate to the file when written, with the exception of :py:meth:`oc.Dataset.with_units`. When you write data, it will always be stored in the unit convention of the original raw data.
 
 

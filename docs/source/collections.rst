@@ -21,16 +21,27 @@ SimulationCollections implement an identical API to the :py:class:`opencosmo.Dat
 Structure Collections
 ---------------------
 
-A Structure Collection contains datasets of multiple types that are linked together by they structure (halo or galaxy) they are associated with in the simulation. Structure collections always contain at least one *properties* dataset, and one or more particle or profile dataset. For example, a structure collection could contain halo properties and the associated dark matter particles. A structure collection makes it easy to iterate over these objects to perform operations:
+A Structure Collection contains datasets of multiple types that are linked together by they structure (halo or galaxy) they are associated with in the simulation. Structure collections always contain at least one *properties* dataset, and one or more particle or profile dataset. 
+
+You can always access the individual datasets in the collection just as you would values in a dictionary: 
+
+.. code-block:: python
+
+   import opencosmo as oc
+   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   dm_particles = data["dm_particles"]
+
+
+However the real power of working with a :py:class:`StructureCollection` is the automatic grouping of these datasets by structure. You can iterate through the structures in the dataset easily:
 
 .. code-block:: python
 
    import opencosmo as oc
    data = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
-   for structure in data.structure():
-      print(structures)
+   for halo in data.halos():
+      print(halo)
 
-At each iteration of the loop, `structures` will contain a dictionary of properties and datasets associated with the given halo. 
+At each iteration of the loop, `structure` will contain a dictionary of the properties and datasets associated with the given halo. 
 
 If you don't need all the particle species, you can always select one or multiple that you actually care about when you do the iteration:
 
@@ -41,20 +52,25 @@ If you don't need all the particle species, you can always select one or multipl
 
 Where :code:`structure` will now be a dictionary containing three things:
 
-* ``structure["halo_properties"]`` will be a dictionary of high-level halo properties (such as total mass)
-* ``structure["dm_particles"]`` will be an :meth:`opencosmo.Dataset` with the dark matter particles associated with the halo
-* ``structure["gas_particles"]`` will be an :meth:`opencosmo.Dataset` with the gas particles associated with the halo
+* ``structure["halo_properties"]`` will be a dictionary of the halo properties for the given halo.
+* ``structure["dm_particles"]`` will be an :class:`opencosmo.Dataset` with the dark matter particles associated with the halo
+* ``structure["gas_particles"]`` will be an :class:`opencosmo.Dataset` with the gas particles associated with the halo
 
 It is also possible for structure collections to contain other structure collections. For example, in a hydro simulation a single halo may contain more than one galaxy. 
 
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
-   for structure in data.structure():
-        galaxies = structure["galaxies"]
+   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
+   for structure in ds.halos():
+        gals_ds = structure["galaxies"]
+        for galaxy in gals_ds.galaxies():
+                # do work with galaxies.
+                
       
 You can now iterate through galaxies in the galaxies in the halo just as you would iterate through halos in your full dataset.
+
+Because the structure collection returns regular :class:`opencosmo.Dataset` objects, you can query or transform them further as needed.
 
 
 Transformations on Structure Collections
@@ -62,9 +78,9 @@ Transformations on Structure Collections
 
 Structure Collections implement the :doc:`main_api`, but with some important differences to behavior.
 
-**Filters Apply to the Property Dataset**
+**Filters Apply to the Halo/Galaxy Properties**
 
-Structure Collections always contain a property dataset that contains the high-level information about the structures in the dataset. Filters by default will always be applied on this dataset. For most collections this will be a halo properties dataset.
+Structure Collections always contain a property dataset that contains the high-level information about the structures in the dataset. Filters by default will always be applied on this dataset. 
 
 For example, calling "filter" on the structure collection will always operate on columns in the propeties dataset. For example, suppose you have a large collection of halos and their associated particles and you want to work only on halos greater than 10^13 m_sun:
 
@@ -73,10 +89,10 @@ For example, calling "filter" on the structure collection will always operate on
    import opencosmo as oc
    data = oc.open("my_collection.hdf5")
    data = data.filter(oc.col("fof_halo_mass") > 1e13)
-   for halo, particles in data.objects():
+   for halo in data.objects():
       # do work
 
-Filtering on non-property datasets is not supported. If your collection contains both a halo properties dataset and a galaxy properties dataset, you can filter based on the galaxy properties by passing an additional argument like so:
+If your collection contains both a halo properties dataset and a galaxy properties dataset, you can filter based on the galaxy properties by passing an additional argument like so:
 
 .. code-block:: python
 
@@ -93,8 +109,8 @@ You can always select subests of the columns in any of the individual datasets w
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open("my_collection.hdf5")
-   data = data.select(["x", "y", "z"]), dataset="dm_particles")
+   ds = oc.open("my_collection.hdf5")
+   ds = data.select(["x", "y", "z"]), dataset="dm_particles")
 
 If the "dataset" argument is not provided, the selection will be performed on the property dataset.
 
@@ -111,7 +127,7 @@ Transforming to a different unit convention is identical to :py:meth:`opencosmo.
 
 **Take Operations Take Structure**
 
-Calling :py:meth:`opencosmo.StructureCollection.take` will create a new :py:class:`StructureDataset` with the number of structures specifiedin the take operation. This means the following operation will behave as you might expect:
+Calling :py:meth:`opencosmo.StructureCollection.take` will create a new :py:class:`StructureDataset` with the number of structures specified in the take operation. This means the following operation will behave as you might expect:
 
 .. code-block:: python
    
@@ -121,11 +137,5 @@ Calling :py:meth:`opencosmo.StructureCollection.take` will create a new :py:clas
 
    for halo, particles in ds.objects():
       # this loop iterate over 10 halos
-
-
-
-
-
-
 
 

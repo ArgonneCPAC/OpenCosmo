@@ -101,12 +101,11 @@ class StructureCollection:
     @property
     def redshift(self) -> float | tuple[float, float]:
         """
-        For snapshots, return the redshift of the slice
-        this dataset was drawn from. For lightcones, return the redshift
-        range.
+        For snapshots, return the redshift or redshift range
+        this dataset was drawn from.
 
-        Returns:
-        --------
+        Returns
+        -------
         redshift: float | tuple[float, float]
 
         """
@@ -126,19 +125,19 @@ class StructureCollection:
 
     def keys(self) -> list[str]:
         """
-        Return the keys of the datasets in this collection.
+        Return the names of the datasets in this collection.
         """
         return [self.__source.dtype] + list(self.__datasets.keys())
 
     def values(self) -> list[oc.Dataset | StructureCollection]:
         """
-        Return the linked datasets.
+        Return the datasets in this collection.
         """
         return [self[name] for name in self.keys()]
 
     def items(self) -> Generator[tuple[str, oc.Dataset | StructureCollection]]:
         """
-        Return the linked datasets as key-value pairs.
+        Return the names and datasets as key-value pairs.
         """
 
         for k, v in zip(self.keys(), self.values()):
@@ -166,13 +165,17 @@ class StructureCollection:
             except AttributeError:
                 continue
 
+    @property
+    def region(self):
+        return self.__source.region
+
     def bound(
         self, region: Region, select_by: Optional[str] = None
     ) -> StructureCollection:
         """
         Restrict this collection to only contain structures in the specified region.
-        Querying will be done based on the halo centers, meaning some particles may
-        fall outside the given region.
+        Querying will be done based on the halo  or galaxy centers, meaning some
+        particles may fall outside the given region.
 
         See :doc:`spatial_ref` for details of how to construct regions.
 
@@ -201,15 +204,17 @@ class StructureCollection:
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
         """
-        Apply a filter to the properties dataset and propagate it to the linked
-        datasets. Filters are constructed with :py:func:`opencosmo.col` and behave
-        exactly as they would in `opencosmo.Dataset.filter`.
+        Apply a filter to the halo or galaxy properties. Filters are constructed with
+        :py:func:`opencosmo.col` and behave exactly as they would in
+        :py:meth:`opencosmo.Dataset.filter`.
 
         If the collection contains both halos and galaxies, the filter can be applied to
         the galaxy properties dataset by setting `on_galaxies=True`. However this will
         filter for *halos* that host galaxies that match this filter. As a result,
         galxies that do not match this filter will remain if another galaxy in their
         host halo does match.
+
+        See :ref:`Querying in Collections` for some examples.
 
 
         Parameters
@@ -367,7 +372,7 @@ class StructureCollection:
             pe = oc.col("phi") * oc.col("mass")
             collection = collection.with_new_columns("galaxies.star_particles", pe=pe)
 
-
+        See :ref:`Creating New Columns in Collections` for examples.
 
         Parameters
         ----------

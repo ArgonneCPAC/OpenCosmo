@@ -155,6 +155,10 @@ def read(
     file: h5py.File, datasets: Optional[str | Iterable[str]] = None
 ) -> oc.Dataset | collection.Collection:
     """
+    **WARNING: THIS METHOD IS DEPRECATED AND WILL BE REMOVED IN A FUTURE
+    VERSION. USE** :py:meth:`opencosmo.open`
+
+
     Read a dataset from a file into memory.
 
     You should use this function if the data are small enough that having

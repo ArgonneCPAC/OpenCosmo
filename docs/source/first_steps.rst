@@ -79,7 +79,7 @@ We could then plot the data, or perform further transformations.
 Data Collections
 ----------------
 
-This is cool on its own, but the real power of :code:`opencosmo` comes from its ability to work with different data types. Go ahead and download the "haloparticles" file from the [OpenCosmo Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing) and try the following:
+This is cool on its own, but the real power of :code:`opencosmo` comes from its ability to work with different data types. Go ahead and download the "haloparticles" file from the `OpenCosmo Google Drive <https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing>`_ and try the following:
 
 .. code-block:: python
 
@@ -90,12 +90,15 @@ This will return a data *collection* that will allow you to query and transform 
 
 .. code-block:: python
 
-   data = data
+   structures = data
        .filter(oc.col("fof_halo_mass") > 1e13)
        .take(1000, at="random")
 
-   for halo_properties, halo_particles in data.objects(["dm_particles", "star_particles"]):
-       # do work
+   for halo in structures.halos(["dm_particles", "star_particles"]):
+       halo_mass = halo["halo_properties"]["fof_halo_mass"]
+       dm_particles = halo["dm_particles"]
+       star_particles = halo["star_particles"]
+       # do_work
 
-In each iteration, "halo properties" will be a dictionary containing the properties of the halo, while "halo_particles" will be a dictionary of datasets, one for the dark matter particles and one for the star particles. Because these are just like the dataset object we saw eariler, we can further query and transform the particles as needed for our analysis.
+In each iteration, the "halo" object will be a dictionary containing a "halo_properties" dictionary as well as two :py:class:`opencosmo.Dataset` objects, one containing the dark matter particles associated with the halos and the other containing the star particles. Because these are standard datasets, you can perform further transformaions on them as is useful for your analysis.
 

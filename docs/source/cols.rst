@@ -43,7 +43,7 @@ As well as multiple queries across multiple columns.
    lower_bound = oc.col("fof_halo_mass") > 1e13
    upper_bound = oc.col("fof_halo_mass") < 5e13
    c_bound = oc.col("sod_halo_cdelta") > 3
-   ds_bounded = ds.filter(lower_bound, upper_bound)
+   ds_bounded = ds.filter(lower_bound, upper_bound, c_bound)
 
 The value in the query is always evaluated in the unit conventions of the dataset. For example, the following two queries will find different rows, even if the `ds_scalefree` dataset is transformed back to comoving units after the fact:
 
@@ -59,11 +59,28 @@ The value in the query is always evaluated in the unit conventions of the datase
 
 For more information, see :ref:`Unit Conventions`.
 
+Querying In Collections
+-----------------------
+
+Queries can generally be performed as usual on collections. In a :py:class:`opencosmo.StructureCollection`, the query will be performed on the properties of the structures within the structure collection. For example:
+
+.. code-block:: python
+
+   import opencosmo as oc
+   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
+
+The resultant :py:class:`opencosmo.StructureCollection` will contain only halos with a mass greater than 10^14, along with all their associated particles.
+
+In a :py:class:`opencosmo.SimulationCollection`, the filter will be applied to all datasets inside the collection. 
+
+For more details, see :doc:`collections`.
+
 
 Creating New Columns
 --------------------
 
-You can also use :py:meth:`oc.col` to combine columns to create new columns. Because these new columns are created from pre-existing colums, they will behave as expected under transformations such as a change in unit convention.
+You can also use :py:meth:`opencosmo.col` to combine columns to create new columns. Because these new columns are created from pre-existing colums, they will behave as expected under transformations such as a change in unit convention.
 
 .. code-block:: python
 
@@ -73,7 +90,17 @@ You can also use :py:meth:`oc.col` to combine columns to create new columns. Bec
    ds = ds.with_new_columns(fof_halo_ke = fof_halo_ke)
    ds = ds.with_units("physical")
 
-:py:meth:`opencosomo.dataset.with_new_columns` checks to ensure that the columns you are using already exist in the dataset. But it does not check that the mathematical operation you are attempting to perform is valid until the data is actually requested. For example:
+You can also always add multiple derived columns in a single call:
+
+.. code-block:: python
+
+   fof_halo_speed_sqrd = oc.col("fof_halo_com_vx") ** 2 + oc.col("fof_halo_com_vy") ** 2 + oc.col("fof_halo_com_vz") ** 2
+   fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
+   fof_halo_p = oc.col("fof_halo_mass") * fof_halo_speed_sqrd ** 0.5
+   
+   ds = ds.with_new_columns(fof_halo_ke = fof_halo_ke, fof_halo_p = fof_halo_p)
+
+:py:meth:`opencosmo.Dataset.with_new_columns` checks to ensure that the columns you are using already exist in the dataset. But it does not check that the mathematical operation you are attempting to perform is valid until the data is actually requested. For example:
 
 .. code-block:: python
 
@@ -90,11 +117,28 @@ The code above will run without errors. But as soon as the actual data is reques
 
    data = ds.data
 
-
 you will get an error. 
 
 .. code-block:: text
 
         ValueError: To add and subtract columns, units must be the same!
 
-This behavior will be updated in a future version of the library to throw the error at the `with_new_columns` call.
+This behavior will be updated in a future version of the library to throw the error at the :code:`with_new_columns` call.
+
+Creating New Columns in Collections
+-----------------------------------
+
+Calls to :py:meth:`opencosmo.StructureCollection.with_new_columns` must explicitly say which dataset the column is being added to:
+
+
+.. code-block:: python
+
+   import opencosmo as oc
+   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   fof_halo_speed_sqrd = oc.col("fof_halo_com_vx") + oc.col("fof_halo_com_vy") ** 2 + oc.col("fof_halo_com_vz") ** 2
+   fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
+   fof_halo_p = oc.col("fof_halo_mass") * fof_halo_speed_sqrd ** 0.5
+
+   ds = ds.with_new_columns(dataset="halo_properties", fof_halo_ke = fof_halo_ke, fof_halo_p = fof_halo_pe)
+
+Calls to :py:meth:`opencosmo.SimulationCollection.with_new_columns` will always apply the new columns to all the datasets in the collection.
