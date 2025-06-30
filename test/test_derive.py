@@ -206,5 +206,6 @@ def test_derive_structure_collection(properties_path, particles_path):
     ds = ds.with_new_columns("dm_particles", gpe=oc.col("mass") * oc.col("phi"))
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
     ds = ds.take(1, at="random")
-    for properties, particles in ds.objects(["dm_particles"]):
+    for halo in ds.objects(["dm_particles"]):
+        particles = halo["dm_particles"]
         assert "gpe" in particles.columns
