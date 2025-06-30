@@ -127,11 +127,13 @@ data = data
     .filter(oc.col("fof_halo_mass") > 1e13)
     .take(1000, at="random")
 
-for halo_properties, halo_particles in data.objects(["dm_particles", "star_particles"]):
-    # do work
+for halo in data.halos():
+    halo_properties = halo["halo_properties"]
+    dm_particles = halo["dm_particles"]
+    star_particles = halo["star_particles"]
 ```
 
-In each iteration, "halo properties" will be a dictionary containing the properties of the halo, while "halo_particles" will be a dictionary of datasets, one for the dark matter particles and one for the star particles. Because these are just like the dataset object we saw eariler, we can further query and transform the particles as needed for our analysis. For more details on how to use the library, check out the [full documentation](https://opencosmo.readthedocs.io/en/latest/).
+In each iteration, "halo properties" will be a dictionary containing the properties of the halo (such as its total mass), while "dm_particles" and "star_particles" will be OpenCosmo datasets containing the dark matter and stars associated with the halo, respectively. Because these are just like the dataset object we saw eariler, we can further query and transform the particles as needed for our analysis. For more details on how to use the library, check out the [full documentation](https://opencosmo.readthedocs.io/en/latest/).
 
 ### Testing
 
