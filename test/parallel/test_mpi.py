@@ -264,16 +264,18 @@ def test_chain_link(all_paths, galaxy_paths, tmp_path):
     collection = collection.take(length, at="random")
     written_data = defaultdict(list)
 
-    for i, (properties, particles) in enumerate(collection.objects()):
-        for key, ds in particles.items():
+    for i, halos in enumerate(collection.objects()):
+        properties = halos.pop("halo_properties")
+        for key, ds in halos.items():
             written_data[properties["fof_halo_tag"]].append((key, len(ds)))
 
     oc.write(output_path, collection)
 
     read_data = defaultdict(list)
     read_ds = oc.open(output_path)
-    for properties, particles in read_ds.objects():
-        for key, ds in particles.items():
+    for halo in read_ds.objects():
+        properties = halo.pop("halo_properties")
+        for key, ds in halo.items():
             read_data[properties["fof_halo_tag"]].append((key, len(ds)))
 
     all_read = comm.gather(read_data, root=0)
