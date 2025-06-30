@@ -5,8 +5,11 @@ import yt  # type: ignore
 from pyxsim import CIESourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
+from yt.visualization.plot_container import (  # type: ignore
+    ImagePlotContainer,
+    PlotContainer,
+)
 from yt.visualization.plot_window import NormalPlot  # type: ignore
-from yt.visualization.plot_container import PlotContainer, ImagePlotContainer # type: ignore
 
 import opencosmo as oc
 
@@ -62,8 +65,7 @@ def create_yt_dataset(
     """
 
     data_dict: Dict[
-        Union[Tuple[str, str], str],
-        Union[np.ndarray, Tuple[np.ndarray, str]]
+        Union[Tuple[str, str], str], Union[np.ndarray, Tuple[np.ndarray, str]]
     ] = {}
 
     minx, maxx = np.inf, -np.inf
@@ -96,14 +98,18 @@ def create_yt_dataset(
             continue
 
         particle_data = data[ptype].data
+        redshift = data[ptype].redshift
+        cosmo = data[ptype].cosmology
         ptype_short = ptype.split("_")[0]
 
         for field in particle_data.keys():
             yt_field_name = special_fields.get(field, field)
             yt_particle_data = astropy_to_yt(particle_data[field])
 
-            data_dict[(ptype_short, yt_field_name)] = \
-                (np.asarray(yt_particle_data.d), str(yt_particle_data.units))
+            data_dict[(ptype_short, yt_field_name)] = (
+                np.asarray(yt_particle_data.d),
+                str(yt_particle_data.units),
+            )
 
         minx, maxx = (
             min(minx, min(particle_data["x"])),
@@ -137,10 +143,9 @@ def create_yt_dataset(
     ds.sph_smoothing_style = "gather"  # seems to give more reliable results
 
     # set cosmology parameters
-    cosmo = data[ptype].cosmology
 
     ds.cosmological_simulation = 1
-    ds.current_redshift = data[ptype].redshift
+    ds.current_redshift = redshift
     ds.hubble_constant = 0.01 * cosmo.H0.value
     ds.omega_matter = cosmo.Om0
     ds.omega_lambda = cosmo.Ode0

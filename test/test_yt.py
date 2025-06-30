@@ -24,8 +24,8 @@ def data(snapshot_path):
 def test_create_dataset(data):
     """Check that a yt dataset is created without X-ray fields."""
 
-    for _, particle_data in data.objects():
-        ds = create_yt_dataset(particle_data)
+    for halo in data.halos():
+        ds = create_yt_dataset(halo)
 
         assert ds is not None
         assert hasattr(ds, "all_data")
@@ -34,9 +34,9 @@ def test_create_dataset(data):
 def test_create_dataset_with_xray_fields(data):
     """Check that X-ray fields are added and source model is returned."""
 
-    for _, particle_data in data.objects():
+    for halo in data.halos():
         ds, source_model = create_yt_dataset(
-            particle_data, compute_xray_fields=True, return_source_model=True
+            halo, compute_xray_fields=True, return_source_model=True
         )
 
         assert ds is not None
@@ -47,9 +47,9 @@ def test_create_dataset_with_xray_fields(data):
 def test_xray_fields_present(data):
     """Verify that key X-ray fields are registered in yt."""
 
-    for _, particle_data in data.objects():
+    for halo in data.halos():
         ds = create_yt_dataset(
-            particle_data,
+            halo,
             compute_xray_fields=True,
             source_model_kwargs={
                 "emin": 0.5,

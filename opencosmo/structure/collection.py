@@ -475,7 +475,7 @@ class StructureCollection:
         if self.__source.dtype == "halo_properties":
             yield from self.objects(*args, **kwargs)
         else:
-            return object.__getattribute__(self, "halos")(*args, **kwargs)
+            raise AttributeError("This collection does not contain halos!")
 
     def galaxies(self, *args, **kwargs):
         """
@@ -484,7 +484,7 @@ class StructureCollection:
         if self.__source.dtype == "galaxy_properties":
             yield from self.objects(*args, **kwargs)
         else:
-            return object.__getattribute__(self, "galaxies")(*args, **kwargs)
+            raise AttributeError("This collection does not contain galaxies!")
 
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema(self.__header)
