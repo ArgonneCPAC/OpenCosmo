@@ -18,9 +18,8 @@ Here is an example for how to use `create_yt_dataset` to load a selection of dat
 
     # select a random halo
     with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
-        halo_particles = data["halo_particles"]
         # get yt data container
-        yt_ds = create_yt_dataset(halo_particles)
+        yt_ds = create_yt_dataset(data.objects())
 
         # list all fields
         print(yt_ds.derived_field_list)
@@ -83,14 +82,13 @@ We will now edit the code-block from before to compute X-ray luminosities:
 
     # select a random halo
     with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
-        halo_particles = halo_particles["data"]
         # get yt data container
-        ds, source_model = create_yt_dataset(halo_particles, 
+        ds_yt, source_model = create_yt_dataset(data.objects(), 
             compute_xray_fields = True, return_source_model = True)
 
         # list all fields
-        print(ds.derived_field_list)
+        print(ds_yt.derived_field_list)
 
         # project X-ray luminosity in the specified band
-        ParticleProjectionPlot(ds, 'z', ('gas', 'xray_luminosity_0.1_10.0_keV')).save()
+        ParticleProjectionPlot(ds_yt, 'z', ('gas', 'xray_luminosity_0.1_10.0_keV')).save()
 
