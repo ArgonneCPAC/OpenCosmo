@@ -180,9 +180,10 @@ def test_link_read(all_paths):
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
     collection = collection.take(8, "random")
-    for i, (properties, particles) in enumerate(collection.objects()):
-        halo_tag = properties["fof_halo_tag"]
-        for species, ds in particles.items():
+    for i, halo in enumerate(collection.objects()):
+        halo_properties = halo.pop("halo_properties")
+        halo_tag = halo_properties["fof_halo_tag"]
+        for species, ds in halo.items():
             data = ds.data
             if len(data) == 0:
                 continue
