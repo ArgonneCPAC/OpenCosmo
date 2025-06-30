@@ -468,6 +468,24 @@ class StructureCollection:
             output.update({self.__source.dtype: row})
             yield output
 
+    def halos(self, *args, **kwargs):
+        """
+        Alias for "objects" in the case that this StructureCollection contains halos.
+        """
+        if self.__source.dtype == "halo_properties":
+            yield from self.objects(*args, **kwargs)
+        else:
+            return object.__getattribute__(self, "halos")(*args, **kwargs)
+
+    def galaxies(self, *args, **kwargs):
+        """
+        Alias for "objects" in the case that this StructureCollection contains galaxies
+        """
+        if self.__source.dtype == "galaxy_properties":
+            yield from self.objects(*args, **kwargs)
+        else:
+            return object.__getattribute__(self, "galaxies")(*args, **kwargs)
+
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema(self.__header)
         source_name = self.__source.dtype
