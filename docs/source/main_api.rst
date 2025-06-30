@@ -93,6 +93,25 @@ The :code:`with_units` transformation is used to change the unit convention of t
 
 When you initially load a dataset, it always uses the "comoving" unit convention. You can change this at any time on any dataset or collection by simply calling :code:`with_units` with the desired unit convention. For more information, see :ref:`Working with Units`
 
+Adding Columns
+--------------
+
+You can add new columns to a given that are derived from pre-existing columns using the :meth:`oc.col` to construct new columns and passing them to :code:`with_new_columns`. The new columns will inherit the cosmological dependence of the columns they are created from, and can be used throughout the transformations API as usual. 
+
+.. code-block:: python
+
+   ds = oc.load("haloproperties.hdf5")
+
+   fof_halo_vtotal = (oc.col("fof_halo_com_vx")**2 + oc.col("fof_halo_com_vy")**2 + ("fof_halo_com_vz")**2)**(0.5)
+   fof_halo_com_p = oc.col("fof_halo_mass") * fof_halo_vtotal
+
+   ds = ds.with_new_columns(fof_halo_com_p = fof_halo_com_p)
+
+
+The dataset will now contain a "fof_halo_com_p" column that can be used for filtering and selections as usual. Because the column definition was created outside the dataset itself, it can be used across multiple datasets as needed.
+
+Columns can be added to collections as well, but the specific dataset the column will be applied to must generally be specificed explicitly. See :doc:`collections` for more information.
+
 Filtering
 ---------
 
@@ -107,8 +126,6 @@ Filters operate on columns of a given dataset and return a new dataset that only
 - Membership: :code:`col("column_name").isin([value1, value2, ...])`
 
 When passed to a dataset with the :meth:`opencosmo.Dataset.filter` transformation, numerical filters are always applied in the unit convention that is currently active. For a newly constructed dataset, this is always the "comoving" unit convention. See above for an example of applying a filter between unit conventions.
-
-
 
 
 The behavior of filters on collections depends on the collection type. See the :doc:`collections` page for more information.

@@ -106,7 +106,7 @@ class Dataset:
     @property
     def redshift(self) -> float | tuple[float, float]:
         """
-        The redshift slice this dataset was drawn from
+        The redshift slice or range this dataset was drawn from
 
         Returns
         -------
@@ -252,7 +252,8 @@ class Dataset:
 
     def filter(self, *masks: Mask) -> Dataset:
         """
-        Filter the dataset based on some criteria.
+        Filter the dataset based on some criteria. See :ref:`Querying Based on Column
+        Values` for more information.
 
         Parameters
         ----------
@@ -410,10 +411,11 @@ class Dataset:
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, or a numpy array. When a column is derived
-        from other columns, it will behave appropriately under unit transformations.
+        from other columns, it will behave appropriately under unit transformations. See
+        :ref:`Creating New Columns` for examples.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         ** columns : opencosmo.DerivedColumn
 
         Returns

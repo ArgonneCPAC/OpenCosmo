@@ -118,13 +118,13 @@ class SimulationCollection(dict):
         return self.__map_attribute("cosmology")
 
     @property
-    def redshift(self) -> dict[str, float]:
+    def redshift(self) -> dict[str, float | tuple[float, float]]:
         """
-        Get the redshift slices for the simulations in the collection
+        Get the redshift slices or ranges for the simulations in the collection
 
         Returns
         --------
-        redshifts: dict[str, float]
+        redshifts: dict[str, float | tuple[float,float]]
         """
         return self.__map_attribute("redshift")
 

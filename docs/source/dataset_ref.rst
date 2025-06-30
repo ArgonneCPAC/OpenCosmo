@@ -6,7 +6,7 @@ Dataset
 .. autoclass:: opencosmo.Dataset
    :members:
    :undoc-members:
-   :exclude-members: close,index,make_schema
+   :exclude-members: close,index,make_schema,with_index
    :member-order: bysource
 
 
