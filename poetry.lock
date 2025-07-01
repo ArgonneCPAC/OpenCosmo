@@ -2523,4 +2523,4 @@ test-mpi = ["mpi-pytest"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11.2,<4.0"
-content-hash = "d3288d4c577b00151ee32c85003fabfa54cc35e07695630e0a167fe670ddc0a7"
+content-hash = "a836ae583b848dacee29324b8e2b15dd2e25a2ad6c390fa96f360f30baf85b35"
