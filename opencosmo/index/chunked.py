@@ -313,12 +313,12 @@ class ChunkedIndex:
         for arr in np.array_split(start, n_chunks):
             in_range_starts = np.clip(
                 self.__starts[:, np.newaxis],
-                a_min=start[rs : rs + len(arr)],
+                a_min=arr,
                 a_max=ends[rs : rs + len(arr)],
             )
             in_range_ends = np.clip(
                 self_ends[:, np.newaxis],
-                a_min=start[rs : rs + len(arr)],
+                a_min=arr,
                 a_max=ends[rs : rs + len(arr)],
             )
             output[rs : rs + len(arr)] = np.sum(in_range_ends - in_range_starts, axis=0)
