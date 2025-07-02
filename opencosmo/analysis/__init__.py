@@ -2,7 +2,7 @@ from .yt_utils import create_yt_dataset
 from .yt_viz import (
     ProjectionPlot, SlicePlot, ParticleProjectionPlot, 
     ProfilePlot, PhasePlot, 
-    visualize_halo, multipanel_halo_projections,
+    visualize_halo, halo_projection_array,
 )
 
 __all__ = [
@@ -13,5 +13,5 @@ __all__ = [
     "ProfilePlot",
     "PhasePlot",
     "visualize_halo",
-    "multipanel_halo_projections",
+    "halo_projection_array",
 ]

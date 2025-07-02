@@ -66,7 +66,7 @@ def test_xray_fields_present(data):
             assert field in ds.derived_field_list
 
 
-def test_multipanel_visualization(data):
+def test_visualize_halo(data):
     """Check that yt visualization tool works"""
 
     for halo in data.halos():
