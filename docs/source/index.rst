@@ -58,7 +58,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    :caption: Changelog
    :glob:
 
-   changelog/*.*.*
+   changelog/*.*
 
 
 

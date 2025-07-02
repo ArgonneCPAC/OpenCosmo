@@ -1,3 +1,28 @@
+0.7
+###
+
+0.7.2
+-----
+
+Bug Fixes
+=========
+
+* Fix a bug that could lead to memory overflow on large spatial queries
+
+Docs
+====
+
+* Add documentation for installing from conda-forge
+
+
+0.7.1
+-----
+
+Bug Fixes
+=========
+
+* Re-add PR that was acidentally overwritten
+
 0.7.0
 -----
 
@@ -38,3 +63,5 @@ Deprecations
 ============
 * opencosmo.read is now deprecated and will be removed in a later version, use :py:func:`opencosmo.open`
 * Native Windows support has been dropped due to the addition of healpy as a dependency. Windows use via WSL is unaffected.
+
+
