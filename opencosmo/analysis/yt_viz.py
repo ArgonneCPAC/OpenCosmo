@@ -182,12 +182,12 @@ def visualize_halo(halo_id, data, length_scale="top left", width=4.0):
         ),
     }
 
-    return multipanel_halo_projections(halo_ids, data, params=params, 
+    return halo_projection_array(halo_ids, data, params=params, 
         length_scale=length_scale, width=width)
 
 
 
-def multipanel_halo_projections(halo_ids, data, field=("dm", "particle_mass"), 
+def halo_projection_array(halo_ids, data, field=("dm", "particle_mass"), 
                     weight_field=None, cmap="gray", zlim=None, params=None, 
                     length_scale=None, smooth_gas_fields=False, width=6.0):
     """
