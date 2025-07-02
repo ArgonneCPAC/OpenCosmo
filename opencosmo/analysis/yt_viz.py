@@ -17,6 +17,8 @@ from yt.visualization.plot_window import PlotWindow, NormalPlot  # type: ignore
 import opencosmo as oc
 from opencosmo.analysis import create_yt_dataset 
 
+from typing import Any, Dict, Optional, Tuple, Union
+
 
 
 def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
@@ -130,31 +132,44 @@ def PhasePlot(*args, **kwargs) -> PlotWindow:
 
 
 
-def visualize_halo(halo_id, data, length_scale="top left", width=4.0):
+def visualize_halo(
+    halo_id: int,
+    data: oc.StructureCollection,
+    length_scale: Optional[str] = "top left",
+    width: float = 4.0
+) -> Figure:
     """
     Creates a 2x2 figure showing particle projections of dark matter, stars, gas, and gas temperature
     for given halo. To customize the arrangement of panels, fields, colormaps, etc., see 
     :func:`visualize_halos_custom`. Each panel is an 800x800 pixel array.
  
-
     Parameters
     ----------
     halo_id : int
         Identifier of the halo to be visualized.
-    data : opencosmo.Dataset
-        OpenCosmo dataset containing both halo properties and particle data
+    data : opencosmo.StructureCollection
+        OpenCosmo StructureCollection object containing both halo properties and particle data
         ( e.g. output of opencosmo.open_linked_files([haloproperties, sodbighaloparticles]) )
-    length_scale : str or None
+    length_scale : str or None, optional
         Optionally add a horizontal bar denoting length scale in Mpc
         Options:
         - `"top left"` -- add to top left panel
         - `"top right"` -- add to top right panel
         - `"bottom left"` -- add to bottom left panel
         - `"bottom right"` -- add to bottom right panel
+        - `"all top"` -- add to all panels on top row
+        - `"all bottom"` -- add to all panels on bottom row
+        - `"all left"` -- add to all panels on leftmost column
+        - `"all right"` -- add to all panels on rightmost column
         - `"all"` -- add to all panels
         - None -- no length scale on all panels
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        A matplotlib Figure object
 
     """
 
@@ -186,10 +201,18 @@ def visualize_halo(halo_id, data, length_scale="top left", width=4.0):
         length_scale=length_scale, width=width)
 
 
-
-def halo_projection_array(halo_ids, data, field=("dm", "particle_mass"), 
-                    weight_field=None, cmap="gray", zlim=None, params=None, 
-                    length_scale=None, smooth_gas_fields=False, width=6.0):
+def halo_projection_array(
+    halo_ids: Union[int, np.ndarray],
+    data: oc.StructureCollection,
+    field: Tuple[str, str] = ("dm", "particle_mass"),
+    weight_field: Optional[Tuple[str, str]] = None,
+    cmap: str = "gray",
+    zlim: Optional[Tuple[float, float]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    length_scale: Optional[str] = None,
+    smooth_gas_fields: bool = False,
+    width: float = 6.0
+) -> Figure:
     """
     Creates a multipanel figure of projections for different fields.
     By default, creates an arrangement of dark matter particle projections with the 
@@ -204,18 +227,21 @@ def halo_projection_array(halo_ids, data, field=("dm", "particle_mass"),
         Unique ID of the halo(s) to be visualized. Shape of `halo_ids` sets the shape
         of the figure (e.g. if halo_ids is a 2x3 array, the outputted figure will be a 2x3 array
         of projections). If `int`, will output a single panel preserving formatting.
-    data : opencosmo StructuredCollection
-        OpenCosmo dataset containing both halo properties and particle data
+    data : opencosmo.StructureCollection
+        OpenCosmo StructureCollection dataset containing both halo properties and particle data
         ( e.g. output of opencosmo.open_linked_files([haloproperties, sodbighaloparticles]) )
-    field : plot this field for all panels. Follows yt naming conventions. 
-            Overwritten if `params["fields"]` is set 
-    weight_field : weight by this field during projection for all panels. Follows yt naming conventions. 
-            Overwritten if `params["weight_fields"]` is set 
-    cmap : matplotlib colormap to use for all panels. Overwritten if `params["cmaps"]` is set.
-           See https://matplotlib.org/stable/gallery/color/colormap_reference.html
-    zlim : tuple(int)
+    field : 2-tuple of str
+        plot this field for all panels. Follows yt naming conventions (e.g. `("dm", "particle_mass")`, `("gas", "temperature")`, etc. ). 
+        Overwritten if `params["fields"]` is set 
+    weight_field : 2-tuple of str
+        weight by this field during projection for all panels. Follows yt naming conventions. 
+        Overwritten if `params["weight_fields"]` is set 
+    cmap : str
+        matplotlib colormap to use for all panels. Overwritten if `params["cmaps"]` is set.
+        See https://matplotlib.org/stable/gallery/color/colormap_reference.html for named colormaps
+    zlim : 2-tuple of int
         colorbar limits for `field`. Overwritten if `params["cmaps"]` is set
-    length_scale : str or None
+    length_scale : str or None, optional
         Optionally add a horizontal bar denoting length scale in Mpc
         Options:
         - `"top left"` -- add to top left panel
@@ -242,6 +268,11 @@ def halo_projection_array(halo_ids, data, field=("dm", "particle_mass"),
                        See https://matplotlib.org/stable/gallery/color/colormap_reference.html
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        A matplotlib Figure object
     """
 
     halo_ids = np.atleast_2d(halo_ids)
