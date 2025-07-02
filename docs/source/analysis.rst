@@ -46,6 +46,7 @@ For introductory tutorials, see:
 - `A Few Complex Plots <https://yt-project.org/doc/cookbook/complex_plots.html>`_
 
 
+
 Simulating X-ray Emission with pyXSIM
 =====================================
 
@@ -92,3 +93,138 @@ We will now edit the code-block from before to compute X-ray luminosities:
         # project X-ray luminosity in the specified band
         ParticleProjectionPlot(ds_yt, 'z', ('gas', 'xray_luminosity_0.1_10.0_keV')).save()
 
+
+
+Visualizing Halos
+=================
+
+In addition to individual yt plots, OpenCosmo provides high-level utilities for visualizing multiple halo projections at once.
+
+The two primary functions for this purpose are:
+
+- :func:`opencosmo.analysis.visualize_halo` — a simple 2x2 panel plot for one halo
+- :func:`opencosmo.analysis.halo_projection_array` — a customizable grid of halos and fields
+
+These use yt under the hood, and are useful for visually inspecting halos with minimal input required.
+
+
+Quick Visualizations for Hydro Datasets
+---------------------------------------
+
+The :func:`visualize_halo` function takes in a single halo ID and creates a 2x2 panel image showing particle projections of dark matter, stars, gas, and gas temperature for a the halo.
+This function essentially uses :func:`halo_projection_array` with pre-filled settings for fields, colormaps, and labels.
+
+.. code-block:: python
+
+    from opencosmo.analysis import visualize_halo
+    import opencosmo as oc
+    import matplotlib.pyplot as plt
+
+    # load one halo at random
+    with oc.open('cluster_catalog_wparticles.hdf5').take(1, at="random") as data:
+        halo = next(data.halos())
+        halo_id = halo['halo_properties']['unique_tag']
+
+        fig = visualize_halo(halo_id, data)
+
+    # display the image
+    plt.show()
+
+.. image:: _static/halo_2x2_example.png
+   :align: center
+   :alt: Example 2x2 halo visualization
+
+
+A More Customizable Option
+--------------------------
+
+The :func:`halo_projection_array` function allows fine-grained control over what gets visualized, including:
+
+- Plotting different halos and/or fields per panel
+- Weighting projections by other quantities
+- Using different colormaps and colorbar limits
+- Customizing panel labels and layout
+
+For the full list of customization options, see :func:`halo_projection_array`
+
+
+Multiple Halos, Single Field
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At minimum, :func:`halo_projection_array` takes in a 2D array of halo IDs and the ``StructuredCollection`` dataset containing the relevant halos. 
+The outputted figure is an array of images, with the shape matching that of the halo ID array. For example:
+
+.. code-block:: python
+
+    from opencosmo.analysis import visualize_halo
+    import opencosmo as oc
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # load 16 halos at random
+    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(16, at="random") as data:
+ 
+        halo_ids = [halo['halo_properties']['unique_tag'] for halo in data.halos()]
+
+        # construct 4x4 array of halo ids and make a 4x4 array of dark matter projections
+        fig = halo_projection_array(np.reshape(halo_ids,(4,4)), data, field=("dm","particle_mass"))
+
+    # display the image
+    plt.show()
+
+
+.. image:: _static/halo_4x4_example.png
+   :align: center
+   :alt: Example multipanel halo visualization
+
+
+
+Multiple Halos, Multiple Fields
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+One can also define a dictionary of plotting parameters to plot different fields and/or halos in each panel:
+
+
+.. code-block:: python
+
+    from opencosmo.analysis import halo_projection_array
+    import opencosmo as oc
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(2, at="random") as data:
+        halo_ids = [halo['halo_properties']['unique_tag'] for halo in data.halos()]
+
+        # We are going to make a 2x3 panel figure, where each row is a different halo, and
+        # each column is a different projected quantity
+        halo_ids = (
+            [halo_ids[0], halo_ids[0], halo_ids[0]],
+            [halo_ids[1], halo_ids[1], halo_ids[1]]
+        )
+
+        # construct dictionary of plotting parameters.
+        # Each item should be a 2x3 array
+        params = {
+            "fields": (
+                [("dm", "particle_mass"), ("gas", "particle_mass"), ("star","particle_mass")],
+                [("dm", "particle_mass"), ("gas", "particle_mass"), ("star","particle_mass")]
+            ),
+            "labels": (
+                ["Dark Matter", "Gas", "Stars"],
+                [None, None, None]
+            ),
+            "cmaps": (
+                ["gray", "cividis", "bone"],
+                ["gray", "cividis", "bone"]
+            ),
+        }
+
+        # Make 2x3 array of halo projections with length scales displayed on the leftmost column
+        fig = halo_projection_array(halo_ids, data, 
+                                    params=params, length_scale="all left")
+
+    plt.show()
+
+.. image:: _static/halo_2x3_example.png
+   :align: center
+   :alt: Example multipanel halo visualization
