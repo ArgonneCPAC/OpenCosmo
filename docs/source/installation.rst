@@ -7,7 +7,7 @@ The OpenCosmo library is available for Python 3.11 and later on Linux and MacOS 
 
    pip install opencosmo
 
-There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing :code:`opencosmo` into a virtual environment. If you're using `Conda <https://docs.conda.io/projects/conda/en/stable/:code:user-guide/getting-started.html>`_ you can create a new environment with Python 3.11 and install :code:`opencosmo` into it like so:
+There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing :code:`opencosmo` into a virtual environment. If you're using `Conda <https://docs.conda.io/projects/conda/en/stable/:code:user-guide/getting-started.html>`_ you can create a new environment and install :code:`opencosmo` into it automatically:
 
 .. code-block:: bash
 
