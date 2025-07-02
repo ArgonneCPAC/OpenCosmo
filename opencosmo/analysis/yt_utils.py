@@ -5,11 +5,6 @@ import yt  # type: ignore
 from pyxsim import CIESourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
 from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
-from yt.visualization.plot_container import (  # type: ignore
-    ImagePlotContainer,
-    PlotContainer,
-)
-from yt.visualization.plot_window import NormalPlot  # type: ignore
 
 import opencosmo as oc
 
@@ -230,116 +225,6 @@ def create_yt_dataset(
             return ds, source
 
     return ds
-
-
-def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
-    """
-    Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ParticleProjectionPlot>`_.
-
-    Creates a 2D projection plot of particle-based data along a specified axis.
-
-    Parameters
-    ----------
-    *args :
-        Positional arguments passed directly to `yt.ParticleProjectionPlot`.
-    **kwargs :
-        Keyword arguments passed directly to `yt.ParticleProjectionPlot`.
-
-    Returns
-    -------
-    yt.visualization.plot_window.ParticleProjectionPlot
-        A ParticleProjectionPlot object containing the particle projection plot.
-    """
-    return yt.ParticleProjectionPlot(*args, **kwargs)
-
-
-def ProjectionPlot(*args, **kwargs) -> NormalPlot:
-    """
-    Wrapper for `yt.ProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ProjectionPlot>`_.
-
-    Creates a 2D projection plot of particle-based data along a specified axis.
-    Smoothing is applied to SPH particle data over the smoothing length
-
-    Parameters
-    ----------
-    *args :
-        Positional arguments passed directly to `yt.ProjectionPlot`.
-    **kwargs :
-        Keyword arguments passed directly to `yt.ProjectionPlot`.
-
-    Returns
-    -------
-    yt.visualization.plot_window.ProjectionPlot
-        A ProjectionPlot object containing the smoothed particle projection plot.
-    """
-    return yt.ProjectionPlot(*args, **kwargs)
-
-
-def SlicePlot(*args, **kwargs) -> NormalPlot:
-    """
-    Wrapper for `yt.SlicePlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.SlicePlot>`_.
-
-    Creates a 2D slice plot of particle-based data along a specified axis.
-    Smoothing is applied to SPH particle data over the smoothing length
-
-    Parameters
-    ----------
-    *args :
-        Positional arguments passed directly to `yt.SlicePlot`.
-    **kwargs :
-        Keyword arguments passed directly to `yt.SlicePlot`.
-
-    Returns
-    -------
-    yt.visualization.plot_window.SlicePlot
-        A SlicePlot object containing the smoothed particle slice plot.
-    """
-    return yt.SlicePlot(*args, **kwargs)
-
-
-def ProfilePlot(*args, **kwargs) -> PlotContainer:
-    """
-    Wrapper for `yt.ProfilePlot <https://yt-project.org/doc/reference/api/yt.visualization.particle_plots.html#yt.visualization.particle_plots.ParticleProjectionPlot>`_.
-
-    Creates a bin-averaged profile of a dependent variable
-    as a function of one or more independent variables.
-
-    Parameters
-    ----------
-    *args :
-        Positional arguments passed directly to `yt.ProfilePlot`.
-    **kwargs :
-        Keyword arguments passed directly to `yt.ProfilePlot`.
-
-    Returns
-    -------
-    yt.visualization.profile_plotter.ProfilePlot
-        A ProfilePlot object containing the profile plot.
-    """
-    return yt.ProfilePlot(*args, **kwargs)
-
-
-def PhasePlot(*args, **kwargs) -> ImagePlotContainer:
-    """
-    Wrapper for `yt.PhasePlot <https://yt-project.org/doc/reference/api/yt.visualization.profile_plotter.html#yt.visualization.profile_plotter.PhasePlot>`_.
-
-    Creates a 2D histogram (phase plot) showing how one quantity varies as a function
-    of two others, useful for visualizing thermodynamic or structural relationships
-    (e.g., temperature vs. density colored by mass).
-
-    Parameters
-    ----------
-    *args :
-        Positional arguments passed directly to `yt.PhasePlot`.
-    **kwargs :
-        Keyword arguments passed directly to `yt.PhasePlot`.
-
-    Returns
-    -------
-    yt.visualization.profile_plotter.PhasePlot
-        A PhasePlot object containing the phase plot.
-    """
-    return yt.PhasePlot(*args, **kwargs)
 
 
 # ---------- DERIVED FIELDS -------------- #
