@@ -198,7 +198,7 @@ def visualize_halo(
 
 
 def halo_projection_array(
-    halo_ids: Union[int, Tuple[int, ...], np.ndarray],
+    halo_ids: Union[int, Tuple[int, ...], Tuple[list[int], list[int]], np.ndarray],
     data: oc.StructureCollection,
     field: Tuple[str, str] = ("dm", "particle_mass"),
     weight_field: Optional[Tuple[str, str]] = None,
