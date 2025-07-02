@@ -6,7 +6,7 @@
     </picture>
 </h1><br>
 
-[![CI](https://github.com/ArgonneCPAC/OpenCosmo/actions/workflows/build.yaml/badge.svg)](https://github.com/ArgonneCPAC/OpenCosmo/actions/workflows/build.yaml)
+[![CI](https://github.com/ArgonneCPAC/OpenCosmo/actions/workflows/merge.yaml/badge.svg)](https://github.com/ArgonneCPAC/OpenCosmo/actions/workflows/merge.yaml)
 ![PyPI - Version](https://img.shields.io/pypi/v/opencosmo)
 ![Conda Version](https://img.shields.io/conda/vn/conda-forge/opencosmo)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/opencosmo)
