@@ -134,40 +134,43 @@ def visualize_halo(
 ) -> Figure:
     """
     Creates a 2x2 figure showing particle projections of dark matter, stars, gas, and gas temperature
-    for given halo. To customize the arrangement of panels, fields, colormaps, etc., see 
-    :func:`halo_projection_array`. Each panel is an 800x800 pixel array.
+    for the given halo.
 
-    **NOTE:** requires hydrodynamic fields to be present
- 
+    To customize the arrangement of panels, fields, colormaps, etc., see :func:`halo_projection_array`.
+    Each panel is an 800x800 pixel array.
+
+    **NOTE:** Requires hydrodynamic fields to be present.
+
     Parameters
     ----------
     halo_id : int
         Identifier of the halo to be visualized.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection object containing both halo properties and particle data
-        ( e.g. output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])`` )
+        (e.g. output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])``).
     length_scale : str or None, optional
-        Optionally add a horizontal bar denoting length scale in Mpc
+        Optionally add a horizontal bar denoting length scale in Mpc.
+
         Options:
-            - `"top left"` -- add to top left panel
-            - `"top right"` -- add to top right panel
-            - `"bottom left"` -- add to bottom left panel
-            - `"bottom right"` -- add to bottom right panel
-            - `"all top"` -- add to all panels on top row
-            - `"all bottom"` -- add to all panels on bottom row
-            - `"all left"` -- add to all panels on leftmost column
-            - `"all right"` -- add to all panels on rightmost column
-            - `"all"` -- add to all panels
-            - None -- no length scale on all panels
+            - ``"top left"``: add to top left panel
+            - ``"top right"``: add to top right panel
+            - ``"bottom left"``: add to bottom left panel
+            - ``"bottom right"``: add to bottom right panel
+            - ``"all top"``: add to all panels on top row
+            - ``"all bottom"``: add to all panels on bottom row
+            - ``"all left"``: add to all panels on leftmost column
+            - ``"all right"``: add to all panels on rightmost column
+            - ``"all"``: add to all panels
+            - ``None``: no length scale on any panel
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
 
     Returns
     -------
     matplotlib.figure.Figure
-        A matplotlib Figure object
-
+        A matplotlib Figure object.
     """
+
 
     halo_ids = ( [halo_id, halo_id], [halo_id, halo_id] )
     params = {
@@ -211,65 +214,70 @@ def halo_projection_array(
 ) -> Figure:
     """
     Creates a multipanel figure of projections for different fields and/or halos.
-    By default, creates an arrangement of dark matter particle projections with the 
+
+    By default, creates an arrangement of dark matter particle projections with the
     same shape as `halo_ids`. Each panel is an 800x800 pixel array.
-    
-    Customizable -- can change which fields are plotted for which halos, their order, weighting, etc. with `params`
+
+    Customizable — can change which fields are plotted for which halos, their order,
+    weighting, etc., using `params`.
 
     Parameters
     ----------
     halo_ids : int or 2D array of int
-        Unique ID of the halo(s) to be visualized. Shape of `halo_ids` sets the shape
-        of the figure (e.g. if halo_ids is a 2x3 array, the outputted figure will be a 2x3 array
-        of projections). If `int`, will output a single panel preserving formatting.
+        Unique ID of the halo(s) to be visualized. The shape of `halo_ids` sets the layout
+        of the figure (e.g., if `halo_ids` is a 2x3 array, the outputted figure will be a 2x3
+        array of projections). If `int`, a single panel is output while preserving formatting.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection dataset containing both halo properties and particle data
-        ( e.g. output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])`` )
-    field : 2-tuple of str
-        plot this field for all panels. Follows yt naming conventions (e.g. `("dm", "particle_mass")`, `("gas", "temperature")`, etc. ). 
-        Overwritten if `params["fields"]` is set 
-    weight_field : 2-tuple of str
-        weight by this field during projection for all panels. Follows yt naming conventions. 
-        Overwritten if `params["weight_fields"]` is set 
+        (e.g., output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])``).
+    field : tuple of str
+        Field to plot for all panels. Follows yt naming conventions (e.g., ``("dm", "particle_mass")``,
+        ``("gas", "temperature")``). Overridden if ``params["fields"]`` is provided.
+    weight_field : tuple of str, optional
+        Field to weight by during projection. Follows yt naming conventions.
+        Overridden if ``params["weight_fields"]`` is provided.
     cmap : str
-        matplotlib colormap to use for all panels. Overwritten if `params["cmaps"]` is set.
-        See https://matplotlib.org/stable/gallery/color/colormap_reference.html for named colormaps
-    zlim : 2-tuple of int
-        colorbar limits for `field`. Overwritten if `params["cmaps"]` is set
+        Matplotlib colormap to use for all panels. Overridden if ``params["cmaps"]`` is provided.
+        See https://matplotlib.org/stable/gallery/color/colormap_reference.html for named colormaps.
+    zlim : tuple of float, optional
+        Colorbar limits for `field`. Overridden if ``params["zlims"]`` is provided.
     length_scale : str or None, optional
-        Optionally add a horizontal bar denoting length scale in Mpc
+        Optionally add a horizontal bar denoting length scale in Mpc.
+
         Options:
-            - `"top left"` -- add to top left panel
-            - `"top right"` -- add to top right panel
-            - `"bottom left"` -- add to bottom left panel
-            - `"bottom right"` -- add to bottom right panel
-            - `"all top"` -- add to all panels on top row
-            - `"all bottom"` -- add to all panels on bottom row
-            - `"all left"` -- add to all panels on leftmost column
-            - `"all right"` -- add to all panels on rightmost column
-            - `"all"` -- add to all panels
-            - None -- no length scale on all panels
+            - ``"top left"``: add to top left panel
+            - ``"top right"``: add to top right panel
+            - ``"bottom left"``: add to bottom left panel
+            - ``"bottom right"``: add to bottom right panel
+            - ``"all top"``: add to all panels on top row
+            - ``"all bottom"``: add to all panels on bottom row
+            - ``"all left"``: add to all panels on leftmost column
+            - ``"all right"``: add to all panels on rightmost column
+            - ``"all"``: add to all panels
+            - ``None``: no length scale shown
 
     params : dict, optional
         Dictionary of customization parameters for the projection panels. Overrides
-        defaults. All inputs must be 2D arrays with the same shape.
+        defaults. All values must be 2D arrays with the same shape as `halo_ids`.
 
         Keys may include:
-            - '"fields"': 2D array of fields to plot, following yt naming conventions
-            - '"weight_fields"': 2D array of weight fields for projection. No weighting if None
-            - '"zlims"': 2D array of colorbar limits. Colorbars are log-scaled
-            - '"labels"': 2D array of panel labels. No label if None
-            - '"cmaps"': 2D array of matplotlib colormaps to use for panels. 
+            - ``"fields"``: 2D array of fields to plot (yt naming conventions)
+            - ``"weight_fields"``: 2D array of projection weights (or None)
+            - ``"zlims"``: 2D array of colorbar limits (log-scaled)
+            - ``"labels"``: 2D array of panel labels (or None)
+            - ``"cmaps"``: 2D array of Matplotlib colormaps for each panel
+
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
-    smooth_gas_fields: bool, optional
-        If True, smooths all gas particle fields over the smoothing length during projection
+    smooth_gas_fields : bool, optional
+        If True, smooths all gas particle fields over the smoothing length during projection.
 
     Returns
     -------
     matplotlib.figure.Figure
-        A matplotlib Figure object
+        A Matplotlib Figure object.
     """
+
 
     halo_ids = np.atleast_2d(halo_ids)
 
