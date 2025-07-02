@@ -198,7 +198,7 @@ def visualize_halo(
 
 
 def halo_projection_array(
-    halo_ids: Union[int, np.ndarray],
+    halo_ids: Union[int, Tuple[int, ...], np.ndarray],
     data: oc.StructureCollection,
     field: Tuple[str, str] = ("dm", "particle_mass"),
     weight_field: Optional[Tuple[str, str]] = None,
@@ -342,7 +342,7 @@ def halo_projection_array(
             if (i == 0 and j == 0) or halo_id != halo_id_previous:
                 # retrieve properties of halo
                 data_id = data.filter(oc.col("unique_tag") == halo_id)
-                halo_data = next(data_id.objects())
+                halo_data = next(iter(data_id.objects()))
                 
                 # load particles into yt
                 ds = create_yt_dataset(halo_data)
