@@ -12,3 +12,7 @@ Analysis
 .. autofunction:: opencosmo.analysis.ProfilePlot
 
 .. autofunction:: opencosmo.analysis.PhasePlot
+
+.. autofunction:: opencosmo.analysis.visualize_halo
+
+.. autofunction:: opencosmo.analysis.halo_projection_array
