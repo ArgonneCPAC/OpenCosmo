@@ -140,6 +140,8 @@ def test_data_link_selection(halo_paths):
     for halo in collection.objects():
         properties = halo["halo_properties"]
         assert set(properties.keys()) == {"fof_halo_tag", "sod_halo_mass"}
+        assert np.all(properties["sod_halo_mass"].value > 10**13)
+
         if halo["dm_particles"] is not None:
             dm_particles = halo["dm_particles"]
             found_dm_particles = True
