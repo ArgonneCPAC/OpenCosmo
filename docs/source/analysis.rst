@@ -145,7 +145,7 @@ The :func:`halo_projection_array` function allows fine-grained control over what
 - Using different colormaps and colorbar limits
 - Customizing panel labels and layout
 
-For the full list of customization options, see :func:`halo_projection_array`
+For the full list of customization options, see :func:`opencosmo.analysis.halo_projection_array`
 
 
 Multiple Halos, Single Field
@@ -221,7 +221,7 @@ One can also define a dictionary of plotting parameters to plot different fields
 
         # Make 2x3 array of halo projections with length scales displayed on the leftmost column
         fig = halo_projection_array(halo_ids, data, 
-                                    params=params, length_scale="all left")
+                    params=params, length_scale="all left")
 
     plt.show()
 
