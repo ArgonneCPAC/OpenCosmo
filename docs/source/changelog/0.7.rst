@@ -1,6 +1,14 @@
 0.7
 ###
 
+0.7.3
+-----
+
+Bug Fixes
+=========
+
+* Use standard python version requirements to avoid dependency resolution issues
+
 0.7.2
 -----
 
