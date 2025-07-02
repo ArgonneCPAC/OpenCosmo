@@ -1,8 +1,8 @@
 import numpy as np
 
-from matplotlib.colors import LogNorm
-from matplotlib.figure import Figure
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+from matplotlib.colors import LogNorm # type: ignore
+from matplotlib.figure import Figure # type: ignore
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar # type: ignore
 
 import yt # type: ignore
 from unyt import unyt_quantity # type: ignore
@@ -149,16 +149,16 @@ def visualize_halo(
     length_scale : str or None, optional
         Optionally add a horizontal bar denoting length scale in Mpc
         Options:
-        - `"top left"` -- add to top left panel
-        - `"top right"` -- add to top right panel
-        - `"bottom left"` -- add to bottom left panel
-        - `"bottom right"` -- add to bottom right panel
-        - `"all top"` -- add to all panels on top row
-        - `"all bottom"` -- add to all panels on bottom row
-        - `"all left"` -- add to all panels on leftmost column
-        - `"all right"` -- add to all panels on rightmost column
-        - `"all"` -- add to all panels
-        - None -- no length scale on all panels
+            - `"top left"` -- add to top left panel
+            - `"top right"` -- add to top right panel
+            - `"bottom left"` -- add to bottom left panel
+            - `"bottom right"` -- add to bottom right panel
+            - `"all top"` -- add to all panels on top row
+            - `"all bottom"` -- add to all panels on bottom row
+            - `"all left"` -- add to all panels on leftmost column
+            - `"all right"` -- add to all panels on rightmost column
+            - `"all"` -- add to all panels
+            - None -- no length scale on all panels
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
 
@@ -239,16 +239,16 @@ def halo_projection_array(
     length_scale : str or None, optional
         Optionally add a horizontal bar denoting length scale in Mpc
         Options:
-        - `"top left"` -- add to top left panel
-        - `"top right"` -- add to top right panel
-        - `"bottom left"` -- add to bottom left panel
-        - `"bottom right"` -- add to bottom right panel
-        - `"all top"` -- add to all panels on top row
-        - `"all bottom"` -- add to all panels on bottom row
-        - `"all left"` -- add to all panels on leftmost column
-        - `"all right"` -- add to all panels on rightmost column
-        - `"all"` -- add to all panels
-        - None -- no length scale on all panels
+            - `"top left"` -- add to top left panel
+            - `"top right"` -- add to top right panel
+            - `"bottom left"` -- add to bottom left panel
+            - `"bottom right"` -- add to bottom right panel
+            - `"all top"` -- add to all panels on top row
+            - `"all bottom"` -- add to all panels on bottom row
+            - `"all left"` -- add to all panels on leftmost column
+            - `"all right"` -- add to all panels on rightmost column
+            - `"all"` -- add to all panels
+            - None -- no length scale on all panels
 
     params : dict, optional
         Dictionary of customization parameters for the projection panels. Overrides
