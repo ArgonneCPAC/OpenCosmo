@@ -222,6 +222,10 @@ def halo_projection_array(halo_ids, data, field=("dm", "particle_mass"),
         - `"top right"` -- add to top right panel
         - `"bottom left"` -- add to bottom left panel
         - `"bottom right"` -- add to bottom right panel
+        - `"all top"` -- add to all panels on top row
+        - `"all bottom"` -- add to all panels on bottom row
+        - `"all left"` -- add to all panels on leftmost column
+        - `"all right"` -- add to all panels on rightmost column
         - `"all"` -- add to all panels
         - None -- no length scale on all panels
 
@@ -293,16 +297,6 @@ def halo_projection_array(halo_ids, data, field=("dm", "particle_mass"),
     nrow, ncol = fig_shape
 
     ilen, jlen = None, None
-    match length_scale:
-        case "top left":
-            ilen, jlen = 0, 0
-        case "top right":
-            ilen, jlen = 0, ncol-1
-        case "bottom left":
-            ilen, jlen = nrow-1, 0
-        case "bottom right":
-            ilen, jlen = nrow-1, ncol-1
-    
     
 
     # define figure and axes
@@ -379,7 +373,27 @@ def halo_projection_array(halo_ids, data, field=("dm", "particle_mass"),
                 )
 
             if length_scale is not None:
-                if (i==ilen and j==jlen) or length_scale=="all":
+                match length_scale:
+                    case "top left":
+                        ilen, jlen = 0, 0
+                    case "top right":
+                        ilen, jlen = 0, ncol-1
+                    case "bottom left":
+                        ilen, jlen = nrow-1, 0
+                    case "bottom right":
+                        ilen, jlen = nrow-1, ncol-1
+                    case "all left":
+                        ilen, jlen = i, 0
+                    case "all right":
+                        ilen, jlen = i, ncol-1
+                    case "all top":
+                        ilen, jlen = 0, j
+                    case "all bottom":
+                        ilen, jlen = nrow-1, j
+                    case "all":
+                        ilen, jlen = i, j
+
+                if (i==ilen and j==jlen):
                     # add length scale, assuming
                     # panel is 800 pixels wide
                     scalebar = AnchoredSizeBar(
