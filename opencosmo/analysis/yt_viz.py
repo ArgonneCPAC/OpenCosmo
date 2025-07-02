@@ -1,6 +1,5 @@
 import numpy as np
 
-import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
@@ -8,10 +7,7 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 import yt # type: ignore
 from unyt import unyt_quantity # type: ignore
 from yt.visualization.base_plot_types import get_multi_plot # type: ignore
-from yt.visualization.plot_container import (  # type: ignore
-    ImagePlotContainer,
-    PlotContainer,
-)
+from yt.visualization.plot_container import PlotContainer # type: ignore
 from yt.visualization.plot_window import PlotWindow, NormalPlot  # type: ignore
 
 import opencosmo as oc
@@ -141,7 +137,7 @@ def visualize_halo(
     """
     Creates a 2x2 figure showing particle projections of dark matter, stars, gas, and gas temperature
     for given halo. To customize the arrangement of panels, fields, colormaps, etc., see 
-    :func:`visualize_halos_custom`. Each panel is an 800x800 pixel array.
+    :func:`halo_projection_array`. Each panel is an 800x800 pixel array.
  
     Parameters
     ----------
@@ -214,12 +210,11 @@ def halo_projection_array(
     width: float = 6.0
 ) -> Figure:
     """
-    Creates a multipanel figure of projections for different fields.
+    Creates a multipanel figure of projections for different fields and/or halos.
     By default, creates an arrangement of dark matter particle projections with the 
     same shape as `halo_ids`. Each panel is an 800x800 pixel array.
     
-    Customizable -- can change which fields are plotted for which halos, their order, weighting,
-        etc. with `params`
+    Customizable -- can change which fields are plotted for which halos, their order, weighting, etc. with `params`
 
     Parameters
     ----------
@@ -260,14 +255,15 @@ def halo_projection_array(
         defaults. All inputs must be 2D arrays with the same shape.
 
         Keys may include:
-            - 'fields': 2D array of fields to plot, following yt naming conventions
-            - 'weight_fields': 2D array of weight fields for projection. No weighting if None
-            - 'zlims': 2D array of colorbar limits. Colorbars are log-scaled
-            - 'labels': 2D array of panel labels. No label if None
-            - 'cmaps': 2D array of matplotlib colormaps to use for panels. 
-                       See https://matplotlib.org/stable/gallery/color/colormap_reference.html
+            - '"fields"': 2D array of fields to plot, following yt naming conventions
+            - '"weight_fields"': 2D array of weight fields for projection. No weighting if None
+            - '"zlims"': 2D array of colorbar limits. Colorbars are log-scaled
+            - '"labels"': 2D array of panel labels. No label if None
+            - '"cmaps"': 2D array of matplotlib colormaps to use for panels. 
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
+    smooth_gas_fields: bool, optional
+        If True, smooths all gas particle fields over the smoothing length during projection
 
     Returns
     -------
