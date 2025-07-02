@@ -98,7 +98,7 @@ We will now edit the code-block from before to compute X-ray luminosities:
 Visualizing Halos
 =================
 
-In addition to individual yt plots, OpenCosmo provides high-level utilities for visualizing multiple halo projections at once.
+In addition to individual yt plots, OpenCosmo provides utilities for visualizing multiple halo projections at once.
 
 The two primary functions for this purpose are:
 
