@@ -189,7 +189,7 @@ def visualize_halo(halo_id, data, length_scale="top left", width=4.0):
 
 def multipanel_halo_projections(halo_ids, data, field=("dm", "particle_mass"), 
                     weight_field=None, cmap="gray", zlim=None, params=None, 
-                    length_scale=None, smooth_gas_fields=False, width=4.0):
+                    length_scale=None, smooth_gas_fields=False, width=6.0):
     """
     Creates a multipanel figure of projections for different fields.
     By default, creates an arrangement of dark matter particle projections with the 
@@ -200,10 +200,10 @@ def multipanel_halo_projections(halo_ids, data, field=("dm", "particle_mass"),
 
     Parameters
     ----------
-    halo_ids : 2D array
-        Identifier of the halo(s) to be visualized. Shape of this array sets the shape
+    halo_ids : int or 2D array of int
+        Unique ID of the halo(s) to be visualized. Shape of `halo_ids` sets the shape
         of the figure (e.g. if halo_ids is a 2x3 array, the outputted figure will be a 2x3 array
-        of projections)
+        of projections). If `int`, will output a single panel preserving formatting.
     data : opencosmo StructuredCollection
         OpenCosmo dataset containing both halo properties and particle data
         ( e.g. output of opencosmo.open_linked_files([haloproperties, sodbighaloparticles]) )
@@ -239,6 +239,8 @@ def multipanel_halo_projections(halo_ids, data, field=("dm", "particle_mass"),
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
     """
+
+    halo_ids = np.atleast_2d(halo_ids)
 
     # determine shape of figure
     fig_shape = np.shape(halo_ids)
