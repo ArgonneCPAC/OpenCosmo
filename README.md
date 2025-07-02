@@ -8,6 +8,7 @@
 
 [![CI](https://github.com/ArgonneCPAC/OpenCosmo/actions/workflows/build.yaml/badge.svg)](https://github.com/ArgonneCPAC/OpenCosmo/actions/workflows/build.yaml)
 ![PyPI - Version](https://img.shields.io/pypi/v/opencosmo)
+![Conda Version](https://img.shields.io/conda/vn/conda-forge/opencosmo)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/opencosmo)
 ![GitHub License](https://img.shields.io/github/license/ArgonneCPAC/opencosmo)
 
