@@ -7,7 +7,6 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 import yt # type: ignore
 from unyt import unyt_quantity # type: ignore
 from yt.visualization.base_plot_types import get_multi_plot # type: ignore
-from yt.visualization.plot_container import PlotContainer # type: ignore
 from yt.visualization.plot_window import PlotWindow, NormalPlot  # type: ignore
 
 import opencosmo as oc
@@ -127,7 +126,6 @@ def PhasePlot(*args, **kwargs) -> PlotWindow:
     return yt.PhasePlot(*args, **kwargs)
 
 
-
 def visualize_halo(
     halo_id: int,
     data: oc.StructureCollection,
@@ -138,6 +136,8 @@ def visualize_halo(
     Creates a 2x2 figure showing particle projections of dark matter, stars, gas, and gas temperature
     for given halo. To customize the arrangement of panels, fields, colormaps, etc., see 
     :func:`halo_projection_array`. Each panel is an 800x800 pixel array.
+
+    **NOTE:** requires hydrodynamic fields to be present
  
     Parameters
     ----------
@@ -145,7 +145,7 @@ def visualize_halo(
         Identifier of the halo to be visualized.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection object containing both halo properties and particle data
-        ( e.g. output of opencosmo.open_linked_files([haloproperties, sodbighaloparticles]) )
+        ( e.g. output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])`` )
     length_scale : str or None, optional
         Optionally add a horizontal bar denoting length scale in Mpc
         Options:
@@ -224,7 +224,7 @@ def halo_projection_array(
         of projections). If `int`, will output a single panel preserving formatting.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection dataset containing both halo properties and particle data
-        ( e.g. output of opencosmo.open_linked_files([haloproperties, sodbighaloparticles]) )
+        ( e.g. output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])`` )
     field : 2-tuple of str
         plot this field for all panels. Follows yt naming conventions (e.g. `("dm", "particle_mass")`, `("gas", "temperature")`, etc. ). 
         Overwritten if `params["fields"]` is set 
