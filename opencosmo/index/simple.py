@@ -62,25 +62,9 @@ class SimpleIndex:
             return np.zeros_like(start)
 
         ends = start + size
-
-        required_memory = len(start) * len(self.__index) * 8
-        MEMORY_LIMIT = 2_000_000_000
-        if required_memory > MEMORY_LIMIT:
-            chunk_size = MEMORY_LIMIT // (8 * len(self.__index))
-            n_chunks = np.ceil(len(start) / chunk_size)
-        else:
-            n_chunks = 1
-
-        output = np.zeros_like(start)
-        rs = 0
-        for arr in np.array_split(start, n_chunks):
-            in_range = ~(
-                (self.__index[:, np.newaxis] < arr)
-                | (self.__index[:, np.newaxis] >= ends[rs : rs + len(arr)])
-            )
-            output[rs : rs + len(arr)] = np.sum(in_range, axis=0)
-            rs += len(arr)
-        return output
+        start_idxs = np.searchsorted(self.__index, start, "left")
+        end_idxs = np.searchsorted(self.__index, ends, "left")
+        return end_idxs - start_idxs
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
         """
