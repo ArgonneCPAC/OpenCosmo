@@ -22,18 +22,24 @@ The OpenCosmo library is available for Python 3.11 and up on Linux and MacOS (an
 pip install opencosmo
 ```
 
+
 There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing `opencosmo` into a virtual environment. If you're using [Conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html), you can create a new environment with Python 3.11 and install `opencosmo` into it like so:
 
 ```bash
-conda create -n opencosmo_env python=3.11
+conda create -n opencosmo_env conda-forge::opencosmo
 conda activate opencosmo_env
-pip install opencosmo
 ```
 
-This will create a new environment called `opencosmo` with Python 3.11 and install the `opencosmo` package into it with all necessary dependencies. If you plan to use `opencosmo` in a Jupyter notebook, you can install the `ipykernel` package to make the environment available as a kernel:
+or if you already have a virtual environment to use:
 
 ```bash
-conda install ipykernel
+conda install conda-forge::opencosmo
+```
+
+If you plan to use `opencosmo` in a Jupyter notebook, you can install the `ipykernel` package to make the environment available as a kernel:
+
+```bash
+pip install ipykernel # can also be installed with conda
 python -m ipykernel install --user --name=opencosmo
 ```
 
@@ -41,7 +47,7 @@ Be sure you have run the "activate" command shown above before running the `ipyk
 
 ## Getting Started
 
-To get started, download the "haloproperites.hdf5" from the [OpenCosmo Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing). This file contains properties of dark-matter halos from a small hydrodynamical simulation run with HACC. You can easily read the data with the `open` command:
+To get started, download the "haloproperites.hdf5" from the [OpenCosmo Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing). This file contains properties of dark-matter halos from a small hydrodynamical simulation run with HACC. You can easily open the data with the `open` command:
 
 ```python
 import opencosmo as oc

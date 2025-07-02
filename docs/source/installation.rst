@@ -7,21 +7,20 @@ The OpenCosmo library is available for Python 3.11 and later on Linux and MacOS 
 
    pip install opencosmo
 
-If you are interested in the tools in the :doc:`analysis <analysis>` module, they need to be installed seperately:
-
-.. code-block:: bash
-
-   pip install opencosmo[analysis]
-
 There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing :code:`opencosmo` into a virtual environment. If you're using `Conda <https://docs.conda.io/projects/conda/en/stable/:code:user-guide/getting-started.html>`_ you can create a new environment with Python 3.11 and install :code:`opencosmo` into it like so:
 
 .. code-block:: bash
 
-   conda create -n opencosmo_env python=3.11 
-   conda activate opencosmo_env
-   pip install opencosmo
+   conda create -n opencosmo_env python=3.11 conda-forge::opencosmo
 
-This will create a new environment called :code:`opencosmo` with Python 3.11 and install the `opencosmo` package into it with all necessary dependencies. If you plan to use :code:`opencosmo` in a Jupyter notebook, you can install the :code:`ipykernel` package to make the environment available as a kernel:
+
+or, if you already have a virtual environment you'd like to use:
+
+.. code-block:: bash 
+
+   conda install conda-forge::opencosmo
+
+If you plan to use :code:`opencosmo` in a Jupyter notebook, you can install the :code:`ipykernel` package to make the environment available as a kernel:
 
 .. code-block:: bash
 
@@ -29,6 +28,14 @@ This will create a new environment called :code:`opencosmo` with Python 3.11 and
    python -m ipykernel install --user --name=opencosmo
 
 Be sure you have run the :code:`activate` command shown above before running the :code:`ipykernel` command.
+
+If you are interested in the tools in the :doc:`analysis <analysis>` module, they need to be installed seperately:
+
+.. code-block:: bash
+
+   pip install opencosmo[analysis]
+
+Note that the analysis tools must be installed with :code:`pip`
 
 Installing with MPI Support
 ---------------------------
