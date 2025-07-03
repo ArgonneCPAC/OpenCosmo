@@ -133,13 +133,14 @@ def visualize_halo(
     width: float = 4.0
 ) -> Figure:
     """
-    Creates a 2x2 figure showing particle projections of dark matter, stars, gas, and gas temperature
-    for the given halo.
+    Creates a figure showing particle projections of dark matter, stars, gas, and/or gas temperature
+    for given halo. If any of the listed particle types are not present in the dataset, this will
+    create a horizontal arrangement with only the particles/fields that are present. Otherwise,
+    creates a 2x2-panel figure. Each panel is an 800x800 pixel array.
 
-    To customize the arrangement of panels, fields, colormaps, etc., see :func:`halo_projection_array`.
-    Each panel is an 800x800 pixel array.
-
-    **NOTE:** Requires hydrodynamic fields to be present.
+    To customize the arrangement of panels, fields, colormaps, etc., see 
+    :func:`halo_projection_array`.
+ 
 
     Parameters
     ----------
@@ -162,6 +163,7 @@ def visualize_halo(
             - ``"all right"``: add to all panels on rightmost column
             - ``"all"``: add to all panels
             - ``None``: no length scale on any panel
+
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
 
@@ -171,30 +173,69 @@ def visualize_halo(
         A matplotlib Figure object.
     """
 
-
     halo_ids = ( [halo_id, halo_id], [halo_id, halo_id] )
     params = {
-        "fields": (
-            [("dm", "particle_mass"), ("star", "particle_mass")],
-            [("gas", "particle_mass"), ("gas", "temperature")]
-        ),
-        "weight_fields": (
-            [None, None],
-            [None, ("gas", "density")]
-        ),
-        "zlims": (
-            [None, None],
-            [None, (1e7, 1e8)]
-        ),
-        "labels": (
-            ["Dark Matter", "Stars"],
-            ["Gas", "Gas Temperature"]
-        ),
-        "cmaps": (
-            ["gray", "bone"],
-            ["viridis", "inferno"]
-        ),
+        "fields": [],
+        "weight_fields": [],
+        "zlims": [],
+        "labels": [],
+        "cmaps": [],
     }
+
+    ptypes = [key.removesuffix('_particles') 
+                   for key in data.keys() if key.endswith('_particles')]
+
+    if "dm" in ptypes:
+       params["fields"].append(("dm", "particle_mass")) 
+       params["weight_fields"].append(None)
+       params["zlims"].append(None)
+       params["labels"].append("Dark Matter")
+       params["cmaps"].append("gray")
+    elif "gravity" in ptypes:
+       params["fields"].append(("gravity", "particle_mass")) 
+       params["weight_fields"].append(None)
+       params["zlims"].append(None)
+       params["labels"].append("Dark Matter")
+       params["cmaps"].append("gray")
+
+    if "star" in ptypes:
+       params["fields"].append(("star", "particle_mass")) 
+       params["weight_fields"].append(None)
+       params["zlims"].append(None)
+       params["labels"].append("Stars")
+       params["cmaps"].append("bone")
+
+    if "gas" in ptypes:
+       params["fields"].append(("gas", "particle_mass")) 
+       params["weight_fields"].append(None)
+       params["zlims"].append(None)
+       params["labels"].append("Gas")
+       params["cmaps"].append("viridis")      
+       # temperature field should always exist if gas
+       # particles are present
+       params["fields"].append(("gas", "temperature")) 
+       params["weight_fields"].append(("gas", "density"))
+       params["zlims"].append((1e7, 1e8))
+       params["labels"].append("Gas Temperature")
+       params["cmaps"].append("inferno") 
+
+ 
+    if len(params["fields"]) == 4:
+        # if 4 fields, make a 2x2 figure
+        halo_ids = ( [halo_id, halo_id], [halo_id, halo_id] )
+        params = {
+            key: (value[:2], value[2:])
+            for key, value in params.items()
+        }
+
+    else: 
+        # otherwise, do 1xN
+        halo_ids = ( np.shape(params["fields"])[0]*[halo_id] )
+        params = {
+            key: [value]
+            for key, value in params.items()
+        }
+
 
     return halo_projection_array(halo_ids, data, params=params, 
         length_scale=length_scale, width=width)
