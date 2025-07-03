@@ -184,13 +184,17 @@ def visualize_halo(
     ptypes = [key.removesuffix('_particles') 
                    for key in data.keys() if key.endswith('_particles')]
 
+    any_supported = False
+
     if "dm" in ptypes:
+       any_supported = True
        params["fields"].append(("dm", "particle_mass")) 
        params["weight_fields"].append(None)
        params["zlims"].append(None)
        params["labels"].append("Dark Matter")
        params["cmaps"].append("gray")
     elif "gravity" in ptypes:
+       any_supported = True
        params["fields"].append(("gravity", "particle_mass")) 
        params["weight_fields"].append(None)
        params["zlims"].append(None)
@@ -198,6 +202,7 @@ def visualize_halo(
        params["cmaps"].append("gray")
 
     if "star" in ptypes:
+       any_supported = True
        params["fields"].append(("star", "particle_mass")) 
        params["weight_fields"].append(None)
        params["zlims"].append(None)
@@ -205,6 +210,7 @@ def visualize_halo(
        params["cmaps"].append("bone")
 
     if "gas" in ptypes:
+       any_supported = True
        params["fields"].append(("gas", "particle_mass")) 
        params["weight_fields"].append(None)
        params["zlims"].append(None)
@@ -217,6 +223,12 @@ def visualize_halo(
        params["zlims"].append((1e7, 1e8))
        params["labels"].append("Gas Temperature")
        params["cmaps"].append("inferno") 
+
+    if not any_supported:
+        raise RuntimeError(
+            f"No compatible particle types present in dataset for this function. "
+            f"Possible options are \"dm\", \"gravity\", \"star\", and \"gas\"."
+        )
 
  
     if len(params["fields"]) == 4:
