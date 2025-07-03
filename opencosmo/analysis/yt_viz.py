@@ -173,8 +173,7 @@ def visualize_halo(
         A matplotlib Figure object.
     """
 
-    halo_ids = ( [halo_id, halo_id], [halo_id, halo_id] )
-    params = {
+    params: Dict[str, Any] = {
         "fields": [],
         "weight_fields": [],
         "zlims": [],
