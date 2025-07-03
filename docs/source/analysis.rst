@@ -108,10 +108,10 @@ The two primary functions for this purpose are:
 These use yt under the hood, and are useful for visually inspecting halos with minimal input required.
 
 
-Quick Visualizations for Hydro Datasets
----------------------------------------
+Quick Projections
+-----------------
 
-The :func:`visualize_halo` function takes in a single halo ID and creates a 2x2 panel image showing particle projections of dark matter, stars, gas, and gas temperature for a the halo.
+The :func:`visualize_halo` function takes in a single halo ID and creates a multi-panel image showing particle projections of dark matter, stars, gas, and/or gas temperature for a the halo. If ``"dm"/"gravity"``, ``"star"``, and ``"gas"`` particles are all present, this will output a 2x2-panel figure. Otherwise, this will create a 1xN-panel figure showing whichever particles/fields from the list are present.
 This function essentially uses :func:`halo_projection_array` with pre-filled settings for fields, colormaps, and labels.
 
 .. code-block:: python
@@ -121,7 +121,7 @@ This function essentially uses :func:`halo_projection_array` with pre-filled set
     import matplotlib.pyplot as plt
 
     # load one halo at random
-    with oc.open('cluster_catalog_wparticles.hdf5').take(1, at="random") as data:
+    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
         halo = next(data.halos())
         halo_id = halo['halo_properties']['unique_tag']
 
