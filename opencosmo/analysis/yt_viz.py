@@ -226,8 +226,8 @@ def visualize_halo(
 
     if not any_supported:
         raise RuntimeError(
-            f"No compatible particle types present in dataset for this function. "
-            f"Possible options are \"dm\", \"gravity\", \"star\", and \"gas\"."
+            "No compatible particle types present in dataset for this function. "
+            "Possible options are \"dm\", \"gravity\", \"star\", and \"gas\"."
         )
 
  
