@@ -14,7 +14,7 @@ from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import ChunkedIndex
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
-from opencosmo.parameters import SimulationParameters
+from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import open_tree
 from opencosmo.structure import StructureCollection
@@ -129,13 +129,13 @@ class SimulationCollection(dict):
         return self.__map_attribute("redshift")
 
     @property
-    def simulation(self) -> dict[str, SimulationParameters]:
+    def simulation(self) -> dict[str, HaccSimulationParameters]:
         """
         Get the simulation parameters for the simulations in the collection
 
         Returns
         --------
-        simulation_parameters: dict[str, opencosmo.parameters.SimulationParameters]
+        simulation_parameters: dict[str, opencosmo.parameters.HaccSimulationParameters]
         """
 
         return self.__map_attribute("simulation")

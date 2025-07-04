@@ -13,7 +13,7 @@ from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io.schemas import DatasetSchema
-from opencosmo.parameters import SimulationParameters
+from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial import check
 from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import Tree
@@ -129,14 +129,14 @@ class Dataset:
         return self.__state.region
 
     @property
-    def simulation(self) -> SimulationParameters:
+    def simulation(self) -> HaccSimulationParameters:
         """
         The parameters of the simulation this dataset is drawn
         from.
 
         Returns
         -------
-        parameters: opencosmo.parameters.SimulationParameters
+        parameters: opencosmo.parameters.hacc.HaccSimulationParameters
         """
         return self.__header.simulation
 

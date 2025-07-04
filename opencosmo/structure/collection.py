@@ -10,7 +10,7 @@ from opencosmo import structure as s
 from opencosmo.dataset.col import DerivedColumn
 from opencosmo.index import DataIndex
 from opencosmo.io.schemas import StructCollectionSchema
-from opencosmo.parameters import SimulationParameters
+from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial.protocols import Region
 
 from .handler import LinkedDatasetHandler
@@ -112,14 +112,14 @@ class StructureCollection:
         return self.__header.file.redshift
 
     @property
-    def simulation(self) -> SimulationParameters:
+    def simulation(self) -> HaccSimulationParameters:
         """
         Get the parameters of the simulation this dataset is drawn
         from.
 
         Returns
         -------
-        parameters: opencosmo.parameters.SimulationParameters
+        parameters: opencosmo.parameters.HaccSimulationParameters
         """
         return self.__header.simulation
 
