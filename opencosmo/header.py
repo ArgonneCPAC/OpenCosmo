@@ -175,7 +175,7 @@ def load_union_model(
         try:
             return parameters.read_header_attributes(file, path, model)
         except ValidationError as ve:
-            if any(e["type"] == "missing" for e in ve.errors()):
+            if any(e["type"] == "missing" or e["input"] is None for e in ve.errors()):
                 continue
             else:
                 raise ValueError(
