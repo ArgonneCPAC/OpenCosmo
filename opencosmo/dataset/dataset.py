@@ -69,6 +69,22 @@ class Dataset:
         return self.__handler.__exit__()
 
     @property
+    def header(self) -> OpenCosmoHeader:
+        """
+        The header associated with this dataset.
+
+        OpenCosmo headers generally contain information about the original data this
+        dataset was produced from, as well as any analysis that was done along
+        the way.
+
+        Returns
+        -------
+        header: opencosmo.header.OpenCosmoHeader
+
+        """
+        return self.__header
+
+    @property
     def columns(self) -> list[str]:
         """
         The names of the columns in this dataset.
