@@ -1,4 +1,4 @@
-from functools import cached_property
+from functools import cache
 from itertools import chain
 from pathlib import Path
 from types import UnionType
@@ -7,7 +7,6 @@ from typing import Optional
 import h5py
 from pydantic import BaseModel, ValidationError
 
-from opencosmo import cosmology as cosmo
 from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
 from opencosmo.parameters import origin
@@ -32,6 +31,28 @@ class OpenCosmoHeader:
         self.__required_origin_parameters = required_origin_parameters
         self.__optional_origin_parameters = optional_origin_parameters
 
+    @cache
+    def __get_access_table(self):
+        table = {}
+        all_models = chain(
+            self.__required_origin_parameters.values(),
+            self.__optional_origin_parameters.values(),
+        )
+        for model in all_models:
+            if not hasattr(model, "ACCESS_PATH"):
+                continue
+            table[model.ACCESS_PATH] = model
+            if hasattr(model, "ACCESS_TRANSFORMATION"):
+                table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
+        return table
+
+    def __getattr__(self, key: str):
+        table = self.__get_access_table()
+        try:
+            return table[key]
+        except KeyError:
+            return object.__getattribute__(self, key)
+
     def with_region(self, region):
         region_model = region.into_model()
         new_file_pars = self.__file_pars.model_copy(update={"region": region_model})
@@ -50,33 +71,6 @@ class OpenCosmoHeader:
         )
         for path, data in to_write:
             parameters.write_header_attributes(file, path, data)
-
-    @cached_property
-    def cosmology(self):
-        cosmo_pars = [
-            val
-            for key, val in self.__required_origin_parameters.items()
-            if "cosmology" in key
-        ]
-        if len(cosmo_pars) != 1:
-            raise ValueError(
-                "This dataset does not appear to have cosmology information"
-            )
-        return cosmo.make_cosmology(cosmo_pars[0])
-
-    @property
-    def simulation(self):
-        all_models = chain(
-            self.__required_origin_parameters.values(),
-            self.__optional_origin_parameters.values(),
-        )
-        for model in all_models:
-            try:
-                if model.ACCESS_PATH == "simulation":
-                    return model
-            except AttributeError:
-                continue
-        raise ValueError("This dataset does not appear to have simulation parameters")
 
     @property
     def file(self):
@@ -180,6 +174,11 @@ def load_union_model(
     for model in allowed_models.__args__:
         try:
             return parameters.read_header_attributes(file, path, model)
-        except ValidationError:
-            continue
+        except ValidationError as ve:
+            if any(e["type"] == "missing" for e in ve.errors()):
+                continue
+            else:
+                raise ValueError(
+                    f"Parsing header paramter model raised a validation error: \n {ve}"
+                )
     raise ValueError("Input attributes do not match any of the models in the union")
