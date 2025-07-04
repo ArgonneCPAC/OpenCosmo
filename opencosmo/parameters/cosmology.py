@@ -1,4 +1,8 @@
+from typing import Callable, ClassVar
+
 from pydantic import BaseModel, Field, computed_field
+
+from opencosmo.cosmology import make_cosmology
 
 
 class CosmologyParameters(BaseModel):
@@ -7,6 +11,9 @@ class CosmologyParameters(BaseModel):
     naming conventions between OpenCosmo and astropy.cosmology. Generally should
     not be used by the user directly
     """
+
+    ACCESS_PATH: ClassVar[str] = "cosmology"
+    ACCESS_TRANSFORMATION: ClassVar[Callable] = make_cosmology
 
     h: float = Field(ge=0.0, description="Reduced Hubble constant")
 
