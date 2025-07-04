@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import copy
 from typing import TYPE_CHECKING, Generator, Iterable, Optional
 from warnings import warn
 
@@ -199,14 +198,7 @@ class Dataset:
         check_region = region.into_scalefree(
             self.__state.convention, self.cosmology, self.redshift
         )
-        new_header = copy(self.__header)
-        region_model = check_region.into_model()
-        new_file_pars = new_header.file.model_copy(update={"region": region_model})
-        new_header = OpenCosmoHeader(
-            new_file_pars,
-            self.__header.simulation,
-            self.__header.cosmotools,
-        )
+        new_header = self.__header.with_region(check_region)
 
         if not self.__state.region.intersects(check_region):
             new_index = ChunkedIndex.empty()
@@ -240,13 +232,6 @@ class Dataset:
         new_index = contained_index.concatenate(new_intersects_index)
 
         new_state = self.__state.with_index(new_index).with_region(check_region)
-
-        region_model = check_region.into_model()
-        new_header = OpenCosmoHeader(
-            new_file_pars,
-            self.__header.simulation,
-            self.__header.cosmotools,
-        )
 
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 

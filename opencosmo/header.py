@@ -1,12 +1,16 @@
 from functools import cached_property
+from itertools import chain
 from pathlib import Path
+from types import UnionType
 from typing import Optional
 
 import h5py
+from pydantic import BaseModel, ValidationError
 
 from opencosmo import cosmology as cosmo
 from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.parameters import origin
 
 
 class OpenCosmoHeader:
@@ -21,46 +25,62 @@ class OpenCosmoHeader:
     def __init__(
         self,
         file_pars: parameters.FileParameters,
-        simulation_pars: parameters.SimulationParameters,
-        cosmotools_pars: Optional[parameters.CosmoToolsParameters],
+        required_origin_parameters: dict[str, BaseModel],
+        optional_origin_parameters: dict[str, BaseModel],
     ):
         self.__file_pars = file_pars
-        self.__simulation_pars = simulation_pars
-        self.__cosmotools_pars = cosmotools_pars
+        self.__required_origin_parameters = required_origin_parameters
+        self.__optional_origin_parameters = optional_origin_parameters
+
+    def with_region(self, region):
+        region_model = region.into_model()
+        new_file_pars = self.__file_pars.model_copy(update={"region": region_model})
+        new_header = OpenCosmoHeader(
+            new_file_pars,
+            self.__required_origin_parameters,
+            self.__optional_origin_parameters,
+        )
+        return new_header
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         parameters.write_header_attributes(file, "file", self.__file_pars)
-
-        parameters.write_header_attributes(
-            file, "simulation/parameters", self.__simulation_pars
+        to_write = chain(
+            self.__required_origin_parameters.items(),
+            self.__optional_origin_parameters.items(),
         )
-        if self.__cosmotools_pars is not None:
-            parameters.write_header_attributes(
-                file, "simulation/cosmotools", self.__cosmotools_pars
-            )
-        parameters.write_header_attributes(
-            file, "simulation/cosmology", self.__simulation_pars.cosmology_parameters
-        )
-        if hasattr(self.__simulation_pars, "subgrid_parameters"):
-            parameters.write_header_attributes(
-                file, "simulation/parameters", self.__simulation_pars.subgrid_parameters
-            )
+        for path, data in to_write:
+            parameters.write_header_attributes(file, path, data)
 
     @cached_property
     def cosmology(self):
-        return cosmo.make_cosmology(self.__simulation_pars.cosmology_parameters)
+        cosmo_pars = [
+            val
+            for key, val in self.__required_origin_parameters.items()
+            if "cosmology" in key
+        ]
+        if len(cosmo_pars) != 1:
+            raise ValueError(
+                "This dataset does not appear to have cosmology information"
+            )
+        return cosmo.make_cosmology(cosmo_pars[0])
 
     @property
     def simulation(self):
-        return self.__simulation_pars
+        all_models = chain(
+            self.__required_origin_parameters.values(),
+            self.__optional_origin_parameters.values(),
+        )
+        for model in all_models:
+            try:
+                if model.ACCESS_PATH == "simulation":
+                    return model
+            except AttributeError:
+                continue
+        raise ValueError("This dataset does not appear to have simulation parameters")
 
     @property
     def file(self):
         return self.__file_pars
-
-    @property
-    def cosmotools(self):
-        return self.__cosmotools_pars
 
 
 @file_writer
@@ -117,25 +137,49 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
             "File header is malformed. Are you sure it is an OpenCosmo file?\n "
             f"Error: {e}"
         )
-    try:
-        simulation_parameters = parameters.read_simulation_parameters(file)
 
-    except (TypeError, KeyError) as e:
-        raise ValueError(
-            "This file does not appear to have simulation information, or the "
-            "simulation information is malformed. "
-            "Are you sure it is an OpenCosmo file?\n"
-            f"Error: {e}"
-        )
-
-    try:
-        cosmotools_parameters = parameters.read_header_attributes(
-            file, "simulation/cosmotools", parameters.CosmoToolsParameters
-        )
-    except KeyError:
-        cosmotools_parameters = None
-    return OpenCosmoHeader(
-        file_parameters,
-        simulation_parameters,
-        cosmotools_parameters,
+    origin_parameter_models = origin.get_origin_parameters(file_parameters.origin)
+    required_origin_params, optional_origin_params = read_origin_parameters(
+        file, origin_parameter_models
     )
+
+    return OpenCosmoHeader(
+        file_parameters, required_origin_params, optional_origin_params
+    )
+
+
+def read_origin_parameters(
+    file: h5py.File | h5py.Group, origin_parameters: dict[str, dict[str, type]]
+):
+    required = origin_parameters["required"]
+    required_output = {}
+    for path, model in required.items():
+        if isinstance(model, UnionType):
+            required_output[path] = load_union_model(file, path, model)
+        else:
+            required_output[path] = parameters.read_header_attributes(file, path, model)
+
+    optional_output = {}
+    optional = origin_parameters["optional"]
+    for path, model in optional.items():
+        if isinstance(origin, UnionType):
+            read_fn = load_union_model
+        else:
+            read_fn = parameters.read_header_attributes
+        try:
+            optional_output[path] = read_fn(file, path, model)
+        except (ValidationError, KeyError):
+            continue
+
+    return required_output, optional_output
+
+
+def load_union_model(
+    file: h5py.File | h5py.Group, path: str, allowed_models: UnionType, **kwargs
+):
+    for model in allowed_models.__args__:
+        try:
+            return parameters.read_header_attributes(file, path, model)
+        except ValidationError:
+            continue
+    raise ValueError("Input attributes do not match any of the models in the union")

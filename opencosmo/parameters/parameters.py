@@ -6,7 +6,10 @@ from pydantic import BaseModel, ValidationError
 
 
 def read_header_attributes(
-    file: h5py.File, header_path: str, parameter_model: Type[BaseModel], **kwargs
+    file: h5py.File | h5py.Group,
+    header_path: str,
+    parameter_model: Type[BaseModel],
+    **kwargs,
 ):
     header_data = file["header"][header_path].attrs
     try:
