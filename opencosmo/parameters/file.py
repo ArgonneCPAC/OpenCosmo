@@ -41,6 +41,7 @@ class FileType(Enum):
 
 class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
+    origin: str = "HACC"
     data_type: FileType
     is_lightcone: bool
     redshift: float | tuple[float, float]

@@ -1,12 +1,14 @@
 import inspect
-from typing import Type
+from typing import TYPE_CHECKING, Type
 
 import h5py
 from astropy import cosmology  # type: ignore
 
 from opencosmo import header
 from opencosmo.file import broadcast_read, file_reader
-from opencosmo.parameters import CosmologyParameters
+
+if TYPE_CHECKING:
+    from opencosmo.parameters import CosmologyParameters
 
 """
 Reads cosmology from the header of the file and returns the
@@ -42,7 +44,7 @@ def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
     return head.cosmology
 
 
-def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:
+def make_cosmology(parameters: "CosmologyParameters") -> cosmology.Cosmology:
     cosmology_type = get_cosmology_type(parameters)
     expected_arguments = inspect.signature(cosmology_type).parameters.keys()
     input_paremeters = {}
@@ -54,7 +56,7 @@ def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:
     return cosmology_type(**input_paremeters)
 
 
-def get_cosmology_type(parameters: CosmologyParameters) -> Type[cosmology.Cosmology]:
+def get_cosmology_type(parameters: "CosmologyParameters") -> Type[cosmology.Cosmology]:
     is_flat = (parameters.Om0 + parameters.Ode0) == 1.0
     if parameters.w0 == -1 and parameters.wa == 0:
         if is_flat:

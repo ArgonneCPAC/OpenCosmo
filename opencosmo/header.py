@@ -1,12 +1,15 @@
-from functools import cached_property
+from functools import cache
+from itertools import chain
 from pathlib import Path
+from types import UnionType
 from typing import Optional
 
 import h5py
+from pydantic import BaseModel, ValidationError
 
-from opencosmo import cosmology as cosmo
 from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.parameters import origin
 
 
 class OpenCosmoHeader:
@@ -21,46 +24,88 @@ class OpenCosmoHeader:
     def __init__(
         self,
         file_pars: parameters.FileParameters,
-        simulation_pars: parameters.SimulationParameters,
-        cosmotools_pars: Optional[parameters.CosmoToolsParameters],
+        required_origin_parameters: dict[str, BaseModel],
+        optional_origin_parameters: dict[str, BaseModel],
     ):
         self.__file_pars = file_pars
-        self.__simulation_pars = simulation_pars
-        self.__cosmotools_pars = cosmotools_pars
+        self.__required_origin_parameters = required_origin_parameters
+        self.__optional_origin_parameters = optional_origin_parameters
+
+    @cache
+    def __get_access_table(self):
+        # raise NotImplementedError(
+        #    "Need to implement dtype parameters and user header inspection"
+        # )
+
+        table = {}
+        all_models = chain(
+            self.__required_origin_parameters.values(),
+            self.__optional_origin_parameters.values(),
+        )
+        for model in all_models:
+            if not hasattr(model, "ACCESS_PATH"):
+                continue
+            table[model.ACCESS_PATH] = model
+            if hasattr(model, "ACCESS_TRANSFORMATION"):
+                table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
+        return table
+
+    def parameters(self):
+        """
+        Return the parametrs stored in this header as
+        key-value pairs. The values will be Pydantic models.
+
+        Any block of parameters that is returned from this method can
+        also be accessed with standard dot notation. For example, HACC
+        data contains a "simulation" block that contains the parameters that
+        were used to run the original simulation. The following calls are
+        equivalent:
+
+        .. code-block:: python
+
+            header.simulation
+            header.parameters()["simulation"]
+
+        Returns
+        -------
+        parameters: dict[str, pydantic.BaseModel]
+            The parameter blocks associated with this header
+
+        """
+        return self.__get_access_table()
+
+    def __getattr__(self, key: str):
+        if key.startswith("__"):
+            raise AttributeError(key)
+
+        table = self.__get_access_table()
+        try:
+            return table[key]
+        except KeyError:
+            return object.__getattribute__(self, key)
+
+    def with_region(self, region):
+        region_model = region.into_model()
+        new_file_pars = self.__file_pars.model_copy(update={"region": region_model})
+        new_header = OpenCosmoHeader(
+            new_file_pars,
+            self.__required_origin_parameters,
+            self.__optional_origin_parameters,
+        )
+        return new_header
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         parameters.write_header_attributes(file, "file", self.__file_pars)
-
-        parameters.write_header_attributes(
-            file, "simulation/parameters", self.__simulation_pars
+        to_write = chain(
+            self.__required_origin_parameters.items(),
+            self.__optional_origin_parameters.items(),
         )
-        if self.__cosmotools_pars is not None:
-            parameters.write_header_attributes(
-                file, "simulation/cosmotools", self.__cosmotools_pars
-            )
-        parameters.write_header_attributes(
-            file, "simulation/cosmology", self.__simulation_pars.cosmology_parameters
-        )
-        if hasattr(self.__simulation_pars, "subgrid_parameters"):
-            parameters.write_header_attributes(
-                file, "simulation/parameters", self.__simulation_pars.subgrid_parameters
-            )
-
-    @cached_property
-    def cosmology(self):
-        return cosmo.make_cosmology(self.__simulation_pars.cosmology_parameters)
-
-    @property
-    def simulation(self):
-        return self.__simulation_pars
+        for path, data in to_write:
+            parameters.write_header_attributes(file, path, data)
 
     @property
     def file(self):
         return self.__file_pars
-
-    @property
-    def cosmotools(self):
-        return self.__cosmotools_pars
 
 
 @file_writer
@@ -117,25 +162,54 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
             "File header is malformed. Are you sure it is an OpenCosmo file?\n "
             f"Error: {e}"
         )
-    try:
-        simulation_parameters = parameters.read_simulation_parameters(file)
 
-    except (TypeError, KeyError) as e:
-        raise ValueError(
-            "This file does not appear to have simulation information, or the "
-            "simulation information is malformed. "
-            "Are you sure it is an OpenCosmo file?\n"
-            f"Error: {e}"
-        )
-
-    try:
-        cosmotools_parameters = parameters.read_header_attributes(
-            file, "simulation/cosmotools", parameters.CosmoToolsParameters
-        )
-    except KeyError:
-        cosmotools_parameters = None
-    return OpenCosmoHeader(
-        file_parameters,
-        simulation_parameters,
-        cosmotools_parameters,
+    origin_parameter_models = origin.get_origin_parameters(file_parameters.origin)
+    required_origin_params, optional_origin_params = read_origin_parameters(
+        file, origin_parameter_models
     )
+
+    return OpenCosmoHeader(
+        file_parameters, required_origin_params, optional_origin_params
+    )
+
+
+def read_origin_parameters(
+    file: h5py.File | h5py.Group, origin_parameters: dict[str, dict[str, type]]
+):
+    required = origin_parameters["required"]
+    required_output = {}
+    for path, model in required.items():
+        if isinstance(model, UnionType):
+            required_output[path] = load_union_model(file, path, model)
+        else:
+            required_output[path] = parameters.read_header_attributes(file, path, model)
+
+    optional_output = {}
+    optional = origin_parameters["optional"]
+    for path, model in optional.items():
+        if isinstance(origin, UnionType):
+            read_fn = load_union_model
+        else:
+            read_fn = parameters.read_header_attributes
+        try:
+            optional_output[path] = read_fn(file, path, model)
+        except (ValidationError, KeyError):
+            continue
+
+    return required_output, optional_output
+
+
+def load_union_model(
+    file: h5py.File | h5py.Group, path: str, allowed_models: UnionType, **kwargs
+):
+    for model in allowed_models.__args__:
+        try:
+            return parameters.read_header_attributes(file, path, model)
+        except ValidationError as ve:
+            if any(e["type"] == "missing" or e["input"] is None for e in ve.errors()):
+                continue
+            else:
+                raise ValueError(
+                    f"Parsing header paramter model raised a validation error: \n {ve}"
+                )
+    raise ValueError("Input attributes do not match any of the models in the union")

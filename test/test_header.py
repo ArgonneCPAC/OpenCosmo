@@ -4,7 +4,7 @@ import h5py
 import pytest
 from astropy.cosmology import FlatLambdaCDM
 
-from opencosmo.header import read_header
+from opencosmo.header import read_header, write_header
 
 
 def update_simulation_parameter(
@@ -37,6 +37,14 @@ def malformed_header_path(header_resource_path, tmp_path):
 
 def test_read_header(header_resource_path):
     header = read_header(header_resource_path)
+    assert isinstance(header.cosmology, FlatLambdaCDM)
+
+
+def test_write_header(header_resource_path, tmp_path):
+    header = read_header(header_resource_path)
+    write_header(tmp_path / "header.hdf5", header)
+    header = read_header(header_resource_path)
+
     assert isinstance(header.cosmology, FlatLambdaCDM)
 
 

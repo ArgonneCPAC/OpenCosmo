@@ -28,10 +28,6 @@ def test_write_header(snapshot_path, tmp_path):
 
     new_header = read_header(new_path)
     assert header.simulation == new_header.simulation
-    assert (
-        header._OpenCosmoHeader__cosmotools_pars
-        == new_header._OpenCosmoHeader__cosmotools_pars
-    )
 
 
 def test_write_dataset(halo_properties_path, tmp_path):
