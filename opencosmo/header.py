@@ -50,6 +50,30 @@ class OpenCosmoHeader:
                 table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
         return table
 
+    def parameters(self):
+        """
+        Return the parametrs stored in this header as
+        key-value pairs. The values will be Pydantic models.
+
+        Any block of parameters that is returned from this method can
+        also be accessed with standard dot notation. For example, HACC
+        data contains a "simulation" block that contains the parameters that
+        were used to run the original simulation. The following calls are
+        equivalent:
+
+        .. code-block:: python
+
+            header.simulation
+            header.parameters()["simulation"]
+
+        Returns
+        -------
+        parameters: dict[str, pydantic.BaseModel]
+            The parameter blocks associated with this header
+
+        """
+        return self.__get_access_table()
+
     def __getattr__(self, key: str):
         if key.startswith("__"):
             raise AttributeError(key)

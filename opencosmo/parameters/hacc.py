@@ -99,6 +99,7 @@ class HaccHydroSimulationParameters(HaccSimulationParameters):
 
 
 class CosmoToolsParameters(BaseModel):
+    ACCESS_PATH: ClassVar[str] = "cosmotools"
     cosmotools_steps: list[int]
     fof_linking_length: float
     fof_pmin: int
