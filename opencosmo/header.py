@@ -33,6 +33,10 @@ class OpenCosmoHeader:
 
     @cache
     def __get_access_table(self):
+        # raise NotImplementedError(
+        #    "Need to implement dtype parameters and user header inspection"
+        # )
+
         table = {}
         all_models = chain(
             self.__required_origin_parameters.values(),
@@ -47,6 +51,9 @@ class OpenCosmoHeader:
         return table
 
     def __getattr__(self, key: str):
+        if key.startswith("__"):
+            raise AttributeError(key)
+
         table = self.__get_access_table()
         try:
             return table[key]
