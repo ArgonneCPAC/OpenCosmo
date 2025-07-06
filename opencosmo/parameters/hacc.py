@@ -53,7 +53,8 @@ class HaccSimulationParameters(BaseModel):
         """
         a_ini = 1 / (1 + self.z_ini)
         a_end = 1 / (1 + self.z_end)
-        # Steps are evenly spaced in log(a)
+        # Steps are evenly spaced in a with step zero corresponding to the first step
+        # after the initial conditions
         step_as = np.linspace(a_ini, a_end, self.n_steps + 1)[1:]
         return np.round(1 / step_as - 1, 3).tolist()  # type: ignore
 
@@ -182,4 +183,12 @@ ORIGIN_PARAMETERS = {
         "simulation/cosmology": CosmologyParameters,
     },
     "optional": {"reformat_hacc/config": ReformatParameters},
+}
+
+DATATYPE_PARAMETERS: dict[str, dict[str, BaseModel]] = {
+    "halo_properties": {},
+    "galaxy_properties": {},
+    "halo_particles": {},
+    "galaxy_particles": {},
+    "halo_profiles": {},
 }
