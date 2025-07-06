@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
-from opencosmo.parameters import origin
+from opencosmo.parameters import dtype, origin
 
 
 class OpenCosmoHeader:
@@ -26,21 +26,20 @@ class OpenCosmoHeader:
         file_pars: parameters.FileParameters,
         required_origin_parameters: dict[str, BaseModel],
         optional_origin_parameters: dict[str, BaseModel],
+        dtype_parameters: list[BaseModel],
     ):
         self.__file_pars = file_pars
         self.__required_origin_parameters = required_origin_parameters
         self.__optional_origin_parameters = optional_origin_parameters
+        self.__dtype_parameters = dtype_parameters
 
     @cache
     def __get_access_table(self):
-        # raise NotImplementedError(
-        #    "Need to implement dtype parameters and user header inspection"
-        # )
-
         table = {}
         all_models = chain(
             self.__required_origin_parameters.values(),
             self.__optional_origin_parameters.values(),
+            self.__dtype_parameters,
         )
         for model in all_models:
             if not hasattr(model, "ACCESS_PATH"):
@@ -75,7 +74,7 @@ class OpenCosmoHeader:
         return self.__get_access_table()
 
     def __getattr__(self, key: str):
-        if key.startswith("__"):
+        if key.startswith("__"):  # avoid infinite recursion when serailizing for MPI
             raise AttributeError(key)
 
         table = self.__get_access_table()
@@ -91,6 +90,7 @@ class OpenCosmoHeader:
             new_file_pars,
             self.__required_origin_parameters,
             self.__optional_origin_parameters,
+            self.__dtype_parameters,
         )
         return new_header
 
@@ -167,15 +167,25 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
     required_origin_params, optional_origin_params = read_origin_parameters(
         file, origin_parameter_models
     )
+    dtype_parameter_models = dtype.get_dtype_parameters(
+        file_parameters.origin, file_parameters.data_type
+    )
+    dtype_params = read_dtype_parameters(file, dtype_parameter_models)
 
     return OpenCosmoHeader(
-        file_parameters, required_origin_params, optional_origin_params
+        file_parameters, required_origin_params, optional_origin_params, dtype_params
     )
 
 
 def read_origin_parameters(
-    file: h5py.File | h5py.Group, origin_parameters: dict[str, dict[str, type]]
+    file: h5py.File | h5py.Group, origin_parameters: dict[str, dict[str, BaseModel]]
 ):
+    """
+    An "origin" describes the original source of a given dataset. Currently the only
+    origin we support in the OpenCosmo toolkit is HACC.
+
+    Origins can define a set of required and optional parameters.
+    """
     required = origin_parameters["required"]
     required_output = {}
     for path, model in required.items():
@@ -197,6 +207,29 @@ def read_origin_parameters(
             continue
 
     return required_output, optional_output
+
+
+def read_dtype_parameters(
+    file: h5py.File | h5py.Group, dtype_paramter_models: dict[str, BaseModel]
+):
+    """
+    Data types can also define parameters that they expect. For now, all dtype
+    parameters are required. They MUST define an "ACCESS_PATH" attribute,
+    which tells the header how users should be allowed to access them.
+
+    """
+    dtype_output = {}
+    for path, model in dtype_paramter_models.items():
+        if isinstance(model, UnionType):
+            dtype_output[path] = load_union_model(file, path, model)
+        else:
+            dtype_output[path] = parameters.read_header_attributes(file, path, model)
+
+        if not hasattr(model, "ACCESS_PATH"):
+            # This should be always always always caught in testing
+            raise ValueError(f"Model {model} does not have an access path!")
+
+    return dtype_output
 
 
 def load_union_model(
