@@ -153,3 +153,31 @@ def test_lc_collection_write(
     data = ds.select("redshift").data
     assert data.min() >= 0.04 and data.max() <= 0.0405
     assert len(data) == original_length
+
+
+def test_lc_collection_bound(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    raw_data = ds.data
+
+    center = (45 * u.deg, -45 * u.deg)
+    radius = 2 * u.deg
+    center_coord = SkyCoord(*center)
+
+    raw_data_coords = SkyCoord(
+        raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
+    )
+    raw_data_seps = center_coord.separation(raw_data_coords)
+    n_raw = np.sum(raw_data_seps < radius)
+
+    region = oc.make_cone(center, radius)
+    data = ds.bound(region).data
+    ra = data["phi"]
+    dec = np.pi / 2 - data["theta"]
+
+    coordinates = SkyCoord(ra, dec, unit="radian")
+    seps = center_coord.separation(coordinates)
+    seps = seps.to(u.degree)
+    assert all(seps < radius)
+    assert len(data) == n_raw
