@@ -88,6 +88,7 @@ def open_linked_file(
     Open a single file that contains both properties and linked datasets.
     """
     outputs = {}
+    print(file_handle)
     header = read_header(file_handle)
     datasets = set(k for k in file_handle.keys() if k != "header")
     # bespoke for now

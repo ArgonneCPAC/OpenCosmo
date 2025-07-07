@@ -1,7 +1,9 @@
 import random
 from collections import defaultdict
 from pathlib import Path
+from shutil import copy
 
+import h5py
 import numpy as np
 import pytest
 
@@ -36,6 +38,16 @@ def galaxy_paths_2(snapshot_path: Path):
     return list(hdf_files)
 
 
+@pytest.fixture
+def conditional_path(multi_path, tmp_path):
+    path = tmp_path / "conditional_load.hdf5"
+    copy(multi_path, path)
+    with h5py.File(path, "a") as f:
+        f["scidac1"].create_group("load/if")
+        f["scidac1/load/if"].attrs["foo"] = True
+    return path
+
+
 def test_multi_filter(multi_path):
     collection = oc.open(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
@@ -61,6 +73,13 @@ def test_halo_alias_fails_for_galaxies(galaxy_paths):
 def test_multi_repr(multi_path):
     collection = oc.open(multi_path)
     assert isinstance(collection.__repr__(), str)
+
+
+def test_conditional_load(conditional_path):
+    ds = oc.open(conditional_path)
+    assert isinstance(ds, oc.Dataset)
+    ds = oc.open(conditional_path, foo=True)
+    assert isinstance(ds, oc.SimulationCollection)
 
 
 def test_multi_filter_write(multi_path, tmp_path):

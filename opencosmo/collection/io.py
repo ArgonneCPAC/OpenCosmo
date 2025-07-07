@@ -35,15 +35,14 @@ def open_simulation_files(**paths: Path) -> SimulationCollection:
     return SimulationCollection(datasets)
 
 
-def open_multi_dataset_file(
-    file: h5py.File,
-    datasets: Optional[Iterable[str]],
+def open_collection(
+    handles: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
 ) -> Collection | ds.Dataset:
     """
     Open a file with multiple datasets.
     """
-    CollectionType = get_collection_type(file)
-    return CollectionType.open(file, datasets)
+    CollectionType = get_collection_type(handles)
+    return CollectionType.open(handles, load_kwargs)
 
 
 def read_multi_dataset_file(
@@ -56,7 +55,7 @@ def read_multi_dataset_file(
     return CollectionType.read(file, datasets)
 
 
-def get_collection_type(file: h5py.File) -> Type[Collection]:
+def get_collection_type(handles: list[h5py.File | h5py.Group]) -> Type[Collection]:
     """
     Determine the type of a single file containing multiple datasets. Currently
     we support multi_simulation, particle, and linked collections.
@@ -65,11 +64,16 @@ def get_collection_type(file: h5py.File) -> Type[Collection]:
     particle == single simulation, multiple particle species
     linked == A properties dataset, linked with other particle or profile datasets
     """
-    datasets = [k for k in file.keys() if k != "header"]
+    if len(handles) > 1:
+        return SimulationCollection
+
+    handle = handles[0]
+
+    datasets = [k for k in handle.keys() if k != "header"]
     if len(datasets) == 0:
         raise ValueError("No datasets found in file.")
 
-    if "header" not in file.keys():
+    if "header" not in handle.keys():
         return SimulationCollection
     elif len(list(filter(lambda x: x.endswith("properties"), datasets))) >= 1:
         return StructureCollection
