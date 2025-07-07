@@ -77,6 +77,9 @@ def open(
 
     """
     # For now the only way to open multiple files is with a StructureCollection
+    if len(files) == 1 and isinstance(files[0], list):
+        return oc.open(*files[0])
+
     if len(files) > 1 and all(isinstance(f, (str, Path)) for f in files):
         paths = [resolve_path(path, FileExistance.MUST_EXIST) for path in files]
         return oc.open_linked_files(*paths, **load_kwargs)

@@ -57,14 +57,14 @@ def test_multi_filter(multi_path):
 
 
 def test_galaxy_alias_fails_for_halos(halo_paths):
-    ds = open_linked_files(halo_paths)
+    ds = oc.open(halo_paths)
     with pytest.raises(AttributeError):
         for gal in ds.galaxies():
             pass
 
 
 def test_halo_alias_fails_for_galaxies(galaxy_paths):
-    ds = open_linked_files(galaxy_paths)
+    ds = oc.open(galaxy_paths)
     with pytest.raises(AttributeError):
         for gal in ds.halos():
             pass
@@ -95,7 +95,7 @@ def test_multi_filter_write(multi_path, tmp_path):
 
 
 def test_data_linking(halo_paths):
-    collection = open_linked_files(*halo_paths)
+    collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
         10, at="random"
     )
