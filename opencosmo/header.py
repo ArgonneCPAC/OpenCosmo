@@ -49,6 +49,7 @@ class OpenCosmoHeader:
                 table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
         return table
 
+    @property
     def parameters(self):
         """
         Return the parametrs stored in this header as
@@ -63,7 +64,7 @@ class OpenCosmoHeader:
         .. code-block:: python
 
             header.simulation
-            header.parameters()["simulation"]
+            header.parameters["simulation"]
 
         Returns
         -------
@@ -105,6 +106,11 @@ class OpenCosmoHeader:
 
     @property
     def file(self):
+        """
+        All files must at minimum have a "file" block in their header. This block
+        contains basic information like the original source of the data and
+        its data type.
+        """
         return self.__file_pars
 
 
