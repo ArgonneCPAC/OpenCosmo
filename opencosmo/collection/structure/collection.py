@@ -99,7 +99,7 @@ class StructureCollection:
 
     @property
     def dtype(self):
-        return {}
+        raise NotImplementedError()
 
     @property
     def cosmology(self) -> astropy.cosmology.Cosmology:

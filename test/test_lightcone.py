@@ -140,3 +140,11 @@ def test_lc_collection_restrict_z(haloproperties_600_path, haloproperties_601_pa
     masked_redshifts = (original_redshifts > 0.04) & (original_redshifts < 0.0405)
     assert np.all((redshifts > 0.04) & (redshifts < 0.0405))
     assert np.sum(masked_redshifts) == len(redshifts)
+
+
+def test_lc_collection_write(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_601_path, haloproperties_600_path)
+    ds = ds.with_redshift_range(0.040, 0.0405)
+    oc.write(tmp_path / "lightcone.hdf5", ds)
