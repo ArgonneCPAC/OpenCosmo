@@ -147,4 +147,9 @@ def test_lc_collection_write(
 ):
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     ds = ds.with_redshift_range(0.040, 0.0405)
+    original_length = len(ds)
     oc.write(tmp_path / "lightcone.hdf5", ds)
+    ds = oc.open(tmp_path / "lightcone.hdf5")
+    data = ds.select("redshift").data
+    assert data.min() >= 0.04 and data.max() <= 0.0405
+    assert len(data) == original_length
