@@ -5,7 +5,6 @@ import numpy as np
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
-from opencosmo.collection.protocols import Collection
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
 from opencosmo.io.schemas import LightconeSchema
@@ -69,7 +68,7 @@ class Lightcone(dict):
         )
 
     def __len__(self):
-        return sum(len(ds) for ds in self.__datasets.values())
+        return sum(len(ds) for ds in self.values())
 
     def __enter__(self):
         return self
@@ -95,18 +94,19 @@ class Lightcone(dict):
 
     @property
     def data(self):
-        data = [ds.data for ds in self.__datasets.values()]
+        data = [ds.data for ds in self.values()]
         table = vstack(data, join_type="exact")
         if len(table.columns) == 1:
             return next(table.itercols())
+        return table
 
     @property
     def cosmology(self):
-        return self.__datasets[0].cosmology
+        return self[0].cosmology
 
     @property
     def simulation(self):
-        return self.__datasets[0].header.simulation
+        return self[0].header.simulation
 
     @classmethod
     def open(cls, handles: list[h5py.File | h5py.Group], load_kwargs):
@@ -155,13 +155,11 @@ class Lightcone(dict):
         datasets have the same data type, so it is always safe to map operations
         across all of them.
         """
-        output = {
-            k: getattr(v, method)(*args, **kwargs) for k, v in self.__datasets.items()
-        }
+        output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
         return Lightcone(output)
 
     def __map_attribute(self, attribute):
-        return {k: getattr(v, attribute) for k, v in self.__datasets.items()}
+        return {k: getattr(v, attribute) for k, v in self.items()}
 
     def make_schema(self) -> LightconeSchema:
         schema = LightconeSchema()
@@ -235,6 +233,3 @@ class Lightcone(dict):
 
         """
         return self.__map("with_units", convention)
-
-
-test: Collection = Lightcone({})
