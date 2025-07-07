@@ -28,8 +28,8 @@ class Collection(Protocol):
 
     @classmethod
     def open(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> Self: ...
+        cls, files: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
+    ) -> Union["Collection", Dataset]: ...
 
     @classmethod
     def read(

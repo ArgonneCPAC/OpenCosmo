@@ -82,10 +82,12 @@ class StructureCollection:
     @classmethod
     def open(
         cls,
-        file: h5py.File,
+        handles: list[h5py.File | h5py.Group],
         datasets_to_get: Optional[Iterable[str]] = None,
     ) -> StructureCollection:
-        return s.open_linked_file(file, datasets_to_get)
+        if len(handles) > 1:
+            raise ValueError("This method expects a single file")
+        return s.open_linked_file(handles[0], datasets_to_get)
 
     @classmethod
     def read(cls, *args, **kwargs) -> StructureCollection:

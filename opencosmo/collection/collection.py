@@ -12,6 +12,7 @@ from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import ChunkedIndex
+from opencosmo.io.io import evaluate_load_conditions
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import HaccSimulationParameters
@@ -63,14 +64,18 @@ class SimulationCollection(dict):
 
     @classmethod
     def open(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> SimulationCollection:
-        if datasets_to_get is not None:
-            verify_datasets_exist(file, datasets_to_get)
-            names = datasets_to_get
-        else:
-            names = list(filter(lambda x: x != "header", file.keys()))
-        datasets = {name: oc.open(file[name]) for name in names}
+        cls, handles: list[h5py.File | h5py.group], load_kwargs
+    ) -> Collection | oc.Dataset:
+        if len(handles) != 1:
+            raise ValueError("SimulationCollections should be in a single file")
+        handle = handles[0]
+        groups = {k: v for k, v in handle.items() if k != "header"}
+        groups = evaluate_load_conditions(groups, load_kwargs)
+
+        datasets = {name: oc.open(group) for name, group in groups.items()}
+
+        if len(datasets) == 1:
+            return next(iter(datasets.values()))
         return cls(datasets)
 
     @classmethod
@@ -283,3 +288,6 @@ def read_single_dataset(
     )
 
     return oc.Dataset(handler, header, state, tree)
+
+
+a: Collection = SimulationCollection({})
