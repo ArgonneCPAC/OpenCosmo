@@ -98,6 +98,14 @@ class SimulationCollection(dict):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
     @property
+    def dtype(self) -> dict[str, str]:
+        return {key: ds.header.file.data_dtype for key, ds in self.items()}
+
+    @property
+    def header(self) -> dict[str, OpenCosmoHeader]:
+        return self.__map_attribute("header")
+
+    @property
     def cosmology(self) -> dict[str, Cosmology]:
         """
         Get the cosmologies of the simulations in the collection

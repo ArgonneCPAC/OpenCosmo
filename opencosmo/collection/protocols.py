@@ -4,6 +4,7 @@ import h5py
 
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
+from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.protocols import DataSchema
 
 
@@ -32,6 +33,11 @@ class Collection(Protocol):
     ) -> Union["Collection", Dataset]: ...
 
     def make_schema(self) -> DataSchema: ...
+    @property
+    def dtype(self) -> str | dict[str, str]: ...
+
+    @property
+    def header(self) -> OpenCosmoHeader | dict[str, OpenCosmoHeader]: ...
 
     def __getitem__(self, key: str) -> Dataset: ...
     def keys(self) -> Iterable[str]: ...

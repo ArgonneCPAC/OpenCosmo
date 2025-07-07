@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 from typing import Optional
 
 import h5py
 
 import opencosmo as oc
+from opencosmo.dataset import Dataset
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
@@ -17,7 +16,11 @@ def build_dataset(
     file: h5py.File | h5py.Group,
     header: OpenCosmoHeader,
     index: Optional[DataIndex] = None,
-) -> oc.Dataset:
+) -> Dataset:
+    """
+    Builds a dataset. Used when header and the data group are not
+    in the same place
+    """
     try:
         tree = open_tree(file, header.simulation.box_size)
     except ValueError:
@@ -42,7 +45,7 @@ def build_dataset(
         sim_box,
     )
 
-    dataset = oc.Dataset(
+    dataset = Dataset(
         handler,
         header,
         state,

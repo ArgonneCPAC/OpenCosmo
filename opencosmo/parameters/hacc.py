@@ -122,6 +122,7 @@ class CosmoToolsParameters(BaseModel):
 
 
 class ReformatParameters(BaseModel):
+    ACCESS_PATH: ClassVar[str] = "reformat"
     cosmotools_lc_path: Optional[Path] = None
     cosmotools_path: Path
     indat_path: Path

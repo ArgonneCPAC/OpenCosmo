@@ -7,12 +7,17 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def haloproperties_path(lightcone_path):
+def haloproperties_600_path(lightcone_path):
     return lightcone_path / "step_600" / "haloproperties.hdf5"
 
 
-def test_healpix_index(haloproperties_path):
-    ds = oc.open(haloproperties_path)
+@pytest.fixture
+def haloproperties_601_path(lightcone_path):
+    return lightcone_path / "step_601" / "haloproperties.hdf5"
+
+
+def test_healpix_index(haloproperties_600_path):
+    ds = oc.open(haloproperties_600_path)
     raw_data = ds.data
 
     center = (45 * u.deg, -45 * u.deg)
@@ -37,8 +42,8 @@ def test_healpix_index(haloproperties_path):
     assert len(data) == n_raw
 
 
-def test_healpix_index_chain_failure(haloproperties_path):
-    ds = oc.open(haloproperties_path)
+def test_healpix_index_chain_failure(haloproperties_600_path):
+    ds = oc.open(haloproperties_600_path)
 
     center1 = (45 * u.deg, -45 * u.deg)
     center2 = (45 * u.deg, 45 * u.deg)
@@ -51,8 +56,8 @@ def test_healpix_index_chain_failure(haloproperties_path):
     assert len(ds) == 0
 
 
-def test_healpix_index_chain(haloproperties_path):
-    ds = oc.open(haloproperties_path)
+def test_healpix_index_chain(haloproperties_600_path):
+    ds = oc.open(haloproperties_600_path)
     raw_data = ds.data
 
     center = (45 * u.deg, -45 * u.deg)
@@ -74,8 +79,8 @@ def test_healpix_index_chain(haloproperties_path):
     assert n_raw == len(ds)
 
 
-def test_healpix_write(haloproperties_path, tmp_path):
-    ds = oc.open(haloproperties_path)
+def test_healpix_write(haloproperties_600_path, tmp_path):
+    ds = oc.open(haloproperties_600_path)
 
     center = (45, -45)
     radius = 4 * u.deg
@@ -94,8 +99,8 @@ def test_healpix_write(haloproperties_path, tmp_path):
     assert set(ds.data["fof_halo_tag"]) == set(new_ds.data["fof_halo_tag"])
 
 
-def test_healpix_write_fail(haloproperties_path, tmp_path):
-    ds = oc.open(haloproperties_path)
+def test_healpix_write_fail(haloproperties_600_path, tmp_path):
+    ds = oc.open(haloproperties_600_path)
 
     center = (45 * u.deg, -45 * u.deg)
     radius = 2 * u.deg
@@ -112,8 +117,8 @@ def test_healpix_write_fail(haloproperties_path, tmp_path):
     assert len(new_ds) == 0
 
 
-def test_lightcone_physical_units(haloproperties_path):
-    ds_comoving = oc.open(haloproperties_path)
+def test_lightcone_physical_units(haloproperties_600_path):
+    ds_comoving = oc.open(haloproperties_600_path)
     ds_physical = ds_comoving.with_units("physical")
     data_comoving = ds_comoving.data
     data_physical = ds_physical.data
@@ -125,3 +130,13 @@ def test_lightcone_physical_units(haloproperties_path):
         data_physical["fof_halo_com_vx"]
         == (data_comoving["fof_halo_com_vx"] * data_comoving["fof_halo_center_a"])
     )
+
+
+def test_lc_collection_restrict_z(haloproperties_600_path, haloproperties_601_path):
+    ds = oc.open(haloproperties_601_path, haloproperties_600_path)
+    original_redshifts = ds.select("redshift").data
+    ds = ds.with_redshift_range(0.040, 0.0405)
+    redshifts = ds.select("redshift").data
+    masked_redshifts = (original_redshifts > 0.04) & (original_redshifts < 0.0405)
+    assert np.all((redshifts > 0.04) & (redshifts < 0.0405))
+    assert np.sum(masked_redshifts) == len(redshifts)
