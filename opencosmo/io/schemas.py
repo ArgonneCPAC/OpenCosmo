@@ -57,7 +57,12 @@ class FileSchema:
         if name in self.children:
             raise ValueError(f"File schema already has child named {name}")
         match child:
-            case SimCollectionSchema() | StructCollectionSchema() | DatasetSchema():
+            case (
+                SimCollectionSchema()
+                | StructCollectionSchema()
+                | DatasetSchema()
+                | LightconeSchema()
+            ):
                 self.children[name] = child
             case _:
                 raise ValueError(
@@ -141,6 +146,48 @@ class SimCollectionSchema:
             name: child.into_writer(comm) for name, child in self.children.items()
         }
         return iow.CollectionWriter(children)
+
+
+class LightconeSchema:
+    def __init__(self):
+        self.children: dict[str, DatasetSchema] = {}
+
+    def insert(self, child: iop.DataSchema, path: str):
+        try:
+            child_name, remaining_path = path.split(".", maxsplit=1)
+            if child_name not in self.children:
+                raise ValueError(f"File schema has no child {child_name}")
+            self.children[child_name].insert(child, remaining_path)
+        except ValueError:
+            self.add_child(child, path)
+
+    def verify(self):
+        if len(self.children) < 2:
+            raise ValueError("LightconeSchema must have at least two children!")
+
+    def add_child(self, child: iop.DataSchema, name: str):
+        if name in self.children:
+            raise ValueError(f"LightconeSchema already has child with name {name}")
+        match child:
+            case DatasetSchema():
+                self.children[name] = child
+            case _:
+                raise ValueError(
+                    f"LightconeSchema cannot take children of type {type(child)}"
+                )
+
+    def allocate(self, group: h5py.Group):
+        if len(self.children) == 1:
+            raise ValueError("A dataset collection cannot have only one member!")
+        for ds_name, ds in self.children.items():
+            ds_group = group.require_group(ds_name)
+            ds.allocate(ds_group)
+
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
+        dataset_writers = {
+            key: val.into_writer(comm) for key, val in self.children.items()
+        }
+        return iow.CollectionWriter(dataset_writers)
 
 
 class StructCollectionSchema:

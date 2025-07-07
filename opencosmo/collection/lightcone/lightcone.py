@@ -1,11 +1,14 @@
 from typing import Optional, Self
 
+import h5py
 import numpy as np
-from astropy.table import vstack
+from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection.protocols import Collection
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
+from opencosmo.io.schemas import LightconeSchema
 from opencosmo.spatial import Region
 
 
@@ -44,7 +47,7 @@ def with_redshift_column(dataset: Dataset):
         return dataset.with_new_columns(redshift=z_col)
 
 
-class Lightcone:
+class Lightcone(dict):
     """
     A lightcone contains two or more datasets that are part of a lightcone. Typically
     each dataset will cover a specific redshift range. The Lightcone mostly just
@@ -57,12 +60,24 @@ class Lightcone:
         datasets: dict[str, Dataset],
         z_range: Optional[tuple[float, float]] = None,
     ):
-        self.__datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
+        datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
+        self.update(datasets)
         self.__z = (
             z_range
             if z_range is not None
             else get_redshift_range(list(datasets.values()))
         )
+
+    def __len__(self):
+        return sum(len(ds) for ds in self.__datasets.values())
+
+    @property
+    def dtype(self):
+        return next(iter(self.values())).dtype
+
+    @property
+    def header(self):
+        return next(iter(self.values())).header
 
     @property
     def z(self):
@@ -83,6 +98,22 @@ class Lightcone:
     def simulation(self):
         return self.__datasets[0].header.simulation
 
+    @classmethod
+    def open(cls, handles: list[h5py.File | h5py.Group], load_kwargs):
+        if len(handles) > 1:
+            raise NotImplementedError
+        handle = handles[0]
+        datasets: dict[str, Dataset] = {}
+        for key, group in handle.items():
+            ds = oc.open(group)
+            if not isinstance(ds, Dataset):
+                raise ValueError(
+                    "Lightcones can only contain datasets (not collections)"
+                )
+            datasets[key] = ds
+
+        return cls(datasets)
+
     def with_redshift_range(self, z_low: float, z_high: float):
         """
         Restrict this lightcone to a specific redshift range.
@@ -99,7 +130,7 @@ class Lightcone:
         elif z_low == z_high:
             raise ValueError("Low and high values of the redshift range are the same!")
         new_datasets = {}
-        for key, dataset in self.__datasets.items():
+        for key, dataset in self.items():
             if not is_in_range(dataset, z_low, z_high):
                 continue
             new_dataset = dataset.filter(
@@ -121,6 +152,13 @@ class Lightcone:
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.__datasets.items()}
+
+    def make_schema(self) -> LightconeSchema:
+        schema = LightconeSchema()
+        for name, dataset in self.items():
+            ds_schema = dataset.make_schema()
+            schema.add_child(ds_schema, name)
+        return schema
 
     def select(self, *args, **kwargs):
         return self.__map("select", *args, **kwargs)
@@ -187,3 +225,6 @@ class Lightcone:
 
         """
         return self.__map("with_units", convention)
+
+
+test: Collection = Lightcone({})

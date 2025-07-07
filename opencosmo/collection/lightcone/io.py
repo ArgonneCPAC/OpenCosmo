@@ -5,6 +5,7 @@ from typing import cast
 import h5py
 
 import opencosmo as oc
+from opencosmo.dataset import Dataset
 from opencosmo.header import read_header
 
 from .lightcone import Lightcone
@@ -38,17 +39,17 @@ def open_lightcone(files: list[Path], **load_kwargs):
     if len(steps) != len(files):
         raise ValueError("Each file must contain only a single lightcone step!")
 
-    datasets: dict[str, oc.Dataset] = reduce(
+    datasets: dict[str, Dataset] = reduce(
         lambda left, right: left | open_lightcone_file(right), files, {}
     )
     return Lightcone(datasets)
 
 
-def open_lightcone_file(path: Path) -> dict[str, oc.Dataset]:
+def open_lightcone_file(path: Path) -> dict[str, Dataset]:
     handle = h5py.File(path)
     if "data" in handle.keys():
-        ds = cast(oc.Dataset, oc.open(handle))
+        ds = cast(Dataset, oc.open(handle))
 
         return {"_".join([ds.dtype, str(ds.header.file.step)]): ds}
     else:
-        raise NotImplementedError()
+        raise NotImplementedError

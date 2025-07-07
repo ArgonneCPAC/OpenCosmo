@@ -77,20 +77,28 @@ class DerivedColumn:
     def get_units(self, units: dict[str, u.Unit]):
         match self.lhs:
             case Column():
-                lhs_unit = 1 * units[self.lhs.column_name]
+                lhs_unit = units[self.lhs.column_name]
             case DerivedColumn():
-                lhs_unit = 1 * self.lhs.get_units(units)
+                lhs_unit = self.lhs.get_units(units)
             case _:
-                lhs_unit = 1
+                lhs_unit = None
         match self.rhs:
             case Column():
-                rhs_unit = 1 * units[self.rhs.column_name]
+                rhs_unit = units[self.rhs.column_name]
             case DerivedColumn():
-                rhs_unit = 1 * self.rhs.get_units(units)
+                rhs_unit = self.rhs.get_units(units)
             case _:
-                rhs_unit = 1
+                rhs_unit = None
 
-        return self.operation(lhs_unit, rhs_unit).unit
+        match (lhs_unit, rhs_unit):
+            case (None, None):
+                return None
+            case (_, None):
+                return self.operation(lhs_unit, 1)
+            case (None, _):
+                return self.operation(1, rhs_unit)
+            case (_, _):
+                return self.operation(lhs_unit, rhs_unit)
 
     def requires(self):
         """

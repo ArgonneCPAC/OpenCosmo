@@ -5,6 +5,7 @@ import h5py
 
 import opencosmo as oc
 from opencosmo import dataset as ds
+from opencosmo.collection.lightcone import Lightcone
 from opencosmo.collection.protocols import Collection
 from opencosmo.collection.simulation import SimulationCollection
 from opencosmo.collection.structure import StructureCollection
@@ -65,6 +66,8 @@ def get_collection_type(handles: list[h5py.File | h5py.Group]) -> Type[Collectio
         raise ValueError("No datasets found in file.")
 
     if "header" not in handle.keys():
+        if all(group["header/file"].attrs["is_lightcone"] for group in handle.values()):
+            return Lightcone
         return SimulationCollection
     elif len(list(filter(lambda x: x.endswith("properties"), datasets))) >= 1:
         return StructureCollection
