@@ -184,7 +184,8 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
 
 
 def read_origin_parameters(
-    file: h5py.File | h5py.Group, origin_parameters: dict[str, dict[str, BaseModel]]
+    file: h5py.File | h5py.Group,
+    origin_parameters: dict[str, dict[str, type[BaseModel]]],
 ):
     """
     An "origin" describes the original source of a given dataset. Currently the only
@@ -216,7 +217,7 @@ def read_origin_parameters(
 
 
 def read_dtype_parameters(
-    file: h5py.File | h5py.Group, dtype_paramter_models: dict[str, BaseModel]
+    file: h5py.File | h5py.Group, dtype_paramter_models: dict[str, type[BaseModel]]
 ):
     """
     Data types can also define parameters that they expect. For now, all dtype
