@@ -6,9 +6,11 @@ import h5py
 
 from opencosmo import dataset as d
 from opencosmo import io
-from opencosmo import structure as s
+from opencosmo.collection.structure import collection as sc
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.structure.builder import build_dataset
+
+from .builder import build_dataset
+from .handler import LinkedDatasetHandler
 
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",
@@ -83,7 +85,7 @@ def open_linked_files(*files: Path, **load_kwargs: bool):
 def open_linked_file(
     file_handle: h5py.File | h5py.Group,
     datasets_to_get: Optional[Iterable[str]] = None,
-) -> s.StructureCollection:
+) -> "sc.StructureCollection":
     """
     Open a single file that contains both properties and linked datasets.
     """
@@ -108,11 +110,11 @@ def open_linked_file(
         handlers = get_link_handlers(file_handle["halo_properties"], datasets, header)
         if "galaxy_properties" in outputs:
             datasets.remove("galaxy_properties")
-        linked_datasets: dict[str, d.Dataset | s.StructureCollection] = {
+        linked_datasets: dict[str, d.Dataset | sc.StructureCollection] = {
             key: build_dataset(file_handle[key], header) for key in datasets
         }
         linked_datasets.update(outputs)
-        collection = s.StructureCollection(
+        collection = sc.StructureCollection(
             source_dataset, header, linked_datasets, handlers
         )
 
@@ -129,7 +131,7 @@ def open_linked_file(
         linked_datasets = {
             key: build_dataset(file_handle[key], header) for key in datasets
         }
-        collection = s.StructureCollection(
+        collection = sc.StructureCollection(
             source_dataset, header, linked_datasets, handlers
         )
 
@@ -159,8 +161,8 @@ def build_structure_collection(
     link_spec: dict[str, list[str]],
     files_by_type: dict[str, h5py.File | h5py.Group],
     headers: dict[str, OpenCosmoHeader],
-) -> s.StructureCollection:
-    output: dict[str, s.StructureCollection] = {}
+) -> "sc.StructureCollection":
+    output: dict[str, sc.StructureCollection] = {}
     source_names = set(link_spec.keys())
     while set(output.keys()) != source_names:
         for source, targets in link_spec.items():
@@ -181,7 +183,7 @@ def build_structure_collection(
             for t in targets:
                 if t in output:
                     linked_datasets[t] = output[t]
-            output[source] = s.StructureCollection(
+            output[source] = sc.StructureCollection(
                 src_dataset, headers[source], linked_datasets, link_handlers
             )
             final_source = source
@@ -193,7 +195,7 @@ def get_link_handlers(
     link_file: h5py.File | h5py.Group,
     linked_files: Iterable[str],
     header: OpenCosmoHeader,
-) -> dict[str, s.LinkedDatasetHandler]:
+) -> dict[str, LinkedDatasetHandler]:
     if "data_linked" not in link_file.keys():
         raise KeyError("No linked datasets found in the file.")
     links = link_file["data_linked"]
@@ -210,10 +212,10 @@ def get_link_handlers(
             start = links[f"{dtype}_start"]
             size = links[f"{dtype}_size"]
 
-            output_links[key] = s.LinkedDatasetHandler(
+            output_links[key] = LinkedDatasetHandler(
                 (start, size),
             )
         except KeyError:
             index = links[f"{dtype}_idx"]
-            output_links[key] = s.LinkedDatasetHandler(index)
+            output_links[key] = LinkedDatasetHandler(index)
     return output_links

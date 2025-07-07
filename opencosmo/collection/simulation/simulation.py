@@ -1,12 +1,12 @@
-from __future__ import annotations
-
-from typing import Iterable, Mapping, Optional
+from typing import Iterable, Mapping, Optional, Self
 
 import h5py
 from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection import structure as sc
 from opencosmo.collection.protocols import Collection
+from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.state import DatasetState
@@ -18,7 +18,6 @@ from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import open_tree
-from opencosmo.structure import StructureCollection
 from opencosmo.transformations import units as u
 
 
@@ -38,7 +37,7 @@ class SimulationCollection(dict):
     all of them.
     """
 
-    def __init__(self, datasets: Mapping[str, oc.Dataset | Collection]):
+    def __init__(self, datasets: Mapping[str, Dataset | Collection]):
         self.update(datasets)
 
     def __enter__(self):
@@ -55,9 +54,9 @@ class SimulationCollection(dict):
         n_collections = sum(
             1
             for v in self.values()
-            if isinstance(v, (SimulationCollection, StructureCollection))
+            if isinstance(v, (SimulationCollection, sc.StructureCollection))
         )
-        n_datasets = sum(1 for v in self.values() if isinstance(v, oc.Dataset))
+        n_datasets = sum(1 for v in self.values() if isinstance(v, Dataset))
         return (
             f"SimulationCollection({n_collections} collections, {n_datasets} datasets)"
         )
@@ -65,7 +64,7 @@ class SimulationCollection(dict):
     @classmethod
     def open(
         cls, handles: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
-    ) -> Collection | oc.Dataset:
+    ) -> Collection | Dataset:
         if len(handles) != 1:
             raise ValueError("SimulationCollections should be in a single file")
         handle = handles[0]
@@ -76,19 +75,6 @@ class SimulationCollection(dict):
 
         if len(datasets) == 1:
             return next(iter(datasets.values()))
-        return cls(datasets)
-
-    @classmethod
-    def read(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]] = None
-    ) -> SimulationCollection:
-        if datasets_to_get is not None:
-            verify_datasets_exist(file, datasets_to_get)
-            names = datasets_to_get
-        else:
-            names = list(filter(lambda x: x != "header", file.keys()))
-
-        datasets = {name: read_single_dataset(file, name) for name in names}
         return cls(datasets)
 
     def make_schema(self) -> DataSchema:
@@ -145,9 +131,7 @@ class SimulationCollection(dict):
 
         return self.__map_attribute("simulation")
 
-    def bound(
-        self, region: Region, select_by: Optional[str] = None
-    ) -> SimulationCollection:
+    def bound(self, region: Region, select_by: Optional[str] = None) -> Self:
         """
         Restrict the datasets to some region. Note that the SimulationCollection does
         not do any checking to ensure its members have identical boxes. As a result
@@ -170,7 +154,7 @@ class SimulationCollection(dict):
         """
         return self.__map("bound", region, select_by)
 
-    def filter(self, *masks: Mask, **kwargs) -> SimulationCollection:
+    def filter(self, *masks: Mask, **kwargs) -> Self:
         """
         Filter the datasets in the collection. This method behaves
         exactly like :meth:`opencosmo.Dataset.filter` or
@@ -191,7 +175,7 @@ class SimulationCollection(dict):
         """
         return self.__map("filter", *masks, **kwargs)
 
-    def select(self, *args, **kwargs) -> SimulationCollection:
+    def select(self, *args, **kwargs) -> Self:
         """
         Select a subset of the datasets in the collection. This method
         calls the underlying method in :class:`opencosmo.Dataset`, or
@@ -211,7 +195,7 @@ class SimulationCollection(dict):
         """
         return self.__map("select", *args, **kwargs)
 
-    def take(self, n: int, at: str = "random") -> SimulationCollection:
+    def take(self, n: int, at: str = "random") -> Self:
         """
         Take a subest of rows from all datasets or collections in this collection.
         This method will delegate to the underlying method in
@@ -241,7 +225,7 @@ class SimulationCollection(dict):
         """
         return self.__map("with_new_columns", *args, **kwargs)
 
-    def with_units(self, convention: str) -> SimulationCollection:
+    def with_units(self, convention: str) -> Self:
         """
         Transform all datasets or collections to use the given unit convention. This
         method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
@@ -287,4 +271,4 @@ def read_single_dataset(
         base_unit_transformations, builders, index, u.UnitConvention.COMOVING, sim_box
     )
 
-    return oc.Dataset(handler, header, state, tree)
+    return Dataset(handler, header, state, tree)

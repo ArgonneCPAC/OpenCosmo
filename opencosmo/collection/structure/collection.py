@@ -6,7 +6,7 @@ import astropy  # type: ignore
 import h5py
 
 import opencosmo as oc
-from opencosmo import structure as s
+from opencosmo.collection.structure import io as sio
 from opencosmo.dataset.col import DerivedColumn
 from opencosmo.index import DataIndex
 from opencosmo.io.schemas import StructCollectionSchema
@@ -87,7 +87,7 @@ class StructureCollection:
     ) -> StructureCollection:
         if len(handles) > 1:
             raise ValueError("This method expects a single file")
-        return s.open_linked_file(handles[0], datasets_to_get)
+        return sio.open_linked_file(handles[0], datasets_to_get)
 
     @classmethod
     def read(cls, *args, **kwargs) -> StructureCollection:

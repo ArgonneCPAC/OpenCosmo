@@ -1,12 +1,13 @@
 from pathlib import Path
-from typing import Iterable, Optional, Type
+from typing import Type
 
 import h5py
 
 import opencosmo as oc
 from opencosmo import dataset as ds
-from opencosmo.collection import Collection, SimulationCollection
-from opencosmo.structure.collection import StructureCollection
+from opencosmo.collection.protocols import Collection
+from opencosmo.collection.simulation import SimulationCollection
+from opencosmo.collection.structure import StructureCollection
 
 
 def open_simulation_files(**paths: Path) -> SimulationCollection:
@@ -43,16 +44,6 @@ def open_collection(
     """
     CollectionType = get_collection_type(handles)
     return CollectionType.open(handles, load_kwargs)
-
-
-def read_multi_dataset_file(
-    file: h5py.File, datasets: Optional[Iterable[str]] = None
-) -> Collection | ds.Dataset:
-    """
-    Read a file with multiple datasets.
-    """
-    CollectionType = get_collection_type(file)
-    return CollectionType.read(file, datasets)
 
 
 def get_collection_type(handles: list[h5py.File | h5py.Group]) -> Type[Collection]:
