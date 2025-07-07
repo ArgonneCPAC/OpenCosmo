@@ -64,7 +64,7 @@ class SimulationCollection(dict):
 
     @classmethod
     def open(
-        cls, handles: list[h5py.File | h5py.group], load_kwargs
+        cls, handles: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
     ) -> Collection | oc.Dataset:
         if len(handles) != 1:
             raise ValueError("SimulationCollections should be in a single file")
