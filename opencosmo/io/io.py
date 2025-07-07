@@ -76,6 +76,11 @@ def open(
         The dataset or collection opened from the file.
 
     """
+    # For now the only way to open multiple files is with a StructureCollection
+    if len(files) > 1 and all(isinstance(f, (str, Path)) for f in files):
+        paths = [resolve_path(path, FileExistance.MUST_EXIST) for path in files]
+        return oc.open_linked_files(*paths, **load_kwargs)
+
     handles = get_file_handles(*files)
     if len(handles) == 1 and "data" in handles[0].keys():
         return open_single_dataset(handles[0])

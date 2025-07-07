@@ -63,7 +63,7 @@ def get_link_spec(*headers: OpenCosmoHeader) -> dict[str, list[str]]:
     return links
 
 
-def open_linked_files(*files: Path):
+def open_linked_files(*files: Path, **load_kwargs: bool):
     """
     Open a collection of files that are linked together, such as a
     properties file and a particle file.
@@ -88,7 +88,6 @@ def open_linked_file(
     Open a single file that contains both properties and linked datasets.
     """
     outputs = {}
-    print(file_handle)
     header = read_header(file_handle)
     datasets = set(k for k in file_handle.keys() if k != "header")
     # bespoke for now
