@@ -288,6 +288,3 @@ def read_single_dataset(
     )
 
     return oc.Dataset(handler, header, state, tree)
-
-
-a: Collection = SimulationCollection({})
