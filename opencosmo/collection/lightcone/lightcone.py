@@ -71,6 +71,16 @@ class Lightcone(dict):
     def __len__(self):
         return sum(len(ds) for ds in self.__datasets.values())
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_details):
+        for dataset in self.values():
+            try:
+                dataset.close()
+            except ValueError:
+                continue
+
     @property
     def dtype(self):
         return next(iter(self.values())).dtype
