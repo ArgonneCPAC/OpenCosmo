@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Protocol, Self, Union
+from typing import Iterable, Protocol, Self, Union
 
 import h5py
 
@@ -30,11 +30,6 @@ class Collection(Protocol):
     def open(
         cls, files: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
     ) -> Union["Collection", Dataset]: ...
-
-    @classmethod
-    def read(
-        cls, file: h5py.File, datasets_to_get: Optional[Iterable[str]]
-    ) -> Self: ...
 
     def make_schema(self) -> DataSchema: ...
 

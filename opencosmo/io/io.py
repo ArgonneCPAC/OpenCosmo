@@ -239,12 +239,9 @@ def read(
     """
 
     if "data" not in file:
-        if not isinstance(datasets, str):
-            return collection.read_multi_dataset_file(file, datasets)
-        try:
-            group = file[datasets]
-        except KeyError:
-            raise ValueError(f"Dataset {datasets} not found in file {file}")
+        raise ValueError(
+            "oc.read can not be used to read files with multiple datasets. Use oc.open"
+        )
     else:
         group = file
 
