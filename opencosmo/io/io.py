@@ -82,6 +82,10 @@ def open(
 
     if len(files) > 1 and all(isinstance(f, (str, Path)) for f in files):
         paths = [resolve_path(path, FileExistance.MUST_EXIST) for path in files]
+        headers = [read_header(p) for p in paths]
+        if all(h.file.is_lightcone for h in headers):
+            return oc.collection.open_lightcone(paths)
+
         return oc.open_linked_files(*paths, **load_kwargs)
 
     handles = get_file_handles(*files)

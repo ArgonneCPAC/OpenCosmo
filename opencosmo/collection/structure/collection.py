@@ -94,6 +94,14 @@ class StructureCollection:
         raise NotImplementedError
 
     @property
+    def header(self):
+        return self.__header
+
+    @property
+    def dtype(self):
+        return {}
+
+    @property
     def cosmology(self) -> astropy.cosmology.Cosmology:
         """
         The cosmology of the structure collection

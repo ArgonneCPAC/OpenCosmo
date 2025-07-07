@@ -7,9 +7,9 @@ import h5py
 from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection.structure import collection as sc
+from opencosmo.dataset.build import build_dataset
 from opencosmo.header import OpenCosmoHeader, read_header
 
-from .builder import build_dataset
 from .handler import LinkedDatasetHandler
 
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
