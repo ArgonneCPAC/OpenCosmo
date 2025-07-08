@@ -63,7 +63,7 @@ class Lightcone(dict):
     ):
         datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
         self.update(datasets)
-        self.__z = (
+        z_range = (
             z_range
             if z_range is not None
             else get_redshift_range(list(datasets.values()))
@@ -74,6 +74,28 @@ class Lightcone(dict):
         )
         if len(columns) != len(next(iter(self.values())).columns):
             raise ValueError("Not all lightcone datasets have the same columns!")
+        header = next(iter(self.values())).header
+        self.__header = header.with_parameter("lightcone/z_range", z_range)
+
+    def __repr__(self):
+        """
+        A basic string representation of the dataset
+        """
+        length = len(self)
+
+        if len(self) < 10:
+            repr_ds = self
+            table_head = ""
+        else:
+            repr_ds = self.take(10, at="start")
+            table_head = "First 10 rows:\n"
+
+        table_repr = repr_ds.data.__repr__()
+        # remove the first line
+        table_repr = table_repr[table_repr.find("\n") + 1 :]
+        head = f"OpenCosmo Lightcone Dataset (length={length})\n"
+        cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
+        return head + cosmo_repr + table_head + table_repr
 
     def __len__(self):
         return sum(len(ds) for ds in self.values())
@@ -94,15 +116,18 @@ class Lightcone(dict):
 
     @property
     def columns(self):
+        """
+        The names of the columns in this dataset
+        """
         return next(iter(self.values())).columns
 
     @property
     def header(self):
-        return next(iter(self.values())).header
+        return self.__header
 
     @property
     def z(self):
-        return self.__z
+        return self.__header.lightcone.z_range
 
     @property
     def data(self):
@@ -142,13 +167,13 @@ class Lightcone(dict):
         """
         Restrict this lightcone to a specific redshift range.
         """
+        z_range = self.__header.lightcone.z_range
         if z_high < z_low:
             z_high, z_low = z_low, z_high
 
-        if z_high < self.__z[0] or z_low > self.__z[1]:
+        if z_high < z_range[0] or z_low > z_range[1]:
             raise ValueError(
-                "This lightcone only ranges from "
-                f"z = {self.__z[0]} to z = {self.__z[1]}"
+                f"This lightcone only ranges from z = {z_range[0]} to z = {z_range[1]}"
             )
 
         elif z_low == z_high:
@@ -170,7 +195,7 @@ class Lightcone(dict):
         across all of them.
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return Lightcone(output, self.__z)
+        return Lightcone(output, self.z)
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
@@ -179,9 +204,7 @@ class Lightcone(dict):
         schema = LightconeSchema()
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
-            ds_schema.header = ds_schema.header.with_parameter(
-                "lightcone/z_range", self.__z
-            )
+            ds_schema.header = self.__header
             schema.add_child(ds_schema, name)
         return schema
 
@@ -247,7 +270,7 @@ class Lightcone(dict):
                 ds_index = SimpleIndex(indices_into_ds)
                 output[key] = ds.with_index(ds_index)
                 rs += len(ds)
-            return Lightcone(output, self.__z)
+            return Lightcone(output, self.z)
 
         output = {}
         rs = 0
@@ -264,7 +287,7 @@ class Lightcone(dict):
                 break
         if at == "end":
             output = {k: v for k, v in reversed(output.items())}
-        return Lightcone(output, self.__z)
+        return Lightcone(output, self.z)
 
     def with_new_columns(self, *args, **kwargs):
         """
