@@ -276,7 +276,12 @@ def read_single_dataset(
     )
     index = ChunkedIndex.from_size(len(handler))
     state = DatasetState(
-        base_unit_transformations, builders, index, u.UnitConvention.COMOVING, sim_box
+        base_unit_transformations,
+        builders,
+        index,
+        u.UnitConvention.COMOVING,
+        sim_box,
+        header,
     )
 
     return Dataset(handler, header, state, tree)

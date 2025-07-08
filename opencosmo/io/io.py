@@ -152,6 +152,7 @@ def open_single_dataset(handle: h5py.File | h5py.Group):
         index,
         u.UnitConvention.COMOVING,
         sim_region,
+        header,
     )
 
     dataset = oc.Dataset(
@@ -269,7 +270,12 @@ def read(
         group, header
     )
     state = dss.DatasetState(
-        base_unit_transformations, builders, index, u.UnitConvention.COMOVING, sim_box
+        base_unit_transformations,
+        builders,
+        index,
+        u.UnitConvention.COMOVING,
+        sim_box,
+        header,
     )
 
     return oc.Dataset(handler, header, state, tree)
