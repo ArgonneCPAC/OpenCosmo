@@ -190,8 +190,27 @@ def test_lc_collection_select(
 ):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     columns = ds.columns
-    to_select = random.choice(columns, 10)
+    to_select = set(random.choice(columns, 10))
 
     ds = ds.select(to_select)
+    columns_found = set(ds.data.columns)
+    to_select.add("redshift")
 
-    assert set(ds.data.columns) == set(to_select)
+    assert columns_found == to_select
+
+
+def test_lc_collection_take(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    n_to_take = int(0.75 * len(ds))
+    ds_start = ds.take(n_to_take, "start")
+    ds_end = ds.take(n_to_take, "end")
+    ds_random = ds.take(n_to_take, "random")
+    tags = ds.select("fof_halo_tag").data
+    tags_start = ds_start.select("fof_halo_tag").data
+    tags_end = ds_end.select("fof_halo_tag").data
+    tags_random = ds_random.select("fof_halo_tag").data
+    assert np.all(tags[:n_to_take] == tags_start)
+    assert np.all(tags[-n_to_take:] == tags_end)
+    assert len(tags_random) == n_to_take and len(
+        set(tags_random["fof_halo_tag"])
+    ) == len(tags_random)
