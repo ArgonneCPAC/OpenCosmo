@@ -10,14 +10,19 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def haloproperties_path(lightcone_path):
+def haloproperties_600_path(lightcone_path):
     return lightcone_path / "step_600" / "haloproperties.hdf5"
+
+
+@pytest.fixture
+def haloproperties_601_path(lightcone_path):
+    return lightcone_path / "step_601" / "haloproperties.hdf5"
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
-def test_healpix_index(haloproperties_path):
-    ds = oc.open(haloproperties_path)
+def test_healpix_index(haloproperties_600_path):
+    ds = oc.open(haloproperties_600_path)
     raw_data = ds.data
 
     pixel = np.random.choice(ds.region.pixels)
@@ -46,8 +51,8 @@ def test_healpix_index(haloproperties_path):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
-def test_healpix_index_chain_failure(haloproperties_path):
-    ds = oc.open(haloproperties_path)
+def test_healpix_index_chain_failure(haloproperties_600_path):
+    ds = oc.open(haloproperties_600_path)
 
     center1 = (45 * u.deg, -45 * u.deg)
     center2 = (45 * u.deg, 45 * u.deg)
@@ -61,8 +66,8 @@ def test_healpix_index_chain_failure(haloproperties_path):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
-def test_healpix_write(haloproperties_path, tmp_path):
-    ds = oc.open(haloproperties_path)
+def test_healpix_write(haloproperties_600_path, tmp_path):
+    ds = oc.open(haloproperties_600_path)
     path = MPI.COMM_WORLD.bcast(tmp_path)
 
     pixel = np.random.choice(ds.region.pixels)
@@ -80,3 +85,19 @@ def test_healpix_write(haloproperties_path, tmp_path):
     ds = ds.bound(region2)
 
     assert set(ds.data["fof_halo_tag"]) == set(new_ds.data["fof_halo_tag"])
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_collection_write(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    path = MPI.COMM_WORLD.bcast(tmp_path)
+    ds = oc.open(haloproperties_601_path, haloproperties_600_path)
+    ds = ds.with_redshift_range(0.040, 0.0405)
+    original_length = len(ds)
+    oc.write(path / "lightcone.hdf5", ds)
+    ds = oc.open(path / "lightcone.hdf5")
+    data = ds.select("redshift").data
+    parallel_assert(data.min() >= 0.04 and data.max() <= 0.0405)
+    parallel_assert(len(data) == original_length)
+    parallel_assert(ds.z == (0.04, 0.0405))

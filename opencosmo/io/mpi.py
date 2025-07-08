@@ -15,6 +15,7 @@ from .schemas import (
     DatasetSchema,
     FileSchema,
     IdxLinkSchema,
+    LightconeSchema,
     LinkSchema,
     SimCollectionSchema,
     SpatialIndexSchema,
@@ -44,6 +45,10 @@ def write_parallel(file: Path, file_schema: FileSchema):
     comm = get_comm_world()
     if comm is None:
         raise ValueError("Got a null comm!")
+    paths = set(comm.allgather(file))
+    if len(paths) != 1:
+        raise ValueError("Different ranks recieved a different path to output to!")
+
     try:
         file_schema.verify()
         results = comm.allgather(CombineState.VALID)
@@ -146,6 +151,8 @@ def combine_file_child(schema: S, comm: MPI.Comm) -> S:
             return cast(S, combine_simcollection_schema(schema, comm))
         case StructCollectionSchema():
             return cast(S, combine_structcollection_schema(schema, comm))
+        case LightconeSchema():
+            return cast(S, combine_lightcone_schema(schema, comm))
 
 
 def combine_dataset_schemas(schema: DatasetSchema, comm: MPI.Comm) -> DatasetSchema:
@@ -221,6 +228,17 @@ def combine_start_size_link_schema(
     new_schema = copy(schema)
     new_schema.start = start_column_schema
     new_schema.size = size_column_schema
+    return new_schema
+
+
+def combine_lightcone_schema(schema: LightconeSchema, comm: MPI.Comm):
+    verify_structure(schema.children, comm)
+    child_names = list(schema.children.keys())
+    new_schema = LightconeSchema()
+    child_names.sort()
+    for child_name in child_names:
+        new_dataset_schema = combine_dataset_schemas(schema.children[child_name], comm)
+        new_schema.add_child(new_dataset_schema, child_name)
     return new_schema
 
 
