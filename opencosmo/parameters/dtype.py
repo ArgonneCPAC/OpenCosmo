@@ -1,9 +1,14 @@
 from opencosmo.parameters import hacc
+from opencosmo.parameters.file import FileParameters
 
 
-def get_dtype_parameters(origin: str, dtype: str):
-    if origin == "HACC":
-        dtype_params = hacc.DATATYPE_PARAMETERS
+def get_dtype_parameters(file_parameters: FileParameters):
+    if file_parameters.origin == "HACC":
+        known_dtype_params = hacc.DATATYPE_PARAMETERS
     else:
-        raise ValueError(f"Unknown dataset origin {origin}")
-    return dtype_params[dtype]
+        raise ValueError(f"Unknown dataset origin {file_parameters.origin}")
+    dtype_parameters = known_dtype_params[str(file_parameters.data_type)]
+    if file_parameters.is_lightcone:
+        lightcone_parameters = hacc.LightconeParams
+        dtype_parameters.update({"lightcone": lightcone_parameters})
+    return dtype_parameters

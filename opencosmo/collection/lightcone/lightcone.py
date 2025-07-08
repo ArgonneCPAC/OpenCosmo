@@ -122,7 +122,9 @@ class Lightcone(dict):
                 )
             datasets[key] = ds
 
-        return cls(datasets)
+        z_range = next(iter(datasets.values())).header.lightcone.z_range
+
+        return cls(datasets, z_range)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
@@ -156,7 +158,7 @@ class Lightcone(dict):
         across all of them.
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return Lightcone(output)
+        return Lightcone(output, self.__z)
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
@@ -165,6 +167,9 @@ class Lightcone(dict):
         schema = LightconeSchema()
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
+            ds_schema.header = ds_schema.header.with_parameter(
+                "lightcone/z_range", self.__z
+            )
             schema.add_child(ds_schema, name)
         return schema
 

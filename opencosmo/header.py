@@ -1,8 +1,9 @@
+from copy import copy
 from functools import cache
 from itertools import chain
 from pathlib import Path
 from types import UnionType
-from typing import Optional
+from typing import Any, Optional
 
 import h5py
 from pydantic import BaseModel, ValidationError
@@ -26,7 +27,7 @@ class OpenCosmoHeader:
         file_pars: parameters.FileParameters,
         required_origin_parameters: dict[str, BaseModel],
         optional_origin_parameters: dict[str, BaseModel],
-        dtype_parameters: list[BaseModel],
+        dtype_parameters: dict[str, BaseModel],
     ):
         self.__file_pars = file_pars
         self.__required_origin_parameters = required_origin_parameters
@@ -39,7 +40,7 @@ class OpenCosmoHeader:
         all_models = chain(
             self.__required_origin_parameters.values(),
             self.__optional_origin_parameters.values(),
-            self.__dtype_parameters,
+            self.__dtype_parameters.values(),
         )
         for model in all_models:
             if not hasattr(model, "ACCESS_PATH"):
@@ -95,11 +96,31 @@ class OpenCosmoHeader:
         )
         return new_header
 
+    def with_parameter(self, key: str, value: Any):
+        """
+        Update a dtype parameter with a new value. This in general should never
+        be called by the user. Returns a copy.
+        """
+        path = key.split("/")
+        if len(path) != 2:
+            raise ValueError("Can only update top-level dtype parameters")
+        new_dtype_parameters = copy(self.__dtype_parameters)
+        model = new_dtype_parameters[path[0]]
+        new_model = model.model_copy(update={path[1]: value})
+        new_dtype_parameters[path[0]] = new_model
+        return OpenCosmoHeader(
+            self.__file_pars,
+            self.__required_origin_parameters,
+            self.__optional_origin_parameters,
+            new_dtype_parameters,
+        )
+
     def write(self, file: h5py.File | h5py.Group) -> None:
         parameters.write_header_attributes(file, "file", self.__file_pars)
         to_write = chain(
             self.__required_origin_parameters.items(),
             self.__optional_origin_parameters.items(),
+            self.__dtype_parameters.items(),
         )
         for path, data in to_write:
             parameters.write_header_attributes(file, path, data)
@@ -173,14 +194,13 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
     required_origin_params, optional_origin_params = read_origin_parameters(
         file, origin_parameter_models
     )
-    dtype_parameter_models = dtype.get_dtype_parameters(
-        file_parameters.origin, file_parameters.data_type
-    )
+    dtype_parameter_models = dtype.get_dtype_parameters(file_parameters)
     dtype_params = read_dtype_parameters(file, dtype_parameter_models)
 
-    return OpenCosmoHeader(
+    h = OpenCosmoHeader(
         file_parameters, required_origin_params, optional_origin_params, dtype_params
     )
+    return h
 
 
 def read_origin_parameters(

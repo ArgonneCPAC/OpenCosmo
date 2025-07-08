@@ -11,7 +11,10 @@ def read_header_attributes(
     parameter_model: Type[BaseModel],
     **kwargs,
 ):
-    header_data = file["header"][header_path].attrs
+    try:
+        header_data = file["header"][header_path].attrs
+    except KeyError:
+        return parameter_model()  # Defaults are possible
     try:
         parameters = parameter_model(**header_data, **kwargs)
     except ValidationError as e:

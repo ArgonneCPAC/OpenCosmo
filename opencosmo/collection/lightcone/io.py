@@ -42,7 +42,9 @@ def open_lightcone(files: list[Path], **load_kwargs):
     datasets: dict[str, Dataset] = reduce(
         lambda left, right: left | open_lightcone_file(right), files, {}
     )
-    return Lightcone(datasets)
+
+    z_range = headers[0].lightcone.z_range
+    return Lightcone(datasets, z_range)
 
 
 def open_lightcone_file(path: Path) -> dict[str, Dataset]:
