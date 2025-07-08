@@ -114,11 +114,11 @@ class Lightcone(dict):
 
     @property
     def cosmology(self):
-        return self[0].cosmology
+        return next(iter(self.values())).cosmology
 
     @property
     def simulation(self):
-        return self[0].header.simulation
+        return next(iter(self.values())).simulation
 
     @classmethod
     def open(cls, handles: list[h5py.File | h5py.Group], load_kwargs):
