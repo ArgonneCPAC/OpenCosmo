@@ -176,6 +176,18 @@ class ReformatParameters(BaseModel):
         return data
 
 
+class LightconeParams(BaseModel):
+    ACCESS_PATH: ClassVar[str] = "lightcone"
+    z_range: Optional[tuple[float, float]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def empty_string_to_none(cls, data):
+        if isinstance(data, dict):
+            return {k: empty_string_to_none(v) for k, v in data.items()}
+        return data
+
+
 ORIGIN_PARAMETERS = {
     "required": {
         "simulation/parameters": HaccHydroSimulationParameters
