@@ -13,6 +13,40 @@ OpenCosmo currently implements two collection types. :py:class:`opencosmo.Simula
 
 Collections can be opened just like datasets using :py:func:`opencosmo.open`, and written with :py:func:`opencosmo.write`.
 
+Lightcones
+----------
+Lightcones hold datasets from several different redshift steps, which are stacked to form a single dataset. In general, the :py:class:`Lightcone <opencosmo.Lightcone>` API is identical to the standard :py:class:`Dataset <opencosmo.Dataset>` API with the addition of some extra convinience functions. For example:
+
+.. code-block:: python
+
+   import opencosmo as oc
+   ds = oc.open("step_600/haloproperties.hdf5", "step_601/haloproperties.hdf5")
+   ds = ds.with_redshift_range(0.040, 0.0405)
+   print(ds)
+
+.. code-block:: text
+
+        OpenCosmo Lightcone Dataset (length=31487, 0.04 < z < 0.0405)
+        Cosmology: FlatLambdaCDM(name=None, H0=<Quantity 67.66 km / (Mpc s)>, Om0=0.3096446816186967, Tcmb0=<Quantity 0. K>, Neff=3.04, m_nu=None, Ob0=0.04897468161869667)
+        First 10 rows:
+        block    chi     fof_halo_1D_vel_disp fof_halo_center_a fof_halo_center_x ... sod_halo_radius   theta   unique_tag [replication, halo_tag]   redshift
+                                km / s                                 Mpc        ...       Mpc
+        int64  float32         float32             float32           float32      ...     float32      float32            (int32, int64)             float32
+        ----- ---------- -------------------- ----------------- ----------------- ... --------------- --------- ---------------------------------- -----------
+            0  120.25088            29.816034         0.9610807         126.16309 ...       -149.2758 1.5622419             (1049601, 60016004986) 0.040495396
+            2 120.031685            21.276937         0.9611496         126.76229 ...       -149.2758 1.5499203             (1049601, 60174689392)  0.04042077
+            9  119.12508            35.604523         0.9614344         125.27003 ...       -149.2758 1.5308051             (1049601, 58587164999) 0.040112495
+            9 119.718056             45.24862        0.96124804        126.242195 ...       -149.2758 1.5266299             (1049601, 59222154598) 0.040314198
+            9  119.43137            24.338223         0.9613382        126.190384 ...       -149.2758 1.5229564             (1049601, 59380902001) 0.040216565
+           10   119.0838             37.28911         0.9614474         127.76812 ...       -149.2758 1.5297077             (1049601, 61285757392)  0.04009843
+           10  120.16473            42.233627         0.9611078         129.43185 ...       -149.2758 1.5301584             (1049601, 62238266991)  0.04046607
+           10 119.903854             46.74386        0.96118975         128.91646 ...       -149.2758 1.5263848             (1049601, 62555736594)  0.04037726
+           11 119.049706            49.151897        0.96145815         126.78099 ...      0.12496548 1.5141958             (1049601, 60492121202) 0.040086865
+           11  119.60659             43.32933         0.9612831        127.099144 ...       -149.2758  1.519284             (1049601, 60492184203)  0.04027629
+
+
+
+
 Simulation Collections
 ----------------------
 
@@ -28,7 +62,7 @@ You can always access the individual datasets in the collection just as you woul
 .. code-block:: python
 
    import opencosmo as oc
-   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   ds = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
    dm_particles = data["dm_particles"]
 
 

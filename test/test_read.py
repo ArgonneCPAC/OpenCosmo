@@ -33,7 +33,7 @@ def test_all_columns_included(input_path):
 
 def test_read_multi(multi_path):
     dataset = oc.open(multi_path)
-    assert isinstance(dataset, oc.collection.collection.SimulationCollection)
+    assert isinstance(dataset, oc.SimulationCollection)
 
 
 def test_dataset_repr(input_path):
