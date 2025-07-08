@@ -39,6 +39,10 @@ UNIT_MAP = {
 }
 
 
+class UnitError(Exception):
+    pass
+
+
 class UnitConvention(Enum):
     COMOVING = "comoving"
     PHYSICAL = "physical"
@@ -64,8 +68,9 @@ def get_unit_transformation_generators() -> list[t.TransformationGenerator]:
 
 
 def get_unit_transition_transformations(
-    convention: str,
-    unit_transformations: t.TransformationDict,
+    from_convention: str | UnitConvention,
+    to_convention: str | UnitConvention,
+    unit_applicators: t.TransformationDict,
     cosmology: Cosmology,
     redshift: float | tuple[float, float] = 0.0,
 ) -> t.TransformationDict:
@@ -74,43 +79,113 @@ def get_unit_transition_transformations(
     convention. The returns a new set of transformations that will take the
     dataset to the requested unit convention.
     """
-    units = UnitConvention(convention)
+    from_ = UnitConvention(from_convention)
+    to_ = UnitConvention(to_convention)
+    if to_ == UnitConvention.UNITLESS:
+        return {}
+    match from_:
+        case UnitConvention.SCALEFREE:
+            update_transformations = get_scalefree_transition_transformations(
+                to_, unit_applicators, cosmology, redshift
+            )
+        case UnitConvention.COMOVING:
+            update_transformations = get_comoving_transition_transformations(
+                to_, unit_applicators, cosmology, redshift
+            )
+        case UnitConvention.PHYSICAL:
+            update_transformations = get_physical_transition_transformations(
+                to_, unit_applicators, cosmology
+            )
+        case UnitConvention.UNITLESS:
+            raise UnitError("Cannot convert units for datasets that have none!")
+
+    for ttype in unit_applicators:
+        existing = update_transformations.get(ttype, [])
+        update_transformations[ttype] = unit_applicators[ttype] + existing
+    return update_transformations
+
+
+def get_comoving_transition_transformations(
+    to: UnitConvention,
+    unit_applicators: t.TransformationDict,
+    cosmology: Cosmology,
+    redshift: float | tuple[float, float] = 0.0,
+):
+    comoving_to_phys: t.TableTransformation = partial(
+        comoving_to_physical, cosmology=cosmology, redshift=redshift
+    )
+    match to:
+        case UnitConvention.PHYSICAL:
+            return {t.TransformationType.TABLE: [comoving_to_phys]}
+        case UnitConvention.COMOVING:
+            return {}
+        case UnitConvention.SCALEFREE:
+            raise UnitError(
+                "Data stored in comoving units cannot be converted into scalefree units"
+            )
+
+
+def get_physical_transition_transformations(
+    to: UnitConvention,
+    unit_applicators: t.TransformationDict,
+    cosmology: Cosmology,
+    redshift: float | tuple[float, float] = 0.0,
+):
+    phys_to_comoving: t.TableTransformation = partial(
+        physical_to_comoving, cosmology=cosmology, redshift=redshift
+    )
+    match to:
+        case UnitConvention.PHYSICAL:
+            return {}
+        case UnitConvention.COMOVING:
+            return {t.TransformationType.TABLE: [phys_to_comoving]}
+        case UnitConvention.SCALEFREE:
+            raise UnitError(
+                "Data stored in physical units cannot be converted into scalefree units"
+            )
+
+
+def get_scalefree_transition_transformations(
+    to: UnitConvention,
+    unit_applicators: t.TransformationDict,
+    cosmology: Cosmology,
+    redshift: float | tuple[float, float] = 0.0,
+):
     remove_h: t.TableTransformation = partial(remove_littleh, cosmology=cosmology)
     comoving_to_phys: t.TableTransformation = partial(
         comoving_to_physical, cosmology=cosmology, redshift=redshift
     )
-    match units:
+    match to:
         case UnitConvention.COMOVING:
-            update_transformations = {t.TransformationType.ALL_COLUMNS: [remove_h]}
+            return {t.TransformationType.ALL_COLUMNS: [remove_h]}
         case UnitConvention.PHYSICAL:
-            update_transformations = {
+            return {
                 t.TransformationType.ALL_COLUMNS: [remove_h],
                 t.TransformationType.TABLE: [comoving_to_phys],
             }
         case UnitConvention.SCALEFREE:
-            update_transformations = {}
-        case UnitConvention.UNITLESS:
             return {}
-
-    for ttype in unit_transformations:
-        existing = update_transformations.get(ttype, [])
-        update_transformations[ttype] = unit_transformations[ttype] + existing
-
-    return update_transformations
 
 
 def get_default_unit_transformations(
     file: h5py.File | h5py.Group, header: OpenCosmoHeader
 ):
-    base_unit_transformations = get_base_unit_transformations(file["data"], header)
-    to_comoving_transformations = get_unit_transition_transformations(
-        "comoving", base_unit_transformations, header.cosmology
-    )
+    data_convention = UnitConvention(header.file.unit_convention)
+    unit_applicators = get_base_unit_transformations(file["data"], header)
+    match data_convention:
+        case UnitConvention.SCALEFREE:
+            base_transformations = get_unit_transition_transformations(
+                data_convention, "comoving", unit_applicators, header.cosmology
+            )
+        case UnitConvention.UNITLESS | UnitConvention.COMOVING:
+            base_transformations = {}
+        case UnitConvention.PHYSICAL:
+            raise NotImplementedError()
 
     column_names = list(str(col) for col in file["data"].keys())
-    builder = get_table_builder(to_comoving_transformations, column_names)
+    builder = get_table_builder(base_transformations, column_names)
 
-    return builder, base_unit_transformations
+    return builder, unit_applicators
 
 
 def get_base_unit_transformations(
@@ -188,6 +263,67 @@ def comoving_to_physical(
             power = decomposed.powers[index]
             # multiply by the scale factor to the same power as the distance
             table[colname] = table[colname] * a**power
+
+    return table
+
+
+def add_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:
+    """
+    Add little h to the units in the input table. For comoving
+    coordinates, this is the second step after parsing the units themselves.
+    """
+    if (unit := column.unit) is not None:
+        # Handle dex units
+        try:
+            if isinstance(unit, u.DexUnit):
+                u_base = unit.physical_unit
+                constructor = u.DexUnit
+            else:
+                u_base = unit
+
+                def constructor(x):
+                    return x
+        except AttributeError:
+            return None
+
+        try:
+            index = u_base.bases.index(cu.littleh)
+        except ValueError:
+            return None
+        power = u_base.powers[index]
+        new_unit = constructor(u_base / cu.littleh**power)
+        column = column.to(new_unit, cu.with_H0(cosmology.H0))
+    return column
+
+
+def physical_to_comoving(
+    table: Table, cosmology: Cosmology, redshift: float | tuple[float, float]
+) -> Optional[Table]:
+    """
+    Convert comoving coordinates to physical coordinates. This is the
+    second step after parsing the units themselves.
+    """
+
+    try:
+        a = table["fof_halo_center_a"]
+    except KeyError:
+        if isinstance(redshift, tuple):
+            raise NotImplementedError(
+                "Expected column fof_halo_center_a to get object redshift"
+            )
+        a = cosmology.scale_factor(redshift)
+
+    for colname in table.columns:
+        if (unit := table[colname].unit) is not None:
+            # Check if the units have distances in them
+            decomposed = unit.decompose()
+            try:
+                index = decomposed.bases.index(u.m)
+            except (ValueError, AttributeError):
+                continue
+            power = decomposed.powers[index]
+            # divide by the scale factor to the same power as the distance
+            table[colname] = table[colname] / a**power
 
     return table
 

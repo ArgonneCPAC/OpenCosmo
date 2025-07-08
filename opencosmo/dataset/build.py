@@ -43,6 +43,7 @@ def build_dataset(
         index,
         u.UnitConvention.SCALEFREE,
         sim_box,
+        header,
     )
 
     dataset = Dataset(

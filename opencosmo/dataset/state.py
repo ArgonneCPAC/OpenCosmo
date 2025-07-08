@@ -29,6 +29,7 @@ class DatasetState:
         index: DataIndex,
         convention: u.UnitConvention,
         region: Region,
+        header: OpenCosmoHeader,
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
@@ -36,6 +37,7 @@ class DatasetState:
         self.__builder = builder
         self.__index = index
         self.__convention = convention
+        self.__header = header
         self.__region = region
         self.__hidden = hidden
         self.__derived: dict[str, DerivedColumn] = derived
@@ -55,6 +57,10 @@ class DatasetState:
     @property
     def region(self):
         return self.__region
+
+    @property
+    def header(self):
+        return self.__header
 
     @property
     def columns(self) -> list[str]:
@@ -81,6 +87,7 @@ class DatasetState:
             index,
             self.__convention,
             self.__region,
+            self.__header,
             self.__hidden,
             self.__derived,
         )
@@ -133,6 +140,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             self.__region,
+            self.__header,
             self.__hidden,
             new_derived,
         )
@@ -156,6 +164,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             region,
+            self.__header,
             self.__hidden,
             self.__derived,
         )
@@ -216,6 +225,7 @@ class DatasetState:
             self.__index,
             self.__convention,
             self.__region,
+            self.__header,
             new_hidden,
             new_derived,
         )
@@ -254,7 +264,11 @@ class DatasetState:
         Change the unit convention
         """
         new_transformations = u.get_unit_transition_transformations(
-            convention, self.__base_unit_transformations, cosmology, redshift
+            self.__header.file.unit_convention,
+            convention,
+            self.__base_unit_transformations,
+            cosmology,
+            redshift,
         )
         convention_ = u.UnitConvention(convention)
         new_builder = get_table_builder(new_transformations, self.__builder.columns)
@@ -264,6 +278,7 @@ class DatasetState:
             self.__index,
             convention_,
             self.__region,
+            self.__header,
             self.__hidden,
             self.__derived,
         )

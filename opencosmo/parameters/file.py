@@ -47,6 +47,7 @@ class FileParameters(BaseModel):
     redshift: float | tuple[float, float]
     step: int
     region: Optional[BoxRegionModel | ConeRegionModel | HealPixRegionModel] = None
+    unit_convention: str = "scalefree"
 
     @model_validator(mode="before")
     @classmethod
