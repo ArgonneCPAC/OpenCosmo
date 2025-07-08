@@ -66,6 +66,7 @@ class Lightcone(dict):
         self,
         datasets: dict[str, Dataset],
         z_range: Optional[tuple[float, float]] = None,
+        hide_redshift: bool = True,
     ):
         datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
         self.update(datasets)
@@ -82,6 +83,7 @@ class Lightcone(dict):
             raise ValueError("Not all lightcone datasets have the same columns!")
         header = next(iter(self.values())).header
         self.__header = header.with_parameter("lightcone/z_range", z_range)
+        self.__hide_redshift = hide_redshift
 
     def __repr__(self):
         """
@@ -145,7 +147,10 @@ class Lightcone(dict):
         -------
         columns: list[str]
         """
-        return next(iter(self.values())).columns
+        cols = next(iter(self.values())).columns
+        if self.__hide_redshift:
+            cols = list(filter(lambda col: col != "redshift", cols))
+        return cols
 
     @property
     def cosmology(self) -> Cosmology:
@@ -224,6 +229,8 @@ class Lightcone(dict):
         table = vstack(data, join_type="exact")
         if len(table.columns) == 1:
             return next(table.itercols())
+        if self.__hide_redshift:
+            table.remove_column("redshift")
         return table
 
     @classmethod
@@ -275,14 +282,14 @@ class Lightcone(dict):
             new_datasets[key] = new_dataset
         return Lightcone(new_datasets, (z_low, z_high))
 
-    def __map(self, method, *args, **kwargs):
+    def __map(self, method, *args, hide_redshift: bool = False, **kwargs):
         """
         This type of collection will only ever be constructed if all the underlying
         datasets have the same data type, so it is always safe to map operations
         across all of them.
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return Lightcone(output, self.z_range)
+        return Lightcone(output, self.z_range, hide_redshift)
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
@@ -362,7 +369,7 @@ class Lightcone(dict):
 
     def select(self, columns: str | Iterable[str]) -> Self:
         """
-        Create a new dataset from a subset of columns in this dataset
+        Create a new dataset from a subset of columns in this dataset.
 
         Parameters
         ----------
@@ -381,9 +388,12 @@ class Lightcone(dict):
         """
         if isinstance(columns, str):
             columns = [columns]
+        hide_redshift = False
         columns = set(columns)
-        columns.add("redshift")
-        return self.__map("select", columns)
+        if "redshift" not in columns:
+            columns.add("redshift")
+            hide_redshift = True
+        return self.__map("select", columns, hide_redshift=hide_redshift)
 
     def take(self, n: int, at: str = "random") -> "Lightcone":
         """
