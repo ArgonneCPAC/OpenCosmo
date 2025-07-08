@@ -1,8 +1,10 @@
+from pydantic import BaseModel
+
 from opencosmo.parameters import hacc
 from opencosmo.parameters.file import FileParameters
 
 
-def get_dtype_parameters(file_parameters: FileParameters):
+def get_dtype_parameters(file_parameters: FileParameters) -> dict[str, type[BaseModel]]:
     if file_parameters.origin == "HACC":
         known_dtype_params = hacc.DATATYPE_PARAMETERS
     else:
