@@ -195,7 +195,6 @@ def test_lc_collection_select(
 
     ds = ds.select(to_select)
     columns_found = set(ds.data.columns)
-    to_select.add("redshift")
 
     assert columns_found == to_select
 
