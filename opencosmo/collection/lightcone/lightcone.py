@@ -1,15 +1,20 @@
 from functools import reduce
-from typing import Iterable, Optional, Self
+from itertools import chain
+from typing import Generator, Iterable, Optional, Self
 
+import astropy.units as u
 import h5py
 import numpy as np
+from astropy.cosmology import Cosmology
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
+from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import SimpleIndex
 from opencosmo.io.schemas import LightconeSchema
+from opencosmo.parameters.hacc import HaccSimulationParameters
 from opencosmo.spatial import Region
 
 
@@ -111,39 +116,110 @@ class Lightcone(dict):
                 continue
 
     @property
-    def dtype(self):
-        return next(iter(self.values())).dtype
+    def header(self) -> OpenCosmoHeader:
+        """
+        The header associated with this dataset.
+
+        OpenCosmo headers generally contain information about the original data this
+        dataset was produced from, as well as any analysis that was done along
+        the way.
+
+        Returns
+        -------
+        header: opencosmo.header.OpenCosmoHeader
+
+        """
+        return self.__header
 
     @property
-    def columns(self):
+    def columns(self) -> list[str]:
         """
-        The names of the columns in this dataset
+        The names of the columns in this dataset.
+
+        Returns
+        -------
+        columns: list[str]
         """
         return next(iter(self.values())).columns
 
     @property
-    def header(self):
-        return self.__header
+    def cosmology(self) -> Cosmology:
+        """
+        The cosmology of the simulation this dataset is drawn from as
+        an astropy.cosmology.Cosmology object.
+
+        Returns
+        -------
+        cosmology: astropy.cosmology.Cosmology
+        """
+        return self.__header.cosmology
 
     @property
-    def z(self):
+    def dtype(self) -> str:
+        """
+        The data type of this dataset.
+
+        Returns
+        -------
+        dtype: str
+        """
+        return self.__header.file.data_type
+
+    @property
+    def region(self) -> Region:
+        """
+        The region this dataset is contained in. If no spatial
+        queries have been performed, this will be the entire
+        simulation box for snapshots or the full sky for lightcones
+
+        Returns
+        -------
+        region: opencosmo.spatial.Region
+
+        """
+        return next(iter(self.values())).region
+
+    @property
+    def simulation(self) -> HaccSimulationParameters:
+        """
+        The parameters of the simulation this dataset is drawn
+        from.
+
+        Returns
+        -------
+        parameters: opencosmo.parameters.hacc.HaccSimulationParameters
+        """
+        return self.__header.simulation
+
+    @property
+    def z_range(self):
+        """
+        The redshift range of this lightcone.
+
+        Returns
+        -------
+        z_range: tuple[float, float]
+        """
+
         return self.__header.lightcone.z_range
 
     @property
     def data(self):
+        """
+        The data in the dataset. This will be an astropy.table.Table or
+        astropy.table.Column (if there is only one column selected).
+
+        Returns
+        -------
+        data : astropy.table.Table or astropy.table.Column
+            The data in the dataset.
+
+        """
         data = [ds.data for ds in self.values()]
         table = vstack(data, join_type="exact")
         if len(table.columns) == 1:
             return next(table.itercols())
         return table
-
-    @property
-    def cosmology(self):
-        return next(iter(self.values())).cosmology
-
-    @property
-    def simulation(self):
-        return next(iter(self.values())).simulation
 
     @classmethod
     def open(cls, handles: list[h5py.File | h5py.Group], load_kwargs):
@@ -165,7 +241,13 @@ class Lightcone(dict):
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
-        Restrict this lightcone to a specific redshift range.
+        Restrict this lightcone to a specific redshift range. Lightcone datasets will
+        always contain a column titled "redshift." This function is always operates on
+        this column.
+
+        This function also updates the value in
+        :py:meth:`Lightcone.z_range <opencosmo.collection.Lightcone.z_range>`,
+        so you should always use it rather than filteringo n the column directly.
         """
         z_range = self.__header.lightcone.z_range
         if z_high < z_low:
@@ -195,7 +277,7 @@ class Lightcone(dict):
         across all of them.
         """
         output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return Lightcone(output, self.z)
+        return Lightcone(output, self.z_range)
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
@@ -208,50 +290,121 @@ class Lightcone(dict):
             schema.add_child(ds_schema, name)
         return schema
 
+    def bound(self, region: Region, select_by: Optional[str] = None):
+        """
+        Restrict the dataset to some subregion. The subregion will always be evaluated
+        in the same units as the current dataset. For example, if the dataset is
+        in the default "comoving" unit convention, positions are always in units of
+        comoving Mpc. However Region objects themselves do not carry units.
+        See :doc:`spatial_ref` for details of how to construct regions.
+
+        Parameters
+        ----------
+        region: opencosmo.spatial.Region
+            The region to query.
+
+        Returns
+        -------
+        dataset: opencosmo.Dataset
+            The portion of the dataset inside the selected region
+
+        Raises
+        ------
+        ValueError
+            If the query region does not overlap with the region this dataset resides
+            in
+        AttributeError:
+            If the dataset does not contain a spatial index
+        """
+        return self.__map("bound", region, select_by)
+
+    def filter(self, *masks: Mask, **kwargs) -> Self:
+        """
+        Filter the dataset based on some criteria. See :ref:`Querying Based on Column
+        Values` for more information.
+
+        Parameters
+        ----------
+        *masks : Mask
+            The masks to apply to dataset, constructed with :func:`opencosmo.col`
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with the masks applied.
+
+        Raises
+        ------
+        ValueError
+            If the given  refers to columns that are
+            not in the dataset, or the  would return zero rows.
+
+        """
+        return self.__map("filter", *masks, **kwargs)
+
+    def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
+        """
+        Iterate over the rows in the dataset. Rows are returned as a dictionary
+        For performance, it is recommended to first select the columns you need to
+        work with.
+
+        Yields
+        -------
+        row : dict
+            A dictionary of values for each row in the dataset with units.
+        """
+        yield from chain.from_iterable(v.rows() for v in self.values())
+
     def select(self, columns: str | Iterable[str]) -> Self:
+        """
+        Create a new dataset from a subset of columns in this dataset
+
+        Parameters
+        ----------
+        columns : str or list[str]
+            The column or columns to select.
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with only the selected columns.
+
+        Raises
+        ------
+        ValueError
+            If any of the given columns are not in the dataset.
+        """
         if isinstance(columns, str):
             columns = [columns]
         columns = set(columns)
         columns.add("redshift")
         return self.__map("select", columns)
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
-        return self.__map("bound", region, select_by)
-
-    def filter(self, *masks: Mask, **kwargs) -> Self:
+    def take(self, n: int, at: str = "random") -> "Lightcone":
         """
-        Filter the datasets in the collection. This method behaves
-        exactly like :meth:`opencosmo.Dataset.filter` or
-        :meth:`opencosmo.StructureCollection.filter`, but
-        it applies the filter to all the datasets or collections
-        within this collection. The result is a new collection.
+        Create a new dataset from some number of rows from this dataset.
+
+        Can take the first n rows, the last n rows, or n random rows
+        depending on the value of 'at'.
 
         Parameters
         ----------
-        filters:
-            The filters constructed with :func:`opencosmo.col`
+        n : int
+            The number of rows to take.
+        at : str
+            Where to take the rows from. One of "start", "end", or "random".
+            The default is "random".
 
         Returns
         -------
-        SimulationCollection
-            A new collection with the same datasets, but only the
-            particles that pass the filter.
-        """
-        return self.__map("filter", *masks, **kwargs)
+        dataset : Dataset
+            The new dataset with only the selected rows.
 
-    def take(self, n: int, at: str = "random") -> "Lightcone":
-        """
-        Take a subest of rows from all datasets or collections in this lightcone.
-        Warning: In general, lightcones are ordered by redshift slice.
-        If "at" is "start" or "end", this will implictly exclude some of the
-        redshift slices in this lightcone.
-
-        Parameters
-        ----------
-        n: int
-            The number of rows to take
-        at: str, default = "random"
-            The method to use to take rows. Must be one of "start", "end", "random".
+        Raises
+        ------
+        ValueError
+            If n is negative or greater than the number of rows in the dataset,
+            or if 'at' is invalid.
 
         """
         if n > len(self):
@@ -270,8 +423,7 @@ class Lightcone(dict):
                 ds_index = SimpleIndex(indices_into_ds)
                 output[key] = ds.with_index(ds_index)
                 rs += len(ds)
-            return Lightcone(output, self.z)
-
+            return Lightcone(output, self.z_range)
         output = {}
         rs = 0
         if at == "start":
@@ -287,26 +439,67 @@ class Lightcone(dict):
                 break
         if at == "end":
             output = {k: v for k, v in reversed(output.items())}
-        return Lightcone(output, self.z)
+        return Lightcone(output, self.z_range)
 
     def with_new_columns(self, *args, **kwargs):
         """
-        Update the datasets within this collection with a set of new columns.
-        This method simply calls :py:meth:`opencosmo.Dataset.with_new_columns` or
-        :py:meth:`opencosmo.StructureCollection.with_new_columns`, as appropriate.
+        Create a new dataset with additional columns. These new columns can be derived
+        from columns already in the dataset, or a numpy array. When a column is derived
+        from other columns, it will behave appropriately under unit transformations. See
+        :ref:`Creating New Columns` for examples.
+
+        Parameters
+        ----------
+        ** columns : opencosmo.DerivedColumn
+
+        Returns
+        -------
+        dataset : opencosmo.Dataset
+            This dataset with the columns added
+
         """
         return self.__map("with_new_columns", *args, **kwargs)
 
     def with_units(self, convention: str) -> Self:
         """
-        Transform all datasets or collections to use the given unit convention. This
-        method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
+        Create a new dataset from this one with a different unit convention.
 
         Parameters
         ----------
-        convention: str
-            The unit convention to use. One of "unitless",
-            "scalefree", "comoving", or "physical".
+        convention : str
+            The unit convention to use. One of "physical", "comoving",
+            "scalefree", or "unitless".
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with the requested unit convention.
 
         """
         return self.__map("with_units", convention)
+
+    def collect(self) -> "Lightcone":
+        """
+        Given a dataset that was originally opend with opencosmo.open,
+        return a dataset that is in-memory as though it was read with
+        opencosmo.read.
+
+        This is useful if you have a very large dataset on disk, and you
+        want to filter it down and then close the file.
+
+        For example:
+
+        .. code-block:: python
+
+            import opencosmo as oc
+            with oc.open("path/to/file.hdf5") as file:
+                ds = file.(ds["sod_halo_mass"] > 0)
+                ds = ds.select(["sod_halo_mass", "sod_halo_radius"])
+                ds = ds.collect()
+
+        The selected data will now be in memory, and the file will be closed.
+
+        If working in an MPI context, all ranks will recieve the same data.
+        """
+        datasets = {k: v.collect() for k, v in self.items()}
+        return Lightcone(datasets, self.z_range)
