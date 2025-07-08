@@ -198,7 +198,7 @@ ORIGIN_PARAMETERS = {
     "optional": {"reformat_hacc/config": ReformatParameters},
 }
 
-DATATYPE_PARAMETERS: dict[str, dict[str, BaseModel]] = {
+DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
     "halo_properties": {},
     "galaxy_properties": {},
     "halo_particles": {},
