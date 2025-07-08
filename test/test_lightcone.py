@@ -2,6 +2,7 @@ import astropy.units as u
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+from astropy.cosmology import units as cu
 from numpy import random
 
 import opencosmo as oc
@@ -214,3 +215,44 @@ def test_lc_collection_take(haloproperties_600_path, haloproperties_601_path, tm
     assert len(tags_random) == n_to_take and len(
         set(tags_random["fof_halo_tag"])
     ) == len(tags_random)
+
+
+def test_lc_collection_derive(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    vsqrd = (
+        oc.col("fof_halo_com_vx") ** 2
+        + oc.col("fof_halo_com_vy") ** 2
+        + oc.col("fof_halo_com_vz") ** 2
+    )
+    ke = 0.5 * oc.col("fof_halo_mass") * vsqrd
+    ds = ds.with_new_columns(ke=ke)
+    ke = ds.select("ke")
+    assert ke.data["ke"].unit == u.solMass * u.Unit("km/s") ** 2
+
+
+def test_lc_collection_filter(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
+    assert np.all(ds.data["fof_halo_mass"] > 1e14)
+
+
+def test_lc_collection_units(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds_comoving = oc.open(haloproperties_600_path, haloproperties_601_path)
+    ds_scalefree = ds_comoving.with_units("scalefree")
+    data_scalefree = ds_scalefree.data
+    data_comoving = ds_comoving.data
+    h = ds_comoving.cosmology.h
+
+    location_columns = [f"fof_halo_com_{dim}" for dim in ("x", "y", "z")]
+    for column in location_columns:
+        assert data_scalefree[column].unit == u.Mpc / cu.littleh
+        assert data_comoving[column].unit == u.Mpc
+        assert np.all(
+            np.isclose(data_scalefree[column].value, data_comoving[column].value * h)
+        )
