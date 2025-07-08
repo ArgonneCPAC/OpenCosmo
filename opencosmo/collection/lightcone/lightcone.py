@@ -56,9 +56,10 @@ def with_redshift_column(dataset: Dataset):
 class Lightcone(dict):
     """
     A lightcone contains two or more datasets that are part of a lightcone. Typically
-    each dataset will cover a specific redshift range. The Lightcone mostly just
-    delegates requested operations to the individual datasets, and provides some
-    convenience methods and aliasing.
+    each dataset will cover a specific redshift range. The Lightcone object
+    hides these details, providing an API that is identical to the standard
+    Dataset API. Additionally, the lightcone contains some convinience functions
+    for standard operations.
     """
 
     def __init__(
@@ -98,7 +99,11 @@ class Lightcone(dict):
         table_repr = repr_ds.data.__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
-        head = f"OpenCosmo Lightcone Dataset (length={length})\n"
+        z_range = self.z_range
+        head = (
+            f"OpenCosmo Lightcone Dataset (length={length}, "
+            f"{z_range[0]} < z < {z_range[1]})\n"
+        )
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
 
