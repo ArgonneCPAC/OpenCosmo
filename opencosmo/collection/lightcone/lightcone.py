@@ -1,5 +1,5 @@
 from functools import reduce
-from typing import Optional, Self
+from typing import Iterable, Optional, Self
 
 import h5py
 import numpy as np
@@ -8,6 +8,7 @@ from astropy.table import vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
+from opencosmo.index import SimpleIndex
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.spatial import Region
 
@@ -67,6 +68,7 @@ class Lightcone(dict):
             if z_range is not None
             else get_redshift_range(list(datasets.values()))
         )
+
         columns: set[str] = reduce(
             lambda left, right: left.union(set(right.columns)), self.values(), set()
         )
@@ -183,8 +185,12 @@ class Lightcone(dict):
             schema.add_child(ds_schema, name)
         return schema
 
-    def select(self, *args, **kwargs):
-        return self.__map("select", *args, **kwargs)
+    def select(self, columns: str | Iterable[str]) -> Self:
+        if isinstance(columns, str):
+            columns = [columns]
+        columns = set(columns)
+        columns.add("redshift")
+        return self.__map("select", columns)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         return self.__map("bound", region, select_by)
@@ -210,7 +216,7 @@ class Lightcone(dict):
         """
         return self.__map("filter", *masks, **kwargs)
 
-    def take(self, n: int, at: str = "random") -> Self:
+    def take(self, n: int, at: str = "random") -> "Lightcone":
         """
         Take a subest of rows from all datasets or collections in this lightcone.
         Warning: In general, lightcones are ordered by redshift slice.
@@ -225,7 +231,40 @@ class Lightcone(dict):
             The method to use to take rows. Must be one of "start", "end", "random".
 
         """
-        raise NotImplementedError
+        if n > len(self):
+            raise ValueError(
+                "Number of rows to take must be less than number of rows in dataset"
+            )
+        if at == "random":
+            rs = 0
+            output = {}
+            indices = np.random.choice(len(self), n, replace=False)
+            indices = np.sort(indices)
+            for key, ds in self.items():
+                indices_into_ds = (
+                    indices[(indices >= rs) & (indices < rs + len(ds))] - rs
+                )
+                ds_index = SimpleIndex(indices_into_ds)
+                output[key] = ds.with_index(ds_index)
+                rs += len(ds)
+            return Lightcone(output, self.__z)
+
+        output = {}
+        rs = 0
+        if at == "start":
+            iter = self.items()
+        elif at == "end":
+            iter = reversed(self.items())  # type: ignore
+        for name, ds in iter:
+            if len(ds) < n - rs:
+                output[name] = ds
+                rs += len(ds)
+            else:
+                output[name] = ds.take(n - rs, at=at)
+                break
+        if at == "end":
+            output = {k: v for k, v in reversed(output.items())}
+        return Lightcone(output, self.__z)
 
     def with_new_columns(self, *args, **kwargs):
         """
