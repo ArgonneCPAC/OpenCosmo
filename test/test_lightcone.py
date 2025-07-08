@@ -2,6 +2,7 @@ import astropy.units as u
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+from numpy import random
 
 import opencosmo as oc
 
@@ -182,3 +183,15 @@ def test_lc_collection_bound(
     seps = seps.to(u.degree)
     assert all(seps < radius)
     assert len(data) == n_raw
+
+
+def test_lc_collection_select(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    columns = ds.columns
+    to_select = random.choice(columns, 10)
+
+    ds = ds.select(to_select)
+
+    assert set(ds.data.columns) == set(to_select)

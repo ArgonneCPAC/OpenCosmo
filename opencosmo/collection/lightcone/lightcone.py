@@ -1,3 +1,4 @@
+from functools import reduce
 from typing import Optional, Self
 
 import h5py
@@ -66,6 +67,11 @@ class Lightcone(dict):
             if z_range is not None
             else get_redshift_range(list(datasets.values()))
         )
+        columns: set[str] = reduce(
+            lambda left, right: left.union(set(right.columns)), self.values(), set()
+        )
+        if len(columns) != len(next(iter(self.values())).columns):
+            raise ValueError("Not all lightcone datasets have the same columns!")
 
     def __len__(self):
         return sum(len(ds) for ds in self.values())
@@ -83,6 +89,10 @@ class Lightcone(dict):
     @property
     def dtype(self):
         return next(iter(self.values())).dtype
+
+    @property
+    def columns(self):
+        return next(iter(self.values())).columns
 
     @property
     def header(self):
