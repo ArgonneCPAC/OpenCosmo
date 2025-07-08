@@ -100,4 +100,4 @@ def test_lc_collection_write(
     data = ds.select("redshift").data
     parallel_assert(data.min() >= 0.04 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)
-    parallel_assert(ds.z == (0.04, 0.0405))
+    parallel_assert(ds.z_range == (0.04, 0.0405))

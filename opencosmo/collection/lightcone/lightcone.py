@@ -2,10 +2,10 @@ from functools import reduce
 from itertools import chain
 from typing import Generator, Iterable, Optional, Self
 
-import astropy.units as u
+import astropy.units as u  # type: ignore
 import h5py
 import numpy as np
-from astropy.cosmology import Cosmology
+from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
