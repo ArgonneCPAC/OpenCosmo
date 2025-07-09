@@ -12,7 +12,7 @@ from opencosmo import collection
 from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
-from opencosmo.header import read_header
+from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import ChunkedIndex
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
@@ -116,8 +116,13 @@ def verify_files(handles: list[h5py.File | h5py.Group]):
             raise ValueError("All files should have the same set of data types!")
 
 
-def open_single_dataset(handle: h5py.File | h5py.Group):
-    header = read_header(handle)
+def open_single_dataset(
+    handle: h5py.File | h5py.Group, header: Optional[OpenCosmoHeader] = None
+):
+    if header is None:
+        header = read_header(handle)
+    assert header is not None
+
     try:
         tree = open_tree(handle, header.simulation.box_size, header.file.is_lightcone)
     except ValueError:
@@ -163,7 +168,7 @@ def open_single_dataset(handle: h5py.File | h5py.Group):
     )
 
     if header.file.is_lightcone:
-        return collection.Lightcone({"data": dataset})
+        return collection.Lightcone({"data": dataset}, header.lightcone.z_range)
     return dataset
 
 

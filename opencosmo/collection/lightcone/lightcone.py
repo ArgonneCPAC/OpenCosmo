@@ -10,11 +10,10 @@ from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.build import build_dataset
 from opencosmo.dataset.col import Mask
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import SimpleIndex
-from opencosmo.io.io import evaluate_load_conditions
+from opencosmo.io.io import evaluate_load_conditions, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
 from opencosmo.spatial import Region
@@ -253,12 +252,12 @@ class Lightcone(dict):
         for key, group in groups.items():
             if key == "header":
                 continue
-            ds = build_dataset(group, headers[key])
-            if not isinstance(ds, Dataset):
+            ds = open_single_dataset(group, headers[key])
+            if not isinstance(ds, Lightcone) or len(ds.keys()) != 1:
                 raise ValueError(
                     "Lightcones can only contain datasets (not collections)"
                 )
-            datasets[key] = ds
+            datasets[key] = next(iter(ds.values()))
 
         z_range = next(iter(datasets.values())).header.lightcone.z_range
 
@@ -292,7 +291,8 @@ class Lightcone(dict):
             new_dataset = dataset.filter(
                 oc.col("redshift") > z_low, oc.col("redshift") < z_high
             )
-            new_datasets[key] = new_dataset
+            if len(new_dataset) > 0:
+                new_datasets[key] = new_dataset
         return Lightcone(new_datasets, (z_low, z_high))
 
     def __map(self, method, *args, hide_redshift: bool = False, **kwargs):
@@ -309,7 +309,9 @@ class Lightcone(dict):
 
     def make_schema(self) -> LightconeSchema:
         if len(self.keys()) == 1:
-            return next(iter(self.values())).make_schema()
+            schema = next(iter(self.values())).make_schema()
+            schema.header = self.__header
+            return schema
         schema = LightconeSchema()
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
