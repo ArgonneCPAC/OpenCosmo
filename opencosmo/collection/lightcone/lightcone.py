@@ -14,6 +14,7 @@ from opencosmo.dataset.build import build_dataset
 from opencosmo.dataset.col import Mask
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import SimpleIndex
+from opencosmo.io.io import evaluate_load_conditions
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
 from opencosmo.spatial import Region
@@ -246,7 +247,10 @@ class Lightcone(dict):
         except KeyError:
             headers = {key: read_header(group) for key, group in handle.items()}
 
-        for key, group in handle.items():
+        groups = {k: v for k, v in handle.items() if k != "header"}
+        groups = evaluate_load_conditions(groups, load_kwargs)
+
+        for key, group in groups.items():
             if key == "header":
                 continue
             ds = build_dataset(group, headers[key])
