@@ -1,9 +1,13 @@
 Working with Units
 ==================
 
-In general, the raw output of cosmological simulations is *scale free*: coordinates and velocities use `comoving coordinates <https://en.wikipedia.org/wiki/Comoving_and_proper_distances#Comoving_distance_and_proper_distance>`_ and values are given in terms of the reduced Hubble constant *h*.
 
-OpenCosmo allows you to convert between these conventions as needed based on what is most convinient for your analysis. The default convention is "comoving." This leaves coordinates and velocities in comoving units, but absorbs the *h* factor into the values of the data. The other available conventions are "physical", "scalefree" and "unitless." Note that "scalefree" and "unitless" will have the same numerical values.
+The raw output of cosmological simulations produced with HACC (and many other cosmology codes) is in *scale free* units: coordinates and velocities use `comoving coordinates <https://en.wikipedia.org/wiki/Comoving_and_proper_distances#Comoving_distance_and_proper_distance>`_ and values such as mass include terms of the reduced Hubble constant *h*. Some downstream data products, such as synthetic galaxy catalogs, may be in other conventions.
+
+OpenCosmo allows you to convert between these conventions as needed based on what is most convinient for your analysis. The default convention is "comoving," which leaves coordinates and velocities in comoving units but absorbs any factors of h into their values. The other available conventions are "physical", "scalefree" and "unitless." 
+
+The "comoving", "physical" and "unitless" conventions will always be available, while the "scalefree" convention will only be available if the raw data is already stored in this convention. The "unitless" convention will always return the raw data in the file, regardless of the convention the data is stored in.
+
 
 You can readily convert between these conventions with the :py:meth:`opencosmo.Dataset.with_units` method:
 

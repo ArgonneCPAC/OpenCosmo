@@ -290,35 +290,6 @@ def comoving_to_physical(
     return table
 
 
-def add_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:
-    """
-    Add little h to the units in the input table. For comoving
-    coordinates, this is the second step after parsing the units themselves.
-    """
-    if (unit := column.unit) is not None:
-        # Handle dex units
-        try:
-            if isinstance(unit, u.DexUnit):
-                u_base = unit.physical_unit
-                constructor = u.DexUnit
-            else:
-                u_base = unit
-
-                def constructor(x):
-                    return x
-        except AttributeError:
-            return None
-
-        try:
-            index = u_base.bases.index(cu.littleh)
-        except ValueError:
-            return None
-        power = u_base.powers[index]
-        new_unit = constructor(u_base / cu.littleh**power)
-        column = column.to(new_unit, cu.with_H0(cosmology.H0))
-    return column
-
-
 def physical_to_comoving(
     table: Table, cosmology: Cosmology, redshift: float
 ) -> Optional[Table]:
