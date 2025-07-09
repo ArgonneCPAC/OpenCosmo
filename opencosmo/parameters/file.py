@@ -37,6 +37,7 @@ class FileType(Enum):
     halo_properties = "halo_properties"
     halo_profiles = "halo_profiles"
     halo_particles = "halo_particles"
+    diffsky_fits = "diffsky_fits"
 
 
 class FileParameters(BaseModel):

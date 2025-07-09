@@ -161,6 +161,9 @@ def open_single_dataset(handle: h5py.File | h5py.Group):
         state,
         tree=tree,
     )
+
+    if header.file.is_lightcone:
+        return collection.Lightcone({"data": dataset})
     return dataset
 
 
@@ -278,7 +281,11 @@ def read(
         header,
     )
 
-    return oc.Dataset(handler, header, state, tree)
+    ds = oc.Dataset(handler, header, state, tree)
+
+    if header.file.is_lightcone:
+        return collection.Lightcone({"data": ds})
+    return ds
 
 
 @file_writer

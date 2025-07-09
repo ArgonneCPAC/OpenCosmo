@@ -15,6 +15,28 @@ from opencosmo.header import OpenCosmoHeader
 
 _ = u.add_enabled_units(cu)
 
+KNOWN_REDSHIFT_COLUMNS = {
+    "redshift",
+    "redshift_true",
+}
+
+KNOWN_SCALE_COLUMS = {"fof_halo_center_a"}
+
+
+def get_a(table: Table):
+    columns = set(table.columns)
+    redshift_columns = columns.intersection(KNOWN_REDSHIFT_COLUMNS)
+    if len(redshift_columns) == 1:
+        redshifts = table[redshift_columns.pop()]
+        return 1 / (redshifts + 1)
+
+    scale_columns = columns.intersection(KNOWN_SCALE_COLUMS)
+
+    if len(scale_columns) == 1:
+        return table[scale_columns.pop()]
+    raise ValueError("Unable to find redshift column to convert coordinates")
+
+
 UNIT_MAP = {
     "comoving Mpc/h": u.Mpc / cu.littleh,
     "comoving (Mpc/h)^2": (u.Mpc / cu.littleh) ** 2,
@@ -72,7 +94,7 @@ def get_unit_transition_transformations(
     to_convention: str | UnitConvention,
     unit_applicators: t.TransformationDict,
     cosmology: Cosmology,
-    redshift: float | tuple[float, float] = 0.0,
+    redshift: float,
 ) -> t.TransformationDict:
     """
     Given a dataset, the user can request a transformation to a different unit
@@ -94,7 +116,7 @@ def get_unit_transition_transformations(
             )
         case UnitConvention.PHYSICAL:
             update_transformations = get_physical_transition_transformations(
-                to_, unit_applicators, cosmology
+                to_, unit_applicators, cosmology, redshift
             )
         case UnitConvention.UNITLESS:
             raise UnitError("Cannot convert units for datasets that have none!")
@@ -109,7 +131,7 @@ def get_comoving_transition_transformations(
     to: UnitConvention,
     unit_applicators: t.TransformationDict,
     cosmology: Cosmology,
-    redshift: float | tuple[float, float] = 0.0,
+    redshift: float,
 ):
     comoving_to_phys: t.TableTransformation = partial(
         comoving_to_physical, cosmology=cosmology, redshift=redshift
@@ -129,7 +151,7 @@ def get_physical_transition_transformations(
     to: UnitConvention,
     unit_applicators: t.TransformationDict,
     cosmology: Cosmology,
-    redshift: float | tuple[float, float] = 0.0,
+    redshift: float,
 ):
     phys_to_comoving: t.TableTransformation = partial(
         physical_to_comoving, cosmology=cosmology, redshift=redshift
@@ -149,7 +171,7 @@ def get_scalefree_transition_transformations(
     to: UnitConvention,
     unit_applicators: t.TransformationDict,
     cosmology: Cosmology,
-    redshift: float | tuple[float, float] = 0.0,
+    redshift: float,
 ):
     remove_h: t.TableTransformation = partial(remove_littleh, cosmology=cosmology)
     comoving_to_phys: t.TableTransformation = partial(
@@ -175,10 +197,16 @@ def get_default_unit_transformations(
     match data_convention:
         case UnitConvention.SCALEFREE:
             base_transformations = get_unit_transition_transformations(
-                data_convention, "comoving", unit_applicators, header.cosmology
+                data_convention,
+                "comoving",
+                unit_applicators,
+                header.cosmology,
+                header.file.redshift,
             )
-        case UnitConvention.UNITLESS | UnitConvention.COMOVING:
+        case UnitConvention.UNITLESS:
             base_transformations = {}
+        case UnitConvention.COMOVING:
+            base_transformations = unit_applicators
         case UnitConvention.PHYSICAL:
             raise NotImplementedError()
 
@@ -236,20 +264,15 @@ def remove_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:
 
 
 def comoving_to_physical(
-    table: Table, cosmology: Cosmology, redshift: float | tuple[float, float]
+    table: Table, cosmology: Cosmology, redshift: float
 ) -> Optional[Table]:
     """
     Convert comoving coordinates to physical coordinates. This is the
     second step after parsing the units themselves.
     """
-
     try:
-        a = table["fof_halo_center_a"]
-    except KeyError:
-        if isinstance(redshift, tuple):
-            raise NotImplementedError(
-                "Expected column fof_halo_center_a to get object redshift"
-            )
+        a = get_a(table)
+    except ValueError:
         a = cosmology.scale_factor(redshift)
 
     for colname in table.columns:
@@ -297,7 +320,7 @@ def add_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:
 
 
 def physical_to_comoving(
-    table: Table, cosmology: Cosmology, redshift: float | tuple[float, float]
+    table: Table, cosmology: Cosmology, redshift: float
 ) -> Optional[Table]:
     """
     Convert comoving coordinates to physical coordinates. This is the
@@ -305,12 +328,8 @@ def physical_to_comoving(
     """
 
     try:
-        a = table["fof_halo_center_a"]
-    except KeyError:
-        if isinstance(redshift, tuple):
-            raise NotImplementedError(
-                "Expected column fof_halo_center_a to get object redshift"
-            )
+        a = get_a(table)
+    except ValueError:
         a = cosmology.scale_factor(redshift)
 
     for colname in table.columns:
