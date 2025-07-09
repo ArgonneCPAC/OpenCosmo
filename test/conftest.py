@@ -20,3 +20,12 @@ def snapshot_path():
     except KeyError:
         pytest.exit("OPENCOSMO_DATA_PATH environment variable not set")
     return Path(p) / "snapshot"
+
+
+@pytest.fixture(scope="session")
+def diffsky_path():
+    try:
+        p = os.environ["OPENCOSMO_DATA_PATH"]
+    except KeyError:
+        pytest.exit("OPENCOSMO_DATA_PATH environment variable not set")
+    return Path(p) / "diffsky"

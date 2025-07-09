@@ -1,4 +1,3 @@
-from functools import reduce
 from pathlib import Path
 from typing import cast
 
@@ -39,9 +38,14 @@ def open_lightcone(files: list[Path], **load_kwargs):
     if len(steps) != len(files):
         raise ValueError("Each file must contain only a single lightcone step!")
 
-    datasets: dict[str, Dataset] = reduce(
-        lambda left, right: left | open_lightcone_file(right), files, {}
-    )
+    datasets = {}
+    for file in files:
+        new_ds = oc.open(file)
+        if not isinstance(new_ds, Lightcone):
+            raise ValueError("Didn't find a lightcone in a lightcone file!")
+        for key, ds in new_ds.items():
+            key = "_".join([ds.dtype, str(ds.header.file.step)])
+            datasets[key] = ds
 
     z_range = headers[0].lightcone.z_range
     return Lightcone(datasets, z_range)

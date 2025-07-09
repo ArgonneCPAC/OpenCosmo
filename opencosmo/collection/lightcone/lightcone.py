@@ -10,8 +10,9 @@ from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
+from opencosmo.dataset.build import build_dataset
 from opencosmo.dataset.col import Mask
-from opencosmo.header import OpenCosmoHeader
+from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import SimpleIndex
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
@@ -66,7 +67,7 @@ class Lightcone(dict):
         self,
         datasets: dict[str, Dataset],
         z_range: Optional[tuple[float, float]] = None,
-        hide_redshift: bool = True,
+        hide_redshift: bool = False,
     ):
         datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
         self.update(datasets)
@@ -239,8 +240,16 @@ class Lightcone(dict):
             raise NotImplementedError
         handle = handles[0]
         datasets: dict[str, Dataset] = {}
+        try:
+            header = read_header(handle)
+            headers = {key: header for key in handle.keys()}
+        except KeyError:
+            headers = {key: read_header(group) for key, group in handle.items()}
+
         for key, group in handle.items():
-            ds = oc.open(group)
+            if key == "header":
+                continue
+            ds = build_dataset(group, headers[key])
             if not isinstance(ds, Dataset):
                 raise ValueError(
                     "Lightcones can only contain datasets (not collections)"
@@ -295,6 +304,8 @@ class Lightcone(dict):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
     def make_schema(self) -> LightconeSchema:
+        if len(self.keys()) == 1:
+            return next(iter(self.values())).make_schema()
         schema = LightconeSchema()
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()

@@ -14,6 +14,8 @@ from pydantic import (
 
 from opencosmo.parameters import CosmologyParameters
 
+from .diffsky import DiffskyVersionInfo
+
 
 def empty_string_to_none(v):
     if isinstance(v, str) and v == "":
@@ -204,4 +206,5 @@ DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
     "halo_particles": {},
     "galaxy_particles": {},
     "halo_profiles": {},
+    "diffsky_fits": {"diffsky_versions": DiffskyVersionInfo},
 }

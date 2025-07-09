@@ -71,6 +71,10 @@ def get_collection_type(handles: list[h5py.File | h5py.Group]) -> Type[Collectio
         return SimulationCollection
     elif len(list(filter(lambda x: x.endswith("properties"), datasets))) >= 1:
         return StructureCollection
+
+    elif handle["header/file"].attrs["is_lightcone"]:
+        return Lightcone
+
     else:
         raise ValueError(
             "Unknown file type. "

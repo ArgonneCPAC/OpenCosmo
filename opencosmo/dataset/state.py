@@ -255,10 +255,7 @@ class DatasetState:
         return self.with_index(new_index)
 
     def with_units(
-        self,
-        convention: str,
-        cosmology: Cosmology,
-        redshift: float | tuple[float, float],
+        self, convention: str, cosmology: Cosmology, redshift: float | table.Column
     ):
         """
         Change the unit convention

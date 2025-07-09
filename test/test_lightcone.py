@@ -124,6 +124,7 @@ def test_lightcone_physical_units(haloproperties_600_path):
     ds_physical = ds_comoving.with_units("physical")
     data_comoving = ds_comoving.data
     data_physical = ds_physical.data
+    print(ds_physical)
     assert np.all(
         data_physical["fof_halo_com_x"]
         == (data_comoving["fof_halo_com_x"] * data_comoving["fof_halo_center_a"])
