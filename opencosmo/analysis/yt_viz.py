@@ -1,19 +1,18 @@
-import numpy as np
-
-from matplotlib.colors import LogNorm # type: ignore
-from matplotlib.figure import Figure # type: ignore
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar # type: ignore
-
-import yt # type: ignore
-from unyt import unyt_quantity # type: ignore
-from yt.visualization.base_plot_types import get_multi_plot # type: ignore
-from yt.visualization.plot_window import PlotWindow, NormalPlot  # type: ignore
-
-import opencosmo as oc
-from opencosmo.analysis import create_yt_dataset 
-
 from typing import Any, Dict, Optional, Tuple, Union
 
+import numpy as np
+import yt  # type: ignore
+from matplotlib.colors import LogNorm  # type: ignore
+from matplotlib.figure import Figure  # type: ignore
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar  # type: ignore
+from unyt import unyt_quantity  # type: ignore
+from yt.visualization.base_plot_types import get_multi_plot  # type: ignore
+from yt.visualization.plot_window import NormalPlot, PlotWindow  # type: ignore
+
+import opencosmo as oc
+from opencosmo.analysis import create_yt_dataset
+
+# ruff: noqa: E501
 
 
 def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
@@ -130,7 +129,7 @@ def visualize_halo(
     halo_id: int,
     data: oc.StructureCollection,
     length_scale: Optional[str] = "top left",
-    width: float = 4.0
+    width: float = 4.0,
 ) -> Figure:
     """
     Creates a figure showing particle projections of dark matter, stars, gas, and/or gas temperature
@@ -138,9 +137,9 @@ def visualize_halo(
     create a horizontal arrangement with only the particles/fields that are present. Otherwise,
     creates a 2x2-panel figure. Each panel is an 800x800 pixel array.
 
-    To customize the arrangement of panels, fields, colormaps, etc., see 
+    To customize the arrangement of panels, fields, colormaps, etc., see
     :func:`halo_projection_array`.
- 
+
 
     Parameters
     ----------
@@ -181,75 +180,71 @@ def visualize_halo(
         "cmaps": [],
     }
 
-    ptypes = [key.removesuffix('_particles') 
-                   for key in data.keys() if key.endswith('_particles')]
+    ptypes = [
+        key.removesuffix("_particles")
+        for key in data.keys()
+        if key.endswith("_particles")
+    ]
 
     any_supported = False
 
     if "dm" in ptypes:
-       any_supported = True
-       params["fields"].append(("dm", "particle_mass")) 
-       params["weight_fields"].append(None)
-       params["zlims"].append(None)
-       params["labels"].append("Dark Matter")
-       params["cmaps"].append("gray")
+        any_supported = True
+        params["fields"].append(("dm", "particle_mass"))
+        params["weight_fields"].append(None)
+        params["zlims"].append(None)
+        params["labels"].append("Dark Matter")
+        params["cmaps"].append("gray")
     elif "gravity" in ptypes:
-       any_supported = True
-       params["fields"].append(("gravity", "particle_mass")) 
-       params["weight_fields"].append(None)
-       params["zlims"].append(None)
-       params["labels"].append("Dark Matter")
-       params["cmaps"].append("gray")
+        any_supported = True
+        params["fields"].append(("gravity", "particle_mass"))
+        params["weight_fields"].append(None)
+        params["zlims"].append(None)
+        params["labels"].append("Dark Matter")
+        params["cmaps"].append("gray")
 
     if "star" in ptypes:
-       any_supported = True
-       params["fields"].append(("star", "particle_mass")) 
-       params["weight_fields"].append(None)
-       params["zlims"].append(None)
-       params["labels"].append("Stars")
-       params["cmaps"].append("bone")
+        any_supported = True
+        params["fields"].append(("star", "particle_mass"))
+        params["weight_fields"].append(None)
+        params["zlims"].append(None)
+        params["labels"].append("Stars")
+        params["cmaps"].append("bone")
 
     if "gas" in ptypes:
-       any_supported = True
-       params["fields"].append(("gas", "particle_mass")) 
-       params["weight_fields"].append(None)
-       params["zlims"].append(None)
-       params["labels"].append("Gas")
-       params["cmaps"].append("viridis")      
-       # temperature field should always exist if gas
-       # particles are present
-       params["fields"].append(("gas", "temperature")) 
-       params["weight_fields"].append(("gas", "density"))
-       params["zlims"].append((1e7, 1e8))
-       params["labels"].append("Gas Temperature")
-       params["cmaps"].append("inferno") 
+        any_supported = True
+        params["fields"].append(("gas", "particle_mass"))
+        params["weight_fields"].append(None)
+        params["zlims"].append(None)
+        params["labels"].append("Gas")
+        params["cmaps"].append("viridis")
+        # temperature field should always exist if gas
+        # particles are present
+        params["fields"].append(("gas", "temperature"))
+        params["weight_fields"].append(("gas", "density"))
+        params["zlims"].append((1e7, 1e8))
+        params["labels"].append("Gas Temperature")
+        params["cmaps"].append("inferno")
 
     if not any_supported:
         raise RuntimeError(
             "No compatible particle types present in dataset for this function. "
-            "Possible options are \"dm\", \"gravity\", \"star\", and \"gas\"."
+            'Possible options are "dm", "gravity", "star", and "gas".'
         )
 
- 
     if len(params["fields"]) == 4:
         # if 4 fields, make a 2x2 figure
-        halo_ids = ( [halo_id, halo_id], [halo_id, halo_id] )
-        params = {
-            key: (value[:2], value[2:])
-            for key, value in params.items()
-        }
+        halo_ids = ([halo_id, halo_id], [halo_id, halo_id])
+        params = {key: (value[:2], value[2:]) for key, value in params.items()}
 
-    else: 
+    else:
         # otherwise, do 1xN
-        halo_ids = ( np.shape(params["fields"])[0]*[halo_id] )
-        params = {
-            key: [value]
-            for key, value in params.items()
-        }
+        halo_ids = np.shape(params["fields"])[0] * [halo_id]
+        params = {key: [value] for key, value in params.items()}
 
-
-    return halo_projection_array(halo_ids, data, params=params, 
-        length_scale=length_scale, width=width)
+    return halo_projection_array(
+        halo_ids, data, params=params, length_scale=length_scale, width=width
+    )
 
 
 def halo_projection_array(
@@ -262,7 +257,7 @@ def halo_projection_array(
     params: Optional[Dict[str, Any]] = None,
     length_scale: Optional[str] = None,
     smooth_gas_fields: bool = False,
-    width: float = 6.0
+    width: float = 6.0,
 ) -> Figure:
     """
     Creates a multipanel figure of projections for different fields and/or halos.
@@ -330,7 +325,6 @@ def halo_projection_array(
         A Matplotlib Figure object.
     """
 
-
     halo_ids = np.atleast_2d(halo_ids)
 
     # determine shape of figure
@@ -340,36 +334,29 @@ def halo_projection_array(
     if weight_field is None:
         weight_field_ = np.full(fig_shape, None)
     else:
-        weight_field_ = np.reshape( 
-            [weight_field for _ in range(np.prod(fig_shape))], 
-            (fig_shape[0], fig_shape[1], 2) 
+        weight_field_ = np.reshape(
+            [weight_field for _ in range(np.prod(fig_shape))],
+            (fig_shape[0], fig_shape[1], 2),
         )
 
     if zlim is None:
         zlim_ = np.full(fig_shape, None)
     else:
         zlim_ = np.reshape(
-            [zlim for _ in range(np.prod(fig_shape))],
-            (fig_shape[0], fig_shape[1], 2)
+            [zlim for _ in range(np.prod(fig_shape))], (fig_shape[0], fig_shape[1], 2)
         )
 
     default_params = {
         "fields": (
-            np.reshape( [field for _ in range(np.prod(fig_shape))], 
-                (fig_shape[0], fig_shape[1], 2) ) 
+            np.reshape(
+                [field for _ in range(np.prod(fig_shape))],
+                (fig_shape[0], fig_shape[1], 2),
+            )
         ),
-        "weight_fields": (
-            weight_field_ 
-        ),
-        "zlims": (
-            zlim_
-        ),
-        "labels": (
-            np.full(fig_shape, None)
-        ),
-        "cmaps": (
-            np.full(fig_shape, cmap)
-        ),
+        "weight_fields": (weight_field_),
+        "zlims": (zlim_),
+        "labels": (np.full(fig_shape, None)),
+        "cmaps": (np.full(fig_shape, cmap)),
     }
 
     # Override defaults with user-supplied params (if any)
@@ -378,13 +365,12 @@ def halo_projection_array(
     fields = params.get("fields", default_params["fields"])
     weight_fields = params.get("weight_fields", default_params["weight_fields"])
     zlims = params.get("zlims", default_params["zlims"])
-    labels= params.get("labels", default_params["labels"])
+    labels = params.get("labels", default_params["labels"])
     cmaps = params.get("cmaps", default_params["cmaps"])
 
     nrow, ncol = fig_shape
 
     ilen, jlen = None, None
-    
 
     # define figure and axes
     fig, axes, cbars = get_multi_plot(fig_shape[1], fig_shape[0], cbar_padding=0)
@@ -395,7 +381,6 @@ def halo_projection_array(
 
     for i in range(nrow):
         for j in range(ncol):
-
             halo_id = halo_ids[i][j]
 
             # retrieve halo particle info if new halo
@@ -403,35 +388,39 @@ def halo_projection_array(
                 # retrieve properties of halo
                 data_id = data.filter(oc.col("unique_tag") == halo_id)
                 halo_data = next(iter(data_id.objects()))
-                
+
                 # load particles into yt
                 ds = create_yt_dataset(halo_data)
 
-            halo_properties = halo_data['halo_properties']
+            halo_properties = halo_data["halo_properties"]
 
-            Rh = unyt_quantity.from_astropy(halo_properties['sod_halo_radius'])
+            Rh = unyt_quantity.from_astropy(halo_properties["sod_halo_radius"])
 
-            field, weight_field, zlim = tuple(fields[i][j]), weight_fields[i][j], zlims[i][j]
+            field, weight_field, zlim = (
+                tuple(fields[i][j]),
+                weight_fields[i][j],
+                zlims[i][j],
+            )
 
             if weight_field is not None:
-                weight_field = tuple(weight_field)
+                weight_field = tuple(weight_field)  # type: ignore
             if zlim is not None:
-                zlim = tuple(zlim)
+                zlim = tuple(zlim)  # type: ignore
 
             label = labels[i][j]
 
             if smooth_gas_fields and field[0] == "gas":
-                proj = ProjectionPlot(ds,'z',field, weight_field = weight_field)
+                proj = ProjectionPlot(ds, "z", field, weight_field=weight_field)
             else:
-                proj = ParticleProjectionPlot(ds,'z',field, weight_field = weight_field)
+                proj = ParticleProjectionPlot(ds, "z", field, weight_field=weight_field)
 
-            proj.set_background_color(field, color='black')
-            proj.set_width(width*Rh)
+            proj.set_background_color(field, color="black")
+            proj.set_width(width * Rh)
 
-            # fetch figure buffer (2D array of pixel values) 
+            # fetch figure buffer (2D array of pixel values)
             # and re-plot on each panel with imshow
             frb = proj.frb
-            
+
             ax = axes[i][j]
 
             if zlim is not None:
@@ -439,8 +428,12 @@ def halo_projection_array(
             else:
                 zmin, zmax = None, None
 
-            ax.imshow(frb[field], origin="lower", cmap=cmaps[i][j], 
-                norm=LogNorm(vmin=zmin, vmax=zmax))
+            ax.imshow(
+                frb[field],
+                origin="lower",
+                cmap=cmaps[i][j],
+                norm=LogNorm(vmin=zmin, vmax=zmax),
+            )
             ax.set_facecolor("black")
 
             ax.xaxis.set_visible(False)
@@ -450,13 +443,15 @@ def halo_projection_array(
             if label is not None:
                 # add panel label
                 ax.text(
-                    0.06, 0.94,
+                    0.06,
+                    0.94,
                     label,
                     transform=ax.transAxes,
-                    ha='left', va='top',
+                    ha="left",
+                    va="top",
                     fontsize=12,
-                    fontfamily='DejaVu Serif',
-                    color = "grey"
+                    fontfamily="DejaVu Serif",
+                    color="grey",
                 )
 
             if length_scale is not None:
@@ -464,35 +459,36 @@ def halo_projection_array(
                     case "top left":
                         ilen, jlen = 0, 0
                     case "top right":
-                        ilen, jlen = 0, ncol-1
+                        ilen, jlen = 0, ncol - 1
                     case "bottom left":
-                        ilen, jlen = nrow-1, 0
+                        ilen, jlen = nrow - 1, 0
                     case "bottom right":
-                        ilen, jlen = nrow-1, ncol-1
+                        ilen, jlen = nrow - 1, ncol - 1
                     case "all left":
                         ilen, jlen = i, 0
                     case "all right":
-                        ilen, jlen = i, ncol-1
+                        ilen, jlen = i, ncol - 1
                     case "all top":
                         ilen, jlen = 0, j
                     case "all bottom":
-                        ilen, jlen = nrow-1, j
+                        ilen, jlen = nrow - 1, j
                     case "all":
                         ilen, jlen = i, j
 
-                if (i==ilen and j==jlen):
+                if i == ilen and j == jlen:
                     # add length scale, assuming
                     # panel is 800 pixels wide
                     scalebar = AnchoredSizeBar(
                         ax.transData,
-                        800/(width*Rh.d),            
-                        '1 Mpc',               
-                        'lower right',         
-                        pad=0.4, label_top=False,
+                        800 / (width * Rh.d),
+                        "1 Mpc",
+                        "lower right",
+                        pad=0.4,
+                        label_top=False,
                         sep=10,
-                        color='grey',
+                        color="grey",
                         frameon=False,
-                        size_vertical=1, 
+                        size_vertical=1,
                     )
                     ax.add_artist(scalebar)
 
