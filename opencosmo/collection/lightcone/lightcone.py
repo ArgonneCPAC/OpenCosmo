@@ -5,6 +5,7 @@ from typing import Generator, Iterable, Optional, Self
 import astropy.units as u  # type: ignore
 import h5py
 import numpy as np
+from astropy.coordinates import SkyCoord
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import vstack  # type: ignore
 
@@ -31,8 +32,7 @@ def get_redshift_range(datasets: list[Dataset]):
 
 
 def is_in_range(dataset: Dataset, z_low: float, z_high: float):
-    step_zs = dataset.header.simulation.step_zs
-    z_range = (step_zs[dataset.header.file.step], step_zs[dataset.header.file.step - 1])
+    z_range = dataset.header.lightcone.z_range
     if z_high < z_range[0] or z_low > z_range[1]:
         return False
     return True
@@ -346,6 +346,37 @@ class Lightcone(dict):
             If the dataset does not contain a spatial index
         """
         return self.__map("bound", region, select_by)
+
+    def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
+        """
+        Perform a search for objects within some angular distance of some
+        given point on the sky. This is a convinience function around
+        :py:meth`bound <opencosmo.Lightcone.bound>` which is exactly
+        equivalent to
+
+        .. code-block:: python
+
+            region = oc.make_cone(center, radius)
+            ds = ds.bound(region)
+
+        Parameters
+        ----------
+        center: tuple | SkyCoord
+            The center of the region to search. If a tuple and no units are provided
+            assumed to be RA and Dec in degrees.
+
+        radius: float | astropy.units.Quantity
+            The angular radius of the region to query. If no units are provided,
+            assumed to be degrees.
+
+        Returns
+        -------
+        new_lightcone: opencosmo.Lightcone
+            The rows in this lightcone that fall within the given region.
+
+        """
+        region = oc.make_cone(center, radius)
+        return self.bound(region)
 
     def filter(self, *masks: Mask, **kwargs) -> Self:
         """
