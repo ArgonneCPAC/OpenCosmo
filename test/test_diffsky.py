@@ -49,3 +49,16 @@ def test_mah_pop(core_path_487):
 def test_open_multiple(core_path_487, core_path_475):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     assert len(ds.keys()) == 4
+    ds = oc.open(core_path_487, core_path_475)
+    assert len(ds.keys()) == 2
+    z_range = ds.z_range
+    assert z_range[1] - z_range[0] > 0.05
+
+
+def test_cone_search(core_path_475, core_path_487):
+    center = (40, 67)
+    radius = 2
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    region = oc.make_cone(center, radius)
+    ds = ds.bound(region)
+    assert False

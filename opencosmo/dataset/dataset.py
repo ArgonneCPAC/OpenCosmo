@@ -240,7 +240,9 @@ class Dataset:
             self.__header,
             check_state,
             self.__tree,
-        ).with_units("scalefree")
+        )
+        if not self.__header.file.is_lightcone:
+            check_dataset = check_dataset.with_units("scalefree")
 
         mask = check.check_containment(check_dataset, check_region, self.__header.file)
         new_intersects_index = intersects_index.mask(mask)
