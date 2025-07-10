@@ -47,8 +47,11 @@ def open_lightcone(files: list[Path], **load_kwargs):
             new_key = "_".join([key, str(ds.header.file.step)])
             datasets[new_key] = ds
 
-    z_range = headers[0].lightcone.z_range
-    return Lightcone(datasets, z_range)
+    z_ranges = [h.lightcone.z_range for h in headers]
+    z_min = min(z[0] for z in z_ranges)
+    z_max = max(z[1] for z in z_ranges)
+
+    return Lightcone(datasets, (z_min, z_max))
 
 
 def open_lightcone_file(path: Path) -> dict[str, Dataset]:

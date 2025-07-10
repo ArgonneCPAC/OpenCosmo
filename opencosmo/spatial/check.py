@@ -35,6 +35,24 @@ def check_containment(
         return __check_containment_3d(ds, region, dtype)
 
 
+def get_theta_phi_coordinates(dataset: "Dataset"):
+    coord_values = dataset.select(["theta", "phi"]).data
+    ra = coord_values["phi"]
+    dec = np.pi / 2 - coord_values["theta"]
+
+    return SkyCoord(ra, dec, unit=u.rad)
+
+
+def find_coordinates_2d(dataset: "Dataset"):
+    columns = set(dataset.columns)
+    if len(columns.intersection(set(["theta", "phi"]))) == 2:
+        return get_theta_phi_coordinates(dataset)
+    elif len(columns.intersection(set(["ra", "dec"]))) == 2:
+        data = dataset.select(["ra", "dec"]).data
+        return SkyCoord(data["ra"], data["dec"])
+    raise ValueError("Dataset does not contain coordinates")
+
+
 def __check_containment_3d(
     ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
 ):
@@ -65,19 +83,5 @@ def __check_containment_3d(
 def __check_containment_2d(
     ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
 ):
-    try:
-        allowed_coordinates = ALLOWED_COORDINATES_2D[dtype]
-    except KeyError:
-        allowed_coordinates = ALLOWED_COORDINATES_2D["default"]
-    cols = set(ds.columns)
-    if cols.intersection(allowed_coordinates) != allowed_coordinates:
-        raise ValueError(
-            "Unable to find the correct coordinate columns in this dataset!"
-        )
-
-    coord_values = ds.select(allowed_coordinates).data
-    ra = coord_values["phi"]
-    dec = np.pi / 2 - coord_values["theta"]
-
-    coords = SkyCoord(ra, dec, unit=u.rad)
+    coords = find_coordinates_2d(ds)
     return region.contains(coords)
