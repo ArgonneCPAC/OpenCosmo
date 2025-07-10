@@ -55,10 +55,20 @@ def test_open_multiple(core_path_487, core_path_475):
     assert z_range[1] - z_range[0] > 0.05
 
 
+def test_open_multiple_write(core_path_487, core_path_475, tmp_path):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    original_length = len(ds)
+    original_redshift_range = ds.z_range
+    output = tmp_path / "synth_gals.hdf5"
+    oc.write(output, ds)
+    ds = oc.open(output)
+    assert len(ds) == original_length
+    assert ds.z_range == original_redshift_range
+
+
 def test_cone_search(core_path_475, core_path_487):
     center = (40, 67)
     radius = 2
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     region = oc.make_cone(center, radius)
     ds = ds.bound(region)
-    assert False
