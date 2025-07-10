@@ -5,7 +5,7 @@ from typing import Generator, Iterable, Optional, Self
 import astropy.units as u  # type: ignore
 import h5py
 import numpy as np
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import vstack  # type: ignore
 
@@ -33,6 +33,8 @@ def get_redshift_range(datasets: list[Dataset]):
 
 def is_in_range(dataset: Dataset, z_low: float, z_high: float):
     z_range = dataset.header.lightcone.z_range
+    if z_range is None:
+        z_range = get_redshift_range([dataset])
     if z_high < z_range[0] or z_low > z_range[1]:
         return False
     return True

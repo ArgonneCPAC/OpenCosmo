@@ -1,9 +1,7 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
 import opencosmo as oc
-from opencosmo.analysis import get_pop_mah
 
 
 @pytest.fixture
@@ -35,15 +33,6 @@ def test_comoving_to_unitless(core_path_487):
     data_unitless = ds.with_units("unitless").data
     for col in data.columns:
         assert np.all(data[col].value == data_unitless[col].value)
-
-
-def test_mah_pop(core_path_487):
-    zs = np.linspace(0, 1, 10)
-    ds = oc.open(core_path_487, synth_cores=False)
-    c = get_pop_mah(ds, zs)
-    plt.plot(c[0], c[1])
-    plt.savefig("test.png")
-    assert False
 
 
 def test_open_multiple(core_path_487, core_path_475):

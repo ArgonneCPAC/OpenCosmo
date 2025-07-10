@@ -48,10 +48,14 @@ def open_lightcone(files: list[Path], **load_kwargs):
             datasets[new_key] = ds
 
     z_ranges = [h.lightcone.z_range for h in headers]
-    z_min = min(z[0] for z in z_ranges)
-    z_max = max(z[1] for z in z_ranges)
+    if z_ranges[0] is not None:
+        z_min = min(z[0] for z in z_ranges)
+        z_max = max(z[1] for z in z_ranges)
+        z_range = (z_min, z_max)
+    else:
+        z_range = None
 
-    return Lightcone(datasets, (z_min, z_max))
+    return Lightcone(datasets, z_range)
 
 
 def open_lightcone_file(path: Path) -> dict[str, Dataset]:
