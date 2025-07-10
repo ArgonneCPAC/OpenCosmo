@@ -84,7 +84,7 @@ def open(
         paths = [resolve_path(path, FileExistance.MUST_EXIST) for path in files]
         headers = [read_header(p) for p in paths]
         if all(h.file.is_lightcone for h in headers):
-            return oc.collection.open_lightcone(paths)
+            return oc.collection.open_lightcone(paths, **load_kwargs)
 
         return oc.open_linked_files(*paths, **load_kwargs)
 

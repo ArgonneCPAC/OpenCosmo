@@ -109,13 +109,10 @@ def test_lc_collection_write(
 ):
     path = MPI.COMM_WORLD.bcast(tmp_path)
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
-    print(len(ds))
     ds = ds.with_redshift_range(0.039, 0.0405)
     original_length = len(ds)
     oc.write(path / "lightcone.hdf5", ds)
     ds = oc.open(path / "lightcone.hdf5")
-    print(original_length)
-    print(len(ds))
     data = ds.select("redshift").data
     parallel_assert(data.min() >= 0.039 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)

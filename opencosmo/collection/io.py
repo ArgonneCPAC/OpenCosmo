@@ -43,7 +43,6 @@ def open_collection(
     """
     Open a file with multiple datasets.
     """
-    print("opening collection")
     CollectionType = get_collection_type(handles)
     return CollectionType.open(handles, load_kwargs)
 

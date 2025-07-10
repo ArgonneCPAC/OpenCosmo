@@ -40,12 +40,12 @@ def open_lightcone(files: list[Path], **load_kwargs):
 
     datasets = {}
     for file in files:
-        new_ds = oc.open(file)
+        new_ds = oc.open(file, **load_kwargs)
         if not isinstance(new_ds, Lightcone):
             raise ValueError("Didn't find a lightcone in a lightcone file!")
         for key, ds in new_ds.items():
-            key = "_".join([ds.dtype, str(ds.header.file.step)])
-            datasets[key] = ds
+            new_key = "_".join([key, str(ds.header.file.step)])
+            datasets[new_key] = ds
 
     z_range = headers[0].lightcone.z_range
     return Lightcone(datasets, z_range)

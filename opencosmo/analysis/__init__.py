@@ -11,6 +11,7 @@ yt_tools = [
     "halo_projection_array",
 ]
 
+diffsky_tools = ["get_pop_mah"]
 
 try:
     from .yt_utils import create_yt_dataset
@@ -28,6 +29,11 @@ try:
 
 except ImportError:  # User has not installed yt tools
     pass
+
+from .diffsky import get_pop_mah
+
+__all__.extend(diffsky_tools)
+
 
 """
 Right now, we have only have two analysis modules so we can handle them directly. In the 
