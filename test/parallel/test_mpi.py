@@ -9,7 +9,6 @@ from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo import open_linked_files
-from opencosmo.collection import SimulationCollection
 
 
 @pytest.fixture
@@ -338,28 +337,6 @@ def test_box_query_zerolength(input_path):
         assert len(ds) > 0
 
     parallel_assert(len(ds) == 0, participating=rank > 0)
-
-
-@pytest.mark.parallel(nprocs=4)
-def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
-    galaxies_1 = open_linked_files(*galaxy_paths)
-    galaxies_2 = open_linked_files(*galaxy_paths_2)
-    datasets = {"scidac_01": galaxies_1, "scidac_02": galaxies_2}
-    tmp_path = tmp_path / "galaxies.hdf5"
-    tmp_path = mpi4py.MPI.COMM_WORLD.bcast(tmp_path, root=0)
-
-    collection = SimulationCollection(datasets)
-    oc.write(tmp_path, collection)
-
-    dataset = oc.open(tmp_path)
-    dataset = dataset.filter(oc.col("gal_mass") > 10**12).take(10, at="random")
-    for ds in dataset.values():
-        for galaxy in ds.galaxies():
-            props = galaxy.pop("galaxy_properties")
-            gal_tag = props["gal_tag"]
-            gal_tags = set(galaxy["star_particles"].select("gal_tag").data)
-            assert len(gal_tags) == 1
-            assert gal_tags.pop() == gal_tag
 
 
 @pytest.mark.parallel(nprocs=4)

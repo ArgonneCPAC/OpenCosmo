@@ -12,7 +12,7 @@ from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import ChunkedIndex
-from opencosmo.io.io import evaluate_load_conditions
+from opencosmo.io import io
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import HaccSimulationParameters
@@ -62,16 +62,19 @@ class SimulationCollection(dict):
         )
 
     @classmethod
-    def open(
-        cls, handles: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
-    ) -> Collection | Dataset:
-        if len(handles) != 1:
-            raise ValueError("SimulationCollections should be in a single file")
-        handle = handles[0]
-        groups = {k: v for k, v in handle.items() if k != "header"}
-        groups = evaluate_load_conditions(groups, load_kwargs)
+    def open(cls, targets: list[io.OpenTarget]) -> Collection | Dataset:
+        targets_by_name = {
+            target.group.name.split("/")[-1]: target for target in targets
+        }
+        if len(targets_by_name) != len(targets):
+            raise ValueError(
+                "Not all datasets in this SimulationCollection have unique names!"
+            )
 
-        datasets = {name: oc.open(group) for name, group in groups.items()}
+        datasets = {
+            name: io.open_single_dataset(target)
+            for name, target in targets_by_name.items()
+        }
 
         if len(datasets) == 1:
             return next(iter(datasets.values()))

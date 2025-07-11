@@ -3,7 +3,6 @@ from itertools import chain
 from typing import Generator, Iterable, Optional, Self
 
 import astropy.units as u  # type: ignore
-import h5py
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
@@ -12,22 +11,28 @@ from astropy.table import vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
-from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import SimpleIndex
-from opencosmo.io.io import evaluate_load_conditions, open_single_dataset
+from opencosmo.io.io import OpenTarget, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
 from opencosmo.spatial import Region
 
 
 def get_redshift_range(datasets: list[Dataset]):
-    steps = np.fromiter((ds.header.file.step for ds in datasets), dtype=int)
-    step_zs = datasets[0].header.simulation.step_zs
-    min_step = np.min(steps)
-    max_step = np.max(steps)
+    redshift_ranges = [ds.header.lightcone.z_range for ds in datasets]
+    if all(rr is not None for rr in redshift_ranges):
+        min_redshift = min(rr[0] for rr in redshift_ranges)
+        max_redshift = max(rr[1] for rr in redshift_ranges)
 
-    min_redshift = step_zs[max_step]
-    max_redshift = step_zs[min_step - 1]
+    else:
+        steps = np.fromiter((ds.header.file.step for ds in datasets), dtype=int)
+        step_zs = datasets[0].header.simulation.step_zs
+        min_step = np.min(steps)
+        max_step = np.max(steps)
+
+        min_redshift = step_zs[max_step]
+        max_redshift = step_zs[min_step - 1]
     return (min_redshift, max_redshift)
 
 
@@ -237,33 +242,19 @@ class Lightcone(dict):
         return table
 
     @classmethod
-    def open(cls, handles: list[h5py.File | h5py.Group], load_kwargs):
-        if len(handles) > 1:
-            raise NotImplementedError
-        handle = handles[0]
+    def open(cls, targets: list[OpenTarget]):
         datasets: dict[str, Dataset] = {}
-        try:
-            header = read_header(handle)
-            headers = {key: header for key in handle.keys()}
-        except KeyError:
-            headers = {key: read_header(group) for key, group in handle.items()}
 
-        groups = {k: v for k, v in handle.items() if k != "header"}
-        groups = evaluate_load_conditions(groups, load_kwargs)
-
-        for key, group in groups.items():
-            if key == "header":
-                continue
-            ds = open_single_dataset(group, headers[key])
+        for target in targets:
+            ds = open_single_dataset(target)
             if not isinstance(ds, Lightcone) or len(ds.keys()) != 1:
                 raise ValueError(
                     "Lightcones can only contain datasets (not collections)"
                 )
+            key = f"{target.header.file.step}_{target.group.name.split('/')[-1]}"
             datasets[key] = next(iter(ds.values()))
 
-        z_range = next(iter(datasets.values())).header.lightcone.z_range
-
-        return cls(datasets, z_range)
+        return cls(datasets)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from enum import Enum
+from functools import reduce
 from pathlib import Path
 from types import ModuleType
 from typing import Callable, Iterable, Optional
@@ -32,6 +34,121 @@ if get_comm_world() is not None:
 else:
     mpiio = None
     partition = None
+
+"""
+This module defines the main user-facing io functions: open and write
+
+open can take any number of file paths, and will always construct a single object 
+(either a dataset or a collection).
+
+write takes exactly one path and exactly one opencosmo dataset or collection
+
+open works in the following way:
+
+1. Read headers and get dataset names and types for all files passed
+2. If there is only a single dataset, simply open it as such
+3. If there are multiple datasets, user the headers to determine
+   if the dataset are compatible (i.e. capabale of existing together in
+   a collection)
+4. Open all datasets individually
+5. Call the merge functionality for the appropriate collection.
+"""
+
+
+class FILE_TYPE(Enum):
+    DATASET = 0
+    PARTICLES = 1
+    LIGHTCONE = 2
+    STRUCTURE_COLLECTION = 3
+    SIMULATION_COLLECTION = 4
+
+
+class COLLECTION_TYPE(Enum):
+    LIGHTCONE = 0
+    STRUCTURE_COLLECTION = 1
+    SIMULATION_COLLECTION = 2
+
+
+class OpenTarget:
+    def __init__(self, group: h5py.Group | h5py.File, header: OpenCosmoHeader):
+        self.group = group
+        self.header = header
+
+    @property
+    def data_type(self):
+        return self.header.file.data_type
+
+
+def get_file_type(file: h5py.File) -> FILE_TYPE:
+    file_keys = set(file.keys())
+    if len(set(["header", "data"]).intersection(file_keys)) == 2:
+        return FILE_TYPE.DATASET
+
+    elif all("particles" in fk or fk == "header" for fk in file_keys):
+        return FILE_TYPE.PARTICLES
+
+    elif "header" in file.keys():
+        groups = {name: group for name, group in file.items() if name != "header"}
+        collection.structure.io.validate_linked_groups(groups)
+        return FILE_TYPE.STRUCTURE_COLLECTION
+
+    if not all("header" in group.keys() for group in file.values()):
+        for subgroup in file.values():
+            if not all("header" in g.keys() for g in subgroup.values()):
+                raise ValueError(
+                    "Unknown file type. "
+                    "It appears to have multiple datasets, but organized incorrectly"
+                )
+    if all(group["header"]["file"].attrs["is_lightcone"] for group in file.values()):
+        return FILE_TYPE.LIGHTCONE
+    elif (
+        len(set(group["header"]["file"].attrs["data_type"] for group in file.values()))
+        == 1
+    ):
+        return FILE_TYPE.SIMULATION_COLLECTION
+
+    elif all("data" not in group.keys() for group in file.values()):
+        for group in file.values():
+            sub_groups = {
+                g["header"]["file"].attrs["data_type"]: g for g in group.values()
+            }
+            collection.structure.io.validate_linked_groups(sub_groups)
+        return FILE_TYPE.SIMULATION_COLLECTION
+    else:
+        group = {name: group for name, group in file.items()}
+        collection.structure.io.validate_linked_groups(group)
+        return FILE_TYPE.STRUCTURE_COLLECTION
+
+
+def make_all_targets(files: list[h5py.File]):
+    targets: list[OpenTarget] = reduce(
+        lambda targets, file: targets + make_file_targets(file), files, []
+    )
+    return targets
+
+
+def make_file_targets(file: h5py.File):
+    try:
+        header = read_header(file)
+    except KeyError:
+        header = None
+    if header is not None and "data" in file.keys():
+        return [OpenTarget(file, header)]
+    if header is None and "data" in file.keys():
+        raise ValueError(
+            "This file appears to be missing a header. "
+            "Are you sure it is an OpenCosmo file?"
+        )
+    if header is None:
+        headers = {name: read_header(group) for name, group in file.items()}
+    else:
+        headers = {name: header for name in file.keys() if name != "header"}
+
+    output = []
+    for name, header in headers.items():
+        target = OpenTarget(file[name], header)
+        output.append(target)
+    return output
 
 
 def open(
@@ -76,24 +193,20 @@ def open(
         The dataset or collection opened from the file.
 
     """
-    # For now the only way to open multiple files is with a StructureCollection
     if len(files) == 1 and isinstance(files[0], list):
         return oc.open(*files[0])
+    handles = [h5py.File(f) for f in files]
+    file_types = list(map(get_file_type, handles))
+    targets = make_all_targets(handles)
+    targets = evaluate_load_conditions(targets, load_kwargs)
+    if len(targets) > 1:
+        collection_type = collection.get_collection_type(targets, file_types)
+        return collection_type.open(targets)
 
-    if len(files) > 1 and all(isinstance(f, (str, Path)) for f in files):
-        paths = [resolve_path(path, FileExistance.MUST_EXIST) for path in files]
-        headers = [read_header(p) for p in paths]
-        if all(h.file.is_lightcone for h in headers):
-            return oc.collection.open_lightcone(paths, **load_kwargs)
+    else:
+        return open_single_dataset(targets[0])
 
-        return oc.open_linked_files(*paths, **load_kwargs)
-
-    handles = get_file_handles(*files)
-    if len(handles) == 1 and "data" in handles[0].keys():
-        return open_single_dataset(handles[0])
-
-    verify_files(handles)
-    return collection.open_collection(handles, load_kwargs)
+    # For now the only way to open multiple files is with a StructureCollection
 
 
 def expand_file(handle: h5py.File | h5py.Group):
@@ -116,11 +229,10 @@ def verify_files(handles: list[h5py.File | h5py.Group]):
             raise ValueError("All files should have the same set of data types!")
 
 
-def open_single_dataset(
-    handle: h5py.File | h5py.Group, header: Optional[OpenCosmoHeader] = None
-):
-    if header is None:
-        header = read_header(handle)
+def open_single_dataset(target: OpenTarget):
+    header = target.header
+    handle = target.group
+
     assert header is not None
 
     try:
@@ -187,28 +299,26 @@ def get_file_handles(*files: str | Path | h5py.File | h5py.Group):
     return handles
 
 
-def evaluate_load_conditions(
-    groups: dict[str, h5py.Group], load_kwargs: dict[str, bool]
-):
+def evaluate_load_conditions(targets: list[OpenTarget], load_kwargs: dict[str, bool]):
     """
     Datasets can define conditional loading via an addition group called "load/if".
     the "if" group can define parameters which must either be true or false for the
     given group to be loaded. These parameters can then be provided by the user to the
     "open" function. Parameters not specified by the user default to False.
     """
-    output_groups = {}
-    for name, group in groups.items():
+    output = []
+    for target in targets:
         try:
-            ifgroup = group["load/if"]
+            ifgroup = target.group["load/if"]
         except KeyError:
-            output_groups[name] = group
+            output.append(target)
             continue
         load = True
         for key, condition in ifgroup.attrs.items():
             load = load and (load_kwargs.get(key, False) == condition)
         if load:
-            output_groups[name] = group
-    return output_groups
+            output.append(target)
+    return output
 
 
 @deprecated(

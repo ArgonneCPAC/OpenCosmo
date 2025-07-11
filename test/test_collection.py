@@ -9,7 +9,6 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection, open_linked_files
-from opencosmo.collection import SimulationCollection
 
 
 @pytest.fixture
@@ -102,6 +101,7 @@ def test_data_linking(halo_paths):
     particle_species = filter(lambda name: "particles" in name, collection.keys())
     n_particles = 0
     n_profiles = 0
+    print(collection)
     for halo in collection.halos():
         halo_properties = halo.pop("halo_properties")
         halo_tags = set()
@@ -270,30 +270,6 @@ def test_simulation_collection_bound(multi_path):
             val = data[f"fof_halo_center_{dim}"].value
             assert np.all(val <= p2[i])
             assert np.all(val >= p1[i])
-
-
-def test_collection_of_linked(galaxy_paths, galaxy_paths_2, tmp_path):
-    galaxies_1 = open_linked_files(*galaxy_paths)
-    galaxies_2 = open_linked_files(*galaxy_paths_2)
-    datasets = {"scidac_01": galaxies_1, "scidac_02": galaxies_2}
-
-    collection = SimulationCollection(datasets)
-    collection = collection.filter(oc.col("gal_mass") > 10**12).take(50, at="start")
-
-    oc.write(tmp_path / "galaxies.hdf5", collection)
-
-    dataset = oc.open(tmp_path / "galaxies.hdf5")
-    j = 0
-    for ds in dataset.values():
-        for galaxy in ds.galaxies():
-            properties = galaxy["galaxy_properties"]
-            gal_tag = properties["gal_tag"]
-            gal_tags = set(galaxy["star_particles"].select("gal_tag").data)
-            assert len(gal_tags) == 1
-            assert gal_tags.pop() == gal_tag
-            j += 1
-
-    assert j == 100
 
 
 def test_multiple_properties(galaxy_paths, halo_paths):

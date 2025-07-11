@@ -1,14 +1,9 @@
 from pathlib import Path
-from typing import Type
-
-import h5py
 
 import opencosmo as oc
-from opencosmo import dataset as ds
-from opencosmo.collection.lightcone import Lightcone
-from opencosmo.collection.protocols import Collection
 from opencosmo.collection.simulation import SimulationCollection
-from opencosmo.collection.structure import StructureCollection
+from opencosmo.collection.structure.io import validate_linked_groups
+from opencosmo.io.io import FILE_TYPE, OpenTarget
 
 
 def open_simulation_files(**paths: Path) -> SimulationCollection:
@@ -37,46 +32,31 @@ def open_simulation_files(**paths: Path) -> SimulationCollection:
     return SimulationCollection(datasets)
 
 
-def open_collection(
-    handles: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
-) -> Collection | ds.Dataset:
+def get_collection_type(targets: list[OpenTarget], file_types: list[FILE_TYPE]):
     """
-    Open a file with multiple datasets.
+    If there are multiple files, determine their collection type. There are
+    three options we support at present:
+
+    1. All files contain a single lightcone dataset, all of the same type
+    2. The files contain a single non-lightcone datatype.
+    3. The files are linked together into a structure collection
     """
-    CollectionType = get_collection_type(handles)
-    return CollectionType.open(handles, load_kwargs)
-
-
-def get_collection_type(handles: list[h5py.File | h5py.Group]) -> Type[Collection]:
-    """
-    Determine the type of a single file containing multiple datasets. Currently
-    we support multi_simulation, particle, and linked collections.
-
-    multi_simulation == multiple simulations, same data types
-    particle == single simulation, multiple particle species
-    linked == A properties dataset, linked with other particle or profile datasets
-    """
-    if len(handles) > 1:
-        return SimulationCollection
-
-    handle = handles[0]
-
-    datasets = [k for k in handle.keys() if k != "header"]
-    if len(datasets) == 0:
-        raise ValueError("No datasets found in file.")
-
-    if "header" not in handle.keys():
-        if all(group["header/file"].attrs["is_lightcone"] for group in handle.values()):
-            return Lightcone
-        return SimulationCollection
-    elif len(list(filter(lambda x: x.endswith("properties"), datasets))) >= 1:
-        return StructureCollection
-
-    elif handle["header/file"].attrs["is_lightcone"]:
-        return Lightcone
-
+    handles_by_type = {target.data_type: target.group for target in targets}
+    is_lightcone = [target.header.file.is_lightcone for target in targets]
+    unique_data_types = set(handles_by_type.keys())
+    unique_file_types = set(file_types)
+    if len(unique_data_types) == 1 and all(is_lightcone):
+        return oc.Lightcone
+    elif len(unique_data_types) == 1 and all(not il for il in is_lightcone):
+        return oc.SimulationCollection
+    elif unique_file_types == set([FILE_TYPE.PARTICLES, FILE_TYPE.DATASET]):
+        validate_linked_groups(handles_by_type)
+        return oc.StructureCollection
+    elif (
+        len(unique_file_types) == 1
+        and unique_file_types.pop() == FILE_TYPE.STRUCTURE_COLLECTION
+    ):
+        validate_linked_groups(handles_by_type)
+        return oc.StructureCollection
     else:
-        raise ValueError(
-            "Unknown file type. "
-            "It appears to have multiple datasets, but organized incorrectly"
-        )
+        raise ValueError("Invalid combination of files")

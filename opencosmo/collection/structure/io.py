@@ -29,42 +29,6 @@ ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
 }
 
 
-def get_link_spec(*headers: OpenCosmoHeader) -> dict[str, list[str]]:
-    """
-    Verify that the links in the headers are valid. This means that the
-    link holder has a corresponding link target and that the link target
-    is of the correct type. It also verifies that the linked files are from
-    the same simulation. Returns a dictionary where the keys are the
-    link holder files and the values are lists of the corresponding link.
-
-    Raises an error if the links are not valid, otherwise returns the links.
-    """
-
-    data_types = [header.file.data_type for header in headers]
-    if len(set(data_types)) != len(data_types):
-        raise ValueError("Data types in files must be unique to link correctly")
-
-    source_files = [dt for dt in data_types if dt in ALLOWED_LINKS]
-    if not source_files:
-        raise ValueError("No valid link source files found in headers")
-
-    dtypes_to_headers = {header.file.data_type: header for header in headers}
-
-    links = defaultdict(list)  # {file: [link_header, ...]}
-    for file in source_files:
-        for link in ALLOWED_LINKS[file]:
-            try:
-                link_header = dtypes_to_headers[link]
-                # Check that the headers come from the same simulation
-                if link_header.simulation != dtypes_to_headers[file].simulation:
-                    raise ValueError(f"Simulation mismatch between {file} and {link}")
-                links[file].append(link)
-            except KeyError:
-                continue  # No link header found for this file
-
-    return links
-
-
 def open_linked_files(*files: Path, **load_kwargs: bool):
     """
     Open a collection of files that are linked together, such as a
@@ -74,12 +38,22 @@ def open_linked_files(*files: Path, **load_kwargs: bool):
     if len(files) == 1 and isinstance(files[0], list):
         return open_linked_files(*files[0])
 
-    file_handles = [h5py.File(file, "r") for file in files]
-    files_by_type = {f["header"]["file"].attrs["data_type"]: f for f in file_handles}
-    headers = [read_header(file) for file in file_handles]
-    headers_by_type = {header.file.data_type: header for header in headers}
-    linked_files = get_link_spec(*headers)
-    return build_structure_collection(linked_files, files_by_type, headers_by_type)
+    return io.io.open(*files, **load_kwargs)
+
+
+def validate_linked_groups(groups: dict[str, h5py.Group]):
+    if "halo_properties" in groups:
+        if "data_linked" not in groups["halo_properties"].keys():
+            raise ValueError(
+                "File appears to be a structure collection, but does not have links!"
+            )
+    elif "galaxy_properties" in groups:
+        if "data_linked" not in groups["galaxy_properties"].keys():
+            raise ValueError(
+                "File appears to be a structure collection, but does not have links!"
+            )
+    if len(groups) == 1:
+        raise ValueError("Structure collections must have more than one dataset")
 
 
 def open_linked_file(
@@ -157,38 +131,65 @@ def get_linked_datasets(
     return datasets
 
 
-def build_structure_collection(
-    link_spec: dict[str, list[str]],
-    files_by_type: dict[str, h5py.File | h5py.Group],
-    headers: dict[str, OpenCosmoHeader],
-) -> "sc.StructureCollection":
-    output: dict[str, sc.StructureCollection] = {}
-    source_names = set(link_spec.keys())
-    while set(output.keys()) != source_names:
-        for source, targets in link_spec.items():
-            if source in output:
-                continue
-            if subcolls := set(targets).intersection(source_names):
-                if not subcolls.issubset(set(output.keys())):
-                    continue
-            src_dataset = io.open(files_by_type[source])
-            if not isinstance(src_dataset, d.Dataset):
-                raise ValueError("Expected a dataset for the link source!")
-            linked_datasets = get_linked_datasets(
-                {t: files_by_type[t] for t in targets}, headers[source]
+def build_structure_collection(targets: list[io.io.OpenTarget]):
+    link_sources = defaultdict(list)
+    link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
+        defaultdict(dict)
+    )
+    for target in targets:
+        if target.data_type == "halo_properties":
+            link_sources["halo_properties"].append(target)
+        elif target.data_type == "galaxy_properties":
+            link_sources["galaxy_properties"].append(target)
+        elif target.data_type.startswith("halo"):
+            dataset = io.io.open_single_dataset(target)
+            name = target.group.name.split("/")[-1]
+            if not name:
+                name = target.data_type
+            link_targets["halo_targets"][name] = dataset
+        elif target.data_type.startswith("galaxy"):
+            dataset = io.io.open_single_dataset(target)
+            name = target.group.name.split("/")[-1]
+            if not name:
+                name = target.data_type
+            link_targets["galaxy_targets"][name] = dataset
+        else:
+            raise ValueError(
+                f"Unknown data type for structure collection {target.data_type}"
             )
-            link_handlers = get_link_handlers(
-                files_by_type[source], linked_datasets.keys(), headers[source]
-            )
-            for t in targets:
-                if t in output:
-                    linked_datasets[t] = output[t]
-            output[source] = sc.StructureCollection(
-                src_dataset, headers[source], linked_datasets, link_handlers
-            )
-            final_source = source
 
-    return output[final_source]
+    if len(link_sources["galaxy_properties"]) == 1 and link_targets["galaxy_targets"]:
+        handlers = get_link_handlers(
+            link_sources["galaxy_properties"][0].group,
+            list(link_targets["galaxy_targets"].keys()),
+            link_sources["galaxy_properties"][0].header,
+        )
+        source_dataset = io.io.open_single_dataset(link_sources["galaxy_properties"][0])
+        collection = sc.StructureCollection(
+            source_dataset,
+            source_dataset.header,
+            link_targets["galaxy_targets"],
+            handlers,
+        )
+        if len(link_sources["halo_properties"]) != 0:
+            link_targets["halo_targets"]["galaxy_properties"] = collection
+        else:
+            return collection
+
+    if len(link_sources["halo_properties"]) == 1 and link_targets["halo_targets"]:
+        handlers = get_link_handlers(
+            link_sources["halo_properties"][0].group,
+            list(link_targets["halo_targets"].keys()),
+            link_sources["halo_properties"][0].header,
+        )
+        source_dataset = io.io.open_single_dataset(link_sources["halo_properties"][0])
+
+        return sc.StructureCollection(
+            source_dataset,
+            source_dataset.header,
+            link_targets["halo_targets"],
+            handlers,
+        )
 
 
 def get_link_handlers(

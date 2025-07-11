@@ -233,8 +233,10 @@ class StructCollectionSchema:
                 f"StructCollectionSchema already has child with name {name}"
             )
         match child:
-            case DatasetSchema() | StructCollectionSchema():
+            case DatasetSchema():
                 self.children[name] = child
+            case StructCollectionSchema():
+                self.children.update(child.children)
             case IdxLinkSchema() | StartSizeLinkSchema():
                 raise ValueError(
                     "LinkSchemas need to be added to a DatasetSchema directly. "
@@ -256,7 +258,7 @@ class StructCollectionSchema:
         dataset_writers = {
             key: val.into_writer(comm) for key, val in self.children.items()
         }
-        return iow.CollectionWriter(dataset_writers, self.header)
+        return iow.CollectionWriter(dataset_writers)
 
 
 class ZeroLengthError(Exception):
