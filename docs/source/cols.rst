@@ -67,7 +67,7 @@ Queries can generally be performed as usual on collections. In a :py:class:`open
 .. code-block:: python
 
    import opencosmo as oc
-   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   ds = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
    ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
 
 The resultant :py:class:`opencosmo.StructureCollection` will contain only halos with a mass greater than 10^14, along with all their associated particles.
@@ -134,7 +134,7 @@ Calls to :py:meth:`opencosmo.StructureCollection.with_new_columns` must explicit
 .. code-block:: python
 
    import opencosmo as oc
-   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   ds = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
    fof_halo_speed_sqrd = oc.col("fof_halo_com_vx") + oc.col("fof_halo_com_vy") ** 2 + oc.col("fof_halo_com_vz") ** 2
    fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
    fof_halo_p = oc.col("fof_halo_mass") * fof_halo_speed_sqrd ** 0.5

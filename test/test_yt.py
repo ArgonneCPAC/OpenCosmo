@@ -10,7 +10,7 @@ def data(snapshot_path):
     haloproperties = snapshot_path / "haloproperties.hdf5"
     haloparticles = snapshot_path / "haloparticles.hdf5"
     d = (
-        oc.open_linked_files([haloproperties, haloparticles])
+        oc.open([haloproperties, haloparticles])
         .filter(oc.col("sod_halo_mass") > 5e13)
         .take(3, at="start")
     )
@@ -70,5 +70,5 @@ def test_visualize_halo(data):
     """Check that yt visualization tool works"""
 
     for halo in data.halos():
-        halo_id = halo['halo_properties']['fof_halo_tag']
+        halo_id = halo["halo_properties"]["fof_halo_tag"]
         visualize_halo(halo_id, data).savefig(f"{halo_id}.png")

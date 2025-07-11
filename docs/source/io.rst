@@ -5,7 +5,7 @@ OpenCosmo defines a data format for storing simulation data in hdf5 files. A dat
 Options for Reading Data
 ------------------------
 
-Any single opencosmo file can be open with :py:meth:`opencosmo.open`. This function will parse the structure of the file and return the appropriate object, such as an :py:class`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection`
+Any single opencosmo file can be open with :py:meth:`opencosmo.open`. This function will parse the structure of the file and return the appropriate object, such as a :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection`
 
 .. code-block:: python
 
@@ -22,7 +22,7 @@ You can also use open as a context manager to automatically close the file when 
        print(ds.data)
 
 
-When opening multiple files that are linked to each other, use :py:meth:`opencosmo.open_linked_files`
+When opening multiple files that are linked to each other, use :py:meth:`opencosmo.open`
 
 Writing Data
 ------------

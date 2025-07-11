@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Iterable
 
 import h5py
+from deprecated import deprecated
 
 from opencosmo import dataset as d
 from opencosmo import io
@@ -29,8 +30,16 @@ ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
 }
 
 
+@deprecated(
+    version="0.8",
+    reason="oc.open_linked_files is deprecated and will be removed in version 1.0. "
+    "Please use oc.open instead",
+)
 def open_linked_files(*files: Path, **load_kwargs: bool):
     """
+    **WARNING: THIS METHOD IS DEPCREATED AND WILL BE REMOVED IN A FUTURE
+    VERSION. PLEASE USE** :py:meth:`opencosmo.open`
+
     Open a collection of files that are linked together, such as a
     properties file and a particle file.
 

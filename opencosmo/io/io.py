@@ -176,6 +176,15 @@ def open(
         with oc.open("path/to/file.hdf5") as ds:
             # do work
 
+    When you have multiple files that can be combined into a collection,
+    you can use the following.
+
+    .. code-block:: python
+
+        import opencosmo as oc
+        ds = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+
+
     Parameters
     ----------
     *files: str or pathlib.Path
@@ -286,6 +295,8 @@ def evaluate_load_conditions(targets: list[OpenTarget], load_kwargs: dict[str, b
     given group to be loaded. These parameters can then be provided by the user to the
     "open" function. Parameters not specified by the user default to False.
     """
+    if len(targets) == 1:
+        return targets
     output = []
     for target in targets:
         try:

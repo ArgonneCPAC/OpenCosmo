@@ -202,7 +202,7 @@ def test_derive_children_select(properties_path):
 
 
 def test_derive_structure_collection(properties_path, particles_path):
-    ds = oc.open_linked_files(properties_path, particles_path)
+    ds = oc.open(properties_path, particles_path)
     ds = ds.with_new_columns("dm_particles", gpe=oc.col("mass") * oc.col("phi"))
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
     ds = ds.take(1, at="random")
