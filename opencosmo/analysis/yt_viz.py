@@ -438,7 +438,7 @@ def halo_projection_array(
                 width_ = width
                 proj.set_width(width_ * Rh)
             else:
-                width_ = (max(ds.domain_width.to('Mpc')) / Rh).d
+                width_ = (max(ds.domain_width.to('Mpc')) / Rh).d  # type: ignore[attr-defined]
 
             # fetch figure buffer (2D array of pixel values)
             # and re-plot on each panel with imshow
