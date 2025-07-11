@@ -1,6 +1,6 @@
 from .collection import StructureCollection
 from .handler import LinkedDatasetHandler
-from .io import open_linked_file, open_linked_files
+from .io import open_linked_files
 from .protocols import LinkHandler
 
 __all__ = [
@@ -9,5 +9,4 @@ __all__ = [
     "LinkedDatasetHandler",
     "OomLinkHandler",
     "open_linked_files",
-    "open_linked_file",
 ]

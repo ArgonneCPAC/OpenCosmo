@@ -1,6 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable
 
 import h5py
 
@@ -8,7 +8,7 @@ from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection.structure import collection as sc
 from opencosmo.dataset.build import build_dataset
-from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.header import OpenCosmoHeader
 
 from .handler import LinkedDatasetHandler
 
@@ -54,62 +54,6 @@ def validate_linked_groups(groups: dict[str, h5py.Group]):
             )
     if len(groups) == 1:
         raise ValueError("Structure collections must have more than one dataset")
-
-
-def open_linked_file(
-    file_handle: h5py.File | h5py.Group,
-    datasets_to_get: Optional[Iterable[str]] = None,
-) -> "sc.StructureCollection":
-    """
-    Open a single file that contains both properties and linked datasets.
-    """
-    outputs = {}
-    header = read_header(file_handle)
-    datasets = set(k for k in file_handle.keys() if k != "header")
-    # bespoke for now
-    # Needs to be rewritten...
-    if (
-        "galaxy_properties" in file_handle.keys()
-        and "data" not in file_handle["galaxy_properties"].keys()
-    ):
-        outputs["galaxy_properties"] = open_linked_file(
-            file_handle["galaxy_properties"]
-        )
-
-    if "halo_properties" in file_handle.keys():
-        source_dataset = io.open(file_handle["halo_properties"])
-        if not isinstance(source_dataset, d.Dataset):
-            raise ValueError("Expected dataset for link source!")
-        datasets.remove("halo_properties")
-        handlers = get_link_handlers(file_handle["halo_properties"], datasets, header)
-        if "galaxy_properties" in outputs:
-            datasets.remove("galaxy_properties")
-        linked_datasets: dict[str, d.Dataset | sc.StructureCollection] = {
-            key: build_dataset(file_handle[key], header) for key in datasets
-        }
-        linked_datasets.update(outputs)
-        collection = sc.StructureCollection(
-            source_dataset, header, linked_datasets, handlers
-        )
-
-    else:
-        source_dataset = io.open(file_handle["galaxy_properties"])
-        if not isinstance(source_dataset, d.Dataset):
-            raise ValueError("Expected dataset for link source!")
-        datasets.remove("galaxy_properties")
-        handlers = get_link_handlers(
-            file_handle["galaxy_properties"],
-            datasets,
-            header,
-        )
-        linked_datasets = {
-            key: build_dataset(file_handle[key], header) for key in datasets
-        }
-        collection = sc.StructureCollection(
-            source_dataset, header, linked_datasets, handlers
-        )
-
-    return collection
 
 
 def get_linked_datasets(
