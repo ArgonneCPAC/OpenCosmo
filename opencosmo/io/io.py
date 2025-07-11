@@ -209,26 +209,6 @@ def open(
     # For now the only way to open multiple files is with a StructureCollection
 
 
-def expand_file(handle: h5py.File | h5py.Group):
-    if "header" in handle.keys():
-        return [handle]
-    elif not all("header" in group.keys() for group in handle.values()):
-        raise ValueError("The file is missing a header!")
-    return list(handle.values())
-
-
-def verify_files(handles: list[h5py.File | h5py.Group]):
-    # if multiple files, one of the following must be true:
-    # Files have the same set of datatypes
-    first_headers = [read_header(g) for g in expand_file(handles[0])]
-    expected_dtypes = set(h.file.data_type for h in first_headers)
-    for handle in handles[1:]:
-        headers = [read_header(g) for g in expand_file(handle)]
-        dtypes = set(h.file.data_type for h in headers)
-        if dtypes != expected_dtypes:
-            raise ValueError("All files should have the same set of data types!")
-
-
 def open_single_dataset(target: OpenTarget):
     header = target.header
     handle = target.group
