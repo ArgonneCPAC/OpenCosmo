@@ -404,11 +404,14 @@ def write(path: Path, dataset: Writeable, overwrite=False) -> None:
         The path to the file to write to.
     dataset : oc.Dataset
         The dataset to write.
+    overwrite : bool, default = False
+        If the file already exists, overwrite it
+
 
     Raises
     ------
     FileExistsError
-        If the file at the specified path already exists
+        If the file at the specified path already exists and overwrite is False
     FileNotFoundError
         If the parent folder of the ouput file does not exist
     """

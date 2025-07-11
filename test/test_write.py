@@ -39,6 +39,18 @@ def test_write_dataset(halo_properties_path, tmp_path):
     assert all(ds.data == new_ds.data)
 
 
+def test_overwrite(halo_properties_path, tmp_path):
+    ds = oc.open(halo_properties_path)
+    new_path = tmp_path / "haloproperties.hdf5"
+    write(new_path, ds)
+    with pytest.raises(FileExistsError):
+        write(new_path, ds)
+    write(new_path, ds, overwrite=True)
+
+    new_ds = oc.open(new_path)
+    assert all(ds.data == new_ds.data)
+
+
 def test_after_take_filter(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path).take(10000)
     ds = ds.filter(col("sod_halo_mass") > 0)
