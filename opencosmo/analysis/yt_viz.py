@@ -171,7 +171,8 @@ def visualize_halo(
     text_color : str, optional
         Set the color of all text annotations. Default is "gray"
     width : float, optional
-        Width of each projection panel in units of R200 for the halo. Default is 4.0.
+        Width of each projection panel in units of R200 for the halo.
+        If None, plots full subvolume around halo.
 
     Returns
     -------
@@ -334,6 +335,7 @@ def halo_projection_array(
     width : float, optional
         Width of each projection panel in units of R200 for the halo.
         Overridden if ``params["widths"]`` is provided.
+        If None, plots full subvolume.
 
     Returns
     -------
