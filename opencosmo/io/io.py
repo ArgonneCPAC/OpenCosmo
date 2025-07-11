@@ -13,7 +13,7 @@ import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import DatasetHandler
-from opencosmo.file import FileExistance, file_reader, file_writer, resolve_path
+from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import ChunkedIndex
 from opencosmo.mpi import get_comm_world
@@ -394,8 +394,7 @@ def read(
     return ds
 
 
-@file_writer
-def write(path: Path, dataset: Writeable) -> None:
+def write(path: Path, dataset: Writeable, overwrite=False) -> None:
     """
     Write a dataset or collection to the file at the sepecified path.
 
@@ -413,6 +412,12 @@ def write(path: Path, dataset: Writeable) -> None:
     FileNotFoundError
         If the parent folder of the ouput file does not exist
     """
+
+    existance_requirement = FileExistance.MUST_NOT_EXIST
+    if overwrite:
+        existance_requirement = FileExistance.EITHER
+
+    path = resolve_path(path, existance_requirement)
 
     schema = FileSchema()
     dataset_schema = dataset.make_schema()

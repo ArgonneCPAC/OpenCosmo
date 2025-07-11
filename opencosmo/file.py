@@ -101,6 +101,8 @@ def resolve_path(
         raise FileNotFoundError(f"{path} does not exist.")
     if path.exists() and existance == FileExistance.MUST_NOT_EXIST:
         raise FileExistsError(f"{path} already exists.")
+    if not path.parent.exists():
+        raise FileNotFoundError(f"Directory {path.parent} does not exist!")
     if path.suffix != ".hdf5":
         raise ValueError(f"{path} does not appear to be an hdf5 file.")
     return path
