@@ -325,7 +325,7 @@ def halo_projection_array(
         Keys may include:
             - ``"fields"``: 2D array of fields to plot (yt naming conventions)
             - ``"weight_fields"``: 2D array of projection weights (or None)
-            - ``"projection_axes": 2D array of projection axes (``"x"``, ``"y"``, or ``"z"``) 
+            - ``"projection_axes"``: 2D array of projection axes ("x", "y", or "z") 
             - ``"zlims"``: 2D array of colorbar limits (log-scaled)
             - ``"labels"``: 2D array of panel labels (or None)
             - ``"cmaps"``: 2D array of Matplotlib colormaps for each panel
