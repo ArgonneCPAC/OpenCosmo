@@ -128,8 +128,10 @@ def PhasePlot(*args, **kwargs) -> PlotWindow:
 def visualize_halo(
     halo_id: int,
     data: oc.StructureCollection,
+    projection_axis: Optional[str] = "z",
     length_scale: Optional[str] = "top left",
-    width: float = 4.0,
+    text_color: Optional[str] = "gray",
+    width: Optional[float] = None,
 ) -> Figure:
     """
     Creates a figure showing particle projections of dark matter, stars, gas, and/or gas temperature
@@ -148,6 +150,9 @@ def visualize_halo(
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection object containing both halo properties and particle data
         (e.g. output of ``opencosmo.open([haloproperties, sodbighaloparticles])``).
+    projection_axis : str, optional
+        Data is projected along this axis (``"x"``, ``"y"``, or ``"z"``).
+        Overridden if ``params["projection_axes"]`` is provided
     length_scale : str or None, optional
         Optionally add a horizontal bar denoting length scale in Mpc.
 
@@ -163,6 +168,8 @@ def visualize_halo(
             - ``"all"``: add to all panels
             - ``None``: no length scale on any panel
 
+    text_color : str, optional
+        Set the color of all text annotations. Default is "gray"
     width : float, optional
         Width of each projection panel in units of R200 for the halo. Default is 4.0.
 
@@ -243,21 +250,25 @@ def visualize_halo(
         params = {key: [value] for key, value in params.items()}
 
     return halo_projection_array(
-        halo_ids, data, params=params, length_scale=length_scale, width=width
+        halo_ids, data, params=params, 
+        length_scale=length_scale, width=width, 
+        projection_axis=projection_axis,
+        text_color=text_color,
     )
 
 
 def halo_projection_array(
     halo_ids: Union[int, Tuple[int, ...], Tuple[list[int], list[int]], np.ndarray],
     data: oc.StructureCollection,
-    field: Tuple[str, str] = ("dm", "particle_mass"),
+    field: Optional[Tuple[str, str]] = ("dm", "particle_mass"),
     weight_field: Optional[Tuple[str, str]] = None,
-    cmap: str = "gray",
+    projection_axis: Optional[str] = "z",
+    cmap: Optional[str] = "gray",
     zlim: Optional[Tuple[float, float]] = None,
     params: Optional[Dict[str, Any]] = None,
     length_scale: Optional[str] = None,
-    smooth_gas_fields: bool = False,
-    width: float = 6.0,
+    text_color: Optional[str] = "gray",
+    width: Optional[float] = None,
 ) -> Figure:
     """
     Creates a multipanel figure of projections for different fields and/or halos.
@@ -277,12 +288,15 @@ def halo_projection_array(
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection dataset containing both halo properties and particle data
         (e.g., output of ``opencosmo.open([haloproperties, sodbighaloparticles])``).
-    field : tuple of str
+    field : tuple of str, optional
         Field to plot for all panels. Follows yt naming conventions (e.g., ``("dm", "particle_mass")``,
         ``("gas", "temperature")``). Overridden if ``params["fields"]`` is provided.
     weight_field : tuple of str, optional
         Field to weight by during projection. Follows yt naming conventions.
         Overridden if ``params["weight_fields"]`` is provided.
+    projection_axis : str, optional
+        Data is projected along this axis (``"x"``, ``"y"``, or ``"z"``).
+        Overridden if ``params["projection_axes"]`` is provided
     cmap : str
         Matplotlib colormap to use for all panels. Overridden if ``params["cmaps"]`` is provided.
         See https://matplotlib.org/stable/gallery/color/colormap_reference.html for named colormaps.
@@ -310,14 +324,16 @@ def halo_projection_array(
         Keys may include:
             - ``"fields"``: 2D array of fields to plot (yt naming conventions)
             - ``"weight_fields"``: 2D array of projection weights (or None)
+            - ``"projection_axes": 2D array of projection axes (``"x"``, ``"y"``, or ``"z"``) 
             - ``"zlims"``: 2D array of colorbar limits (log-scaled)
             - ``"labels"``: 2D array of panel labels (or None)
             - ``"cmaps"``: 2D array of Matplotlib colormaps for each panel
-
+            - ``"widths"``: 2D array of widths in units of R200
+    text_color : str, optional
+        Set the color of all text annotations. Default is "gray"
     width : float, optional
-        Width of each projection panel in units of R200 for the halo. Default is 4.0.
-    smooth_gas_fields : bool, optional
-        If True, smooths all gas particle fields over the smoothing length during projection.
+        Width of each projection panel in units of R200 for the halo.
+        Overridden if ``params["widths"]`` is provided.
 
     Returns
     -------
@@ -355,8 +371,10 @@ def halo_projection_array(
         ),
         "weight_fields": (weight_field_),
         "zlims": (zlim_),
+        "projection_axes" : (np.full(fig_shape, projection_axis)),
         "labels": (np.full(fig_shape, None)),
         "cmaps": (np.full(fig_shape, cmap)),
+        "widths": (np.full(fig_shape, width)),
     }
 
     # Override defaults with user-supplied params (if any)
@@ -364,9 +382,11 @@ def halo_projection_array(
 
     fields = params.get("fields", default_params["fields"])
     weight_fields = params.get("weight_fields", default_params["weight_fields"])
+    projection_axes = params.get("projection_axes", default_params["projection_axes"])
     zlims = params.get("zlims", default_params["zlims"])
     labels = params.get("labels", default_params["labels"])
     cmaps = params.get("cmaps", default_params["cmaps"])
+    widths = params.get("widths", default_params["widths"])
 
     nrow, ncol = fig_shape
 
@@ -396,10 +416,11 @@ def halo_projection_array(
 
             Rh = unyt_quantity.from_astropy(halo_properties["sod_halo_radius"])
 
-            field, weight_field, zlim = (
+            field, weight_field, zlim, width = (
                 tuple(fields[i][j]),
                 weight_fields[i][j],
                 zlims[i][j],
+                widths[i][j],
             )
 
             if weight_field is not None:
@@ -409,13 +430,15 @@ def halo_projection_array(
 
             label = labels[i][j]
 
-            if smooth_gas_fields and field[0] == "gas":
-                proj = ProjectionPlot(ds, "z", field, weight_field=weight_field)
-            else:
-                proj = ParticleProjectionPlot(ds, "z", field, weight_field=weight_field)
+            proj = ParticleProjectionPlot(ds, projection_axes[i][j], field, weight_field=weight_field)
 
             proj.set_background_color(field, color="black")
-            proj.set_width(width * Rh)
+            
+            if width is not None:
+                width_ = width
+                proj.set_width(width_ * Rh)
+            else:
+                width_ = (max(ds.domain_width.to('Mpc')) / Rh).d
 
             # fetch figure buffer (2D array of pixel values)
             # and re-plot on each panel with imshow
@@ -451,7 +474,7 @@ def halo_projection_array(
                     va="top",
                     fontsize=12,
                     fontfamily="DejaVu Serif",
-                    color="grey",
+                    color=text_color,
                 )
 
             if length_scale is not None:
@@ -480,13 +503,13 @@ def halo_projection_array(
                     # panel is 800 pixels wide
                     scalebar = AnchoredSizeBar(
                         ax.transData,
-                        800 / (width * Rh.d),
+                        800 / (width_ * Rh.d),
                         "1 Mpc",
                         "lower right",
                         pad=0.4,
                         label_top=False,
                         sep=10,
-                        color="grey",
+                        color=text_color,
                         frameon=False,
                         size_vertical=1,
                     )

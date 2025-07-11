@@ -133,6 +133,7 @@ def create_yt_dataset(
         length_unit="Mpc",
         mass_unit="Msun",
         bbox=bbox,
+        periodicity=(False,False,False),
     )
 
     ds.sph_smoothing_style = "gather"  # seems to give more reliable results

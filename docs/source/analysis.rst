@@ -167,7 +167,8 @@ The outputted figure is an array of images, with the shape matching that of the 
         halo_ids = [halo['halo_properties']['unique_tag'] for halo in data.halos()]
 
         # construct 4x4 array of halo ids and make a 4x4 array of dark matter projections
-        fig = halo_projection_array(np.reshape(halo_ids,(4,4)), data, field=("dm","particle_mass"))
+        fig = halo_projection_array(np.reshape(halo_ids,(4,4)), data, 
+                    field=("dm","particle_mass"), width=6.0)
 
     # display the image
     plt.show()
