@@ -147,7 +147,7 @@ def visualize_halo(
         Identifier of the halo to be visualized.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection object containing both halo properties and particle data
-        (e.g. output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])``).
+        (e.g. output of ``opencosmo.open([haloproperties, sodbighaloparticles])``).
     length_scale : str or None, optional
         Optionally add a horizontal bar denoting length scale in Mpc.
 
@@ -276,7 +276,7 @@ def halo_projection_array(
         array of projections). If `int`, a single panel is output while preserving formatting.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection dataset containing both halo properties and particle data
-        (e.g., output of ``opencosmo.open_linked_files([haloproperties, sodbighaloparticles])``).
+        (e.g., output of ``opencosmo.open([haloproperties, sodbighaloparticles])``).
     field : tuple of str
         Field to plot for all panels. Follows yt naming conventions (e.g., ``("dm", "particle_mass")``,
         ``("gas", "temperature")``). Overridden if ``params["fields"]`` is provided.

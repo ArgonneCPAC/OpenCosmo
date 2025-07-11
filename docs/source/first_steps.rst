@@ -84,7 +84,7 @@ This is cool on its own, but the real power of :code:`opencosmo` comes from its 
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   data = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
 
 This will return a data *collection* that will allow you to query and transform the data as before, but will associate the halos with their particles. 
 

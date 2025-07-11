@@ -8,7 +8,7 @@ import pytest
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-from opencosmo import open_linked_files
+from opencosmo import open
 
 
 @pytest.fixture
@@ -174,7 +174,7 @@ def test_select_collect(input_path):
 
 @pytest.mark.parallel(nprocs=4)
 def test_link_read(all_paths):
-    collection = open_linked_files(*all_paths)
+    collection = open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
@@ -197,7 +197,7 @@ def test_link_read(all_paths):
 
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
-    collection = open_linked_files(*all_paths)
+    collection = open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
@@ -252,7 +252,7 @@ def test_link_write(all_paths, tmp_path):
 
 @pytest.mark.parallel(nprocs=4)
 def test_chain_link(all_paths, galaxy_paths, tmp_path):
-    collection = open_linked_files(*all_paths, *galaxy_paths)
+    collection = open(*all_paths, *galaxy_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length

@@ -17,7 +17,7 @@ Here is an example for how to use `create_yt_dataset` to load a selection of dat
     from opencosmo.analysis import create_yt_dataset, ParticleProjectionPlot
 
     # select a random halo
-    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
+    with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
         # get yt data container
         yt_ds = create_yt_dataset(data.objects())
 
@@ -82,7 +82,7 @@ We will now edit the code-block from before to compute X-ray luminosities:
     }
 
     # select a random halo
-    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
+    with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
         # get yt data container
         ds_yt, source_model = create_yt_dataset(data.objects(), 
             compute_xray_fields = True, return_source_model = True)
@@ -121,7 +121,7 @@ This function essentially uses :func:`halo_projection_array` with pre-filled set
     import matplotlib.pyplot as plt
 
     # load one halo at random
-    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
+    with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
         halo = next(data.halos())
         halo_id = halo['halo_properties']['unique_tag']
 
@@ -162,7 +162,7 @@ The outputted figure is an array of images, with the shape matching that of the 
     import numpy as np
 
     # load 16 halos at random
-    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(16, at="random") as data:
+    with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(16, at="random") as data:
  
         halo_ids = [halo['halo_properties']['unique_tag'] for halo in data.halos()]
 
@@ -192,7 +192,7 @@ One can also define a dictionary of plotting parameters to plot different fields
     import matplotlib.pyplot as plt
     import numpy as np
 
-    with oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5").take(2, at="random") as data:
+    with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(2, at="random") as data:
         halo_ids = [halo['halo_properties']['unique_tag'] for halo in data.halos()]
 
         # We are going to make a 2x3 panel figure, where each row is a different halo, and

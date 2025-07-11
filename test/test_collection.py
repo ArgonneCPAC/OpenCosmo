@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import opencosmo as oc
-from opencosmo import StructureCollection, open_linked_files
+from opencosmo import StructureCollection
 
 
 @pytest.fixture
@@ -129,7 +129,7 @@ def test_data_linking(halo_paths):
 
 
 def test_data_linking_bound(halo_paths):
-    collection = open_linked_files(*halo_paths)
+    collection = oc.open(*halo_paths)
     p1 = tuple(random.uniform(30, 40) for _ in range(3))
     p2 = tuple(random.uniform(50, 60) for _ in range(3))
     region = oc.make_box(p1, p2)
@@ -144,12 +144,12 @@ def test_data_linking_bound(halo_paths):
 
 
 def test_data_link_repr(halo_paths):
-    collection = open_linked_files(halo_paths)
+    collection = oc.open(halo_paths)
     assert isinstance(collection.__repr__(), str)
 
 
 def test_data_link_selection(halo_paths):
-    collection = open_linked_files(*halo_paths)
+    collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
         10, at="random"
     )
@@ -170,7 +170,7 @@ def test_data_link_selection(halo_paths):
 
 def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
     galaxy_path = galaxy_paths[0]
-    collection = open_linked_files(*halo_paths, galaxy_path)
+    collection = oc.open(*halo_paths, galaxy_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(10)
     for halo in collection.halos():
         properties = halo.pop("halo_properties")
@@ -187,7 +187,7 @@ def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
 
 
 def test_galaxy_linking(galaxy_paths):
-    collection = open_linked_files(*galaxy_paths)
+    collection = oc.open(*galaxy_paths)
     collection = collection.filter(oc.col("gal_mass") < 10**12).take(10, at="random")
     for galaxy in collection.galaxies():
         properties = galaxy["galaxy_properties"]
@@ -198,7 +198,7 @@ def test_galaxy_linking(galaxy_paths):
 
 
 def test_link_write(halo_paths, tmp_path):
-    collection = open_linked_files(*halo_paths)
+    collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(
         10, at="random"
     )
@@ -274,12 +274,12 @@ def test_simulation_collection_bound(multi_path):
 
 def test_multiple_properties(galaxy_paths, halo_paths):
     galaxy_path = galaxy_paths[0]
-    ds = open_linked_files(galaxy_path, *halo_paths)
+    ds = oc.open(galaxy_path, *halo_paths)
     assert isinstance(ds, StructureCollection)
 
 
 def test_chain_link(galaxy_paths, halo_paths):
-    ds = open_linked_files(*galaxy_paths, *halo_paths)
+    ds = oc.open(*galaxy_paths, *halo_paths)
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(10)
     for halo in ds.halos():
         properties = halo.pop("halo_properties")
@@ -302,7 +302,7 @@ def test_chain_link(galaxy_paths, halo_paths):
 
 
 def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
-    ds = open_linked_files(*galaxy_paths, *halo_paths)
+    ds = oc.open(*galaxy_paths, *halo_paths)
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(10)
     oc.write(tmp_path / "linked.hdf5", ds)
     ds = oc.open(tmp_path / "linked.hdf5")

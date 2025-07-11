@@ -71,7 +71,7 @@ However the real power of working with a :py:class:`StructureCollection` is the 
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5")
+   data = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
    for halo in data.halos():
       print(halo)
 
@@ -95,7 +95,7 @@ It is also possible for structure collections to contain other structure collect
 .. code-block:: python
 
    import opencosmo as oc
-   ds = oc.open_linked_files("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
+   ds = oc.open("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
    for structure in ds.halos():
         gals_ds = structure["galaxies"]
         for galaxy in gals_ds.galaxies():
