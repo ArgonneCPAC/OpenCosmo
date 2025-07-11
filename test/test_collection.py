@@ -101,7 +101,6 @@ def test_data_linking(halo_paths):
     particle_species = filter(lambda name: "particles" in name, collection.keys())
     n_particles = 0
     n_profiles = 0
-    print(collection)
     for halo in collection.halos():
         halo_properties = halo.pop("halo_properties")
         halo_tags = set()
@@ -304,11 +303,21 @@ def test_chain_link(galaxy_paths, halo_paths):
 def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
     ds = oc.open(*galaxy_paths, *halo_paths)
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(10)
-    oc.write(tmp_path / "linked.hdf5", ds)
-    ds = oc.open(tmp_path / "linked.hdf5")
+    expected_types = {}
     for halo in ds.objects():
         properties = halo.pop("halo_properties")
         halo_tag = properties["fof_halo_tag"]
+        types = set(halo.keys())
+        expected_types[halo_tag] = types
+
+    oc.write(tmp_path / "linked.hdf5", ds)
+    ds = oc.open(tmp_path / "linked.hdf5")
+
+    for halo in ds.objects():
+        properties = halo.pop("halo_properties")
+        halo_tag = properties["fof_halo_tag"]
+        types = set(halo.keys())
+        assert types == expected_types[halo_tag]
         for pds in halo.values():
             try:
                 tags = set(pds.select("fof_halo_tag").data)

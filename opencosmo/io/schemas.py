@@ -236,7 +236,11 @@ class StructCollectionSchema:
             case DatasetSchema():
                 self.children[name] = child
             case StructCollectionSchema():
-                self.children.update(child.children)
+                for key, grandchild in child.children.items():
+                    if key in self.children:
+                        self.children[f"{name}_{key}"] = grandchild
+                    else:
+                        self.children[key] = grandchild
             case IdxLinkSchema() | StartSizeLinkSchema():
                 raise ValueError(
                     "LinkSchemas need to be added to a DatasetSchema directly. "

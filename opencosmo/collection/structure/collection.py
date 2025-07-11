@@ -512,7 +512,6 @@ class StructureCollection:
             ds_schema = dataset.make_schema()
             if name == "galaxies":
                 name = "galaxy_properties"
-
             schema.add_child(ds_schema, name)
 
         for name, handler in self.__links.items():

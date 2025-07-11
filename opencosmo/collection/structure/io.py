@@ -99,12 +99,16 @@ def build_structure_collection(targets: list[io.io.OpenTarget]):
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
+            elif name.startswith("halo_properties"):
+                name = name[16:]
             link_targets["halo_targets"][name] = dataset
         elif target.data_type.startswith("galaxy"):
             dataset = io.io.open_single_dataset(target)
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
+            elif name.startswith("galaxy_properties"):
+                name = name[18:]
             link_targets["galaxy_targets"][name] = dataset
         else:
             raise ValueError(
@@ -117,6 +121,7 @@ def build_structure_collection(targets: list[io.io.OpenTarget]):
             list(link_targets["galaxy_targets"].keys()),
             link_sources["galaxy_properties"][0].header,
         )
+
         source_dataset = io.io.open_single_dataset(link_sources["galaxy_properties"][0])
         collection = sc.StructureCollection(
             source_dataset,
