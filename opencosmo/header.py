@@ -8,9 +8,14 @@ from typing import Any, Optional
 import h5py
 from pydantic import BaseModel, ValidationError
 
-from opencosmo import parameters
 from opencosmo.file import broadcast_read, file_reader, file_writer
-from opencosmo.parameters import dtype, origin
+from opencosmo.parameters import (
+    FileParameters,
+    dtype,
+    origin,
+    read_header_attributes,
+    write_header_attributes,
+)
 
 
 class OpenCosmoHeader:
@@ -24,7 +29,7 @@ class OpenCosmoHeader:
 
     def __init__(
         self,
-        file_pars: parameters.FileParameters,
+        file_pars: FileParameters,
         required_origin_parameters: dict[str, BaseModel],
         optional_origin_parameters: dict[str, BaseModel],
         dtype_parameters: dict[str, BaseModel],
@@ -116,17 +121,17 @@ class OpenCosmoHeader:
         )
 
     def write(self, file: h5py.File | h5py.Group) -> None:
-        parameters.write_header_attributes(file, "file", self.__file_pars)
+        write_header_attributes(file, "file", self.__file_pars)
         to_write = chain(
             self.__required_origin_parameters.items(),
             self.__optional_origin_parameters.items(),
             self.__dtype_parameters.items(),
         )
         for path, data in to_write:
-            parameters.write_header_attributes(file, path, data)
+            write_header_attributes(file, path, data)
 
     @property
-    def file(self):
+    def file(self) -> FileParameters:
         """
         All files must at minimum have a "file" block in their header. This block
         contains basic information like the original source of the data and
@@ -181,9 +186,7 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
 
     """
     try:
-        file_parameters = parameters.read_header_attributes(
-            file, "file", parameters.FileParameters
-        )
+        file_parameters = read_header_attributes(file, "file", FileParameters)
     except KeyError as e:
         raise KeyError(
             "File header is malformed. Are you sure it is an OpenCosmo file?\n "
@@ -219,7 +222,7 @@ def read_origin_parameters(
         if isinstance(model, UnionType):
             required_output[path] = load_union_model(file, path, model)
         else:
-            required_output[path] = parameters.read_header_attributes(file, path, model)
+            required_output[path] = read_header_attributes(file, path, model)
 
     optional_output = {}
     optional = origin_parameters["optional"]
@@ -227,7 +230,7 @@ def read_origin_parameters(
         if isinstance(origin, UnionType):
             read_fn = load_union_model
         else:
-            read_fn = parameters.read_header_attributes
+            read_fn = read_header_attributes
         try:
             optional_output[path] = read_fn(file, path, model)
         except (ValidationError, KeyError):
@@ -250,7 +253,7 @@ def read_dtype_parameters(
         if isinstance(model, UnionType):
             dtype_output[path] = load_union_model(file, path, model)
         else:
-            dtype_output[path] = parameters.read_header_attributes(file, path, model)
+            dtype_output[path] = read_header_attributes(file, path, model)
 
         if not hasattr(model, "ACCESS_PATH"):
             # This should be always always always caught in testing
@@ -264,7 +267,7 @@ def load_union_model(
 ):
     for model in allowed_models.__args__:
         try:
-            return parameters.read_header_attributes(file, path, model)
+            return read_header_attributes(file, path, model)
         except ValidationError as ve:
             if any(e["type"] == "missing" or e["input"] is None for e in ve.errors()):
                 continue

@@ -1,10 +1,9 @@
 from typing import Iterable, Protocol, Self, Union
 
-import h5py
-
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.io.io import OpenTarget
 from opencosmo.io.protocols import DataSchema
 
 
@@ -28,9 +27,7 @@ class Collection(Protocol):
     """
 
     @classmethod
-    def open(
-        cls, files: list[h5py.File | h5py.Group], load_kwargs: dict[str, bool]
-    ) -> Union["Collection", Dataset]: ...
+    def open(cls, targets: list[OpenTarget]) -> Union["Collection", Dataset]: ...
 
     def make_schema(self) -> DataSchema: ...
     @property

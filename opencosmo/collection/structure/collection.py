@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Generator, Iterable, Optional
+from typing import Any, Generator, Iterable, Mapping, Optional
 
 import astropy  # type: ignore
-import h5py
 
 import opencosmo as oc
 from opencosmo.collection.structure import io as sio
 from opencosmo.dataset.col import DerivedColumn
 from opencosmo.index import DataIndex
+from opencosmo.io import io
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial.protocols import Region
@@ -23,6 +23,7 @@ def filter_source_by_dataset(
     *masks,
 ) -> oc.Dataset:
     masked_dataset = dataset.filter(*masks)
+    linked_column: str
     if header.file.data_type == "halo_properties":
         linked_column = "fof_halo_tag"
     elif header.file.data_type == "galaxy_properties":
@@ -48,7 +49,7 @@ class StructureCollection:
         self,
         source: oc.Dataset,
         header: oc.header.OpenCosmoHeader,
-        datasets: dict[str, oc.Dataset | StructureCollection],
+        datasets: Mapping[str, oc.Dataset | StructureCollection],
         links: dict[str, LinkedDatasetHandler],
         *args,
         **kwargs,
@@ -59,7 +60,7 @@ class StructureCollection:
 
         self.__source = source
         self.__header = header
-        self.__datasets = datasets
+        self.__datasets = dict(datasets)
         self.__links = links
         self.__index = self.__source.index
 
@@ -82,12 +83,10 @@ class StructureCollection:
     @classmethod
     def open(
         cls,
-        handles: list[h5py.File | h5py.Group],
+        targets: list[io.OpenTarget],
         datasets_to_get: Optional[Iterable[str]] = None,
     ) -> StructureCollection:
-        if len(handles) > 1:
-            raise ValueError("This method expects a single file")
-        return sio.open_linked_file(handles[0], datasets_to_get)
+        return sio.build_structure_collection(targets)
 
     @classmethod
     def read(cls, *args, **kwargs) -> StructureCollection:

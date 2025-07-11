@@ -116,7 +116,7 @@ class Dataset:
         -------
         dtype: str
         """
-        return self.__header.file.data_type
+        return str(self.__header.file.data_type)
 
     @property
     def redshift(self) -> float | tuple[float, float]:

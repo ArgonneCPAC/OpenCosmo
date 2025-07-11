@@ -45,7 +45,7 @@ class FileParameters(BaseModel):
     origin: str = "HACC"
     data_type: FileType
     is_lightcone: bool
-    redshift: float | tuple[float, float]
+    redshift: float
     step: int
     region: Optional[BoxRegionModel | ConeRegionModel | HealPixRegionModel] = None
     unit_convention: str = "scalefree"
