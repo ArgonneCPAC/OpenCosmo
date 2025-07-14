@@ -28,7 +28,7 @@ class Collection(Protocol):
 
     @classmethod
     def open(
-        cls, targets: list[OpenTarget], *args, **kwargs
+        cls, targets: list[OpenTarget], **kwargs
     ) -> Union["Collection", Dataset]: ...
 
     def make_schema(self) -> DataSchema: ...
