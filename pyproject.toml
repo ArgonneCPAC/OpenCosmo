@@ -61,4 +61,5 @@ follow_untyped_imports = true
 [tool.towncrier]
 directory = "changes"
 package = "opencosmo"
+filename = "docs/source/changelog.rst"
 
