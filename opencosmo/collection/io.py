@@ -1,6 +1,8 @@
 from pathlib import Path
+from typing import Type
 
 import opencosmo as oc
+from opencosmo.collection.protocols import Collection
 from opencosmo.collection.simulation import SimulationCollection
 from opencosmo.collection.structure.io import validate_linked_groups
 from opencosmo.io.io import FILE_TYPE, OpenTarget
@@ -32,7 +34,9 @@ def open_simulation_files(**paths: Path) -> SimulationCollection:
     return SimulationCollection(datasets)
 
 
-def get_collection_type(targets: list[OpenTarget], file_types: list[FILE_TYPE]):
+def get_collection_type(
+    targets: list[OpenTarget], file_types: list[FILE_TYPE]
+) -> Type[Collection]:
     """
     If there are multiple files, determine their collection type. There are
     three options we support at present:
