@@ -35,7 +35,7 @@ jobs:
 
       - name: check extensions
         run: |
-          ALLOWED_EXTENSIONS=("feature.rst" "bugfix.rst" "doc.rst" "removal.rst", "misc.rst")
+          ALLOWED_EXTENSIONS=("feature.rst" "bugfix.rst" "doc.rst" "removal.rst" "misc.rst")
           for file in ${{ steps.check_files.outputs.NEWS_FILES }}; do
             valid_extension=false
             for ext in "${ALLOWED_EXTENSIONS[@]"; do
