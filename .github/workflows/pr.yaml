@@ -44,11 +44,11 @@ jobs:
                 break
               fi
             done
-          if ! $valid_extension; then
-            echo "File $file does not have a valid extension"
-            echo "Must be one of .feature.rst, .bugfix.rst, .doc.rst, .removal.rst, .misc.rst"
-            exit 1
-            
+            if ! $valid_extension; then
+              echo "File $file does not have a valid extension"
+              echo "Must be one of .feature.rst, .bugfix.rst, .doc.rst, .removal.rst, .misc.rst"
+              exit 1
+            fi
           done
 
 
