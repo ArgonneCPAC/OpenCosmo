@@ -35,15 +35,20 @@ jobs:
 
       - name: check extensions
         run: |
-          ALLOWED_EXTENSIONS=("feature", "bugfix", "doc", "removal", "misc")
+          ALLOWED_EXTENSIONS=("feature.rst", "bugfix.rst", "doc.rst", "removal.rst", "misc.rst")
           for file in ${{ steps.check_files.outputs.NEWS_FILES }}; do
-            EXTENSION="${file##*.}"
-            if [[ ! " ${ALLOWED_EXTENSIONS[@]} " =~ " ${EXTENSION} " ]]; then
-              echo "File should indicate news type wwith a .feature, .bugfix, .doc, .removal, or .misc extension"
-              echo "Got ${EXTENSION}"
-            else
-              echo "Found file ${file} with extension ${EXTENSION}"
-            fi
+            valid_extension=false
+            for ext in "${ALLOWED_EXTENSIONS[@]"; do
+              if [[ "$file" == *"$ext" ]]; then
+                valid_extension=true
+                break
+              fi
+            done
+          if ! $valid_extension; then
+            echo "File $file does not have a valid extension"
+            echo "Must be one of .feature.rst, .bugfix.rst, .doc.rst, .removal.rst, .misc.rst"
+            exit 1
+            
           done
 
 
