@@ -11,6 +11,10 @@ from astropy import table  # type: ignore
 Comparison = Callable[[float, float], bool]
 
 
+class UnitsError(Exception):
+    pass
+
+
 def col(column_name: str) -> Column:
     """
     Create a reference to a column with a given name. These references can be combined
@@ -89,6 +93,11 @@ class DerivedColumn:
                 rhs_unit = self.rhs.get_units(units)
             case _:
                 rhs_unit = None
+
+        if self.operation in (op.sub, op.add):
+            if lhs_unit != rhs_unit:
+                raise UnitsError("Cannot add/subtract columns with different units!")
+            return lhs_unit
 
         match (lhs_unit, rhs_unit):
             case (None, None):
