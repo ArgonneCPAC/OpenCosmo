@@ -152,7 +152,7 @@ def make_file_targets(file: h5py.File):
 
 
 def open(
-    *files: str | Path | h5py.File | h5py.Group, **load_kwargs: bool
+    *files: str | Path | h5py.File | h5py.Group, **open_kwargs: bool
 ) -> oc.Dataset | collection.Collection:
     """
     Open a dataset or data collection from one or more opencosmo files.
@@ -190,7 +190,7 @@ def open(
     *files: str or pathlib.Path
         The path(s) to the file(s) to open.
 
-    **load_kwargs: bool
+    **open_kwargs: bool
         True/False flags that can be used to only load certain datasets from
         the files. Check the documentation for the data type you are working
         with for available flags. Will be ignored if only one file is passed
@@ -207,10 +207,10 @@ def open(
     handles = [h5py.File(f) for f in files]
     file_types = list(map(get_file_type, handles))
     targets = make_all_targets(handles)
-    targets = evaluate_load_conditions(targets, load_kwargs)
+    targets = evaluate_load_conditions(targets, open_kwargs)
     if len(targets) > 1:
         collection_type = collection.get_collection_type(targets, file_types)
-        return collection_type.open(targets)
+        return collection_type.open(targets, **open_kwargs)
 
     else:
         return open_single_dataset(targets[0])
@@ -288,7 +288,7 @@ def get_file_handles(*files: str | Path | h5py.File | h5py.Group):
     return handles
 
 
-def evaluate_load_conditions(targets: list[OpenTarget], load_kwargs: dict[str, bool]):
+def evaluate_load_conditions(targets: list[OpenTarget], open_kwargs: dict[str, bool]):
     """
     Datasets can define conditional loading via an addition group called "load/if".
     the "if" group can define parameters which must either be true or false for the
@@ -306,7 +306,7 @@ def evaluate_load_conditions(targets: list[OpenTarget], load_kwargs: dict[str, b
             continue
         load = True
         for key, condition in ifgroup.attrs.items():
-            load = load and (load_kwargs.get(key, False) == condition)
+            load = load and (open_kwargs.get(key, False) == condition)
         if load:
             output.append(target)
     return output

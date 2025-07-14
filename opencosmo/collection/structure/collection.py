@@ -94,7 +94,7 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, targets: list[io.OpenTarget], ignore_empty=True
+        cls, targets: list[io.OpenTarget], ignore_empty=True, *args, **kwargs
     ) -> StructureCollection:
         return sio.build_structure_collection(targets, ignore_empty)
 
