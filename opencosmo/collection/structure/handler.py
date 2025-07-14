@@ -23,6 +23,18 @@ class LinkedDatasetHandler:
     ):
         self.link = link
 
+    def has_linked_data(self, index: DataIndex) -> np.ndarray:
+        """
+        Check which rows in this index actually have data
+        """
+        if isinstance(self.link, tuple):
+            sizes = index.get_data(self.link[1])
+            return sizes > 0
+
+        else:
+            rows = index.get_data(self.link)
+            return rows != -1
+
     def make_index(self, index: DataIndex) -> DataIndex:
         if isinstance(self.link, tuple):
             start = index.get_data(self.link[0])

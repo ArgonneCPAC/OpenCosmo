@@ -34,6 +34,16 @@ def filter_source_by_dataset(
     return new_source
 
 
+def make_index_with_linked_data(
+    links: dict[str, LinkedDatasetHandler], index: DataIndex
+):
+    mask = index.into_mask()
+    for link in links.values():
+        mask &= link.has_linked_data(index)
+
+    return index.mask(mask)
+
+
 class StructureCollection:
     """
     A collection of datasets that contain both high-level properties
@@ -51,6 +61,7 @@ class StructureCollection:
         header: oc.header.OpenCosmoHeader,
         datasets: Mapping[str, oc.Dataset | StructureCollection],
         links: dict[str, LinkedDatasetHandler],
+        ignore_empty: bool = True,
         *args,
         **kwargs,
     ):
@@ -63,6 +74,10 @@ class StructureCollection:
         self.__datasets = dict(datasets)
         self.__links = links
         self.__index = self.__source.index
+        self.__ignore_empty = ignore_empty
+        if ignore_empty:
+            new_index = make_index_with_linked_data(self.__links, self.__index)
+            self.__source = self.__source.with_index(new_index)
 
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
@@ -447,8 +462,7 @@ class StructureCollection:
         )
 
     def objects(
-        self,
-        data_types: Optional[Iterable[str]] = None,
+        self, data_types: Optional[Iterable[str]] = None, ignore_empty=True
     ) -> Iterable[dict[str, Any]]:
         """
         Iterate over the objects in this collection as pairs of
