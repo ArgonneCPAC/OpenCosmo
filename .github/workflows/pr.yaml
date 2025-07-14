@@ -35,19 +35,21 @@ jobs:
 
       - name: check extensions
         run: |
-          ALLOWED_EXTENSIONS=("feature.rst" "bugfix.rst" "doc.rst" "removal.rst" "misc.rst")
+          ALLOWED_TYPES=("feature" "bugfix" "doc" "removal" "misc")
           for file in ${{ steps.check_files.outputs.NEWS_FILES }}; do
-            valid_extension="false"
+            valid="false"
             
             for ext in "${ALLOWED_EXTENSIONS[@]}"; do
-              if [[ "$file" == *"$ext" ]]; then
-                valid_extension="true"
+              if [[ "$file" == *"$ext"* ]]; then
+                valid="true"
                 break
               fi
+            if ! [[ "$file" == *".rst" ]]; do
+              valid="false"
             done
           if [[ "$valid_extension" == "false" ]]; then
-              echo "File $file does not have a valid extension"
-              echo "Must be one of .feature.rst, .bugfix.rst, .doc.rst, .removal.rst, .misc.rst"
+              echo "File $file does not have a valid name"
+              echo "Must be be an rst file and name must include one of of feature, bugfix, doc, removal or misc"
               exit 1
             fi
           done
