@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v4
+      - run: git fetch origin ${{ github.event.pull_request.base.ref }}
+          
 
       - name: Check for new files
         id: check_files
