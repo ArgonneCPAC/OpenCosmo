@@ -23,8 +23,9 @@ jobs:
       - name: Check for new files
         id: check_files
         run: |
+          ls
           DIRECTORY="changes"
-          NEWS_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- "$DIRECTORY")
+          NEWS_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- "changes")
 
           if [ -z "$NEW_FILES" ]; then
             echo "PRs must include a news fragment describing their changes in /changes"
