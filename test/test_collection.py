@@ -129,8 +129,8 @@ def test_data_linking(halo_paths):
 
 def test_data_linking_bound(halo_paths):
     collection = oc.open(*halo_paths)
-    p1 = tuple(random.uniform(30, 40) for _ in range(3))
-    p2 = tuple(random.uniform(50, 60) for _ in range(3))
+    p1 = tuple(random.uniform(10, 20) for _ in range(3))
+    p2 = tuple(random.uniform(60, 70) for _ in range(3))
     region = oc.make_box(p1, p2)
     collection = collection.bound(region)
 

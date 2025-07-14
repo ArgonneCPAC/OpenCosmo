@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from typing import Any, Generator, Iterable, Mapping, Optional
+from warnings import warn
 
 import astropy  # type: ignore
+import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.structure import io as sio
@@ -37,7 +39,7 @@ def filter_source_by_dataset(
 def make_index_with_linked_data(
     links: dict[str, LinkedDatasetHandler], index: DataIndex
 ):
-    mask = index.into_mask()
+    mask = np.ones(len(index), dtype=bool)
     for link in links.values():
         mask &= link.has_linked_data(index)
 
@@ -74,7 +76,6 @@ class StructureCollection:
         self.__datasets = dict(datasets)
         self.__links = links
         self.__index = self.__source.index
-        self.__ignore_empty = ignore_empty
         if ignore_empty:
             new_index = make_index_with_linked_data(self.__links, self.__index)
             self.__source = self.__source.with_index(new_index)
@@ -488,6 +489,10 @@ class StructureCollection:
         data_types = list(data_types)
         if not all(dt in self.__datasets for dt in data_types):
             raise ValueError("Some data types are not linked in the collection.")
+
+        if len(self) == 0:
+            warn("Tried to iterate over a collection with no structures in it!")
+            return
 
         for i, row in enumerate(self.__source.rows()):
             index = self.__source.index[i]
