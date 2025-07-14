@@ -187,16 +187,13 @@ class Dataset:
         # Also the point is that there's MORE data than just the table
         if self.__cached_data is None:
             self.__cached_data = self.get_data("astropy")
-        assert isinstance(self.__cached_data, (Column, Table))
         return self.__cached_data.copy()
 
     @property
     def index(self) -> DataIndex:
         return self.__state.index
 
-    def get_data(
-        self, output="astropy"
-    ) -> Table | Column | dict[str, np.ndarray] | np.ndarray:
+    def get_data(self, output="astropy") -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
