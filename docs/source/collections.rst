@@ -111,7 +111,7 @@ Particles take a lot of space on disk, and it is common to only store particles 
 .. code-block:: python
 
     import opencosmo as oc
-    data = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+    data = oc.open("haloproperties.hdf5", "haloparticles.hdf5", ignore_empty=False)
     for halo in data.halos():
         # Will now include halos that have no particles
         print(halo)
