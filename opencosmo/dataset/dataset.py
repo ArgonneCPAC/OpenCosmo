@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import cached_property
 from typing import TYPE_CHECKING, Generator, Iterable, Optional
 from warnings import warn
 
@@ -156,7 +157,7 @@ class Dataset:
         """
         return self.__header.simulation
 
-    @property
+    @cached_property
     def data(self) -> Table | Column:
         """
         The data in the dataset. This will be an astropy.table.Table or
@@ -170,14 +171,37 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        data = self.__state.get_data(self.__handler)
-        if len(data.columns) == 1:
-            return next(data.itercols())
-        return data
+        return self.get_data("astropy")
 
     @property
     def index(self) -> DataIndex:
         return self.__state.index
+
+    def get_data(
+        self, output="astropy"
+    ) -> Table | Column | dict[str, np.ndarray] | np.ndarray:
+        """
+        Get the data in this dataset as an astropy table/column or as
+        numpy array(s). Note that a dataset does not load data from disk into
+        memory until this function is called. As a result, you should not call
+        this function until you have performed any transformations you plan to
+        on the data.
+
+        """
+        if output not in {"astropy", "numpy"}:
+            raise ValueError(f"Unknown output type {output}")
+
+        data = self.__state.get_data(self.__handler)
+        if len(data.colnames) == 1:
+            data = next(data.itercols())
+
+        if output == "numpy":
+            if isinstance(data, Column):
+                return data.data
+            else:
+                return {col.name: col.data for col in data.itercols()}
+
+        return data
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
