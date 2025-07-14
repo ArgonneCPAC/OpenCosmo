@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from astropy.table import Column
 
 import opencosmo as oc
 
@@ -60,6 +61,19 @@ def test_filter_oom(input_path, max_mass):
     assert data["sod_halo_mass"].min() > 0
 
 
+def test_filter_to_numpy(input_path, max_mass):
+    # Assuming test_open worked, this is the only
+    # thing that needs to be directly tested
+
+    with oc.open(input_path) as f:
+        ds = f.filter(oc.col("sod_halo_mass") > 0, oc.col("sod_halo_mass") < max_mass)
+        data = ds.get_data(output="numpy")
+    assert isinstance(data, dict)
+    for val in data.values():
+        assert isinstance(val, np.ndarray)
+    assert data["sod_halo_mass"].min() > 0
+
+
 def test_take_oom(input_path):
     with oc.open(input_path) as f:
         ds = f.take(10)
@@ -79,6 +93,28 @@ def test_select_oom(input_path):
     for col in selected_cols:
         assert np.all(data[col] == selected_data[col])
     assert set(selected_cols) == set(selected_data.columns)
+
+
+def test_select_single(input_path):
+    with oc.open(input_path) as ds:
+        data = ds.data
+        cols = list(data.columns)
+        # select 10 columns at random
+        selected_cols = np.random.choice(cols)
+        selected = ds.select(selected_cols)
+        selected_data = selected.data
+    assert isinstance(selected_data, Column)
+
+
+def test_select_single_numpy(input_path):
+    with oc.open(input_path) as ds:
+        data = ds.data
+        cols = list(data.columns)
+        # select 10 columns at random
+        selected_cols = np.random.choice(cols)
+        selected = ds.select(selected_cols)
+        selected_data = selected.get_data("numpy")
+    assert isinstance(selected_data, np.ndarray)
 
 
 def test_write_after_filter(input_path, tmp_path):
