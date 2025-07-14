@@ -63,7 +63,6 @@ class StructureCollection:
         header: oc.header.OpenCosmoHeader,
         datasets: Mapping[str, oc.Dataset | StructureCollection],
         links: dict[str, LinkedDatasetHandler],
-        ignore_empty: bool = True,
         *args,
         **kwargs,
     ):
@@ -76,9 +75,6 @@ class StructureCollection:
         self.__datasets = dict(datasets)
         self.__links = links
         self.__index = self.__source.index
-        if ignore_empty:
-            new_index = make_index_with_linked_data(self.__links, self.__index)
-            self.__source = self.__source.with_index(new_index)
 
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
@@ -98,11 +94,9 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls,
-        targets: list[io.OpenTarget],
-        datasets_to_get: Optional[Iterable[str]] = None,
+        cls, targets: list[io.OpenTarget], ignore_empty=True
     ) -> StructureCollection:
-        return sio.build_structure_collection(targets)
+        return sio.build_structure_collection(targets, ignore_empty)
 
     @classmethod
     def read(cls, *args, **kwargs) -> StructureCollection:

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Iterable
 
 import h5py
+import numpy as np
 from deprecated import deprecated
 
 from opencosmo import dataset as d
@@ -10,6 +11,7 @@ from opencosmo import io
 from opencosmo.collection.structure import collection as sc
 from opencosmo.dataset.build import build_dataset
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import DataIndex
 
 from .handler import LinkedDatasetHandler
 
@@ -84,7 +86,17 @@ def get_linked_datasets(
     return datasets
 
 
-def build_structure_collection(targets: list[io.io.OpenTarget]):
+def make_index_with_linked_data(
+    index: DataIndex, links: dict[str, LinkedDatasetHandler]
+):
+    mask = np.ones(len(index), dtype=bool)
+    for link in links.values():
+        mask &= link.has_linked_data(index)
+
+    return index.mask(mask)
+
+
+def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bool):
     link_sources = defaultdict(list)
     link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
         defaultdict(dict)
@@ -123,6 +135,9 @@ def build_structure_collection(targets: list[io.io.OpenTarget]):
         )
 
         source_dataset = io.io.open_single_dataset(link_sources["galaxy_properties"][0])
+        if ignore_empty:
+            new_index = make_index_with_linked_data(source_dataset.index, handlers)
+            source_dataset = source_dataset.with_index(new_index)
         collection = sc.StructureCollection(
             source_dataset,
             source_dataset.header,
@@ -141,6 +156,10 @@ def build_structure_collection(targets: list[io.io.OpenTarget]):
             link_sources["halo_properties"][0].header,
         )
         source_dataset = io.io.open_single_dataset(link_sources["halo_properties"][0])
+
+        if ignore_empty:
+            new_index = make_index_with_linked_data(source_dataset.index, handlers)
+            source_dataset = source_dataset.with_index(new_index)
 
         return sc.StructureCollection(
             source_dataset,

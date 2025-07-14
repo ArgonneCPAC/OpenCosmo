@@ -142,6 +142,19 @@ def test_data_linking_bound(halo_paths):
             assert val >= p1[i]
 
 
+def test_derive_write(halo_paths, tmp_path):
+    ds = oc.open(*halo_paths)
+    dx = oc.col("fof_halo_com_x") - oc.col("sod_halo_com_x")
+    dy = oc.col("fof_halo_com_y") - oc.col("sod_halo_com_y")
+    dz = oc.col("fof_halo_com_z") - oc.col("sod_halo_com_z")
+    dr = (dx**2 + dy**2 + dz**2) ** (0.5)
+    xoff = dr / oc.col("sod_halo_radius")
+
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
+    ds = ds.with_new_columns("halo_properties", xoff=xoff)
+    oc.write(tmp_path / "haloprops.hdf5", ds["halo_properties"])
+
+
 def test_data_link_repr(halo_paths):
     collection = oc.open(halo_paths)
     assert isinstance(collection.__repr__(), str)
