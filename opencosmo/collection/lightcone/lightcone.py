@@ -242,7 +242,7 @@ class Lightcone(dict):
         return table
 
     @classmethod
-    def open(cls, targets: list[OpenTarget]):
+    def open(cls, targets: list[OpenTarget], *args, **kwargs):
         datasets: dict[str, Dataset] = {}
 
         for target in targets:
