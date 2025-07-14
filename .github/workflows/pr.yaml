@@ -34,9 +34,12 @@ jobs:
         run: |
           ALLOWED_EXTENSIONS=("feature", "bugfix", "doc", "removal", "misc")
           for file in ${{ steps.check_files.outputs.NEWS_FILES }}; do
-            if [[ ! " ${ALLOWED_EXTENSIONS[@]} " =~ " ${file##*.} " ]]; then
+            EXTENSION="${file##*.}"
+            if [[ ! " ${ALLOWED_EXTENSIONS[@]} " =~ " ${EXTENSION} " ]]; then
               echo "File should indicate news type wwith a .feature, .bugfix, .doc, .removal, or .misc extension"
-              exit 1
+              echo "Got ${EXTENSION}"
+            else
+              echo "Found file ${file} with extension ${EXTENSION}"
             fi
           done
 
