@@ -22,7 +22,7 @@ jobs:
         id: check_files
         run: |
           DIRECTORY="changes"
-          NEWS_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- "$DIRECTORY")
+          NEWS_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- "$DIRECTORY")
 
           if [ -z "$NEW_FILES" ]; then
             echo "PRs must include a news fragment describing their changes in /changes"
