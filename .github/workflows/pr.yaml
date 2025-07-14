@@ -30,8 +30,9 @@ jobs:
           else
             echo "Found news files ${NEWS_FILES}"
           fi
+          OUTPUT=(echo "$NEWS_FILES" | xargs)
 
-          echo "NEWS_FILES=${NEWS_FILES}" >> "$GITHUB_OUTPUT"
+          echo "NEWS_FILES=${OUTPUT}" >> "$GITHUB_OUTPUT"
 
       - name: check extensions
         run: |
