@@ -27,9 +27,12 @@ jobs:
           if [ -z "$NEWS_FILES" ]; then
             echo "PRs must include a news fragment describing their changes in /changes"
             exit 1
+          else
+            echo "Found news files ${NEWS_FILES}"
           fi
 
-          echo "NEWS_FILES=${NEWS_FILES}" >> $GITHUB_STATE
+          echo "NEWS_FILES=${NEWS_FILES}" >> "$GITHUB_OUTPUT"
+
       - name: check extensions
         run: |
           ALLOWED_EXTENSIONS=("feature", "bugfix", "doc", "removal", "misc")
