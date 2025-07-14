@@ -1,0 +1,1 @@
+StructureCollection and Datasets no longer raises StopIteration error if empty (prints warning)
