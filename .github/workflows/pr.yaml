@@ -30,7 +30,7 @@ jobs:
           else
             echo "Found news files ${NEWS_FILES}"
           fi
-          OUTPUT=(echo "$NEWS_FILES" | xargs)
+          OUTPUT=$(echo "$NEWS_FILES" | xargs)
 
           echo "NEWS_FILES=${OUTPUT}" >> "$GITHUB_OUTPUT"
 
