@@ -358,6 +358,9 @@ class Dataset:
             A dictionary of values for each row in the dataset with units.
         """
         max = len(self)
+        if max == 0:
+            warn("Tried to iterate over a dataset with no rows!")
+
         chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
         if len(chunk_ranges) == 0:
             raise StopIteration
