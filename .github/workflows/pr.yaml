@@ -11,3 +11,34 @@ jobs:
     secrets: inherit
   build:
     uses: ./.github/workflows/build.yaml
+  check-changelog:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for new files
+        id: check_files
+        run: |
+          DIRECTORY="changes"
+          NEWS_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- "$DIRECTORY")
+
+          if [ -z "$NEW_FILES" ]; then
+            echo "PRs must include a news fragment describing their changes in /changes"
+            exit 1
+          fi
+
+          echo "NEWS_FILES=${NEWS_FILES}" >> $GITHUB_STATE
+      - name: check extensions
+        run: |
+          ALLOWED_EXTENSIONS=("feature", "bugfix", "doc", "removal", "misc")
+          for file in ${{ steps.check_files.outputs.NEWS_FILES }}; do
+            if [[ ! " ${ALLOWED_EXTENSIONS[@]} " =~ " ${file##*.} " ]]; then
+              echo "File should indicate news type wwith a .feature, .bugfix, .doc, .removal, or .misc extension"
+              exit 1
+            fi
+          done
+
+
+
