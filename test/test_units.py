@@ -161,11 +161,11 @@ def test_parse_mass(input_path):
 
 def test_data_update_doesnt_propogate(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     new_column = np.random.rand(len(data))
     data["new_column"] = new_column
     assert "new_column" in data.columns
-    assert "new_column" not in dataset.data.columns
+    assert "new_column" not in dataset.get_data().columns
 
 
 def test_unitless_convention(input_path):

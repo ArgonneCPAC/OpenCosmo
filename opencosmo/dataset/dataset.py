@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from functools import cached_property
-from typing import TYPE_CHECKING, Generator, Iterable, Optional
+from typing import TYPE_CHECKING, Generator, Iterable, Optional, TypeAlias
 from warnings import warn
 
 import numpy as np
@@ -23,6 +22,9 @@ if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
 
 
+OpenCosmoData: TypeAlias = Table | Column | dict[str, np.ndarray] | np.ndarray
+
+
 class Dataset:
     def __init__(
         self,
@@ -35,6 +37,7 @@ class Dataset:
         self.__header = header
         self.__state = state
         self.__tree = tree
+        self.__cached_data: Optional[OpenCosmoData] = None
 
     def __repr__(self):
         """
@@ -157,7 +160,7 @@ class Dataset:
         """
         return self.__header.simulation
 
-    @cached_property
+    @property
     def data(self) -> Table | Column:
         """
         Return the data in the dataset in astropy format. The value of this
@@ -165,6 +168,14 @@ class Dataset:
         :code:`Dataset.get_data("astropy")`. However data retrieved via this
         attribute will be cached, meaning further calls to
         :py:attr:`Dataset.data <opencosmo.Dataset.data>` should be instantaneous.
+
+        However there is one caveat. If you modify the table, those modifications will
+        persist if you later request the data again with this attribute. Calls to
+        :py:meth:`Dataset.get_data <opencosmo.Dataset.get_data>` will be unaffected, and
+        datasets generated from this dataset will not contain the modifications. If you
+        to modify the data in this table, you should use
+        :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`.
+
 
         Returns
         -------
@@ -174,7 +185,10 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.get_data("astropy")
+        if self.__cached_data is None:
+            self.__cached_data = self.get_data("astropy")
+        assert isinstance(self.__cached_data, (Column, Table))
+        return self.__cached_data.copy()
 
     @property
     def index(self) -> DataIndex:
@@ -202,7 +216,7 @@ class Dataset:
         This method does not cache data. Calling "get_data" always reads data
         from disk, even if you have already called "get_data" in the past.
         You can use :py:attr:`Dataset.data <opencosmo.Dataset.data>` to return
-        data and keep int in memory.
+        data and keep it in memory.
 
         Parameters
         ----------
