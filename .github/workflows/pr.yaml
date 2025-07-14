@@ -45,9 +45,10 @@ jobs:
                 valid="true"
                 break
               fi
+            done
             if ! [[ "$file" == *".rst" ]]; do
               valid="false"
-            done
+            fi
           if [[ "$valid_extension" == "false" ]]; then
               echo "File $file does not have a valid name"
               echo "Must be be an rst file and name must include one of of feature, bugfix, doc, removal or misc"
