@@ -160,8 +160,11 @@ class Dataset:
     @cached_property
     def data(self) -> Table | Column:
         """
-        The data in the dataset. This will be an astropy.table.Table or
-        astropy.table.Column (if there is only one column selected).
+        Return the data in the dataset in astropy format. The value of this
+        attribute is equivalent to the return value of
+        :code:`Dataset.get_data("astropy")`. However data retrieved via this
+        attribute will be cached, meaning further calls to
+        :py:attr:`Dataset.data <opencosmo.Dataset.data>` should be instantaneous.
 
         Returns
         -------
@@ -187,6 +190,29 @@ class Dataset:
         this function until you have performed any transformations you plan to
         on the data.
 
+        You can get the data in two formats, "astropy" (the default) and "numpy".
+        "astropy" format will return the data as an astropy table with associated
+        units. "numpy" will return the data as a dictionary of numpy arrays. The
+        numpy values will be in the associated unit convention, but no actual
+        units will be attached.
+
+        If the dataset only contains a single column, it will be returned as an
+        astropy.table.Column or a single numpy array.
+
+        This method does not cache data. Calling "get_data" always reads data
+        from disk, even if you have already called "get_data" in the past.
+        You can use :py:attr:`Dataset.data <opencosmo.Dataset.data>` to return
+        data and keep int in memory.
+
+        Parameters
+        ----------
+        output: str, default="astropy"
+            The format to output the data in
+
+        Returns
+        -------
+        data: Table | Column | dict[str, ndarray] | ndarray
+            The data in this dataset.
         """
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
