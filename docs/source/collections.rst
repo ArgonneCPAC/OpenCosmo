@@ -106,6 +106,19 @@ You can now iterate through galaxies in the galaxies in the halo just as you wou
 
 Because the structure collection returns regular :class:`opencosmo.Dataset` objects, you can query or transform them further as needed.
 
+Particles take a lot of space on disk, and it is common to only store particles for a certain subset of halos in a simulation. By default, :code:`opencosmo` will filter out structures that do not have any associated particles. If you want to disable this behavior, you can set the :code:`ignore_empty` flag to :code:`False` when you open the collection:
+
+.. code-block:: python
+
+    import opencosmo as oc
+    data = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+    for halo in data.halos():
+        # Will now include halos that have no particles
+        print(halo)
+
+
+
+
 
 Transformations on Structure Collections
 ----------------------------------------
