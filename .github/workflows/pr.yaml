@@ -46,7 +46,7 @@ jobs:
                 break
               fi
             done
-            if ! [[ "$file" == *".rst" ]]; do
+            if ! [[ "$file" == *".rst" ]]; then
               valid="false"
             fi
           if [[ "$valid_extension" == "false" ]]; then
