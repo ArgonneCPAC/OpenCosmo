@@ -62,7 +62,9 @@ class SimulationCollection(dict):
         )
 
     @classmethod
-    def open(cls, targets: list[io.OpenTarget]) -> Collection | Dataset:
+    def open(
+        cls, targets: list[io.OpenTarget], *args, **kwargs
+    ) -> Collection | Dataset:
         targets_by_name = {
             target.group.name.split("/")[-1]: target for target in targets
         }

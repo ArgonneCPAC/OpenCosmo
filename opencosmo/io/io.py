@@ -203,7 +203,7 @@ def open(
 
     """
     if len(files) == 1 and isinstance(files[0], list):
-        return oc.open(*files[0])
+        return oc.open(*files[0], **open_kwargs)
     handles = [h5py.File(f) for f in files]
     file_types = list(map(get_file_type, handles))
     targets = make_all_targets(handles)
@@ -294,6 +294,9 @@ def evaluate_load_conditions(targets: list[OpenTarget], open_kwargs: dict[str, b
     the "if" group can define parameters which must either be true or false for the
     given group to be loaded. These parameters can then be provided by the user to the
     "open" function. Parameters not specified by the user default to False.
+
+    Note that some open kwargs may be used in other places in the opening process,
+    and will just be ignored here.
     """
     if len(targets) == 1:
         return targets

@@ -4,7 +4,6 @@ from typing import Any, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
 import astropy  # type: ignore
-import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.structure import io as sio
@@ -34,16 +33,6 @@ def filter_source_by_dataset(
     tags = masked_dataset.select(linked_column).data
     new_source = source.filter(oc.col(linked_column).isin(tags))
     return new_source
-
-
-def make_index_with_linked_data(
-    links: dict[str, LinkedDatasetHandler], index: DataIndex
-):
-    mask = np.ones(len(index), dtype=bool)
-    for link in links.values():
-        mask &= link.has_linked_data(index)
-
-    return index.mask(mask)
 
 
 class StructureCollection:
@@ -94,7 +83,7 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, targets: list[io.OpenTarget], ignore_empty=True, *args, **kwargs
+        cls, targets: list[io.OpenTarget], ignore_empty=True
     ) -> StructureCollection:
         return sio.build_structure_collection(targets, ignore_empty)
 

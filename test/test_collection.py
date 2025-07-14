@@ -196,6 +196,21 @@ def test_galaxy_linking(galaxy_paths):
         assert particle_gal_tags.pop() == gal_tag
 
 
+def test_halo_linking_allow_empty(halo_paths):
+    ds1 = oc.open(halo_paths, ignore_empty=True)
+    ds2 = oc.open(halo_paths, ignore_empty=False)
+    assert len(ds1) < len(ds2)
+    found_halos = 0
+    found_particles = 0
+
+    for halo in ds1.halos():
+        assert len(halo["dm_particles"]) > 0
+        found_halos += 1
+        found_particles += len(halo["dm_particles"])
+    assert found_halos == len(ds1)
+    assert found_particles == len(ds1["dm_particles"])
+
+
 def test_link_write(halo_paths, tmp_path):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(
