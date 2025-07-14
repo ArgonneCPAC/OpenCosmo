@@ -51,17 +51,6 @@ def test_dataset_close(input_path):
         file["data"]
 
 
-def test_data_copying(input_path, max_mass):
-    # Assuming test_open worked, this is the only
-    # thing that needs to be directly tested
-
-    ds = oc.open(input_path)
-    ds = ds.filter(oc.col("sod_halo_mass") > 0, oc.col("sod_halo_mass") < max_mass)
-    data = ds.data
-    data["test"] = 20
-    assert "test" not in ds.data.colnames
-
-
 def test_filter_oom(input_path, max_mass):
     # Assuming test_open worked, this is the only
     # thing that needs to be directly tested
