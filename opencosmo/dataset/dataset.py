@@ -402,6 +402,37 @@ class Dataset:
             self.__tree,
         )
 
+    def drop(self, columns: str | Iterable[str]) -> Dataset:
+        """
+        Create a new dataset without the provided columns.
+
+        Parameters
+        ----------
+        columns : str or list[str]
+            The columns to drop
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset without the droppedcolumns
+
+        Raises
+        ------
+        ValueError
+            If any of the provided columns are not in the dataset.
+
+        """
+        if isinstance(columns, str):
+            columns = [columns]
+
+        current_columns = set(self.__state.columns)
+        dropped_columns = set(columns)
+
+        if missing := dropped_columns.difference(current_columns):
+            raise ValueError(f"Columns {missing} are  not in this dataset")
+
+        return self.select(current_columns - dropped_columns)
+
     def take(self, n: int, at: str = "random") -> Dataset:
         """
         Create a new dataset from some number of rows from this dataset.
