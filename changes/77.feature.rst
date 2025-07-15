@@ -1,0 +1,1 @@
+Columns can now be dropped with `Dataset.drop <opencosmo.Dataset.drop>` (inverse of "select")
