@@ -200,6 +200,17 @@ def test_lc_collection_select(
     assert columns_found == to_select
 
 
+def test_lc_collection_drop(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    columns = ds.columns
+    to_drop = set(random.choice(columns, 10))
+
+    ds = ds.drop(to_drop)
+    columns_found = set(ds.data.columns)
+
+    assert not columns_found.intersection(to_drop)
+
+
 def test_lc_collection_take(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     n_to_take = int(0.75 * len(ds))
