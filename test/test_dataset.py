@@ -81,6 +81,32 @@ def test_take_oom(input_path):
     assert len(data) == 10
 
 
+def test_drop(input_path):
+    with oc.open(input_path) as ds:
+        data = ds.data
+        cols = list(data.columns)
+        # select 10 columns at random
+        dropped_cols = np.random.choice(cols, 10, replace=False)
+        selected = ds.drop(dropped_cols)
+        selected_data = selected.data
+
+    dropped_cols = set(dropped_cols)
+    remaining_cols = set(selected_data.colnames)
+    assert not dropped_cols.intersection(remaining_cols)
+
+
+def test_drop_single(input_path):
+    with oc.open(input_path) as ds:
+        data = ds.data
+        cols = list(data.columns)
+        # select 10 columns at random
+        dropped_col = np.random.choice(cols)
+        remaining = ds.drop(dropped_col)
+        remaining_data = remaining.data
+
+    assert dropped_col not in remaining_data.colnames
+
+
 def test_select_oom(input_path):
     with oc.open(input_path) as ds:
         data = ds.data
