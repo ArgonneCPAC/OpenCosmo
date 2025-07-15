@@ -167,6 +167,27 @@ def test_data_link_selection(halo_paths):
     assert found_dm_particles
 
 
+def test_data_link_drop(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
+        10, at="random"
+    )
+    collection = collection.drop(["x", "y", "z"], dataset="dm_particles")
+    collection = collection.drop(["fof_halo_tag", "sod_halo_mass"])
+    found_dm_particles = False
+    for halo in collection.objects():
+        properties = halo["halo_properties"]
+        assert not set(properties.keys()).intersection(
+            {"fof_halo_tag", "sod_halo_mass"}
+        )
+
+        if halo["dm_particles"] is not None:
+            dm_particles = halo["dm_particles"]
+            found_dm_particles = True
+            assert not set(dm_particles.columns).intersection({"x", "y", "z"})
+    assert found_dm_particles
+
+
 def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
     galaxy_path = galaxy_paths[0]
     collection = oc.open(*halo_paths, galaxy_path)
