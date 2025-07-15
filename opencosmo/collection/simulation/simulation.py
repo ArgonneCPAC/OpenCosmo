@@ -188,7 +188,7 @@ class SimulationCollection(dict):
 
     def select(self, *args, **kwargs) -> Self:
         """
-        Select a subset of the datasets in the collection. This method
+        Select a set of columns in the datasets in this collection. This method
         calls the underlying method in :class:`opencosmo.Dataset`, or
         :class:`opencosmo.Collection` depending on the context. As such
         its behavior and arguments can vary depending on what this collection
@@ -205,6 +205,26 @@ class SimulationCollection(dict):
 
         """
         return self.__map("select", *args, **kwargs)
+
+    def drop(self, *args, **kwargs) -> Self:
+        """
+        Drop a set of columns from the datasets in the collection. This method
+        calls the underlying method in :class:`opencosmo.Dataset`, or
+        :class:`opencosmo.Collection` depending on the context. As such
+        its behavior and arguments can vary depending on what this collection
+        contains.
+
+        Parameters
+        ----------
+        args:
+            The arguments to pass to the select method. This is
+            usually a list of column names to drop.
+        kwargs:
+            The keyword arguments to pass to the select method.
+            This is usually a dictionary of column names to select.
+
+        """
+        return self.__map("drop", *args, **kwargs)
 
     def take(self, n: int, at: str = "random") -> Self:
         """

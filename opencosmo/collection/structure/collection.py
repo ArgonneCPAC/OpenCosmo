@@ -264,8 +264,10 @@ class StructureCollection:
     ) -> StructureCollection:
         """
         Update the linked collection to only include the columns specified
-        in the given dataset. If no dataset is specified, the properties dataset
-        is used.
+        in the given dataset. If no dataset is specified the properties of the
+        structure will be used. For example, if this collection contains halos,
+        calling this function without a "dataset" argument will select columns
+        from the halo_properties dataset.
 
         Parameters
         ----------
@@ -295,6 +297,51 @@ class StructureCollection:
             raise ValueError(f"Dataset {dataset} not found in collection.")
         output_ds = self.__datasets[dataset]
         new_dataset = output_ds.select(columns)
+        return StructureCollection(
+            self.__source,
+            self.__header,
+            {**self.__datasets, dataset: new_dataset},
+            self.__links,
+        )
+
+    def drop(self, columns: str | Iterable[str], dataset: Optional[str] = None):
+        """
+        Update the linked collection by dropping the specified columns
+        in the given dataset. If no dataset is specified, the properties dataset
+        is used. For example, if this collection contains galaxies,
+        calling this function without a "dataset" argument will select columns
+        from the galaxy_properties dataset.
+
+
+        Parameters
+        ----------
+        columns : str | Iterable[str]
+            The columns to select from the dataset.
+
+        dataset : str, optional
+            The dataset to select from. If None, the properties dataset is used.
+
+        Returns
+        -------
+        StructureCollection
+            A new collection with only the selected columns for the specified dataset.
+
+        Raises
+        -------
+        ValueError
+            If the specified dataset is not found in the collection.
+        """
+
+        if dataset is None or dataset == self.__header.file.data_type:
+            new_source = self.__source.drop(columns)
+            return StructureCollection(
+                new_source, self.__header, self.__datasets, self.__links
+            )
+
+        elif dataset not in self.__datasets:
+            raise ValueError(f"Dataset {dataset} not found in collection.")
+        output_ds = self.__datasets[dataset]
+        new_dataset = output_ds.drop(columns)
         return StructureCollection(
             self.__source,
             self.__header,

@@ -436,6 +436,37 @@ class Lightcone(dict):
             hide_redshift = True
         return self.__map("select", columns, hide_redshift=hide_redshift)
 
+    def drop(self, columns: str | Iterable[str]) -> Self:
+        """
+        Produce a new dataset by dropping columns from this dataset.
+
+        Parameters
+        ----------
+        columns : str or list[str]
+            The column or columns to drop.
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset without the dropped columns
+
+        Raises
+        ------
+        ValueError
+            If any of the given columns are not in the dataset.
+        """
+        if isinstance(columns, str):
+            columns = [columns]
+
+        dropped_columns = set(columns)
+        current_columns = set(self.columns)
+        if missing := dropped_columns.difference(current_columns):
+            raise ValueError(
+                f"Tried to drop columns that are not in this dataset: {missing}"
+            )
+        kept_columns = current_columns - dropped_columns
+        return self.select(kept_columns)
+
     def take(self, n: int, at: str = "random") -> "Lightcone":
         """
         Create a new dataset from some number of rows from this dataset.
