@@ -1,6 +1,7 @@
 from typing import Optional
 from warnings import warn
 
+import h5py
 from mpi4py import MPI
 
 from opencosmo.index import ChunkedIndex
@@ -8,9 +9,11 @@ from opencosmo.spatial.protocols import TreePartition
 from opencosmo.spatial.tree import Tree
 
 
-def partition(comm: MPI.Comm, length: int, tree: Optional[Tree]) -> TreePartition:
+def partition(
+    comm: MPI.Comm, length: int, counts: h5py.Group, tree: Optional[Tree]
+) -> TreePartition:
     if tree is not None:
-        partitions = tree.partition(comm.Get_size())
+        partitions = tree.partition(comm.Get_size(), counts)
         try:
             part = partitions[comm.Get_rank()]
         except IndexError:

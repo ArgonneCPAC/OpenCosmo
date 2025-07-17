@@ -1,3 +1,5 @@
+from functools import reduce
+
 import astropy.units as u
 import numpy as np
 import pytest
@@ -7,6 +9,16 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+
+
+@pytest.fixture
+def core_path_487(diffsky_path):
+    return diffsky_path / "lj_487.hdf5"
+
+
+@pytest.fixture
+def core_path_475(diffsky_path):
+    return diffsky_path / "lj_475.hdf5"
 
 
 @pytest.fixture
@@ -83,8 +95,17 @@ def test_healpix_write(haloproperties_600_path, tmp_path):
     region2 = oc.make_cone(center, radius2)
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
+    original_tags = MPI.COMM_WORLD.allgather(ds.data["fof_halo_tag"])
+    written_tags = MPI.COMM_WORLD.allgather(new_ds.data["fof_halo_tag"])
 
-    assert set(ds.data["fof_halo_tag"]) == set(new_ds.data["fof_halo_tag"])
+    original_tags = reduce(
+        lambda left, right: left.union(set(right)), original_tags, set()
+    )
+    written_tags = reduce(
+        lambda left, right: left.union(set(right)), written_tags, set()
+    )
+
+    parallel_assert(original_tags == written_tags)
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -117,3 +138,12 @@ def test_lc_collection_write(
     parallel_assert(data.min() >= 0.039 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)
     parallel_assert(ds.z_range == (0.039, 0.0405))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_diffsky_filter(core_path_487, core_path_475):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True).with_redshift_range(
+        0, 0.5
+    )
+    z = ds.select("redshift").data
+    parallel_assert(np.all(z > 0))
