@@ -227,7 +227,7 @@ def create_yt_dataset(
                 return ds, source
                 
     elif compute_xray_fields:
-        raise RuntimeError("`compute_xray_fields` is only valid for hydro simulations!")
+        raise RuntimeError("`compute_xray_fields` can only be used with hydrodynamic simulations")
             
 
     return ds
