@@ -205,7 +205,9 @@ def visualize_halo(
         params["cmaps"].append("gray")
     elif "gravity" in ptypes:
         any_supported = True
-        params["fields"].append(("gravity", "particle_mass"))
+        # particle mass not stored for GO simulations because each particle has the same mass.
+        # Use particle_ones for making images in this case instead
+        params["fields"].append(("gravity", "particle_ones"))
         params["weight_fields"].append(None)
         params["zlims"].append(None)
         params["labels"].append("Dark Matter")
@@ -279,6 +281,14 @@ def halo_projection_array(
 
     Customizable — can change which fields are plotted for which halos, their order,
     weighting, etc., using `params`.
+
+    .. note::
+
+        Dark matter particle masses often aren't stored for gravity-only simulations
+        because the particles all have the same mass by construction. The particles are also
+        labelled as ``gravity" particles in this case instead of ``dm" particles in the data.
+        To project dark matter particles in gravity only, one can use the (``gravity", ``particle_ones")
+        field in place of (``dm", ``particle_mass"). This will produce the same final image.
 
     Parameters
     ----------
