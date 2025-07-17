@@ -282,13 +282,11 @@ def halo_projection_array(
     Customizable — can change which fields are plotted for which halos, their order,
     weighting, etc., using `params`.
 
-    .. note::
-
-        Dark matter particle masses often aren't stored for gravity-only simulations
-        because the particles all have the same mass by construction. The particles are also
-        labelled as ``gravity" particles in this case instead of ``dm" particles in the data.
-        To project dark matter particles in gravity only, one can use the (``gravity", ``particle_ones")
-        field in place of (``dm", ``particle_mass"). This will produce the same final image.
+    **NOTE:** Dark matter particle masses often aren't stored for gravity-only simulations
+    because the particles all have the same mass by construction. The particles are also
+    labelled as "gravity" particles in this case instead of "dm" particles in the data.
+    To project dark matter particles in gravity only, one can use the ``("gravity", "particle_ones")``
+    field in place of ``("dm", "particle_mass")``. This will produce the same final image.
 
     Parameters
     ----------
