@@ -136,7 +136,7 @@ class Tree:
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
 
-    def partition(self, n: int) -> Sequence[TreePartition]:
+    def partition(self, n: int, counts: h5py.Group) -> Sequence[TreePartition]:
         """
         Partition into n trees, where each tree contains an equally sized
         region of space.
@@ -145,20 +145,8 @@ class Tree:
         """
         if (n & (n - 1)) != 0 or n < 0:
             raise ValueError("Trees can only be partitioned with powers of 2")
-        partitions = self.__index.partition(n, self.__max_level)
-        output_partitions = []
-
-        for p in partitions:
-            level_key = f"level_{p.level}"
-            starts = self.__data[level_key]["start"]
-            sizes = self.__data[level_key]["size"]
-            start_idx = p.idx.get_data(starts)[0]
-            size = np.sum(p.idx.get_data(sizes))
-            new_idx = ChunkedIndex.single_chunk(start_idx, size)
-            new_partition = TreePartition(new_idx, p.region, p.level)
-            output_partitions.append(new_partition)
-
-        return output_partitions
+        partitions = self.__index.partition(n, self.__max_level, self.__data)
+        return partitions
 
     def query(self, region: Region) -> tuple[ChunkedIndex, ChunkedIndex]:
         indices = self.__index.query(region, self.__max_level)

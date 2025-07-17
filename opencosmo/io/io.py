@@ -243,7 +243,9 @@ def open_single_dataset(target: OpenTarget):
     handler = DatasetHandler(handle)
     if (comm := get_comm_world()) is not None:
         assert partition is not None
-        part = partition(comm, len(handler), tree)
+        idx_data = handle["index"]
+
+        part = partition(comm, len(handler), idx_data, tree)
         index = part.idx
         sim_region = part.region if part.region is not None else sim_region
     else:

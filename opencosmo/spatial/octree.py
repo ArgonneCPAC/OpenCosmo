@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.index import SimpleIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.spatial.protocols import Region, TreePartition
 from opencosmo.spatial.region import BoxRegion, Point3d
 
@@ -76,17 +76,21 @@ def get_region(octants: list[Octant]) -> BoxRegion:
     return oc.make_box(tuple(mins), tuple(maxs))
 
 
-def make_indices(octants: list[Octant], level):
-    return SimpleIndex(
-        np.fromiter((get_octtree_index(oct.idx, level) for oct in octants), np.int_)
-    )
-
-
 def make_partitions(
-    octant_splits: list[list[Octant]], level: int
+    octant_splits: list[list[Octant]], level: int, counts: h5py.Group
 ) -> list[TreePartition]:
     regions = map(get_region, octant_splits)
-    indices = map(lambda oct: make_indices(oct, level), octant_splits)
+    indices = []
+    starts = counts[f"level_{level}"]["start"][:]
+    sizes = counts[f"level_{level}"]["size"][:]
+    for split in octant_splits:
+        chunk = np.fromiter(
+            (get_octtree_index(oct.idx, level) for oct in split), np.int_
+        )
+        start = starts[chunk[0]]
+        size = np.sum(sizes[chunk])
+        indices.append(ChunkedIndex.single_chunk(start, size))
+
     return list(
         map(
             lambda in_: TreePartition(idx=in_[0], region=in_[1], level=level),
@@ -123,8 +127,12 @@ class OctTreeIndex:
         root = Octant((0, 0, 0), (halfwidth, halfwidth, halfwidth), halfwidth)
         return OctTreeIndex(root)
 
-    def partition(self, n_partitions: int, max_level: int) -> list[TreePartition]:
-        return self.root.partition(n_partitions, level=0, max_level=max_level)
+    def partition(
+        self, n_partitions: int, max_level: int, counts: h5py.Group
+    ) -> list[TreePartition]:
+        return self.root.partition(
+            n_partitions, level=0, max_level=max_level, counts=counts
+        )
 
     def query(
         self, region: Region, max_level: int
@@ -212,7 +220,7 @@ class Octant:
         return output
 
     def partition(
-        self, n_partitions: int, level: int, max_level: int
+        self, n_partitions: int, level: int, max_level: int, counts: h5py.Group
     ) -> list[TreePartition]:
         # Note, n is guaranteed to be a power of 2 at this point
         if n_partitions == 1:
@@ -234,11 +242,11 @@ class Octant:
             partitions = []
             for child in self.children:
                 partitions += child.partition(
-                    subidivisons_per_octant, level + 1, max_level
+                    subidivisons_per_octant, level + 1, max_level, counts
                 )
             return partitions
 
-        return make_partitions(octants, level)
+        return make_partitions(octants, level, counts)
 
     def make_children(self):
         if len(self.children) == 8:
