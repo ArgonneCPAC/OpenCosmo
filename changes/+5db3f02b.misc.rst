@@ -1,0 +1,1 @@
+Data opening logic has been rewritten from scratch, singnificantly improving performance when opening many file.
