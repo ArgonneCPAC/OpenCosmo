@@ -148,82 +148,87 @@ def create_yt_dataset(
     ds.omega_curvature = cosmo.Ok0
     ds.omega_radiation = cosmo.Onu0 + cosmo.Ogamma0
 
-    # add derived fields
+    if ("gas","density") in ds.field_list:
+        # if hydro sim, add derived fields
 
-    # compute a new MMW field (TODO: find better solution)
-    ds.add_field(
-        ("gas", "MMW"),
-        function=_mmw,
-        units="",
-        sampling_type="particle",
-    )
-
-    ds.add_field(
-        ("gas", "temperature"),
-        function=_temperature,
-        units="K",
-        sampling_type="particle",
-    )
-
-    ds.add_field(
-        ("gas", "number_density"),
-        function=_number_density,
-        units="cm**-3",
-        sampling_type="particle",
-        force_override=True,
-    )
-
-    ds.add_field(
-        ("gas", "xh"), function=_h_fraction, units="", sampling_type="particle"
-    )
-
-    ds.add_field(
-        ("gas", "metallicity"),
-        function=_metallicity,
-        units="Zsun",
-        sampling_type="particle",
-    )
-
-    if compute_xray_fields:
-        # compute xray luminosities, emissivities, etc. using pyxsim.
-        # This calls CIESourceModel, which assumes ionization equilibrium.
-        # User can define custom parameters
-
+        # compute a new MMW field
         ds.add_field(
-            ("gas", "emission_measure"),
-            function=_emission_measure,
-            units="cm**-3",
+            ("gas", "MMW"),
+            function=_mmw,
+            units="",
             sampling_type="particle",
         )
 
-        default_kwargs = {
-            "model": "apec",
-            "emin": 0.1,  # keV
-            "emax": 10.0,  # keV
-            "nbins": 1000,
-            "Zmet": ("gas", "metallicity"),  # Zsun
-            "temperature_field": ("gas", "temperature"),
-            "emission_measure_field": ("gas", "emission_measure"),
-            "h_fraction": "xh",
-        }
-
-        if source_model_kwargs is None:
-            source_model_kwargs = {}
-
-        # update with user-defined settings
-        source_model_kwargs = {**default_kwargs, **source_model_kwargs}
-
-        # define xray source model (
-        # NOTE: this will download a few fits files needed for the analysis)
-        source = CIESourceModel(**source_model_kwargs)
-
-        # populate yt dataset with xray fields
-        source.make_source_fields(
-            ds, source_model_kwargs["emin"], source_model_kwargs["emax"]
+        ds.add_field(
+            ("gas", "temperature"),
+            function=_temperature,
+            units="K",
+            sampling_type="particle",
         )
 
-        if return_source_model:
-            return ds, source
+        ds.add_field(
+            ("gas", "number_density"),
+            function=_number_density,
+            units="cm**-3",
+            sampling_type="particle",
+            force_override=True,
+        )
+
+        ds.add_field(
+            ("gas", "xh"), function=_h_fraction, units="", sampling_type="particle"
+        )
+
+        ds.add_field(
+            ("gas", "metallicity"),
+            function=_metallicity,
+            units="Zsun",
+            sampling_type="particle",
+        )
+
+        if compute_xray_fields:
+            # compute xray luminosities, emissivities, etc. using pyxsim.
+            # This calls CIESourceModel, which assumes ionization equilibrium.
+            # User can define custom parameters
+
+            ds.add_field(
+                ("gas", "emission_measure"),
+                function=_emission_measure,
+                units="cm**-3",
+                sampling_type="particle",
+            )
+
+            default_kwargs = {
+                "model": "apec",
+                "emin": 0.1,  # keV
+                "emax": 10.0,  # keV
+                "nbins": 1000,
+                "Zmet": ("gas", "metallicity"),  # Zsun
+                "temperature_field": ("gas", "temperature"),
+                "emission_measure_field": ("gas", "emission_measure"),
+                "h_fraction": "xh",
+            }
+
+            if source_model_kwargs is None:
+                source_model_kwargs = {}
+
+            # update with user-defined settings
+            source_model_kwargs = {**default_kwargs, **source_model_kwargs}
+
+            # define xray source model (
+            # NOTE: this will download a few fits files needed for the analysis)
+            source = CIESourceModel(**source_model_kwargs)
+
+            # populate yt dataset with xray fields
+            source.make_source_fields(
+                ds, source_model_kwargs["emin"], source_model_kwargs["emax"]
+            )
+
+            if return_source_model:
+                return ds, source
+                
+    elif compute_xray_fields:
+        raise RuntimeError("`compute_xray_fields` is only valid for hydro simulations!")
+            
 
     return ds
 
