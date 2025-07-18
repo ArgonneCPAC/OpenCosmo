@@ -72,6 +72,21 @@ def test_mpi(input_path):
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_partitioning_includes_all(input_path):
+    with oc.open(input_path) as f:
+        tags = f.select("fof_halo_tag").data
+
+    comm = mpi4py.MPI.COMM_WORLD
+    all_tags = comm.allgather(tags)
+    all_tags = reduce(lambda left, right: left.union(set(right)), all_tags, set())
+
+    file = h5py.File(input_path)
+    original_tags = set(file["data"]["fof_halo_tag"][:])
+
+    parallel_assert(all_tags == original_tags)
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
     data = ds.data

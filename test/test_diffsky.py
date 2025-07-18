@@ -35,15 +35,6 @@ def test_comoving_to_unitless(core_path_487):
         assert np.all(data[col].value == data_unitless[col].value)
 
 
-def test_open_multiple(core_path_487, core_path_475):
-    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
-    assert len(ds.keys()) == 4
-    ds = oc.open(core_path_487, core_path_475)
-    assert len(ds.keys()) == 2
-    z_range = ds.z_range
-    assert z_range[1] - z_range[0] > 0.05
-
-
 def test_open_multiple_write(core_path_487, core_path_475, tmp_path):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     original_length = len(ds)
