@@ -246,8 +246,11 @@ def open_single_dataset(target: OpenTarget):
         idx_data = handle["index"]
 
         part = partition(comm, len(handler), idx_data, tree)
-        index = part.idx
-        sim_region = part.region if part.region is not None else sim_region
+        if part is None:
+            index = ChunkedIndex.empty()
+        else:
+            index = part.idx
+            sim_region = part.region if part.region is not None else sim_region
     else:
         index = ChunkedIndex.from_size(len(handler))
 

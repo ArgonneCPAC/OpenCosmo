@@ -11,8 +11,8 @@ import h5py
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.index import ChunkedIndex, SimpleIndex
-from opencosmo.spatial.protocols import Region, TreePartition
+from opencosmo.index import SimpleIndex
+from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.region import BoxRegion, Point3d
 
 Index3d = tuple[int, int, int]
@@ -55,6 +55,35 @@ def get_octtree_index(idx: Index3d, level: int) -> int:
     return oct_idx
 
 
+def get_3d_index(oct_idx: int, level: int) -> tuple:
+    """
+    Inverts the z-order curve indexing to retrieve the 3D index (i, j, k) from the
+    1D index.
+
+    Args:
+        oct_idx (int): The 1D index obtained from the z-order curve.
+        level (int): The depth level of the OctTree.
+
+    Returns:
+        tuple: The 3D index (i, j, k).
+    """
+    i, j, k = 0, 0, 0  # Initialize the 3D indices
+    for le in range(level):
+        # Extract the bits for i, j, and k at the current level
+        i |= ((oct_idx >> (3 * le)) & 1) << le
+        j |= ((oct_idx >> (3 * le + 1)) & 1) << le
+        k |= ((oct_idx >> (3 * le + 2)) & 1) << le
+    return i, j, k
+
+
+def get_octant(oct_idx: int, level: int, box_size: float) -> Octant:
+    index3d = get_3d_index(oct_idx, level)
+    nside = 2**level
+    octant_size = box_size / nside
+    center = tuple(octant_size * (i + 0.5) for i in index3d)
+    return Octant(index3d, center, octant_size / 2)
+
+
 def get_children(idx: Index3d) -> Iterable[Index3d]:
     return (
         (idx[0] * 2 + dx, idx[1] * 2 + dy, idx[2] * 2 + dz)
@@ -74,29 +103,6 @@ def get_region(octants: list[Octant]) -> BoxRegion:
     mins = bound_arr[:, :, 0].min(axis=0)
     maxs = bound_arr[:, :, 1].max(axis=0)
     return oc.make_box(tuple(mins), tuple(maxs))
-
-
-def make_partitions(
-    octant_splits: list[list[Octant]], level: int, counts: h5py.Group
-) -> list[TreePartition]:
-    regions = map(get_region, octant_splits)
-    indices = []
-    starts = counts[f"level_{level}"]["start"][:]
-    sizes = counts[f"level_{level}"]["size"][:]
-    for split in octant_splits:
-        chunk = np.fromiter(
-            (get_octtree_index(oct.idx, level) for oct in split), np.int_
-        )
-        start = starts[chunk[0]]
-        size = np.sum(sizes[chunk])
-        indices.append(ChunkedIndex.single_chunk(start, size))
-
-    return list(
-        map(
-            lambda in_: TreePartition(idx=in_[0], region=in_[1], level=level),
-            zip(indices, regions),
-        )
-    )
 
 
 class OctTreeIndex:
@@ -121,18 +127,18 @@ class OctTreeIndex:
 
         return target
 
+    def get_partition_region(self, index: SimpleIndex, level: int):
+        octants = [
+            get_octant(idx, level, 2 * self.root.halfwidth)
+            for idx in index.into_array()
+        ]
+        return get_region(octants)
+
     @classmethod
     def from_box_size(cls, box_size: int):
         halfwidth = box_size / 2
         root = Octant((0, 0, 0), (halfwidth, halfwidth, halfwidth), halfwidth)
         return OctTreeIndex(root)
-
-    def partition(
-        self, n_partitions: int, max_level: int, counts: h5py.Group
-    ) -> list[TreePartition]:
-        return self.root.partition(
-            n_partitions, level=0, max_level=max_level, counts=counts
-        )
 
     def query(
         self, region: Region, max_level: int
@@ -218,35 +224,6 @@ class Octant:
             and self.halfwidth == other.halfwidth
         )
         return output
-
-    def partition(
-        self, n_partitions: int, level: int, max_level: int, counts: h5py.Group
-    ) -> list[TreePartition]:
-        # Note, n is guaranteed to be a power of 2 at this point
-        if n_partitions == 1:
-            octants = [[self]]
-        self.make_children()
-
-        if n_partitions in [2, 4]:
-            n_per = 8 // n_partitions
-            octants = [
-                self.children[n_per * i : n_per * (i + 1)] for i in range(n_partitions)
-            ]
-            level += 1
-        elif n_partitions == 8 or level == max_level:
-            octants = [[child] for child in self.children]
-            level += 1
-
-        else:
-            subidivisons_per_octant = n_partitions // 8
-            partitions = []
-            for child in self.children:
-                partitions += child.partition(
-                    subidivisons_per_octant, level + 1, max_level, counts
-                )
-            return partitions
-
-        return make_partitions(octants, level, counts)
 
     def make_children(self):
         if len(self.children) == 8:

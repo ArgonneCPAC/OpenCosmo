@@ -11,7 +11,7 @@ from opencosmo.spatial.tree import Tree
 
 def partition(
     comm: MPI.Comm, length: int, counts: h5py.Group, tree: Optional[Tree]
-) -> TreePartition:
+) -> Optional[TreePartition]:
     if tree is not None:
         partitions = tree.partition(comm.Get_size(), counts)
         try:
@@ -21,7 +21,7 @@ def partition(
                 "This MPI Rank recieved no data. "
                 "The tree doesn't have enough subdivisions to serve every rank!"
             )
-            part = ChunkedIndex.empty()
+            part = None
         return part
 
     nranks = comm.Get_size()

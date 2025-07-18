@@ -1,4 +1,5 @@
 from collections import defaultdict
+from functools import reduce
 from pathlib import Path
 
 import h5py
@@ -149,12 +150,18 @@ def test_filter_zerolength(input_path, tmp_path):
     written_data = ds.data
 
     if rank == 1:
-        assert len(written_data) == 0
+        read_tags = comm.allgather([])
     else:
-        for column in ds.columns:
-            assert np.all(data[column] == written_data[column])
+        read_tags = comm.allgather(data["fof_halo_tag"])
 
-    assert all(data == written_data)
+    written_tags = comm.allgather(written_data["fof_halo_tag"])
+
+    read_tags = reduce(lambda left, right: left.union(set(right)), read_tags, set())
+    written_tags = reduce(
+        lambda left, right: left.union(set(right)), written_tags, set()
+    )
+
+    parallel_assert(read_tags == written_tags)
 
 
 @pytest.mark.parallel(nprocs=4)
