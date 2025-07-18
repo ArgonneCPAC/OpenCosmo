@@ -323,9 +323,13 @@ class Mask:
         # Astropy's errors are good enough here
         if isinstance(column, table.Table):
             column = column[self.column_name]
-        value = self.value
-        if not isinstance(value, u.Quantity) and column.unit is not None:
-            value *= column.unit
+
+        if isinstance(self.value, u.Quantity):
+            if self.value.unit != column.unit:
+                raise ValueError(
+                    f"Incompatible units in fiter: {self.value.unit} and {column.unit}"
+                )
+            return self.operator(column.value, self.value.value)
 
         # mypy can't reason about columns correctly
-        return self.operator(column, value)  # type: ignore
+        return self.operator(column.value, self.value)  # type: ignore

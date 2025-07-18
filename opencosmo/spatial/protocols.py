@@ -49,19 +49,8 @@ class TreePartition(NamedTuple):
 
 
 class SpatialIndex(Protocol):
-    def partition(
-        self, n_partitions: int, max_level: int, counts: h5py.Group
-    ) -> list[TreePartition]:
-        """
-        Partition the spatial index into n_partitions. For now, the Tree object mandates
-        that the number of  partitions be a power of two. This partitioning will always
-        be done so that each partition contains a contiguous set of indices.
-
-        If no counts are provided, the partitioning should be done in the whole volume.
-        If counts are provided, it will attempt to enusre that each rank gets a roughly
-        equal number of items.
-        """
-        ...
+    def get_partition_region(self, index: SimpleIndex, level: int) -> Region:
+        pass
 
     @staticmethod
     def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:

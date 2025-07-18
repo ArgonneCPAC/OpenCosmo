@@ -12,7 +12,7 @@ try:
 except ImportError:
     MPI = None  # type: ignore
 
-from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
@@ -115,6 +115,30 @@ def pack_masked_ranges(
     return output_starts, output_sizes
 
 
+def partition_index(n_partitions: int, counts: h5py.Group):
+    levels = [int(key.split("_")[1]) for key in counts.keys()]
+    lowest_level = min(levels)
+    highest_level = max(levels)
+    split_level = -1
+    for level in range(lowest_level, highest_level + 1):
+        level_counts = counts[f"level_{level}"]["size"][:]
+        full_region_indices = np.where(level_counts > 0)[0]
+        n_full = len(full_region_indices)
+        if n_full < n_partitions:
+            continue
+        elif n_full % n_partitions == 0:
+            split_level = level
+            break
+
+    if split_level == -1:
+        split_level = highest_level
+
+    split_level_indices = full_region_indices
+
+    partition_indices = np.array_split(split_level_indices, n_partitions)
+    return [SimpleIndex(idx) for idx in partition_indices], split_level
+
+
 class Tree:
     """
     The Tree handles the spatial indexing of the data. As of right now, it's only
@@ -136,16 +160,30 @@ class Tree:
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
 
-    def partition(self, n: int, counts: h5py.Group) -> Sequence[TreePartition]:
+    def partition(
+        self, n_partitions: int, counts: h5py.Group
+    ) -> Sequence[TreePartition]:
         """
         Partition into n trees, where each tree contains an equally sized
         region of space.
 
         This function is used primarily in an MPI context.
         """
-        if (n & (n - 1)) != 0 or n < 0:
-            raise ValueError("Trees can only be partitioned with powers of 2")
-        partitions = self.__index.partition(n, self.__max_level, self.__data)
+        partition_indices, split_level = partition_index(n_partitions, counts)
+        partitions = []
+        start = self.__data[f"level_{split_level}"]["start"]
+        size = self.__data[f"level_{split_level}"]["size"]
+        for index_ in partition_indices:
+            if len(index_) == 0:
+                continue
+            index_starts = index_.get_data(start)
+            index_sizes = index_.get_data(size)
+            partition_start = index_starts[0]
+            partition_size = np.sum(index_sizes)
+            idx = ChunkedIndex.single_chunk(partition_start, partition_size)
+            region = self.__index.get_partition_region(index_, split_level)
+            partitions.append(TreePartition(idx, region, split_level))
+
         return partitions
 
     def query(self, region: Region) -> tuple[ChunkedIndex, ChunkedIndex]:
