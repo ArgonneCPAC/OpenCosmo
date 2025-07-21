@@ -7,11 +7,11 @@ from opencosmo.analysis.install import get_file_versions, install_spec
 
 
 @click.group()
-def opencosmo():
+def cli():
     pass
 
 
-@opencosmo.command(name="install")
+@cli.command(name="install")
 @click.argument("spec_name", required=True)
 @click.option("--file", type=click.Path(exists=True), required=False)
 def install(spec_name: str, file: Optional[Path] = None):
@@ -24,4 +24,4 @@ def install(spec_name: str, file: Optional[Path] = None):
 
 
 if __name__ == "__main__":
-    opencosmo()
+    cli()
