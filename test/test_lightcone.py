@@ -199,6 +199,20 @@ def test_lc_collection_select(
     assert columns_found == to_select
 
 
+def test_lc_collection_select_numpy(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    columns = ds.columns
+    to_select = set(random.choice(columns, 10))
+
+    ds = ds.select(to_select)
+    data = ds.get_data("numpy")
+    assert isinstance(data, dict)
+    assert all(ts in data.keys() for ts in to_select)
+    assert all(isinstance(col, np.ndarray) for col in data.values())
+
+
 def test_lc_collection_drop(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     columns = ds.columns
@@ -222,9 +236,7 @@ def test_lc_collection_take(haloproperties_600_path, haloproperties_601_path, tm
     tags_random = ds_random.select("fof_halo_tag").data
     assert np.all(tags[:n_to_take] == tags_start)
     assert np.all(tags[-n_to_take:] == tags_end)
-    assert len(tags_random) == n_to_take and len(
-        set(tags_random["fof_halo_tag"])
-    ) == len(tags_random)
+    assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
 
 
 def test_lc_collection_derive(
@@ -239,7 +251,7 @@ def test_lc_collection_derive(
     ke = 0.5 * oc.col("fof_halo_mass") * vsqrd
     ds = ds.with_new_columns(ke=ke)
     ke = ds.select("ke")
-    assert ke.data["ke"].unit == u.solMass * u.Unit("km/s") ** 2
+    assert ke.data.unit == u.solMass * u.Unit("km/s") ** 2
 
 
 def test_lc_collection_filter(
