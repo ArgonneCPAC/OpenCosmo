@@ -29,6 +29,9 @@
 		},
 		"jax" : {
 			"prefer_source": "conda-forge"
+		},
+		"numpy": {
+			"prefer_source": "conda-forge"
 		}
 	}
 }
