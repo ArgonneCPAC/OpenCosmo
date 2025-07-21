@@ -1,0 +1,34 @@
+{
+	"name": "diffsky",
+	"header-versions-key": "diffsky_versions",
+	"requirements": {
+		"diffmah" : {
+			"prefer-source": "conda-forge",
+			"repo": "https://github.com/ArgonneCPAC/diffmah.git",
+			"depends-on": ["jax"]
+		},
+		"diffsky" : {
+			"prefer-source": "conda-forge",
+			"repo": "https://github.com/ArgonneCPAC/diffsky.git",
+			"depends-on": ["diffmah", "jax", "diffstar", "diffstarpop", "dsps"]
+		},
+		"diffstar" : {
+			"prefer-source": "conda-forge",
+			"repo": "https://github.com/ArgonneCPAC/diffstar.git",
+			"depends-on" : ["diffmah", "jax"]
+		},
+		"diffstarpop": {
+			"prefer-source": "conda-forge",
+			"repo": "https://github.com/ArgonneCPAC/diffstarpop.git",
+			"depends-on": ["diffmah", "diffstar", "dsps", "jax"]
+		},
+		"dsps" : {
+			"prefer-source": "conda-forge",
+			"repo": "https://github.com/ArgonneCPAC/dsps.git",
+			"depends-on": ["jax"]
+		},
+		"jax" : {
+			"prefer-source": "conda-forge"
+		}
+	}
+}
