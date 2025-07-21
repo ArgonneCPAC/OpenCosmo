@@ -6,7 +6,7 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import vstack  # type: ignore
+from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
@@ -105,6 +105,8 @@ class Lightcone(dict):
         else:
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
+        if self.__hide_redshift:
+            repr_ds = repr_ds.drop("redshift")
 
         table_repr = repr_ds.data.__repr__()
         # remove the first line
@@ -221,11 +223,72 @@ class Lightcone(dict):
 
         return self.__header.lightcone.z_range
 
+    def get_data(self, output="astropy"):
+        """
+        Get the data in this dataset as an astropy table/column or as
+        numpy array(s). Note that a dataset does not load data from disk into
+        memory until this function is called. As a result, you should not call
+        this function until you have performed any transformations you plan to
+        on the data.
+
+        You can get the data in two formats, "astropy" (the default) and "numpy".
+        "astropy" format will return the data as an astropy table with associated
+        units. "numpy" will return the data as a dictionary of numpy arrays. The
+        numpy values will be in the associated unit convention, but no actual
+        units will be attached.
+
+        If the dataset only contains a single column, it will be returned as an
+        astropy.table.Column or a single numpy array.
+
+        This method does not cache data. Calling "get_data" always reads data
+        from disk, even if you have already called "get_data" in the past.
+        You can use :py:attr:`Dataset.data <opencosmo.Lightcone.data>` to return
+        data and keep it in memory.
+
+        Parameters
+        ----------
+        output: str, default="astropy"
+            The format to output the data in
+
+        Returns
+        -------
+        data: Table | Column | dict[str, ndarray] | ndarray
+            The data in this dataset.
+        """
+        if output not in {"astropy", "numpy"}:
+            raise ValueError(f"Unknown output type {output}")
+
+        data = [ds.get_data() for ds in self.values()]
+        table = vstack(data, join_type="exact")
+        if self.__hide_redshift:
+            table.remove_column("redshift")
+        if len(table.colnames) == 1:
+            table = next(table.itercols())
+
+        if output == "numpy":
+            if isinstance(table, Column):
+                return table.data
+            else:
+                return {col.name: col.data for col in table.itercols()}
+
+        return table
+
     @property
     def data(self):
         """
-        The data in the dataset. This will be an astropy.table.Table or
-        astropy.table.Column (if there is only one column selected).
+        Return the data in the dataset in astropy format. The value of this
+        attribute is equivalent to the return value of
+        :code:`Dataset.get_data("astropy")`. However data retrieved via this
+        attribute will be cached, meaning further calls to
+        :py:attr:`Dataset.data <opencosmo.Lightcone.data>` should be instantaneous.
+
+        However there is one caveat. If you modify the table, those modifications will
+        persist if you later request the data again with this attribute. Calls to
+        :py:meth:`Lightcone.get_data <opencosmo.Lightcone.get_data>` will be unaffected,
+        and datasets generated from this dataset will not contain the modifications.
+        If you plan to modify the data in this table, you should use
+        :py:meth:`Lightcone.with_new_columns <opencosmo.Lightcone.with_new_columns>`.
+
 
         Returns
         -------
@@ -233,13 +296,7 @@ class Lightcone(dict):
             The data in the dataset.
 
         """
-        data = [ds.data for ds in self.values()]
-        table = vstack(data, join_type="exact")
-        if len(table.columns) == 1:
-            return next(table.itercols())
-        if self.__hide_redshift:
-            table.remove_column("redshift")
-        return table
+        return self.get_data("astropy")
 
     @classmethod
     def open(cls, targets: list[OpenTarget], **kwargs):
