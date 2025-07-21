@@ -1,0 +1,1 @@
+Analysis modules can now be installed with new command line script :code:`opencosmo install`
