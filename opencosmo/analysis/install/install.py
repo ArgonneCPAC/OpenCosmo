@@ -50,7 +50,6 @@ def execute_transaction(
     transaction: dict[str, Optional[str]],
     requirements: dict[str, DependencySpec],
 ):
-    print(method, transaction)
     if method == "conda-forge":
         install_conda_forge(transaction)
     elif method == "pip-git":
