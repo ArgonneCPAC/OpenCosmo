@@ -135,5 +135,5 @@ def test_diffsky_filter(core_path_487, core_path_475):
     original_data = ds.select("logmp0").data
     ds = ds.filter(oc.col("logmp0") > 13)
     filtered_data = ds.select("logmp0").data
-    original_data = original_data[original_data["logmp0"] > 13]
+    original_data = original_data[original_data > 13]
     assert np.all(original_data == filtered_data)
