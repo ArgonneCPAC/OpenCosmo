@@ -1,11 +1,19 @@
+import shutil
 import subprocess
+import sys
 from typing import Optional
 
 from .specs import DependencySpec
 
 
 def install_conda_forge(packages: dict[str, Optional[str]]):
-    command = "conda install -c conda-forge"
+    conda_executable = shutil.which("conda")
+
+    prefix = sys.prefix
+    if conda_executable is None:
+        raise FileNotFoundError("Unable to locate the conda executable")
+
+    command = f"{conda_executable} install --prefix {prefix} -c conda-forge"
     for name, version in packages.items():
         command += f" {name}"
         if version is not None:
@@ -15,7 +23,7 @@ def install_conda_forge(packages: dict[str, Optional[str]]):
 
 
 def install_pip(packages: dict[str, Optional[str]]):
-    command = "pip install"
+    command = f"{sys.executable} -m pip install"
     for name, version in packages.items():
         command += f" {name}"
         if version is not None:
@@ -26,7 +34,7 @@ def install_pip(packages: dict[str, Optional[str]]):
 def install_github(name: str, version: str, dep_spec: dict[str, DependencySpec]):
     repo_url = dep_spec[name].repo
     assert repo_url is not None
-    command = f"pip install git+{repo_url}"
+    command = f"{sys.executable} -m pip install git+{repo_url}"
     commit = version.split("+g")[-1]
     command += f"@{commit}"
 
@@ -34,5 +42,4 @@ def install_github(name: str, version: str, dep_spec: dict[str, DependencySpec])
 
 
 def run_install_command(command: str):
-    cmd = ["bash", "-l", "-c", command]
-    _ = subprocess.run(cmd)
+    _ = subprocess.run(command.split(" "))

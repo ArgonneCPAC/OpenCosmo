@@ -36,12 +36,12 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}):
 
 def resolve_method(version: Optional[str], method: Optional[str]):
     if version is None or "+g" not in version:
-        if method is None and CONDA_ENV is not None:
+        if method in (None, "conda-forge") and CONDA_ENV is not None:
             return "conda-forge"
-        elif method != "conda-forge":
-            return method
     elif "+g" in version:
         return "pip-git"
+    elif method is not None:
+        return method
     return "pip"
 
 
@@ -50,6 +50,7 @@ def execute_transaction(
     transaction: dict[str, Optional[str]],
     requirements: dict[str, DependencySpec],
 ):
+    print(method, transaction)
     if method == "conda-forge":
         install_conda_forge(transaction)
     elif method == "pip-git":
