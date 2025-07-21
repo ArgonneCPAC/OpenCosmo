@@ -251,7 +251,10 @@ class Lightcone(dict):
                 raise ValueError(
                     "Lightcones can only contain datasets (not collections)"
                 )
-            key = f"{target.header.file.step}_{target.group.name.split('/')[-1]}"
+            if target.group.name != "/":
+                key = target.group.name.split("/")[-1]
+            else:
+                key = f"{target.header.file.step}_{target.header.file.data_type}"
             datasets[key] = next(iter(ds.values()))
 
         return cls(datasets)

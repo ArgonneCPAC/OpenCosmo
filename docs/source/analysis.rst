@@ -1,7 +1,7 @@
 Analyzing Particle Data with yt
 ===============================
 
-**Note: The dependencies for the opencosmo.analysis module are not installed by default. You can install them with** ``pip install opencosmo[analyis]``.
+**Note: The dependencies for the yt analysis tools are not installed by default. You can install them with** ``opencosmo install haloviz``.
 
 `yt <https://github.com/yt-project/yt>`_ is an open-source Python package for analyzing and visualizing volumetric simulation data. Although yt was originally designed with AMR (Adaptive Mesh Refinement) codes in mind, support for SPH (Smoothed Particle Hydrodynamics) data is continually improving. As of yt version 4.4, most core functionality works reliably with SPH data, though some features may still require workarounds. In many cases, this involves depositing particle data onto a mesh using a ``YTArbitraryGrid`` object before passing it to specific yt functions.
 

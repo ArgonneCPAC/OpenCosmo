@@ -38,7 +38,6 @@ def get_specs() -> dict:
 
         specs[name] = AnalysisSpec(**spec, requirements=dep_specs)
 
-    print(specs.keys())
     return specs
 
 
