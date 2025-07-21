@@ -3,7 +3,7 @@ from typing import Optional
 
 try:
     from mpi4py import MPI
-except ImportError:
+except (ImportError, RuntimeError):
     MPI = None  # type: ignore
 
 
