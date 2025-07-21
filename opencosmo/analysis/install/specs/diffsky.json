@@ -1,6 +1,6 @@
 {
 	"name": "diffsky",
-	"header_versions-key": "diffsky_versions",
+	"header_version_key": "diffsky_versions",
 	"requirements": {
 		"diffmah" : {
 			"prefer_source": "conda-forge",
