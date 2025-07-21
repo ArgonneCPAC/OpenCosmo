@@ -10,6 +10,7 @@ class DependencySpec(BaseModel):
     prefer_source: str
     repo: Optional[str] = None
     depends_on: Optional[list[str]] = []
+    version: Optional[str] = None
 
 
 class AnalysisSpec(BaseModel):
@@ -37,6 +38,7 @@ def get_specs() -> dict:
 
         specs[name] = AnalysisSpec(**spec, requirements=dep_specs)
 
+    print(specs.keys())
     return specs
 
 

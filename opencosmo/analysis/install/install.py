@@ -16,6 +16,10 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}):
     graph = nx.DiGraph(raw_graph).reverse()
     transaction = {}
     method: Optional[str] = None
+    for requirement, data in requirements.items():
+        if requirement not in versions:
+            versions[requirement] = data.version
+
     for node in nx.topological_sort(graph):
         requirement_method = resolve_method(
             versions.get(node), requirements[node].prefer_source
