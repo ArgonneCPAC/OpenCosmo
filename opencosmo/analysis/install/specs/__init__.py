@@ -32,8 +32,7 @@ def get_specs() -> dict:
             continue
         requirements = spec.pop("requirements")
         dep_specs = {
-            name: DependencySpec(name=name, **spec_)
-            for name, spec_ in requirements.items()
+            name: DependencySpec(**spec_) for name, spec_ in requirements.items()
         }
 
         specs[name] = AnalysisSpec(**spec, requirements=dep_specs)
