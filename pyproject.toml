@@ -19,6 +19,7 @@ dependencies = [
   "deprecated>=1.2.18,<2.0.0",
   "numpy>=1.26",
   "networkx (>=3.5,<4.0)",
+  "click (>=8.2.1,<9.0.0)",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +48,8 @@ mpi = [
 test-mpi = [
   "mpi-pytest>=2025.4.0,<2026.0.0"
 ]
+[tool.poetry.scripts]
+opencosmo = "opencosmo.analysis.cli:opencosmo"
 
 [build-system]
 requires = ["poetry-core"]
