@@ -18,6 +18,7 @@ dependencies = [
   "healpy>=1.18.1,<2.0.0",
   "deprecated>=1.2.18,<2.0.0",
   "numpy>=1.26",
+  "networkx (>=3.5,<4.0)",
 ]
 
 [project.optional-dependencies]
