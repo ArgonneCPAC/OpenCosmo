@@ -33,7 +33,8 @@ If you are interested in the tools in the :doc:`analysis <analysis>` module, the
 
 .. code-block:: bash
 
-   pip install opencosmo[analysis]
+   opencosmo install haloviz
+
 
 Note that the analysis tools must be installed with :code:`pip`
 
