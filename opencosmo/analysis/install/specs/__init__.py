@@ -9,7 +9,7 @@ from pydantic import BaseModel
 class DependencySpec(BaseModel):
     prefer_source: str
     repo: Optional[str] = None
-    depends_on: Optional[list[str]] = None
+    depends_on: Optional[list[str]] = []
 
 
 class AnalysisSpec(BaseModel):
