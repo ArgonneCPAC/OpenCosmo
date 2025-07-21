@@ -64,7 +64,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: poetry
       - name: Install dependencies
-        run: poetry install -E test -E analysis
+        run: poetry install -E test
+
+      - name: install analysis dependencies
+        run: poetry run opencosmo install haloviz
 
       - name: Run tests with pytest
         run: |
