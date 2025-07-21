@@ -1,6 +1,21 @@
 import json
 from functools import cache
 from pathlib import Path
+from typing import Optional
+
+from pydantic import BaseModel
+
+
+class DependencySpec(BaseModel):
+    prefer_source: str
+    repo: Optional[str] = None
+    depends_on: Optional[list[str]] = None
+
+
+class AnalysisSpec(BaseModel):
+    name: str
+    header_version_key: Optional[str] = None
+    requirements: dict[str, DependencySpec]
 
 
 @cache
@@ -14,7 +29,13 @@ def get_specs() -> dict:
             name, spec = __load_spec(file)
         except (json.JSONDecodeError, ValueError):
             continue
-        specs[name] = spec
+        requirements = spec.pop("requirements")
+        dep_specs = {
+            name: DependencySpec(name=name, **spec_)
+            for name, spec_ in requirements.items()
+        }
+
+        specs[name] = AnalysisSpec(**spec, requirements=dep_specs)
 
     return specs
 
