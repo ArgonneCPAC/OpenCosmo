@@ -1525,9 +1525,10 @@ files = [
 name = "types-networkx"
 version = "3.5.0.20250712"
 description = "Typing stubs for networkx"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"develop\""
 files = [
     {file = "types_networkx-3.5.0.20250712-py3-none-any.whl", hash = "sha256:426246c2f09b88a9d7c302245ea55677a698e77281ce480781d336939ba65afb"},
     {file = "types_networkx-3.5.0.20250712.tar.gz", hash = "sha256:7a85012d27617b6762ea42395783530dfbd37c99fa89123e001840ba801e9d4e"},
@@ -1703,4 +1704,4 @@ test-mpi = ["mpi-pytest"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "d36727863d5302a57748c7397a32c864dab9f6e086e8b4ae61096851011e24b9"
+content-hash = "349e65b6f7efeaeced6f787349ddfc3c431bc80987a565e827e4cc8661dcfab2"

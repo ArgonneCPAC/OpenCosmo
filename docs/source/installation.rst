@@ -36,8 +36,6 @@ If you are interested in the tools in the :doc:`analysis <analysis>` module, the
    opencosmo install haloviz
 
 
-Note that the analysis tools must be installed with :code:`pip`
-
 Installing with MPI Support
 ---------------------------
 

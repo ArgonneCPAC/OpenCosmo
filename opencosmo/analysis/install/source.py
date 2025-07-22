@@ -42,4 +42,5 @@ def install_github(name: str, version: str, dep_spec: dict[str, DependencySpec])
 
 
 def run_install_command(command: str):
+    print(command)
     _ = subprocess.run(command.split(" "))
