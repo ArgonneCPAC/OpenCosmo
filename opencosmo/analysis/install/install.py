@@ -19,11 +19,18 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}):
     graph = nx.DiGraph(raw_graph).reverse()
     transaction = {}
     method: Optional[str] = None
+    dev_transaction: dict[str, str | None] = {}
+
     for requirement, data in requirements.items():
         if requirement not in versions:
             versions[requirement] = data.version
 
     for node in nx.topological_sort(graph):
+        version = versions.get(node)
+        if version is not None and "dev" in version:
+            dev_transaction[node] = version
+            continue
+
         requirement_method = resolve_method(
             versions.get(node), requirements[node].prefer_source
         )
@@ -35,6 +42,7 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}):
         method = requirement_method
         transaction = {node: versions.get(node)}
     execute_transaction(method, transaction, requirements)
+    execute_transaction("pip-git", dev_transaction, requirements)
 
 
 def resolve_method(version: Optional[str], method: Optional[str]):
@@ -53,7 +61,7 @@ def execute_transaction(
     transaction: dict[str, Optional[str]],
     requirements: dict[str, DependencySpec],
 ):
-    logger.info(f"Installing {','.join(transaction.keys())}")
+    print(f"Installing {','.join(transaction.keys())}")
     if method == "conda-forge":
         install_conda_forge(transaction)
     elif method == "pip-git":
