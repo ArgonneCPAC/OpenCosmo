@@ -1,4 +1,5 @@
 import os
+from logging import getLogger
 from typing import Optional
 
 import networkx as nx
@@ -7,10 +8,12 @@ from .source import install_conda_forge, install_github, install_pip
 from .specs import DependencySpec, get_specs
 
 CONDA_ENV = os.environ.get("CONDA_DEFAULT_ENV")
+logger = getLogger("opencosmo")
 
 
 def install_spec(name: str, versions: dict[str, Optional[str]] = {}):
     spec = get_specs()[name]
+    logger.info(f"Installing analysis package {name}")
     requirements = spec.requirements
     raw_graph = {name: dep.depends_on for name, dep in requirements.items()}
     graph = nx.DiGraph(raw_graph).reverse()
@@ -50,6 +53,7 @@ def execute_transaction(
     transaction: dict[str, Optional[str]],
     requirements: dict[str, DependencySpec],
 ):
+    logger.info(f"Installing {','.join(transaction.keys())}")
     if method == "conda-forge":
         install_conda_forge(transaction)
     elif method == "pip-git":
