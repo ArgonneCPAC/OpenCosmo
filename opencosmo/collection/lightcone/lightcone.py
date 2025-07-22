@@ -12,7 +12,6 @@ import opencosmo as oc
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.col import Mask
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import SimpleIndex
 from opencosmo.io.io import OpenTarget, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
@@ -567,10 +566,9 @@ class Lightcone(dict):
                 indices_into_ds = (
                     indices[(indices >= rs) & (indices < rs + len(ds))] - rs
                 )
-                ds_index = SimpleIndex(indices_into_ds)
-                output[key] = ds.with_index(ds_index)
+                output[key] = ds.take(len(indices_into_ds))
                 rs += len(ds)
-            return Lightcone(output, self.z_range)
+            return Lightcone(output, self.z_range, hide_redshift=self.__hide_redshift)
         output = {}
         rs = 0
         if at == "start":
@@ -586,7 +584,7 @@ class Lightcone(dict):
                 break
         if at == "end":
             output = {k: v for k, v in reversed(output.items())}
-        return Lightcone(output, self.z_range)
+        return Lightcone(output, self.z_range, hide_redshift=self.__hide_redshift)
 
     def with_new_columns(self, *args, **kwargs):
         """
@@ -605,7 +603,9 @@ class Lightcone(dict):
             This dataset with the columns added
 
         """
-        return self.__map("with_new_columns", *args, **kwargs)
+        return self.__map(
+            "with_new_columns", hide_redshift=self.__hide_redshift, *args, **kwargs
+        )
 
     def with_units(self, convention: str) -> Self:
         """
