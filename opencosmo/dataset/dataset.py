@@ -173,7 +173,7 @@ class Dataset:
         persist if you later request the data again with this attribute. Calls to
         :py:meth:`Dataset.get_data <opencosmo.Dataset.get_data>` will be unaffected, and
         datasets generated from this dataset will not contain the modifications. If you
-        to modify the data in this table, you should use
+        plan to modify the data in this table, you should use
         :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`.
 
 
