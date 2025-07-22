@@ -13,7 +13,7 @@ def install_conda_forge(packages: dict[str, Optional[str]]):
     if conda_executable is None:
         raise FileNotFoundError("Unable to locate the conda executable")
 
-    command = f"{conda_executable} install --prefix {prefix} -c conda-forge"
+    command = f"{conda_executable} install --prefix {prefix} -y -c conda-forge"
     for name, version in packages.items():
         command += f" {name}"
         if version is not None:
