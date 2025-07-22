@@ -15,7 +15,6 @@ build:
   jobs:
     post_install:
       - pip install poetry
-      - VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH poetry run opencosmo install haloviz
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
