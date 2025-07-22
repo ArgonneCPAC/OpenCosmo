@@ -1,1 +1,0 @@
-Data retrieved with the :code:`.data` attribute on datasets are now cached

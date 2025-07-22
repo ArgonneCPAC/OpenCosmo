@@ -1,1 +1,0 @@
-StructureCollections now filter out structures with no particles by default

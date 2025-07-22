@@ -1,1 +1,0 @@
-Fixed yt interface for gravity-only simulations

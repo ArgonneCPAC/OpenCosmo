@@ -1,1 +1,0 @@
-The header reading logic has been generalized to allow more flexibility in defining new data types

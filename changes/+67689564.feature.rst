@@ -1,1 +1,0 @@
-The opencosmo.analysis module now includes tools for creating visualizations of halos
