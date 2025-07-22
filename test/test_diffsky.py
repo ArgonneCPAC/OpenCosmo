@@ -35,6 +35,15 @@ def test_comoving_to_unitless(core_path_487):
         assert np.all(data[col].value == data_unitless[col].value)
 
 
+def test_filter_take(core_path_475, core_path_487):
+    ds = oc.open(core_path_475, core_path_487)
+    ds = ds.filter(oc.col("logsm_obs") < 12, oc.col("logsm_obs") > 11.5)
+    ds = ds.select("logsm_obs")
+    assert ds.data.max() < 12 and ds.data.min() > 11.5
+    ds = ds.take(10)
+    assert ds.data.max() < 12 and ds.data.min() > 11.5
+
+
 def test_open_multiple_write(core_path_487, core_path_475, tmp_path):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     original_length = len(ds)
