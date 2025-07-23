@@ -253,8 +253,11 @@ def visualize_halo(
         params = {key: [value] for key, value in params.items()}
 
     return halo_projection_array(
-        halo_ids, data, params=params, 
-        length_scale=length_scale, width=width, 
+        halo_ids,
+        data,
+        params=params,
+        length_scale=length_scale,
+        width=width,
         projection_axis=projection_axis,
         text_color=text_color,
     )
@@ -333,7 +336,7 @@ def halo_projection_array(
         Keys may include:
             - ``"fields"``: 2D array of fields to plot (yt naming conventions)
             - ``"weight_fields"``: 2D array of projection weights (or None)
-            - ``"projection_axes"``: 2D array of projection axes ("x", "y", or "z") 
+            - ``"projection_axes"``: 2D array of projection axes ("x", "y", or "z")
             - ``"zlims"``: 2D array of colorbar limits (log-scaled)
             - ``"labels"``: 2D array of panel labels (or None)
             - ``"cmaps"``: 2D array of Matplotlib colormaps for each panel
@@ -381,7 +384,7 @@ def halo_projection_array(
         ),
         "weight_fields": (weight_field_),
         "zlims": (zlim_),
-        "projection_axes" : (np.full(fig_shape, projection_axis)),
+        "projection_axes": (np.full(fig_shape, projection_axis)),
         "labels": (np.full(fig_shape, None)),
         "cmaps": (np.full(fig_shape, cmap)),
         "widths": (np.full(fig_shape, width)),
@@ -440,15 +443,17 @@ def halo_projection_array(
 
             label = labels[i][j]
 
-            proj = ParticleProjectionPlot(ds, projection_axes[i][j], field, weight_field=weight_field)
+            proj = ParticleProjectionPlot(
+                ds, projection_axes[i][j], field, weight_field=weight_field
+            )
 
             proj.set_background_color(field, color="black")
-            
+
             if width is not None:
                 width_ = width
                 proj.set_width(width_ * Rh)
             else:
-                width_ = (max(ds.domain_width.to('Mpc')) / Rh).d  # type: ignore
+                width_ = (max(ds.domain_width.to("Mpc")) / Rh).d  # type: ignore
 
             # fetch figure buffer (2D array of pixel values)
             # and re-plot on each panel with imshow

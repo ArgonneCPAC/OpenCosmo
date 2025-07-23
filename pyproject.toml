@@ -22,11 +22,11 @@ dependencies = [
   "click (>=8.2.1,<9.0.0)",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 test = [
   "pytest>=8.3.4,<9.0.0"
 ]
-develop = [
+dev = [
   "ruff>=0.9.4,<1.0.0",
   "mypy>=1.15,<2.0.0",
   "types-deprecated>=1.2.15.20250304",
@@ -45,12 +45,12 @@ mpi = [
 test-mpi = [
   "mpi-pytest>=2025.4.0,<2026.0.0"
 ]
-[tool.poetry.scripts]
+[project.scripts]
 opencosmo = "opencosmo.analysis.cli:cli"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.8.2,<0.9.0"]
+build-backend = "uv_build"
 
 [tool.mypy]
 mypy_path = "stubs"
