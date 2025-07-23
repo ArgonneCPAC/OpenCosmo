@@ -21,7 +21,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.13'
-          cache: poetry
+          cache: pipenv
       - name: check pyproject.toml
         run: cat pyproject.toml
 

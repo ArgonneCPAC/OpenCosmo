@@ -14,13 +14,14 @@ def cli():
 @cli.command(name="install")
 @click.argument("spec_name", required=True)
 @click.option("--file", type=click.Path(exists=True), required=False)
-def install(spec_name: str, file: Optional[Path] = None):
+@click.option("--dev", is_flag=True)
+def install(spec_name: str, file: Optional[Path] = None, dev: bool = False):
     if file is not None:
         versions = get_file_versions(spec_name, file)
     else:
         versions = {}
 
-    install_spec(spec_name, versions)
+    install_spec(spec_name, versions, dev=dev)
 
 
 if __name__ == "__main__":
