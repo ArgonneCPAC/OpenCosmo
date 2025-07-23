@@ -568,6 +568,7 @@ dev = [
     { name = "mypy" },
     { name = "pip" },
     { name = "pre-commit" },
+    { name = "pytest" },
     { name = "ruff" },
     { name = "towncrier" },
     { name = "types-deprecated" },
@@ -580,9 +581,6 @@ docs = [
 ]
 mpi = [
     { name = "mpi4py" },
-]
-test = [
-    { name = "pytest" },
 ]
 test-mpi = [
     { name = "mpi-pytest" },
@@ -606,6 +604,7 @@ dev = [
     { name = "mypy", specifier = ">=1.15,<2.0.0" },
     { name = "pip", specifier = ">=25.1.1" },
     { name = "pre-commit", specifier = ">=4.2.0,<5.0.0" },
+    { name = "pytest", specifier = ">=8.3.4,<9.0.0" },
     { name = "ruff", specifier = ">=0.9.4,<1.0.0" },
     { name = "towncrier", specifier = ">=24.8.0,<25.0.0" },
     { name = "types-deprecated", specifier = ">=1.2.15.20250304" },
@@ -617,7 +616,6 @@ docs = [
     { name = "sphinx-rtd-theme", specifier = ">=3.0.2,<4.0.0" },
 ]
 mpi = [{ name = "mpi4py", specifier = ">=4.0.3,<5.0.0" }]
-test = [{ name = "pytest", specifier = ">=8.3.4,<9.0.0" }]
 test-mpi = [{ name = "mpi-pytest", specifier = ">=2025.4.0,<2026.0.0" }]
 
 [[package]]

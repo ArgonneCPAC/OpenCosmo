@@ -22,8 +22,11 @@ def install_conda_forge(packages: dict[str, Optional[str]]):
     run_install_command(command)
 
 
-def install_pip(packages: dict[str, Optional[str]]):
-    command = f"{sys.executable} -m pip install"
+def install_pip(packages: dict[str, Optional[str]], dev: bool = False):
+    if dev:
+        command = "uv pip install"
+    else:
+        command = f"{sys.executable} -m pip install"
     for name, version in packages.items():
         command += f" {name}"
         if version is not None:

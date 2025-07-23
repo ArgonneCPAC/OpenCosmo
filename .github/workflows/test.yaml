@@ -63,11 +63,12 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pipenv
       - name: Install dependencies
         run: uv sync --group test
 
       - name: install analysis dependencies
-        run: uv run opencosmo install haloviz
+        run: uv run opencosmo install haloviz --dev
       - name: Run tests with pytest
         run: |
           uv run pytest --ignore=test/parallel
@@ -106,11 +107,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+          cache: pipenv
 
       - name: build hdf5 in paralell
         run: |
-          CC="mpicc" HDF5_MPI="ON" uv run pip install --no-binary=h5py h5py
+          CC="mpicc" HDF5_MPI="ON" uv pip install --no-binary=h5py h5py
 
       - name: install project
         run: uv sync --group test --group mpi --group test-mpi
