@@ -53,8 +53,8 @@ jobs:
           enableCrossOsArchive: true
       - name: Unpack test data
         run: |
-          mkdir -p test/resource
-          tar -xzf test_data.tar.gz -C test/resource
+          mkdir -p test/test_data
+          tar -xzf test_data.tar.gz -C test/test_data
       - name: install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -72,8 +72,6 @@ jobs:
       - name: Run tests with pytest
         run: |
           uv run pytest --ignore=test/parallel
-        env:
-          OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
 
   run-parallel-tests:
     runs-on: ubuntu-latest
@@ -97,8 +95,8 @@ jobs:
           enableCrossOsArchive: true
       - name: Unpack test data
         run: |
-          mkdir -p test/resource
-          tar -xzf test_data.tar.gz -C test/resource
+          mkdir -p test/test_data
+          tar -xzf test_data.tar.gz -C test/test_data
       - name: install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -120,5 +118,3 @@ jobs:
       - name: Run tests with pytest
         run: |
           uv run mpiexec --use-hwthread-cpus -n 4 pytest -m parallel test/parallel -x
-        env:
-          OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
