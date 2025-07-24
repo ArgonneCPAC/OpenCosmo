@@ -107,12 +107,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      - name: install project
+        run: uv sync --group mpi --group test-mpi
       - name: build hdf5 in paralell
         run: |
           CC="mpicc" HDF5_MPI="ON" uv pip install --no-binary=h5py h5py
-
-      - name: install project
-        run: uv sync --group mpi --group test-mpi
       - name: get number of cores
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
