@@ -53,8 +53,8 @@ jobs:
           enableCrossOsArchive: true
       - name: Unpack test data
         run: |
-          mkdir -p test/test_data
-          tar -xzf test_data.tar.gz -C test/test_data
+          mkdir -p test_data
+          tar -xzf test_data.tar.gz -C test_data
       - name: install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -95,8 +95,8 @@ jobs:
           enableCrossOsArchive: true
       - name: Unpack test data
         run: |
-          mkdir -p test/test_data
-          tar -xzf test_data.tar.gz -C test/test_data
+          mkdir -p test_data
+          tar -xzf test_data.tar.gz -C test_data
       - name: install uv
         uses: astral-sh/setup-uv@v6
         with:
