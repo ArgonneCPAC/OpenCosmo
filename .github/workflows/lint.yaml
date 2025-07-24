@@ -31,6 +31,6 @@ jobs:
         run: uv run ruff check .
 
       - name: Run mypy type checker
-        run: uv run mypy opencosmo
+        run: uv run mypy src/opencosmo
 
  
