@@ -111,7 +111,7 @@ jobs:
         run: uv sync --group mpi --group test-mpi
       - name: build hdf5 in paralell
         run: |
-          CC="mpicc" HDF5_MPI="ON" uv pip install --no-binary=h5py h5py
+          CC="mpicc" HDF5_MPI="ON" uv pip install --reinstall --no-binary=h5py h5py
       - name: get number of cores
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
