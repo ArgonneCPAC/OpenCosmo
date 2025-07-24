@@ -53,30 +53,25 @@ jobs:
           enableCrossOsArchive: true
       - name: Unpack test data
         run: |
-          mkdir -p test/resource
-          tar -xzf test_data.tar.gz -C test/resource
-      - name: install poetry
-        run: |
-          pipx install poetry
-          poetry config virtualenvs.create true --local
-          poetry config virtualenvs.in-project true --local
-
-
+          mkdir -p test_data
+          tar -xzf test_data.tar.gz -C test_data
+      - name: install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.2"
       - name: install python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
       - name: Install dependencies
-        run: poetry install -E test
+        run: uv sync
 
       - name: install analysis dependencies
-        run: poetry run opencosmo install haloviz
-
+        run: uv run opencosmo install haloviz --dev
       - name: Run tests with pytest
         run: |
-          poetry run pytest --ignore=test/parallel
-        env:
-          OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
+          uv run pytest --ignore=test/parallel
 
   run-parallel-tests:
     runs-on: ubuntu-latest
@@ -100,29 +95,25 @@ jobs:
           enableCrossOsArchive: true
       - name: Unpack test data
         run: |
-          mkdir -p test/resource
-          tar -xzf test_data.tar.gz -C test/resource
-      - name: install poetry
-        run: |
-          pipx install poetry
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true --local
+          mkdir -p test_data
+          tar -xzf test_data.tar.gz -C test_data
+      - name: install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.2"
       - name: install python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      - name: install project
+        run: uv sync --group mpi --group test-mpi
       - name: build hdf5 in paralell
         run: |
-          CC="mpicc" HDF5_MPI="ON" poetry run pip install --no-binary=h5py h5py
-
-      - name: install project
-        run: poetry install -E test -E mpi -E test-mpi
+          CC="mpicc" HDF5_MPI="ON" uv pip install --reinstall --no-binary=h5py h5py
       - name: get number of cores
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
         run: |
-          poetry run mpiexec --use-hwthread-cpus -n 4 pytest -m parallel test/parallel -x
-        env:
-          OPENCOSMO_DATA_PATH : ${{ github.workspace }}/test/resource
+          uv run mpiexec --use-hwthread-cpus -n 4 pytest -m parallel test/parallel -x

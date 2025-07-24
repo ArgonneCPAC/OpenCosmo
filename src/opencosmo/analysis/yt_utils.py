@@ -133,7 +133,7 @@ def create_yt_dataset(
         length_unit="Mpc",
         mass_unit="Msun",
         bbox=bbox,
-        periodicity=(False,False,False),
+        periodicity=(False, False, False),
     )
 
     ds.sph_smoothing_style = "gather"  # seems to give more reliable results
@@ -148,7 +148,7 @@ def create_yt_dataset(
     ds.omega_curvature = cosmo.Ok0
     ds.omega_radiation = cosmo.Onu0 + cosmo.Ogamma0
 
-    if ("gas","density") in ds.field_list:
+    if ("gas", "density") in ds.field_list:
         # if hydro sim, add derived fields
 
         # compute a new MMW field
@@ -225,10 +225,11 @@ def create_yt_dataset(
 
             if return_source_model:
                 return ds, source
-                
+
     elif compute_xray_fields:
-        raise RuntimeError("`compute_xray_fields` can only be used with hydrodynamic simulations")
-            
+        raise RuntimeError(
+            "`compute_xray_fields` can only be used with hydrodynamic simulations"
+        )
 
     return ds
 

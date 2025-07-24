@@ -11,7 +11,7 @@ CONDA_ENV = os.environ.get("CONDA_DEFAULT_ENV")
 logger = getLogger("opencosmo")
 
 
-def install_spec(name: str, versions: dict[str, Optional[str]] = {}):
+def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool = False):
     spec = get_specs()[name]
     logger.info(f"Installing analysis package {name}")
     requirements = spec.requirements
@@ -38,11 +38,11 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}):
             method = requirement_method
             transaction.update({node: versions.get(node)})
             continue
-        execute_transaction(method, transaction, requirements)
+        execute_transaction(method, transaction, requirements, dev)
         method = requirement_method
         transaction = {node: versions.get(node)}
-    execute_transaction(method, transaction, requirements)
-    execute_transaction("pip-git", dev_transaction, requirements)
+    execute_transaction(method, transaction, requirements, dev)
+    execute_transaction("pip-git", dev_transaction, requirements, dev)
 
 
 def resolve_method(version: Optional[str], method: Optional[str]):
@@ -60,6 +60,7 @@ def execute_transaction(
     method: Optional[str],
     transaction: dict[str, Optional[str]],
     requirements: dict[str, DependencySpec],
+    dev: bool = False,
 ):
     print(f"Installing {','.join(transaction.keys())}")
     if method == "conda-forge":
@@ -69,4 +70,4 @@ def execute_transaction(
             assert version is not None
             install_github(name, version, requirements)
     elif method == "pip":
-        install_pip(transaction)
+        install_pip(transaction, dev)
