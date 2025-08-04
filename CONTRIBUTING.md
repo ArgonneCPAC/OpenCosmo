@@ -6,9 +6,13 @@ We welcome contributions to the OpenCosmo toolkit from the greater astrophysics 
 
 Feature requests and bug reports should be submitted as issues on the main OpenCosmo repo. Before raising an issue, be sure to check through existing issues to ensure it hasn't already been suggested by someone else. Feel free to leave comments on existing issues to add additional context, suggest adjustments, or just let us know you care about it. We will seek to prioritize features that will be useful to as many people as possible. 
 
+## Contributing Documentation
+
+If you find that the documentation is not quite up to par, feel free to create a documentation-only pull request. Most of the steps below do not apply in this case, except for Step 6.
+
 ## Contributing Code
 
-In addition to raising issues on the repository we welcome PRs that fix bugs or add new features. The remainder of this document describes how to go about...
+In addition to raising issues on the repository or adding documentation, we welcome PRs that fix bugs, improve performance, or add new features. The remainder of this document describes how to go about setting up a development environment and prepping your PR for merging.
 
 ### Step 0: Install UV
 
