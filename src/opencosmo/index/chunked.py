@@ -52,7 +52,7 @@ class ChunkedIndex:
         Convert the ChunkedIndex to a SimpleIndex.
         """
         if len(self) == 0:
-            return simple.SimpleIndex.empty()
+            return np.array([], dtype=int)
         idxs = np.concatenate(
             [
                 np.arange(start, start + size)
@@ -78,6 +78,13 @@ class ChunkedIndex:
         other_mask.resize(length)
         new_idx = np.where(self_mask & other_mask)[0]
         return simple.SimpleIndex(new_idx)
+
+    def projection(self, other: DataIndex) -> DataIndex:
+        self_idx = self.into_array()
+        other_idx = other.into_array()
+        idxs = np.searchsorted(self_idx, other_idx)
+        idxs = idxs[idxs != len(self_idx)]
+        return idxs[other_idx == self_idx[idxs]]
 
     def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:

@@ -342,8 +342,7 @@ class Dataset:
         for mask in masks:
             bool_mask &= mask.apply(data)
 
-        new_index = self.__state.index.mask(bool_mask)
-        new_state = self.__state.with_index(new_index)
+        new_state = self.__state.with_mask(bool_mask)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def rows(self) -> Generator[dict[str, float | units.Quantity]]:
