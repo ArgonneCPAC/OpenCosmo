@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import yt  # type: ignore
@@ -242,6 +242,7 @@ def visualize_halo(
             'Possible options are "dm", "gravity", "star", and "gas".'
         )
 
+    halo_ids: list[int] | tuple[list[int], list[int]]
     if len(params["fields"]) == 4:
         # if 4 fields, make a 2x2 figure
         halo_ids = ([halo_id, halo_id], [halo_id, halo_id])
@@ -264,7 +265,7 @@ def visualize_halo(
 
 
 def halo_projection_array(
-    halo_ids: Union[int, Tuple[int, ...], Tuple[list[int], list[int]], np.ndarray],
+    halo_ids: int | list[int] | tuple[list[int], list[int]] | np.ndarray,
     data: oc.StructureCollection,
     field: Optional[Tuple[str, str]] = ("dm", "particle_mass"),
     weight_field: Optional[Tuple[str, str]] = None,
