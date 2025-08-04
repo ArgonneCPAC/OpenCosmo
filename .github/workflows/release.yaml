@@ -9,10 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
-      - uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.2"
       - name: get pyproject.toml version
         run: |
-          PROJECT_VERSION=$(poetry version --short) 
+          PROJECT_VERSION=$(uv version --short) 
           echo "PROJECT_VERSION=$PROJECT_VERSION" >> $GITHUB_ENV
       - name: check version
         run: |
@@ -30,10 +33,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-pyproject-version
     steps: 
-      - uses: actions/checkout@v4
-      - uses: JRubics/poetry-publish@v2.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          pypi_token: ${{ secrets.PYPI_TOKEN }}
+          version: "0.8.2"
+      - name: Build Package
+        run: uv build
+      - name: Publish Package
+        run: uv publish --token ${{ secrets.PYPI_TOKEN }}
   
   release-github-package:
     runs-on: ubuntu-latest
