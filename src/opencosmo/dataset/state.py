@@ -8,6 +8,7 @@ from numpy.typing import NDArray
 
 import opencosmo.transformations.units as u
 from opencosmo.dataset.builders import TableBuilder, get_table_builder
+from opencosmo.dataset.cache import ColumnCache
 from opencosmo.dataset.column import DerivedColumn
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
@@ -32,6 +33,7 @@ class DatasetState:
         convention: u.UnitConvention,
         region: Region,
         header: OpenCosmoHeader,
+        cache: Optional[ColumnCache] = None,
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
@@ -43,6 +45,10 @@ class DatasetState:
         self.__region = region
         self.__hidden = hidden
         self.__derived: dict[str, DerivedColumn] = derived
+        if cache is None:
+            self.__cache = ColumnCache.empty()
+        else:
+            self.__cache = cache
 
     @property
     def index(self):
@@ -66,7 +72,11 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        columns = set(self.__builder.columns) | set(self.__derived.keys())
+        columns = (
+            set(self.__builder.columns)
+            | set(self.__derived.keys())
+            | set(self.__cache.keys())
+        )
         return list(columns - self.__hidden)
 
     def get_data(self, handler: "DatasetHandler"):
@@ -74,6 +84,7 @@ class DatasetState:
         Get the data for a given handler.
         """
         data = handler.get_data(builder=self.__builder, index=self.__index)
+        data = self.__add_cached_columns(data)
         data = self.__build_derived_columns(data)
         if self.__hidden:
             data.remove_columns(self.__hidden)
@@ -83,6 +94,9 @@ class DatasetState:
         """
         Return the same dataset state with a new index
         """
+        cache_mask = self.__index.projection(index)
+        new_cache = self.__cache.with_mask(cache_mask)
+
         return DatasetState(
             self.__base_unit_transformations,
             self.__builder,
@@ -90,6 +104,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
+            new_cache,
             self.__hidden,
             self.__derived,
         )
@@ -123,23 +138,39 @@ class DatasetState:
 
         return schema
 
-    def with_derived_columns(self, **new_columns: DerivedColumn):
+    def with_new_columns(self, **new_columns: DerivedColumn | np.ndarray):
         """
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        column_names = set(self.builder.columns) | set(self.__derived.keys())
+        column_names = (
+            set(self.builder.columns)
+            | set(self.__derived.keys())
+            | set(self.__cache.keys())
+        )
+        derived_update = {}
         for name, new_col in new_columns.items():
             if name in column_names:
                 raise ValueError(f"Dataset already has column named {name}")
+
+            if isinstance(new_col, np.ndarray):
+                if len(new_col) != len(self.__index):
+                    raise ValueError(
+                        f"New column {name} has length {len(new_col)} but this dataset "
+                        "has length {len(self.__index)}"
+                    )
+                self.__cache.add_column(name, new_col)
+
             elif not new_col.check_parent_existance(column_names):
                 raise ValueError(
                     f"Derived column {name} is derived from columns "
                     "that are not in the dataset!"
                 )
+            else:
+                derived_update[name] = new_col
             column_names.add(name)
 
-        new_derived = self.__derived | new_columns
+        new_derived = self.__derived | derived_update
         return DatasetState(
             self.__base_unit_transformations,
             self.__builder,
@@ -147,6 +178,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
+            self.__cache,
             self.__hidden,
             new_derived,
         )
@@ -160,6 +192,11 @@ class DatasetState:
             data[colname] = new_column
         return data
 
+    def __add_cached_columns(self, data: table.Table) -> table.Table:
+        for colname, column in self.__cache.columns():
+            data[colname] = column
+        return data
+
     def with_region(self, region: Region):
         """
         Return the same dataset but with a different region
@@ -171,6 +208,7 @@ class DatasetState:
             self.__convention,
             region,
             self.__header,
+            self.__cache,
             self.__hidden,
             self.__derived,
         )
@@ -192,7 +230,8 @@ class DatasetState:
 
         known_builders = set(self.__builder.columns)
         known_derived = set(self.__derived.keys())
-        unknown_columns = columns - known_builders - known_derived
+        known_cached = set(self.__cache.keys())
+        unknown_columns = columns - known_builders - known_derived - known_cached
         if unknown_columns:
             raise ValueError(
                 "Tried to select columns that aren't in this dataset! Missing columns "
@@ -201,6 +240,8 @@ class DatasetState:
 
         required_derived = known_derived.intersection(columns)
         required_builders = known_builders.intersection(columns)
+        required_cached = known_cached.intersection(columns)
+
         additional_derived = required_derived
 
         while additional_derived:
@@ -213,9 +254,10 @@ class DatasetState:
                 set(),
             )
             required_builders |= additional_columns.intersection(known_builders)
+            required_cached |= additional_columns.intersection(known_cached)
             additional_derived = additional_columns.intersection(known_derived)
 
-        all_required = required_derived | required_builders
+        all_required = required_derived | required_builders | required_cached
 
         # Derived columns have to be instantiated in the order they are created in order
         # to ensure chains of derived columns work correctly
@@ -232,6 +274,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
+            self.__cache,
             new_hidden,
             new_derived,
         )
@@ -282,6 +325,7 @@ class DatasetState:
             convention_,
             self.__region,
             self.__header,
+            self.__cache,
             self.__hidden,
             self.__derived,
         )

@@ -129,7 +129,8 @@ class SimpleIndex:
         other_idxs = other.into_array()
         idxs = np.searchsorted(self.__index, other_idxs)
         idxs = idxs[idxs != len(self.__index)]
-        return idxs[other_idxs == self.__index[idxs]]
+        idxs = idxs[other_idxs == self.__index[idxs]]
+        return SimpleIndex(idxs)
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:

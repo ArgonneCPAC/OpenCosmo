@@ -84,7 +84,8 @@ class ChunkedIndex:
         other_idx = other.into_array()
         idxs = np.searchsorted(self_idx, other_idx)
         idxs = idxs[idxs != len(self_idx)]
-        return idxs[other_idx == self_idx[idxs]]
+        idxs = idxs[other_idx == self_idx[idxs]]
+        return simple.SimpleIndex(idxs)
 
     def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:
