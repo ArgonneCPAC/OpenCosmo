@@ -521,7 +521,7 @@ class Dataset:
             This dataset with the columns added
 
         """
-        new_state = self.__state.with_derived_columns(**new_columns)
+        new_state = self.__state.with_new_columns(**new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
