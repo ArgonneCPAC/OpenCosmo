@@ -27,8 +27,10 @@ class SimpleIndex:
     def __len__(self) -> int:
         return len(self.__index)
 
-    def into_array(self) -> NDArray[np.int_]:
-        return deepcopy(self.__index)
+    def into_array(self, copy: bool = False) -> NDArray[np.int_]:
+        if copy:
+            return deepcopy(self.__index)
+        return self.__index
 
     def range(self) -> tuple[int, int]:
         """
@@ -118,6 +120,16 @@ class SimpleIndex:
         other_mask.resize(length)
         new_idx = np.where(self_mask & other_mask)[0]
         return SimpleIndex(new_idx)
+
+    def projection(self, other: DataIndex) -> DataIndex:
+        """
+        Given a second index, find the indicies into this index
+        where the second index is true.
+        """
+        other_idxs = other.into_array()
+        idxs = np.searchsorted(self.__index, other_idxs)
+        idxs = idxs[idxs != len(self.__index)]
+        return idxs[other_idxs == self.__index[idxs]]
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:

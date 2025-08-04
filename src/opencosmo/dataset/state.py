@@ -1,8 +1,10 @@
 from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional
 
+import numpy as np
 from astropy import table  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
+from numpy.typing import NDArray
 
 import opencosmo.transformations.units as u
 from opencosmo.dataset.builders import TableBuilder, get_table_builder
@@ -91,6 +93,10 @@ class DatasetState:
             self.__hidden,
             self.__derived,
         )
+
+    def with_mask(self, mask: NDArray[np.bool_]):
+        new_index = self.__index.mask(mask)
+        return self.with_index(new_index)
 
     def make_schema(
         self, handler: "DatasetHandler", header: Optional[OpenCosmoHeader] = None
