@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import partial
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
@@ -11,7 +11,9 @@ from astropy.table import Column, Table  # type: ignore
 
 from opencosmo import transformations as t
 from opencosmo.dataset.column import get_table_builder
-from opencosmo.header import OpenCosmoHeader
+
+if TYPE_CHECKING:
+    from opencosmo.header import OpenCosmoHeader
 
 _ = u.add_enabled_units(cu)
 
@@ -190,7 +192,7 @@ def get_scalefree_transition_transformations(
 
 
 def get_default_unit_transformations(
-    file: h5py.File | h5py.Group, header: OpenCosmoHeader
+    file: h5py.File | h5py.Group, header: "OpenCosmoHeader"
 ):
     data_convention = UnitConvention(header.file.unit_convention)
     unit_applicators = get_base_unit_transformations(file["data"], header)
@@ -218,7 +220,7 @@ def get_default_unit_transformations(
 
 def get_base_unit_transformations(
     input: h5py.Dataset,
-    header: OpenCosmoHeader,
+    header: "OpenCosmoHeader",
 ) -> t.TransformationDict:
     """
     Get the base unit transformations for a given dataset. These transformations

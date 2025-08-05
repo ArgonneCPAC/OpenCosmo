@@ -10,7 +10,7 @@ from astropy.cosmology import FLRW  # type: ignore
 from healpy import ang2vec, query_disc  # type: ignore
 from numpy.typing import NDArray
 
-from opencosmo.parameters.file import (
+from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
     HealPixRegionModel,

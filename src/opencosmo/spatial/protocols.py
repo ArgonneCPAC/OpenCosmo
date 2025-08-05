@@ -6,10 +6,10 @@ from astropy.cosmology import FLRW  # type: ignore
 from numpy.typing import NDArray
 
 from opencosmo.index import DataIndex, SimpleIndex
-from opencosmo.transformations.units import UnitConvention
 
 if TYPE_CHECKING:
     from opencosmo.spatial.region import BoxRegion
+    from opencosmo.transformations.units import UnitConvention
 
 Point3d = tuple[float, float, float]
 Point2d = tuple[float, float]
@@ -27,7 +27,7 @@ class Region(Protocol):
     def contains(self, other: SpatialObject): ...
     def into_scalefree(
         self,
-        from_: UnitConvention,
+        from_: "UnitConvention",
         cosmology: FLRW,
         redshift: float | tuple[float, float],
     ): ...

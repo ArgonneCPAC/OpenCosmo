@@ -5,7 +5,7 @@ import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from pydantic import BaseModel
 
-from opencosmo.parameters.file import (
+from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
     HealPixRegionModel,

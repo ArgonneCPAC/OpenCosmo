@@ -9,20 +9,7 @@ from pydantic import (
     model_validator,
 )
 
-
-class BoxRegionModel(BaseModel):
-    p1: tuple[float, float, float]
-    p2: tuple[float, float, float]
-
-
-class ConeRegionModel(BaseModel):
-    center: tuple[float, float]
-    radius: float
-
-
-class HealPixRegionModel(BaseModel):
-    pixels: list[int]
-    nside: int
+from opencosmo.spatial import models as sm
 
 
 def empty_string_to_none(value: str) -> Optional[str]:
@@ -47,7 +34,7 @@ class FileParameters(BaseModel):
     is_lightcone: bool
     redshift: float
     step: int
-    region: Optional[BoxRegionModel | ConeRegionModel | HealPixRegionModel] = None
+    region: Optional[sm.RegionModel] = None
     unit_convention: str = "scalefree"
 
     @model_validator(mode="before")
