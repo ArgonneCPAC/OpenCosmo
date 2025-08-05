@@ -120,6 +120,7 @@ class DatasetState:
             .with_units("unitless", None, None)
             .get_data(handler)
         )
+
         units = handler.get_raw_units(builder_names)
         for dn, derived in self.__derived.items():
             units[dn] = derived.get_units(units)
@@ -129,6 +130,14 @@ class DatasetState:
             coldata = derived_data[colname].value
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
+            )
+            schema.add_child(colschema, colname)
+
+        for colname, coldata in self.__im_handler.columns():
+            if colname in self.__hidden:
+                continue
+            colschema = ios.ColumnSchema(
+                colname, ChunkedIndex.from_size(len(coldata)), coldata, {}
             )
             schema.add_child(colschema, colname)
 
