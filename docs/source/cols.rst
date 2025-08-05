@@ -76,11 +76,16 @@ In a :py:class:`opencosmo.SimulationCollection`, the filter will be applied to a
 
 For more details, see :doc:`collections`.
 
+Adding Custom Columns
+---------------------
 
-Creating New Columns
---------------------
+You can use the :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>` to add new columns to your data. You can either combine existing columns to create new ones, or create wholly-new columns by providing data as a numpy array or astropy quantity array. 
 
-You can also use :py:meth:`opencosmo.col` to combine columns to create new columns. Because these new columns are created from pre-existing colums, they will behave as expected under transformations such as a change in unit convention.
+
+Combining Columns into New Columns
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+You can use :py:meth:`opencosmo.col` to combine columns to create new columns. Because these new columns are created from pre-existing colums, they will behave as expected under transformations such as a change in unit convention.
 
 .. code-block:: python
 
@@ -125,8 +130,20 @@ you will get an error.
 
 This behavior will be updated in a future version of the library to throw the error at the :code:`with_new_columns` call.
 
+Adding Columns Manually
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` method accepts numpy arrays and astropy quantity arrays. These arrays must be the same length as the dataset they are being added to. Note that if your data has units, these units will not be transformed under calls to :py:meth:`with_units <opencosmo.Dataset.with_units>`. 
+
+.. code-block:: python
+
+        random_time = np.random.randint(0, 1000, size = len(ds)) * u.s
+        dataset  = dataset.with_new_columns(random_time = random_data)
+
+
+
 Creating New Columns in Collections
------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Calls to :py:meth:`opencosmo.StructureCollection.with_new_columns` must explicitly say which dataset the column is being added to:
 
