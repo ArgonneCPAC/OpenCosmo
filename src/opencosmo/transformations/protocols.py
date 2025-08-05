@@ -4,9 +4,7 @@ from enum import Enum
 from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
 import h5py
-import numpy as np
 from astropy.table import Column, Table  # type: ignore
-from numpy.typing import NDArray
 
 
 class TransformationType(Enum):
@@ -67,19 +65,5 @@ class ColumnTransformation(Protocol):
     def single_value(self, input: float) -> Any: ...
 
 
-class FilterTransformation(Protocol):
-    """
-    A transformation that masks rows of a table based on some criteria.
-    The mask should be a boolean array with the same length as the table.
-    """
-
-    def __call__(self, input: Table) -> Optional[NDArray[np.bool_]]: ...
-
-
-Transformation = (
-    TableTransformation
-    | ColumnTransformation
-    | FilterTransformation
-    | AllColumnTransformation
-)
+Transformation = TableTransformation | ColumnTransformation | AllColumnTransformation
 TransformationDict = dict[TransformationType, list[Transformation]]

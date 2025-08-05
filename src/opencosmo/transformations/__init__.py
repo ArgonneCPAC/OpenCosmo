@@ -7,7 +7,6 @@ from .generator import generate_transformations
 from .protocols import (
     AllColumnTransformation,
     ColumnTransformation,
-    FilterTransformation,
     TableTransformation,
     Transformation,
     TransformationDict,
@@ -18,7 +17,6 @@ from .protocols import (
 __all__ = [
     "AllColumnTransformation",
     "ColumnTransformation",
-    "FilterTransformation",
     "TableTransformation",
     "Transformation",
     "apply_column_transformations",
