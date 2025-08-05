@@ -228,12 +228,11 @@ def open_single_dataset(target: OpenTarget):
         tree = open_tree(handle, header.simulation.box_size, header.file.is_lightcone)
     except ValueError:
         tree = None
+
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
-
     elif header.file.is_lightcone:
         sim_region = FullSkyRegion()
-
     else:
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation.box_size for _ in range(3))
@@ -241,6 +240,7 @@ def open_single_dataset(target: OpenTarget):
 
     index: ChunkedIndex
     handler = DatasetHandler(handle)
+
     if (comm := get_comm_world()) is not None:
         assert partition is not None
         idx_data = handle["index"]
@@ -275,6 +275,7 @@ def open_single_dataset(target: OpenTarget):
 
     if header.file.is_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone.z_range)
+
     return dataset
 
 

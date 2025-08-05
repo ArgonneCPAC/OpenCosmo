@@ -9,7 +9,6 @@ from deprecated import deprecated
 from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection.structure import collection as sc
-from opencosmo.dataset.build import build_dataset
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
 
@@ -71,18 +70,21 @@ def get_linked_datasets(
     linked_files_by_type: dict[str, h5py.File | h5py.Group],
     header: OpenCosmoHeader,
 ):
-    datasets = {}
+    targets = {}
     for dtype, pointer in linked_files_by_type.items():
         if "data" not in pointer.keys():
-            datasets.update(
+            targets.update(
                 {
-                    k: build_dataset(pointer[k], header)
+                    k: io.io.OpenTarget(pointer[k], header)
                     for k in pointer.keys()
                     if k != "header"
                 }
             )
         else:
-            datasets.update({dtype: build_dataset(pointer, header)})
+            targets.update({dtype: io.io.OpenTarget(pointer, header)})
+    datasets = {
+        dtype: io.io.open_single_dataset(target) for dtype, target in targets.items()
+    }
     return datasets
 
 
