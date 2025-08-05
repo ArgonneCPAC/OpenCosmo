@@ -1,29 +1,13 @@
-import h5py
-import numpy as np
-
 from opencosmo.index import SimpleIndex
 from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.region import HealPixRegion
 
 
 class HealPixIndex:
+    subdivision_factor = 4
+
     def __init__(self):
         pass
-
-    @staticmethod
-    def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:
-        if len(counts) != 12 * (4**level):
-            raise ValueError("Recieved invalid number of counts!")
-        group = target.require_group(f"level_{level}")
-        new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
-        group.create_dataset("start", data=new_starts)
-        group.create_dataset("size", data=counts)
-
-        if level > 0:
-            new_counts = counts.reshape(-1, 4).sum(axis=1)
-            return HealPixIndex.combine_upwards(new_counts, level - 1, target)
-
-        return target
 
     def get_partition_region(self, index: SimpleIndex, level: int) -> Region:
         idxs = index.into_array()
