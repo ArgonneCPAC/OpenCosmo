@@ -18,6 +18,15 @@ def test_add_column(properties_path):
     assert np.all(ds.select("test_random").get_data("numpy") == random_data)
 
 
+def test_add_column_filter(properties_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds))
+    ds = ds.with_new_columns(test_random=random_data)
+    ds = ds.filter(oc.col("test_random") > 200, oc.col("test_random") < 500)
+    assert np.all(ds.select("test_random").get_data("numpy") > 200)
+    assert np.all(ds.select("test_random").get_data("numpy") < 500)
+
+
 def test_add_quantity(properties_path):
     ds = oc.open(properties_path)
     random_data = np.random.randint(0, 1000, size=len(ds)) * u.deg
@@ -25,6 +34,15 @@ def test_add_quantity(properties_path):
     assert "test_random" in ds.columns
     assert np.all(ds.select("test_random").data == random_data)
     assert ds.select("test_random").data.unit == u.deg
+
+
+def test_add_quantity_filter(properties_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds)) * u.deg
+    ds = ds.with_new_columns(test_random=random_data)
+    ds = ds.filter(oc.col("test_random") < 200)
+    print(ds.select("test_random").get_data())
+    assert np.all(ds.select("test_random").get_data() < 200 * u.deg)
 
 
 def test_add_take(properties_path):
@@ -102,3 +120,7 @@ def test_add_column_write(properties_path, tmp_path):
     assert np.all(ds.select("test_random").get_data("numpy") == random_data)
     assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
     assert np.all(ds.select("test_unitful").get_data() == random_unitful)
+
+
+def test_add_column_simulation_collection():
+    assert False
