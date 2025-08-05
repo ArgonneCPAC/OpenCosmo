@@ -1,5 +1,6 @@
 from typing import Iterable
 
+import astropy.units as u
 import numpy as np
 from numpy.typing import NDArray
 
@@ -7,7 +8,11 @@ from opencosmo.index import DataIndex
 
 
 class InMemoryColumnHandler:
-    def __init__(self, columns: dict[str, NDArray], index: DataIndex):
+    def __init__(
+        self,
+        columns: dict[str, NDArray | u.Quantity],
+        index: DataIndex,
+    ):
         self.__index = index
         self.__columns = columns
 
@@ -24,7 +29,7 @@ class InMemoryColumnHandler:
     def keys(self):
         return self.__columns.keys()
 
-    def add_column(self, name: str, column: np.ndarray):
+    def add_column(self, name: str, column: np.ndarray | u.Quantity):
         self.__columns[name] = column
 
     def with_index(self, index: DataIndex):

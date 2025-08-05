@@ -504,7 +504,9 @@ class Dataset:
         new_state = self.__state.with_index(index)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
-    def with_new_columns(self, **new_columns: DerivedColumn | np.ndarray):
+    def with_new_columns(
+        self, **new_columns: DerivedColumn | np.ndarray | units.Quantity
+    ):
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, a numpy array, or an astropy quantity

@@ -2,7 +2,10 @@ from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
-from astropy import table  # type: ignore
+from astropy import (
+    table,  # type: ignore
+    units,
+)
 from astropy.cosmology import Cosmology  # type: ignore
 from numpy.typing import NDArray
 
@@ -121,12 +124,12 @@ class DatasetState:
             .get_data(handler)
         )
 
-        units = handler.get_raw_units(builder_names)
+        column_units = handler.get_raw_units(builder_names)
         for dn, derived in self.__derived.items():
-            units[dn] = derived.get_units(units)
+            column_units[dn] = derived.get_units(column_units)
 
         for colname in derived_names:
-            attrs = {"unit": str(units[colname])}
+            attrs = {"unit": str(column_units[colname])}
             coldata = derived_data[colname].value
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
@@ -136,14 +139,21 @@ class DatasetState:
         for colname, coldata in self.__im_handler.columns():
             if colname in self.__hidden:
                 continue
+            attrs = {}
+            if isinstance(coldata, units.Quantity):
+                attrs["unit"] = str(coldata.unit)
+                coldata = coldata.value
+
             colschema = ios.ColumnSchema(
-                colname, ChunkedIndex.from_size(len(coldata)), coldata, {}
+                colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )
             schema.add_child(colschema, colname)
 
         return schema
 
-    def with_new_columns(self, **new_columns: DerivedColumn | np.ndarray):
+    def with_new_columns(
+        self, **new_columns: DerivedColumn | np.ndarray | units.Quantity
+    ):
         """
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.

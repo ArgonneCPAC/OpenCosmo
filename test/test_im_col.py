@@ -1,3 +1,4 @@
+import astropy.units as u
 import numpy as np
 import pytest
 
@@ -15,6 +16,15 @@ def test_add_column(properties_path):
     ds = ds.with_new_columns(test_random=random_data)
     assert "test_random" in ds.columns
     assert np.all(ds.select("test_random").get_data("numpy") == random_data)
+
+
+def test_add_quantity(properties_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds)) * u.deg
+    ds = ds.with_new_columns(test_random=random_data)
+    assert "test_random" in ds.columns
+    assert np.all(ds.select("test_random").data == random_data)
+    assert ds.select("test_random").data.unit == u.deg
 
 
 def test_add_take(properties_path):
@@ -37,6 +47,22 @@ def test_add_derive(properties_path):
     ds = ds.select(["fof_halo_mass", "test_random", "random_mass"])
     data = ds.get_data("numpy")
     assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])
+
+
+def test_add_quantity_derive(properties_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds)) * (u.km / u.s)
+    ds = ds.with_new_columns(test_random=random_data)
+    ds = ds.with_new_columns(
+        random_mass=oc.col("fof_halo_mass") * oc.col("test_random")
+    )
+    ds = ds.select(["fof_halo_mass", "test_random", "random_mass"])
+    data = ds.get_data()
+    assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])
+    assert (
+        data["random_mass"].unit
+        == data["fof_halo_mass"].unit * data["test_random"].unit
+    )
 
 
 def test_add_derive_select(properties_path):
@@ -68,8 +94,11 @@ def test_add_derive_take(properties_path):
 def test_add_column_write(properties_path, tmp_path):
     ds = oc.open(properties_path)
     random_data = np.random.randint(0, 1000, size=len(ds))
-    ds = ds.with_new_columns(test_random=random_data)
+    random_unitful = np.random.randint(0, 1000, size=len(ds)) * u.deg
+    ds = ds.with_new_columns(test_random=random_data, test_unitful=random_unitful)
     oc.write(tmp_path / "test.hdf5", ds)
     ds = oc.open(tmp_path / "test.hdf5")
     assert "test_random" in ds.columns
     assert np.all(ds.select("test_random").get_data("numpy") == random_data)
+    assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
+    assert np.all(ds.select("test_unitful").get_data() == random_unitful)
