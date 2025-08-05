@@ -10,7 +10,7 @@ from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
 
 from opencosmo import transformations as t
-from opencosmo.dataset.column import get_table_builder
+from opencosmo.dataset.builders import get_table_builder
 
 if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
