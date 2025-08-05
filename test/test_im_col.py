@@ -51,3 +51,15 @@ def test_add_derive_select(properties_path):
     assert np.all(
         data_single == data_components["test_random"] * data_components["fof_halo_mass"]
     )
+
+
+def test_add_derive_take(properties_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds))
+    ds = ds.with_new_columns(test_random=random_data)
+    ds = ds.with_new_columns(
+        random_mass=oc.col("fof_halo_mass") * oc.col("test_random")
+    )
+    ds = ds.select(["fof_halo_mass", "test_random", "random_mass"]).take(100)
+    data = ds.get_data("numpy")
+    assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])

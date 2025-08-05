@@ -13,6 +13,7 @@ import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import DatasetHandler
+from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import ChunkedIndex
@@ -264,6 +265,7 @@ def open_single_dataset(target: OpenTarget):
         u.UnitConvention.COMOVING,
         sim_region,
         header,
+        InMemoryColumnHandler.empty(index),
     )
 
     dataset = oc.Dataset(
@@ -394,6 +396,7 @@ def read(
         u.UnitConvention.COMOVING,
         sim_box,
         header,
+        InMemoryColumnHandler.empty(index),
     )
 
     ds = oc.Dataset(handler, header, state, tree)

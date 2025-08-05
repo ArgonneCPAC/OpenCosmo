@@ -8,8 +8,8 @@ from numpy.typing import NDArray
 
 import opencosmo.transformations.units as u
 from opencosmo.dataset.builders import TableBuilder, get_table_builder
-from opencosmo.dataset.cache import ColumnCache
 from opencosmo.dataset.column import DerivedColumn
+from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io import schemas as ios
@@ -33,22 +33,19 @@ class DatasetState:
         convention: u.UnitConvention,
         region: Region,
         header: OpenCosmoHeader,
-        cache: Optional[ColumnCache] = None,
+        im_handler: InMemoryColumnHandler,
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
         self.__base_unit_transformations = base_unit_transformations
         self.__builder = builder
-        self.__index = index
+        self.__im_handler = im_handler
         self.__convention = convention
-        self.__header = header
-        self.__region = region
-        self.__hidden = hidden
         self.__derived: dict[str, DerivedColumn] = derived
-        if cache is None:
-            self.__cache = ColumnCache.empty()
-        else:
-            self.__cache = cache
+        self.__header = header
+        self.__hidden = hidden
+        self.__index = index
+        self.__region = region
 
     @property
     def index(self):
@@ -75,7 +72,7 @@ class DatasetState:
         columns = (
             set(self.__builder.columns)
             | set(self.__derived.keys())
-            | set(self.__cache.keys())
+            | set(self.__im_handler.keys())
         )
         return list(columns - self.__hidden)
 
@@ -84,7 +81,7 @@ class DatasetState:
         Get the data for a given handler.
         """
         data = handler.get_data(builder=self.__builder, index=self.__index)
-        data = self.__add_cached_columns(data)
+        data = self.__get_im_columns(data)
         data = self.__build_derived_columns(data)
         if self.__hidden:
             data.remove_columns(self.__hidden)
@@ -94,8 +91,7 @@ class DatasetState:
         """
         Return the same dataset state with a new index
         """
-        cache_mask = self.__index.projection(index)
-        new_cache = self.__cache.with_mask(cache_mask)
+        new_cache = self.__im_handler.with_index(index)
 
         return DatasetState(
             self.__base_unit_transformations,
@@ -146,7 +142,7 @@ class DatasetState:
         column_names = (
             set(self.builder.columns)
             | set(self.__derived.keys())
-            | set(self.__cache.keys())
+            | set(self.__im_handler.keys())
         )
         derived_update = {}
         for name, new_col in new_columns.items():
@@ -159,7 +155,7 @@ class DatasetState:
                         f"New column {name} has length {len(new_col)} but this dataset "
                         "has length {len(self.__index)}"
                     )
-                self.__cache.add_column(name, new_col)
+                self.__im_handler.add_column(name, new_col)
 
             elif not new_col.check_parent_existance(column_names):
                 raise ValueError(
@@ -178,7 +174,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
-            self.__cache,
+            self.__im_handler,
             self.__hidden,
             new_derived,
         )
@@ -192,8 +188,8 @@ class DatasetState:
             data[colname] = new_column
         return data
 
-    def __add_cached_columns(self, data: table.Table) -> table.Table:
-        for colname, column in self.__cache.columns():
+    def __get_im_columns(self, data: table.Table) -> table.Table:
+        for colname, column in self.__im_handler.columns():
             data[colname] = column
         return data
 
@@ -208,7 +204,7 @@ class DatasetState:
             self.__convention,
             region,
             self.__header,
-            self.__cache,
+            self.__im_handler,
             self.__hidden,
             self.__derived,
         )
@@ -230,7 +226,7 @@ class DatasetState:
 
         known_builders = set(self.__builder.columns)
         known_derived = set(self.__derived.keys())
-        known_cached = set(self.__cache.keys())
+        known_cached = set(self.__im_handler.keys())
         unknown_columns = columns - known_builders - known_derived - known_cached
         if unknown_columns:
             raise ValueError(
@@ -274,7 +270,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
-            self.__cache,
+            self.__im_handler,
             new_hidden,
             new_derived,
         )
@@ -325,7 +321,7 @@ class DatasetState:
             convention_,
             self.__region,
             self.__header,
-            self.__cache,
+            self.__im_handler,
             self.__hidden,
             self.__derived,
         )
