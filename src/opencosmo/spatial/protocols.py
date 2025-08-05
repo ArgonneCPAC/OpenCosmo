@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, NamedTuple, Optional, Protocol, Union
 
-import h5py
 import numpy as np
 from astropy.cosmology import FLRW  # type: ignore
 from numpy.typing import NDArray
@@ -49,18 +48,10 @@ class TreePartition(NamedTuple):
 
 
 class SpatialIndex(Protocol):
+    @property
+    def subdivision_factor(self) -> int: ...
     def get_partition_region(self, index: SimpleIndex, level: int) -> Region:
         pass
-
-    @staticmethod
-    def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:
-        """
-        Given a count of the number of items in each region at a given level, write the
-        starts and sizes to and hdf5 dataset and recursively work upwards until the
-        top level of the index is reached. The index should verify that the length of
-        the initial array it recieves is the correct length for the given level.
-        """
-        ...
 
     def query(
         self, region: Region, max_level: int

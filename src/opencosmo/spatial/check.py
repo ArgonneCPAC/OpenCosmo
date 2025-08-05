@@ -6,6 +6,10 @@ from astropy.coordinates import SkyCoord  # type: ignore
 
 from opencosmo.parameters import FileParameters
 
+if TYPE_CHECKING:
+    from opencosmo.dataset.dataset import Dataset
+    from opencosmo.spatial.protocols import Region
+
 ALLOWED_COORDINATES_3D = {
     "default": {
         "fof": "fof_halo_center_",
@@ -13,13 +17,6 @@ ALLOWED_COORDINATES_3D = {
         "sod": "sod_halo_com_",
     }
 }
-
-ALLOWED_COORDINATES_2D = {"default": set(["theta", "phi"])}
-
-
-if TYPE_CHECKING:
-    from opencosmo.dataset.dataset import Dataset
-    from opencosmo.spatial.protocols import Region
 
 
 def check_containment(

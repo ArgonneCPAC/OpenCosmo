@@ -17,6 +17,7 @@ from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
 from opencosmo.spatial.protocols import Region, SpatialIndex, TreePartition
+from opencosmo.spatial.utils import combine_upwards
 
 
 def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):
@@ -213,7 +214,9 @@ class Tree:
         max_level_sizes = self.__data[f"level_{self.__max_level}"]["size"][:]
         n_in_range = index.n_in_range(max_level_starts, max_level_sizes)
         target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
-        result = self.__index.combine_upwards(n_in_range, self.__max_level, target)
+        result = combine_upwards(
+            n_in_range, self.__index.subdivision_factor, self.__max_level, target
+        )
         return Tree(self.__index, result)
 
     def make_schema(self):

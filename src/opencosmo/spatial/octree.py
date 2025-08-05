@@ -7,7 +7,6 @@ from functools import cache
 from itertools import product
 from typing import Iterable, Optional, TypeGuard
 
-import h5py
 import numpy as np
 
 import opencosmo as oc
@@ -106,26 +105,13 @@ def get_region(octants: list[Octant]) -> BoxRegion:
 
 
 class OctTreeIndex:
+    subdivision_factor = 8
+
     def __init__(self, root: Octant):
         """
         An octree index is used to spatialy index snapshot data.
         """
         self.root = root
-
-    @staticmethod
-    def combine_upwards(counts: np.ndarray, level: int, target: h5py.File) -> h5py.File:
-        if len(counts) != 8**level:
-            raise ValueError("Recieved invalid number of counts!")
-        group = target.require_group(f"level_{level}")
-        new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
-        group.create_dataset("start", data=new_starts)
-        group.create_dataset("size", data=counts)
-
-        if level > 0:
-            new_counts = counts.reshape(-1, 8).sum(axis=1)
-            return OctTreeIndex.combine_upwards(new_counts, level - 1, target)
-
-        return target
 
     def get_partition_region(self, index: SimpleIndex, level: int):
         octants = [
