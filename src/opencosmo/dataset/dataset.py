@@ -504,11 +504,13 @@ class Dataset:
         new_state = self.__state.with_index(index)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
-    def with_new_columns(self, **new_columns: DerivedColumn):
+    def with_new_columns(self, **new_columns: DerivedColumn | np.ndarray):
         """
         Create a new dataset with additional columns. These new columns can be derived
-        from columns already in the dataset, or a numpy array. When a column is derived
-        from other columns, it will behave appropriately under unit transformations. See
+        from columns already in the dataset, a numpy array, or an astropy quantity
+        array. When a column is derived from other columns, it will behave
+        appropriately under unit transformations. Columns provided directly as astropy
+        quantities will not change under unit transformations. See
         :ref:`Creating New Columns` for examples.
 
         Parameters

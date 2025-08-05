@@ -63,3 +63,13 @@ def test_add_derive_take(properties_path):
     ds = ds.select(["fof_halo_mass", "test_random", "random_mass"]).take(100)
     data = ds.get_data("numpy")
     assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])
+
+
+def test_add_column_write(properties_path, tmp_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds))
+    ds = ds.with_new_columns(test_random=random_data)
+    oc.write(tmp_path / "test.hdf5", ds)
+    ds = oc.open(tmp_path / "test.hdf5")
+    assert "test_random" in ds.columns
+    assert np.all(ds.select("test_random").get_data("numpy") == random_data)
