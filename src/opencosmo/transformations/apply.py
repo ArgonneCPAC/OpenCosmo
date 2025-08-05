@@ -1,4 +1,3 @@
-import numpy as np
 from astropy.table import Table  # type: ignore
 
 from opencosmo.transformations import protocols as t
@@ -57,17 +56,3 @@ def apply_table_transformations(
         if (new_table := tr(output_table)) is not None:
             output_table = new_table
     return output_table
-
-
-def apply_filter_transformations(
-    table: Table, transformations: list[t.FilterTransformation]
-):
-    """
-    Filter transformations produce boolean masks that are applied to the table
-    to remove rows.
-    """
-    mask = np.ones(len(table), dtype=bool)
-    for tr in transformations:
-        if (new_mask := tr(table)) is not None:
-            mask &= new_mask
-    return table[mask]
