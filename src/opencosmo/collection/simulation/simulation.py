@@ -3,22 +3,16 @@ from typing import Iterable, Mapping, Optional, Self
 import h5py
 from astropy.cosmology import Cosmology  # type: ignore
 
-import opencosmo as oc
 from opencosmo.collection import structure as sc
 from opencosmo.collection.protocols import Collection
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.column import ColumnMask
-from opencosmo.dataset.handler import DatasetHandler
-from opencosmo.dataset.state import DatasetState
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.index import ChunkedIndex
+from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import io
 from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
 from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial.protocols import Region
-from opencosmo.spatial.tree import open_tree
-from opencosmo.transformations import units as u
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
@@ -269,42 +263,3 @@ class SimulationCollection(dict):
 
         """
         return self.__map("with_units", convention)
-
-
-def read_single_dataset(
-    file: h5py.File, dataset_key: str, header: Optional[OpenCosmoHeader] = None
-):
-    """
-    Read a single dataset from a multi-dataset file
-    """
-    if dataset_key not in file.keys():
-        raise ValueError(f"No group named '{dataset_key}' found in file.")
-
-    if header is None:
-        header = read_header(file[dataset_key])
-
-    try:
-        tree = open_tree(file[dataset_key], header.simulation.box_size)
-    except ValueError:
-        tree = None
-    p1 = (0, 0, 0)
-    p2 = tuple(header.simulation.box_size for _ in range(3))
-    sim_box = oc.make_box(p1, p2)
-    im_file = h5py.File.in_memory()
-    file.copy(dataset_key, im_file)
-    handler = DatasetHandler(im_file, dataset_key)
-
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        file[dataset_key], header
-    )
-    index = ChunkedIndex.from_size(len(handler))
-    state = DatasetState(
-        base_unit_transformations,
-        builders,
-        index,
-        u.UnitConvention.COMOVING,
-        sim_box,
-        header,
-    )
-
-    return Dataset(handler, header, state, tree)

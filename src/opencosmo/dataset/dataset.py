@@ -337,7 +337,7 @@ class Dataset:
 
         """
         required_columns = set(m.column_name for m in masks)
-        data = self.select(required_columns).data
+        data = self.select(required_columns).get_data()
         bool_mask = np.ones(len(data), dtype=bool)
         for mask in masks:
             bool_mask &= mask.apply(data)

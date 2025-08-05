@@ -1,0 +1,40 @@
+from typing import Iterable
+
+import numpy as np
+from numpy.typing import NDArray
+
+from opencosmo.index import DataIndex
+
+
+class InMemoryColumnHandler:
+    def __init__(self, columns: dict[str, NDArray], index: DataIndex):
+        self.__index = index
+        self.__columns = columns
+
+    @classmethod
+    def empty(cls, index: DataIndex):
+        return InMemoryColumnHandler({}, index)
+
+    def with_columns(self, columns: Iterable[str]):
+        new_columns = {
+            key: self.__columns[key] for key in columns if key in self.__columns
+        }
+        return InMemoryColumnHandler(new_columns, self.__index)
+
+    def keys(self):
+        return self.__columns.keys()
+
+    def add_column(self, name: str, column: np.ndarray):
+        self.__columns[name] = column
+
+    def with_index(self, index: DataIndex):
+        index_into_columns = self.__index.projection(index)
+
+        new_columns = {
+            name: index_into_columns.get_data(col)
+            for name, col in self.__columns.items()
+        }
+        return InMemoryColumnHandler(new_columns, index)
+
+    def columns(self):
+        yield from self.__columns.items()
