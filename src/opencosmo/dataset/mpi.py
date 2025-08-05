@@ -12,6 +12,11 @@ from opencosmo.spatial.tree import Tree
 def partition(
     comm: MPI.Comm, length: int, counts: h5py.Group, tree: Optional[Tree]
 ) -> Optional[TreePartition]:
+    """
+    When opening with MPI, each rank recieves an equally-sized chunk of the
+    spatial index. In principle this means the number of objects are similar
+    between ranks.
+    """
     if tree is not None:
         partitions = tree.partition(comm.Get_size(), counts)
         try:
