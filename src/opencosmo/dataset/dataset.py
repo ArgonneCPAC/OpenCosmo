@@ -8,7 +8,7 @@ from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.dataset.col import DerivedColumn, Mask
+from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
@@ -314,7 +314,7 @@ class Dataset:
 
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 
-    def filter(self, *masks: Mask) -> Dataset:
+    def filter(self, *masks: ColumnMask) -> Dataset:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.

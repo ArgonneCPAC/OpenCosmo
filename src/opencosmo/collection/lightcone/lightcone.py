@@ -10,7 +10,7 @@ from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.col import Mask
+from opencosmo.dataset.column import ColumnMask
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.io import OpenTarget, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
@@ -430,7 +430,7 @@ class Lightcone(dict):
         region = oc.make_cone(center, radius)
         return self.bound(region)
 
-    def filter(self, *masks: Mask, **kwargs) -> Self:
+    def filter(self, *masks: ColumnMask, **kwargs) -> Self:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.

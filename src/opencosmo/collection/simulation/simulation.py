@@ -7,7 +7,7 @@ import opencosmo as oc
 from opencosmo.collection import structure as sc
 from opencosmo.collection.protocols import Collection
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.col import Mask
+from opencosmo.dataset.column import ColumnMask
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader, read_header
@@ -165,7 +165,7 @@ class SimulationCollection(dict):
         """
         return self.__map("bound", region, select_by)
 
-    def filter(self, *masks: Mask, **kwargs) -> Self:
+    def filter(self, *masks: ColumnMask, **kwargs) -> Self:
         """
         Filter the datasets in the collection. This method behaves
         exactly like :meth:`opencosmo.Dataset.filter` or

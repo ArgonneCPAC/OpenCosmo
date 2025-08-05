@@ -7,7 +7,7 @@ import astropy  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.structure import io as sio
-from opencosmo.dataset.col import DerivedColumn
+from opencosmo.dataset.column import DerivedColumn
 from opencosmo.index import DataIndex
 from opencosmo.io import io
 from opencosmo.io.schemas import StructCollectionSchema

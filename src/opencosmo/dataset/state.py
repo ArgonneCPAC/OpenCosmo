@@ -5,8 +5,8 @@ from astropy import table  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 
 import opencosmo.transformations.units as u
-from opencosmo.dataset.col import DerivedColumn
-from opencosmo.dataset.column import TableBuilder, get_table_builder
+from opencosmo.dataset.builders import TableBuilder, get_table_builder
+from opencosmo.dataset.column import DerivedColumn
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io import schemas as ios
