@@ -71,4 +71,4 @@ def test_visualize_halo(data, tmp_path):
 
     for halo in data.halos():
         halo_id = halo["halo_properties"]["fof_halo_tag"]
-        visualize_halo(halo_id, data).savefig(f"tmp_path/{halo_id}.png")
+        visualize_halo(halo_id, data).savefig(tmp_path / f"{halo_id}.png")
