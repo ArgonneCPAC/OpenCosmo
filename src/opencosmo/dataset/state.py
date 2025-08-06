@@ -2,10 +2,7 @@ from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
-from astropy import (
-    table,  # type: ignore
-    units,
-)
+from astropy import table, units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
 from numpy.typing import NDArray
 
