@@ -243,8 +243,8 @@ class DatasetState:
 
         known_builders = set(self.__builder.columns)
         known_derived = set(self.__derived.keys())
-        known_cached = set(self.__im_handler.keys())
-        unknown_columns = columns - known_builders - known_derived - known_cached
+        known_im = set(self.__im_handler.keys())
+        unknown_columns = columns - known_builders - known_derived - known_im
         if unknown_columns:
             raise ValueError(
                 "Tried to select columns that aren't in this dataset! Missing columns "
@@ -253,7 +253,7 @@ class DatasetState:
 
         required_derived = known_derived.intersection(columns)
         required_builders = known_builders.intersection(columns)
-        required_cached = known_cached.intersection(columns)
+        required_im = known_im.intersection(columns)
 
         additional_derived = required_derived
 
@@ -267,16 +267,17 @@ class DatasetState:
                 set(),
             )
             required_builders |= additional_columns.intersection(known_builders)
-            required_cached |= additional_columns.intersection(known_cached)
+            required_im |= additional_columns.intersection(known_im)
             additional_derived = additional_columns.intersection(known_derived)
 
-        all_required = required_derived | required_builders | required_cached
+        all_required = required_derived | required_builders | required_im
 
         # Derived columns have to be instantiated in the order they are created in order
         # to ensure chains of derived columns work correctly
         new_derived = {k: v for k, v in self.__derived.items() if k in required_derived}
         # Builders can be performed in any order
         new_builder = self.__builder.with_columns(required_builders)
+        new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden = all_required - columns
 
@@ -287,7 +288,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
-            self.__im_handler,
+            new_im_handler,
             new_hidden,
             new_derived,
         )
