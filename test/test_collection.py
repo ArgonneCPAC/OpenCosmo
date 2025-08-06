@@ -9,6 +9,7 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection
+from opencosmo.visit.structure import visit_structure_collection
 
 
 @pytest.fixture
@@ -93,6 +94,28 @@ def test_multi_filter_write(multi_path, tmp_path):
         assert all(ds.select("sod_halo_mass").data > 0)
 
 
+def test_vist(halo_paths):
+    collection = oc.open(*halo_paths)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+    }
+
+    def visitor(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        dy = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        dz = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        return dx + dy + dz
+
+    result = visit_structure_collection(visitor, spec, collection)
+    assert not np.any(result == 0)
+
+
 def test_data_linking(halo_paths):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
@@ -153,7 +176,7 @@ def test_data_link_selection(halo_paths):
         10, at="random"
     )
     collection = collection.select(["x", "y", "z"], dataset="dm_particles")
-    collection = collection.select(["fof_halo_tag", "sod_halo_mass"])
+    collection = collection.select(["fof_halo_tag", "sod_halo_mass"], "halo_properties")
     found_dm_particles = False
     for halo in collection.objects():
         properties = halo["halo_properties"]
