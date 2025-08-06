@@ -65,3 +65,5 @@ directory = "changes"
 package = "opencosmo"
 filename = "docs/source/changelog.rst"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
