@@ -285,6 +285,15 @@ def test_simulation_collection_derive(multi_path):
         assert "fof_halo_px" in ds.data.columns
 
 
+def test_simulation_collection_add(multi_path):
+    collection = oc.open(multi_path)
+    ds_name = next(iter(collection.keys()))
+    data = np.random.randint(0, 100, len(collection[ds_name]))
+    collection = collection.with_new_columns(datasets=ds_name, random_data=data)
+    stored_data = collection[ds_name].select("random_data").get_data("numpy")
+    assert np.all(stored_data == data)
+
+
 def test_simulation_collection_broadcast_attribute(multi_path):
     collection = oc.open(multi_path)
     for key, value in collection.redshift.items():

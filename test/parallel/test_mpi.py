@@ -2,6 +2,7 @@ from collections import defaultdict
 from functools import reduce
 from pathlib import Path
 
+import astropy.units as u
 import h5py
 import mpi4py
 import numpy as np
@@ -377,6 +378,29 @@ def test_derive_multiply(input_path):
             == data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
         )
     )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_add_column(input_path):
+    ds = oc.open(input_path)
+    data = np.random.randint(0, 100, len(ds)) * u.deg
+    ds = ds.with_new_columns(random_data=data)
+    stored_data = ds.select("random_data").data
+    assert np.all(data == stored_data)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_add_column_write(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+
+    ds = oc.open(input_path)
+    data = np.random.randint(0, 100, len(ds)) * u.deg
+    ds = ds.with_new_columns(random_data=data)
+    oc.write(temporary_path, ds)
+    written_data = oc.open(temporary_path).select("random_data").get_data()
+    assert np.all(written_data == data)
 
 
 @pytest.mark.parallel(nprocs=4)
