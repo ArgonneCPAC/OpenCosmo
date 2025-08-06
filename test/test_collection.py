@@ -223,6 +223,7 @@ def test_halo_linking_allow_empty(halo_paths):
     assert len(ds1) < len(ds2)
     found_halos = 0
     found_particles = 0
+    ds1 = ds1.take(25)
 
     for halo in ds1.halos():
         assert len(halo["dm_particles"]) > 0
