@@ -589,9 +589,11 @@ class Lightcone(dict):
     def with_new_columns(self, **columns: DerivedColumn | np.ndarray | u.Quantity):
         """
         Create a new dataset with additional columns. These new columns can be derived
-        from columns already in the dataset, or a numpy array. When a column is derived
-        from other columns, it will behave appropriately under unit transformations. See
-        :ref:`Creating New Columns` for examples.
+        from columns already in the dataset, a numpy array, or an Astropy quantity
+        array. When a column is derived from other columns, it will behave
+        appropriately under unit transformations. See :ref:`Adding Custom Columns`
+        and :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`
+        for examples.
 
         Parameters
         ----------
