@@ -158,4 +158,9 @@ Calls to :py:meth:`opencosmo.StructureCollection.with_new_columns` must explicit
 
    ds = ds.with_new_columns(dataset="halo_properties", fof_halo_ke = fof_halo_ke, fof_halo_p = fof_halo_pe)
 
-Calls to :py:meth:`opencosmo.SimulationCollection.with_new_columns` will always apply the new columns to all the datasets in the collection.
+Calls to :py:meth:`opencosmo.SimulationCollection.with_new_columns` will always apply the new columns to all the datasets in the collection. Because of this, passing a numpy array or astropy quantity object will generally not work, since the length of the datasets within the collection will be different. You can always add a column to a single dataset in the collections by passing the optional :code:`dataset` parameter:
+
+.. code-block:: python
+   
+   random_data = np.random.randint(0, 100, len(collection["simulation_a"]))
+   collection = collection.with_new_columns(dataset="simulation_a", random_data=random_data)

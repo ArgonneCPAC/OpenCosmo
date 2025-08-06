@@ -513,7 +513,7 @@ class Dataset:
         array. When a column is derived from other columns, it will behave
         appropriately under unit transformations. Columns provided directly as astropy
         quantities will not change under unit transformations. See
-        :ref:`Creating New Columns` for examples.
+        :ref:`Adding Custom Columns` for examples.
 
         Parameters
         ----------
