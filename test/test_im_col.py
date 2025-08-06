@@ -109,6 +109,16 @@ def test_add_derive_take(properties_path):
     assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])
 
 
+def test_add_derive_drop(properties_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds))
+    ds = ds.with_new_columns(test_random=random_data)
+    ds = ds.drop("test_random")
+    data = ds.get_data("numpy")
+    assert "test_random" not in data
+    assert False
+
+
 def test_add_column_write(properties_path, tmp_path):
     ds = oc.open(properties_path)
     random_data = np.random.randint(0, 1000, size=len(ds))
