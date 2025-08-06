@@ -91,6 +91,7 @@ class DatasetState:
         """
         Return the same dataset state with a new index
         """
+
         new_cache = self.__im_handler.with_index(index)
 
         return DatasetState(
