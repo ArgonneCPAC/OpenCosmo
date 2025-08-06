@@ -501,7 +501,12 @@ class Dataset:
         )
 
     def with_index(self, index: DataIndex):
+        from time import time
+
+        start = time()
         new_state = self.__state.with_index(index)
+        end = time()
+        print(round(end - start, 3))
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def with_new_columns(

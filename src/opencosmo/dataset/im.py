@@ -33,6 +33,8 @@ class InMemoryColumnHandler:
         self.__columns[name] = column
 
     def with_index(self, index: DataIndex):
+        if len(self.__columns) == 0:
+            return InMemoryColumnHandler.empty(index)
         index_into_columns = self.__index.projection(index)
 
         new_columns = {

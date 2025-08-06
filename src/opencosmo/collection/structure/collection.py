@@ -526,6 +526,7 @@ class StructureCollection:
 
         for i, row in enumerate(self.__source.rows()):
             index = self.__source.index[i]
+
             output = {
                 key: self.__datasets[key].with_index(
                     self.__links[key].make_index(index)
