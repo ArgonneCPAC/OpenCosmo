@@ -437,7 +437,8 @@ class StructureCollection:
             collection = collection.with_new_columns("halo_properties",
                 random_quantity=random_quantity)
 
-        See :ref:`Creating New Columns in Collections` for more examples.
+        See :ref:`Adding Custom Columns` for more examples.
+
 
         Parameters
         ----------
