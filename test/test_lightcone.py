@@ -254,6 +254,14 @@ def test_lc_collection_derive(
     assert ke.data.unit == u.solMass * u.Unit("km/s") ** 2
 
 
+def test_lc_collection_add(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    data = np.random.randint(0, 100, len(ds)) * u.deg
+    ds = ds.with_new_columns(random=data)
+    stored_data = ds.select("random").get_data()
+    assert np.all(stored_data == data)
+
+
 def test_lc_collection_filter(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):

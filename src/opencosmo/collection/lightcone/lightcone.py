@@ -10,7 +10,7 @@ from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.column import ColumnMask
+from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.io import OpenTarget, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
@@ -586,7 +586,7 @@ class Lightcone(dict):
             output = {k: v for k, v in reversed(output.items())}
         return Lightcone(output, self.z_range, hide_redshift=self.__hide_redshift)
 
-    def with_new_columns(self, *args, **kwargs):
+    def with_new_columns(self, **columns: DerivedColumn | np.ndarray | u.Quantity):
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, or a numpy array. When a column is derived
@@ -603,9 +603,29 @@ class Lightcone(dict):
             This dataset with the columns added
 
         """
-        return self.__map(
-            "with_new_columns", hide_redshift=self.__hide_redshift, *args, **kwargs
-        )
+        derived = {}
+        raw = {}
+        for name, column in columns.items():
+            if isinstance(column, DerivedColumn):
+                derived[name] = column
+            elif len(column) != len(self):
+                raise ValueError(
+                    f"New column {name} has length {len(column)} but this dataset "
+                    f"has length {len(self)}"
+                )
+            else:
+                raw[name] = column
+
+        split_points = np.cumsum([len(ds) for ds in self.values()])
+        split_points = np.insert(0, 0, split_points)[:-1]
+        raw_split = {name: np.split(arr, split_points) for name, arr in raw.items()}
+        new_datasets = {}
+        for i, (ds_name, ds) in enumerate(self.items()):
+            raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
+            columns_input = raw_columns | derived
+            new_dataset = ds.with_new_columns(**columns_input)
+            new_datasets[ds_name] = new_dataset
+        return Lightcone(new_datasets, self.z_range, self.__hide_redshift)
 
     def with_units(self, convention: str) -> Self:
         """

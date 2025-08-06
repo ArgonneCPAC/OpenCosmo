@@ -427,7 +427,17 @@ class StructureCollection:
             pe = oc.col("phi") * oc.col("mass")
             collection = collection.with_new_columns("galaxies.star_particles", pe=pe)
 
-        See :ref:`Creating New Columns in Collections` for examples.
+        You can also pass numpy arrays or astropy quantities:
+
+        .. code-block:: python
+
+            random_value = np.random.randint(0, 90, size=len(collection))
+            random_quantity = random_value*u.deg
+
+            collection = collection.with_new_columns("halo_properties",
+                random_quantity=random_quantity)
+
+        See :ref:`Creating New Columns in Collections` for more examples.
 
         Parameters
         ----------
