@@ -116,7 +116,6 @@ def test_add_derive_drop(properties_path):
     ds = ds.drop("test_random")
     data = ds.get_data("numpy")
     assert "test_random" not in data
-    assert False
 
 
 def test_add_column_write(properties_path, tmp_path):
