@@ -242,12 +242,41 @@ class SimulationCollection(dict):
             )
         return self.__map("take", n, at)
 
-    def with_new_columns(self, *args, **kwargs):
+    def with_new_columns(
+        self, *args, datasets: Optional[str | Iterable[str]] = None, **kwargs
+    ):
         """
         Update the datasets within this collection with a set of new columns.
         This method simply calls :py:meth:`opencosmo.Dataset.with_new_columns` or
         :py:meth:`opencosmo.StructureCollection.with_new_columns`, as appropriate.
+
+        You can also optionally pass the "datasets" keyword argument to specify that the
+        operation should only be performed on a subset of the datasets.
+
+        In general, this method will fail if one of the columns is a numpy array or
+        astropy quantity and you specify more than a single dataset.
+        This is due to the fact that individual simulations in this collection are
+        likely to be of different lengths.
+
+        Parameters
+        ----------
+        datasets: str | list[str], optional
+            The datasets to add the columns to.
+
+        ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
+            The new columns
         """
+        if datasets is not None:
+            if isinstance(datasets, str):
+                datasets = [datasets]
+            else:
+                datasets = list(datasets)
+
+            output = {name: ds for name, ds in self.items()}
+            for ds_name in datasets:
+                output[ds_name] = output[ds_name].with_new_columns(*args, **kwargs)
+            return SimulationCollection(output)
+
         return self.__map("with_new_columns", *args, **kwargs)
 
     def with_units(self, convention: str) -> Self:
