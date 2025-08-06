@@ -1,6 +1,6 @@
 from typing import Iterable
 
-import astropy.units as u
+import astropy.units as u  # type: ignore
 import numpy as np
 from numpy.typing import NDArray
 
