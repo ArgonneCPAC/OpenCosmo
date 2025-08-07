@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generator, Iterable, Optional, TypeAlias
+from typing import TYPE_CHECKING, Callable, Generator, Iterable, Optional, TypeAlias
 from warnings import warn
 
 import numpy as np
@@ -10,6 +10,7 @@ from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.state import DatasetState
+from opencosmo.dataset.visit import visit_dataset
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io.schemas import DatasetSchema
@@ -314,6 +315,23 @@ class Dataset:
 
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 
+    def evaluate(self, func: Callable, vectorize=False):
+        """
+        Iterate over the rows in this collectionn, apply `func` to each, and collect
+        the result as new columns in the dataset.
+
+        This function is the equivalent of :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns`
+        in cases where the new column is not a simple algebraic combination of existing columns. Unlike
+        :code:`with_new_columns`, this method will evaluate the results immediately and the resulting
+        columns will not change under unit transformations.
+
+        The function should take in arguments with the same name as the columns in this dataset that
+        are needed for the computation. The dataset will automatically selected the needed columns
+        to avoid reading unnecessarily reading data from disk.
+        """
+        output = visit_dataset(func, self, vectorize)
+        return self.with_new_columns(**output)
+
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
@@ -365,8 +383,10 @@ class Dataset:
             raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
-
             chunk_data = chunk.data
+            if isinstance(chunk_data, Column):
+                chunk_data = {chunk_data.name: chunk_data}
+
             columns = {
                 k: chunk_data[k].quantity if chunk_data[k].unit else chunk_data[k]
                 for k in chunk_data.keys()
