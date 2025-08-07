@@ -67,3 +67,6 @@ filename = "docs/source/changelog.rst"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.pycodestyle]
+max-doc-length = 100

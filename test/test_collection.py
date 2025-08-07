@@ -9,7 +9,6 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection
-from opencosmo.visit.structure import visit_structure_collection
 
 
 @pytest.fixture
@@ -94,8 +93,8 @@ def test_multi_filter_write(multi_path, tmp_path):
         assert all(ds.select("sod_halo_mass").data > 0)
 
 
-def test_vist(halo_paths):
-    collection = oc.open(*halo_paths)
+def test_visit_single(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
     spec = {
         "dm_particles": ["x", "y", "z"],
         "halo_properties": [
@@ -105,15 +104,54 @@ def test_vist(halo_paths):
         ],
     }
 
-    def visitor(halo_properties, dm_particles):
+    def offset(halo_properties, dm_particles):
         particle_data = dm_particles.get_data("numpy")
         dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        dy = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        dz = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        return dx + dy + dz
+        dy = np.mean(particle_data["y"]) - halo_properties["fof_halo_center_y"].value
+        dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
+        return np.linalg.norm([dx, dy, dz])
 
-    result = visit_structure_collection(visitor, spec, collection)
-    assert not np.any(result == 0)
+    collection = collection.evaluate(offset, **spec)
+    data = collection["halo_properties"].select("offset").data
+    assert not np.any(data == 0)
+
+
+def test_visit_multiple(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "sod_halo_com_x",
+            "sod_halo_com_y",
+            "sod_halo_com_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dy_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dz_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
+        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
+        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
+        dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
+        dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        return {"dr_fof": dr_fof, "dr_sod": dr_sod}
+
+    collection = collection.evaluate(offset, **spec)
+    data = collection["halo_properties"].select(["dr_fof", "dr_sod"]).get_data("numpy")
+    for vals in data.values():
+        assert not np.any(vals == 0)
 
 
 def test_data_linking(halo_paths):
