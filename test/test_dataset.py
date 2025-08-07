@@ -1,3 +1,4 @@
+import astropy.units as u
 import numpy as np
 import pytest
 from astropy.table import Column
@@ -105,6 +106,57 @@ def test_drop_single(input_path):
         remaining_data = remaining.data
 
     assert dropped_col not in remaining_data.colnames
+
+
+def test_visit_vectorize_single(input_path):
+    ds = oc.open(input_path)
+
+    def fof_total(fof_halo_mass):
+        return np.cumsum(fof_halo_mass)
+
+    ds = ds.evaluate(fof_total, vectorize=True)
+    assert "fof_total" in ds.columns
+    data = ds.select(["fof_halo_mass", "fof_total"]).get_data("numpy")
+    assert np.all(data["fof_total"] == np.cumsum(data["fof_halo_mass"]))
+
+
+def test_visit_vectorize_multiple(input_path):
+    ds = oc.open(input_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    ds = ds.evaluate(fof_px, vectorize=True)
+    assert "fof_px" in ds.columns
+    data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
+    assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
+def test_visit_rows_multiple(input_path):
+    ds = oc.open(input_path).take(100)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    ds = ds.evaluate(fof_px, vectorize=False)
+    assert "fof_px" in ds.columns
+    data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
+    assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
+def test_visit_rows_single(input_path):
+    ds = oc.open(input_path).take(100)
+
+    def fof_random(fof_halo_mass):
+        return fof_halo_mass * np.random.randint(0, 100)
+
+    ds = ds.evaluate(fof_random, vectorize=False)
+    assert "fof_random" in ds.columns
+    data = ds.select(["fof_halo_mass", "fof_random"]).get_data()
+    assert data["fof_random"].unit == u.solMass
+    factor = data["fof_random"] / data["fof_halo_mass"]
+    factor = factor.value
+    assert np.all(factor == np.floor(factor))
 
 
 def test_select_oom(input_path):

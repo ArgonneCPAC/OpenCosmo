@@ -326,6 +326,7 @@ class StructureCollection:
         Update a dataset in the collection collection to only include the
         columns specified.
 
+
         Parameters
         ----------
         columns : str | Iterable[str]
