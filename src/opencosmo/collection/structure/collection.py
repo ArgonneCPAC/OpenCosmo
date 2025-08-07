@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Generator, Iterable, Mapping, Optional
+from typing import Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
 import astropy  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.structure import io as sio
+from opencosmo.collection.structure import visit
 from opencosmo.dataset.column import DerivedColumn
 from opencosmo.index import DataIndex
 from opencosmo.io import io
@@ -215,6 +216,58 @@ class StructureCollection:
             bounded, self.__header, self.__datasets, self.__links, self.__hide_source
         )
 
+    def evaluate(self, func: Callable, **columns: list[str]):
+        """
+        Iterate over the structures in this collection and apply func to each,
+        collecting the results into a new column. These values will be computed
+        immediately rather than lazily. If your new column can be created from a
+        simple algebraic combination of existing columns, use
+        :py:meth:`with_new_columns <opencosmo.StructureCollection.with_new_columns>`.
+
+        You can substantially improve the performance of this method by specifying
+        which data is actually needed to do the computation. This method will
+        automatically select the requested data, avoiding reading unneeded data
+        from disk.
+
+        The function passed to this method must take arguments that match the names
+        of datasets that are stored in this collection. You can specify specific
+        columns that are needed with keyword arguments to this function. For example:
+
+        .. code-block:: python
+
+            import opencosmo as oc
+            import numpy as np
+            collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+
+            def computation(halo_properties, dm_particles):
+                dx = np.mean(dm_particles.data["x"]) - halo_properties["fof_halo_center_x"]
+                dy = np.mean(dm_particles.data["y"]) - halo_properties["fof_halo_center_y"]
+                dz = np.mean(dm_particles.data["z"]) - halo_properties["fof_halo_center_z"]
+                offset = np.sqrt(dx**2 + dy**2 + dz**2)
+                return offset / halo_properties["sod_halo_radius"]
+
+            collection = collection.evaluate(
+                computation,
+                name="offset",
+                halo_properties=[
+                    "fof_halo_center_x",
+                    "fof_halo_center_y",
+                    "fof_halo_center_z"
+                    "sod_halo_radius"
+                ],
+                dm_particles=["x", "y", "z"]
+            )
+
+        The collection will now contain a column named "offset" with the results of the
+        computation applied to each halo in the collection. Columns produced in this
+        way will not respond to changes in unit convention.
+
+        It is not required to pass a list of column names for a given dataset. If a list
+        is not provided, all columns will be passed to the computation function.
+        """
+        output = visit.visit_structure_collection(func, columns, self)
+        return self.with_new_columns(**output, dataset=self.__source.dtype)
+
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
         """
         Apply a filter to the halo or galaxy properties. Filters are constructed with
@@ -300,6 +353,9 @@ class StructureCollection:
         elif dataset not in self.__datasets:
             raise ValueError(f"Dataset {dataset} not found in collection.")
         output_ds = self.__datasets[dataset]
+        if not isinstance(output_ds, oc.Dataset):
+            raise NotImplementedError
+
         new_dataset = output_ds.select(columns)
         return StructureCollection(
             self.__source,
