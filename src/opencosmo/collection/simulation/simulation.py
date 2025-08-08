@@ -285,6 +285,7 @@ class SimulationCollection(dict):
         datasets: Optional[str | Iterable[str]] = None,
         vectorize: bool = False,
         insert: bool = True,
+        format: str = "astropy",
     ):
         """
         Evaluate the function :code:`func` on each of the datasets or collections
@@ -309,6 +310,8 @@ class SimulationCollection(dict):
         insert: bool, default = True
             Whether or not to insert the results as columns in the datasets. If false, the results will
             be returned directly. If true, this method will return a new Simulation Collection.
+        format: str, default = astropy
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
         """
         if datasets is None:
             datasets = list(self.keys())
@@ -318,7 +321,9 @@ class SimulationCollection(dict):
             datasets = list(datasets)
 
         results = {
-            ds_name: self[ds_name].evaluate(func, vectorize=vectorize, insert=insert)
+            ds_name: self[ds_name].evaluate(
+                func, vectorize=vectorize, insert=insert, format=format
+            )
             for ds_name in datasets
         }
         if not insert:

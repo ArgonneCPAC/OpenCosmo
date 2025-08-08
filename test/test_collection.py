@@ -467,7 +467,7 @@ def test_simulation_collection_evaluate_noinsert(multi_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx):
         return fof_halo_mass * fof_halo_com_vx
 
-    output = collection.evaluate(fof_px, vectorize=True, insert=False)
+    output = collection.evaluate(fof_px, vectorize=True, insert=False, format="numpy")
     for ds_name, ds in collection.items():
         assert "fof_px" not in ds.columns
         data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
