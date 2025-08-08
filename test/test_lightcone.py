@@ -296,6 +296,30 @@ def test_lc_collection_evaluate(
     assert np.all(offset_vec == offset_iter)
 
 
+def test_lc_collection_evaluate_noinsert(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+    ):
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    result = ds.evaluate(offset, vectorize=True, insert=False)
+
+    assert len(result["offset"]) == len(ds)
+    assert np.all(result["offset"] > 0)
+
+
 def test_lc_collection_units(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):

@@ -154,6 +154,43 @@ def test_visit_multiple(halo_paths):
         assert not np.any(vals == 0)
 
 
+def test_visit_multiple_noinsert(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "sod_halo_com_x",
+            "sod_halo_com_y",
+            "sod_halo_com_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dy_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dz_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
+        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
+        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
+        dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
+        dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        return {"dr_fof": dr_fof, "dr_sod": dr_sod}
+
+    result = collection.evaluate(offset, insert=False, **spec)
+    for vals in result.values():
+        assert not np.any(vals == 0)
+
+
 def test_visit_dataset_in_structure_collection(halo_paths):
     collection = oc.open(*halo_paths)
 
@@ -422,6 +459,21 @@ def test_simulation_collection_evaluate(multi_path):
             "numpy"
         )
         assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
+def test_simulation_collection_evaluate_noinsert(multi_path):
+    collection = oc.open(multi_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    output = collection.evaluate(fof_px, vectorize=True, insert=False)
+    for ds_name, ds in collection.items():
+        assert "fof_px" not in ds.columns
+        data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
+        assert np.all(
+            output[ds_name]["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"]
+        )
 
 
 def test_simulation_collection_add(multi_path):
