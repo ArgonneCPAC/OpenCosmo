@@ -270,6 +270,32 @@ def test_lc_collection_filter(
     assert np.all(ds.data["fof_halo_mass"] > 1e14)
 
 
+def test_lc_collection_evaluate(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+    ):
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    ds_vec = ds.evaluate(offset, vectorize=True)
+    ds_iter = ds.evaluate(offset)
+
+    offset_vec = ds_vec.select("offset").get_data("numpy")
+    offset_iter = ds_iter.select("offset").get_data("numpy")
+    assert np.all(offset_vec == offset_iter)
+
+
 def test_lc_collection_units(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):

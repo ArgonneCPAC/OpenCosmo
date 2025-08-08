@@ -221,6 +221,7 @@ class StructureCollection:
         func: Callable,
         dataset: Optional[str] = None,
         vectorize: bool = False,
+        insert: bool = True,
         **columns: list[str],
     ):
         """
@@ -281,16 +282,23 @@ class StructureCollection:
                     "When evaluating over a single dataset, columns are read from the arguments to the function"
                 )
             elif isinstance(ds, oc.Dataset):
-                new_ds = ds.evaluate(func, vectorize=vectorize)
+                result = ds.evaluate(func, vectorize=vectorize, insert=insert)
             elif isinstance(ds, StructureCollection):
                 ds_name = datasets[1] if len(datasets) > 1 else None
-                new_ds = ds.evaluate(func, ds_name, vectorize=vectorize, **columns)
+                result = ds.evaluate(
+                    func, ds_name, vectorize=vectorize, insert=insert, **columns
+                )
+
+            if not insert:
+                return result
+
+            assert isinstance(result, (oc.Dataset, StructureCollection))
             if ds.dtype == self.__source.dtype:
-                new_source = new_ds
+                new_source = result
                 new_datasets = self.__datasets
             else:
                 new_source = self.__source
-                new_datasets = {**self.__datasets, datasets[0]: new_ds}
+                new_datasets = {**self.__datasets, datasets[0]: result}
             return StructureCollection(
                 new_source,
                 self.__header,
@@ -639,9 +647,6 @@ class StructureCollection:
 
         for i, row in enumerate(self.__source.rows()):
             index = self.__source.index[i]
-            # print(self.__source.index)
-            # print(index.into_array())
-
             output = {
                 key: self.__datasets[key].with_index(
                     self.__links[key].make_index(index)

@@ -315,22 +315,49 @@ class Dataset:
 
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 
-    def evaluate(self, func: Callable, vectorize=False):
+    def evaluate(
+        self, func: Callable, vectorize=False, insert=True
+    ) -> Dataset | np.ndarray:
         """
-        Iterate over the rows in this collectionn, apply `func` to each, and collect
+        Iterate over the rows in this dataset, apply `func` to each, and collect
         the result as new columns in the dataset.
 
         This function is the equivalent of :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
         for cases where the new column is not a simple algebraic combination of existing columns. Unlike
         :code:`with_new_columns`, this method will evaluate the results immediately and the resulting
-        columns will not change under unit transformations.
+        columns will not change under unit transformations. You may also choose to simply return the result
+        instead of adding it as a column.
 
         The function should take in arguments with the same name as the columns in this dataset that
-        are needed for the computation. The dataset will automatically selected the needed columns
-        to avoid reading unnecessarily reading data from disk.
+        are needed for the computation, and should return a dictionary of output values.
+        The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
+        data from disk. The new columns will have the same names as the keys of the output dictionary
+        See :ref:`Evaluating On Datasets` for more details.
+
+        If vectorize is set to True, the full columns will be pased to the dataset. Otherwise,
+        rows will be passed to the function one at a time.
+
+        Parameters
+        ----------
+
+        func: Callable
+            The function to evaluate on the rows in the dataset.
+
+        vectorize: bool, default = False
+            Whether to provide the values as full columns (True) or one row at a time (False)
+
+        insert: bool, default = True
+            If true, the data will be inserted as a column in this dataset. Otherwise the data will be returned.
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with the evaluated column(s)
         """
         output = visit_dataset(func, self, vectorize)
-        return self.with_new_columns(**output)
+        if insert:
+            return self.with_new_columns(**output)
+        return output
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
