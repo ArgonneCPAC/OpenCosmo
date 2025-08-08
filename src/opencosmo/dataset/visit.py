@@ -51,7 +51,14 @@ def __make_output(function: Callable, dataset: "Dataset", using_all_columns: boo
     if not isinstance(first_values, dict):
         name = function.__name__
         first_values = {name: first_values}
-    storage = {name: np.zeros(n, dtype=type(val)) for name, val in first_values.items()}
+    storage = {}
+    for name, value in first_values.items():
+        shape = (n,)
+        dtype = type(value)
+        if isinstance(value, np.ndarray):
+            shape = shape + value.shape
+            dtype = value.dtype
+        storage[name] = np.zeros(shape, dtype=dtype)
     for name, value in first_values.items():
         if isinstance(value, u.Quantity):
             storage[name] = storage[name] * value.unit
