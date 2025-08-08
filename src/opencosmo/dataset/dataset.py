@@ -316,7 +316,7 @@ class Dataset:
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 
     def evaluate(
-        self, func: Callable, vectorize=False, insert=True
+        self, func: Callable, vectorize=False, insert=True, format="astropy"
     ) -> Dataset | np.ndarray:
         """
         Iterate over the rows in this dataset, apply `func` to each, and collect
@@ -331,7 +331,11 @@ class Dataset:
         The function should take in arguments with the same name as the columns in this dataset that
         are needed for the computation, and should return a dictionary of output values.
         The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
-        data from disk. The new columns will have the same names as the keys of the output dictionary
+        data from disk. You may also include all columns in the dataset by providing a function with a single
+        import argument with the same name as the data type of this dataset (see :py:attr:`Dataset.dtype <opencosmo.Dataset.dtype>`
+        In this case, the data will be provided as a dictionary of astropy quantity arrays or numpy arrays
+
+        The new columns will have the same names as the keys of the output dictionary
         See :ref:`Evaluating On Datasets` for more details.
 
         If vectorize is set to True, the full columns will be pased to the dataset. Otherwise,
@@ -349,14 +353,24 @@ class Dataset:
         insert: bool, default = True
             If true, the data will be inserted as a column in this dataset. Otherwise the data will be returned.
 
+        format: str, default = astropy
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
+
         Returns
         -------
         dataset : Dataset
             The new dataset with the evaluated column(s)
         """
-        # raise NotImplementedError("Need to enable requesting ALL columns")
-        output = visit_dataset(func, self, vectorize)
-        if insert:
+        output = visit_dataset(func, self, vectorize, format)
+        is_same_length = all(
+            isinstance(o, np.ndarray) and len(o) == len(self) for o in output.values()
+        )
+
+        if insert and not is_same_length:
+            raise ValueError(
+                "The function to evaluate must produce an array with the same length as this dataset!"
+            )
+        elif insert:
             return self.with_new_columns(**output)
         return output
 
@@ -391,16 +405,23 @@ class Dataset:
         new_state = self.__state.with_mask(bool_mask)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
-    def rows(self) -> Generator[dict[str, float | units.Quantity]]:
+    def rows(self, output="astropy") -> Generator[dict[str, float | units.Quantity]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
         For performance, it is recommended to first select the columns you need to
         work with.
 
+        Parameters
+        ----------
+        output: str, default = "astropy"
+            Whether to return values as "astropy" quantities or "numpy" scalars
+
+
         Yields
         -------
         row : dict
             A dictionary of values for each row in the dataset with units.
+
         """
         max = len(self)
         if max == 0:
@@ -411,7 +432,7 @@ class Dataset:
             raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
-            chunk_data = chunk.data
+            chunk_data = chunk.get_data(output)
             if isinstance(chunk_data, Column):
                 chunk_data = {chunk_data.name: chunk_data}
 
