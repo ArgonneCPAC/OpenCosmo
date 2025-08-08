@@ -354,6 +354,7 @@ class Dataset:
         dataset : Dataset
             The new dataset with the evaluated column(s)
         """
+        # raise NotImplementedError("Need to enable requesting ALL columns")
         output = visit_dataset(func, self, vectorize)
         if insert:
             return self.with_new_columns(**output)

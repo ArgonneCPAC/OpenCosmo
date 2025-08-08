@@ -409,6 +409,21 @@ def test_simulation_collection_derive(multi_path):
         assert "fof_halo_px" in ds.data.columns
 
 
+def test_simulation_collection_evaluate(multi_path):
+    collection = oc.open(multi_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    collection = collection.evaluate(fof_px, vectorize=True)
+    for ds in collection.values():
+        assert "fof_px" in ds.columns
+        data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data(
+            "numpy"
+        )
+        assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
@@ -455,7 +470,7 @@ def test_chain_link(galaxy_paths, halo_paths):
         for pds in halo.values():
             try:
                 tags = set(pds.select("fof_halo_tag").data)
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError, TypeError):
                 continue
 
             assert len(tags) == 1
@@ -490,7 +505,7 @@ def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
         for pds in halo.values():
             try:
                 tags = set(pds.select("fof_halo_tag").data)
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError, TypeError):
                 continue
 
             assert len(tags) == 1

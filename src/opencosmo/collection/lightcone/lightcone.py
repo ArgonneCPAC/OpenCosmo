@@ -469,7 +469,7 @@ class Lightcone(dict):
             The new lightcone dataset with the evaluated column(s)
         """
 
-        if not insert:
+        if insert:
             return self.__map("evaluate", func=func, vectorize=vectorize)
         else:
             results = [ds.evaluate(func, vectorize, insert) for ds in self.values()]

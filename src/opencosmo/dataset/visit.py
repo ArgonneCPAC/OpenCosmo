@@ -14,7 +14,6 @@ def visit_dataset(function: Callable, dataset: "Dataset", vectorize: bool = Fals
     __verify(function, dataset)
     dataset = __prepare(function, dataset)
     if vectorize:
-        print("hi")
         result = __visit_vectorize(function, dataset)
         if not isinstance(result, dict):
             return {function.__name__: result}

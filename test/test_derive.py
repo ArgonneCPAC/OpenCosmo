@@ -40,7 +40,7 @@ def test_derive_addition(properties_path, particles_path, tmp_path):
     xoff = dr / oc.col("sod_halo_radius")
 
     ds = ds.with_new_columns("halo_properties", xoff=xoff)
-    xoff = ds.select("xoff")["halo_properties"].data
+    xoff = ds["halo_properties"].select("xoff").data
 
     assert xoff.unit == u.dimensionless_unscaled
 
