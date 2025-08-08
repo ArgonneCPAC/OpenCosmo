@@ -471,9 +471,12 @@ class Lightcone(dict):
 
         if insert:
             return self.__map("evaluate", func=func, vectorize=vectorize)
-        else:
-            results = [ds.evaluate(func, vectorize, insert) for ds in self.values()]
-            return np.concatenate(results)
+        results = [ds.evaluate(func, vectorize, insert) for ds in self.values()]
+        keys = results[0].keys()
+        output = {}
+        for key in keys:
+            output[key] = np.concatenate([r[key] for r in results])
+        return output
 
     def filter(self, *masks: ColumnMask, **kwargs) -> Self:
         """
