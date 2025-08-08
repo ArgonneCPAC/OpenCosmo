@@ -639,6 +639,8 @@ class StructureCollection:
 
         for i, row in enumerate(self.__source.rows()):
             index = self.__source.index[i]
+            # print(self.__source.index)
+            # print(index.into_array())
 
             output = {
                 key: self.__datasets[key].with_index(
