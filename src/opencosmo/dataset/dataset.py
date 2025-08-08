@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generator, Iterable, Optional, TypeAlias
+from typing import TYPE_CHECKING, Callable, Generator, Iterable, Optional, TypeAlias
 from warnings import warn
 
 import numpy as np
@@ -10,6 +10,7 @@ from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.state import DatasetState
+from opencosmo.dataset.visit import visit_dataset
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io.schemas import DatasetSchema
@@ -314,6 +315,65 @@ class Dataset:
 
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 
+    def evaluate(
+        self, func: Callable, vectorize=False, insert=True, format="astropy"
+    ) -> Dataset | np.ndarray:
+        """
+        Iterate over the rows in this dataset, apply `func` to each, and collect
+        the result as new columns in the dataset.
+
+        This function is the equivalent of :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
+        for cases where the new column is not a simple algebraic combination of existing columns. Unlike
+        :code:`with_new_columns`, this method will evaluate the results immediately and the resulting
+        columns will not change under unit transformations. You may also choose to simply return the result
+        instead of adding it as a column.
+
+        The function should take in arguments with the same name as the columns in this dataset that
+        are needed for the computation, and should return a dictionary of output values.
+        The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
+        data from disk. You may also include all columns in the dataset by providing a function with a single
+        import argument with the same name as the data type of this dataset (see :py:attr:`Dataset.dtype <opencosmo.Dataset.dtype>`
+        In this case, the data will be provided as a dictionary of astropy quantity arrays or numpy arrays
+
+        The new columns will have the same names as the keys of the output dictionary
+        See :ref:`Evaluating On Datasets` for more details.
+
+        If vectorize is set to True, the full columns will be pased to the dataset. Otherwise,
+        rows will be passed to the function one at a time.
+
+        Parameters
+        ----------
+
+        func: Callable
+            The function to evaluate on the rows in the dataset.
+
+        vectorize: bool, default = False
+            Whether to provide the values as full columns (True) or one row at a time (False)
+
+        insert: bool, default = True
+            If true, the data will be inserted as a column in this dataset. Otherwise the data will be returned.
+
+        format: str, default = astropy
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
+
+        Returns
+        -------
+        dataset : Dataset
+            The new dataset with the evaluated column(s)
+        """
+        output = visit_dataset(func, self, vectorize, format)
+        is_same_length = all(
+            isinstance(o, np.ndarray) and len(o) == len(self) for o in output.values()
+        )
+
+        if insert and not is_same_length:
+            raise ValueError(
+                "The function to evaluate must produce an array with the same length as this dataset!"
+            )
+        elif insert:
+            return self.with_new_columns(**output)
+        return output
+
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
@@ -345,16 +405,23 @@ class Dataset:
         new_state = self.__state.with_mask(bool_mask)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
-    def rows(self) -> Generator[dict[str, float | units.Quantity]]:
+    def rows(self, output="astropy") -> Generator[dict[str, float | units.Quantity]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
         For performance, it is recommended to first select the columns you need to
         work with.
 
+        Parameters
+        ----------
+        output: str, default = "astropy"
+            Whether to return values as "astropy" quantities or "numpy" scalars
+
+
         Yields
         -------
         row : dict
             A dictionary of values for each row in the dataset with units.
+
         """
         max = len(self)
         if max == 0:
@@ -365,8 +432,10 @@ class Dataset:
             raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
+            chunk_data = chunk.get_data(output)
+            if isinstance(chunk_data, Column):
+                chunk_data = {chunk_data.name: chunk_data}
 
-            chunk_data = chunk.data
             columns = {
                 k: chunk_data[k].quantity if chunk_data[k].unit else chunk_data[k]
                 for k in chunk_data.keys()

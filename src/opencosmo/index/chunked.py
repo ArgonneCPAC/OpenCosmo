@@ -349,6 +349,7 @@ class ChunkedIndex:
         index = np.searchsorted(sums, item)
         start = self.__starts[index]
         offset = item - sums[index - 1] if index > 0 else item
+        offset = int(offset)
         return simple.SimpleIndex(np.array([start + offset]))
 
 

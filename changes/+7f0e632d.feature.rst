@@ -1,0 +1,1 @@
+You can now remove datasets from a StructureCollection with :code:`with_datasets`

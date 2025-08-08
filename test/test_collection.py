@@ -93,6 +93,167 @@ def test_multi_filter_write(multi_path, tmp_path):
         assert all(ds.select("sod_halo_mass").data > 0)
 
 
+def test_visit_single(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        dy = np.mean(particle_data["y"]) - halo_properties["fof_halo_center_y"].value
+        dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
+        return np.linalg.norm([dx, dy, dz])
+
+    collection = collection.evaluate(offset, **spec)
+    data = collection["halo_properties"].select("offset").data
+    assert not np.any(data == 0)
+
+
+def test_visit_multiple(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "sod_halo_com_x",
+            "sod_halo_com_y",
+            "sod_halo_com_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dy_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dz_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
+        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
+        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
+        dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
+        dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        return {"dr_fof": dr_fof, "dr_sod": dr_sod}
+
+    collection = collection.evaluate(offset, **spec)
+    data = collection["halo_properties"].select(["dr_fof", "dr_sod"]).get_data("numpy")
+    for vals in data.values():
+        assert not np.any(vals == 0)
+
+
+def test_visit_multiple_noinsert(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "sod_halo_com_x",
+            "sod_halo_com_y",
+            "sod_halo_com_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dy_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dz_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
+        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
+        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
+        dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
+        dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        return {"dr_fof": dr_fof, "dr_sod": dr_sod}
+
+    result = collection.evaluate(offset, insert=False, **spec)
+    for vals in result.values():
+        assert not np.any(vals == 0)
+
+
+def test_visit_dataset_in_structure_collection(halo_paths):
+    collection = oc.open(*halo_paths)
+
+    def offset(
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        sod_halo_com_x,
+        sod_halo_com_y,
+        sod_halo_com_z,
+        sod_halo_radius,
+    ):
+        dx = fof_halo_center_x - sod_halo_com_x
+        dy = fof_halo_center_x - sod_halo_com_x
+        dz = fof_halo_center_x - sod_halo_com_x
+        dr = np.sqrt(dx**2 + dy**2 + dz**2)
+        return dr / sod_halo_radius
+
+    collection_vec = collection.evaluate(
+        offset, dataset="halo_properties", vectorize=True
+    )
+    collection_loop = collection.evaluate(offset, dataset="halo_properties")
+
+    offset_vec = collection_vec["halo_properties"].select("offset").get_data("numpy")
+    offset_loop = collection_loop["halo_properties"].select("offset").get_data("numpy")
+    assert np.all(offset_vec == offset_loop)
+
+
+def test_visit_galaxies_in_halo_collection(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths).take(10)
+
+    def offset(galaxy_properties, star_particles):
+        total_mass = np.sum(star_particles.data["mass"])
+        x_com = (
+            star_particles.data["mass"]
+            * star_particles.data["x"]
+            / (total_mass * len(star_particles))
+        ).sum()
+        y_com = np.sum(star_particles.data["mass"] * star_particles.data["y"]) / (
+            total_mass * len(star_particles)
+        )
+        z_com = np.sum(star_particles.data["mass"] * star_particles.data["z"]) / (
+            total_mass * len(star_particles)
+        )
+        dx = x_com - galaxy_properties["gal_center_x"].value
+        dy = y_com - galaxy_properties["gal_center_y"].value
+        dz = z_com - galaxy_properties["gal_center_z"].value
+        dr = np.linalg.norm([dx, dy, dz])
+        return dr
+
+    collection = collection.evaluate(
+        offset,
+        dataset="galaxies",
+        galaxy_properties=["gal_center_x", "gal_center_y", "gal_center_z"],
+        star_particles=["x", "y", "z", "mass"],
+    )
+
+    offsets = (
+        collection["galaxies"]["galaxy_properties"].select("offset").get_data("numpy")
+    )
+    assert np.all(offsets > 0)
+
+
 def test_data_linking(halo_paths):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
@@ -153,7 +314,7 @@ def test_data_link_selection(halo_paths):
         10, at="random"
     )
     collection = collection.select(["x", "y", "z"], dataset="dm_particles")
-    collection = collection.select(["fof_halo_tag", "sod_halo_mass"])
+    collection = collection.select(["fof_halo_tag", "sod_halo_mass"], "halo_properties")
     found_dm_particles = False
     for halo in collection.objects():
         properties = halo["halo_properties"]
@@ -285,6 +446,36 @@ def test_simulation_collection_derive(multi_path):
         assert "fof_halo_px" in ds.data.columns
 
 
+def test_simulation_collection_evaluate(multi_path):
+    collection = oc.open(multi_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    collection = collection.evaluate(fof_px, vectorize=True)
+    for ds in collection.values():
+        assert "fof_px" in ds.columns
+        data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data(
+            "numpy"
+        )
+        assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
+def test_simulation_collection_evaluate_noinsert(multi_path):
+    collection = oc.open(multi_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    output = collection.evaluate(fof_px, vectorize=True, insert=False, format="numpy")
+    for ds_name, ds in collection.items():
+        assert "fof_px" not in ds.columns
+        data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
+        assert np.all(
+            output[ds_name]["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"]
+        )
+
+
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
@@ -331,7 +522,7 @@ def test_chain_link(galaxy_paths, halo_paths):
         for pds in halo.values():
             try:
                 tags = set(pds.select("fof_halo_tag").data)
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError, TypeError):
                 continue
 
             assert len(tags) == 1
@@ -366,7 +557,7 @@ def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
         for pds in halo.values():
             try:
                 tags = set(pds.select("fof_halo_tag").data)
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError, TypeError):
                 continue
 
             assert len(tags) == 1

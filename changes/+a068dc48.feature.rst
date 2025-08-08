@@ -1,0 +1,1 @@
+You can now drop entire datasets from a StructureCollection using :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`

@@ -218,6 +218,61 @@ def test_link_read(all_paths):
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_evaluate_structure(all_paths):
+    collection = oc.open(*all_paths).take(100)
+
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        dy = np.mean(particle_data["y"]) - halo_properties["fof_halo_center_y"].value
+        dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
+        return np.linalg.norm([dx, dy, dz])
+
+    collection = collection.evaluate(offset, **spec)
+    data = collection["halo_properties"].select("offset").data
+    assert not np.any(data == 0)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_structure_write(all_paths, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    collection = oc.open(*all_paths).take(100)
+
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        particle_data = dm_particles.get_data("numpy")
+        dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        dy = np.mean(particle_data["y"]) - halo_properties["fof_halo_center_y"].value
+        dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
+        return np.linalg.norm([dx, dy, dz])
+
+    collection = collection.evaluate(offset, **spec)
+    oc.write(temporary_path, collection)
+    collection = oc.open(temporary_path)
+    data = collection["halo_properties"].select("offset").data
+    assert not np.any(data == 0)
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = oc.open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
@@ -401,6 +456,38 @@ def test_add_column_write(input_path, tmp_path):
     oc.write(temporary_path, ds)
     written_data = oc.open(temporary_path).select("random_data").get_data()
     assert np.all(written_data == data)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate(input_path):
+    ds = oc.open(input_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    ds = ds.evaluate(fof_px, vectorize=True)
+    assert "fof_px" in ds.columns
+    data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
+    assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_write(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    ds = oc.open(input_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    ds = ds.evaluate(fof_px, vectorize=True)
+    oc.write(temporary_path, ds)
+    ds = oc.open(temporary_path)
+
+    assert "fof_px" in ds.columns
+    data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
+    assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
 @pytest.mark.parallel(nprocs=4)
