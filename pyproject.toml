@@ -66,7 +66,7 @@ package = "opencosmo"
 filename = "docs/source/changelog.rst"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["test"]
 
 [tool.ruff.pycodestyle]
 max-doc-length = 90

@@ -1,4 +1,4 @@
-from typing import Iterable, Mapping, Optional, Self
+from typing import Callable, Iterable, Mapping, Optional, Self
 
 import h5py
 from astropy.cosmology import Cosmology  # type: ignore
@@ -278,6 +278,54 @@ class SimulationCollection(dict):
             return SimulationCollection(output)
 
         return self.__map("with_new_columns", *args, **kwargs)
+
+    def evaluate(
+        self,
+        func: Callable,
+        datasets: Optional[str | Iterable[str]] = None,
+        vectorize: bool = False,
+        insert: bool = True,
+    ):
+        """
+        Evaluate the function :code:`func` on each of the datasets or collections
+        held by this SimulationCollection. This function simply delegates to the
+        either :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.Evaluate>`
+        or :py:meth:`Dataset.evaluate <opencosmo.Dataset.Evaluate>` as appropriate. Refer
+        to :ref:`Evaluating Complex Computations` for more details.
+
+        If "datasets" is provided, the evaluation will only be performed on the provided
+        datasets.
+
+        Parameters
+        ----------
+
+        func: Callable
+            The function to evaluate
+        datasets: str | list[str], optional
+            The datasets to evaluate on. If not provided, will be evaluated on all datasets
+        vectorize: bool, default = False
+            Whether to vectorize the computation. See :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.Evaluate>`
+            and/or :py:meth:`Dataset.evaluate <opencosmo.Dataset.Evaluate>` for more details.
+        insert: bool, default = True
+            Whether or not to insert the results as columns in the datasets. If false, the results will
+            be returned directly. If true, this method will return a new Simulation Collection.
+        """
+        if datasets is None:
+            datasets = list(self.keys())
+        elif isinstance(datasets, str):
+            datasets = [datasets]
+        else:
+            datasets = list(datasets)
+
+        results = {
+            ds_name: self[ds_name].evaluate(func, vectorize=vectorize, insert=insert)
+            for ds_name in datasets
+        }
+        if not insert:
+            return results
+        else:
+            output = {**self, **results}
+            return SimulationCollection(output)
 
     def with_units(self, convention: str) -> Self:
         """
