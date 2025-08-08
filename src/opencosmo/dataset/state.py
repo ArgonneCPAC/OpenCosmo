@@ -161,6 +161,7 @@ class DatasetState:
             | set(self.__derived.keys())
             | set(self.__im_handler.keys())
         )
+        new_im_handler = self.__im_handler
         derived_update = {}
         for name, new_col in new_columns.items():
             if name in column_names:
@@ -172,7 +173,7 @@ class DatasetState:
                         f"New column {name} has length {len(new_col)} but this dataset "
                         "has length {len(self.__index)}"
                     )
-                self.__im_handler.add_column(name, new_col)
+                new_im_handler = self.__im_handler.with_new_column(name, new_col)
 
             elif not new_col.check_parent_existance(column_names):
                 raise ValueError(
@@ -191,7 +192,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
-            self.__im_handler,
+            new_im_handler,
             self.__hidden,
             new_derived,
         )

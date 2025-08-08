@@ -320,8 +320,8 @@ class Dataset:
         Iterate over the rows in this collectionn, apply `func` to each, and collect
         the result as new columns in the dataset.
 
-        This function is the equivalent of :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns`
-        in cases where the new column is not a simple algebraic combination of existing columns. Unlike
+        This function is the equivalent of :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
+        for cases where the new column is not a simple algebraic combination of existing columns. Unlike
         :code:`with_new_columns`, this method will evaluate the results immediately and the resulting
         columns will not change under unit transformations.
 

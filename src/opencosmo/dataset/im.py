@@ -29,8 +29,11 @@ class InMemoryColumnHandler:
     def keys(self):
         return self.__columns.keys()
 
-    def add_column(self, name: str, column: np.ndarray | u.Quantity):
-        self.__columns[name] = column
+    def with_new_column(self, name: str, column: np.ndarray | u.Quantity):
+        if len(column) != len(self.__index):
+            raise ValueError("Tried to add an in-memory column with the wrong length!")
+        new_columns = {**self.__columns, name: column}
+        return InMemoryColumnHandler(new_columns, self.__index)
 
     def with_index(self, index: DataIndex):
         if len(self.__columns) == 0:

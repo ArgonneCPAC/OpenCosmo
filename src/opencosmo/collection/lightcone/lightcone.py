@@ -403,7 +403,7 @@ class Lightcone(dict):
         """
         Perform a search for objects within some angular distance of some
         given point on the sky. This is a convinience function around
-        :py:meth`bound <opencosmo.Lightcone.bound>` which is exactly
+        :py:meth:`bound <opencosmo.Lightcone.bound>` and is exactly
         equivalent to
 
         .. code-block:: python

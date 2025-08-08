@@ -157,7 +157,7 @@ class StructureCollection:
         for k, v in zip(self.keys(), self.values()):
             yield k, v
 
-    def __getitem__(self, key: str) -> oc.Dataset:
+    def __getitem__(self, key: str) -> oc.Dataset | oc.StructureCollection:
         """
         Return the linked dataset with the given key.
         """
@@ -216,7 +216,13 @@ class StructureCollection:
             bounded, self.__header, self.__datasets, self.__links, self.__hide_source
         )
 
-    def evaluate(self, func: Callable, **columns: list[str]):
+    def evaluate(
+        self,
+        func: Callable,
+        dataset: Optional[str] = None,
+        vectorize: bool = False,
+        **columns: list[str],
+    ):
         """
         Iterate over the structures in this collection and apply func to each,
         collecting the results into a new column. These values will be computed
@@ -265,8 +271,36 @@ class StructureCollection:
         It is not required to pass a list of column names for a given dataset. If a list
         is not provided, all columns will be passed to the computation function.
         """
-        output = visit.visit_structure_collection(func, columns, self)
-        return self.with_new_columns(**output, dataset=self.__source.dtype)
+        if dataset is not None:
+            datasets = dataset.split(".", 1)
+            ds = self[datasets[0]]
+            if isinstance(ds, oc.Dataset) and len(datasets) > 1:
+                raise ValueError("Datasets cannot be nested!")
+            elif isinstance(ds, oc.Dataset) and len(columns) != 0:
+                raise ValueError(
+                    "When evaluating over a single dataset, columns are read from the arguments to the function"
+                )
+            elif isinstance(ds, oc.Dataset):
+                new_ds = ds.evaluate(func, vectorize=vectorize)
+            elif isinstance(ds, StructureCollection):
+                ds_name = datasets[1] if len(datasets) > 1 else None
+                new_ds = ds.evaluate(func, ds_name, vectorize=vectorize, **columns)
+            if ds.dtype == self.__source.dtype:
+                new_source = new_ds
+                new_datasets = self.__datasets
+            else:
+                new_source = self.__source
+                new_datasets = {**self.__datasets, datasets[0]: new_ds}
+            return StructureCollection(
+                new_source,
+                self.__header,
+                new_datasets,
+                self.__links,
+                self.__hide_source,
+            )
+        else:
+            output = visit.visit_structure_collection(func, columns, self)
+            return self.with_new_columns(**output, dataset=self.__source.dtype)
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
         """
@@ -310,8 +344,10 @@ class StructureCollection:
         elif "galaxy_properties" not in self.__datasets:
             raise ValueError("Dataset galaxy_properties not found in collection.")
         else:
+            galaxy_properties = self["galaxy_properties"]
+            assert isinstance(galaxy_properties, oc.Dataset)
             filtered = filter_source_by_dataset(
-                self["galaxy_properties"], self.__source, self.__header, *masks
+                galaxy_properties, self.__source, self.__header, *masks
             )
         return StructureCollection(
             filtered, self.__header, self.__datasets, self.__links, self.__hide_source

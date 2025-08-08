@@ -154,6 +154,34 @@ def test_visit_multiple(halo_paths):
         assert not np.any(vals == 0)
 
 
+def test_visit_dataset_in_structure_collection(halo_paths):
+    collection = oc.open(*halo_paths)
+
+    def offset(
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        sod_halo_com_x,
+        sod_halo_com_y,
+        sod_halo_com_z,
+        sod_halo_radius,
+    ):
+        dx = fof_halo_center_x - sod_halo_com_x
+        dy = fof_halo_center_x - sod_halo_com_x
+        dz = fof_halo_center_x - sod_halo_com_x
+        dr = np.sqrt(dx**2 + dy**2 + dz**2)
+        return dr / sod_halo_radius
+
+    collection_vec = collection.evaluate(
+        offset, dataset="halo_properties", vectorize=True
+    )
+    collection_loop = collection.evaluate(offset, dataset="halo_properties")
+
+    offset_vec = collection_vec["halo_properties"].select("offset").get_data("numpy")
+    offset_loop = collection_loop["halo_properties"].select("offset").get_data("numpy")
+    assert np.all(offset_vec == offset_loop)
+
+
 def test_data_linking(halo_paths):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(

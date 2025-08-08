@@ -5,6 +5,7 @@ import numpy as np
 from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
+from opencosmo.visit import insert
 
 if TYPE_CHECKING:
     from opencosmo import StructureCollection
@@ -29,19 +30,9 @@ def visit_structure_collection(
 
     for i, structure in enumerate(to_visit.objects()):
         output = function(**structure)
-        __insert(storage, i, output)
+        insert(storage, i, output)
 
     return storage
-
-
-def __insert(storage: dict, index: int, values_to_insert):
-    if isinstance(values_to_insert, dict):
-        for name, value in values_to_insert.items():
-            storage[name][index] = value
-        return storage
-
-    name = next(iter(storage.keys()))
-    storage[name][index] = values_to_insert
 
 
 def __make_output(function: Callable, collection: "StructureCollection"):
@@ -59,13 +50,14 @@ def __make_output(function: Callable, collection: "StructureCollection"):
 def __prepare(spec: dict[str, Optional[list[str]]], collection: "StructureCollection"):
     if len(spec.keys()) == 1:
         ds_name = next(iter(spec.keys()))
-        if ds_name.startswith(collection.dtype):
-            ds = collection[ds_name]
+        dataset = collection[ds_name]
+        if isinstance(dataset, ds.Dataset):
             columns = spec[ds_name]
             if columns is not None:
-                return ds.select(columns)
-
-    collection = collection.with_datasets(list(spec.keys()))
+                return dataset.select(columns)
+            return dataset
+        else:
+            collection = collection.with_datasets(list(spec.keys()))
     for ds_name, columns in spec.items():
         if columns is None:
             continue
@@ -96,8 +88,11 @@ def __verify(
     for ds_name, columns_in_spec in spec.items():
         if columns_in_spec is None:
             continue
+        dataset = collection[ds_name]
+        if not isinstance(dataset, ds.Dataset):
+            raise NotImplementedError
         columns_to_check = set(columns_in_spec)
-        columns_in_dataset = set(collection[ds_name].columns)
+        columns_in_dataset = set(dataset.columns)
         if not columns_to_check.issubset(columns_in_dataset):
             raise ValueError(
                 "Dataset {ds_name} is missing columns "
