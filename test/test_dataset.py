@@ -163,7 +163,7 @@ def test_visit_rows_all(input_path):
     ds = oc.open(input_path).take(100)
 
     def fof_random(halo_properties):
-        return np.random.randint(0, 100, len(halo_properties["fof_halo_tag"]))
+        return np.random.randint(0, 100)
 
     ds = ds.evaluate(fof_random, vectorize=False)
     data = ds.select(["fof_random"]).get_data()
