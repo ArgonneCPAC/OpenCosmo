@@ -49,6 +49,7 @@ class LinkedDatasetHandler:
         else:
             indices_into_data = index.get_data(self.link)
             indices_into_data = indices_into_data[indices_into_data >= 0]
+
             return SimpleIndex(indices_into_data)
 
     def make_schema(self, name: str, index: DataIndex) -> ios.LinkSchema:

@@ -182,6 +182,41 @@ def test_visit_dataset_in_structure_collection(halo_paths):
     assert np.all(offset_vec == offset_loop)
 
 
+def test_visit_galaxies_in_halo_collection(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths).take(10)
+
+    def offset(galaxy_properties, star_particles):
+        total_mass = np.sum(star_particles.data["mass"])
+        x_com = (
+            star_particles.data["mass"]
+            * star_particles.data["x"]
+            / (total_mass * len(star_particles))
+        ).sum()
+        y_com = np.sum(star_particles.data["mass"] * star_particles.data["y"]) / (
+            total_mass * len(star_particles)
+        )
+        z_com = np.sum(star_particles.data["mass"] * star_particles.data["z"]) / (
+            total_mass * len(star_particles)
+        )
+        dx = x_com - galaxy_properties["gal_center_x"].value
+        dy = y_com - galaxy_properties["gal_center_y"].value
+        dz = z_com - galaxy_properties["gal_center_z"].value
+        dr = np.linalg.norm([dx, dy, dz])
+        return dr
+
+    collection = collection.evaluate(
+        offset,
+        dataset="galaxies",
+        galaxy_properties=["gal_center_x", "gal_center_y", "gal_center_z"],
+        star_particles=["x", "y", "z", "mass"],
+    )
+
+    offsets = (
+        collection["galaxies"]["galaxy_properties"].select("offset").get_data("numpy")
+    )
+    assert np.all(offsets > 0)
+
+
 def test_data_linking(halo_paths):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
