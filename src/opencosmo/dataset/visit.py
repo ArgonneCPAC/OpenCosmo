@@ -1,9 +1,9 @@
 from inspect import signature
 from typing import TYPE_CHECKING, Callable
 
-import astropy.units as u
+import astropy.units as u  # type: ignore
 import numpy as np
-from astropy.table import Column, Table
+from astropy.table import Column, Table  # type: ignore
 
 from opencosmo.visit import insert
 
