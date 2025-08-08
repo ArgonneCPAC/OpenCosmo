@@ -132,6 +132,25 @@ def test_visit_vectorize_multiple(input_path):
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
+def test_visit_rows_nfw(input_path):
+    ds = oc.open(input_path).filter(oc.col("sod_halo_cdelta") > 0)
+
+    def nfw(sod_halo_radius, sod_halo_cdelta, sod_halo_mass):
+        r_ = np.logspace(-2, 0, 50)
+        A = np.log(1 + sod_halo_cdelta) - sod_halo_cdelta / (1 + sod_halo_cdelta)
+
+        halo_density = sod_halo_mass / (4 / 3 * np.pi * sod_halo_radius**3)
+        profile = halo_density / (3 * A * r_) / (1 / sod_halo_cdelta + r_) ** 2
+        return {"nfw_radius": r_ * sod_halo_radius, "nfw_profile": profile}
+
+    ds = ds.evaluate(nfw)
+
+    assert "nfw_radius" in ds.columns
+    assert "nfw_profile" in ds.columns
+    profile = ds.select("nfw_profile").get_data("numpy")
+    assert profile.shape == (len(ds), 50)
+
+
 def test_visit_rows_multiple(input_path):
     ds = oc.open(input_path).take(100)
 
