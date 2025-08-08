@@ -159,6 +159,28 @@ def test_visit_rows_single(input_path):
     assert np.all(factor == np.floor(factor))
 
 
+def test_visit_rows_all(input_path):
+    ds = oc.open(input_path).take(100)
+
+    def fof_random(halo_properties):
+        return np.random.randint(0, 100, len(halo_properties["fof_halo_tag"]))
+
+    ds = ds.evaluate(fof_random, vectorize=False)
+    data = ds.select(["fof_random"]).get_data()
+    assert data.dtype == np.int64
+
+
+def test_visit_rows_all_vectorize(input_path):
+    ds = oc.open(input_path).take(100)
+
+    def fof_random(halo_properties):
+        return np.random.randint(0, 100, len(halo_properties["fof_halo_tag"]))
+
+    ds = ds.evaluate(fof_random, vectorize=True)
+    data = ds.select(["fof_random"]).get_data()
+    assert data.dtype == np.int64
+
+
 def test_select_oom(input_path):
     with oc.open(input_path) as ds:
         data = ds.data
