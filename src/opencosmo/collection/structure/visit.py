@@ -57,7 +57,9 @@ def __prepare(spec: dict[str, Optional[list[str]]], collection: "StructureCollec
                 return dataset.select(columns)
             return dataset
         else:
-            collection = collection.with_datasets(list(spec.keys()))
+            raise NotImplementedError
+    else:
+        collection = collection.with_datasets(list(spec.keys()))
     for ds_name, columns in spec.items():
         if columns is None:
             continue
