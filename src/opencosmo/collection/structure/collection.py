@@ -221,7 +221,7 @@ class StructureCollection:
         func: Callable,
         dataset: Optional[str] = None,
         vectorize: bool = False,
-        insert: bool = True,
+        insert: bool = False,
         **columns: list[str],
     ):
         """
@@ -308,6 +308,8 @@ class StructureCollection:
             )
         else:
             output = visit.visit_structure_collection(func, columns, self)
+            if not insert:
+                return output
             return self.with_new_columns(**output, dataset=self.__source.dtype)
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:

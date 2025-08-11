@@ -111,7 +111,7 @@ def test_visit_single(halo_paths):
         dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
         return np.linalg.norm([dx, dy, dz])
 
-    collection = collection.evaluate(offset, **spec)
+    collection = collection.evaluate(offset, **spec, insert=True)
     data = collection["halo_properties"].select("offset").data
     assert not np.any(data == 0)
 
@@ -148,7 +148,7 @@ def test_visit_multiple(halo_paths):
         dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
         return {"dr_fof": dr_fof, "dr_sod": dr_sod}
 
-    collection = collection.evaluate(offset, **spec)
+    collection = collection.evaluate(offset, **spec, insert=True)
     data = collection["halo_properties"].select(["dr_fof", "dr_sod"]).get_data("numpy")
     for vals in data.values():
         assert not np.any(vals == 0)
@@ -210,9 +210,11 @@ def test_visit_dataset_in_structure_collection(halo_paths):
         return dr / sod_halo_radius
 
     collection_vec = collection.evaluate(
-        offset, dataset="halo_properties", vectorize=True
+        offset, dataset="halo_properties", vectorize=True, insert=True
     )
-    collection_loop = collection.evaluate(offset, dataset="halo_properties")
+    collection_loop = collection.evaluate(
+        offset, dataset="halo_properties", insert=True
+    )
 
     offset_vec = collection_vec["halo_properties"].select("offset").get_data("numpy")
     offset_loop = collection_loop["halo_properties"].select("offset").get_data("numpy")
@@ -246,6 +248,7 @@ def test_visit_galaxies_in_halo_collection(halo_paths, galaxy_paths):
         dataset="galaxies",
         galaxy_properties=["gal_center_x", "gal_center_y", "gal_center_z"],
         star_particles=["x", "y", "z", "mass"],
+        insert=True,
     )
 
     offsets = (
@@ -452,7 +455,7 @@ def test_simulation_collection_evaluate(multi_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx):
         return fof_halo_mass * fof_halo_com_vx
 
-    collection = collection.evaluate(fof_px, vectorize=True)
+    collection = collection.evaluate(fof_px, vectorize=True, insert=True)
     for ds in collection.values():
         assert "fof_px" in ds.columns
         data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data(

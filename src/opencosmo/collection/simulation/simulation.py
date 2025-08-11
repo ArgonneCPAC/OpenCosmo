@@ -284,7 +284,7 @@ class SimulationCollection(dict):
         func: Callable,
         datasets: Optional[str | Iterable[str]] = None,
         vectorize: bool = False,
-        insert: bool = True,
+        insert: bool = False,
         format: str = "astropy",
     ):
         """

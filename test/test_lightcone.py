@@ -288,8 +288,8 @@ def test_lc_collection_evaluate(
         dz = fof_halo_com_z - fof_halo_center_z
         return np.sqrt(dx**2 + dy**2 + dz**2)
 
-    ds_vec = ds.evaluate(offset, vectorize=True)
-    ds_iter = ds.evaluate(offset)
+    ds_vec = ds.evaluate(offset, vectorize=True, insert=True)
+    ds_iter = ds.evaluate(offset, insert=True)
 
     offset_vec = ds_vec.select("offset").get_data("numpy")
     offset_iter = ds_iter.select("offset").get_data("numpy")

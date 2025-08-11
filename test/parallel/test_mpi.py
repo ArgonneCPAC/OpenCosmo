@@ -237,7 +237,7 @@ def test_evaluate_structure(all_paths):
         dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
         return np.linalg.norm([dx, dy, dz])
 
-    collection = collection.evaluate(offset, **spec)
+    collection = collection.evaluate(offset, **spec, insert=True)
     data = collection["halo_properties"].select("offset").data
     assert not np.any(data == 0)
 
@@ -265,7 +265,7 @@ def test_evaluate_structure_write(all_paths, tmp_path):
         dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
         return np.linalg.norm([dx, dy, dz])
 
-    collection = collection.evaluate(offset, **spec)
+    collection = collection.evaluate(offset, **spec, insert=True)
     oc.write(temporary_path, collection)
     collection = oc.open(temporary_path)
     data = collection["halo_properties"].select("offset").data
@@ -465,7 +465,7 @@ def test_evaluate(input_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx):
         return fof_halo_mass * fof_halo_com_vx
 
-    ds = ds.evaluate(fof_px, vectorize=True)
+    ds = ds.evaluate(fof_px, vectorize=True, insert=True)
     assert "fof_px" in ds.columns
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
@@ -481,7 +481,7 @@ def test_evaluate_write(input_path, tmp_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx):
         return fof_halo_mass * fof_halo_com_vx
 
-    ds = ds.evaluate(fof_px, vectorize=True)
+    ds = ds.evaluate(fof_px, vectorize=True, insert=True)
     oc.write(temporary_path, ds)
     ds = oc.open(temporary_path)
 

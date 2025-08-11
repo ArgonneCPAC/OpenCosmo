@@ -316,7 +316,7 @@ class Dataset:
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 
     def evaluate(
-        self, func: Callable, vectorize=False, insert=True, format="astropy"
+        self, func: Callable, vectorize=False, insert=False, format="astropy"
     ) -> Dataset | np.ndarray:
         """
         Iterate over the rows in this dataset, apply `func` to each, and collect
@@ -350,7 +350,7 @@ class Dataset:
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)
 
-        insert: bool, default = True
+        insert: bool, default = False
             If true, the data will be inserted as a column in this dataset. Otherwise the data will be returned.
 
         format: str, default = astropy
