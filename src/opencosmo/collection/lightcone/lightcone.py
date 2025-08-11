@@ -470,7 +470,7 @@ class Lightcone(dict):
         """
 
         if insert:
-            return self.__map("evaluate", func=func, vectorize=vectorize)
+            return self.__map("evaluate", func=func, vectorize=vectorize, insert=insert)
         results = [ds.evaluate(func, vectorize, insert) for ds in self.values()]
         keys = results[0].keys()
         output = {}

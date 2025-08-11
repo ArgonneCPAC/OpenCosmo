@@ -114,7 +114,7 @@ def test_visit_vectorize_single(input_path):
     def fof_total(fof_halo_mass):
         return np.cumsum(fof_halo_mass)
 
-    ds = ds.evaluate(fof_total, vectorize=True)
+    ds = ds.evaluate(fof_total, vectorize=True, insert=True)
     assert "fof_total" in ds.columns
     data = ds.select(["fof_halo_mass", "fof_total"]).get_data("numpy")
     assert np.all(data["fof_total"] == np.cumsum(data["fof_halo_mass"]))
@@ -126,10 +126,25 @@ def test_visit_vectorize_multiple(input_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx):
         return fof_halo_mass * fof_halo_com_vx
 
-    ds = ds.evaluate(fof_px, vectorize=True)
+    ds = ds.evaluate(fof_px, vectorize=True, insert=True)
     assert "fof_px" in ds.columns
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
+def test_visit_vectorize_multiple_noinsert(input_path):
+    ds = oc.open(input_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    result = ds.evaluate(fof_px, vectorize=True, insert=False)
+    data = ds.select(("fof_halo_mass", "fof_halo_com_vx")).data
+
+    assert np.all(
+        result["fof_px"]
+        == data["fof_halo_mass"].quantity * data["fof_halo_com_vx"].quantity
+    )
 
 
 def test_visit_rows_nfw(input_path):
@@ -143,7 +158,7 @@ def test_visit_rows_nfw(input_path):
         profile = halo_density / (3 * A * r_) / (1 / sod_halo_cdelta + r_) ** 2
         return {"nfw_radius": r_ * sod_halo_radius, "nfw_profile": profile}
 
-    ds = ds.evaluate(nfw)
+    ds = ds.evaluate(nfw, insert=True)
 
     assert "nfw_radius" in ds.columns
     assert "nfw_profile" in ds.columns
@@ -157,7 +172,7 @@ def test_visit_rows_multiple(input_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx):
         return fof_halo_mass * fof_halo_com_vx
 
-    ds = ds.evaluate(fof_px, vectorize=False)
+    ds = ds.evaluate(fof_px, vectorize=False, insert=True)
     assert "fof_px" in ds.columns
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
@@ -169,7 +184,7 @@ def test_visit_rows_single(input_path):
     def fof_random(fof_halo_mass):
         return fof_halo_mass * np.random.randint(0, 100)
 
-    ds = ds.evaluate(fof_random, vectorize=False)
+    ds = ds.evaluate(fof_random, vectorize=False, insert=True)
     assert "fof_random" in ds.columns
     data = ds.select(["fof_halo_mass", "fof_random"]).get_data()
     assert data["fof_random"].unit == u.solMass
@@ -184,7 +199,7 @@ def test_visit_rows_all(input_path):
     def fof_random(halo_properties):
         return np.random.randint(0, 100)
 
-    ds = ds.evaluate(fof_random, vectorize=False)
+    ds = ds.evaluate(fof_random, vectorize=False, insert=True)
     data = ds.select(["fof_random"]).get_data()
     assert data.dtype == np.int64
 
@@ -195,7 +210,7 @@ def test_visit_rows_all_vectorize(input_path):
     def fof_random(halo_properties):
         return np.random.randint(0, 100, len(halo_properties["fof_halo_tag"]))
 
-    ds = ds.evaluate(fof_random, vectorize=True)
+    ds = ds.evaluate(fof_random, vectorize=True, insert=True)
     data = ds.select(["fof_random"]).get_data()
     assert data.dtype == np.int64
 
@@ -247,6 +262,36 @@ def test_write_after_filter(input_path, tmp_path):
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         filtered_data = new_ds.data
         assert np.all(data == filtered_data)
+
+
+def test_write_after_derive(input_path, tmp_path):
+    with oc.open(input_path) as ds:
+        col = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+        ds = ds.with_new_columns(fof_halo_px=col)
+
+        oc.write(tmp_path / "haloproperties.hdf5", ds)
+
+        data = ds.select("fof_halo_px").data
+
+    with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
+        written_data = new_ds.select("fof_halo_px").data
+        assert np.all(np.isclose(data.quantity, written_data.quantity))
+
+
+def test_write_after_evaluate(input_path, tmp_path):
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    with oc.open(input_path) as ds:
+        ds = ds.evaluate(fof_px, insert=True, vectorize=True)
+
+        oc.write(tmp_path / "haloproperties.hdf5", ds)
+
+        data = ds.select("fof_px").data
+
+    with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
+        written_data = new_ds.select("fof_px").data
+        assert np.all(np.isclose(data.quantity, written_data.quantity))
 
 
 def test_collect(input_path):
