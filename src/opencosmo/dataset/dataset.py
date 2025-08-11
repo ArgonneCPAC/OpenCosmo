@@ -12,7 +12,7 @@ from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.state import DatasetState
 from opencosmo.dataset.visit import visit_dataset
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial import check
@@ -569,7 +569,44 @@ class Dataset:
             self.__tree,
         )
 
-    def with_index(self, index: DataIndex):
+    def take_rows(self, indices: np.ndarray, size: Optional[np.ndarray] = None):
+        """
+        Create a new dataset with the rows specified by the arguments. This method allows for
+        two different types of input
+
+        1. A single array, representing the indices of the rows to take
+        2. Two arrays. The first representing the start of a set of row chunks, and the second representing
+           their size
+
+        Parameters
+        ----------
+        indices: np.ndarray[int]
+            The rows to take, or the beginnings of the row chunks
+
+        size: np.ndarray[int], optional
+            The size of the row chunks
+
+        Returns
+        -------
+        dataset : opencosmo.Dataset
+            The new dataset with only the selected rows.
+
+        """
+        if np.any(indices < 0):
+            raise ValueError("Row indices cannot be negative!")
+
+        size_ = 0 if size is None else size
+        if np.any(indices + size_) > len(self):
+            raise ValueError(
+                "Row indices cannot be larger than the length of this dataset!"
+            )
+
+        index: DataIndex
+        if size is None:
+            index = SimpleIndex(indices)
+        else:
+            index = ChunkedIndex(indices, size)
+
         new_state = self.__state.with_index(index)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 

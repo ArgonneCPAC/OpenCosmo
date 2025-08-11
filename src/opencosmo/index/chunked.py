@@ -36,8 +36,6 @@ def pack(start: np.ndarray, size: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 class ChunkedIndex:
     def __init__(self, starts: np.ndarray, sizes: np.ndarray) -> None:
-        # sort the starts and sizes
-        # pack the starts and sizes
         self.__starts = starts
         self.__sizes = sizes
 
@@ -199,6 +197,8 @@ class ChunkedIndex:
                 f"Range {start}:{end} is out of bounds for index of size {len(self)}"
             )
 
+        print(start, end)
+        print(self.__starts, self.__sizes)
         if start > end:
             raise ValueError(f"Start {start} must be less than end {end}")
 
@@ -206,15 +206,19 @@ class ChunkedIndex:
             return ChunkedIndex.empty()
 
         # Get the indices of the chunks that are in the range
-        idxs = np.concatenate(
-            [
-                np.arange(start, start + size)
-                for start, size in zip(self.__starts, self.__sizes)
-            ]
-        )
-        range_idxs = idxs[start:end]
+        cumulative_sizes = np.cumsum(self.__sizes)
+        start_idx = np.argmax(cumulative_sizes > start)
+        end_idx = np.argmax(cumulative_sizes >= end)
 
-        return simple.SimpleIndex(range_idxs)
+        chunk_starts = self.__starts[start_idx : end_idx + 1]
+        chunk_sizes = self.__sizes[start_idx : end_idx + 1]
+
+        chunk_starts[0] = chunk_starts[0] + (
+            start - cumulative_sizes[start_idx] + cumulative_sizes[0]
+        )
+        chunk_sizes[-1] = chunk_sizes[-1] - (end + start - cumulative_sizes[end_idx])
+
+        return ChunkedIndex(chunk_starts, chunk_sizes)
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         """

@@ -291,6 +291,21 @@ def test_data_linking(halo_paths):
     assert n_profiles > 0
 
 
+def test_data_gets_all_particles(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
+        10, at="random"
+    )
+    for halo in collection.halos():
+        for name, particle_species in halo.items():
+            if "particle" not in name:
+                continue
+            halo_tag = halo["halo_properties"]["fof_halo_tag"]
+            tag_filter = oc.col("fof_halo_tag") == halo_tag
+            ds = collection[name].filter(tag_filter)
+            assert len(ds) == len(particle_species)
+
+
 def test_data_linking_bound(halo_paths):
     collection = oc.open(*halo_paths)
     p1 = tuple(random.uniform(10, 20) for _ in range(3))
