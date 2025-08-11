@@ -90,12 +90,12 @@ def get_linked_datasets(
 
 def make_index_with_linked_data(
     index: DataIndex, links: dict[str, LinkedDatasetHandler]
-):
+) -> np.ndarray:
     mask = np.ones(len(index), dtype=bool)
     for link in links.values():
         mask &= link.has_linked_data(index)
 
-    return index.mask(mask)
+    return np.where(mask)[0]
 
 
 def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bool):
@@ -139,7 +139,7 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         source_dataset = io.io.open_single_dataset(link_sources["galaxy_properties"][0])
         if ignore_empty:
             new_index = make_index_with_linked_data(source_dataset.index, handlers)
-            source_dataset = source_dataset.with_index(new_index)
+            source_dataset = source_dataset.take_rows(new_index)
         collection = sc.StructureCollection(
             source_dataset,
             source_dataset.header,
@@ -161,7 +161,7 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
 
         if ignore_empty:
             new_index = make_index_with_linked_data(source_dataset.index, handlers)
-            source_dataset = source_dataset.with_index(new_index)
+            source_dataset = source_dataset.take_rows(new_index)
 
         return sc.StructureCollection(
             source_dataset,

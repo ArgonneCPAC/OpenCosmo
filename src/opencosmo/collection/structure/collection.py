@@ -4,12 +4,12 @@ from typing import Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
 import astropy  # type: ignore
+import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.structure import io as sio
 from opencosmo.collection.structure import visit
 from opencosmo.dataset.column import DerivedColumn
-from opencosmo.index import DataIndex
 from opencosmo.io import io
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import HaccSimulationParameters
@@ -166,8 +166,8 @@ class StructureCollection:
         elif key == self.__header.file.data_type:
             return self.__source
 
-        index = self.__links[key].make_index(self.__index)
-        return self.__datasets[key].with_index(index)
+        start, size = self.__links[key].make_indices(self.__index)
+        return self.__datasets[key].take_rows(start, size)
 
     def __enter__(self):
         return self
@@ -609,8 +609,8 @@ class StructureCollection:
             self.__hide_source,
         )
 
-    def with_index(self, index: DataIndex):
-        new_source = self.__source.with_index(index)
+    def take_rows(self, indices: np.ndarray, size: Optional[np.ndarray] = None):
+        new_source = self.__source.take_rows(indices, size)
         return StructureCollection(
             new_source, self.__header, self.__datasets, self.__links, self.__hide_source
         )
@@ -650,8 +650,8 @@ class StructureCollection:
         for i, row in enumerate(self.__source.rows()):
             index = self.__source.index[i]
             output = {
-                key: self.__datasets[key].with_index(
-                    self.__links[key].make_index(index)
+                key: self.__datasets[key].take_rows(
+                    *self.__links[key].make_indices(index)
                 )
                 for key in data_types
             }
