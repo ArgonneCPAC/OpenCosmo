@@ -1,11 +1,11 @@
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import Column, Table  # type: ignore
 
-from opencosmo.visit import insert
+from opencosmo.visit import insert, prepare_kwargs
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
@@ -26,33 +26,46 @@ def visit_dataset(
             return {function.__name__: result}
         return result
     else:
-        return __visit_rows(function, dataset, format, evaluator_kwargs)
+        kwargs, iterable_kwargs = prepare_kwargs(len(dataset), evaluator_kwargs)
+        return __visit_rows(function, dataset, format, kwargs, iterable_kwargs)
 
 
 def __visit_rows(
     function: Callable,
     dataset: "Dataset",
     format="astropy",
-    evaluator_kwargs: dict[str, Any] = {},
+    kwargs: dict[str, Any] = {},
+    iterable_kwargs: dict[str, Sequence] = {},
 ):
-    using_all_columns = (
-        len(dataset.columns) > 1 and len(signature(function).parameters) == 1
+    requested_columns = (
+        set(signature(function).parameters)
+        - set(kwargs.keys())
+        - set(iterable_kwargs.keys())
     )
-    storage = __make_output(function, dataset, using_all_columns)
+    using_all_columns = len(dataset.columns) > 1 and len(requested_columns) == 1
+
+    first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
+    storage = __make_output(function, dataset, using_all_columns, first_row_kwargs)
     for i, row in enumerate(dataset.rows(output=format)):
+        iter_kwargs = {name: arr[i] for name, arr in iterable_kwargs.items()}
         if using_all_columns:
-            output = function(row, **evaluator_kwargs)
+            output = function(row, **kwargs, **iter_kwargs)
         else:
-            output = function(**row, **evaluator_kwargs)
+            output = function(**row, **kwargs, **iter_kwargs)
         insert(storage, i, output)
     return storage
 
 
-def __make_output(function: Callable, dataset: "Dataset", using_all_columns: bool):
+def __make_output(
+    function: Callable,
+    dataset: "Dataset",
+    using_all_columns: bool,
+    kwargs: dict[str, Any],
+):
     if using_all_columns:
-        first_values = function(next(dataset.take(1, at="start").rows()))
+        first_values = function(next(dataset.take(1, at="start").rows()), **kwargs)
     else:
-        first_values = function(**next(dataset.take(1, at="start").rows()))
+        first_values = function(**next(dataset.take(1, at="start").rows()), **kwargs)
     n = len(dataset)
     if not isinstance(first_values, dict):
         name = function.__name__
@@ -91,8 +104,7 @@ def __visit_vectorize(
 
 
 def __prepare(function: Callable, dataset: "Dataset", evaluator_kwargs: Iterable[str]):
-    input_columns = set(signature(function).parameters.keys())
-    input_columns = input_columns.intersection(dataset.columns)
+    input_columns = set(signature(function).parameters.keys()) - set(evaluator_kwargs)
     if len(input_columns) == 1 and next(iter(input_columns)) == dataset.dtype:
         return dataset
     return dataset.select(input_columns)

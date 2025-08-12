@@ -197,8 +197,6 @@ class ChunkedIndex:
                 f"Range {start}:{end} is out of bounds for index of size {len(self)}"
             )
 
-        print(start, end)
-        print(self.__starts, self.__sizes)
         if start > end:
             raise ValueError(f"Start {start} must be less than end {end}")
 
@@ -210,13 +208,13 @@ class ChunkedIndex:
         start_idx = np.argmax(cumulative_sizes > start)
         end_idx = np.argmax(cumulative_sizes >= end)
 
-        chunk_starts = self.__starts[start_idx : end_idx + 1]
-        chunk_sizes = self.__sizes[start_idx : end_idx + 1]
+        chunk_starts = self.__starts[start_idx : end_idx + 1].copy()
+        chunk_sizes = self.__sizes[start_idx : end_idx + 1].copy()
 
         chunk_starts[0] = chunk_starts[0] + (
             start - cumulative_sizes[start_idx] + cumulative_sizes[0]
         )
-        chunk_sizes[-1] = chunk_sizes[-1] - (end + start - cumulative_sizes[end_idx])
+        chunk_sizes[-1] = chunk_sizes[-1] - (np.sum(chunk_sizes) - end + start)
 
         return ChunkedIndex(chunk_starts, chunk_sizes)
 

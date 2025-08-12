@@ -1,11 +1,11 @@
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
-from opencosmo.visit import insert
+from opencosmo.visit import insert, prepare_kwargs
 
 if TYPE_CHECKING:
     from opencosmo import StructureCollection
@@ -21,7 +21,7 @@ def visit_structure_collection(
     spec = dict(spec)
     __verify(function, spec, collection, evaluator_kwargs.keys())
     to_visit = __prepare_collection(spec, collection)
-    kwargs, iterable_kwargs = __prepare_kwargs(collection, evaluator_kwargs)
+    kwargs, iterable_kwargs = prepare_kwargs(len(collection), evaluator_kwargs)
     if dtype is None:
         dtype = np.float64
 
@@ -42,7 +42,7 @@ def __make_output(
     function: Callable,
     collection: "StructureCollection",
     kwargs: dict[str, Any],
-    iterable_kwargs: dict[str, np.ndarray | list],
+    iterable_kwargs: dict[str, Sequence],
 ):
     first_input = next(collection.take(1, at="start").objects())
     first_values = function(
@@ -80,20 +80,6 @@ def __prepare_collection(
             continue
         collection = collection.select(columns, dataset=ds_name)
     return collection
-
-
-def __prepare_kwargs(
-    collection: "StructureCollection", evaluator_kwargs: dict[str, Any]
-):
-    kwargs = {}
-    array_kwargs = {}
-    n_rows = len(collection)
-    for name, kwarg in evaluator_kwargs.items():
-        if not isinstance(kwarg, (np.ndarray, list)) or len(kwarg) != n_rows:
-            kwargs[name] = kwarg
-        else:
-            array_kwargs[name] = kwarg
-    return kwargs, array_kwargs
 
 
 def __verify(
