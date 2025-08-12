@@ -430,7 +430,7 @@ class Lightcone(dict):
         region = oc.make_cone(center, radius)
         return self.bound(region)
 
-    def evaluate(self, func: Callable, vectorize=False, insert=True):
+    def evaluate(self, func: Callable, vectorize=False, insert=True, **evaluate_kwargs):
         """
         Iterate over the rows in this collection, apply `func` to each, and collect
         the result as new columns in the dataset. You may also choose to simply return thevalues
@@ -470,8 +470,17 @@ class Lightcone(dict):
         """
 
         if insert:
-            return self.__map("evaluate", func=func, vectorize=vectorize, insert=insert)
-        results = [ds.evaluate(func, vectorize, insert) for ds in self.values()]
+            return self.__map(
+                "evaluate",
+                func=func,
+                vectorize=vectorize,
+                insert=insert,
+                **evaluate_kwargs,
+            )
+        results = [
+            ds.evaluate(func, vectorize, insert, **evaluate_kwargs)
+            for ds in self.values()
+        ]
         keys = results[0].keys()
         output = {}
         for key in keys:

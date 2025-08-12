@@ -154,6 +154,51 @@ def test_visit_multiple(halo_paths):
         assert not np.any(vals == 0)
 
 
+def test_visit_multiple_with_kwargs(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "sod_halo_com_x",
+            "sod_halo_com_y",
+            "sod_halo_com_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles, random_value, other_value):
+        particle_data = dm_particles.get_data("numpy")
+        dx_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dy_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dz_fof = (
+            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+        )
+        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
+        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
+        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
+        _ = np.linalg.norm([dx_fof, dy_fof, dz_fof])
+        _ = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        return {
+            "dr_fof": random_value * other_value,
+            "dr_sod": random_value * other_value,
+        }
+
+    random_values = np.random.randint(0, 100, len(collection))
+    other_value = 15
+    collection = collection.evaluate(
+        offset, **spec, insert=True, random_value=random_values, other_value=other_value
+    )
+    data = collection["halo_properties"].select(["dr_fof", "dr_sod"]).get_data("numpy")
+    for vals in data.values():
+        assert np.all(vals == random_values * other_value)
+
+
 def test_visit_multiple_noinsert(halo_paths):
     collection = oc.open(*halo_paths).take(200)
     spec = {
@@ -189,6 +234,21 @@ def test_visit_multiple_noinsert(halo_paths):
     result = collection.evaluate(offset, insert=False, **spec)
     for vals in result.values():
         assert not np.any(vals == 0)
+
+
+def test_data_gets_all_particles(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
+        10, at="random"
+    )
+    for halo in collection.halos():
+        for name, particle_species in halo.items():
+            if "particle" not in name:
+                continue
+            halo_tag = halo["halo_properties"]["fof_halo_tag"]
+            tag_filter = oc.col("fof_halo_tag") == halo_tag
+            ds = collection[name].filter(tag_filter)
+            assert len(ds) == len(particle_species)
 
 
 def test_visit_dataset_in_structure_collection(halo_paths):

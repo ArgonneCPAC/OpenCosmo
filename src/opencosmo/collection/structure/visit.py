@@ -1,5 +1,5 @@
 from inspect import signature
-from typing import TYPE_CHECKING, Callable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional
 
 import numpy as np
 from numpy.typing import DTypeLike
@@ -16,27 +16,40 @@ def visit_structure_collection(
     spec: Mapping[str, Optional[list[str]]],
     collection: "StructureCollection",
     dtype: Optional[DTypeLike] = None,
+    evaluator_kwargs: dict[str, Any] = {},
 ):
     spec = dict(spec)
-    __verify(function, spec, collection)
-    to_visit = __prepare(spec, collection)
+    __verify(function, spec, collection, evaluator_kwargs.keys())
+    to_visit = __prepare_collection(spec, collection)
+    kwargs, iterable_kwargs = __prepare_kwargs(collection, evaluator_kwargs)
     if dtype is None:
         dtype = np.float64
 
-    storage = __make_output(function, to_visit)
+    storage = __make_output(function, to_visit, kwargs, iterable_kwargs)
 
     if isinstance(to_visit, ds.Dataset):
         raise NotImplementedError()
 
     for i, structure in enumerate(to_visit.objects()):
-        output = function(**structure)
+        iterable_kwarg_values = {name: arr[i] for name, arr in iterable_kwargs.items()}
+        output = function(**structure, **kwargs, **iterable_kwarg_values)
         insert(storage, i, output)
 
     return storage
 
 
-def __make_output(function: Callable, collection: "StructureCollection"):
-    first_values = function(**next(collection.take(1, at="start").objects()))
+def __make_output(
+    function: Callable,
+    collection: "StructureCollection",
+    kwargs: dict[str, Any],
+    iterable_kwargs: dict[str, np.ndarray | list],
+):
+    first_input = next(collection.take(1, at="start").objects())
+    first_values = function(
+        **first_input,
+        **kwargs,
+        **{name: arr[0] for name, arr in iterable_kwargs.items()},
+    )
     n = len(collection)
     if not isinstance(first_values, dict):
         name = function.__name__
@@ -47,7 +60,9 @@ def __make_output(function: Callable, collection: "StructureCollection"):
         }
 
 
-def __prepare(spec: dict[str, Optional[list[str]]], collection: "StructureCollection"):
+def __prepare_collection(
+    spec: dict[str, Optional[list[str]]], collection: "StructureCollection"
+):
     if len(spec.keys()) == 1:
         ds_name = next(iter(spec.keys()))
         dataset = collection[ds_name]
@@ -67,17 +82,33 @@ def __prepare(spec: dict[str, Optional[list[str]]], collection: "StructureCollec
     return collection
 
 
+def __prepare_kwargs(
+    collection: "StructureCollection", evaluator_kwargs: dict[str, Any]
+):
+    kwargs = {}
+    array_kwargs = {}
+    n_rows = len(collection)
+    for name, kwarg in evaluator_kwargs.items():
+        if not isinstance(kwarg, (np.ndarray, list)) or len(kwarg) != n_rows:
+            kwargs[name] = kwarg
+        else:
+            array_kwargs[name] = kwarg
+    return kwargs, array_kwargs
+
+
 def __verify(
     function: Callable,
     spec: dict[str, Optional[list[str]]],
     collection: "StructureCollection",
+    kwarg_keys: Iterable[str],
 ):
     datasets_in_collection = set(collection.keys())
+    kwarg_keys = set(kwarg_keys)
     fn_signature = signature(function)
     parameter_names = set(fn_signature.parameters.keys())
 
     for name in parameter_names:
-        if name not in spec:
+        if name not in spec and name not in kwarg_keys:
             spec.update({name: None})
 
     datasets_in_spec = set(spec.keys())

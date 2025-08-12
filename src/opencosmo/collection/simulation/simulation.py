@@ -286,6 +286,7 @@ class SimulationCollection(dict):
         vectorize: bool = False,
         insert: bool = False,
         format: str = "astropy",
+        **evaluate_kwargs,
     ):
         """
         Evaluate the function :code:`func` on each of the datasets or collections
@@ -322,7 +323,11 @@ class SimulationCollection(dict):
 
         results = {
             ds_name: self[ds_name].evaluate(
-                func, vectorize=vectorize, insert=insert, format=format
+                func,
+                vectorize=vectorize,
+                insert=insert,
+                format=format,
+                **evaluate_kwargs,
             )
             for ds_name in datasets
         }
