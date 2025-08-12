@@ -316,7 +316,12 @@ class Dataset:
         return Dataset(self.__handler, new_header, new_state, self.__tree)
 
     def evaluate(
-        self, func: Callable, vectorize=False, insert=False, format="astropy"
+        self,
+        func: Callable,
+        vectorize=False,
+        insert=False,
+        format="astropy",
+        **evaluator_kwargs,
     ) -> Dataset | np.ndarray:
         """
         Iterate over the rows in this dataset, apply `func` to each, and collect
@@ -356,12 +361,22 @@ class Dataset:
         format: str, default = astropy
             Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
 
+        **evaluater_kwargs: any,
+            Any additional arguments that are required for your function to run. These will be passed directly
+            to the function as keyword arguments.
+
         Returns
         -------
         dataset : Dataset
             The new dataset with the evaluated column(s)
         """
-        output = visit_dataset(func, self, vectorize, format)
+        kwarg_columns = set(evaluator_kwargs.keys()).intersection(self.columns)
+        if kwarg_columns:
+            raise ValueError(
+                "Keyword arguments cannot have the same name as columns in your dataset!"
+            )
+
+        output = visit_dataset(func, self, vectorize, format, evaluator_kwargs)
         is_same_length = all(
             isinstance(o, np.ndarray) and len(o) == len(self) for o in output.values()
         )

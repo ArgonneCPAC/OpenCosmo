@@ -222,7 +222,7 @@ class StructureCollection:
         dataset: Optional[str] = None,
         vectorize: bool = False,
         insert: bool = False,
-        **columns: list[str],
+        **evaluate_kwargs: Any,
     ):
         """
         Iterate over the structures in this collection and apply func to each,
@@ -277,16 +277,14 @@ class StructureCollection:
             ds = self[datasets[0]]
             if isinstance(ds, oc.Dataset) and len(datasets) > 1:
                 raise ValueError("Datasets cannot be nested!")
-            elif isinstance(ds, oc.Dataset) and len(columns) != 0:
-                raise ValueError(
-                    "When evaluating over a single dataset, columns are read from the arguments to the function"
-                )
             elif isinstance(ds, oc.Dataset):
-                result = ds.evaluate(func, vectorize=vectorize, insert=insert)
+                result = ds.evaluate(
+                    func, vectorize=vectorize, insert=insert, **evaluate_kwargs
+                )
             elif isinstance(ds, StructureCollection):
                 ds_name = datasets[1] if len(datasets) > 1 else None
                 result = ds.evaluate(
-                    func, ds_name, vectorize=vectorize, insert=insert, **columns
+                    func, ds_name, vectorize=vectorize, insert=insert, **evaluate_kwargs
                 )
 
             if not insert:
@@ -307,7 +305,18 @@ class StructureCollection:
                 self.__hide_source,
             )
         else:
-            output = visit.visit_structure_collection(func, columns, self)
+            known_datasets = set(self.keys())
+            kwarg_names = set(evaluate_kwargs.keys())
+
+            requested_datasets = kwarg_names.intersection(known_datasets)
+            other_kwarg_names = kwarg_names.difference(known_datasets)
+
+            columns = {key: evaluate_kwargs[key] for key in requested_datasets}
+            kwargs = {key: evaluate_kwargs[key] for key in other_kwarg_names}
+
+            output = visit.visit_structure_collection(
+                func, columns, self, evaluator_kwargs=kwargs
+            )
             if not insert:
                 return output
             return self.with_new_columns(**output, dataset=self.__source.dtype)
