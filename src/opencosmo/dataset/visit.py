@@ -72,7 +72,7 @@ def __make_output(
         first_values = {name: first_values}
     storage = {}
     for name, value in first_values.items():
-        shape = (n,)
+        shape: tuple[int, ...] = (n,)
         dtype = type(value)
         if isinstance(value, np.ndarray):
             shape = shape + value.shape

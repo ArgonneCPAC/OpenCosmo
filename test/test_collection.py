@@ -539,6 +539,37 @@ def test_simulation_collection_evaluate_noinsert(multi_path):
         )
 
 
+def test_simulation_collection_evaluate_map_kwarg(multi_path):
+    collection = oc.open(multi_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx, random_value, other_value):
+        return fof_halo_mass * fof_halo_com_vx * random_value / other_value
+
+    random_data = {
+        key: np.random.randint(0, 10, len(ds)) for key, ds in collection.items()
+    }
+    random_val = 3.0
+
+    output = collection.evaluate(
+        fof_px,
+        vectorize=True,
+        insert=False,
+        format="numpy",
+        random_value=random_data,
+        other_value=random_val,
+    )
+    for ds_name, ds in collection.items():
+        assert "fof_px" not in ds.columns
+        data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
+        assert np.all(
+            output[ds_name]["fof_px"]
+            == data["fof_halo_mass"]
+            * data["fof_halo_com_vx"]
+            * random_data[ds_name]
+            / random_val
+        )
+
+
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
