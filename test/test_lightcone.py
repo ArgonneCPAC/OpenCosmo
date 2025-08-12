@@ -320,6 +320,35 @@ def test_lc_collection_evaluate_noinsert(
     assert np.all(result["offset"] > 0)
 
 
+def test_lc_collection_evaluate_mapped_kwarg(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+    random_data = np.random.randint(0, 100, len(ds))
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        random_value,
+        other_value,
+    ):
+        _ = fof_halo_com_x - fof_halo_center_x
+        _ = fof_halo_com_y - fof_halo_center_y
+        _ = fof_halo_com_z - fof_halo_center_z
+        return random_value * other_value
+
+    result = ds.evaluate(
+        offset, vectorize=True, insert=False, random_value=random_data, other_value=7
+    )
+
+    assert len(result["offset"]) == len(ds)
+    assert np.all(result["offset"] == random_data * 7)
+
+
 def test_lc_collection_units(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
