@@ -1,6 +1,6 @@
 from functools import reduce
 from itertools import chain
-from typing import Callable, Generator, Iterable, Optional, Self
+from typing import Any, Callable, Generator, Iterable, Optional, Self
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -16,6 +16,7 @@ from opencosmo.io.io import OpenTarget, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
 from opencosmo.spatial import Region
+from opencosmo.visit import prepare_kwargs
 
 
 def get_redshift_range(datasets: list[Dataset]):
@@ -347,14 +348,32 @@ class Lightcone(dict):
                 new_datasets[key] = new_dataset
         return Lightcone(new_datasets, (z_low, z_high))
 
-    def __map(self, method, *args, hide_redshift: bool = False, **kwargs):
+    def __map(
+        self,
+        method,
+        *args,
+        hide_redshift: bool = False,
+        mapped_arguments: dict[str, dict[str, Any]] = {},
+        construct: bool = True,
+        **kwargs,
+    ):
         """
         This type of collection will only ever be constructed if all the underlying
         datasets have the same data type, so it is always safe to map operations
         across all of them.
         """
-        output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return Lightcone(output, self.z_range, hide_redshift)
+        output = {}
+        for ds_name, dataset in self.items():
+            dataset_mapped_arguments = {
+                arg_name: args[ds_name] for arg_name, args in mapped_arguments.items()
+            }
+            output[ds_name] = getattr(dataset, method)(
+                *args, **kwargs, **dataset_mapped_arguments
+            )
+
+        if construct:
+            return Lightcone(output, self.z_range, hide_redshift)
+        return output
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
@@ -468,23 +487,32 @@ class Lightcone(dict):
         dataset : Lightcone
             The new lightcone dataset with the evaluated column(s)
         """
-
-        if insert:
-            return self.__map(
-                "evaluate",
-                func=func,
-                vectorize=vectorize,
-                insert=insert,
-                **evaluate_kwargs,
-            )
-        results = [
-            ds.evaluate(func, vectorize, insert, **evaluate_kwargs)
-            for ds in self.values()
+        kwargs, iterable_kwargs = prepare_kwargs(len(self), evaluate_kwargs)
+        iterable_kwargs_by_dataset = {}
+        indices = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))[
+            :-1
         ]
-        keys = results[0].keys()
+        for name, arr in iterable_kwargs.items():
+            splits = np.array_split(arr, indices)
+            iterable_kwargs_by_dataset[name] = dict(zip(self.keys(), splits))
+
+        result = self.__map(
+            "evaluate",
+            func=func,
+            vectorize=vectorize,
+            insert=insert,
+            mapped_arguments=iterable_kwargs_by_dataset,
+            construct=insert,
+            **kwargs,
+        )
+        if insert:
+            assert isinstance(result, Lightcone)
+            return result
+
+        keys = next(iter(result.values())).keys()
         output = {}
         for key in keys:
-            output[key] = np.concatenate([r[key] for r in results])
+            output[key] = np.concatenate([r[key] for r in result.values()])
         return output
 
     def filter(self, *masks: ColumnMask, **kwargs) -> Self:
