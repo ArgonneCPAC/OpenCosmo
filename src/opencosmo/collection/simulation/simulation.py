@@ -82,14 +82,30 @@ class SimulationCollection(dict):
 
         return schema
 
-    def __map(self, method, *args, **kwargs):
+    def __map(self, method, *args, construct=True, **kwargs):
         """
         This type of collection will only ever be constructed if all the underlying
         datasets have the same data type, so it is always safe to map operations
         across all of them.
         """
-        output = {k: getattr(v, method)(*args, **kwargs) for k, v in self.items()}
-        return SimulationCollection(output)
+        regular_kwargs = {}
+        mapped_kwargs = {}
+        known_datasets = set(self.keys())
+        for name, value in kwargs.items():
+            if isinstance(value, dict) and set(value.keys()) == known_datasets:
+                mapped_kwargs[name] = value
+            else:
+                regular_kwargs[name] = value
+
+        output = {}
+        for name, dataset in self.items():
+            dataset_mapped_kwargs = {key: kw[name] for key, kw in mapped_kwargs.items()}
+            output[name] = getattr(dataset, method)(
+                *args, **regular_kwargs, **dataset_mapped_kwargs
+            )
+        if construct:
+            return SimulationCollection(output)
+        return output
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
@@ -321,21 +337,16 @@ class SimulationCollection(dict):
         else:
             datasets = list(datasets)
 
-        results = {
-            ds_name: self[ds_name].evaluate(
-                func,
-                vectorize=vectorize,
-                insert=insert,
-                format=format,
-                **evaluate_kwargs,
-            )
-            for ds_name in datasets
-        }
-        if not insert:
-            return results
-        else:
-            output = {**self, **results}
-            return SimulationCollection(output)
+        results = self.__map(
+            "evaluate",
+            func,
+            vectorize=vectorize,
+            insert=insert,
+            format=format,
+            construct=insert,
+            **evaluate_kwargs,
+        )
+        return results
 
     def with_units(self, convention: str) -> Self:
         """
