@@ -61,3 +61,10 @@ def test_cone_search(core_path_475, core_path_487):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     region = oc.make_cone(center, radius)
     ds = ds.bound(region)
+
+
+def test_repr(core_path_475, core_path_487):
+    ds = oc.open(core_path_487, core_path_475)
+    ds = ds.with_redshift_range(0, 0.1)
+    ds = ds.select(["ra", "dec"])
+    assert str(ds)
