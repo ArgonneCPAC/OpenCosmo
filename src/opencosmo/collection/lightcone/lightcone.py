@@ -105,7 +105,7 @@ class Lightcone(dict):
         else:
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
-        if self.__hide_redshift:
+        if self.__hide_redshift and "redshift" in self.columns:
             repr_ds = repr_ds.drop("redshift")
 
         table_repr = repr_ds.data.__repr__()
