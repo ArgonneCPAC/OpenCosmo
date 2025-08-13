@@ -2,8 +2,8 @@ from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
-from astropy.table import Column, Table
-from astropy.units import Quantity
+from astropy.table import Column, Table  # type: ignore
+from astropy.units import Quantity  # type: ignore
 from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
