@@ -258,11 +258,10 @@ def test_evaluate_structure_write(all_paths, tmp_path):
     }
 
     def offset(halo_properties, dm_particles):
-        particle_data = dm_particles.get_data("numpy")
-        dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        dy = np.mean(particle_data["y"]) - halo_properties["fof_halo_center_y"].value
-        dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
-        return np.linalg.norm([dx, dy, dz])
+        dx = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dy = np.mean(dm_particles["y"]) - halo_properties["fof_halo_center_y"]
+        dz = np.mean(dm_particles["z"]) - halo_properties["fof_halo_center_z"]
+        return np.linalg.norm([dx.value, dy.value, dz.value])
 
     collection = collection.evaluate(offset, **spec, insert=True)
     oc.write(temporary_path, collection)
