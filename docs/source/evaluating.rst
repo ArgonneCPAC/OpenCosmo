@@ -188,7 +188,7 @@ Using :py:meth:`SimulationCollection.evaluate <opencosmo.SimulationCollection.ev
                 key: np.random.randint(0, 10, len(ds)) for key, ds in collection.items()
             }
             random_val = {
-                key: np.random.randint(0, 100, 1) for key in collection.keys()
+                key: np.random.randint(1, 100, 1) for key in collection.keys()
             }
 
             output = collection.evaluate(
