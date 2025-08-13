@@ -1,0 +1,1 @@
+Fixed a bug that could cause printing lightcone summary to fail when column originally contained "redshift" column that had been dropped.
