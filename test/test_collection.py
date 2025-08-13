@@ -526,7 +526,7 @@ def test_simulation_collection_evaluate_map_kwarg(multi_path):
     random_data = {
         key: np.random.randint(0, 10, len(ds)) for key, ds in collection.items()
     }
-    random_val = {key: np.random.randint(0, 100, 1) for key in collection.keys()}
+    random_val = {key: np.random.randint(1, 100, 1) for key in collection.keys()}
 
     output = collection.evaluate(
         fof_px,
