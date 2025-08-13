@@ -299,9 +299,9 @@ class SimulationCollection(dict):
         self,
         func: Callable,
         datasets: Optional[str | Iterable[str]] = None,
+        format: str = "astropy",
         vectorize: bool = False,
         insert: bool = False,
-        format: str = "astropy",
         **evaluate_kwargs,
     ):
         """
@@ -309,7 +309,7 @@ class SimulationCollection(dict):
         held by this SimulationCollection. This function simply delegates to the
         either :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.Evaluate>`
         or :py:meth:`Dataset.evaluate <opencosmo.Dataset.Evaluate>` as appropriate. Refer
-        to :ref:`Evaluating Complex Computations` for more details.
+        to :ref:`Evaluating Complex Expressions on Datasets and Collections` for more details.
 
         If "datasets" is provided, the evaluation will only be performed on the provided
         datasets.
@@ -321,14 +321,15 @@ class SimulationCollection(dict):
             The function to evaluate
         datasets: str | list[str], optional
             The datasets to evaluate on. If not provided, will be evaluated on all datasets
+        format: str, default = "astropy"
+            The format of the data that is provided to your function. If "astropy", will be a dictionary of
+            astropy quantities. If "numpy", will be a dictionary of numpy arrays.
         vectorize: bool, default = False
             Whether to vectorize the computation. See :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.Evaluate>`
             and/or :py:meth:`Dataset.evaluate <opencosmo.Dataset.Evaluate>` for more details.
         insert: bool, default = True
             Whether or not to insert the results as columns in the datasets. If false, the results will
             be returned directly. If true, this method will return a new Simulation Collection.
-        format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
         """
         if datasets is None:
             datasets = list(self.keys())

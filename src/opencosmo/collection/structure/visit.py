@@ -2,6 +2,8 @@ from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
+from astropy.table import Column, Table
+from astropy.units import Quantity
 from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
@@ -15,6 +17,7 @@ def visit_structure_collection(
     function: Callable,
     spec: Mapping[str, Optional[list[str]]],
     collection: "StructureCollection",
+    format: str = "astropy",
     dtype: Optional[DTypeLike] = None,
     evaluator_kwargs: dict[str, Any] = {},
 ):
@@ -25,26 +28,55 @@ def visit_structure_collection(
     if dtype is None:
         dtype = np.float64
 
-    storage = __make_output(function, to_visit, kwargs, iterable_kwargs)
+    storage = __make_output(function, to_visit, format, kwargs, iterable_kwargs)
 
     if isinstance(to_visit, ds.Dataset):
         raise NotImplementedError()
 
     for i, structure in enumerate(to_visit.objects()):
         iterable_kwarg_values = {name: arr[i] for name, arr in iterable_kwargs.items()}
-        output = function(**structure, **kwargs, **iterable_kwarg_values)
+        input_structure = __make_input(structure, format)
+
+        output = function(**input_structure, **kwargs, **iterable_kwarg_values)
         insert(storage, i, output)
 
     return storage
 
 
+def __make_input(structure: dict, format: str = "astropy"):
+    values = {}
+    for name, element in structure.items():
+        if isinstance(element, dict):
+            values[name] = __make_input(element, format)
+        elif isinstance(element, ds.Dataset):
+            data = element.get_data(format)
+            if format == "astropy":
+                values[name] = __make_quantities(data)
+            else:
+                values[name] = data
+        elif isinstance(element, Quantity) and format == "numpy":
+            values[name] = element.value
+        else:
+            values[name] = element
+    return values
+
+
+def __make_quantities(data: Table | Column):
+    if isinstance(data, Table):
+        return {col.name: col.quantity for col in data.itercols()}
+    else:
+        return {data.name: data.quantity}
+
+
 def __make_output(
     function: Callable,
     collection: "StructureCollection",
-    kwargs: dict[str, Any],
-    iterable_kwargs: dict[str, Sequence],
+    format: str = "astropy",
+    kwargs: dict[str, Any] = {},
+    iterable_kwargs: dict[str, Sequence] = {},
 ):
-    first_input = next(collection.take(1, at="start").objects())
+    first_structure = next(collection.take(1, at="start").objects())
+    first_input = __make_input(first_structure, format)
     first_values = function(
         **first_input,
         **kwargs,
