@@ -100,19 +100,18 @@ When working with a :py:class:`StructureCollection <opencosmo.StructureCollectio
 
         collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(200)
         def offset(halo_properties, dm_particles):
-                particle_data = dm_particles.get_data("numpy")
                 dx_fof = (
-                    np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+                    np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
                 )
                 dy_fof = (
-                    np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+                    np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
                 )
                 dz_fof = (
-                    np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
+                    np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
                 )
-                dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
-                dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
-                dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
+                dx_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_x"]
+                dy_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_y"]
+                dz_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_z"]
                 dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
                 dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
                 return {"dr_fof": dr_fof, "dr_sod": dr_sod}
@@ -120,6 +119,7 @@ When working with a :py:class:`StructureCollection <opencosmo.StructureCollectio
         collection = collection.evaluate(
                 offset, 
                 insert=True, 
+                format="numpy",
                 dm_particles=["x","y","z"]
                 halo_properties=[
                         "fof_halo_center_x",
@@ -132,6 +132,8 @@ When working with a :py:class:`StructureCollection <opencosmo.StructureCollectio
         )
 
 There are two clear differences between this example and the one with a single dataset. First, you must explicitly declare which columns you need from each of the datasets in the collection. The columns are passed as keyword arguments to :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>`. Secondly, the function that does the computation takes the names of the datasets themselves as input parameters, rather than the names of columns. This ensures you can, for example, work with multiple species of particles in a single function even if they have some of the same column names.
+
+You will also notice that we set :code:`format = "numpy"` in the call to :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>`. With this option set, the data will be provided to our function as a dictionary of scalars (for halo_properties) and a dictionary of numpy arrays (for dm_particles). If we had chosen instead :code:`format = "astropy"` (the default), the data would have been provided as a dictionary of astropy quantities and a dictionary of quantity arrays, respectively.
 
 Evaluating on a Single Dataset in a Structure Collection
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -158,7 +160,7 @@ Notice that because we are operating on a single dataset, the format of the func
 
         result = collection["halo_properties"].evaluate(perturbed_mass, vectorize = True, dm = dm_vals)
 
-However if you try to do the above with an insert
+However if you try to do the above while inserting the values
 
 .. code-block:: python
 
@@ -168,3 +170,34 @@ the return value will be a new dataset with the new :code:`perturbed_mass` colum
 
 
 
+Evaluating on Lightcones and Simulation Collections
+---------------------------------------------------
+
+Using :py:meth:`Lightcone.evaluate <opencosmo.Lightcone.evaluate>` is identical to using :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`. Although OpenCosmo represents lighcones internally as a collection of :py:class:`Datasets <opencosmo.Dataset>`, the details of broadcasting over these datasets are handled for you.
+
+Using :py:meth:`SimulationCollection.evaluate <opencosmo.SimulationCollection.evaluate>` should also feel very familiar. However if you plan to provide arguments on a per-dataset basis (i.e. an extra numpy array that is used in the calculation) these arguments must be provided as a dictionary with the same keys as the names of the dataset in the :py:class:`SimulationCollection <opencosmo.SimulationCollection>`. For example:
+
+.. code-block:: python
+
+        collection = oc.open("haloproperties_multi.hdf5")
+
+            def fof_px(fof_halo_mass, fof_halo_com_vx, random_value, other_value):
+                return fof_halo_mass * fof_halo_com_vx * random_value / other_value
+
+            random_data = {
+                key: np.random.randint(0, 10, len(ds)) for key, ds in collection.items()
+            }
+            random_val = {
+                key: np.random.randint(0, 100, 1) for key in collection.keys()
+            }
+
+            output = collection.evaluate(
+                fof_px,
+                vectorize=True,
+                insert=False,
+                format="numpy",
+                random_value=random_data,
+                other_value=random_val,
+            )
+
+A :py:class:`SimulationCollection <opencosmo.SimulationCollection>` can contain :py:class:`Datasets <opencosmo.Dataset>` or other collections. Besides arguments that are provided on a per-argument basis as discussed above, everything passed into this function will be passed directly into the :code:`evaluate` method of the underlying object.

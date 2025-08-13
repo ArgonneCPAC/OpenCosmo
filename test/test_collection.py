@@ -526,7 +526,7 @@ def test_simulation_collection_evaluate_map_kwarg(multi_path):
     random_data = {
         key: np.random.randint(0, 10, len(ds)) for key, ds in collection.items()
     }
-    random_val = 3.0
+    random_val = {key: np.random.randint(0, 100, 1) for key in collection.keys()}
 
     output = collection.evaluate(
         fof_px,
@@ -544,7 +544,7 @@ def test_simulation_collection_evaluate_map_kwarg(multi_path):
             == data["fof_halo_mass"]
             * data["fof_halo_com_vx"]
             * random_data[ds_name]
-            / random_val
+            / random_val[ds_name]
         )
 
 
