@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-pyproject-version
     steps: 
+      - uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
