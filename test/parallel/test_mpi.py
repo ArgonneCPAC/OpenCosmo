@@ -231,13 +231,12 @@ def test_evaluate_structure(all_paths):
     }
 
     def offset(halo_properties, dm_particles):
-        particle_data = dm_particles.get_data("numpy")
-        dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        dy = np.mean(particle_data["y"]) - halo_properties["fof_halo_center_y"].value
-        dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
+        dx = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dy = np.mean(dm_particles["y"]) - halo_properties["fof_halo_center_y"]
+        dz = np.mean(dm_particles["z"]) - halo_properties["fof_halo_center_z"]
         return np.linalg.norm([dx, dy, dz])
 
-    collection = collection.evaluate(offset, **spec, insert=True)
+    collection = collection.evaluate(offset, **spec, insert=True, format="numpy")
     data = collection["halo_properties"].select("offset").data
     assert not np.any(data == 0)
 
