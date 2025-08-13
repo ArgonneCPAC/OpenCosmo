@@ -82,7 +82,14 @@ class SimulationCollection(dict):
 
         return schema
 
-    def __map(self, method, *args, construct=True, **kwargs):
+    def __map(
+        self,
+        method,
+        *args,
+        construct=True,
+        datasets: Optional[str | Iterable[str]] = None,
+        **kwargs,
+    ):
         """
         This type of collection will only ever be constructed if all the underlying
         datasets have the same data type, so it is always safe to map operations
@@ -90,15 +97,25 @@ class SimulationCollection(dict):
         """
         regular_kwargs = {}
         mapped_kwargs = {}
-        known_datasets = set(self.keys())
+        if isinstance(datasets, str):
+            datasets = [datasets]
+        elif datasets is None:
+            datasets = self.keys()
+        requested_datasets = set(datasets)
+        if not requested_datasets.issubset(self.keys()):
+            raise ValueError(
+                f"Unknown datasets {requested_datasets.difference(self.keys())}"
+            )
+
         for name, value in kwargs.items():
-            if isinstance(value, dict) and set(value.keys()) == known_datasets:
+            if isinstance(value, dict) and set(value.keys()) == requested_datasets:
                 mapped_kwargs[name] = value
             else:
                 regular_kwargs[name] = value
 
         output = {}
-        for name, dataset in self.items():
+        for name in requested_datasets:
+            dataset = self[name]
             dataset_mapped_kwargs = {key: kw[name] for key, kw in mapped_kwargs.items()}
             output[name] = getattr(dataset, method)(
                 *args, **regular_kwargs, **dataset_mapped_kwargs
@@ -269,10 +286,8 @@ class SimulationCollection(dict):
         You can also optionally pass the "datasets" keyword argument to specify that the
         operation should only be performed on a subset of the datasets.
 
-        In general, this method will fail if one of the columns is a numpy array or
-        astropy quantity and you specify more than a single dataset.
-        This is due to the fact that individual simulations in this collection are
-        likely to be of different lengths.
+        If passing in numpy arrays or astropy quantities, they should be provided
+        as a dictionary where the keys are the same as the keys in this dataset.
 
         Parameters
         ----------
