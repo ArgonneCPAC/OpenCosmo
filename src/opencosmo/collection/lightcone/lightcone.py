@@ -449,7 +449,14 @@ class Lightcone(dict):
         region = oc.make_cone(center, radius)
         return self.bound(region)
 
-    def evaluate(self, func: Callable, vectorize=False, insert=True, **evaluate_kwargs):
+    def evaluate(
+        self,
+        func: Callable,
+        format: str = "astropy",
+        vectorize=False,
+        insert=True,
+        **evaluate_kwargs,
+    ):
         """
         Iterate over the rows in this collection, apply `func` to each, and collect
         the result as new columns in the dataset. You may also choose to simply return thevalues
@@ -476,6 +483,10 @@ class Lightcone(dict):
         func: Callable
             The function to evaluate on the rows in the dataset.
 
+        format: str, default = "astropy"
+            The format of the data that is provided to your function. If "astropy", will be a dictionary of
+            astropy quantities. If "numpy", will be a dictionary of numpy arrays.
+
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)
 
@@ -499,6 +510,7 @@ class Lightcone(dict):
         result = self.__map(
             "evaluate",
             func=func,
+            format=format,
             vectorize=vectorize,
             insert=insert,
             mapped_arguments=iterable_kwargs_by_dataset,

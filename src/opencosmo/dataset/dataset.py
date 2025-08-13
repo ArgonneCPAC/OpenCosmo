@@ -321,10 +321,10 @@ class Dataset:
         vectorize=False,
         insert=False,
         format="astropy",
-        **evaluator_kwargs,
+        **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
         """
-        Iterate over the rows in this dataset, apply `func` to each, and collect
+        Iterate over the rows in this dataset, apply :code:`func` to each, and collect
         the result as new columns in the dataset.
 
         This function is the equivalent of :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
@@ -355,28 +355,30 @@ class Dataset:
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)
 
-        insert: bool, default = False
-            If true, the data will be inserted as a column in this dataset. Otherwise the data will be returned.
+        insert: bool, default = True
+            If true, the data will be inserted as a column in this dataset. The new column will have the same name
+            as the function. Otherwise the data will be returned directly.
 
         format: str, default = astropy
             Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
 
-        **evaluater_kwargs: any,
+        **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
-            to the function as keyword arguments.
+            to the function as keyword arguments. If a kwarg is an array of values with the same length as the dataset,
+            it will be treated as an additional column.
 
         Returns
         -------
-        dataset : Dataset
-            The new dataset with the evaluated column(s)
+        result : Dataset | dict[str, np.ndarray | astropy.units.Quantity]
+            The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
-        kwarg_columns = set(evaluator_kwargs.keys()).intersection(self.columns)
+        kwarg_columns = set(evaluate_kwargs.keys()).intersection(self.columns)
         if kwarg_columns:
             raise ValueError(
                 "Keyword arguments cannot have the same name as columns in your dataset!"
             )
 
-        output = visit_dataset(func, self, vectorize, format, evaluator_kwargs)
+        output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
         is_same_length = all(
             isinstance(o, np.ndarray) and len(o) == len(self) for o in output.values()
         )

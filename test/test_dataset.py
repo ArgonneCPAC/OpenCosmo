@@ -132,18 +132,20 @@ def test_visit_vectorize_multiple(input_path):
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
-def test_visit_multiple_with_kwargs(input_path):
+def test_visit_multiple_with_kwargs_numpy(input_path):
     ds = oc.open(input_path)
 
     def fof_px(fof_halo_mass, fof_halo_com_vx, random_value):
-        return fof_halo_mass * fof_halo_com_vx * random_value
+        return fof_halo_mass * fof_halo_com_vx + random_value
 
     random_values = np.random.randint(0, 100, len(ds))
-    result = ds.evaluate(fof_px, vectorize=True, random_value=random_values)
+    result = ds.evaluate(
+        fof_px, insert=False, format="numpy", vectorize=True, random_value=random_values
+    )
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
     assert np.all(
-        result["fof_px"].value
-        == data["fof_halo_mass"] * data["fof_halo_com_vx"] * random_values
+        result["fof_px"]
+        == data["fof_halo_mass"] * data["fof_halo_com_vx"] + random_values
     )
 
 

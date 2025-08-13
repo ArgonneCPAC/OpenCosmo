@@ -105,18 +105,17 @@ def test_visit_single(halo_paths):
     }
 
     def offset(halo_properties, dm_particles):
-        particle_data = dm_particles.get_data("numpy")
-        dx = np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        dy = np.mean(particle_data["y"]) - halo_properties["fof_halo_center_y"].value
-        dz = np.mean(particle_data["z"]) - halo_properties["fof_halo_center_z"].value
-        return np.linalg.norm([dx, dy, dz])
+        dx = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dy = np.mean(dm_particles["y"]) - halo_properties["fof_halo_center_y"]
+        dz = np.mean(dm_particles["z"]) - halo_properties["fof_halo_center_z"]
+        return np.linalg.norm([dx.value, dy.value, dz.value])
 
     collection = collection.evaluate(offset, **spec, insert=True)
     data = collection["halo_properties"].select("offset").data
     assert not np.any(data == 0)
 
 
-def test_visit_multiple(halo_paths):
+def test_visit_multiple_with_numpy(halo_paths):
     collection = oc.open(*halo_paths).take(200)
     spec = {
         "dm_particles": ["x", "y", "z"],
@@ -131,24 +130,17 @@ def test_visit_multiple(halo_paths):
     }
 
     def offset(halo_properties, dm_particles):
-        particle_data = dm_particles.get_data("numpy")
-        dx_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dy_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dz_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
-        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
-        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
+        dx_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dy_fof = np.mean(dm_particles["y"]) - halo_properties["fof_halo_center_y"]
+        dz_fof = np.mean(dm_particles["z"]) - halo_properties["fof_halo_center_z"]
+        dx_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_x"]
+        dy_sod = np.mean(dm_particles["y"]) - halo_properties["sod_halo_com_y"]
+        dz_sod = np.mean(dm_particles["z"]) - halo_properties["sod_halo_com_z"]
         dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
         dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
         return {"dr_fof": dr_fof, "dr_sod": dr_sod}
 
-    collection = collection.evaluate(offset, **spec, insert=True)
+    collection = collection.evaluate(offset, **spec, format="numpy", insert=True)
     data = collection["halo_properties"].select(["dr_fof", "dr_sod"]).get_data("numpy")
     for vals in data.values():
         assert not np.any(vals == 0)
@@ -169,21 +161,14 @@ def test_visit_multiple_with_kwargs(halo_paths):
     }
 
     def offset(halo_properties, dm_particles, random_value, other_value):
-        particle_data = dm_particles.get_data("numpy")
-        dx_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dy_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dz_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
-        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
-        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
-        _ = np.linalg.norm([dx_fof, dy_fof, dz_fof])
-        _ = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        dx_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dy_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dz_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dx_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_x"]
+        dy_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_y"]
+        dz_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_z"]
+        _ = np.linalg.norm([dx_fof.value, dy_fof.value, dz_fof.value])
+        _ = np.linalg.norm([dx_sod.value, dy_sod.value, dz_sod.value])
         return {
             "dr_fof": random_value * other_value,
             "dr_sod": random_value * other_value,
@@ -214,21 +199,14 @@ def test_visit_multiple_noinsert(halo_paths):
     }
 
     def offset(halo_properties, dm_particles):
-        particle_data = dm_particles.get_data("numpy")
-        dx_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dy_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dz_fof = (
-            np.mean(particle_data["x"]) - halo_properties["fof_halo_center_x"].value
-        )
-        dx_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_x"].value
-        dy_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_y"].value
-        dz_sod = np.mean(particle_data["x"]) - halo_properties["sod_halo_com_z"].value
-        dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
-        dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        dx_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dy_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dz_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dx_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_x"]
+        dy_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_y"]
+        dz_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_z"]
+        dr_fof = np.linalg.norm([dx_fof.value, dy_fof.value, dz_fof.value])
+        dr_sod = np.linalg.norm([dx_sod.value, dy_sod.value, dz_sod.value])
         return {"dr_fof": dr_fof, "dr_sod": dr_sod}
 
     result = collection.evaluate(offset, insert=False, **spec)
@@ -285,22 +263,22 @@ def test_visit_galaxies_in_halo_collection(halo_paths, galaxy_paths):
     collection = oc.open(*halo_paths, *galaxy_paths).take(10)
 
     def offset(galaxy_properties, star_particles):
-        total_mass = np.sum(star_particles.data["mass"])
+        total_mass = np.sum(star_particles["mass"])
         x_com = (
-            star_particles.data["mass"]
-            * star_particles.data["x"]
+            star_particles["mass"]
+            * star_particles["x"]
             / (total_mass * len(star_particles))
         ).sum()
-        y_com = np.sum(star_particles.data["mass"] * star_particles.data["y"]) / (
+        y_com = np.sum(star_particles["mass"] * star_particles["y"]) / (
             total_mass * len(star_particles)
         )
-        z_com = np.sum(star_particles.data["mass"] * star_particles.data["z"]) / (
+        z_com = np.sum(star_particles["mass"] * star_particles["z"]) / (
             total_mass * len(star_particles)
         )
-        dx = x_com - galaxy_properties["gal_center_x"].value
-        dy = y_com - galaxy_properties["gal_center_y"].value
-        dz = z_com - galaxy_properties["gal_center_z"].value
-        dr = np.linalg.norm([dx, dy, dz])
+        dx = x_com - galaxy_properties["gal_center_x"]
+        dy = y_com - galaxy_properties["gal_center_y"]
+        dz = z_com - galaxy_properties["gal_center_z"]
+        dr = np.linalg.norm([dx.value, dy.value, dz.value])
         return dr
 
     collection = collection.evaluate(

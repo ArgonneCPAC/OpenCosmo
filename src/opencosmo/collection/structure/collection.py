@@ -220,8 +220,9 @@ class StructureCollection:
         self,
         func: Callable,
         dataset: Optional[str] = None,
+        format: str = "astropy",
         vectorize: bool = False,
-        insert: bool = False,
+        insert: bool = True,
         **evaluate_kwargs: Any,
     ):
         """
@@ -271,6 +272,37 @@ class StructureCollection:
 
         It is not required to pass a list of column names for a given dataset. If a list
         is not provided, all columns will be passed to the computation function.
+
+        For more details and advanced usage see :ref:`Evaluating on Structure Collections`
+
+        Parameters
+        ----------
+
+        func: Callable
+            The function to evaluate on the rows in the dataset.
+
+        dataset: Optional[str], default = None
+            The dataset inside this collection to evaluate the function on. If none, assumes the function requires data from
+            multiple datasets.
+
+        vectorize: bool, default = False
+            Whether to provide the values as full columns (True) or one row at a time (False) if visiting a single dataset.
+            Has no effect if visiting structures, since structures require input from multiple datasets that will not in
+            general be the same length.
+
+        insert: bool, default = True
+            If true, the data will be inserted as a column in the specified dataset, or the main "properties" dataset
+            if no dataset is specified. The new column will have the same name as the function. Otherwise the data
+            will be returned directly.
+
+        format: str, default = astropy
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
+
+        **evaluate_kwargs: any,
+            Any additional arguments that are required for your function to run. These will be passed directly
+            to the function as keyword arguments. If a kwarg is an array of values with the same length as the dataset,
+            it will be treated as an additional column.
+
         """
         if dataset is not None:
             datasets = dataset.split(".", 1)
@@ -279,12 +311,21 @@ class StructureCollection:
                 raise ValueError("Datasets cannot be nested!")
             elif isinstance(ds, oc.Dataset):
                 result = ds.evaluate(
-                    func, vectorize=vectorize, insert=insert, **evaluate_kwargs
+                    func,
+                    format=format,
+                    vectorize=vectorize,
+                    insert=insert,
+                    **evaluate_kwargs,
                 )
             elif isinstance(ds, StructureCollection):
                 ds_name = datasets[1] if len(datasets) > 1 else None
                 result = ds.evaluate(
-                    func, ds_name, vectorize=vectorize, insert=insert, **evaluate_kwargs
+                    func,
+                    ds_name,
+                    format=format,
+                    vectorize=vectorize,
+                    insert=insert,
+                    **evaluate_kwargs,
                 )
 
             if not insert:
@@ -315,7 +356,7 @@ class StructureCollection:
             kwargs = {key: evaluate_kwargs[key] for key in other_kwarg_names}
 
             output = visit.visit_structure_collection(
-                func, columns, self, evaluator_kwargs=kwargs
+                func, columns, self, format=format, evaluator_kwargs=kwargs
             )
             if not insert:
                 return output
