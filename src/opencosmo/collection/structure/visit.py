@@ -34,6 +34,8 @@ def visit_structure_collection(
         raise NotImplementedError()
 
     for i, structure in enumerate(to_visit.objects()):
+        if i == 0:
+            continue
         iterable_kwarg_values = {name: arr[i] for name, arr in iterable_kwargs.items()}
         input_structure = __make_input(structure, format)
 
@@ -85,11 +87,15 @@ def __make_output(
     n = len(collection)
     if not isinstance(first_values, dict):
         name = function.__name__
-        return {name: np.zeros(n, dtype=type(first_values))}
+        result = {name: np.zeros(n, dtype=type(first_values))}
+        result[name][0] = first_values
     else:
-        return {
+        result = {
             name: np.zeros(n, dtype=type(val)) for name, val in first_values.items()
         }
+        for name, value in first_values.items():
+            result[name][0] = value
+    return result
 
 
 def __prepare_collection(
