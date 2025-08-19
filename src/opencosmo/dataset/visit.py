@@ -1,4 +1,4 @@
-from inspect import signature
+from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 
 import astropy.units as u  # type: ignore
@@ -107,17 +107,24 @@ def __visit_vectorize(
 
 
 def __prepare(function: Callable, dataset: "Dataset", evaluator_kwargs: Iterable[str]):
-    input_columns = set(signature(function).parameters.keys()) - set(evaluator_kwargs)
-    if len(input_columns) == 1 and next(iter(input_columns)) == dataset.dtype:
+    function_arguments = set(signature(function).parameters.keys())
+
+    input_columns = function_arguments.intersection(dataset.columns)
+    if len(input_columns) == 0 and dataset.dtype in function_arguments:
         return dataset
     return dataset.select(input_columns)
 
 
 def __verify(function: Callable, dataset: "Dataset", kwarg_names: Iterable[str]):
-    input_names = set(signature(function).parameters.keys())
+    function_signature = signature(function)
+    required_parameters = set()
+    for name, parameter in function_signature.parameters.items():
+        if parameter.default == Parameter.empty:
+            required_parameters.add(name)
+
     dataset_columns = set(dataset.columns)
     kwarg_names = set(kwarg_names)
-    missing = input_names - dataset_columns - kwarg_names
+    missing = required_parameters - dataset_columns - kwarg_names
     if not missing:
         return
     elif len(missing) > 1 or next(iter(missing)) != dataset.dtype:

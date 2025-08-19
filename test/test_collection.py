@@ -146,6 +146,43 @@ def test_visit_multiple_with_numpy(halo_paths):
         assert not np.any(vals == 0)
 
 
+def test_visit_multiple_with_default(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "sod_halo_com_x",
+            "sod_halo_com_y",
+            "sod_halo_com_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles, random=10):
+        dx_fof = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
+        dy_fof = np.mean(dm_particles["y"]) - halo_properties["fof_halo_center_y"]
+        dz_fof = np.mean(dm_particles["z"]) - halo_properties["fof_halo_center_z"]
+        dx_sod = np.mean(dm_particles["x"]) - halo_properties["sod_halo_com_x"]
+        dy_sod = np.mean(dm_particles["y"]) - halo_properties["sod_halo_com_y"]
+        dz_sod = np.mean(dm_particles["z"]) - halo_properties["sod_halo_com_z"]
+        dr_fof = np.linalg.norm([dx_fof, dy_fof, dz_fof])
+        dr_sod = np.linalg.norm([dx_sod, dy_sod, dz_sod])
+        return {"dr_fof": dr_fof, "dr_sod": dr_sod, "random": random}
+
+    collection = collection.evaluate(offset, **spec, format="numpy", insert=True)
+    data = (
+        collection["halo_properties"]
+        .select(["dr_fof", "dr_sod", "random"])
+        .get_data("numpy")
+    )
+    for vals in data.values():
+        assert not np.any(vals == 0)
+
+    assert np.all(data["random"] == 10)
+
+
 def test_visit_multiple_with_kwargs(halo_paths):
     collection = oc.open(*halo_paths).take(200)
     spec = {
