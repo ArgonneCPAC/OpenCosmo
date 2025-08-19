@@ -47,6 +47,8 @@ def __visit_rows(
     first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
     storage = __make_output(function, dataset, using_all_columns, first_row_kwargs)
     for i, row in enumerate(dataset.rows(output=format)):
+        if i == 0:
+            continue
         iter_kwargs = {name: arr[i] for name, arr in iterable_kwargs.items()}
         if using_all_columns:
             output = function(row, **kwargs, **iter_kwargs)
@@ -81,6 +83,7 @@ def __make_output(
     for name, value in first_values.items():
         if isinstance(value, u.Quantity):
             storage[name] = storage[name] * value.unit
+        storage[name][0] = value
     return storage
 
 
