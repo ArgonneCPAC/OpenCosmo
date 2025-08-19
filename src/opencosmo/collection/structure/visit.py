@@ -1,4 +1,4 @@
-from inspect import signature
+from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
@@ -129,10 +129,10 @@ def __verify(
     datasets_in_collection = set(collection.keys())
     kwarg_keys = set(kwarg_keys)
     fn_signature = signature(function)
-    parameter_names = set(fn_signature.parameters.keys())
+    parameters = fn_signature.parameters
 
-    for name in parameter_names:
-        if name not in spec and name not in kwarg_keys:
+    for name, param in parameters.items():
+        if name not in spec and name not in kwarg_keys and param == Parameter.empty:
             spec.update({name: None})
 
     datasets_in_spec = set(spec.keys())
@@ -156,7 +156,7 @@ def __verify(
                 f"{columns_to_check - columns_in_dataset} requested for this visitor"
             )
 
-    if not datasets_in_spec.issubset(parameter_names):
+    if not datasets_in_spec.issubset(parameters.keys()):
         raise ValueError(
             "Visitor function must use the names of the datasets it requests as its "
             "argument names"
