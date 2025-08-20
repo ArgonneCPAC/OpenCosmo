@@ -59,6 +59,8 @@ def with_redshift_column(dataset: Dataset):
     elif "redshift_true" in dataset.columns:
         z_col = 1 * oc.col("redshift_true")
         return dataset.with_new_columns(redshift=z_col)
+    else:
+        raise ValueError("Tried to open this dataset as a lightcone but it doesn't contain a known redshift column!")
 
 
 class Lightcone(dict):
@@ -76,8 +78,10 @@ class Lightcone(dict):
         z_range: Optional[tuple[float, float]] = None,
         hide_redshift: bool = False,
     ):
+        print(datasets)
         datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
         self.update(datasets)
+        print(datasets)
         z_range = (
             z_range
             if z_range is not None
