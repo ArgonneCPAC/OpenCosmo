@@ -1,5 +1,3 @@
-import hdf5plugin  # type: ignore # noqa: F401
-
 from .collection import (
     Lightcone,
     SimulationCollection,

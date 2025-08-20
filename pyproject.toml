@@ -49,6 +49,11 @@ test-mpi = [
 [project.scripts]
 opencosmo = "opencosmo.analysis.cli:cli"
 
+[project.optional-dependencies]
+io = [
+    "pyarrow>=21.0.0",
+]
+
 [build-system]
 requires = ["uv_build>=0.8.2,<0.9.0", "pip"]
 build-backend = "uv_build"
