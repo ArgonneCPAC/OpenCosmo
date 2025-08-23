@@ -19,13 +19,13 @@ Here is an example for how to use `create_yt_dataset` to load a selection of dat
     # select a random halo
     with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
         # get yt data container
-        yt_ds = create_yt_dataset(data.objects())
+        yt_ds = create_yt_dataset(next(data.halos()))
 
         # list all fields
         print(yt_ds.derived_field_list)
 
         # project DM particle mass
-        ParticleProjectionPlot(yt_ds, 'z', ('dm', 'particle_mass')).save()
+        ParticleProjectionPlot(yt_ds, "z", ("dm", "particle_mass")).save()
     
 
 For convenience, OpenCosmo includes wrappers for several commonly used yt plotting functions, including:
@@ -84,14 +84,14 @@ We will now edit the code-block from before to compute X-ray luminosities:
     # select a random halo
     with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
         # get yt data container
-        ds_yt, source_model = create_yt_dataset(data.objects(), 
+        ds_yt, source_model = create_yt_dataset(next(data.halos()), 
             compute_xray_fields = True, return_source_model = True)
 
         # list all fields
         print(ds_yt.derived_field_list)
 
         # project X-ray luminosity in the specified band
-        ParticleProjectionPlot(ds_yt, 'z', ('gas', 'xray_luminosity_0.1_10.0_keV')).save()
+        ParticleProjectionPlot(ds_yt, "z", ("gas", "xray_luminosity_0.1_10.0_keV")).save()
 
 
 
@@ -112,7 +112,7 @@ Quick Projections
 -----------------
 
 The :func:`visualize_halo` function takes in a single halo ID and creates a multi-panel image showing particle projections of dark matter, stars, gas, and/or gas temperature for a the halo. If ``"dm"/"gravity"``, ``"star"``, and ``"gas"`` particles are all present, this will output a 2x2-panel figure. Otherwise, this will create a 1xN-panel figure showing whichever particles/fields from the list are present.
-This function essentially uses :func:`halo_projection_array` with pre-filled settings for fields, colormaps, and labels.
+This function essentially uses :func:`halo_projection_array` with pre-filled settings for fields, colormaps, and labels. Settings are tuned to look good for halos with :math:`M_\mathrm{200c} > 10^{14}\ M_\odot`.
 
 .. code-block:: python
 
@@ -123,12 +123,13 @@ This function essentially uses :func:`halo_projection_array` with pre-filled set
     # load one halo at random
     with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(1, at="random") as data:
         halo = next(data.halos())
-        halo_id = halo['halo_properties']['unique_tag']
+        halo_id = halo["halo_properties"]["unique_tag"]
 
         fig = visualize_halo(halo_id, data)
 
-    # display the image
-    plt.show()
+    # save the image
+    fig.savefig("halo_2x2_example.png")
+
 
 .. image:: _static/halo_2x2_example.png
    :align: center
@@ -156,7 +157,7 @@ The outputted figure is an array of images, with the shape matching that of the 
 
 .. code-block:: python
 
-    from opencosmo.analysis import visualize_halo
+    from opencosmo.analysis import halo_projection_array
     import opencosmo as oc
     import matplotlib.pyplot as plt
     import numpy as np
@@ -170,8 +171,8 @@ The outputted figure is an array of images, with the shape matching that of the 
         fig = halo_projection_array(np.reshape(halo_ids,(4,4)), data, 
                     field=("dm","particle_mass"), width=6.0)
 
-    # display the image
-    plt.show()
+    # save the image
+    fig.savefig("halo_4x4_example.png")
 
 
 .. image:: _static/halo_4x4_example.png
@@ -194,7 +195,7 @@ One can also define a dictionary of plotting parameters to plot different fields
     import numpy as np
 
     with oc.open("haloproperties.hdf5", "haloparticles.hdf5").take(2, at="random") as data:
-        halo_ids = [halo['halo_properties']['unique_tag'] for halo in data.halos()]
+        halo_ids = [halo["halo_properties"]["unique_tag"] for halo in data.halos()]
 
         # We are going to make a 2x3 panel figure, where each row is a different halo, and
         # each column is a different projected quantity
@@ -224,7 +225,8 @@ One can also define a dictionary of plotting parameters to plot different fields
         fig = halo_projection_array(halo_ids, data, 
                     params=params, length_scale="all left")
 
-    plt.show()
+    # save the image
+    fig.savefig("halo_2x3_example.png")
 
 .. image:: _static/halo_2x3_example.png
    :align: center
