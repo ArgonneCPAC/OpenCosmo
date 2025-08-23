@@ -112,7 +112,9 @@ Quick Projections
 -----------------
 
 The :func:`visualize_halo` function takes in a single halo ID and creates a multi-panel image showing particle projections of dark matter, stars, gas, and/or gas temperature for a the halo. If ``"dm"/"gravity"``, ``"star"``, and ``"gas"`` particles are all present, this will output a 2x2-panel figure. Otherwise, this will create a 1xN-panel figure showing whichever particles/fields from the list are present.
-This function essentially uses :func:`halo_projection_array` with pre-filled settings for fields, colormaps, and labels. Settings are tuned to look good for halos with :math:`M_\mathrm{200c} > 10^{14}\ M_\odot`.
+This function essentially uses :func:`halo_projection_array` with pre-filled settings for fields, colormaps, and labels. 
+
+Settings are tuned to look good for halos with :math:`M_\mathrm{200c} > 10^{14}\ M_\odot`.
 
 .. code-block:: python
 
