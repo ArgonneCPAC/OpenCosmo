@@ -362,6 +362,8 @@ class SimulationCollection(dict):
             construct=insert,
             **evaluate_kwargs,
         )
+        if next(iter(results.values())) is None:
+            return
         return results
 
     def with_units(self, convention: str) -> Self:

@@ -201,3 +201,36 @@ Using :py:meth:`SimulationCollection.evaluate <opencosmo.SimulationCollection.ev
             )
 
 A :py:class:`SimulationCollection <opencosmo.SimulationCollection>` can contain :py:class:`Datasets <opencosmo.Dataset>` or other collections. Besides arguments that are provided on a per-argument basis as discussed above, everything passed into this function will be passed directly into the :code:`evaluate` method of the underlying object.
+
+Evaluating Without Return Values
+--------------------------------
+
+It is also possible to pass a function that returns None. Such a function could be used, for example, to produce a series of plots that are saved to disk:
+
+.. code-block:: python
+
+        import matplotlib.pyplot as plt
+        from pathlib import Path
+
+        halos = oc.open("haloproperties.hdf5", "sodproperties.hdf5")
+        halos = halos.filter(oc.col("fof_halo_mass") > 1e14).take(10)
+        output_path = Path("my_plots/profiles/")
+
+        def plot_profiles(halo_properties, halo_profiles, output_path)
+                plot_output_path = output_path / f"{halo_properties["fof_halo_tag"]}.png"
+                dm_count = halo_profiles["sod_halo_bin_count"]*halo_profiles["sod_halo_bin_cdm_fraction"]
+                plt.figure()
+                plt.scatter(halo_profiles["sod_halo_bin_radius"], dm_count)
+                plt.savefig(plot_output_path)
+
+        halos.evaluate(
+                plot_profiles,
+                halo_properties=["fof_halo_tag"],
+                halo_profiles=["sod_halo_bin_count, sod_halo_bin_cdm_fraction", "sod_halo_bin_radius"],
+                output_path=output_path
+        )
+
+
+
+
+

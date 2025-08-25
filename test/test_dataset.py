@@ -144,6 +144,16 @@ def test_visit_with_default(input_path):
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"] * 5)
 
 
+def test_visit_with_return_none(input_path):
+    ds = oc.open(input_path)
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx, random_val=5):
+        return None
+
+    result = ds.evaluate(fof_px, vectorize=True, insert=True)
+    assert result is None
+
+
 def test_visit_multiple_with_kwargs_numpy(input_path):
     ds = oc.open(input_path)
 

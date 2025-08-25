@@ -328,7 +328,7 @@ class StructureCollection:
                     **evaluate_kwargs,
                 )
 
-            if not insert:
+            if result is None or not insert:
                 return result
 
             assert isinstance(result, (oc.Dataset, StructureCollection))
@@ -358,7 +358,7 @@ class StructureCollection:
             output = visit.visit_structure_collection(
                 func, columns, self, format=format, evaluator_kwargs=kwargs
             )
-            if not insert:
+            if not insert or output is None:
                 return output
             return self.with_new_columns(**output, dataset=self.__source.dtype)
 

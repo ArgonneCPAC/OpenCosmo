@@ -22,7 +22,7 @@ def visit_dataset(
     dataset = __prepare(function, dataset, evaluator_kwargs.keys())
     if vectorize:
         result = __visit_vectorize(function, dataset, format, evaluator_kwargs)
-        if not isinstance(result, dict):
+        if result is not None and not isinstance(result, dict):
             return {function.__name__: result}
         return result
     else:
@@ -54,7 +54,8 @@ def __visit_rows(
             output = function(row, **kwargs, **iter_kwargs)
         else:
             output = function(**row, **kwargs, **iter_kwargs)
-        insert(storage, i, output)
+        if storage is not None:
+            insert(storage, i, output)
     return storage
 
 
@@ -63,15 +64,18 @@ def __make_output(
     dataset: "Dataset",
     using_all_columns: bool,
     kwargs: dict[str, Any],
-):
+) -> dict | None:
     if using_all_columns:
         first_values = function(next(dataset.take(1, at="start").rows()), **kwargs)
     else:
         first_values = function(**next(dataset.take(1, at="start").rows()), **kwargs)
     n = len(dataset)
+    if first_values is None:
+        return None
     if not isinstance(first_values, dict):
         name = function.__name__
         first_values = {name: first_values}
+
     storage = {}
     for name, value in first_values.items():
         shape: tuple[int, ...] = (n,)
