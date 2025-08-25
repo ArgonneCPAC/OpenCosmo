@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from astropy.table import Column, Table  # type: ignore
+from astropy.table import Column, QTable  # type: ignore
 
 from opencosmo.visit import insert, prepare_kwargs
 
@@ -98,8 +98,8 @@ def __visit_vectorize(
     evaluator_kwargs: dict[str, Any] = {},
 ):
     data = dataset.get_data(format)
-    if format == "astropy" and isinstance(data, Table):
-        data = {col.name: col.quantity for col in data.itercols()}
+    if format == "astropy" and isinstance(data, QTable):
+        data = {name: col for name, col in data.items()}
     elif isinstance(data, Column):
         data = {data.name: data.quantity}
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Generator, Iterable, Optional, TypeAlias
 from warnings import warn
 
+import astropy.units as u
 import numpy as np
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
 
 
-OpenCosmoData: TypeAlias = Table | Column | dict[str, np.ndarray] | np.ndarray
+OpenCosmoData: TypeAlias = Table | u.Quantity | dict[str, np.ndarray] | np.ndarray
 
 
 class Dataset:
@@ -209,7 +210,7 @@ class Dataset:
         units will be attached.
 
         If the dataset only contains a single column, it will be returned as an
-        astropy.table.Column or a single numpy array.
+        astropy quantity (if it has units) or numpy array.
 
         This method does not cache data. Calling "get_data" always reads data
         from disk, even if you have already called "get_data" in the past.
@@ -223,21 +224,29 @@ class Dataset:
 
         Returns
         -------
-        data: Table | Column | dict[str, ndarray] | ndarray
+        data: Table | Quantity | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = self.__state.get_data(self.__handler)
-        if len(data.colnames) == 1:
-            data = next(data.itercols())
+        data = self.__state.get_data(self.__handler)  # table
+        if len(data) == 1:  # unpack length-1 tables
+            data = {name: data[0] for name, data in data.items()}
+        elif len(data.colnames) == 1:
+            cn = data.colnames[0]
+            data = data[cn]
+
+        if isinstance(data, Column):
+            data = data.value
 
         if output == "numpy":
-            if isinstance(data, Column):
-                return data.data
-            else:
-                return {col.name: col.data for col in data.itercols()}
+            if isinstance(data, u.Quantity):
+                data = data.value
+            elif isinstance(data, (Table, dict)):
+                data = {name: col.value for name, col in data.items()}
+        if isinstance(data, dict) and len(data) == 1:
+            return next(iter(data.values()))
 
         return data
 
@@ -382,7 +391,6 @@ class Dataset:
             )
 
         output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
-        print(output)
         if output is None or not insert:
             return output
         is_same_length = all(
@@ -454,15 +462,17 @@ class Dataset:
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
             chunk_data = chunk.get_data(output)
-            if isinstance(chunk_data, Column):
-                chunk_data = {chunk_data.name: chunk_data}
+            if len(self.columns) == 1:
+                chunk_data = {self.columns[0]: chunk_data}
+            else:
+                chunk_data = dict(chunk_data)
 
-            columns = {
-                k: chunk_data[k].quantity if chunk_data[k].unit else chunk_data[k]
-                for k in chunk_data.keys()
-            }
+            if len(self) == 1:
+                yield chunk_data
+                raise StopIteration
+
             for i in range(len(chunk)):
-                yield {k: v[i] for k, v in columns.items()}
+                yield {k: v[i] for k, v in chunk_data.items()}
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """

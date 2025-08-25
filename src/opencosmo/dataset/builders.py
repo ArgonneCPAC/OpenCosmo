@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from astropy.table import Column, Table  # type: ignore
+from astropy.table import Column, QTable  # type: ignore
 from numpy.typing import NDArray
 
 import opencosmo.transformations as t
@@ -72,7 +72,7 @@ class TableBuilder:
                 builder = ColumnBuilder.default(name)
             column = builder.build(data)
             output_columns[name] = column
-        table = Table(output_columns)
+        table = QTable(output_columns)
 
         return t.apply_table_transformations(table, self.transformations)
 

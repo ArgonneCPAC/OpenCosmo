@@ -245,60 +245,23 @@ class DerivedColumn:
     __rsub__ = partialmethod(combine_on_right, operation=op.sub)
 
     def evaluate(self, data: table.Table) -> table.Column:
-        match self.rhs:
-            case DerivedColumn():
-                rhs = self.rhs.evaluate(data)
-                rhs_data = rhs.value
-                rhs_unit = rhs.unit
-            case Column():
-                rhs = data[self.rhs.column_name]
-                rhs_data = rhs.value
-                rhs_unit = rhs.unit
-            case int() | float():
-                rhs_data = self.rhs
-                rhs_unit = None
         match self.lhs:
             case DerivedColumn():
                 lhs = self.lhs.evaluate(data)
-                lhs_data = lhs.value
-                lhs_unit = lhs.unit
             case Column():
                 lhs = data[self.lhs.column_name]
-                lhs_data = lhs.value
-                lhs_unit = lhs.unit
-            case int() | float():
-                lhs_data = self.lhs
-                lhs_unit = None
+            case _:
+                lhs = self.lhs
+        match self.rhs:
+            case DerivedColumn():
+                rhs = self.rhs.evaluate(data)
+            case Column():
+                rhs = data[self.rhs.column_name]
+            case _:
+                rhs = self.rhs
 
-        if self.operation in (op.add, op.sub):
-            if lhs_unit != rhs_unit:
-                raise ValueError("To add and subtract columns, units must be the same!")
-            unit = lhs_unit
-        elif self.operation == op.pow:
-            if rhs_unit is not None:
-                raise ValueError("Cannot raise values to powers with units!")
-            if lhs_unit is not None:
-                unit = self.operation(lhs_unit, rhs_data)
-            else:
-                unit = None
-
-        else:
-            match (lhs_unit, rhs_unit):
-                case (None, None):
-                    unit = None
-                case (_, None):
-                    unit = lhs_unit
-                case (None, _):
-                    unit = rhs_unit
-                case _:
-                    unit = self.operation(lhs_unit, rhs_unit)
-
-        # Astropy delegates __mul__ to the underlying numpy array, so we have
-        # to manually handle units
-        values = self.operation(lhs_data, rhs_data)
-        if unit is not None:
-            values *= unit
-        return table.Column(values)
+        result = self.operation(lhs, rhs)
+        return result
 
 
 class ColumnMask:
@@ -317,7 +280,7 @@ class ColumnMask:
         self.value = value
         self.operator = operator
 
-    def apply(self, column: table.Column | table.Table) -> np.ndarray:
+    def apply(self, column: u.Quantity | np.ndarray) -> np.ndarray:
         """
         mask the dataset based on the mask.
         """
@@ -325,12 +288,13 @@ class ColumnMask:
         if isinstance(column, table.Table):
             column = column[self.column_name]
 
-        if isinstance(self.value, u.Quantity):
+        if isinstance(self.value, u.Quantity) and isinstance(column, u.Quantity):
             if self.value.unit != column.unit:
                 raise ValueError(
                     f"Incompatible units in fiter: {self.value.unit} and {column.unit}"
                 )
-            return self.operator(column.value, self.value.value)
 
-        # mypy can't reason about columns correctly
-        return self.operator(column.value, self.value)  # type: ignore
+        elif isinstance(column, u.Quantity):
+            return self.operator(column.value, self.value)
+
+        return self.operator(column, self.value)  # type: ignore

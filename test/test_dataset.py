@@ -1,7 +1,6 @@
 import astropy.units as u
 import numpy as np
 import pytest
-from astropy.table import Column
 
 import opencosmo as oc
 
@@ -20,8 +19,7 @@ def particle_path(snapshot_path):
 def max_mass(input_path):
     ds = oc.open(input_path)
     sod_mass = ds.data["sod_halo_mass"]
-    sod_mass_unit = sod_mass.unit
-    return 0.95 * sod_mass.max() * sod_mass_unit
+    return 0.95 * sod_mass.max()
 
 
 def test_open(input_path):
@@ -195,10 +193,7 @@ def test_visit_vectorize_multiple_noinsert(input_path):
     result = ds.evaluate(fof_px, vectorize=True, insert=False)
     data = ds.select(("fof_halo_mass", "fof_halo_com_vx")).data
 
-    assert np.all(
-        result["fof_px"]
-        == data["fof_halo_mass"].quantity * data["fof_halo_com_vx"].quantity
-    )
+    assert np.all(result["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
 def test_visit_rows_nfw(input_path):
@@ -285,13 +280,10 @@ def test_select_oom(input_path):
 
 def test_select_single(input_path):
     with oc.open(input_path) as ds:
-        data = ds.data
-        cols = list(data.columns)
-        # select 10 columns at random
-        selected_cols = np.random.choice(cols)
-        selected = ds.select(selected_cols)
-        selected_data = selected.data
-    assert isinstance(selected_data, Column)
+        for column in ds.columns:
+            selected = ds.select(column)
+            selected_data = selected.data
+            assert isinstance(selected_data, (u.Quantity, np.ndarray))
 
 
 def test_select_single_numpy(input_path):
@@ -329,7 +321,7 @@ def test_write_after_derive(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         written_data = new_ds.select("fof_halo_px").data
-        assert np.all(np.isclose(data.quantity, written_data.quantity))
+        assert np.all(np.isclose(data, written_data))
 
 
 def test_write_after_evaluate(input_path, tmp_path):
@@ -345,7 +337,7 @@ def test_write_after_evaluate(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         written_data = new_ds.select("fof_px").data
-        assert np.all(np.isclose(data.quantity, written_data.quantity))
+        assert np.all(np.isclose(data, written_data))
 
 
 def test_collect(input_path):

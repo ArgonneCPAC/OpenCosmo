@@ -1,4 +1,4 @@
-from astropy.table import Table  # type: ignore
+from astropy.table import QTable  # type: ignore
 
 from opencosmo.transformations import protocols as t
 
@@ -11,7 +11,7 @@ the updated versions at the end.
 
 
 def apply_column_transformations(
-    table: Table, transformations: list[t.ColumnTransformation]
+    table: QTable, transformations: list[t.ColumnTransformation]
 ):
     """
     Apply a list of column transformations to a table. If multiple
@@ -29,7 +29,7 @@ def apply_column_transformations(
 
 
 def apply_all_columns_transformations(
-    table: Table, transformations: list[t.ColumnTransformation]
+    table: QTable, transformations: list[t.ColumnTransformation]
 ):
     """
     Apply a list of column transformations to all columns in the table.
@@ -45,7 +45,7 @@ def apply_all_columns_transformations(
 
 
 def apply_table_transformations(
-    table: Table, transformations: list[t.TableTransformation]
+    table: QTable, transformations: list[t.TableTransformation]
 ):
     """
     Apply transformations to the table as a whole. These transformations

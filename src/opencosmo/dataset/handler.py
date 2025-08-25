@@ -4,7 +4,7 @@ from typing import Iterable, Optional
 
 import h5py
 import numpy as np
-from astropy.table import Table  # type: ignore
+from astropy.table import QTable  # type: ignore
 
 from opencosmo.dataset.builders import TableBuilder
 from opencosmo.header import OpenCosmoHeader
@@ -70,7 +70,7 @@ class DatasetHandler:
     ) -> DatasetSchema:
         return DatasetSchema.make_schema(self.__group, columns, index, header)
 
-    def get_data(self, builder: TableBuilder, index: DataIndex) -> Table:
+    def get_data(self, builder: TableBuilder, index: DataIndex) -> QTable:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
