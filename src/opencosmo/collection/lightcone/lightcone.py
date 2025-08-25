@@ -517,6 +517,9 @@ class Lightcone(dict):
             construct=insert,
             **kwargs,
         )
+        if next(iter(result.values())) is None:
+            return
+
         if insert:
             assert isinstance(result, Lightcone)
             return result

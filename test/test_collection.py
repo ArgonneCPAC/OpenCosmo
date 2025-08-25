@@ -115,6 +115,24 @@ def test_visit_single(halo_paths):
     assert not np.any(data == 0)
 
 
+def test_visit_with_return_none(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+    }
+
+    def offset(halo_properties, dm_particles):
+        return None
+
+    result = collection.evaluate(offset, **spec, insert=True)
+    assert result is None
+
+
 def test_visit_multiple_with_numpy(halo_paths):
     collection = oc.open(*halo_paths).take(200)
     spec = {

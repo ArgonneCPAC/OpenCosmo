@@ -346,6 +346,9 @@ class Dataset:
         If vectorize is set to True, the full columns will be pased to the dataset. Otherwise,
         rows will be passed to the function one at a time.
 
+        If the function returns None, this method will also return None as output. For example, the function
+        could simply produce plots and save the to files.
+
         Parameters
         ----------
 
@@ -379,17 +382,18 @@ class Dataset:
             )
 
         output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
+        print(output)
+        if output is None or not insert:
+            return output
         is_same_length = all(
             isinstance(o, np.ndarray) and len(o) == len(self) for o in output.values()
         )
 
-        if insert and not is_same_length:
+        if not is_same_length:
             raise ValueError(
                 "The function to evaluate must produce an array with the same length as this dataset!"
             )
-        elif insert:
-            return self.with_new_columns(**output)
-        return output
+        return self.with_new_columns(**output)
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """

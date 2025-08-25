@@ -40,7 +40,8 @@ def visit_structure_collection(
         input_structure = __make_input(structure, format)
 
         output = function(**input_structure, **kwargs, **iterable_kwarg_values)
-        insert(storage, i, output)
+        if storage is not None:
+            insert(storage, i, output)
 
     return storage
 
@@ -76,7 +77,7 @@ def __make_output(
     format: str = "astropy",
     kwargs: dict[str, Any] = {},
     iterable_kwargs: dict[str, Sequence] = {},
-):
+) -> dict | None:
     first_structure = next(collection.take(1, at="start").objects())
     first_input = __make_input(first_structure, format)
     first_values = function(
@@ -84,6 +85,8 @@ def __make_output(
         **kwargs,
         **{name: arr[0] for name, arr in iterable_kwargs.items()},
     )
+    if first_values is None:
+        return None
     n = len(collection)
     if not isinstance(first_values, dict):
         name = function.__name__
