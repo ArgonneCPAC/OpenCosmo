@@ -50,14 +50,14 @@ def test_box_query(halo_properties_path):
         original_col = original_data[name]
         max_ = p2[i]
         min_ = p1[i]
-        mask = (original_col < max_) & (original_col > min_)
+        mask = (original_col.value < max_) & (original_col.value > min_)
         original_data = original_data[mask]
 
         col = data[name]
         col_min = col.min()
         col_max = col.max()
-        assert col_min >= min_
-        assert col_max <= max_
+        assert col_min.value >= min_
+        assert col_max.value <= max_
 
     assert set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"])
 
@@ -80,10 +80,10 @@ def test_box_query_physical(halo_properties_path):
         col_max = col.max()
         min_ = p1[i]
         max_ = p2[i]
-        original_data_mask = (original_col > min_) & (original_col < max_)
+        original_data_mask = (original_col.value > min_) & (original_col.value < max_)
         original_data = original_data[original_data_mask]
-        assert col_min >= min_
-        assert col_max <= max_
+        assert col_min.value >= min_
+        assert col_max.value <= max_
 
     assert set(data["fof_halo_tag"]) == set(original_data["fof_halo_tag"])
 
@@ -108,12 +108,14 @@ def test_box_query_chain(halo_properties_path):
         col = data[colname]
         min_ = p21[i]
         max_ = p22[i]
-        mask = (original_data[colname] > min_) & (original_data[colname] < max_)
+        mask = (original_data[colname].value > min_) & (
+            original_data[colname].value < max_
+        )
         original_data = original_data[mask]
         min = col.min()
         max = col.max()
-        assert min >= min_
-        assert max <= max_
+        assert min.value >= min_
+        assert max.value <= max_
 
     assert set(data["fof_halo_tag"]) == set(original_data["fof_halo_tag"])
 

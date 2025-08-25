@@ -6,7 +6,7 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import Column, vstack  # type: ignore
+from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
@@ -258,7 +258,7 @@ class Lightcone(dict):
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = [ds.get_data() for ds in self.values()]
+        data = [ds.get_data(unpack=False) for ds in self.values()]
         table = vstack(data, join_type="exact")
         if self.__hide_redshift:
             table.remove_column("redshift")
@@ -266,10 +266,10 @@ class Lightcone(dict):
             table = next(table.itercols())
 
         if output == "numpy":
-            if isinstance(table, Column):
-                return table.data
+            if isinstance(table, u.Quantity):
+                return table.value
             else:
-                return {col.name: col.data for col in table.itercols()}
+                return {name: col.value for name, col in table.items()}
 
         return table
 

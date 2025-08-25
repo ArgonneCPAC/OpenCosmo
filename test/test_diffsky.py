@@ -39,9 +39,9 @@ def test_filter_take(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     ds = ds.filter(oc.col("logsm_obs") < 12, oc.col("logsm_obs") > 11.5)
     ds = ds.select("logsm_obs")
-    assert ds.data.max() < 12 and ds.data.min() > 11.5
+    assert ds.data.max().value < 12 and ds.data.min().value > 11.5
     ds = ds.take(10)
-    assert ds.data.max() < 12 and ds.data.min() > 11.5
+    assert ds.data.max().value < 12 and ds.data.min().value > 11.5
 
 
 def test_open_multiple_write(core_path_487, core_path_475, tmp_path):
