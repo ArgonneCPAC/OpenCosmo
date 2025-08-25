@@ -370,10 +370,7 @@ def test_data_linking(halo_paths):
                 halo_tags.update(species_halo_tags)
                 n_particles += 1
             except ValueError:
-                bin_tags = [
-                    tag for tag in particle_species.select("unique_tag").data[0]
-                ]
-                bin_tags = set(bin_tags)
+                bin_tags = set(particle_species.select("unique_tag").data)
                 assert len(bin_tags) == 1
                 halo_tags.update(bin_tags)
                 n_profiles += 1
@@ -458,7 +455,7 @@ def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
                 assert len(tags) == 1
                 assert tags.pop() == fof_tag
             except ValueError:
-                tags = set(p.select("fof_halo_bin_tag").data[0])
+                tags = set(p.select("fof_halo_bin_tag").data)
                 assert len(tags) == 1
                 assert tags.pop() == fof_tag
 
@@ -517,10 +514,7 @@ def test_link_write(halo_paths, tmp_path):
             read_output[properties["fof_halo_tag"]].append(linked_type)
 
             if "particles" not in linked_type:
-                bin_tags = [
-                    tag for tag in linked_dataset.select("fof_halo_bin_tag").data[0]
-                ]
-                halo_tags.update(bin_tags)
+                halo_tags.update(linked_dataset.select("fof_halo_bin_tag").data)
             else:
                 species_tags = set(linked_dataset.select("fof_halo_tag").data)
                 halo_tags.update(species_tags)

@@ -2,7 +2,6 @@ from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
-from astropy.table import Column, Table  # type: ignore
 from astropy.units import Quantity  # type: ignore
 from numpy.typing import DTypeLike
 
@@ -53,22 +52,12 @@ def __make_input(structure: dict, format: str = "astropy"):
             values[name] = __make_input(element, format)
         elif isinstance(element, ds.Dataset):
             data = element.get_data(format)
-            if format == "astropy":
-                values[name] = __make_quantities(data)
-            else:
-                values[name] = data
+            values[name] = data
         elif isinstance(element, Quantity) and format == "numpy":
             values[name] = element.value
         else:
             values[name] = element
     return values
-
-
-def __make_quantities(data: Table | Column):
-    if isinstance(data, Table):
-        return {col.name: col.quantity for col in data.itercols()}
-    else:
-        return {data.name: data.quantity}
 
 
 def __make_output(
