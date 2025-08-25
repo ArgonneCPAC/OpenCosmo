@@ -267,7 +267,7 @@ def test_lc_collection_filter(
 ):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
-    assert np.all(ds.data["fof_halo_mass"] > 1e14)
+    assert np.all(ds.data["fof_halo_mass"].value > 1e14)
 
 
 def test_lc_collection_evaluate(

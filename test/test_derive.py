@@ -172,7 +172,8 @@ def test_derive_mask(properties_path):
     comoving_data = ds.data["fof_halo_px"]
     val = 0.5 * (comoving_data.max() - comoving_data.min()) + comoving_data.min()
     ds_masked = ds.filter(oc.col("fof_halo_px") > val)
-    assert all(ds_masked.data["fof_halo_px"].value > val)
+
+    assert all(ds_masked.data["fof_halo_px"] > val)
 
 
 def test_derive_collect(properties_path):

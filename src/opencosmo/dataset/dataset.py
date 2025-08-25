@@ -195,7 +195,7 @@ class Dataset:
     def index(self) -> DataIndex:
         return self.__state.index
 
-    def get_data(self, output="astropy") -> OpenCosmoData:
+    def get_data(self, output="astropy", unpack=True) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -231,7 +231,7 @@ class Dataset:
             raise ValueError(f"Unknown output type {output}")
 
         data = self.__state.get_data(self.__handler)  # table
-        if len(data) == 1:  # unpack length-1 tables
+        if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
         elif len(data.colnames) == 1:
             cn = data.colnames[0]
@@ -469,7 +469,7 @@ class Dataset:
 
             if len(self) == 1:
                 yield chunk_data
-                raise StopIteration
+                return
 
             for i in range(len(chunk)):
                 yield {k: v[i] for k, v in chunk_data.items()}
