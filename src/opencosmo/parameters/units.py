@@ -1,8 +1,15 @@
-from typing import Any, Optional, Type
+from typing import Optional, Type
 
 from astropy.cosmology import Cosmology
 from astropy.units.typing import UnitLike
 from pydantic import BaseModel
+
+import opencosmo.transformations as t
+from opencosmo.transformations.protocols import TransformationType
+from opencosmo.transformations.units import (
+    apply_unit,
+    get_unit_transition_transformations,
+)
 
 ModelUnitAnnotation = tuple[str, dict[str, UnitLike]]
 
@@ -35,17 +42,37 @@ def register_units(
     __KNOWN_UNITFUL_MODELS__[model] = (convention, registered_fields)
 
 
+def __get_unit_transformations(
+    model: Type[BaseModel], cosmology, convention: str = "scalefree"
+) -> t.TransformationDict:
+    transformations: t.TransformationDict = {}
+    if (us := __KNOWN_UNITFUL_MODELS__.get(type(model))) is None:
+        return {}
+
+    base_convention, known_units = us
+
+    column_transformations = []
+    for name, unit in known_units.items():
+        column_transformations.append(apply_unit(name, unit))
+
+    transformations[TransformationType.COLUMN] = column_transformations
+
+    transformations = get_unit_transition_transformations(
+        base_convention, convention, transformations, cosmology
+    )
+    return transformations
+
+
 def apply_units(
-    model: Any, cosmology: Optional[Cosmology], convention: str = "scalefree"
+    model: BaseModel, cosmology: Optional[Cosmology], convention: str = "scalefree"
 ):
-    if not isinstance(model, BaseModel):
-        return model
-    model_units = __KNOWN_UNITFUL_MODELS__.get(type(model))
-
+    transformations = __get_unit_transformations(model, cosmology, convention)
     parameters = model.model_dump()
-    if model_units is not None:
-        for name, unit in model_units[1].items():
-            value = parameters[name] * unit
-            parameters[name] = value
-
+    column_transformations = transformations.get(TransformationType.COLUMN, [])
+    all_column_transformations = transformations.get(TransformationType.ALL_COLUMNS, [])
+    for trans in column_transformations:
+        value = trans(parameters[trans.column_name])
+        for trans_ in all_column_transformations:
+            value = trans_(value)
+        parameters[trans.column_name] = value
     return parameters
