@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Generator, Iterable, Optional, TypeAlias
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Generator,
+    Iterable,
+    Mapping,
+    Optional,
+    TypeAlias,
+)
 from warnings import warn
 
 import astropy.units as u  # type: ignore
@@ -434,7 +442,9 @@ class Dataset:
         new_state = self.__state.with_mask(bool_mask)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
-    def rows(self, output="astropy") -> Generator[dict[str, float | units.Quantity]]:
+    def rows(
+        self, output="astropy"
+    ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
         For performance, it is recommended to first select the columns you need to
@@ -465,7 +475,11 @@ class Dataset:
             try:
                 output_chunk_data = dict(chunk_data)
             except TypeError:
-                output_chunk_data = {self.columns[0]: [chunk_data]}
+                output_chunk_data = {self.columns[0]: chunk_data}
+
+            if len(chunk) == 1:
+                yield output_chunk_data
+                return
 
             for i in range(len(chunk)):
                 yield {k: v[i] for k, v in output_chunk_data.items()}
