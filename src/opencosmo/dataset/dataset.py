@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Generator, Iterable, Optional, TypeAlias
 from warnings import warn
 
-import astropy.units as u
+import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
