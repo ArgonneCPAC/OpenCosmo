@@ -50,7 +50,7 @@ class OpenCosmoHeader:
             self.__required_origin_parameters,
             self.__optional_origin_parameters,
             self.__dtype_parameters,
-            self.unit_convention,
+            convention,
         )
 
     @cache
@@ -70,10 +70,9 @@ class OpenCosmoHeader:
 
         cosmology = table.get("cosmology")
         convention = object.__getattribute__(self, "unit_convention")
-        table = {
-            name: apply_units(pars, cosmology, convention)
-            for name, pars in table.items()
-        }
+        for name, model in table.items():
+            if isinstance(model, BaseModel):
+                table[name] = apply_units(model, cosmology, convention)
 
         return table
 

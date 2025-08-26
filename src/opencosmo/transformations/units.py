@@ -96,7 +96,7 @@ def get_unit_transition_transformations(
     to_convention: str | UnitConvention,
     unit_applicators: t.TransformationDict,
     cosmology: Cosmology,
-    redshift: float,
+    redshift: float = 0,
 ) -> t.TransformationDict:
     """
     Given a dataset, the user can request a transformation to a different unit
