@@ -16,6 +16,7 @@ from opencosmo.parameters import (
     read_header_attributes,
     write_header_attributes,
 )
+from opencosmo.parameters.units import apply_units
 
 
 class OpenCosmoHeader:
@@ -33,11 +34,24 @@ class OpenCosmoHeader:
         required_origin_parameters: dict[str, BaseModel],
         optional_origin_parameters: dict[str, BaseModel],
         dtype_parameters: dict[str, BaseModel],
+        unit_convention: str = "scalefree",
     ):
         self.__file_pars = file_pars
         self.__required_origin_parameters = required_origin_parameters
         self.__optional_origin_parameters = optional_origin_parameters
         self.__dtype_parameters = dtype_parameters
+        self.unit_convention = unit_convention
+
+    def with_units(self, convention):
+        if convention == self.unit_convention:
+            return self
+        return OpenCosmoHeader(
+            self.__file_pars,
+            self.__required_origin_parameters,
+            self.__optional_origin_parameters,
+            self.__dtype_parameters,
+            self.unit_convention,
+        )
 
     @cache
     def __get_access_table(self):
@@ -53,6 +67,14 @@ class OpenCosmoHeader:
             table[model.ACCESS_PATH] = model
             if hasattr(model, "ACCESS_TRANSFORMATION"):
                 table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
+
+        cosmology = table.get("cosmology")
+        convention = object.__getattribute__(self, "unit_convention")
+        table = {
+            name: apply_units(pars, cosmology, convention)
+            for name, pars in table.items()
+        }
+
         return table
 
     @property
@@ -165,7 +187,9 @@ def write_header(
 
 @broadcast_read
 @file_reader
-def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
+def read_header(
+    file: h5py.File | h5py.Group, unit_convention: str = "comoving"
+) -> OpenCosmoHeader:
     """
     Read the header of an OpenCosmo file
 
@@ -201,7 +225,11 @@ def read_header(file: h5py.File | h5py.Group) -> OpenCosmoHeader:
     dtype_params = read_dtype_parameters(file, dtype_parameter_models)
 
     h = OpenCosmoHeader(
-        file_parameters, required_origin_params, optional_origin_params, dtype_params
+        file_parameters,
+        required_origin_params,
+        optional_origin_params,
+        dtype_params,
+        unit_convention,
     )
     return h
 

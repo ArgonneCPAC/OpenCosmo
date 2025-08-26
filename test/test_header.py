@@ -35,6 +35,13 @@ def malformed_header_path(header_resource_path, tmp_path):
     )
 
 
+def test_header_units(header_resource_path):
+    data = read_header(header_resource_path)
+    print(data.cosmology)
+    print(data.simulation)
+    assert False
+
+
 def test_read_header(header_resource_path):
     header = read_header(header_resource_path)
     assert isinstance(header.cosmology, FlatLambdaCDM)

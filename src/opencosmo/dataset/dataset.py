@@ -677,10 +677,11 @@ class Dataset:
 
         """
         new_state = self.__state.with_units(convention, self.cosmology, self.redshift)
+        new_header = self.__header.with_units(convention)
 
         return Dataset(
             self.__handler,
-            self.__header,
+            new_header,
             new_state,
             self.__tree,
         )

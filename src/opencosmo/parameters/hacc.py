@@ -3,6 +3,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Optional
 
+import astropy.cosmology.units as cu
+import astropy.units as u
 import numpy as np
 from pydantic import (
     BaseModel,
@@ -15,6 +17,7 @@ from pydantic import (
 from opencosmo.parameters import CosmologyParameters
 
 from .diffsky import DiffskyVersionInfo
+from .units import register_units
 
 
 def empty_string_to_none(v):
@@ -25,6 +28,7 @@ def empty_string_to_none(v):
 
 class HaccSimulationParameters(BaseModel):
     ACCESS_PATH: ClassVar[str] = "simulation"
+
     box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
     z_ini: float = Field(ge=0.01, description="Initial redshift of the simulation")
     z_end: float = Field(ge=0.0, description="Final redshift of the simulation")
@@ -208,3 +212,6 @@ DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
     "halo_profiles": {},
     "diffsky_fits": {"diffsky_versions": DiffskyVersionInfo},
 }
+
+register_units(HaccSimulationParameters, "box_size", u.Mpc / cu.littleh)
+register_units(HaccHydroSimulationParameters, "box_size", u.Mpc / cu.littleh)
