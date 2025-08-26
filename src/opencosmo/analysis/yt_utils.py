@@ -107,16 +107,16 @@ def create_yt_dataset(
             )
 
         minx, maxx = (
-            min(minx, min(particle_data["x"])),
-            max(maxx, max(particle_data["x"])),
+            min(minx, min(particle_data["x"].value)),
+            max(maxx, max(particle_data["x"].value)),
         )
         miny, maxy = (
-            min(miny, min(particle_data["y"])),
-            max(maxy, max(particle_data["y"])),
+            min(miny, min(particle_data["y"].value)),
+            max(maxy, max(particle_data["y"].value)),
         )
         minz, maxz = (
-            min(minz, min(particle_data["z"])),
-            max(maxz, max(particle_data["z"])),
+            min(minz, min(particle_data["z"].value)),
+            max(maxz, max(particle_data["z"].value)),
         )
 
     bbox = [[minx, maxx], [miny, maxy], [minz, maxz]]

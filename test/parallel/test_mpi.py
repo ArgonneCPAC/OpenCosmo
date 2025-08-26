@@ -209,8 +209,8 @@ def test_link_read(all_paths):
             if len(data) == 0:
                 continue
             if species == "halo_profiles":
-                assert len(data) == 1
-                assert data["fof_halo_bin_tag"][0][0] == halo_tag
+                print(isinstance(data, dict))
+                assert np.all(data["fof_halo_bin_tag"] == halo_tag)
                 continue
             halo_tags = np.unique(ds.data["fof_halo_tag"])
             assert len(halo_tags) == 1
@@ -387,12 +387,14 @@ def test_box_query_chain(input_path):
         col = data[colname]
         min_ = p1[i]
         max_ = p2[i]
-        mask = (original_data[colname] < max_) & (original_data[colname] > min_)
+        mask = (original_data[colname].value < max_) & (
+            original_data[colname].value > min_
+        )
         original_data = original_data[mask]
         min = col.min()
         max = col.max()
-        parallel_assert(min >= min_)
-        parallel_assert(max <= max_)
+        parallel_assert(min.value >= min_)
+        parallel_assert(max.value <= max_)
 
     parallel_assert(set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"]))
 
