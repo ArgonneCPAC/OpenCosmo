@@ -47,6 +47,20 @@ def get_table_builder(
     return TableBuilder(columns, table_transformations)
 
 
+def apply_table_transformations(
+    table: QTable, transformations: list[t.TableTransformation]
+):
+    """
+    Apply transformations to the table as a whole. These transformations
+    are applied after individual column transformations.
+    """
+    output_table = table
+    for tr in transformations:
+        if (new_table := tr(output_table)) is not None:
+            output_table = new_table
+    return output_table
+
+
 class TableBuilder:
     def __init__(
         self,
@@ -74,7 +88,7 @@ class TableBuilder:
             output_columns[name] = column
         table = QTable(output_columns)
 
-        return t.apply_table_transformations(table, self.transformations)
+        return apply_table_transformations(table, self.transformations)
 
 
 class ColumnBuilder:
