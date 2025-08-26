@@ -130,7 +130,7 @@ def make_all_targets(files: list[h5py.File]):
 
 def make_file_targets(file: h5py.File):
     try:
-        header = read_header(file)
+        header = read_header(file, unit_convention="comoving")
     except KeyError:
         header = None
     if header is not None and "data" in file.keys():
@@ -258,6 +258,7 @@ def open_single_dataset(target: OpenTarget):
     builders, base_unit_transformations = u.get_default_unit_transformations(
         handle, header
     )
+    assert False
     state = dss.DatasetState(
         base_unit_transformations,
         builders,
