@@ -7,7 +7,7 @@ import astropy.units as u
 import numpy as np
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import Column, Table  # type: ignore
+from astropy.table import Column, QTable  # type: ignore
 
 from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.state import DatasetState
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
 
 
-OpenCosmoData: TypeAlias = Table | u.Quantity | dict[str, np.ndarray] | np.ndarray
+OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
 
 
 class Dataset:
@@ -163,7 +163,7 @@ class Dataset:
         return self.__header.simulation
 
     @property
-    def data(self) -> Table | Column:
+    def data(self) -> QTable | u.Quantity:
         """
         Return the data in the dataset in astropy format. The value of this
         attribute is equivalent to the return value of
@@ -243,7 +243,7 @@ class Dataset:
         if output == "numpy":
             if isinstance(data, u.Quantity):
                 data = data.value
-            elif isinstance(data, (Table, dict)):
+            elif isinstance(data, (QTable, dict)):
                 data = {name: col.value for name, col in data.items()}
         if isinstance(data, dict) and len(data) == 1:
             return next(iter(data.values()))
@@ -462,17 +462,13 @@ class Dataset:
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
             chunk_data = chunk.get_data(output)
-            if len(self.columns) == 1:
-                chunk_data = {self.columns[0]: chunk_data}
-            else:
-                chunk_data = dict(chunk_data)
-
-            if len(self) == 1:
-                yield chunk_data
-                return
+            try:
+                output_chunk_data = dict(chunk_data)
+            except TypeError:
+                output_chunk_data = {self.columns[0]: [chunk_data]}
 
             for i in range(len(chunk)):
-                yield {k: v[i] for k, v in chunk_data.items()}
+                yield {k: v[i] for k, v in output_chunk_data.items()}
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
@@ -568,7 +564,7 @@ class Dataset:
             self.__tree,
         )
 
-    def take_range(self, start: int, end: int) -> Table:
+    def take_range(self, start: int, end: int) -> Dataset:
         """
         Create a new dataset from a row range in this dataset.
 
