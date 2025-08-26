@@ -226,7 +226,9 @@ def open_single_dataset(target: OpenTarget):
     assert header is not None
 
     try:
-        tree = open_tree(handle, header.simulation.box_size, header.file.is_lightcone)
+        tree = open_tree(
+            handle, header.simulation["box_size"].value, header.file.is_lightcone
+        )
     except ValueError:
         tree = None
 
@@ -236,7 +238,7 @@ def open_single_dataset(target: OpenTarget):
         sim_region = FullSkyRegion()
     else:
         p1 = (0, 0, 0)
-        p2 = tuple(header.simulation.box_size for _ in range(3))
+        p2 = tuple(header.simulation["box_size"].value for _ in range(3))
         sim_region = oc.make_box(p1, p2)
 
     index: ChunkedIndex
@@ -258,7 +260,6 @@ def open_single_dataset(target: OpenTarget):
     builders, base_unit_transformations = u.get_default_unit_transformations(
         handle, header
     )
-    assert False
     state = dss.DatasetState(
         base_unit_transformations,
         builders,
