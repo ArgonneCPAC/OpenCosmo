@@ -43,7 +43,7 @@ def register_units(
 
 
 def __get_unit_transformations(
-    model: Type[BaseModel], cosmology, convention: str = "scalefree"
+    model: BaseModel, cosmology, convention: str = "scalefree"
 ) -> t.TransformationDict:
     transformations: t.TransformationDict = {}
     if (us := __KNOWN_UNITFUL_MODELS__.get(type(model))) is None:
