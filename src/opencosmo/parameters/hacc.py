@@ -3,8 +3,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Optional
 
-import astropy.cosmology.units as cu
-import astropy.units as u
+import astropy.cosmology.units as cu  # type: ignore
+import astropy.units as u  # type: ignore
 import numpy as np
 from pydantic import (
     BaseModel,
