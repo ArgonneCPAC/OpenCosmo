@@ -278,7 +278,7 @@ def open_single_dataset(target: OpenTarget):
     )
 
     if header.file.is_lightcone:
-        return collection.Lightcone({"data": dataset}, header.lightcone.z_range)
+        return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset
 
