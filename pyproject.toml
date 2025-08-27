@@ -53,12 +53,10 @@ opencosmo = "opencosmo.analysis.cli:cli"
 requires = ["uv_build>=0.8.2,<0.9.0", "pip"]
 build-backend = "uv_build"
 
-[tool.mypy]
-mypy_path = "stubs"
 
 [[tool.mypy.overrides]]
-module = ["h5py"]
-follow_untyped_imports = true
+module = ["h5py", "astropy.*"]
+ignore_missing_imports = true
 
 [tool.towncrier]
 directory = "changes"
