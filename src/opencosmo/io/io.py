@@ -227,7 +227,9 @@ def open_single_dataset(target: OpenTarget):
 
     try:
         tree = open_tree(
-            handle, header.simulation["box_size"].value, header.file.is_lightcone
+            handle,
+            header.with_units("scalefree").simulation["box_size"].value,
+            header.file.is_lightcone,
         )
     except ValueError:
         tree = None
