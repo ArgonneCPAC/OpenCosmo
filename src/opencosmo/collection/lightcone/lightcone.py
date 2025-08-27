@@ -20,14 +20,14 @@ from opencosmo.visit import prepare_kwargs
 
 
 def get_redshift_range(datasets: list[Dataset]):
-    redshift_ranges = [ds.header.lightcone.z_range for ds in datasets]
+    redshift_ranges = [ds.header.lightcone["z_range"] for ds in datasets]
     if all(rr is not None for rr in redshift_ranges):
         min_redshift = min(rr[0] for rr in redshift_ranges)
         max_redshift = max(rr[1] for rr in redshift_ranges)
 
     else:
         steps = np.fromiter((ds.header.file.step for ds in datasets), dtype=int)
-        step_zs = datasets[0].header.simulation.step_zs
+        step_zs = datasets[0].header.simulation["step_zs"]
         min_step = np.min(steps)
         max_step = np.max(steps)
 
@@ -37,7 +37,7 @@ def get_redshift_range(datasets: list[Dataset]):
 
 
 def is_in_range(dataset: Dataset, z_low: float, z_high: float):
-    z_range = dataset.header.lightcone.z_range
+    z_range = dataset.header.lightcone["z_range"]
     if z_range is None:
         z_range = get_redshift_range([dataset])
     if z_high < z_range[0] or z_low > z_range[1]:
@@ -221,7 +221,7 @@ class Lightcone(dict):
         z_range: tuple[float, float]
         """
 
-        return self.__header.lightcone.z_range
+        return self.__header.lightcone["z_range"]
 
     def get_data(self, output="astropy"):
         """
@@ -326,7 +326,7 @@ class Lightcone(dict):
         :py:meth:`Lightcone.z_range <opencosmo.collection.Lightcone.z_range>`,
         so you should always use it rather than filteringo n the column directly.
         """
-        z_range = self.__header.lightcone.z_range
+        z_range = self.__header.lightcone["z_range"]
         if z_high < z_low:
             z_high, z_low = z_low, z_high
 
