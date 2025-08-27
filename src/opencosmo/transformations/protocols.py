@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 from enum import Enum
-from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
+from typing import Optional, Protocol, Sequence, runtime_checkable
 
 import h5py
-from astropy.table import Column, Table  # type: ignore
+from astropy.table import Table  # type: ignore
+from numpy.typing import ArrayLike
 
 
 class TransformationType(Enum):
@@ -21,7 +20,7 @@ class TransformationGenerator(Protocol):
     dataset. Examples include units stored as attributes
     """
 
-    def __call__(self, column: h5py.Dataset) -> TransformationDict: ...
+    def __call__(self, column: h5py.Dataset) -> "TransformationDict": ...
 
 
 class TableTransformation(Protocol):
@@ -31,7 +30,7 @@ class TableTransformation(Protocol):
     The new table will replace the original table.
     """
 
-    def __call__(self, input: Table) -> Optional[Table]: ...
+    def __call__(self, input: Table) -> Table: ...
 
 
 @runtime_checkable
@@ -40,10 +39,7 @@ class AllColumnTransformation(Protocol):
     A transformation that is applied to all columns in a table.
     """
 
-    def __call__(self, input: Column) -> Optional[Column]: ...
-
-
-T = TypeVar("T", Column, float)
+    def __call__(self, input: ArrayLike) -> ArrayLike: ...
 
 
 class ColumnTransformation(Protocol):
@@ -61,9 +57,8 @@ class ColumnTransformation(Protocol):
     @property
     def column_name(self) -> Optional[str]: ...
 
-    def __call__(self, input: T) -> Optional[T]: ...
-    def single_value(self, input: float) -> Any: ...
+    def __call__(self, input: ArrayLike) -> ArrayLike: ...
 
 
 Transformation = TableTransformation | ColumnTransformation | AllColumnTransformation
-TransformationDict = dict[TransformationType, list[Transformation]]
+TransformationDict = dict[TransformationType, Sequence[Transformation]]

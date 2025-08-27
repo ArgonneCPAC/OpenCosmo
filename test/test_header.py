@@ -40,8 +40,10 @@ def malformed_header_path(header_resource_path, tmp_path):
 def test_header_units(header_resource_path):
     data = read_header(header_resource_path)
     assert data.simulation["box_size"] == (128.0 / data.cosmology.h) * u.Mpc
+    assert data.simulation["agn_seed_mass"].unit == u.Msun
     data = data.with_units("scalefree")
     assert data.simulation["box_size"] == 128.0 * u.Mpc / cu.littleh
+    assert data.simulation["agn_seed_mass"].unit == u.Msun / cu.littleh
 
 
 def test_read_header(header_resource_path):
