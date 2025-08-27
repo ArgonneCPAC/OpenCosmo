@@ -5,7 +5,7 @@ from astropy.units.typing import UnitLike
 from pydantic import BaseModel
 
 import opencosmo.transformations as t
-from opencosmo.transformations.protocols import TransformationType
+from opencosmo.transformations.protocols import ColumnTransformation, TransformationType
 from opencosmo.transformations.units import (
     apply_unit,
     get_unit_transition_transformations,
@@ -51,7 +51,7 @@ def __get_unit_transformations(
 
     base_convention, known_units = us
 
-    column_transformations = []
+    column_transformations: list[ColumnTransformation] = []
     for name, unit in known_units.items():
         column_transformations.append(apply_unit(name, unit))
 
@@ -71,7 +71,9 @@ def apply_units(
     column_transformations = transformations.get(TransformationType.COLUMN, [])
     all_column_transformations = transformations.get(TransformationType.ALL_COLUMNS, [])
     for trans in column_transformations:
+        assert hasattr(trans, "column_name")
         value = trans(parameters[trans.column_name])
+
         for trans_ in all_column_transformations:
             value = trans_(value)
         parameters[trans.column_name] = value

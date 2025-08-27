@@ -27,7 +27,7 @@ def generate_transformations(
                     transformations,
                 ) in generated_transformations.items():
                     existing_transformation = existing.get(transformation_type, [])
-                    existing[transformation_type] = (
-                        transformations + existing_transformation
+                    existing[transformation_type] = list(transformations) + list(
+                        existing_transformation
                     )
     return existing

@@ -48,7 +48,7 @@ def get_table_builder(
 
 
 def apply_table_transformations(
-    table: QTable, transformations: list[t.TableTransformation]
+    table: QTable, transformations: Sequence[t.TableTransformation]
 ):
     """
     Apply transformations to the table as a whole. These transformations
@@ -65,7 +65,7 @@ class TableBuilder:
     def __init__(
         self,
         columns: dict[str, "ColumnBuilder"],
-        transformations: list[t.Transformation],
+        transformations: Sequence[t.Transformation],
     ):
         self.column_builders = columns
         self.transformations = transformations

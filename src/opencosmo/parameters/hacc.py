@@ -9,6 +9,7 @@ import numpy as np
 from pydantic import (
     BaseModel,
     Field,
+    computed_field,
     field_serializer,
     field_validator,
     model_validator,
@@ -35,7 +36,7 @@ class HaccSimulationParameters(BaseModel):
     n_gravity: Optional[int] = Field(
         ge=2,
         description="Number of gravity-only particles (per dimension). "
-        'In hydrodynamic simulations, this parameter will be replaced with "n_dm"',
+        "In hydrodynamic simulations, this parameter will not be set.",
     )
     n_steps: int = Field(ge=1, description="Number of time steps")
     pm_grid: int = Field(ge=2, description="Number of grid points (per dimension)")
@@ -50,6 +51,7 @@ class HaccSimulationParameters(BaseModel):
             return {k: empty_string_to_none(v) for k, v in data.items()}
         return data
 
+    @computed_field  # type: ignore[prop-decorator]
     @cached_property
     def step_zs(self) -> list[float]:
         """
@@ -215,3 +217,4 @@ DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
 
 register_units(HaccSimulationParameters, "box_size", u.Mpc / cu.littleh)
 register_units(HaccHydroSimulationParameters, "box_size", u.Mpc / cu.littleh)
+register_units(HaccHydroSimulationParameters, "agn_seed_mass", u.Msun / cu.littleh)

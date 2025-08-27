@@ -8,6 +8,7 @@ import h5py
 from astropy.constants import m_p  # type: ignore
 from astropy.cosmology import Cosmology
 from astropy.table import Column, Table  # type: ignore
+from numpy.typing import ArrayLike
 
 from opencosmo import transformations as t
 from opencosmo.dataset.builders import get_table_builder
@@ -367,12 +368,8 @@ class apply_unit:
         self.__name = column_name
         self.unit = unit
 
-    def __call__(self, input: Column | float) -> Optional[Column | float]:
-        if isinstance(input, float) or input.unit is None:
-            return input * self.unit
-        if input.unit is None:
-            return input * self.unit
-        return input
+    def __call__(self, input: ArrayLike) -> ArrayLike:
+        return input * self.unit
 
     @property
     def column_name(self) -> str:
