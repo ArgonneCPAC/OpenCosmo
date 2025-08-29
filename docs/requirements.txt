@@ -4,4 +4,6 @@ mpi4py>=4.0
 numpy==1.26.4
 yt>=4.3
 pyxsim==4.4.2
+pyarrow[parquet]>=21.0.0
+
 
