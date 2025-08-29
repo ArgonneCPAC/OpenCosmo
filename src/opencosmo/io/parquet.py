@@ -2,7 +2,7 @@ from os import PathLike
 from pathlib import Path
 from warnings import warn
 
-import pyarrow
+import pyarrow  # type: ignore
 from pyarrow import parquet as pq
 
 import opencosmo as oc
@@ -72,8 +72,6 @@ def __write_structure_collection(
         raise ValueError(
             "Dumping a structure collection to parquet can create multiple files, so the output location should be a directory"
         )
-    elif path.exists() and not overwrite:
-        raise FileExistsError(path)
 
     elif not path.exists():
         path.mkdir(parents=True)
