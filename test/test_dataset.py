@@ -85,12 +85,14 @@ def test_take_sorted(input_path):
     dataset = oc.open(input_path)
     fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
     toolkit_sorted_fof_masses = (
-        dataset.take(n, sort_by="fof_halo_mass")
+        dataset.order_by("fof_halo_mass")
+        .take(150, at="start")
         .select("fof_halo_mass")
         .get_data("numpy")
     )
-    manually_sorted_fof_masses = np.sort(fof_masses)
-    assert np.all(manually_sorted_fof_masses[n] == toolkit_sorted_fof_masses)
+    manually_sorted_fof_masses = -np.sort(-fof_masses)
+    assert np.all(manually_sorted_fof_masses[:n] == toolkit_sorted_fof_masses)
+    assert fof_masses.max() == toolkit_sorted_fof_masses[0]
 
 
 def test_drop(input_path):
