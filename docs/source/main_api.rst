@@ -7,6 +7,7 @@ Main Transformations API
 - :code:`filter`: Filter the dataset based on the value of one more more columns.
 - :code:`select`: Select a subset of columns from the dataset.
 - :code:`take`: Select a subset of rows from the dataset.
+- :code:`order_by`: Sort the dataset by one of its columns
 - :code:`bound`: Limit the dataset to a given spatial region.
 - :code:`with_new_columns`: Combine columns in the dataset into a new column with automatic unit handling.
 
@@ -17,7 +18,7 @@ Each of these transformations is returns a new dataset or collection with the tr
    import opencosmo as oc
 
    # Load a dataset
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    # Apply a series of transformations
    ds = ds.with_units("scalefree")
@@ -33,7 +34,7 @@ When writing queries like this, it can feel a bit redundant to write :code:`ds =
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .with_units("scalefree")
@@ -48,7 +49,7 @@ Note that if you're working in a Jupyter notebook, you'll need to use the line c
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds \
       .with_units("scalefree") \
@@ -63,7 +64,7 @@ You are also free to create multiple derivative datasets from the same original 
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds1 = ds
       .filter(oc.col("fof_halo_mass") > 1e13, os.col("fof_halo_mass") < 1e14)
@@ -100,7 +101,7 @@ You can add new columns to a given that are derived from pre-existing columns us
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    fof_halo_vtotal = (oc.col("fof_halo_com_vx")**2 + oc.col("fof_halo_com_vy")**2 + ("fof_halo_com_vz")**2)**(0.5)
    fof_halo_com_p = oc.col("fof_halo_mass") * fof_halo_vtotal
@@ -138,7 +139,7 @@ For small datasets, it is usually not an issue to request all the columns in a g
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .select(["fof_halo_mass", "fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z"])
@@ -148,7 +149,7 @@ For small datasets, it is usually not an issue to request all the columns in a g
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .select(["fof_halo_mass", "fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z"])
@@ -160,7 +161,7 @@ Filters and selects generally behave as you might expect. If you select *after* 
 .. code-block:: python
 
    import opencosmo as oc
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .select(["fof_halo_mass", "fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z"])
@@ -171,7 +172,7 @@ as does this:
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .filter(oc.col("fof_halo_mass") > 1e13)
@@ -183,7 +184,7 @@ but this will raise an error:
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .select(["fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z"])
@@ -204,7 +205,7 @@ As with the `select` transformations, `take` transformations can be chained toge
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .take(100, at="random")
@@ -217,7 +218,7 @@ You can also take a range of rows with :meth:`opencosmo.Dataset.take_range`. As 
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    ds = ds
       .take_range(500, 1000)
@@ -225,13 +226,39 @@ You can also take a range of rows with :meth:`opencosmo.Dataset.take_range`. As 
 
 This will take the rows 500-1000 from the original dataset, and then take the first 100 rows from that new dataset. The original dataset is unchanged.
 
+Sorting
+-------
+
+You can re-order a dataset based on the value of some column with :meth:`opencosmo.Dataset.order_by`. By default, this sorts in descending order (from highest to lowest), however you can sort in ascending order by passing :code:`invert = True`.
+
+For example, to get the 100 most massive halos in a given simulation, ordered from most to least massive:
+
+.. code-block:: python
+
+   ds = oc.open("haloproperties.hdf5")
+   ds = ds.order_by("fof_halo_mass").take(100, at="start")
+
+Or, to get the 100 *least* massive halos, ordered from least to most massive:
+
+
+.. code-block:: python
+
+   ds = ds.order_by("fof_halo_mass", invert=True).take(100, at="start")
+
+You can also use :py:meth:`take <opencosmo.Dataset.take>` in clever ways to get other results. For example, to get the 100 *most* massive halos but ordered from *least to most massive*:
+
+.. code-block:: python
+
+   ds = ds.order_by("fof_halo_mass", invert=True).take(100, at="end")
+
+
 Spatial Querying
 -----------------
 OpenCosmo data contains a spatial index which makes it efficient to perform spatial queries on the data. These queries can be performed by defining a region, and then passing it into :meth:`opencosmo.Dataset.bound`:
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
    region = oc.make_box((20,20,20), (40,40,40))
    bound_ds = ds.bound(region)
 
@@ -242,7 +269,7 @@ For lightcone data, spatial queries are performed using two dimensional regions 
    import astropy.units as u
    from astropy.coordinates import SkyCoord
 
-   ds = oc.load("lc_haloproperties.hdf5")
+   ds = oc.open("lc_haloproperties.hdf5")
    center = SkyCoord(45*u.deg, -30*u.deg)
    radius = 30*u.arcmin
    region = opencosmo.make_cone(center, radius)
@@ -260,7 +287,7 @@ If you want to work row-by-row, you can always iterate over the dataset with :me
 
 .. code-block:: python
 
-   ds = oc.load("haloproperties.hdf5")
+   ds = oc.open("haloproperties.hdf5")
 
    for row in ds.rows():
       # Do something with the row
