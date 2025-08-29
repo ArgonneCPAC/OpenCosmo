@@ -8,8 +8,12 @@ if TYPE_CHECKING:
     from opencosmo.dataset.state import DatasetState
 
 
-def make_sorted_index(state: "DatasetState", column: np.ndarray):
-    sorted = np.argsort(column)
+def make_sorted_index(state: "DatasetState", column: np.ndarray, invert: bool):
+    if not invert:
+        order = np.argsort(-column)
+    else:
+        order = np.argsort(column)
+
     existing_index = state.index.into_array()
-    new_index = SimpleIndex(existing_index[sorted])
+    new_index = SimpleIndex(existing_index[order])
     return new_index

@@ -545,14 +545,43 @@ class Dataset:
 
         return self.select(current_columns - dropped_columns)
 
+    def order_by(self, column: str, invert: bool = False) -> Dataset:
+        """
+        Sort this dataset by the values in a given column. By default sorting is in
+        descending order (greatest to least). Pass invert = True to sort in ascending
+        order (least to greatest).
+
+        This can be used to, for example, select largest halos in a given
+        dataset:
+
+        .. code-block:: python
+
+            dataset = oc.open("haloproperties.hdf5")
+            dataset = dataset
+                        .sort_by("fof_halo_mass")
+                        .take(100, at="start")
+
+
+        """
+        new_state = self.__state.order_by(column, self.__handler, invert)
+        return Dataset(
+            self.__handler,
+            self.__header,
+            new_state,
+            self.__tree,
+        )
+
     def take(
-        self, n: int, at: str = "random", sort_by: Optional[str] = None
+        self,
+        n: int,
+        at: str = "random",
     ) -> Dataset:
         """
         Create a new dataset from some number of rows from this dataset.
 
         Can take the first n rows, the last n rows, or n random rows
         depending on the value of 'at'.
+
 
         Parameters
         ----------
@@ -561,6 +590,7 @@ class Dataset:
         at : str
             Where to take the rows from. One of "start", "end", or "random".
             The default is "random".
+
 
         Returns
         -------
@@ -575,13 +605,7 @@ class Dataset:
 
         """
 
-        if sort_by is not None:
-            column = self.select(sort_by).get_data("numpy")
-            assert isinstance(column, np.ndarray)
-        else:
-            column = None
-
-        new_state = self.__state.take(n, at, sort_by=column)
+        new_state = self.__state.take(n, at)
 
         return Dataset(
             self.__handler,

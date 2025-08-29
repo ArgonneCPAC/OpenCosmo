@@ -77,7 +77,7 @@ class DatasetState:
         )
         return list(columns - self.__hidden)
 
-    def get_data(self, handler: "DatasetHandler"):
+    def get_data(self, handler: "DatasetHandler") -> table.QTable:
         """
         Get the data for a given handler.
         """
@@ -295,14 +295,19 @@ class DatasetState:
             new_derived,
         )
 
-    def take(self, n: int, at: str, sort_by: Optional[np.ndarray] = None):
+    def order_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
+        table = self.select(column_name).get_data(handler)
+        column = table[column_name]
+        if isinstance(column, units.Quantity):
+            column = column.value
+        new_index = make_sorted_index(self, column, invert)
+        return self.with_index(new_index)
+
+    def take(self, n: int, at: str):
         """
         Take rows from the dataset.
         """
-        if sort_by is not None:
-            new_index = make_sorted_index(self, sort_by).take(n, at="start")
-        else:
-            new_index = self.__index.take(n, at)
+        new_index = self.__index.take(n, at)
         return self.with_index(new_index)
 
     def take_range(self, start: int, end: int):
