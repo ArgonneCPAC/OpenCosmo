@@ -25,10 +25,10 @@ def write_parquet(
     path: PathLike
         The path to write the data to. If you are writing a :py:class:`Dataset  <opencosmo.Dataset>`
         or :py:class:`Lightcone <opencosmo.Lightcone>` this should be a single parquet file. If you
-        are writing a :py:class`StructureCollection <opencosmo.StructureCollection>`, this should be
+        are writing a :py:class:`StructureCollection <opencosmo.StructureCollection>`, this should be
         a folder.
 
-    to_write: opencosmo.Dataset | opencosmo.Lighcone | opencosmo.StructureCollection
+    to_write: opencosmo.Dataset | opencosmo.Lightcone | opencosmo.StructureCollection
         The dataset or collection to write
 
     overwrite: bool, default = False
