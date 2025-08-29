@@ -14,7 +14,7 @@ class SimpleIndex:
     """
 
     def __init__(self, index: NDArray[np.int_]) -> None:
-        self.__index = np.sort(index)
+        self.__index = index
 
     @classmethod
     def from_size(cls, size: int) -> "SimpleIndex":

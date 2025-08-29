@@ -10,6 +10,7 @@ import opencosmo.transformations.units as u
 from opencosmo.dataset.builders import TableBuilder, get_table_builder
 from opencosmo.dataset.column import DerivedColumn
 from opencosmo.dataset.im import InMemoryColumnHandler
+from opencosmo.dataset.sort import make_sorted_index
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io import schemas as ios
@@ -294,11 +295,14 @@ class DatasetState:
             new_derived,
         )
 
-    def take(self, n: int, at: str):
+    def take(self, n: int, at: str, sort_by: Optional[np.ndarray] = None):
         """
         Take rows from the dataset.
         """
-        new_index = self.__index.take(n, at)
+        if sort_by is not None:
+            new_index = make_sorted_index(self, sort_by).take(n, at="start")
+        else:
+            new_index = self.__index.take(n, at)
         return self.with_index(new_index)
 
     def take_range(self, start: int, end: int):

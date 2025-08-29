@@ -80,6 +80,19 @@ def test_take_oom(input_path):
     assert len(data) == 10
 
 
+def test_take_sorted(input_path):
+    n = 150
+    dataset = oc.open(input_path)
+    fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
+    toolkit_sorted_fof_masses = (
+        dataset.take(n, sort_by="fof_halo_mass")
+        .select("fof_halo_mass")
+        .get_data("numpy")
+    )
+    manually_sorted_fof_masses = np.sort(fof_masses)
+    assert np.all(manually_sorted_fof_masses[n] == toolkit_sorted_fof_masses)
+
+
 def test_drop(input_path):
     with oc.open(input_path) as ds:
         data = ds.data

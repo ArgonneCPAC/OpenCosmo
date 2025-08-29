@@ -545,7 +545,9 @@ class Dataset:
 
         return self.select(current_columns - dropped_columns)
 
-    def take(self, n: int, at: str = "random") -> Dataset:
+    def take(
+        self, n: int, at: str = "random", sort_by: Optional[str] = None
+    ) -> Dataset:
         """
         Create a new dataset from some number of rows from this dataset.
 
@@ -572,7 +574,14 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        new_state = self.__state.take(n, at)
+
+        if sort_by is not None:
+            column = self.select(sort_by).get_data("numpy")
+            assert isinstance(column, np.ndarray)
+        else:
+            column = None
+
+        new_state = self.__state.take(n, at, sort_by=column)
 
         return Dataset(
             self.__handler,
