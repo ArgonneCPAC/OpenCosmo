@@ -38,7 +38,13 @@ Transformations applied to the data will propogate to the file when written, wit
 Other Formats
 =============
 
-OpenCosmo support dumping some data into other formats. These new files will not be readable by the toolkit, but may be more convinient for your specific usecase
+OpenCosmo support dumping some data into other formats. These new files will not be readable by the toolkit, but may be more convinient for your specific usecase. You can install all additional io dependencies with
+
+.. code-block:: bash
+
+   pip install "opencosmo[io]"
+
+or you can install individual output formats (see below).
 
 Parquet
 -------
