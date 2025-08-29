@@ -70,5 +70,13 @@ def test_dump_structure(halo_structure_paths, tmp_path):
         oc.open(*halo_structure_paths).filter(oc.col("fof_halo_mass") > 1e14).take(1)
     )
     write_parquet(tmp_path, dataset)
-    _ = list(tmp_path.glob("*.parquet"))
-    assert False
+    files = list(tmp_path.glob("*.parquet"))
+    data = {}
+    for file in files:
+        table = pq.read_table(file)
+        data[file.stem] = table
+
+    for data_type, table in data.items():
+        oc_data = dataset[data_type].get_data("numpy")
+        for column_name in oc_data.keys():
+            assert np.all(oc_data[column_name] == table[column_name])
