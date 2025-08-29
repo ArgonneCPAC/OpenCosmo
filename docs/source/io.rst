@@ -36,7 +36,7 @@ Writing data to a new file is straightforward:
 Transformations applied to the data will propogate to the file when written, with the exception of :py:meth:`oc.Dataset.with_units`. When you write data, it will always be stored in the unit convention of the original raw data.
 
 Other Formats
-=============
+-------------
 
 OpenCosmo support dumping some data into other formats. These new files will not be readable by the toolkit, but may be more convinient for your specific usecase. You can install all additional io dependencies with
 
@@ -47,7 +47,7 @@ OpenCosmo support dumping some data into other formats. These new files will not
 or you can install individual output formats (see below).
 
 Parquet
--------
+^^^^^^^
 
 You can dump a :py:class:`Datast <opencosmo.Dataset>`, :py:class:`Lightcone <opencosmo.Lightcone>`, or parts of a :py:class:`StructureCollection <opencosmo.StructureCollection>` to parquet with :py:meth:`opencosmo.io.write_parquet`. You will need to install pyarrow with parquet support first:
 
