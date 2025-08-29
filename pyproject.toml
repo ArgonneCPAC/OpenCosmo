@@ -52,6 +52,7 @@ opencosmo = "opencosmo.analysis.cli:cli"
 [project.optional-dependencies]
 io = [
     "pyarrow>=21.0.0",
+    "pyarrow[parquet]"
 ]
 
 [build-system]

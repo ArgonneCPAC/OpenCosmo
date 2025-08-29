@@ -569,6 +569,7 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.5,<4.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pyarrow", marker = "extra == 'io'", specifier = ">=21.0.0" },
+    { name = "pyarrow", extras = ["parquet"], marker = "extra == 'io'" },
     { name = "pydantic", specifier = ">=2.10.6,<3.0.0" },
 ]
 provides-extras = ["io"]
