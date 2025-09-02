@@ -85,7 +85,12 @@ class DatasetState:
         data = handler.get_data(builder=self.__builder, index=self.__index)
         data = self.__get_im_columns(data)
         data = self.__build_derived_columns(data)
-        if self.__hidden:
+        data_columns = set(data.columns)
+
+        if (
+            self.__hidden
+            and not self.__hidden.intersection(data_columns) == data_columns
+        ):
             data.remove_columns(self.__hidden)
         return data
 
@@ -325,6 +330,7 @@ class DatasetState:
                 self.__order_by[0]
             ]
             sorted = np.argsort(-(1 ** int(not self.__order_by[1])) * column)
+
             index: DataIndex = SimpleIndex(sorted)
         else:
             index = self.__index
