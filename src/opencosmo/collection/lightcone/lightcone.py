@@ -6,12 +6,13 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import vstack  # type: ignore
+from astropy.table import Table, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import SimpleIndex
 from opencosmo.io.io import OpenTarget, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
@@ -45,6 +46,44 @@ def is_in_range(dataset: Dataset, z_low: float, z_high: float):
     return True
 
 
+def sort_table(table: Table, column: str, invert: bool):
+    column_data = table[column]
+    if not invert:
+        column_data = -column_data
+    indices = np.argsort(column_data)
+    for name in table.columns:
+        table[name] = table[name][indices]
+    return table
+
+
+def make_indices_for_sort(
+    lightcone: "Lightcone", sort_by: str, invert: bool, n: int, at: str
+):
+    column = np.concatenate(
+        [ds.select(sort_by).get_data("numpy") for ds in lightcone.values()]
+    )
+    if not invert:
+        column = -column
+    sorted_indices = np.argsort(column)
+    if at == "start":
+        sorted_indices = sorted_indices[:n]
+    else:
+        sorted_indices = sorted_indices[-n:]
+
+    sorted_indices = np.sort(sorted_indices)
+    index = SimpleIndex(sorted_indices)
+    ranges = np.fromiter((len(ds) for ds in lightcone.values()), dtype=int)
+    ranges = np.insert(ranges, 0, 0)
+    slices = np.cumsum(index.n_in_range(ranges[:-1], ranges[1:]))
+    slices = np.insert(slices, 0, 0)
+
+    output_indices = []
+    for i in range(len(slices) - 1):
+        output_index = sorted_indices[slices[i] : slices[i + 1]] - ranges[i]
+        output_indices.append(SimpleIndex(output_index))
+    return output_indices
+
+
 def with_redshift_column(dataset: Dataset):
     """
     Ensures a column exists called "redshift" which contains the redshift of the objects
@@ -74,7 +113,8 @@ class Lightcone(dict):
         self,
         datasets: dict[str, Dataset],
         z_range: Optional[tuple[float, float]] = None,
-        hide_redshift: bool = False,
+        hidden: Optional[set[str]] = None,
+        ordered_by: Optional[tuple[str, bool]] = None,
     ):
         datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
         self.update(datasets)
@@ -91,7 +131,11 @@ class Lightcone(dict):
             raise ValueError("Not all lightcone datasets have the same columns!")
         header = next(iter(self.values())).header
         self.__header = header.with_parameter("lightcone/z_range", z_range)
-        self.__hide_redshift = hide_redshift
+        if hidden is None:
+            hidden = set()
+
+        self.__hidden = hidden
+        self.__ordered_by = ordered_by
 
     def __repr__(self):
         """
@@ -105,8 +149,8 @@ class Lightcone(dict):
         else:
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
-        if self.__hide_redshift and "redshift" in self.columns:
-            repr_ds = repr_ds.drop("redshift")
+
+        repr_ds = repr_ds.drop(self.__hidden)
 
         table_repr = repr_ds.data.__repr__()
         # remove the first line
@@ -158,8 +202,7 @@ class Lightcone(dict):
         columns: list[str]
         """
         cols = next(iter(self.values())).columns
-        if self.__hide_redshift:
-            cols = list(filter(lambda col: col != "redshift", cols))
+        cols = list(filter(lambda col: col not in self.__hidden, cols))
         return cols
 
     @property
@@ -260,8 +303,11 @@ class Lightcone(dict):
 
         data = [ds.get_data(unpack=False) for ds in self.values()]
         table = vstack(data, join_type="exact")
-        if self.__hide_redshift:
-            table.remove_column("redshift")
+        if self.__ordered_by is not None:
+            table = sort_table(table, *self.__ordered_by)
+
+        table.remove_columns(self.__hidden)
+
         if len(table.colnames) == 1:
             table = next(table.itercols())
 
@@ -346,13 +392,15 @@ class Lightcone(dict):
             )
             if len(new_dataset) > 0:
                 new_datasets[key] = new_dataset
-        return Lightcone(new_datasets, (z_low, z_high))
+        return Lightcone(
+            new_datasets, (z_low, z_high), self.__hidden, self.__ordered_by
+        )
 
     def __map(
         self,
         method,
         *args,
-        hide_redshift: bool = False,
+        hidden: Optional[set[str]] = None,
         mapped_arguments: dict[str, dict[str, Any]] = {},
         construct: bool = True,
         **kwargs,
@@ -363,6 +411,7 @@ class Lightcone(dict):
         across all of them.
         """
         output = {}
+        hidden = hidden if hidden is not None else self.__hidden
         for ds_name, dataset in self.items():
             dataset_mapped_arguments = {
                 arg_name: args[ds_name] for arg_name, args in mapped_arguments.items()
@@ -372,7 +421,7 @@ class Lightcone(dict):
             )
 
         if construct:
-            return Lightcone(output, self.z_range, hide_redshift)
+            return Lightcone(output, self.z_range, hidden, self.__ordered_by)
         return output
 
     def __map_attribute(self, attribute):
@@ -588,12 +637,18 @@ class Lightcone(dict):
         """
         if isinstance(columns, str):
             columns = [columns]
-        hide_redshift = False
         columns = set(columns)
+        hidden = self.__hidden
+
         if "redshift" not in columns:
             columns.add("redshift")
-            hide_redshift = True
-        return self.__map("select", columns, hide_redshift=hide_redshift)
+            hidden = hidden.union({"redshift"})
+
+        if self.__ordered_by is not None and self.__ordered_by[0] not in columns:
+            columns.add("redshift")
+            hidden = hidden.union({self.__ordered_by[0]})
+
+        return self.__map("select", columns, hidden=hidden)
 
     def drop(self, columns: str | Iterable[str]) -> Self:
         """
@@ -668,13 +723,23 @@ class Lightcone(dict):
                 )
                 output[key] = ds.take(len(indices_into_ds))
                 rs += len(ds)
-            return Lightcone(output, self.z_range, hide_redshift=self.__hide_redshift)
+            return Lightcone(
+                output, self.z_range, hidden=self.__hidden, ordered_by=self.__ordered_by
+            )
         output = {}
         rs = 0
+        if self.__ordered_by is not None:
+            indices = make_indices_for_sort(self, *self.__ordered_by, n=n, at=at)
+            output = {
+                k: v.with_index(indices[i]) for i, (k, v) in enumerate(self.items())
+            }
+            return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
+
         if at == "start":
             iter = self.items()
         elif at == "end":
             iter = reversed(self.items())  # type: ignore
+
         for name, ds in iter:
             if len(ds) < n - rs:
                 output[name] = ds
@@ -684,7 +749,7 @@ class Lightcone(dict):
                 break
         if at == "end":
             output = {k: v for k, v in reversed(output.items())}
-        return Lightcone(output, self.z_range, hide_redshift=self.__hide_redshift)
+        return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 
     def with_new_columns(self, **columns: DerivedColumn | np.ndarray | u.Quantity):
         """
@@ -727,7 +792,12 @@ class Lightcone(dict):
             columns_input = raw_columns | derived
             new_dataset = ds.with_new_columns(**columns_input)
             new_datasets[ds_name] = new_dataset
-        return Lightcone(new_datasets, self.z_range, self.__hide_redshift)
+        return Lightcone(new_datasets, self.z_range, self.__hidden, self.__ordered_by)
+
+    def order_by(self, column: str, invert: bool = False):
+        if column not in self.columns:
+            raise ValueError(f"Column {column} does not exist in this dataset!")
+        return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))
 
     def with_units(self, convention: str) -> Self:
         """
@@ -771,4 +841,4 @@ class Lightcone(dict):
         If working in an MPI context, all ranks will recieve the same data.
         """
         datasets = {k: v.collect() for k, v in self.items()}
-        return Lightcone(datasets, self.z_range)
+        return Lightcone(datasets, self.z_range, self.__hidden, self.__ordered_by)
