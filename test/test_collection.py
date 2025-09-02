@@ -401,6 +401,21 @@ def test_data_link_repr(halo_paths):
     assert isinstance(collection.__repr__(), str)
 
 
+def test_data_link_sort(halo_paths):
+    collection = oc.open(halo_paths)
+    collection = collection.order_by("fof_halo_mass")
+    fof_halo_mass = (
+        collection["halo_properties"].select("fof_halo_mass").get_data("numpy")
+    )
+    assert np.all(fof_halo_mass[1:] <= fof_halo_mass[:-1])
+    collection = collection.take(20, at="start").with_datasets(
+        ["halo_properties", "dm_particles"]
+    )
+    for halo in collection.halos():
+        fof_halo_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
+        assert np.all(fof_halo_tags == halo["halo_properties"]["fof_halo_tag"])
+
+
 def test_data_link_selection(halo_paths):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(

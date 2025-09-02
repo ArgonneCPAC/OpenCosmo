@@ -43,8 +43,10 @@ class StructureCollection:
     in the simulation. Currently these structures include halos
     and galaxies.
 
-    For now, these are always a combination of a properties dataset
-    and several particle or profile datasets.
+    Every structure collection has a halo_properties or galaxy_properties dataset
+    that contains the high-level measured attribute of the structures. Certain
+    operations (e.g. :py:meth:`order_by <opencosmo.StructureCollection.order_by>`
+    operate on this dataset.
     """
 
     def __init__(
@@ -108,6 +110,14 @@ class StructureCollection:
         The cosmology of the structure collection
         """
         return self.__source.cosmology
+
+    @property
+    def properties(self) -> list[str]:
+        """
+        The high-level properties that are available as part of the
+        halo_properties or galaxy_properties dataset.
+        """
+        return self.__source.columns
 
     @property
     def redshift(self) -> float | tuple[float, float]:
@@ -504,6 +514,38 @@ class StructureCollection:
             self.__source,
             self.__header,
             {**self.__datasets, dataset: new_dataset},
+            self.__links,
+            self.__hide_source,
+        )
+
+    def order_by(self, column: str, invert: bool = False) -> StructureCollection:
+        """
+        Re-order the collection based on one of the structure collection's properties. Each
+        StructureCollection contains a halo_properties or galaxy_properties dataset that
+        contains the high-level measured properties of the structures in this collection.
+        This method always operates on that dataset.
+
+        Parameters
+        ----------
+        column : str
+            The column in the halo_properties or galaxy_properties dataset to
+            order the collection by.
+
+        invert : bool, default = False
+            If False (the default) ordering will be done from greatest to least.
+            Otherwise least to greatest.
+
+        Returns
+        -------
+        StructureCollection
+            A new ordered by the given column.
+        """
+
+        new_source = self.__source.order_by(column, invert=invert)
+        return StructureCollection(
+            new_source,
+            self.__header,
+            self.__datasets,
             self.__links,
             self.__hide_source,
         )
