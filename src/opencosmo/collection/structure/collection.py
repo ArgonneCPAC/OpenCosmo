@@ -537,8 +537,9 @@ class StructureCollection:
 
         Returns
         -------
-        StructureCollection
-            A new ordered by the given column.
+        result : StructureCollection
+            A new StructureCollection ordered by the given column.
+
         """
 
         new_source = self.__source.order_by(column, invert=invert)

@@ -551,6 +551,19 @@ def test_simulation_collection_derive(multi_path):
         assert "fof_halo_px" in ds.data.columns
 
 
+def test_simulation_collection_order(multi_path):
+    collection = oc.open(multi_path)
+    for ds in collection.values():
+        halo_mass = ds.select("fof_halo_mass").get_data("numpy")
+        with pytest.raises(AssertionError):
+            assert np.all(halo_mass[1:] <= halo_mass[:-1])
+
+    collection = collection.order_by("fof_halo_mass")
+    for ds in collection.values():
+        halo_mass = ds.select("fof_halo_mass").get_data("numpy")
+        assert np.all(halo_mass[1:] <= halo_mass[:-1])
+
+
 def test_simulation_collection_evaluate(multi_path):
     collection = oc.open(multi_path)
 
