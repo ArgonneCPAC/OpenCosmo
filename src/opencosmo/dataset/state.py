@@ -10,9 +10,8 @@ import opencosmo.transformations.units as u
 from opencosmo.dataset.builders import TableBuilder, get_table_builder
 from opencosmo.dataset.column import DerivedColumn
 from opencosmo.dataset.im import InMemoryColumnHandler
-from opencosmo.dataset.sort import make_sorted_index
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 from opencosmo.spatial.protocols import Region
 
@@ -35,6 +34,7 @@ class DatasetState:
         region: Region,
         header: OpenCosmoHeader,
         im_handler: InMemoryColumnHandler,
+        order_by: Optional[tuple[str, bool]] = None,
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
@@ -46,6 +46,7 @@ class DatasetState:
         self.__header = header
         self.__hidden = hidden
         self.__index = index
+        self.__order_by = order_by
         self.__region = region
 
     @property
@@ -103,6 +104,7 @@ class DatasetState:
             self.__region,
             self.__header,
             new_cache,
+            self.__order_by,
             self.__hidden,
             self.__derived,
         )
@@ -194,6 +196,7 @@ class DatasetState:
             self.__region,
             self.__header,
             new_im_handler,
+            self.__order_by,
             self.__hidden,
             new_derived,
         )
@@ -224,6 +227,7 @@ class DatasetState:
             region,
             self.__header,
             self.__im_handler,
+            self.__order_by,
             self.__hidden,
             self.__derived,
         )
@@ -282,6 +286,8 @@ class DatasetState:
         new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden = all_required - columns
+        if self.__order_by is not None:
+            new_hidden.add(self.__order_by[0])
 
         return DatasetState(
             self.__base_unit_transformations,
@@ -291,23 +297,39 @@ class DatasetState:
             self.__region,
             self.__header,
             new_im_handler,
+            self.__order_by,
             new_hidden,
             new_derived,
         )
 
     def order_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
-        table = self.select(column_name).get_data(handler)
-        column = table[column_name]
-        if isinstance(column, units.Quantity):
-            column = column.value
-        new_index = make_sorted_index(self, column, invert)
-        return self.with_index(new_index)
+        return DatasetState(
+            self.__base_unit_transformations,
+            self.__builder,
+            self.__index,
+            self.__convention,
+            self.__region,
+            self.__header,
+            self.__im_handler,
+            (column_name, invert),
+            self.__hidden,
+            self.__derived,
+        )
 
-    def take(self, n: int, at: str):
+    def take(self, n: int, at: str, handler):
         """
         Take rows from the dataset.
         """
-        new_index = self.__index.take(n, at)
+        if self.__order_by is not None:
+            column = self.select(self.__order_by[0]).get_data(handler)[
+                self.__order_by[0]
+            ]
+            sorted = np.argsort(-(1 ** int(not self.__order_by[1])) * column)
+            index: DataIndex = SimpleIndex(sorted)
+        else:
+            index = self.__index
+
+        new_index = index.take(n, at)
         return self.with_index(new_index)
 
     def take_range(self, start: int, end: int):
@@ -350,6 +372,7 @@ class DatasetState:
             self.__region,
             self.__header,
             self.__im_handler,
+            self.__order_by,
             self.__hidden,
             self.__derived,
         )

@@ -605,7 +605,7 @@ class Dataset:
 
         """
 
-        new_state = self.__state.take(n, at)
+        new_state = self.__state.take(n, at, self.__handler)
 
         return Dataset(
             self.__handler,
