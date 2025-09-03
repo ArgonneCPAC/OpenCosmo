@@ -359,8 +359,6 @@ def test_write_after_derive(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         written_data = new_ds.select("fof_halo_px").data
-        print(data)
-        print(written_data)
         assert np.all(np.isclose(data, written_data))
 
 
