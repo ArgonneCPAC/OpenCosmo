@@ -48,7 +48,7 @@ def is_in_range(dataset: Dataset, z_low: float, z_high: float):
 
 def sort_table(table: Table, column: str, invert: bool):
     column_data = table[column]
-    if not invert:
+    if invert:
         column_data = -column_data
     indices = np.argsort(column_data)
     for name in table.columns:
@@ -302,7 +302,7 @@ class Lightcone(dict):
         data = [ds.get_data(unpack=False) for ds in self.values()]
         table = vstack(data, join_type="exact")
         if self.__ordered_by is not None:
-            table = sort_table(table, *self.__ordered_by)
+            table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
 
         table.remove_columns(self.__hidden)
 
@@ -792,7 +792,40 @@ class Lightcone(dict):
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__ordered_by)
 
-    def order_by(self, column: str, invert: bool = False):
+    def sort_by(self, column: str, invert: bool = False):
+        """
+        Sort this dataset by the values in a given column. By default sorting is in
+        ascending order (least to greatest). Pass invert = True to sort in descending
+        order (greatest to least).
+
+        This can be used to, for example, select largest halos in a given
+        dataset:
+
+        .. code-block:: python
+
+            dataset = oc.open("haloproperties.hdf5")
+            dataset = dataset
+                        .sort_by("fof_halo_mass")
+                        .take(100, at="start")
+
+        Parameters
+        ----------
+        column : str
+            The column in the halo_properties or galaxy_properties dataset to
+            order the collection by.
+
+        invert : bool, default = False
+            If False (the default), ordering will be from least to greatest.
+            Otherwise greatest to least.
+
+        Returns
+        -------
+        result : Dataset
+            A new Dataset ordered by the given column.
+
+
+        """
+
         if column not in self.columns:
             raise ValueError(f"Column {column} does not exist in this dataset!")
         return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))

@@ -545,11 +545,11 @@ class Dataset:
 
         return self.select(current_columns - dropped_columns)
 
-    def order_by(self, column: str, invert: bool = False) -> Dataset:
+    def sort_by(self, column: str, invert: bool = False) -> Dataset:
         """
         Sort this dataset by the values in a given column. By default sorting is in
-        descending order (greatest to least). Pass invert = True to sort in ascending
-        order (least to greatest).
+        ascending order (least to greatest). Pass invert = True to sort in descending
+        order (greatest to least).
 
         This can be used to, for example, select largest halos in a given
         dataset:
@@ -558,12 +558,27 @@ class Dataset:
 
             dataset = oc.open("haloproperties.hdf5")
             dataset = dataset
-                        .order_by("fof_halo_mass")
+                        .sort_by("fof_halo_mass")
                         .take(100, at="start")
+
+        Parameters
+        ----------
+        column : str
+            The column in the halo_properties or galaxy_properties dataset to
+            order the collection by.
+
+        invert : bool, default = False
+            If False (the default), ordering will be from least to greatest.
+            Otherwise greatest to least.
+
+        Returns
+        -------
+        result : Dataset
+            A new Dataset ordered by the given column.
 
 
         """
-        new_state = self.__state.order_by(column, self.__handler, invert)
+        new_state = self.__state.sort_by(column, self.__handler, invert)
         return Dataset(
             self.__handler,
             self.__header,

@@ -366,10 +366,10 @@ class SimulationCollection(dict):
             return
         return results
 
-    def order_by(self, column: str, invert: bool = False):
+    def sort_by(self, column: str, invert: bool = False):
         """
         Re-order the individual datasets in the collection based on a column. See
-        :py:meth:`Dataset.order_by <opencosmo.Dataset.order_by>` for usage details.
+        :py:meth:`Dataset.sort_by <opencosmo.Dataset.sort_by>` for usage details.
 
         Parameters
         ----------
@@ -378,8 +378,8 @@ class SimulationCollection(dict):
             order the collection by.
 
         invert : bool, default = False
-            If False (the default) ordering will be done from greatest to least.
-            Otherwise least to greatest.
+            If False (the default) ordering will be done from least to greatest.
+            Otherwise greatest to least.
 
         Returns
         -------
@@ -387,7 +387,7 @@ class SimulationCollection(dict):
             A new SimulationCollection with the datasets ordered by the given column.
 
         """
-        return self.__map("order_by", column=column, invert=invert)
+        return self.__map("sort_by", column=column, invert=invert)
 
     def with_units(self, convention: str) -> Self:
         """
