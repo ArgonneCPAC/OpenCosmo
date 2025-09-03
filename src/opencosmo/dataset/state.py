@@ -92,6 +92,8 @@ class DatasetState:
             and not self.__hidden.intersection(data_columns) == data_columns
         ):
             data.remove_columns(self.__hidden)
+        if self.__order_by is not None:
+            data.sort(self.__order_by[0], reverse=not self.__order_by[1])
         return data
 
     def with_index(self, index: DataIndex):
@@ -291,7 +293,7 @@ class DatasetState:
         new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden = all_required - columns
-        if self.__order_by is not None:
+        if self.__order_by is not None and self.__order_by[0] not in columns:
             new_hidden.add(self.__order_by[0])
 
         return DatasetState(
