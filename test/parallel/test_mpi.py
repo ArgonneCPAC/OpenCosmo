@@ -308,7 +308,7 @@ def test_link_write(all_paths, tmp_path):
             try:
                 tag = halo_properties["fof_halo_tag"]
                 tags = set(ds.select("fof_halo_tag").data)
-                parallel_assert(len(tags) == 1 and tags.pop() == tag)
+                assert len(tags) == 1 and tags.pop() == tag
             except ValueError:
                 continue
 
