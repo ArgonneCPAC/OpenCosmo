@@ -62,7 +62,7 @@ def make_indices_for_sort(
     column = np.concatenate(
         [ds.select(sort_by).get_data("numpy") for ds in lightcone.values()]
     )
-    if not invert:
+    if invert:
         column = -column
     sorted_indices = np.argsort(column)
     if at == "start":

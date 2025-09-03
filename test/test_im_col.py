@@ -129,3 +129,13 @@ def test_add_column_write(properties_path, tmp_path):
     assert np.all(ds.select("test_random").get_data("numpy") == random_data)
     assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
     assert np.all(ds.select("test_unitful").get_data() == random_unitful)
+
+
+def test_add_order(properties_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=len(ds))
+    ds = ds.with_new_columns(test_random=random_data)
+    ds = ds.sort_by("test_random")
+    data = ds.get_data("numpy")
+    test_random = data["test_random"]
+    assert np.all(test_random[:-1] <= test_random[1:])
