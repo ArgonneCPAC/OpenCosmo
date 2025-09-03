@@ -407,7 +407,7 @@ def test_data_link_sort(halo_paths):
     fof_halo_mass = (
         collection["halo_properties"].select("fof_halo_mass").get_data("numpy")
     )
-    assert np.all(fof_halo_mass[1:] <= fof_halo_mass[:-1])
+    assert np.all(fof_halo_mass[1:] >= fof_halo_mass[:-1])
     collection = collection.take(20, at="start").with_datasets(
         ["halo_properties", "dm_particles"]
     )
@@ -561,7 +561,7 @@ def test_simulation_collection_order(multi_path):
     collection = collection.sort_by("fof_halo_mass")
     for ds in collection.values():
         halo_mass = ds.select("fof_halo_mass").get_data("numpy")
-        assert np.all(halo_mass[1:] <= halo_mass[:-1])
+        assert np.all(halo_mass[1:] >= halo_mass[:-1])
 
 
 def test_simulation_collection_evaluate(multi_path):
