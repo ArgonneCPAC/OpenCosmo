@@ -150,8 +150,6 @@ class Lightcone(dict):
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
 
-        repr_ds = repr_ds.drop(self.__hidden)
-
         table_repr = repr_ds.data.__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]

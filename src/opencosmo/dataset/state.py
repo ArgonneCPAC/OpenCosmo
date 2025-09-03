@@ -78,7 +78,9 @@ class DatasetState:
         )
         return list(columns - self.__hidden)
 
-    def get_data(self, handler: "DatasetHandler") -> table.QTable:
+    def get_data(
+        self, handler: "DatasetHandler", ignore_sort: bool = False
+    ) -> table.QTable:
         """
         Get the data for a given handler.
         """
@@ -92,7 +94,7 @@ class DatasetState:
             and not self.__hidden.intersection(data_columns) == data_columns
         ):
             data.remove_columns(self.__hidden)
-        if self.__order_by is not None:
+        if not ignore_sort and self.__order_by is not None:
             data.sort(self.__order_by[0], reverse=not self.__order_by[1])
         return data
 
@@ -328,9 +330,9 @@ class DatasetState:
         Take rows from the dataset.
         """
         if self.__order_by is not None:
-            column = self.select(self.__order_by[0]).get_data(handler)[
-                self.__order_by[0]
-            ]
+            column = self.select(self.__order_by[0]).get_data(
+                handler, ignore_sort=True
+            )[self.__order_by[0]]
             sorted = np.argsort(-(1 ** int(not self.__order_by[1])) * column)
 
             index: DataIndex = SimpleIndex(sorted)
