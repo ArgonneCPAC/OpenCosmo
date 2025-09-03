@@ -85,7 +85,22 @@ def test_take_sorted(input_path):
     dataset = oc.open(input_path)
     fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
     toolkit_sorted_fof_masses = (
-        dataset.order_by("fof_halo_mass")
+        dataset.sort_by("fof_halo_mass")
+        .take(150, at="start")
+        .select("fof_halo_mass")
+        .get_data("numpy")
+    )
+    manually_sorted_fof_masses = np.sort(fof_masses)
+    assert np.all(manually_sorted_fof_masses[:n] == toolkit_sorted_fof_masses)
+    assert fof_masses.min() == toolkit_sorted_fof_masses[0]
+
+
+def test_take_sorted_inverted(input_path):
+    n = 150
+    dataset = oc.open(input_path)
+    fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
+    toolkit_sorted_fof_masses = (
+        dataset.sort_by("fof_halo_mass", invert=True)
         .take(150, at="start")
         .select("fof_halo_mass")
         .get_data("numpy")
@@ -95,7 +110,7 @@ def test_take_sorted(input_path):
     assert fof_masses.max() == toolkit_sorted_fof_masses[0]
 
 
-def test_order_by_derived(input_path):
+def test_sort_by_derived(input_path):
     n = 150
     ds = oc.open(input_path)
     dx = oc.col("fof_halo_com_x") - oc.col("sod_halo_com_x")
@@ -107,14 +122,14 @@ def test_order_by_derived(input_path):
     ds = ds.with_new_columns(xoff=xoff)
     xoff = ds.select(("xoff", "fof_halo_tag")).get_data("numpy")
     toolkit_sorted_xoff = (
-        ds.order_by("xoff")
+        ds.sort_by("xoff")
         .take(n, at="start")
         .select(("fof_halo_tag", "xoff"))
         .get_data("numpy")
     )
-    idxs = np.argsort(-xoff["xoff"])
+    idxs = np.argsort(xoff["xoff"])
     assert np.all(xoff["xoff"][idxs][:n] == toolkit_sorted_xoff["xoff"])
-    assert xoff["xoff"].max() == toolkit_sorted_xoff["xoff"][0]
+    assert xoff["xoff"].min() == toolkit_sorted_xoff["xoff"][0]
     assert np.all(xoff["fof_halo_tag"][idxs][:n] == toolkit_sorted_xoff["fof_halo_tag"])
 
 

@@ -369,7 +369,7 @@ def test_lc_collection_units(
 
 def test_lc_collection_sort(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
-    ds = ds.order_by("fof_halo_mass")
+    ds = ds.sort_by("fof_halo_mass")
     data = ds.select("fof_halo_mass").get_data()
     assert np.all(data[1:] <= data[:-1])
 
@@ -380,7 +380,7 @@ def test_lc_collection_sort_and_take(
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     halo_masses = ds.select("fof_halo_mass").get_data()
     halo_masses = -np.sort(-halo_masses)
-    ds = ds.order_by("fof_halo_mass")
+    ds = ds.sort_by("fof_halo_mass")
     ds = ds.take(100, at="start")
     data = ds.select("fof_halo_mass").get_data()
     assert np.all(data[1:] <= data[:-1])

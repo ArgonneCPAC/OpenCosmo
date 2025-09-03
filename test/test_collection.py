@@ -403,7 +403,7 @@ def test_data_link_repr(halo_paths):
 
 def test_data_link_sort(halo_paths):
     collection = oc.open(halo_paths)
-    collection = collection.order_by("fof_halo_mass")
+    collection = collection.sort_by("fof_halo_mass")
     fof_halo_mass = (
         collection["halo_properties"].select("fof_halo_mass").get_data("numpy")
     )
@@ -558,7 +558,7 @@ def test_simulation_collection_order(multi_path):
         with pytest.raises(AssertionError):
             assert np.all(halo_mass[1:] <= halo_mass[:-1])
 
-    collection = collection.order_by("fof_halo_mass")
+    collection = collection.sort_by("fof_halo_mass")
     for ds in collection.values():
         halo_mass = ds.select("fof_halo_mass").get_data("numpy")
         assert np.all(halo_mass[1:] <= halo_mass[:-1])

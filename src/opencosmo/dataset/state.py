@@ -34,7 +34,7 @@ class DatasetState:
         region: Region,
         header: OpenCosmoHeader,
         im_handler: InMemoryColumnHandler,
-        order_by: Optional[tuple[str, bool]] = None,
+        sort_by: Optional[tuple[str, bool]] = None,
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
@@ -46,7 +46,7 @@ class DatasetState:
         self.__header = header
         self.__hidden = hidden
         self.__index = index
-        self.__order_by = order_by
+        self.__sort_by = sort_by
         self.__region = region
 
     @property
@@ -94,8 +94,8 @@ class DatasetState:
             and not self.__hidden.intersection(data_columns) == data_columns
         ):
             data.remove_columns(self.__hidden)
-        if not ignore_sort and self.__order_by is not None:
-            data.sort(self.__order_by[0], reverse=not self.__order_by[1])
+        if not ignore_sort and self.__sort_by is not None:
+            data.sort(self.__sort_by[0], reverse=self.__sort_by[1])
         return data
 
     def with_index(self, index: DataIndex):
@@ -113,7 +113,7 @@ class DatasetState:
             self.__region,
             self.__header,
             new_cache,
-            self.__order_by,
+            self.__sort_by,
             self.__hidden,
             self.__derived,
         )
@@ -205,7 +205,7 @@ class DatasetState:
             self.__region,
             self.__header,
             new_im_handler,
-            self.__order_by,
+            self.__sort_by,
             self.__hidden,
             new_derived,
         )
@@ -236,7 +236,7 @@ class DatasetState:
             region,
             self.__header,
             self.__im_handler,
-            self.__order_by,
+            self.__sort_by,
             self.__hidden,
             self.__derived,
         )
@@ -295,8 +295,8 @@ class DatasetState:
         new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden = all_required - columns
-        if self.__order_by is not None and self.__order_by[0] not in columns:
-            new_hidden.add(self.__order_by[0])
+        if self.__sort_by is not None and self.__sort_by[0] not in columns:
+            new_hidden.add(self.__sort_by[0])
 
         return DatasetState(
             self.__base_unit_transformations,
@@ -306,12 +306,12 @@ class DatasetState:
             self.__region,
             self.__header,
             new_im_handler,
-            self.__order_by,
+            self.__sort_by,
             new_hidden,
             new_derived,
         )
 
-    def order_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
+    def sort_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
         return DatasetState(
             self.__base_unit_transformations,
             self.__builder,
@@ -329,11 +329,13 @@ class DatasetState:
         """
         Take rows from the dataset.
         """
-        if self.__order_by is not None:
-            column = self.select(self.__order_by[0]).get_data(
-                handler, ignore_sort=True
-            )[self.__order_by[0]]
-            sorted = np.argsort(-(1 ** int(not self.__order_by[1])) * column)
+        if self.__sort_by is not None:
+            column = self.select(self.__sort_by[0]).get_data(handler, ignore_sort=True)[
+                self.__sort_by[0]
+            ]
+            sorted = np.argsort(column)
+            if self.__sort_by[1]:
+                sorted = sorted[::-1]
 
             index: DataIndex = SimpleIndex(sorted)
         else:
@@ -382,7 +384,7 @@ class DatasetState:
             self.__region,
             self.__header,
             self.__im_handler,
-            self.__order_by,
+            self.__sort_by,
             self.__hidden,
             self.__derived,
         )

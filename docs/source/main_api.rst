@@ -7,7 +7,7 @@ Main Transformations API
 - :code:`filter`: Filter the dataset based on the value of one more more columns.
 - :code:`select`: Select a subset of columns from the dataset.
 - :code:`take`: Select a subset of rows from the dataset.
-- :code:`order_by`: Sort the dataset by one of its columns
+- :code:`sort_by`: Sort the dataset by one of its columns
 - :code:`bound`: Limit the dataset to a given spatial region.
 - :code:`with_new_columns`: Combine columns in the dataset into a new column with automatic unit handling.
 
@@ -229,27 +229,27 @@ This will take the rows 500-1000 from the original dataset, and then take the fi
 Sorting
 -------
 
-You can re-order a dataset based on the value of some column with :meth:`opencosmo.Dataset.order_by`. By default, this sorts in descending order (from highest to lowest), however you can sort in ascending order by passing :code:`invert = True`.
+You can re-order a dataset based on the value of some column with :meth:`opencosmo.Dataset.sort_by`. By default, this sorts in descending order (from lowest to highest), however you can sort in descending order by passing :code:`invert = True`.
 
 For example, to get the 100 most massive halos in a given simulation, ordered from most to least massive:
 
 .. code-block:: python
 
    ds = oc.open("haloproperties.hdf5")
-   ds = ds.order_by("fof_halo_mass").take(100, at="start")
+   ds = ds.sort_by("fof_halo_mass", invert=True).take(100, at="start")
 
 Or, to get the 100 *least* massive halos, ordered from least to most massive:
 
 
 .. code-block:: python
 
-   ds = ds.order_by("fof_halo_mass", invert=True).take(100, at="start")
+   ds = ds.sort_by("fof_halo_mass").take(100, at="start")
 
 You can also use :py:meth:`take <opencosmo.Dataset.take>` in clever ways to get other results. For example, to get the 100 *most* massive halos but ordered from *least to most massive*:
 
 .. code-block:: python
 
-   ds = ds.order_by("fof_halo_mass", invert=True).take(100, at="end")
+   ds = ds.sort_by("fof_halo_mass").take(100, at="end")
 
 
 Spatial Querying

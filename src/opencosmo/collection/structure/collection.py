@@ -45,7 +45,7 @@ class StructureCollection:
 
     Every structure collection has a halo_properties or galaxy_properties dataset
     that contains the high-level measured attribute of the structures. Certain
-    operations (e.g. :py:meth:`order_by <opencosmo.StructureCollection.order_by>`
+    operations (e.g. :py:meth:`sort_by <opencosmo.StructureCollection.sort_by>`
     operate on this dataset.
     """
 
@@ -518,7 +518,7 @@ class StructureCollection:
             self.__hide_source,
         )
 
-    def order_by(self, column: str, invert: bool = False) -> StructureCollection:
+    def sort_by(self, column: str, invert: bool = False) -> StructureCollection:
         """
         Re-order the collection based on one of the structure collection's properties. Each
         StructureCollection contains a halo_properties or galaxy_properties dataset that
@@ -532,8 +532,8 @@ class StructureCollection:
             order the collection by.
 
         invert : bool, default = False
-            If False (the default) ordering will be done from greatest to least.
-            Otherwise least to greatest.
+            If False (the default), ordering will be from least to greatest.
+            Otherwise greatest to least.
 
         Returns
         -------
@@ -542,7 +542,7 @@ class StructureCollection:
 
         """
 
-        new_source = self.__source.order_by(column, invert=invert)
+        new_source = self.__source.sort_by(column, invert=invert)
         return StructureCollection(
             new_source,
             self.__header,
