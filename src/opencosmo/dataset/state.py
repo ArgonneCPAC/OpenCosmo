@@ -19,6 +19,17 @@ if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
 
 
+def make_sorted_index(
+    state: "DatasetState", handler: "DatasetHandler", column: str, invert: bool
+):
+    sort_by_column = state.select(column).get_data(handler, ignore_sort=True)
+    idx = np.argsort(sort_by_column)
+    if invert:
+        idx = idx[::-1]
+    index = SimpleIndex(idx)
+    return index
+
+
 class DatasetState:
     """
     Holds mutable state required by the dataset. Cleans up the dataset to mostly focus
@@ -89,13 +100,13 @@ class DatasetState:
         data = self.__build_derived_columns(data)
         data_columns = set(data.columns)
 
+        if not ignore_sort and self.__sort_by is not None:
+            data.sort(self.__sort_by[0], reverse=self.__sort_by[1])
         if (
             self.__hidden
             and not self.__hidden.intersection(data_columns) == data_columns
         ):
             data.remove_columns(self.__hidden)
-        if not ignore_sort and self.__sort_by is not None:
-            data.sort(self.__sort_by[0], reverse=self.__sort_by[1])
         return data
 
     def with_index(self, index: DataIndex):
@@ -126,7 +137,13 @@ class DatasetState:
         self, handler: "DatasetHandler", header: Optional[OpenCosmoHeader] = None
     ):
         builder_names = set(self.__builder.columns)
-        schema = handler.prep_write(self.__index, builder_names - self.__hidden, header)
+        if self.__sort_by is not None:
+            index = make_sorted_index(self, handler, *self.__sort_by)
+        else:
+            index = self.__index
+
+        schema = handler.prep_write(index, builder_names - self.__hidden, header)
+
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (
             self.select(derived_names)
@@ -254,11 +271,17 @@ class DatasetState:
         if isinstance(columns, str):
             columns = [columns]
 
+        hide_sort = False
+
         columns = set(columns)
 
         known_builders = set(self.__builder.columns)
         known_derived = set(self.__derived.keys())
         known_im = set(self.__im_handler.keys())
+        if self.__sort_by is not None:
+            hide_sort = self.__sort_by[0] not in columns
+            columns.add(self.__sort_by[0])
+
         unknown_columns = columns - known_builders - known_derived - known_im
         if unknown_columns:
             raise ValueError(
@@ -295,7 +318,8 @@ class DatasetState:
         new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden = all_required - columns
-        if self.__sort_by is not None and self.__sort_by[0] not in columns:
+        if hide_sort:
+            assert self.__sort_by is not None
             new_hidden.add(self.__sort_by[0])
 
         return DatasetState(

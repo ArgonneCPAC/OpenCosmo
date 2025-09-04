@@ -110,6 +110,17 @@ def test_take_sorted_inverted(input_path):
     assert fof_masses.max() == toolkit_sorted_fof_masses[0]
 
 
+def test_write_after_sorted(input_path, tmp_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.sort_by("fof_halo_mass", invert=True)
+    halo_tags = dataset.select("fof_halo_tag").get_data("numpy")
+    oc.write(tmp_path / "test.hdf5", dataset)
+    new_dataset = oc.open(tmp_path / "test.hdf5")
+    to_check = new_dataset.select(("fof_halo_mass", "fof_halo_tag")).get_data("numpy")
+    assert np.all(to_check["fof_halo_mass"][:-1] >= to_check["fof_halo_mass"][1:])
+    assert np.all(to_check["fof_halo_tag"] == halo_tags)
+
+
 def test_sort_by_derived(input_path):
     n = 150
     ds = oc.open(input_path)

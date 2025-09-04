@@ -15,7 +15,7 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import QTable  # type: ignore
+from astropy.table import Column, QTable  # type: ignore
 
 from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.state import DatasetState
@@ -246,14 +246,11 @@ class Dataset:
             data = data[cn]
 
         if output == "numpy":
-            if isinstance(data, u.Quantity):
+            if isinstance(data, (u.Quantity, Column)):
                 data = data.value
             elif isinstance(data, (QTable, dict)):
                 data = dict(data)
-                is_quantity = filter(
-                    lambda v: isinstance(data[v], u.Quantity), data.keys()
-                )
-                for colname in is_quantity:
+                for colname in data:
                     data[colname] = data[colname].value
 
         if isinstance(data, dict) and len(data) == 1:
