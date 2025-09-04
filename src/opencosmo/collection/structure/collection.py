@@ -801,10 +801,12 @@ class StructureCollection:
             raise AttributeError("This collection does not contain galaxies!")
 
     def make_schema(self) -> StructCollectionSchema:
+        sorted_index = self.__source.index.sorted()
+        to_write = self.with_index(sorted_index)
         schema = StructCollectionSchema(self.__header)
         source_name = self.__source.dtype
 
-        for name, dataset in self.items():
+        for name, dataset in to_write.items():
             ds_schema = dataset.make_schema()
             if name == "galaxies":
                 name = "galaxy_properties"
@@ -813,7 +815,7 @@ class StructureCollection:
         for name, handler in self.__links.items():
             if name == "galaxies":
                 name = "galaxy_properties"
-            link_schema = handler.make_schema(name, self.__index)
+            link_schema = handler.make_schema(name, sorted_index)
             schema.insert(link_schema, f"{source_name}.{name}")
 
         return schema
