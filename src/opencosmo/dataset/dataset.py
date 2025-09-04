@@ -251,7 +251,8 @@ class Dataset:
             elif isinstance(data, (QTable, dict)):
                 data = dict(data)
                 for colname in data:
-                    data[colname] = data[colname].value
+                    if isinstance(data[colname], (u.Quantity, Column)):
+                        data[colname] = data[colname].value
 
         if isinstance(data, dict) and len(data) == 1:
             return next(iter(data.values()))
@@ -557,6 +558,9 @@ class Dataset:
             dataset = dataset
                         .sort_by("fof_halo_mass")
                         .take(100, at="start")
+
+        Note that sorting does not persist when a dataset is written, because the order
+        of data is used for the spatial index.
 
         Parameters
         ----------

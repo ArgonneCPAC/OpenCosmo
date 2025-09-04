@@ -24,6 +24,9 @@ class SimpleIndex:
     def empty(cls):
         return SimpleIndex(np.array([], dtype=int))
 
+    def sorted(self):
+        return SimpleIndex(np.sort(self.__index))
+
     def __len__(self) -> int:
         return len(self.__index)
 
@@ -33,12 +36,9 @@ class SimpleIndex:
         return self.__index
 
     def range(self) -> tuple[int, int]:
-        """
-        Guranteed to be sorted
-        """
         if len(self) == 0:
             return 0, 0
-        return self.__index[0], self.__index[-1]
+        return (int(np.min(self.__index)), int(np.max(self.__index)))
 
     def into_mask(self):
         mask = np.zeros(self.__index[-1] + 1, dtype=bool)
@@ -64,8 +64,9 @@ class SimpleIndex:
             return np.zeros_like(start)
 
         ends = start + size
-        start_idxs = np.searchsorted(self.__index, start, "left")
-        end_idxs = np.searchsorted(self.__index, ends, "left")
+        self_sorted = np.sort(self.__index)
+        start_idxs = np.searchsorted(self_sorted, start, "left")
+        end_idxs = np.searchsorted(self_sorted, ends, "left")
         return end_idxs - start_idxs
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
@@ -127,10 +128,8 @@ class SimpleIndex:
         where the second index is true.
         """
         other_idxs = other.into_array()
-        idxs = np.searchsorted(self.__index, other_idxs)
-        idxs = idxs[idxs != len(self.__index)]
-        idxs = idxs[other_idxs == self.__index[idxs]]
-        return SimpleIndex(idxs)
+        is_in = np.isin(other_idxs, self.__index)
+        return SimpleIndex(self.__index[is_in])
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:

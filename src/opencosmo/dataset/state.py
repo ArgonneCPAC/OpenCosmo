@@ -22,11 +22,12 @@ if TYPE_CHECKING:
 def make_sorted_index(
     state: "DatasetState", handler: "DatasetHandler", column: str, invert: bool
 ):
-    sort_by_column = state.select(column).get_data(handler, ignore_sort=True)
+    sort_by_column = state.select(column).get_data(handler)
     idx = np.argsort(sort_by_column)
     if invert:
         idx = idx[::-1]
-    index = SimpleIndex(idx)
+
+    index = SimpleIndex(state.index.into_array()[idx])
     return index
 
 
@@ -45,7 +46,6 @@ class DatasetState:
         region: Region,
         header: OpenCosmoHeader,
         im_handler: InMemoryColumnHandler,
-        sort_by: Optional[tuple[str, bool]] = None,
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
@@ -57,7 +57,6 @@ class DatasetState:
         self.__header = header
         self.__hidden = hidden
         self.__index = index
-        self.__sort_by = sort_by
         self.__region = region
 
     @property
@@ -89,9 +88,7 @@ class DatasetState:
         )
         return list(columns - self.__hidden)
 
-    def get_data(
-        self, handler: "DatasetHandler", ignore_sort: bool = False
-    ) -> table.QTable:
+    def get_data(self, handler: "DatasetHandler") -> table.QTable:
         """
         Get the data for a given handler.
         """
@@ -100,8 +97,6 @@ class DatasetState:
         data = self.__build_derived_columns(data)
         data_columns = set(data.columns)
 
-        if not ignore_sort and self.__sort_by is not None:
-            data.sort(self.__sort_by[0], reverse=self.__sort_by[1])
         if (
             self.__hidden
             and not self.__hidden.intersection(data_columns) == data_columns
@@ -124,7 +119,6 @@ class DatasetState:
             self.__region,
             self.__header,
             new_cache,
-            self.__sort_by,
             self.__hidden,
             self.__derived,
         )
@@ -137,12 +131,9 @@ class DatasetState:
         self, handler: "DatasetHandler", header: Optional[OpenCosmoHeader] = None
     ):
         builder_names = set(self.__builder.columns)
-        if self.__sort_by is not None:
-            index = make_sorted_index(self, handler, *self.__sort_by)
-        else:
-            index = self.__index
-
-        schema = handler.prep_write(index, builder_names - self.__hidden, header)
+        schema = handler.prep_write(
+            self.__index.sorted(), builder_names - self.__hidden, header
+        )
 
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (
@@ -222,7 +213,6 @@ class DatasetState:
             self.__region,
             self.__header,
             new_im_handler,
-            self.__sort_by,
             self.__hidden,
             new_derived,
         )
@@ -253,7 +243,6 @@ class DatasetState:
             region,
             self.__header,
             self.__im_handler,
-            self.__sort_by,
             self.__hidden,
             self.__derived,
         )
@@ -271,16 +260,11 @@ class DatasetState:
         if isinstance(columns, str):
             columns = [columns]
 
-        hide_sort = False
-
         columns = set(columns)
 
         known_builders = set(self.__builder.columns)
         known_derived = set(self.__derived.keys())
         known_im = set(self.__im_handler.keys())
-        if self.__sort_by is not None:
-            hide_sort = self.__sort_by[0] not in columns
-            columns.add(self.__sort_by[0])
 
         unknown_columns = columns - known_builders - known_derived - known_im
         if unknown_columns:
@@ -318,9 +302,6 @@ class DatasetState:
         new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden = all_required - columns
-        if hide_sort:
-            assert self.__sort_by is not None
-            new_hidden.add(self.__sort_by[0])
 
         return DatasetState(
             self.__base_unit_transformations,
@@ -330,21 +311,20 @@ class DatasetState:
             self.__region,
             self.__header,
             new_im_handler,
-            self.__sort_by,
             new_hidden,
             new_derived,
         )
 
     def sort_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
+        index = make_sorted_index(self, handler, column_name, invert)
         return DatasetState(
             self.__base_unit_transformations,
             self.__builder,
-            self.__index,
+            index,
             self.__convention,
             self.__region,
             self.__header,
             self.__im_handler,
-            (column_name, invert),
             self.__hidden,
             self.__derived,
         )
@@ -353,19 +333,7 @@ class DatasetState:
         """
         Take rows from the dataset.
         """
-        if self.__sort_by is not None:
-            column = self.select(self.__sort_by[0]).get_data(handler, ignore_sort=True)[
-                self.__sort_by[0]
-            ]
-            sorted = np.argsort(column)
-            if self.__sort_by[1]:
-                sorted = sorted[::-1]
-
-            index: DataIndex = SimpleIndex(sorted)
-        else:
-            index = self.__index
-
-        new_index = index.take(n, at)
+        new_index = self.__index.take(n, at)
         return self.with_index(new_index)
 
     def take_range(self, start: int, end: int):
@@ -408,7 +376,6 @@ class DatasetState:
             self.__region,
             self.__header,
             self.__im_handler,
-            self.__sort_by,
             self.__hidden,
             self.__derived,
         )

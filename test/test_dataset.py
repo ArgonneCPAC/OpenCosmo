@@ -80,6 +80,15 @@ def test_take_oom(input_path):
     assert len(data) == 10
 
 
+def test_sort_after_filter(input_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.filter(oc.col("fof_halo_mass") > 1e13)
+    dataset = dataset.sort_by("sod_halo_mass")
+    data = dataset.select(("fof_halo_mass", "sod_halo_mass")).get_data("numpy")
+    assert np.all(data["fof_halo_mass"] > 1e13)
+    assert np.all(data["sod_halo_mass"][:-1] <= data["sod_halo_mass"][1:])
+
+
 def test_take_sorted(input_path):
     n = 150
     dataset = oc.open(input_path)
@@ -115,7 +124,7 @@ def test_write_after_sorted(input_path, tmp_path):
     dataset = dataset.sort_by("fof_halo_mass", invert=True)
     halo_tags = dataset.select("fof_halo_tag").get_data("numpy")
     oc.write(tmp_path / "test.hdf5", dataset)
-    new_dataset = oc.open(tmp_path / "test.hdf5")
+    new_dataset = oc.open(tmp_path / "test.hdf5").sort_by("fof_halo_mass", invert=True)
     to_check = new_dataset.select(("fof_halo_mass", "fof_halo_tag")).get_data("numpy")
     assert np.all(to_check["fof_halo_mass"][:-1] >= to_check["fof_halo_mass"][1:])
     assert np.all(to_check["fof_halo_tag"] == halo_tags)

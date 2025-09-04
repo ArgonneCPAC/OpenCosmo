@@ -177,7 +177,8 @@ class StructureCollection:
             return self.__source
 
         index = self.__links[key].make_index(self.__index)
-        return self.__datasets[key].with_index(index)
+        dataset = self.__datasets[key].with_index(index)
+        return dataset
 
     def __enter__(self):
         return self

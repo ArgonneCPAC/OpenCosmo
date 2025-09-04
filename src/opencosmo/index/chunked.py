@@ -45,6 +45,10 @@ class ChunkedIndex:
         """
         return self.__starts[0], self.__starts[-1] + self.__sizes[-1] - 1
 
+    def sorted(self):
+        sorted_indices = np.argsort(self.__starts)
+        return ChunkedIndex(self.__starts[sorted_indices], self.__sizes[sorted_indices])
+
     def into_array(self) -> NDArray[np.int_]:
         """
         Convert the ChunkedIndex to a SimpleIndex.

@@ -416,6 +416,23 @@ def test_data_link_sort(halo_paths):
         assert np.all(fof_halo_tags == halo["halo_properties"]["fof_halo_tag"])
 
 
+def test_data_link_sort_write(halo_paths, tmp_path):
+    collection = oc.open(halo_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).sort_by(
+        "fof_halo_mass"
+    )
+    oc.write(tmp_path / "temp.hdf5", collection)
+    new_collection = oc.open(tmp_path / "temp.hdf5").take(10)
+    assert np.all(
+        collection["halo_properties"].select("sod_halo_mass").get_data("numpy") > 10**14
+    )
+    for halo in new_collection.objects(("halo_profiles",)):
+        assert np.all(
+            halo["halo_properties"]["fof_halo_tag"]
+            == halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")[0]
+        )
+
+
 def test_data_link_selection(halo_paths):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
