@@ -1,0 +1,1 @@
+Fix a bug that could cause some data to be returned as a astropy.table.Column when data was requested as numpy
