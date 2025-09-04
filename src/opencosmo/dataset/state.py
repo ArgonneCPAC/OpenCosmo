@@ -131,9 +131,12 @@ class DatasetState:
         self, handler: "DatasetHandler", header: Optional[OpenCosmoHeader] = None
     ):
         builder_names = set(self.__builder.columns)
-        schema = handler.prep_write(
-            self.__index.sorted(), builder_names - self.__hidden, header
-        )
+        if isinstance(self.__index, SimpleIndex):
+            index = self.__index.sorted()
+        else:
+            index = self.__index
+
+        schema = handler.prep_write(index, builder_names - self.__hidden, header)
 
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (
