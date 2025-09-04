@@ -79,7 +79,10 @@ class DatasetState:
         return list(columns - self.__hidden)
 
     def get_data(
-        self, handler: "DatasetHandler", ignore_sort: bool = False
+        self,
+        handler: "DatasetHandler",
+        ignore_sort: bool = False,
+        attach_index: bool = False,
     ) -> table.QTable:
         """
         Get the data for a given handler.
@@ -88,14 +91,19 @@ class DatasetState:
         data = self.__get_im_columns(data)
         data = self.__build_derived_columns(data)
         data_columns = set(data.columns)
+        index_array = self.__index.into_array()
 
+        if not ignore_sort and self.__sort_by is not None:
+            order = data.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
+            data = data[order]
+            index_array = index_array[order]
         if (
             self.__hidden
             and not self.__hidden.intersection(data_columns) == data_columns
         ):
             data.remove_columns(self.__hidden)
-        if not ignore_sort and self.__sort_by is not None:
-            data.sort(self.__sort_by[0], reverse=self.__sort_by[1])
+        if attach_index:
+            data["raw_index"] = index_array
         return data
 
     def with_index(self, index: DataIndex):
@@ -255,6 +263,11 @@ class DatasetState:
             columns = [columns]
 
         columns = set(columns)
+        new_hidden = set()
+        if self.__sort_by is not None:
+            if self.__sort_by[0] not in columns:
+                new_hidden.add(self.__sort_by[0])
+            columns.add(self.__sort_by[0])
 
         known_builders = set(self.__builder.columns)
         known_derived = set(self.__derived.keys())
@@ -294,7 +307,7 @@ class DatasetState:
         new_builder = self.__builder.with_columns(required_builders)
         new_im_handler = self.__im_handler.with_columns(required_im)
 
-        new_hidden = all_required - columns
+        new_hidden.update(all_required - columns)
         if self.__sort_by is not None and self.__sort_by[0] not in columns:
             new_hidden.add(self.__sort_by[0])
 
@@ -329,6 +342,7 @@ class DatasetState:
         """
         Take rows from the dataset.
         """
+
         if self.__sort_by is not None:
             column = self.select(self.__sort_by[0]).get_data(handler, ignore_sort=True)[
                 self.__sort_by[0]
@@ -342,6 +356,10 @@ class DatasetState:
             index = self.__index
 
         new_index = index.take(n, at)
+        if self.__sort_by is not None:
+            new_idxs = self.__index.into_array()[new_index.into_array()]
+            new_index = SimpleIndex(np.sort(new_idxs))
+
         return self.with_index(new_index)
 
     def take_range(self, start: int, end: int):

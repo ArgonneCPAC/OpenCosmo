@@ -203,7 +203,9 @@ class Dataset:
     def index(self) -> DataIndex:
         return self.__state.index
 
-    def get_data(self, output="astropy", unpack=True) -> OpenCosmoData:
+    def get_data(
+        self, output="astropy", unpack=True, attach_index=False
+    ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -238,7 +240,7 @@ class Dataset:
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = self.__state.get_data(self.__handler)  # table
+        data = self.__state.get_data(self.__handler, attach_index=attach_index)  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
         elif len(data.colnames) == 1:
@@ -446,7 +448,9 @@ class Dataset:
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def rows(
-        self, output="astropy"
+        self,
+        output="astropy",
+        attach_index=False,
     ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
@@ -474,7 +478,7 @@ class Dataset:
             raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
-            chunk_data = chunk.get_data(output)
+            chunk_data = chunk.get_data(output, attach_index=attach_index)
             try:
                 output_chunk_data = dict(chunk_data)
             except TypeError:

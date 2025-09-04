@@ -411,7 +411,8 @@ def test_data_link_sort(halo_paths):
     collection = collection.take(20, at="start").with_datasets(
         ["halo_properties", "dm_particles"]
     )
-    for halo in collection.halos():
+    for i, halo in enumerate(collection.halos()):
+        assert halo["halo_properties"]["fof_halo_mass"].value == fof_halo_mass[i]
         fof_halo_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
         assert np.all(fof_halo_tags == halo["halo_properties"]["fof_halo_tag"])
 
@@ -718,3 +719,20 @@ def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
             gal_tags = set(galaxy["star_particles"].select("gal_tag").data)
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
+
+
+def test_data_link_sort_write(halo_paths, tmp_path):
+    collection = oc.open(halo_paths)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).sort_by(
+        "fof_halo_mass"
+    )
+    oc.write(tmp_path / "temp.hdf5", collection)
+    new_collection = oc.open(tmp_path / "temp.hdf5").take(10)
+    assert np.all(
+        collection["halo_properties"].select("sod_halo_mass").get_data("numpy") > 10**14
+    )
+    for halo in new_collection.objects(("halo_profiles",)):
+        assert np.all(
+            halo["halo_properties"]["fof_halo_tag"]
+            == halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")[0]
+        )
