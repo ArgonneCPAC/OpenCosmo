@@ -138,4 +138,5 @@ def test_add_order(properties_path):
     ds = ds.sort_by("test_random")
     data = ds.get_data("numpy")
     test_random = data["test_random"]
+    print(test_random)
     assert np.all(test_random[:-1] <= test_random[1:])

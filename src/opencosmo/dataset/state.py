@@ -324,7 +324,7 @@ class DatasetState:
             self.__convention,
             self.__region,
             self.__header,
-            self.__im_handler,
+            self.__im_handler.with_index(index),
             self.__hidden,
             self.__derived,
         )

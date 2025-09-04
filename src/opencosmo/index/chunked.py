@@ -169,6 +169,7 @@ class ChunkedIndex:
                 ]
             )
             idxs = np.random.choice(idxs, n, replace=False)
+            idxs.sort()
             return simple.SimpleIndex(idxs)
 
         elif at == "start":

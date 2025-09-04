@@ -89,7 +89,11 @@ class SimpleIndex:
             return SimpleIndex.empty()
 
         if at == "random":
-            return SimpleIndex(np.random.choice(self.__index, n, replace=False))
+            indices = np.arange(len(self.__index))
+            indices = np.random.choice(indices, n, replace=False)
+            indices.sort()
+
+            return SimpleIndex(self.__index[indices])
         elif at == "start":
             return SimpleIndex(self.__index[:n])
         elif at == "end":
@@ -148,7 +152,7 @@ class SimpleIndex:
 
         return SimpleIndex(self.__index[mask])
 
-    def get_data(self, data: h5py.Dataset) -> np.ndarray:
+    def get_data(self, data: h5py.Dataset, debug: bool = False) -> np.ndarray:
         """
         Get the data from the dataset using the index.
         """
