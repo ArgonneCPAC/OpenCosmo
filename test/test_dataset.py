@@ -90,6 +90,7 @@ def test_take_sorted(input_path):
         .select("fof_halo_mass")
         .get_data("numpy")
     )
+    print(len(toolkit_sorted_fof_masses))
     manually_sorted_fof_masses = np.sort(fof_masses)
     assert np.all(manually_sorted_fof_masses[:n] == toolkit_sorted_fof_masses)
     assert fof_masses.min() == toolkit_sorted_fof_masses[0]
@@ -411,3 +412,32 @@ def test_select_collect(input_path):
 
     assert len(ds.data) == 100
     assert set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"}
+
+
+def test_sort_after_filter(input_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.filter(oc.col("fof_halo_mass") > 1e13)
+    dataset = dataset.sort_by("sod_halo_mass")
+    data = dataset.select(("fof_halo_mass", "sod_halo_mass")).get_data("numpy")
+    assert np.all(data["fof_halo_mass"] > 1e13)
+    assert np.all(data["sod_halo_mass"][:-1] <= data["sod_halo_mass"][1:])
+
+
+def test_sort_rows(input_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.sort_by("sod_halo_mass")
+    dataset = dataset.take(100)
+    fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
+    for i, row in enumerate(dataset.rows()):
+        assert row["fof_halo_mass"].value == fof_masses[i]
+
+
+def test_write_after_sorted(input_path, tmp_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.sort_by("fof_halo_mass", invert=True)
+    halo_tags = dataset.select("fof_halo_tag").get_data("numpy")
+    oc.write(tmp_path / "test.hdf5", dataset)
+    new_dataset = oc.open(tmp_path / "test.hdf5").sort_by("fof_halo_mass", invert=True)
+    to_check = new_dataset.select(("fof_halo_mass", "fof_halo_tag")).get_data("numpy")
+    assert np.all(to_check["fof_halo_mass"][:-1] >= to_check["fof_halo_mass"][1:])
+    assert np.all(to_check["fof_halo_tag"] == halo_tags)

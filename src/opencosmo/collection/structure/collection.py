@@ -4,12 +4,13 @@ from typing import Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
 import astropy  # type: ignore
+import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.structure import io as sio
 from opencosmo.collection.structure import visit
 from opencosmo.dataset.column import DerivedColumn
-from opencosmo.index import DataIndex
+from opencosmo.index import DataIndex, SimpleIndex
 from opencosmo.io import io
 from opencosmo.io.schemas import StructCollectionSchema
 from opencosmo.parameters import HaccSimulationParameters
@@ -740,11 +741,13 @@ class StructureCollection:
             warn("Tried to iterate over a collection with no structures in it!")
             return
 
-        for i, row in enumerate(self.__source.rows()):
-            index = self.__source.index[i]
+        for row in self.__source.rows(attach_index=True):
+            row = dict(row)
+            idx = row.pop("raw_index")
+            input_index = SimpleIndex(np.atleast_1d(idx))
             output = {
                 key: self.__datasets[key].with_index(
-                    self.__links[key].make_index(index)
+                    self.__links[key].make_index(input_index)
                 )
                 for key in data_types
             }
