@@ -138,8 +138,14 @@ class SimCollectionSchema:
     def verify(self):
         if len(self.children) < 2:
             raise ValueError("A SimulationCollection must have at least two children!")
-        for child in self.children.values():
-            child.verify()
+        zero_length = set()
+        for name, child in self.children.items():
+            try:
+                child.verify()
+            except ZeroLengthError:
+                zero_length.add(name)
+        if len(zero_length) == len(self.childen):
+            raise ZeroLengthError
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         children = {
@@ -164,6 +170,15 @@ class LightconeSchema:
     def verify(self):
         if len(self.children) < 2:
             raise ValueError("LightconeSchema must have at least two children!")
+
+        zero_length = set()
+        for name, child in self.children.items():
+            try:
+                child.verify()
+            except ZeroLengthError:
+                zero_length.add(name)
+        if len(zero_length) == len(self.children):
+            raise ZeroLengthError
 
     def add_child(self, child: iop.DataSchema, name: str):
         if name in self.children:
@@ -218,14 +233,21 @@ class StructCollectionSchema:
             raise ValueError("StructCollection must have at least two children!")
 
         found_links = False
-        for child in self.children.values():
-            child.verify()
+        zero_length = set()
+        for name, child in self.children.items():
+            try:
+                child.verify()
+            except ZeroLengthError:
+                zero_length.add(name)
+                continue
             try:
                 found_links = len(child.links) > 0 or found_links
             except AttributeError:
                 continue
         if not found_links:
             raise ValueError("StructCollection must get at least one link!")
+        elif len(zero_length) == len(self.children):
+            raise ZeroLengthError
 
     def add_child(self, child: iop.DataSchema, name: str):
         if name in self.children:
