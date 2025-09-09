@@ -15,7 +15,8 @@ def combine_upwards(
         raise ValueError("Recieved invalid number of counts!")
 
     group = target.require_group(f"level_{level}")
-    new_starts = np.insert(np.cumsum(counts), 0, 0)[:-1]
+    new_starts = np.insert(np.cumsum(counts, dtype=np.int32), 0, 0)[:-1]
+    counts = counts.astype(np.int32)  # This should be fixed
     group.create_dataset("start", data=new_starts)
     group.create_dataset("size", data=counts)
 

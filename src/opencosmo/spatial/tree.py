@@ -222,6 +222,8 @@ class Tree:
     def make_schema(self):
         schema = SpatialIndexSchema()
         for level in range(self.__max_level + 1):
-            level_schema = SpatialIndexLevelSchema(self.__data[f"level_{level}"])
+            level_schema = SpatialIndexLevelSchema.from_source(
+                self.__data[f"level_{level}"]
+            )
             schema.add_child(level_schema, level)
         return schema

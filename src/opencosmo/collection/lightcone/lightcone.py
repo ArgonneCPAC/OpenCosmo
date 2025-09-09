@@ -426,10 +426,6 @@ class Lightcone(dict):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
     def make_schema(self) -> LightconeSchema:
-        if len(self.keys()) == 1:
-            schema = next(iter(self.values())).make_schema()
-            schema.header = self.__header
-            return schema
         schema = LightconeSchema()
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()

@@ -27,7 +27,7 @@ def empty_string_to_none(v):
     return v
 
 
-class HaccSimulationParameters(BaseModel):
+class HaccSimulationParameters(BaseModel, frozen=True):
     ACCESS_PATH: ClassVar[str] = "simulation"
 
     box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
@@ -107,9 +107,9 @@ class HaccHydroSimulationParameters(HaccSimulationParameters):
     )
 
 
-class CosmoToolsParameters(BaseModel):
+class CosmoToolsParameters(BaseModel, frozen=True):
     ACCESS_PATH: ClassVar[str] = "cosmotools"
-    cosmotools_steps: list[int]
+    cosmotools_steps: frozenset[int]
     fof_linking_length: float
     fof_pmin: int
     sod_pmin: int
@@ -128,8 +128,12 @@ class CosmoToolsParameters(BaseModel):
             data = {k: empty_string_to_none(v) for k, v in data.items()}
         return data
 
+    @field_serializer("cosmotools_steps")
+    def serialize_steps(self, steps) -> list[int]:
+        return list(steps)
 
-class ReformatParameters(BaseModel):
+
+class ReformatParameters(BaseModel, frozen=True):
     ACCESS_PATH: ClassVar[str] = "reformat"
     cosmotools_lc_path: Optional[Path] = None
     cosmotools_path: Path
@@ -184,7 +188,7 @@ class ReformatParameters(BaseModel):
         return data
 
 
-class LightconeParams(BaseModel):
+class LightconeParams(BaseModel, frozen=True):
     ACCESS_PATH: ClassVar[str] = "lightcone"
     z_range: Optional[tuple[float, float]] = None
 
