@@ -137,3 +137,26 @@ def test_diffsky_filter(core_path_487, core_path_475):
     filtered_data = ds.select("logmp0").data
     original_data = original_data[original_data.value > 13]
     assert np.all(original_data == filtered_data)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_write_some_missing(core_path_487, core_path_475, tmp_path):
+    comm = MPI.COMM_WORLD
+    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    if comm.Get_rank() == 0:
+        ds = ds.with_redshift_range(0, 0.02)
+        assert len(ds.keys()) == 1
+    original_data = ds.get_data()
+    original_data_length = comm.allgather(len(original_data))
+    print(len(ds["487_diffsky_fits"]))
+
+    oc.write(tmp_path, ds)
+    ds = oc.open(tmp_path)
+    written_data = ds.get_data()
+
+    written_data_length = comm.allgather(len(written_data))
+    assert sum(original_data_length) == sum(written_data_length)
+    assert False
+
+    # assert np.all(original_data == written_data)

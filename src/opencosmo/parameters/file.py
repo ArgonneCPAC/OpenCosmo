@@ -27,7 +27,7 @@ class FileType(Enum):
     diffsky_fits = "diffsky_fits"
 
 
-class FileParameters(BaseModel):
+class FileParameters(BaseModel, frozen=True):
     model_config = ConfigDict(use_enum_values=True)
     origin: str = "HACC"
     data_type: FileType

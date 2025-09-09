@@ -4,7 +4,7 @@ import h5py
 import numpy as np
 
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
+from opencosmo.index import DataIndex, SimpleIndex
 from opencosmo.io import protocols as iop
 
 try:
@@ -24,7 +24,7 @@ and that all the datasets have the correct size, datatype, etc.
 
 
 def write_index(
-    input_ds: h5py.Dataset | np.ndarray,
+    input_ds: h5py.Dataset | np.ndarray | None,
     output_ds: h5py.Dataset,
     index: DataIndex,
     offset: int = 0,
@@ -35,17 +35,14 @@ def write_index(
     and put it in a different one.
     """
     data = np.array([])
-    if len(index) > 0:
+    if len(index) > 0 and input_ds is not None:
         data = index.get_data(input_ds)
         if updater is not None:
             data = updater(data)
 
         data = data.astype(input_ds.dtype)
 
-    if output_ds.file.driver == "mpio":
-        with output_ds.collective:
-            output_ds[offset : offset + len(data)] = data
-    else:
+    if input_ds is not None:
         output_ds[offset : offset + len(data)] = data
 
 
@@ -119,7 +116,6 @@ class DatasetWriter:
         names.sort()
         for colname in names:
             self.columns[colname].write(data_group)
-
         if self.links:
             link_group = group["data_linked"]
             link_names = list(self.links.keys())
@@ -134,6 +130,26 @@ class DatasetWriter:
 
         if self.header is not None:
             self.header.write(group)
+
+
+class EmptyColumnWriter:
+    def __init__(self, name: str, attrs: Mapping):
+        self.name = name
+        self.attrs = attrs
+
+    def write(
+        self,
+        group: h5py.Group,
+        updater: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    ):
+        ds = group[self.name]
+
+        write_index(None, ds, SimpleIndex.empty(), updater=updater)
+
+        for name, val in self.attrs.items():
+            ds.attrs[name] = val
+
+        ds.file.flush()
 
 
 class ColumnWriter:

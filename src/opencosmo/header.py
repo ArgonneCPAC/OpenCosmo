@@ -42,6 +42,24 @@ class OpenCosmoHeader:
         self.__dtype_parameters = dtype_parameters
         self.unit_convention = unit_convention
 
+    def __eq__(self, other):
+        if not isinstance(other, OpenCosmoHeader):
+            return False
+
+        return hash(self) == hash(other)
+
+    def __hash__(self):
+        # Create a frozenset of the items in the dictionary
+        # Each item is a tuple of (key, hash of the model)
+        iter_ = chain(
+            {"file": self.__file_pars}.items(),
+            self.__required_origin_parameters.items(),
+            self.__optional_origin_parameters.items(),
+            self.__dtype_parameters.items(),
+        )
+        s = frozenset((key, hash(model)) for key, model in iter_)
+        return hash(s)
+
     def with_units(self, convention):
         if convention == self.unit_convention:
             return self
@@ -140,6 +158,14 @@ class OpenCosmoHeader:
             self.__optional_origin_parameters,
             new_dtype_parameters,
         )
+
+    def with_parameters(self, updates: dict[str, Any]):
+        if not updates:
+            return self
+        new_header = self
+        for key, val in updates.items():
+            new_header = new_header.with_parameter(key, val)
+        return new_header
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         write_header_attributes(file, "file", self.__file_pars)

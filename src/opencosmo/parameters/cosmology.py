@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, computed_field
 from opencosmo.cosmology import make_cosmology
 
 
-class CosmologyParameters(BaseModel):
+class CosmologyParameters(BaseModel, frozen=True):
     """
     Responsible for validating cosmology parameters and handling differences in
     naming conventions between OpenCosmo and astropy.cosmology. Generally should

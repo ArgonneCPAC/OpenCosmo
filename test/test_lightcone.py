@@ -383,7 +383,9 @@ def test_lc_collection_sort_and_take(
     ds = ds.sort_by("fof_halo_mass")
     ds = ds.take(100, at="start")
     data = ds.select("fof_halo_mass").get_data()
-    print(data)
-    print(halo_masses)
     assert np.all(data[1:] >= data[:-1])
     assert np.all(halo_masses[:100] == data)
+
+
+def test_write_single_lightcone():
+    raise NotImplementedError()

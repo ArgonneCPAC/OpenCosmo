@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
-from numpy.typing import NDArray
+from numpy.typing import DTypeLike, NDArray
 
 import opencosmo.io.protocols as iop
 import opencosmo.io.writers as iow
@@ -62,6 +62,7 @@ class FileSchema:
                 | StructCollectionSchema()
                 | DatasetSchema()
                 | LightconeSchema()
+                | EmptyColumnSchema()
             ):
                 self.children[name] = child
             case _:
@@ -168,9 +169,6 @@ class LightconeSchema:
             self.add_child(child, path)
 
     def verify(self):
-        if len(self.children) < 2:
-            raise ValueError("LightconeSchema must have at least two children!")
-
         zero_length = set()
         for name, child in self.children.items():
             try:
@@ -184,7 +182,7 @@ class LightconeSchema:
         if name in self.children:
             raise ValueError(f"LightconeSchema already has child with name {name}")
         match child:
-            case DatasetSchema():
+            case DatasetSchema() | EmptyColumnSchema():
                 self.children[name] = child
             case _:
                 raise ValueError(
@@ -307,6 +305,10 @@ class DatasetSchema:
         self.spatial_index: Optional[SpatialIndexSchema] = None
         self.header = header
 
+    @property
+    def children(self):
+        return self.columns
+
     @classmethod
     def make_schema(
         cls,
@@ -352,7 +354,7 @@ class DatasetSchema:
         if len(self.columns) == 0:
             raise ValueError("Datasets must have at least one column")
 
-        column_lengths = set(len(c.index) for c in self.columns.values())
+        column_lengths = set(len(c) for c in self.columns.values())
         if len(column_lengths) > 1:
             raise ValueError("Datasets columns must be the same length!")
 
@@ -407,12 +409,17 @@ class ColumnSchema:
         index: DataIndex,
         source: h5py.Dataset | NDArray,
         attrs: dict[str, Any],
+        total_length: Optional[int] = None,
     ):
         self.name = name
         self.index = index
         self.source = source
         self.attrs = attrs
         self.offset = 0
+        self.total_length = total_length
+
+    def __len__(self):
+        return len(self.index)
 
     def concatenate(self, *others: "ColumnSchema"):
         for other in others:
@@ -436,15 +443,58 @@ class ColumnSchema:
         return True
 
     def allocate(self, group: h5py.Group):
-        shape = (len(self.index),) + self.source.shape[1:]
-        group.create_dataset(
-            self.name, shape, self.source.dtype, compression=COMPRESSION
-        )
+        shape = (self.total_length,) + self.source.shape[1:]
+        group.create_dataset(self.name, shape, self.source.dtype)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.ColumnWriter(
             self.name, self.index, self.source, self.attrs, self.offset
         )
+
+
+class EmptyColumnSchema:
+    """
+    Represents a column that contains no data. The ONLY time this should be used
+    is if we are writing in an MPI context and one or more of the ranks
+    does not have data for a given column. However it must still know the column
+    exists because structural work must be performed by all ranks in
+    parallel HDF5.
+
+    Its associated writer is effectively a no-op.
+
+    """
+
+    def __init__(
+        self,
+        name: str,
+        attrs: dict[str, Any],
+        dtype: DTypeLike,
+        shape: tuple[int, ...],
+    ):
+        self.name = name
+        self.attrs = attrs
+        self.dtype = dtype
+        self.shape = shape
+
+    def __len__(self):
+        return self.shape[0]
+
+    def add_child(self, *args, **kwargs):
+        raise TypeError("Columns do not take children!")
+
+    insert = add_child
+
+    def set_offset(self, offset: int):
+        return
+
+    def verify(self):
+        return True
+
+    def allocate(self, group: h5py.Group):
+        group.create_dataset(self.name, self.shape, self.dtype)
+
+    def into_writer(self, comm: Optional["MPI.Comm"] = None):
+        return iow.EmptyColumnWriter(self.name, self.attrs)
 
 
 class SpatialIndexSchema:
@@ -475,12 +525,16 @@ class SpatialIndexSchema:
 
 
 class SpatialIndexLevelSchema:
-    def __init__(self, source: h5py.Group):
+    def __init__(self, start: ColumnSchema, size: ColumnSchema):
+        self.start = start
+        self.size = size
+
+    @classmethod
+    def from_source(cls, source: h5py.Group):
         index = ChunkedIndex.from_size(len(source["start"]))
-        self.start = ColumnSchema(
-            "start", index, source["start"], source["start"].attrs
-        )
-        self.size = ColumnSchema("size", index, source["size"], source["size"].attrs)
+        start = ColumnSchema("start", index, source["start"], source["start"].attrs)
+        size = ColumnSchema("size", index, source["size"], source["size"].attrs)
+        return SpatialIndexLevelSchema(start, size)
 
     def allocate(self, group: h5py.Group):
         self.start.allocate(group)
