@@ -298,12 +298,11 @@ class Dataset:
         check_region = region.into_scalefree(
             self.__state.convention, self.cosmology, self.redshift
         )
-        new_header = self.__header.with_region(check_region)
 
         if not self.__state.region.intersects(check_region):
             new_index = ChunkedIndex.empty()
             new_state = self.__state.with_index(new_index)
-            return Dataset(self.__handler, new_header, new_state, self.__tree)
+            return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
             warn(
@@ -335,7 +334,7 @@ class Dataset:
 
         new_state = self.__state.with_index(new_index).with_region(check_region)
 
-        return Dataset(self.__handler, new_header, new_state, self.__tree)
+        return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def evaluate(
         self,
@@ -707,8 +706,10 @@ class Dataset:
 
         """
 
-        header = self.__header if with_header else None
-        schema = self.__state.make_schema(self.__handler, header)
+        schema = self.__state.make_schema(self.__handler)
+        if not with_header:
+            schema.header = None
+
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.index)
             spat_idx_schema = tree.make_schema()

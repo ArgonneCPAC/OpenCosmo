@@ -147,16 +147,14 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1
-    original_data = ds.get_data()
+    original_data = ds.select("early_index").get_data()
     original_data_length = comm.allgather(len(original_data))
-    print(len(ds["487_diffsky_fits"]))
 
     oc.write(tmp_path, ds)
     ds = oc.open(tmp_path)
-    written_data = ds.get_data()
+    written_data = ds.select("early_index").get_data()
 
     written_data_length = comm.allgather(len(written_data))
-    assert sum(original_data_length) == sum(written_data_length)
-    assert False
+    parallel_assert(sum(original_data_length) == sum(written_data_length))
 
     # assert np.all(original_data == written_data)

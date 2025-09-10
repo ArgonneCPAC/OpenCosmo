@@ -130,10 +130,9 @@ class DatasetState:
         new_index = self.__index.mask(mask)
         return self.with_index(new_index)
 
-    def make_schema(
-        self, handler: "DatasetHandler", header: Optional[OpenCosmoHeader] = None
-    ):
+    def make_schema(self, handler: "DatasetHandler"):
         builder_names = set(self.__builder.columns)
+        header = self.__header.with_region(self.__region)
         schema = handler.prep_write(self.__index, builder_names - self.__hidden, header)
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (

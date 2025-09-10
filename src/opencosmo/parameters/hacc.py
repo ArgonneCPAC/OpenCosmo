@@ -149,7 +149,7 @@ class ReformatParameters(BaseModel):
     mass_threshold_sodbighaloparticles: Optional[float] = None
     mass_threshold_sodpropertybins: Optional[float] = None
     max_level: int = 0
-    max_level_lc: Optional[list[tuple[int, int]]] = None
+    max_level_lc: Optional[frozenset[tuple[int, int]]] = None
     npart_threshold_galaxyproperties: Optional[int] = None
     output_lc_path_pattern: Optional[str] = None
     rearrange_output_path_pattern: str
@@ -173,6 +173,12 @@ class ReformatParameters(BaseModel):
         if v is None:
             return ""
         return str(v)
+
+    @field_serializer("max_level_lc")
+    def serialize_max_level(self, value):
+        if value is None:
+            return
+        return list(value)
 
     @field_serializer("simulation_date")
     def handle_date(self, v):

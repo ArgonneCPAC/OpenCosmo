@@ -154,7 +154,7 @@ class SimCollectionSchema:
                 child.verify()
             except ZeroLengthError:
                 zero_length.add(name)
-        if len(zero_length) == len(self.childen):
+        if len(zero_length) == len(self.children):
             raise ZeroLengthError
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
@@ -200,7 +200,8 @@ class LightconeSchema:
 
     def allocate(self, group: h5py.Group):
         if len(self.children) == 1:
-            raise ValueError("A dataset collection cannot have only one member!")
+            next(iter(self.children.values())).allocate(group)
+            return
         for ds_name, ds in self.children.items():
             ds_group = group.require_group(ds_name)
             ds.allocate(ds_group)
@@ -399,7 +400,6 @@ class DatasetSchema:
             if self.spatial_index is not None
             else None
         )
-
         return iow.DatasetWriter(
             column_writers, link_writers, spatial_index, self.header
         )
@@ -425,6 +425,8 @@ class ColumnSchema:
         self.source = source
         self.attrs = attrs
         self.offset = 0
+        if total_length is None:
+            total_length = len(index)
         self.total_length = total_length
 
     def __len__(self):

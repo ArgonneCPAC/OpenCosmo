@@ -43,16 +43,19 @@ class OpenCosmoHeader:
         self.unit_convention = unit_convention
 
     def __eq__(self, other):
-        if not isinstance(other, OpenCosmoHeader):
-            return False
-
-        return hash(self) == hash(other)
+        return (
+            self.__file_pars == other.__file_pars
+            and self.__required_origin_parameters == other.__required_origin_parameters
+            and self.__optional_origin_parameters == other.__optional_origin_parameters
+            and self.__dtype_parameters == other.__dtype_parameters
+        )
 
     def __hash__(self):
         # Create a frozenset of the items in the dictionary
         # Each item is a tuple of (key, hash of the model)
         iter_ = chain(
             {"file": self.__file_pars}.items(),
+            {"unit_convention": self.unit_convention}.items(),
             self.__required_origin_parameters.items(),
             self.__optional_origin_parameters.items(),
             self.__dtype_parameters.items(),
@@ -130,7 +133,10 @@ class OpenCosmoHeader:
             return object.__getattribute__(self, key)
 
     def with_region(self, region):
-        region_model = region.into_model()
+        if region is not None:
+            region_model = region.into_model()
+        else:
+            region_model = None
         new_file_pars = self.__file_pars.model_copy(update={"region": region_model})
         new_header = OpenCosmoHeader(
             new_file_pars,
