@@ -8,6 +8,7 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     computed_field,
     field_serializer,
@@ -27,8 +28,9 @@ def empty_string_to_none(v):
     return v
 
 
-class HaccSimulationParameters(BaseModel, frozen=True):
+class HaccSimulationParameters(BaseModel):
     ACCESS_PATH: ClassVar[str] = "simulation"
+    model_config = ConfigDict(frozen=True)
 
     box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
     z_ini: float = Field(ge=0.01, description="Initial redshift of the simulation")
@@ -74,7 +76,8 @@ def subgrid_alias_generator(name: str) -> str:
     return f"subgrid_{name}"
 
 
-class HaccHydroSimulationParameters(HaccSimulationParameters, frozen=True):
+class HaccHydroSimulationParameters(HaccSimulationParameters):
+    model_config = ConfigDict(frozen=True)
     n_gas: int = Field(
         description="Number of gas particles (per dimension)", alias="n_bar"
     )
@@ -107,7 +110,8 @@ class HaccHydroSimulationParameters(HaccSimulationParameters, frozen=True):
     )
 
 
-class CosmoToolsParameters(BaseModel, frozen=True):
+class CosmoToolsParameters(BaseModel):
+    model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "cosmotools"
     cosmotools_steps: frozenset[int]
     fof_linking_length: float
@@ -133,7 +137,8 @@ class CosmoToolsParameters(BaseModel, frozen=True):
         return list(steps)
 
 
-class ReformatParameters(BaseModel, frozen=True):
+class ReformatParameters(BaseModel):
+    model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "reformat"
     cosmotools_lc_path: Optional[Path] = None
     cosmotools_path: Path
@@ -188,7 +193,8 @@ class ReformatParameters(BaseModel, frozen=True):
         return data
 
 
-class LightconeParams(BaseModel, frozen=True):
+class LightconeParams(BaseModel):
+    model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "lightcone"
     z_range: Optional[tuple[float, float]] = None
 
