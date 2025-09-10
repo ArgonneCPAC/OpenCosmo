@@ -12,7 +12,7 @@ requires-python = ">=3.11,<3.14"
 
 dependencies = [
   "h5py>=3.12.1,<4.0.0",
-  "astropy>=7.0.1,<8.0.0",
+  "astropy>=7.1.0,<8.0.0",
   "pydantic>=2.10.6,<3.0.0",
   "hdf5plugin>=5.0.0,<6.0.0",
   "healpy>=1.18.1,<2.0.0",
@@ -52,7 +52,6 @@ opencosmo = "opencosmo.analysis.cli:cli"
 [project.optional-dependencies]
 io = [
     "pyarrow>=21.0.0",
-    "pyarrow[parquet]"
 ]
 
 [build-system]

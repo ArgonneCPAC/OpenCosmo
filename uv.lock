@@ -515,7 +515,7 @@ wheels = [
 
 [[package]]
 name = "opencosmo"
-version = "0.9.0b1"
+version = "0.9.0b2"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
@@ -560,7 +560,7 @@ test-mpi = [
 
 [package.metadata]
 requires-dist = [
-    { name = "astropy", specifier = ">=7.0.1,<8.0.0" },
+    { name = "astropy", specifier = ">=7.1.0,<8.0.0" },
     { name = "click", specifier = ">=8.2.1,<9.0.0" },
     { name = "deprecated", specifier = ">=1.2.18,<2.0.0" },
     { name = "h5py", specifier = ">=3.12.1,<4.0.0" },
@@ -569,7 +569,6 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.5,<4.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pyarrow", marker = "extra == 'io'", specifier = ">=21.0.0" },
-    { name = "pyarrow", extras = ["parquet"], marker = "extra == 'io'" },
     { name = "pydantic", specifier = ">=2.10.6,<3.0.0" },
 ]
 provides-extras = ["io"]
