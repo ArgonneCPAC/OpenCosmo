@@ -54,6 +54,6 @@ class LinkedDatasetHandler:
 
     def make_schema(self, name: str, index: DataIndex) -> ios.LinkSchema:
         if isinstance(self.link, h5py.Dataset):
-            return ios.IdxLinkSchema(name, index, self.link)
+            return ios.IdxLinkSchema.from_h5py_dataset(name, index, self.link)
         else:
-            return ios.StartSizeLinkSchema(name, index, *self.link)
+            return ios.StartSizeLinkSchema.from_h5py_dataset(name, index, *self.link)
