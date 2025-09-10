@@ -1,9 +1,10 @@
 from typing import ClassVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
-class DiffskyVersionInfo(BaseModel, frozen=True):
+class DiffskyVersionInfo(BaseModel):
+    model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "diffsky_versions"
     diffmah: str
     diffsky: str
