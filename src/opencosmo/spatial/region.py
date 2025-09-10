@@ -231,6 +231,9 @@ class FullSkyRegion:
     def _(self, coords: SkyCoord):
         return True
 
+    def into_model(self):
+        return None
+
 
 @FullSkyRegion._contains.register  # type: ignore
 def _(self, other: FullSkyRegion):

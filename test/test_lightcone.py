@@ -387,5 +387,10 @@ def test_lc_collection_sort_and_take(
     assert np.all(halo_masses[:100] == data)
 
 
-def test_write_single_lightcone():
-    raise NotImplementedError()
+def test_write_single_lightcone(haloproperties_600_path, tmp_path):
+    ds = oc.open(haloproperties_600_path)
+    assert isinstance(ds, oc.Lightcone)
+    oc.write(tmp_path / "temp.hdf5", ds)
+    ds_written = oc.open(tmp_path / "temp.hdf5")
+    assert isinstance(ds, oc.Lightcone)
+    assert len(ds) == len(ds_written)
