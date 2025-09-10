@@ -1,7 +1,7 @@
 from copy import copy
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, TypeVar, cast
+from typing import Iterable, Mapping, Optional, Type, TypeVar, cast
 
 import h5py
 import numpy as np
@@ -106,8 +106,11 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
 def get_all_child_names(schema: DataSchema | None, comm: MPI.Comm):
     if schema is None:
         child_names = set()
-    else:
+    elif hasattr(schema, "children") and isinstance(schema.children, dict):
         child_names = set(schema.children.keys())
+    else:
+        child_names = set()
+    all_child_names: Iterable[str]
     all_child_names = child_names.union(*comm.allgather(child_names))
     all_child_names = list(all_child_names)
     all_child_names.sort()
@@ -166,12 +169,14 @@ def combine_file_child(schema: S | None, comm: MPI.Comm) -> S:
             return cast(S, combine_structcollection_schema(schema, comm))
         case LightconeSchema():
             return cast(S, combine_lightcone_schema(schema, comm))
+        case _:
+            raise ValueError(f"Invalid file child of type {type(schema)}")
 
 
 def validate_headers(
     header: OpenCosmoHeader | None, comm: MPI.Comm, header_updates: dict = {}
 ):
-    all_headers = comm.allgather(header)
+    all_headers: Iterable[OpenCosmoHeader] = comm.allgather(header)
     all_headers = filter(lambda h: h is not None, all_headers)
     all_headers = list(map(lambda h: h.with_parameters(header_updates), all_headers))
 
@@ -196,7 +201,9 @@ def combine_dataset_schemas(
     all_column_names = get_all_child_names(schema, comm)
 
     for colname in all_column_names:
-        new_column_schema = combine_column_schemas(columns.get(colname), comm)
+        column = columns.get(colname)
+        assert not isinstance(column, EmptyColumnSchema)
+        new_column_schema = combine_column_schemas(column, comm)
         new_schema.columns[colname] = new_column_schema
 
     new_links = combine_links(schema.links if schema is not None else {}, comm)
@@ -250,16 +257,16 @@ def combine_spatial_index_level_schemas(
         start_len = len(schema.start)
         size_len = len(schema.size)
 
-    start_len = set(filter(lambda s: s is not None, comm.allgather(start_len)))
-    size_len = set(filter(lambda s: s is not None, comm.allgather(size_len)))
-    if 0 in start_len:
-        start_len.remove(0)
-        size_len.remove(0)
+    all_start_lens = set(filter(lambda s: s is not None, comm.allgather(start_len)))
+    all_size_lens = set(filter(lambda s: s is not None, comm.allgather(size_len)))
+    if 0 in all_start_lens:
+        all_start_lens.remove(0)
+        all_size_lens.remove(0)
 
-    if start_len != size_len or len(start_len) != 1:
+    if all_start_lens != all_size_lens or len(all_start_lens) != 1:
         raise ValueError("Invalid starts and sizes")
 
-    level_len = start_len.pop()
+    level_len = all_start_lens.pop()
 
     if schema is None:
         source = np.zeros(level_len, dtype=np.int32)
@@ -292,6 +299,9 @@ def combine_links(
 ) -> Mapping[str, LinkSchema]:
     link_names = set(links.keys())
 
+    all_link_names: Iterable[str]
+
+    all_link_types: Iterable[Type]
     all_link_names = link_names.union(*comm.allgather(link_names))
     all_link_names = list(all_link_names)
     all_link_names.sort()
@@ -306,28 +316,43 @@ def combine_links(
         link_type = all_link_types.pop()
 
         if link_type is StartSizeLinkSchema:
-            new_links[link_name] = combine_start_size_link_schema(link, comm)
+            assert not isinstance(link, (IdxLinkSchema, EmptyColumnSchema))
+            new_links[link_name] = combine_start_size_link_schema(link, comm, link_name)
         else:
+            assert not isinstance(link, (StartSizeLinkSchema, EmptyColumnSchema))
             new_links[link_name] = combine_idx_link_schema(link, comm)
 
     return new_links
 
 
-def combine_idx_link_schema(schema: IdxLinkSchema, comm: MPI.Comm) -> IdxLinkSchema:
-    column_schema = combine_column_schemas(schema.column, comm)
-    new_schema = copy(schema)
-    new_schema.column = column_schema
+def combine_idx_link_schema(
+    schema: IdxLinkSchema | None, comm: MPI.Comm
+) -> IdxLinkSchema:
+    column = schema.column if schema is not None else None
+    assert not isinstance(column, EmptyColumnSchema)
+    column_schema = combine_column_schemas(column, comm)
+    new_schema = IdxLinkSchema(column_schema)
     return new_schema
 
 
 def combine_start_size_link_schema(
-    schema: StartSizeLinkSchema, comm: MPI.Comm
+    schema: StartSizeLinkSchema | None, comm: MPI.Comm, name: str
 ) -> StartSizeLinkSchema:
-    start_column_schema = combine_column_schemas(schema.start, comm)
-    size_column_schema = combine_column_schemas(schema.size, comm)
-    new_schema = copy(schema)
-    new_schema.start = start_column_schema
-    new_schema.size = size_column_schema
+    start = schema.start if schema is not None else None
+    size = schema.size if schema is not None else None
+    assert not isinstance(start, EmptyColumnSchema) and not isinstance(
+        size, EmptyColumnSchema
+    )
+
+    start_column_schema = combine_column_schemas(start, comm)
+    size_column_schema = combine_column_schemas(size, comm)
+
+    if schema is None:
+        new_schema = StartSizeLinkSchema(name, start_column_schema, size_column_schema)
+    else:
+        new_schema = copy(schema)
+        new_schema.start = start_column_schema
+        new_schema.size = size_column_schema
     return new_schema
 
 
@@ -351,12 +376,13 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
 
 
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
-    if ds is None:
-        z_ranges = comm.allgather(None)
-    else:
+    if ds is not None and ds.header is not None:
         z_ranges = comm.allgather(ds.header.lightcone["z_range"])
+    else:
+        z_ranges = comm.allgather(None)
     z_ranges = list(filter(lambda dz: dz is not None, z_ranges))
-    dzs = map(lambda dz: dz[1] - dz[0], z_ranges)
+    dzs: Iterable[float] = map(lambda dz: dz[1] - dz[0], z_ranges)
+    dzs = list(dzs)
     max_idx = np.argmax(dzs)
     return list(z_ranges)[max_idx]
 
@@ -435,7 +461,9 @@ def verify_column_schemas(schema: ColumnSchema | None, comm: MPI.Comm):
     return data[0]
 
 
-def combine_column_schemas(schema: ColumnSchema | None, comm: MPI.Comm) -> ColumnSchema:
+def combine_column_schemas(
+    schema: ColumnSchema | None, comm: MPI.Comm
+) -> ColumnSchema | EmptyColumnSchema:
     rank = comm.Get_rank()
     if schema is None:
         length = 0
@@ -449,6 +477,7 @@ def combine_column_schemas(schema: ColumnSchema | None, comm: MPI.Comm) -> Colum
     rank_offsets = np.insert(np.cumsum(lengths), 0, 0)[:-1]
     rank_offset = rank_offsets[rank]
 
+    new_schema: ColumnSchema | EmptyColumnSchema
     if schema is None:
         new_schema = EmptyColumnSchema(name, attrs, dtype, (total_length,) + shape[1:])
     else:

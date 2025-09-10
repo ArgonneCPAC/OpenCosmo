@@ -70,6 +70,15 @@ class FileSchema:
                     f"File schema cannot have children of type {type(child)}"
                 )
 
+    def insert(self, child: iop.DataSchema, path: str):
+        try:
+            child_name, remaining_path = path.split(".", maxsplit=1)
+            if child_name not in self.children:
+                raise ValueError(f"File schema has no child {child_name}")
+            self.children[child_name].insert(child, remaining_path)
+        except ValueError:
+            self.add_child(child, path)
+
     def allocate(self, group: h5py.File | h5py.Group):
         self.verify()
         if not isinstance(group, h5py.File):
@@ -182,7 +191,7 @@ class LightconeSchema:
         if name in self.children:
             raise ValueError(f"LightconeSchema already has child with name {name}")
         match child:
-            case DatasetSchema() | EmptyColumnSchema():
+            case DatasetSchema():
                 self.children[name] = child
             case _:
                 raise ValueError(
@@ -300,7 +309,7 @@ class DatasetSchema:
         self,
         header: Optional[OpenCosmoHeader] = None,
     ):
-        self.columns: dict[str, ColumnSchema] = {}
+        self.columns: dict[str, ColumnSchema | EmptyColumnSchema] = {}
         self.links: dict[str, IdxLinkSchema | StartSizeLinkSchema] = {}
         self.spatial_index: Optional[SpatialIndexSchema] = None
         self.header = header
@@ -560,8 +569,13 @@ class IdxLinkSchema:
     Schema for links that are one-to-one in rows.
     """
 
-    def __init__(self, name: str, index: DataIndex, source: h5py.Dataset):
-        self.column = ColumnSchema(f"{name}_idx", index, source, source.attrs)
+    def __init__(self, column: ColumnSchema | EmptyColumnSchema):
+        self.column = column
+
+    @classmethod
+    def from_h5py_dataset(cls, name: str, index: DataIndex, source: h5py.Dataset):
+        column = ColumnSchema(f"{name}_idx", index, source, source.attrs)
+        return IdxLinkSchema(column)
 
     def allocate(self, group: h5py.Group):
         return self.column.allocate(group)
@@ -587,19 +601,30 @@ class StartSizeLinkSchema:
     def __init__(
         self,
         name: str,
+        start: ColumnSchema | EmptyColumnSchema,
+        size: ColumnSchema | EmptyColumnSchema,
+        start_offset: int = 0,
+    ):
+        self.name = name
+        self.start = start
+        self.size = size
+        self.start_offset = start_offset
+
+    @classmethod
+    def from_h5py_dataset(
+        cls,
+        name: str,
         index: DataIndex,
         start: h5py.Dataset,
         size: h5py.Dataset,
         link_offset: int = 0,
         start_offset: int = 0,
     ):
-        self.name = name
-        self.index = index
-        self.start = ColumnSchema(f"{name}_start", index, start, start.attrs)
-        self.size = ColumnSchema(f"{name}_size", index, size, size.attrs)
-        self.start.set_offset(link_offset)
-        self.size.set_offset(link_offset)
-        self.start_offset = start_offset
+        start_ = ColumnSchema(f"{name}_start", index, start, start.attrs)
+        size_ = ColumnSchema(f"{name}_size", index, size, size.attrs)
+        start_.set_offset(link_offset)
+        size_.set_offset(link_offset)
+        return StartSizeLinkSchema(name, start_, size_, start_offset)
 
     def allocate(self, group: h5py.Group):
         self.start.allocate(group)

@@ -74,7 +74,7 @@ def subgrid_alias_generator(name: str) -> str:
     return f"subgrid_{name}"
 
 
-class HaccHydroSimulationParameters(HaccSimulationParameters):
+class HaccHydroSimulationParameters(HaccSimulationParameters, frozen=True):
     n_gas: int = Field(
         description="Number of gas particles (per dimension)", alias="n_bar"
     )
