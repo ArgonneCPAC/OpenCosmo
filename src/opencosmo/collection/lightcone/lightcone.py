@@ -429,7 +429,9 @@ class Lightcone(dict):
         schema = LightconeSchema()
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
-            ds_schema.header = self.__header
+            ds_schema.header = ds_schema.header.with_parameter(
+                "lightcone/z_range", self.z_range
+            )
             schema.add_child(ds_schema, name)
         return schema
 

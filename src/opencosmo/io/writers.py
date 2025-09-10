@@ -78,6 +78,10 @@ class CollectionWriter:
         self.header = header
 
     def write(self, file: h5py.File | h5py.Group):
+        if len(self.children) == 1:
+            next(iter(self.children.values())).write(file)
+            return
+
         child_names = list(self.children.keys())
         child_names.sort()
         for name in child_names:

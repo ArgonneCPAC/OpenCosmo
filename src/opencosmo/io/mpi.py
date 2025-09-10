@@ -179,6 +179,9 @@ def validate_headers(
     all_headers: Iterable[OpenCosmoHeader] = comm.allgather(header)
     all_headers = filter(lambda h: h is not None, all_headers)
     all_headers = list(map(lambda h: h.with_parameters(header_updates), all_headers))
+    regions = set([h.file.region for h in all_headers])
+    if len(regions) > 1:
+        all_headers = [h.with_region(None) for h in all_headers]
 
     if any(h != all_headers[0] for h in all_headers[1:]):
         raise ValueError("Not all datasets have the same header!")
@@ -310,7 +313,7 @@ def combine_links(
         link = links.get(link_name)
         all_link_types = comm.allgather(type(link))
         all_link_types = set(filter(lambda t: t is not type(None), all_link_types))
-        if len(all_link_types) > 0:
+        if len(all_link_types) != 1:
             raise ValueError("Incompatible Links!")
 
         link_type = all_link_types.pop()

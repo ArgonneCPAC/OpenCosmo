@@ -52,6 +52,11 @@ class ConeRegion:
         self.__center = center
         self.__radius = radius
 
+    def __hash__(self):
+        return hash(
+            (self.__center.ra.deg, self.center.dec, self.radius.to(u.deg).value)
+        )
+
     def into_scalefree(self, *args, **kwargs):
         return self
 

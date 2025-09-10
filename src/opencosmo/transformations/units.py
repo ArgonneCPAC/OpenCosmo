@@ -237,7 +237,9 @@ def get_base_unit_transformations(
     return base_transformations
 
 
-def remove_littleh(column: Column, cosmology: Cosmology) -> Optional[Table]:
+def remove_littleh(
+    column: Column | u.Quantity, cosmology: Cosmology
+) -> Optional[Table]:
     """
     Remove little h from the units of the input table. For comoving
     coordinates, this is the second step after parsing the units themselves.
