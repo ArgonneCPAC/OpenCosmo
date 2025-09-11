@@ -155,8 +155,6 @@ class EmptyColumnWriter:
         for name, val in self.attrs.items():
             ds.attrs[name] = val
 
-        ds.file.flush()
-
 
 class ColumnWriter:
     """
@@ -185,10 +183,8 @@ class ColumnWriter:
     ):
         ds = group[self.name]
 
-        print("Writing Index", flush=True)
         write_index(self.source, ds, self.index, self.offset, updater)
 
-        print("Writing attributes", flush=True)
         for name, val in self.attrs.items():
             ds.attrs[name] = val
 
