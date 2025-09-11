@@ -147,10 +147,10 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1
-    assert False
     original_data = ds.select("early_index").get_data()
     original_data_length = comm.allgather(len(original_data))
 
+    assert False
     oc.write(tmp_path, ds)
     ds = oc.open(tmp_path)
     written_data = ds.select("early_index").get_data()
