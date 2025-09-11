@@ -79,7 +79,6 @@ def write_parallel(file: Path, file_schema: FileSchema):
             new_schema.allocate(f)
     new_comm.Barrier()
 
-    assert False
     writer = new_schema.into_writer(new_comm)
 
     try:
@@ -97,6 +96,7 @@ def write_parallel(file: Path, file_schema: FileSchema):
                 with h5py.File(file, "a") as f:
                     writer.write(f)
             new_comm.Barrier()
+    assert False
     cleanup_mpi(comm, new_comm, new_group)
 
 
