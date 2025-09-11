@@ -111,7 +111,7 @@ class DatasetState:
         Return the same dataset state with a new index
         """
 
-        new_cache = self.__im_handler.with_index(index)
+        new_cache = self.__im_handler.project(index)
 
         return DatasetState(
             self.__base_unit_transformations,
