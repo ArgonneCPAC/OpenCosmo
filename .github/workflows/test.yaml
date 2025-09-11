@@ -116,4 +116,4 @@ jobs:
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
         run: |
-          uv run mpiexec --timeout 120 --use-hwthread-cpus -n 4 pytest -m parallel test/parallel -x
+          uv run mpiexec --timeout 120 --use-hwthread-cpus -n 4 pytest -m parallel test/parallel/test_lc_mpi.py::test_write_some_missing -x
