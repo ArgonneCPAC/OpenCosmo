@@ -78,6 +78,8 @@ class CollectionWriter:
         self.header = header
 
     def write(self, file: h5py.File | h5py.Group):
+        print(self.children)
+        assert False
         if len(self.children) == 1:
             next(iter(self.children.values())).write(file)
             return
