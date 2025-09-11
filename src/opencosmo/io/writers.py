@@ -138,8 +138,8 @@ class DatasetWriter:
             self.spatial_index.write(index_group)
 
         print("Done writing index", flush=True)
-        if self.header is not None:
-            self.header.write(group)
+        # if self.header is not None:
+        #    self.header.write(group)
 
         print("done writing header", flush=True)
 
@@ -193,6 +193,7 @@ class ColumnWriter:
 
         for name, val in self.attrs.items():
             ds.attrs[name] = val
+        ds.file.flush()
 
 
 class SpatialIndexWriter:
