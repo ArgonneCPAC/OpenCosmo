@@ -189,8 +189,8 @@ class ColumnWriter:
         write_index(self.source, ds, self.index, self.offset, updater)
 
         print("Writing attributes", flush=True)
-        for name, val in self.attrs.items():
-            ds.attrs[name] = val
+        # for name, val in self.attrs.items():
+        #    ds.attrs[name] = val
 
         ds.file.flush()
 
