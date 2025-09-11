@@ -88,8 +88,10 @@ class CollectionWriter:
             print(f"Writing dataset {name}", flush=True)
             self.children[name].write(file[name])
 
+        print("done writing datasets")
         if self.header is not None:
             self.header.write(file)
+        print("done writing header")
 
 
 class DatasetWriter:
@@ -120,8 +122,8 @@ class DatasetWriter:
         names = list(self.columns.keys())
         names.sort()
         for colname in names:
-            print(f"Writing colum {colname}", flush=True)
             self.columns[colname].write(data_group)
+        print("Done writing columns", flush=True)
         if self.links:
             link_group = group["data_linked"]
             link_names = list(self.links.keys())
@@ -130,12 +132,16 @@ class DatasetWriter:
             for name in link_names:
                 self.links[name].write(link_group)
 
+        print("Done writing links", flush=True)
         if self.spatial_index is not None:
             index_group = group["index"]
             self.spatial_index.write(index_group)
 
+        print("Done writing index")
         if self.header is not None:
             self.header.write(group)
+
+        print("done writing header")
 
 
 class EmptyColumnWriter:
@@ -188,8 +194,7 @@ class ColumnWriter:
         for name, val in self.attrs.items():
             ds.attrs[name] = val
 
-        print("Flusing", flush=True)
-        print("Done flushing")
+        ds.file.flush()
 
 
 class SpatialIndexWriter:
