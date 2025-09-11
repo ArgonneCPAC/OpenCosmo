@@ -83,6 +83,8 @@ jobs:
         uses: actions/checkout@v4
       - name: setup mpi
         uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: openmpi
 
       - name: install parallel hdf5
         run: sudo apt install -y libhdf5-mpi-dev
