@@ -127,10 +127,11 @@ class SimpleIndex:
         where the second index is true.
         """
         other_idxs = other.into_array()
-        idxs = np.searchsorted(self.__index, other_idxs)
-        idxs = idxs[idxs != len(self.__index)]
-        idxs = idxs[other_idxs == self.__index[idxs]]
-        return SimpleIndex(idxs)
+        is_in_array = np.isin(other_idxs, self.__index)
+        matching_values = other_idxs[is_in_array]
+        indices_into_this_index = np.where(np.isin(self.__index, matching_values))[0]
+
+        return SimpleIndex(indices_into_this_index)
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:
