@@ -85,9 +85,9 @@ class CollectionWriter:
         child_names = list(self.children.keys())
         child_names.sort()
         for name in child_names:
+            print(f"Writing dataset {name}", flush=True)
             self.children[name].write(file[name])
 
-        assert False
         if self.header is not None:
             self.header.write(file)
 
@@ -120,6 +120,7 @@ class DatasetWriter:
         names = list(self.columns.keys())
         names.sort()
         for colname in names:
+            print(f"Writing colum {colname}", flush=True)
             self.columns[colname].write(data_group)
         if self.links:
             link_group = group["data_linked"]
