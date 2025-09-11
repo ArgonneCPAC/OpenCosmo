@@ -64,6 +64,8 @@ def write_parallel(file: Path, file_schema: FileSchema):
         raise ValueError("One or more ranks recieved invalid schemas!")
 
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
+    print(results)
+
     group = comm.Get_group()
     new_group = group.Incl(has_data)
     new_comm = comm.Create(new_group)
@@ -75,7 +77,9 @@ def write_parallel(file: Path, file_schema: FileSchema):
     if rank == 0:
         with h5py.File(file, "w") as f:
             new_schema.allocate(f)
+    new_comm.Barrier()
 
+    assert False
     writer = new_schema.into_writer(new_comm)
 
     try:
