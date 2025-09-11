@@ -88,10 +88,10 @@ class CollectionWriter:
             print(f"Writing dataset {name}", flush=True)
             self.children[name].write(file[name])
 
-        print("done writing datasets")
+        print("done writing datasets", flush=True)
         if self.header is not None:
             self.header.write(file)
-        print("done writing header")
+        print("done writing header", flush=True)
 
 
 class DatasetWriter:
@@ -137,11 +137,11 @@ class DatasetWriter:
             index_group = group["index"]
             self.spatial_index.write(index_group)
 
-        print("Done writing index")
+        print("Done writing index", flush=True)
         if self.header is not None:
             self.header.write(group)
 
-        print("done writing header")
+        print("done writing header", flush=True)
 
 
 class EmptyColumnWriter:
@@ -193,8 +193,6 @@ class ColumnWriter:
 
         for name, val in self.attrs.items():
             ds.attrs[name] = val
-
-        ds.file.flush()
 
 
 class SpatialIndexWriter:
