@@ -41,7 +41,6 @@ def test_add_quantity_filter(properties_path):
     random_data = np.random.randint(0, 1000, size=len(ds)) * u.deg
     ds = ds.with_new_columns(test_random=random_data)
     ds = ds.filter(oc.col("test_random") < 200)
-    print(ds.select("test_random").get_data())
     assert np.all(ds.select("test_random").get_data() < 200 * u.deg)
 
 
@@ -123,6 +122,33 @@ def test_add_column_write(properties_path, tmp_path):
     random_data = np.random.randint(0, 1000, size=len(ds))
     random_unitful = np.random.randint(0, 1000, size=len(ds)) * u.deg
     ds = ds.with_new_columns(test_random=random_data, test_unitful=random_unitful)
+    oc.write(tmp_path / "test.hdf5", ds)
+    ds = oc.open(tmp_path / "test.hdf5")
+    assert "test_random" in ds.columns
+    assert np.all(ds.select("test_random").get_data("numpy") == random_data)
+    assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
+    assert np.all(ds.select("test_unitful").get_data() == random_unitful)
+
+
+def test_add_2d_column_write(properties_path, tmp_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=(len(ds), 10))
+    random_unitful = np.random.randint(0, 1000, size=len(ds)) * u.deg
+    ds = ds.with_new_columns(test_random=random_data, test_unitful=random_unitful)
+    oc.write(tmp_path / "test.hdf5", ds)
+    ds = oc.open(tmp_path / "test.hdf5")
+    assert "test_random" in ds.columns
+    assert np.all(ds.select("test_random").get_data("numpy") == random_data)
+    assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
+    assert np.all(ds.select("test_unitful").get_data() == random_unitful)
+
+
+def test_add_2d_column_write_after_take(properties_path, tmp_path):
+    ds = oc.open(properties_path)
+    random_data = np.random.randint(0, 1000, size=(len(ds), 10))
+    random_unitful = np.random.randint(0, 1000, size=len(ds)) * u.deg
+    ds = ds.with_new_columns(test_random=random_data, test_unitful=random_unitful)
+    ds = ds.take(10, at="start")
     oc.write(tmp_path / "test.hdf5", ds)
     ds = oc.open(tmp_path / "test.hdf5")
     assert "test_random" in ds.columns
