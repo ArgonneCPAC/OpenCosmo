@@ -1,6 +1,7 @@
 from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
+import astropy.units as u
 import numpy as np
 from astropy.units import Quantity  # type: ignore
 from numpy.typing import DTypeLike
@@ -76,18 +77,24 @@ def __make_output(
     )
     if first_values is None:
         return None
-    n = len(collection)
     if not isinstance(first_values, dict):
         name = function.__name__
-        result = {name: np.zeros(n, dtype=type(first_values))}
-        result[name][0] = first_values
-    else:
-        result = {
-            name: np.zeros(n, dtype=type(val)) for name, val in first_values.items()
-        }
-        for name, value in first_values.items():
-            result[name][0] = value
-    return result
+        first_values = {name: first_values}
+    n = len(collection)
+    storage = {}
+    for name, value in first_values.items():
+        shape: tuple[int, ...] = (n,)
+        dtype = type(value)
+        if isinstance(value, np.ndarray):
+            shape = shape + value.shape
+            dtype = value.dtype
+        storage[name] = np.zeros(shape, dtype=dtype)
+
+    for name, value in first_values.items():
+        if isinstance(value, u.Quantity):
+            storage[name] = storage[name] * value.unit
+        storage[name][0] = value
+    return storage
 
 
 def __prepare_collection(
