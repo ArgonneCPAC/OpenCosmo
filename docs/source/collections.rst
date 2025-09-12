@@ -9,7 +9,7 @@ Datasets behave a lot like dictionaries. You can get the names of the dataset wi
 Types of Collections
 --------------------
 
-OpenCosmo currently implements two collection types. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. For example, an :py:class:`opencosmo.StructureCollection` could hold halo properties and the associated dark matter particles. See below for information of how these collections can be used. 
+OpenCosmo currently implements three collection types. :py:class:`opencosmo.Ligthcone` collections stack datasets in angular coordinates from  different redshift slices into a single dataset-like object. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. For example, an :py:class:`opencosmo.StructureCollection` could hold halo properties and the associated dark matter particles. See below for information of how these collections can be used. 
 
 Collections can be opened just like datasets using :py:func:`opencosmo.open`, and written with :py:func:`opencosmo.write`.
 
