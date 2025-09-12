@@ -1,13 +1,12 @@
 from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
-import astropy.units as u
 import numpy as np
 from astropy.units import Quantity  # type: ignore
 from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
-from opencosmo.visit import insert, prepare_kwargs
+from opencosmo.visit import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:
     from opencosmo import StructureCollection
@@ -80,21 +79,8 @@ def __make_output(
     if not isinstance(first_values, dict):
         name = function.__name__
         first_values = {name: first_values}
-    n = len(collection)
-    storage = {}
-    for name, value in first_values.items():
-        shape: tuple[int, ...] = (n,)
-        dtype = type(value)
-        if isinstance(value, np.ndarray):
-            shape = shape + value.shape
-            dtype = value.dtype
-        storage[name] = np.zeros(shape, dtype=dtype)
-
-    for name, value in first_values.items():
-        if isinstance(value, u.Quantity):
-            storage[name] = storage[name] * value.unit
-        storage[name][0] = value
-    return storage
+    n_rows = len(collection)
+    return make_output_from_first_values(first_values, n_rows)
 
 
 def __prepare_collection(
