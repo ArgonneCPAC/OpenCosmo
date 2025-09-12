@@ -82,7 +82,8 @@ def write_parallel(file: Path, file_schema: FileSchema):
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
             writer.write(f)
             print("done writing (in context")
-            comm.Barrier()
+            new_comm.Barrier()
+            print("passed barrier")
 
     except ValueError:  # parallell hdf5 not available
         raise NotImplementedError(
