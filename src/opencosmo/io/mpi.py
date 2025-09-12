@@ -93,7 +93,9 @@ def write_parallel(file: Path, file_schema: FileSchema):
                 with h5py.File(file, "a") as f:
                     writer.write(f)
             new_comm.Barrier()
+    print("done writing")
     cleanup_mpi(comm, new_comm, new_group)
+    print("done cleaning up")
 
 
 def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Group):

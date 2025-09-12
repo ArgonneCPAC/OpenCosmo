@@ -87,6 +87,7 @@ class CollectionWriter:
         for name in child_names:
             print(f"Writing dataset {name}")
             self.children[name].write(file[name])
+        print("Done writing datasets")
 
 
 class DatasetWriter:
