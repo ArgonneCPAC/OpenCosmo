@@ -11,13 +11,13 @@ from astropy.table import Column, Table, vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.column import ColumnMask, DerivedColumn
+from opencosmo.evaluate import prepare_kwargs
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import OpenTarget, open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.parameters.hacc import HaccSimulationParameters
 from opencosmo.spatial import Region
-from opencosmo.visit import prepare_kwargs
 
 
 def get_redshift_range(datasets: list[Dataset]):

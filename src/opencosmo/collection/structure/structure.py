@@ -7,8 +7,8 @@ import astropy  # type: ignore
 import numpy as np
 
 import opencosmo as oc
+from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
-from opencosmo.collection.structure import visit
 from opencosmo.dataset.column import DerivedColumn
 from opencosmo.index import DataIndex, SimpleIndex
 from opencosmo.io import io
@@ -297,8 +297,8 @@ class StructureCollection:
             multiple datasets.
 
         vectorize: bool, default = False
-            Whether to provide the values as full columns (True) or one row at a time (False) if visiting a single dataset.
-            Has no effect if visiting structures, since structures require input from multiple datasets that will not in
+            Whether to provide the values as full columns (True) or one row at a time (False) if evaluating on aa single dataset.
+            Has no effect if evaluating over structures, since structures require input from multiple datasets which will not in
             general be the same length.
 
         insert: bool, default = True
@@ -366,7 +366,7 @@ class StructureCollection:
             columns = {key: evaluate_kwargs[key] for key in requested_datasets}
             kwargs = {key: evaluate_kwargs[key] for key in other_kwarg_names}
 
-            output = visit.visit_structure_collection(
+            output = evaluate.visit_structure_collection(
                 func, columns, self, format=format, evaluator_kwargs=kwargs
             )
             if not insert or output is None:

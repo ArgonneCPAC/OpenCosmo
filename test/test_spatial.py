@@ -39,7 +39,7 @@ def test_neither():
 def test_box_query(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     p1 = tuple(random.uniform(30, 40) for _ in range(3))
-    p2 = tuple(random.uniform(40, 50) for _ in range(3))
+    p2 = tuple(random.uniform(50, 60) for _ in range(3))
     reg1 = oc.make_box(p1, p2)
 
     original_data = ds.data

@@ -18,8 +18,8 @@ from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import QTable  # type: ignore
 
 from opencosmo.dataset.column import ColumnMask, DerivedColumn
+from opencosmo.dataset.evaluate import visit_dataset
 from opencosmo.dataset.state import DatasetState
-from opencosmo.dataset.visit import visit_dataset
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
 from opencosmo.io.schemas import DatasetSchema

@@ -230,7 +230,11 @@ It is also possible to pass a function that returns None. Such a function could 
                 output_path=output_path
         )
 
+Stateful Computations
+---------------------
 
+Some computations may be *stateful*, meaning that the result of a computation on a given row in your dataset may affect the way the computation is performed on a later row. An example could include a machine learning model that is learning a distribution of halo profiles from a large number of examples.
 
+In cases like these, the stateful part of the computation should be passed into :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>` as a keyword argument, and mutated inside the provided function. OpenCosmo simply passes the keyword argument along to the eavluated function, so any mutated state will persist between function calls.
 
 
