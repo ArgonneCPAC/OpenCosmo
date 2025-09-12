@@ -288,6 +288,9 @@ class StructCollectionSchema:
             ds_group = group.require_group(ds_name)
             ds.allocate(ds_group)
 
+        if self.header is not None:
+            self.header.write(group)
+
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         dataset_writers = {
             key: val.into_writer(comm) for key, val in self.children.items()
@@ -384,6 +387,8 @@ class DatasetSchema:
         if self.spatial_index is not None:
             idx_group = group.require_group("index")
             self.spatial_index.allocate(idx_group)
+        if self.header is not None:
+            self.header.write(group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         colnames = list(self.columns.keys())
@@ -400,9 +405,7 @@ class DatasetSchema:
             if self.spatial_index is not None
             else None
         )
-        return iow.DatasetWriter(
-            column_writers, link_writers, spatial_index, self.header
-        )
+        return iow.DatasetWriter(column_writers, link_writers, spatial_index)
 
 
 class ColumnSchema:
@@ -456,11 +459,11 @@ class ColumnSchema:
     def allocate(self, group: h5py.Group):
         shape = (self.total_length,) + self.source.shape[1:]
         group.create_dataset(self.name, shape, self.source.dtype)
+        for name, attr in self.attrs.items():
+            group[self.name].attrs[name] = attr
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.ColumnWriter(
-            self.name, self.index, self.source, self.attrs, self.offset
-        )
+        return iow.ColumnWriter(self.name, self.index, self.source, self.offset)
 
 
 class EmptyColumnSchema:
@@ -503,9 +506,11 @@ class EmptyColumnSchema:
 
     def allocate(self, group: h5py.Group):
         group.create_dataset(self.name, self.shape, self.dtype)
+        for name, attr in self.attrs.items():
+            group[self.name].attrs[name] = attr
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.EmptyColumnWriter(self.name, self.attrs)
+        return iow.EmptyColumnWriter(self.name)
 
 
 class SpatialIndexSchema:

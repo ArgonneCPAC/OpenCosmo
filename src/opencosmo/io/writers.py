@@ -1,9 +1,8 @@
-from typing import Callable, Mapping, Optional
+from typing import Callable, Optional
 
 import h5py
 import numpy as np
 
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex, SimpleIndex
 from opencosmo.io import protocols as iop
 
@@ -72,10 +71,8 @@ class CollectionWriter:
     def __init__(
         self,
         children: dict[str, iop.DataWriter],
-        header: Optional[OpenCosmoHeader] = None,
     ):
         self.children = children
-        self.header = header
 
     def write(self, file: h5py.File | h5py.Group):
         if len(self.children) == 1:
@@ -86,9 +83,6 @@ class CollectionWriter:
         child_names.sort()
         for name in child_names:
             self.children[name].write(file[name])
-
-        if self.header is not None:
-            self.header.write(file)
 
 
 class DatasetWriter:
@@ -106,10 +100,8 @@ class DatasetWriter:
         columns: dict[str, "ColumnWriter"],
         links: dict[str, "LinkWriter"] = {},
         spatial_index: Optional["SpatialIndexWriter"] = None,
-        header: Optional[OpenCosmoHeader] = None,
     ):
         self.columns = columns
-        self.header = header
         self.links = links
         self.spatial_index = spatial_index
 
@@ -132,14 +124,10 @@ class DatasetWriter:
             index_group = group["index"]
             self.spatial_index.write(index_group)
 
-        if self.header is not None:
-            self.header.write(group)
-
 
 class EmptyColumnWriter:
-    def __init__(self, name: str, attrs: Mapping):
+    def __init__(self, name: str):
         self.name = name
-        self.attrs = attrs
 
     def write(
         self,
@@ -149,9 +137,6 @@ class EmptyColumnWriter:
         ds = group[self.name]
 
         write_index(None, ds, SimpleIndex.empty(), updater=updater)
-
-        for name, val in self.attrs.items():
-            ds.attrs[name] = val
 
         ds.file.flush()
 
@@ -167,13 +152,11 @@ class ColumnWriter:
         name: str,
         index: DataIndex,
         source: h5py.Dataset,
-        attrs: Mapping,
         offset: int = 0,
     ):
         self.name = name
         self.source = source
         self.index = index
-        self.attrs = attrs
         self.offset = offset
 
     def write(
@@ -184,9 +167,6 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, updater)
-
-        for name, val in self.attrs.items():
-            ds.attrs[name] = val
 
         ds.file.flush()
 
