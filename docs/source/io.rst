@@ -33,7 +33,7 @@ Writing data to a new file is straightforward:
 
    oc.write("my_output.hdf5", ds)
 
-Transformations applied to the data will propogate to the file when written, with the exception of :py:meth:`oc.Dataset.with_units`. When you write data, it will always be stored in the unit convention of the original raw data.
+Transformations applied to the data will propogate to the file when written, with the exception of :py:meth:`with_units <oc.Dataset.with_units>` and :py:meth:`sort_by <oc.Dataset.sort_by>`. Data is always stored in the same unit convention as its source dataset, and ordering according to a spatial index.
 
 Other Formats
 -------------
