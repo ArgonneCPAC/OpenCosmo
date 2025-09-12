@@ -223,9 +223,8 @@ class StructCollectionSchema:
     contain several datasets from the same simulation.
     """
 
-    def __init__(self, header: OpenCosmoHeader):
+    def __init__(self):
         self.children: dict[str, DatasetSchema | StructCollectionSchema] = {}
-        self.header = header
 
     def insert(self, child: iop.DataSchema, path: str):
         try:
@@ -287,9 +286,6 @@ class StructCollectionSchema:
         for ds_name, ds in self.children.items():
             ds_group = group.require_group(ds_name)
             ds.allocate(ds_group)
-
-        if self.header is not None:
-            self.header.write(group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         dataset_writers = {

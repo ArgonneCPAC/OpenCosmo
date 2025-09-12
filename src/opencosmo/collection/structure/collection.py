@@ -803,7 +803,7 @@ class StructureCollection:
             raise AttributeError("This collection does not contain galaxies!")
 
     def make_schema(self) -> StructCollectionSchema:
-        schema = StructCollectionSchema(self.__header)
+        schema = StructCollectionSchema()
         source_name = self.__source.dtype
 
         for name, dataset in self.items():
