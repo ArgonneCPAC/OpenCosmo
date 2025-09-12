@@ -152,9 +152,9 @@ def test_add_2d_column_write_after_take(properties_path, tmp_path):
     oc.write(tmp_path / "test.hdf5", ds)
     ds = oc.open(tmp_path / "test.hdf5")
     assert "test_random" in ds.columns
-    assert np.all(ds.select("test_random").get_data("numpy") == random_data)
+    assert np.all(ds.select("test_random").get_data("numpy") == random_data[:10, :])
     assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
-    assert np.all(ds.select("test_unitful").get_data() == random_unitful)
+    assert np.all(ds.select("test_unitful").get_data() == random_unitful[:10])
 
 
 def test_add_order(properties_path):

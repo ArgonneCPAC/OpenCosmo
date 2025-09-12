@@ -6,7 +6,7 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import Table, vstack  # type: ignore
+from astropy.table import Column, Table, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.dataset import Dataset
@@ -310,7 +310,7 @@ class Lightcone(dict):
             table = next(table.itercols())
 
         if output == "numpy":
-            if isinstance(table, u.Quantity):
+            if isinstance(table, (u.Quantity, Column)):
                 return table.value
             else:
                 return {name: col.value for name, col in table.items()}
