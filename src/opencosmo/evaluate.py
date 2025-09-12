@@ -3,6 +3,10 @@ from typing import Any, Sequence
 import astropy.units as u
 import numpy as np
 
+"""
+General helper routines for evaluating expressions on datasets and collections
+"""
+
 
 def insert(
     storage: dict[str, np.ndarray], index: int, values_to_insert: dict[str, Any]

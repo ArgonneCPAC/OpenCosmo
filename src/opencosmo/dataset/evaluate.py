@@ -8,6 +8,11 @@ from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kw
 if TYPE_CHECKING:
     from opencosmo import Dataset
 
+"""
+Although the user-facing name for this operation is "evaluate", the pattern 
+we are using here is known as a "visitor."
+"""
+
 
 def visit_dataset(
     function: Callable,
