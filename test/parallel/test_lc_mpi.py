@@ -1,3 +1,5 @@
+import os
+
 import astropy.units as u
 import numpy as np
 import pytest
@@ -139,6 +141,10 @@ def test_diffsky_filter(core_path_487, core_path_475):
     assert np.all(original_data == filtered_data)
 
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 @pytest.mark.parallel(nprocs=4)
 def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     comm = MPI.COMM_WORLD
@@ -147,14 +153,18 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1
-    original_data = ds.select("early_index").get_data()
+    original_data = ds.select("early_index").get_data("numpy")
     original_data_length = comm.allgather(len(original_data))
 
     oc.write(tmp_path, ds)
     ds = oc.open(tmp_path)
-    written_data = ds.select("early_index").get_data()
+    written_data = ds.select("early_index").get_data("numpy")
 
     written_data_length = comm.allgather(len(written_data))
     parallel_assert(sum(original_data_length) == sum(written_data_length))
 
-    # assert np.all(original_data == written_data)
+    original_early_index = np.concatenate(comm.allgather(original_data))
+    written_early_index = np.concatenate(comm.allgather(written_data))
+    original_early_index.sort()
+    written_early_index.sort()
+    parallel_assert(np.all(original_early_index == written_early_index))
