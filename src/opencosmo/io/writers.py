@@ -85,6 +85,7 @@ class CollectionWriter:
         child_names = list(self.children.keys())
         child_names.sort()
         for name in child_names:
+            print(f"Writing dataset {name}")
             self.children[name].write(file[name])
 
 
@@ -114,7 +115,9 @@ class DatasetWriter:
         names = list(self.columns.keys())
         names.sort()
         for colname in names:
+            print(f"Writing column {colname}")
             self.columns[colname].write(data_group)
+        print("writing links")
         if self.links:
             link_group = group["data_linked"]
             link_names = list(self.links.keys())
@@ -123,9 +126,11 @@ class DatasetWriter:
             for name in link_names:
                 self.links[name].write(link_group)
 
+        print("writing spatial index")
         if self.spatial_index is not None:
             index_group = group["index"]
             self.spatial_index.write(index_group)
+        print("done")
 
 
 class EmptyColumnWriter:
