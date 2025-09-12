@@ -1,0 +1,1 @@
+Update some of the wording in the docs to be cleareer and better reflect recent changes

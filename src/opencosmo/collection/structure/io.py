@@ -8,7 +8,7 @@ from deprecated import deprecated
 
 from opencosmo import dataset as d
 from opencosmo import io
-from opencosmo.collection.structure import collection as sc
+from opencosmo.collection.structure import structure as sc
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
 
