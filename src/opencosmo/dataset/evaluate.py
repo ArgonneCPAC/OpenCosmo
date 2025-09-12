@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 
 from astropy.table import Column, QTable  # type: ignore
 
-from opencosmo.visit import insert, make_output_from_first_values, prepare_kwargs
+from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:
     from opencosmo import Dataset

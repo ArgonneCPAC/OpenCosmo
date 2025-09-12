@@ -6,7 +6,7 @@ from astropy.units import Quantity  # type: ignore
 from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
-from opencosmo.visit import insert, make_output_from_first_values, prepare_kwargs
+from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:
     from opencosmo import StructureCollection
