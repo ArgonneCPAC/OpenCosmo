@@ -429,7 +429,7 @@ def combine_structcollection_schema(
             "Tried to combine ismulation collections with different children!"
         )
 
-    new_schema = StructCollectionSchema(schema.header)
+    new_schema = StructCollectionSchema()
     child_names = list(child_names)
     child_names.sort()
     new_child: DatasetSchema | StructCollectionSchema

@@ -3,6 +3,7 @@ from typing import Callable, Optional
 import h5py
 import numpy as np
 
+from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex, SimpleIndex
 from opencosmo.io import protocols as iop
 
@@ -71,8 +72,10 @@ class CollectionWriter:
     def __init__(
         self,
         children: dict[str, iop.DataWriter],
+        header: Optional[OpenCosmoHeader] = None,
     ):
         self.children = children
+        self.header = header
 
     def write(self, file: h5py.File | h5py.Group):
         if len(self.children) == 1:
@@ -138,8 +141,6 @@ class EmptyColumnWriter:
 
         write_index(None, ds, SimpleIndex.empty(), updater=updater)
 
-        ds.file.flush()
-
 
 class ColumnWriter:
     """
@@ -167,8 +168,6 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, updater)
-
-        ds.file.flush()
 
 
 class SpatialIndexWriter:
