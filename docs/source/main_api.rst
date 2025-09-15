@@ -326,4 +326,4 @@ At each iteration, the row will be a dictionary of values for the specified rows
 Evaluating Complex Expressions
 ------------------------------
 
-Generally, basic data manipulation is not sufficient for science. We need to fit models and perform complex operations. The :py:meth:`evaluate <opencosmo.Dataset.evaluate>` method can handle the low-level data management, leaving you to focus on building your model. See :ref:`evaluting` for more information.
+Generally, basic data manipulation is not sufficient for science. We need to fit models and perform complex operations. The :py:meth:`evaluate <opencosmo.Dataset.evaluate>` method can handle the low-level data management, leaving you to focus on building your model. See :doc:`evaluating` for more information.
