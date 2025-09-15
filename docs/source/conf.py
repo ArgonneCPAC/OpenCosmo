@@ -41,5 +41,7 @@ autodoc_pydantic_field_list_validators = False
 
 autosectionlabel_maxdepth = 3
 
+suppress_warnings = ["autosectionlabel.changelog"]
+
 html_logo = "_static/opencosmo_icon_150x150_white.png"
 html_favicon = "_static/opencosmo_icon_16x16.png"
