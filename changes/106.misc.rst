@@ -1,1 +1,0 @@
-Updated examples of haloviz to use fig.savefig() instead of plt.show()

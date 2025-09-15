@@ -1,1 +1,0 @@
-Add a new "evaluate" method to the standard API, which fills the role of "with_new_columns" for cases when the computation is more than just a simple algebraic combination of columns

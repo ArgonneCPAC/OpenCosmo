@@ -1,1 +1,0 @@
-:py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` can now take numpy arrays or astropy quantities

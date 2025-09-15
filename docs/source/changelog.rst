@@ -1,3 +1,46 @@
+Opencosmo 0.9.0b2 (2025-09-15)
+==============================
+
+Features
+--------
+
+- Unitful values in headers now carry astropy units and transform under unit transformations (#70)
+- :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` can now take numpy arrays or astropy quantities (#77)
+- Add a new "evaluate" method to the standard API, which fills the role of "with_new_columns" for cases when the computation is more than just a simple algebraic combination of columns (#77)
+- Add "sort_by" to the standard API, which allows ordering by the value of a column. (#112)
+- Mutli-dimensional columns are now unpacked correctly when only reading a single row
+- You can now drop entire datasets from a StructureCollection using :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
+- You can now dump datasets and some data from collections to parquet with :py:meth:`opencosmo.io.write_parquet`
+- You can now remove datasets from a StructureCollection with :code:`with_datasets`
+
+
+Bugfixes
+--------
+
+- Fixed a bug that could cause MPI writes to stall after queries that returned small numbers of rows. (#99)
+- Fixed a bug that could cause printing lightcone summary to fail when column originally contained "redshift" column that had been dropped. (#101)
+- Fix a bug for installing analysis tools
+
+
+Deprecations and Removals
+-------------------------
+
+- StructureCollections now always require a dataset be specified when calling :py:meth:`select <opencosmo.StructureCollection.collect>`
+
+
+Misc
+----
+
+- #106
+- Dependency management now handled by UV
+- Minimum required version of mpi4py has been decreased to match version available in ALCF base python environments.
+- Parameters accessed through a dataset are now returned as dictionaries
+- Remove significant amounts of dead code, reorganize for clarity
+- Replace astropy.table.Table with astropy.table.QTable, which generally handles units much more cleanly
+- Update evaluate to avoid evaluating first row twice
+- Update evaluate to respect default parameters
+
+
 Opencosmo 0.8.0 (2025-07-22)
 ============================
 

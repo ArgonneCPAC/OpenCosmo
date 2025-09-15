@@ -1,1 +1,0 @@
-Update evaluate to avoid evaluating first row twice
