@@ -22,6 +22,7 @@ from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
 from opencosmo.spatial.tree import open_tree, read_tree
 from opencosmo.transformations import units as u
+from opencosmo.units.get import get_unit_applicators
 
 from .protocols import Writeable
 from .schemas import FileSchema
@@ -259,12 +260,9 @@ def open_single_dataset(target: OpenTarget):
     else:
         index = ChunkedIndex.from_size(len(handler))
 
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        handle, header
-    )
+    unit_applicators = get_unit_applicators(handler.data, header)
     state = dss.DatasetState(
-        base_unit_transformations,
-        builders,
+        unit_applicators,
         index,
         u.UnitConvention.COMOVING,
         sim_region,
