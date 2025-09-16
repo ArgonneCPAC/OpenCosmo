@@ -9,7 +9,7 @@
 project = "OpenCosmo"
 copyright = "2025, OpenCosmo Team"
 author = "OpenCosmo Team"
-release = "0.9.0"
+release = "0.9.1"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

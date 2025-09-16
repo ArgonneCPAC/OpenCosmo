@@ -1,3 +1,12 @@
+opencosmo 0.9.1 (2025-09-16)
+============================
+
+Bugfixes
+--------
+
+- Re-add license file to package for conda-forge compatability
+
+
 Opencosmo 0.9.0 (2025-09-15)
 ============================
 
