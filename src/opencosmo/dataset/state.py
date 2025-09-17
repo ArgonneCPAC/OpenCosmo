@@ -379,13 +379,20 @@ class DatasetState:
         return self.with_index(new_index)
 
     def with_units(
-        self, convention: str, cosmology: Cosmology, redshift: float | table.Column
+        self,
+        convention: Optional[str],
+        cosmology: Cosmology,
+        redshift: float | table.Column,
+        **unit_conversions,
     ):
         """
         Change the unit convention
         """
 
-        convention_ = UnitConvention(convention)
+        if convention is None:
+            convention_ = self.__unit_handler.current_convention
+        else:
+            convention_ = UnitConvention(convention)
         if (
             convention_ == UnitConvention.SCALEFREE
             and UnitConvention(self.header.file.unit_convention)
@@ -396,7 +403,9 @@ class DatasetState:
             )
 
         return DatasetState(
-            self.__unit_handler.with_convention(convention),
+            self.__unit_handler.with_convention(convention_).with_conversions(
+                unit_conversions
+            ),
             self.__index,
             self.__columns,
             self.__region,

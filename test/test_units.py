@@ -198,6 +198,19 @@ def test_unit_conversion(input_path):
         assert converted_unitless_data[col].unit is None
 
 
+def test_symbolic_conversion(input_path):
+    data = (
+        oc.open(input_path)
+        .with_units(fof_halo_center_x=u.lyr)
+        .select("fof_halo_center_x")
+        .get_data()
+    )
+    print(data)
+    assert False
+
+    assert all(data[col].unit is None for col in cols)
+
+
 def test_invalid_unit_convention(input_path):
     with pytest.raises(ValueError):
         oc.open(input_path).with_units("invalid_unit")
