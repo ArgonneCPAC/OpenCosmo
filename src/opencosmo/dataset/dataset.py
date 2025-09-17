@@ -739,7 +739,9 @@ class Dataset:
             schema.add_child(spat_idx_schema, "index")
         return schema
 
-    def with_units(self, convention: str) -> Dataset:
+    def with_units(
+        self, convention: Optional[str] = None, **unit_conversions
+    ) -> Dataset:
         """
         Create a new dataset from this one with a different unit convention.
 
@@ -755,8 +757,16 @@ class Dataset:
             The new dataset with the requested unit convention.
 
         """
-        new_state = self.__state.with_units(convention, self.cosmology, self.redshift)
-        new_header = self.__header.with_units(convention)
+        if convention is None and not unit_conversions:
+            raise ValueError("You must provide a new unit convention or column units")
+
+        new_state = self.__state.with_units(
+            convention, self.cosmology, self.redshift, **unit_conversions
+        )
+        if convention is not None:
+            new_header = self.__header.with_units(convention)
+        else:
+            new_header = self.__header
 
         return Dataset(
             self.__handler,
