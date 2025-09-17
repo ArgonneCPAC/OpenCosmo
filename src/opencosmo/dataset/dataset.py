@@ -240,7 +240,11 @@ class Dataset:
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = self.__state.get_data(self.__handler, attach_index=attach_index)  # table
+        data = self.__state.get_data(
+            self.__handler,
+            attach_index=attach_index,
+            unit_kwargs={"scale_factor": self.cosmology.scale_factor(self.redshift)},
+        )  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
         elif len(data.colnames) == 1:
