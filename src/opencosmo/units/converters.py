@@ -6,26 +6,62 @@ from astropy.cosmology import Cosmology
 from astropy.cosmology import units as cu
 from numpy.typing import ArrayLike
 
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.units import UnitConvention
 
 
-def get_unit_transitions(header: OpenCosmoHeader):
-    convention = UnitConvention(header.file.unit_convention)
-    remove_h = partial(remove_littleh, cosmology=header.cosmology)
-    sf_to_phys = partial(scalefree_to_physical, cosmology=header.cosmology)
-    cm_to_phys = partial(comoving_to_physical, cosmology=header.cosmology)
-
-    match convention:
+def get_unit_transitions(
+    unit: u.Unit, base_convention: UnitConvention, cosmology: Cosmology
+):
+    match base_convention:
         case (UnitConvention.PHYSICAL, UnitConvention.UNITLESS):
-            return {}
+            return {}, {}
         case UnitConvention.SCALEFREE:
-            return {
-                UnitConvention.COMOVING: remove_h,
-                UnitConvention.PHYSICAL: sf_to_phys,
-            }
+            return get_scalefree_transitions(unit, cosmology)
         case UnitConvention.COMOVING:
-            return {UnitConvention.PHYSICAL: cm_to_phys}
+            return get_comoving_transitions(unit, cosmology)
+
+
+def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology):
+    error = partial(
+        raise_convert_error, from_=UnitConvention.COMOVING, to_=UnitConvention.SCALEFREE
+    )
+
+    transitions = {UnitConvention.SCALEFREE: error}
+    inv_transitions = {UnitConvention.SCALEFREE: error}
+    distance_power = get_unit_distance_power
+    if distance_power is not None:
+        transitions[UnitConvention.PHYSICAL] = comoving_to_physical
+        inv_transitions[UnitConvention.PHYSICAL] = partial(
+            physical_to_comoving, base_unit=unit
+        )
+    return transitions, inv_transitions
+
+
+def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology):
+    hless_unit = get_unit_without_h(unit)
+    transitions = {}
+    inv_transitions = {}
+
+    if hless_unit != unit:
+        rem_h = partial(remove_littleh, cosmology=cosmology)
+        add_h = partial(add_littleh, cosmology=cosmology, new_unit=unit)
+        transitions[UnitConvention.COMOVING] = rem_h
+        inv_transitions[UnitConvention.COMOVING] = add_h
+
+    distance_power = get_unit_distance_power(unit)
+    if distance_power is not None:
+        transitions[UnitConvention.PHYSICAL] = partial(
+            scalefree_to_physical, cosmology=cosmology
+        )
+        inv_transitions[UnitConvention.PHYSICAL] = partial(
+            physical_to_scalefree, base_unit=unit, cosmolgy=cosmology
+        )
+    elif transitions.get(UnitConvention.COMOVING) is not None:
+        transitions[UnitConvention.PHYSICAL] = transitions[UnitConvention.COMOVING]
+        inv_transitions[UnitConvention.PHYSICAL] = inv_transitions[
+            UnitConvention.COMOVING
+        ]
+    return transitions, inv_transitions
 
 
 @cache
@@ -62,6 +98,19 @@ def get_unit_distance_power(unit: u.Unit) -> Optional[float]:
         return None
 
 
+def add_littleh(value: u.Quantity, cosmology: Cosmology, new_unit: u.Unit, **kwargs):
+    return value.to(new_unit, cu.with_H0(cosmology.H0))
+
+
+def physical_to_comoving(
+    value: u.Quantity, scale_factor: ArrayLike, base_unit: u.Unit, **kwargs
+):
+    power = get_unit_distance_power(base_unit)
+    if power is not None:
+        return value / (scale_factor**power)
+    return value
+
+
 def remove_littleh(value: u.Quantity, cosmology: Cosmology, **kwargs) -> u.Quantity:
     """
     Remove little h from the units of the input table. For comoving
@@ -91,7 +140,25 @@ def comoving_to_physical(
 
 
 def scalefree_to_physical(
-    value: u.Quantity, cosmology: Cosmology, scale_factor: ArrayLike
+    value: u.Quantity,
+    scale_factor: ArrayLike,
+    cosmology: Cosmology,
 ):
     new_value = remove_littleh(value, cosmology)
     return comoving_to_physical(new_value, scale_factor)
+
+
+def physical_to_scalefree(
+    value: u.Quantity,
+    scale_factor: ArrayLike,
+    base_unit: u.Quantity,
+    cosmology: Cosmology,
+):
+    new_value = physical_to_comoving(value, scale_factor, base_unit)
+    return add_littleh(new_value, cosmology, base_unit)
+
+
+def raise_convert_error(from_: UnitConvention, to_: UnitConvention, *args, **kwargs):
+    raise ValueError(
+        f"Units in convention {str(from_)} cannot be converted to units in convention {str(to_)}"
+    )

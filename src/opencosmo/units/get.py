@@ -4,6 +4,7 @@ import astropy.cosmology.units as cu
 import astropy.units as u
 import h5py
 from astropy.constants import m_p
+from astropy.cosmology import Cosmology
 from numpy.typing import ArrayLike
 
 from opencosmo.header import OpenCosmoHeader
@@ -40,10 +41,23 @@ class UnitApplicator:
         base_unit: Optional[u.Unit],
         base_convention: UnitConvention,
         converters: dict[str, Callable],
+        invserse_converters: dict[str, Callable],
     ):
         self.__base_unit = base_unit
         self.__base_convention = UnitConvention
         self.__converters = converters
+        self.__inv_converters = invserse_converters
+
+    @classmethod
+    def from_unit(
+        cls, base_unit: u.Unit, base_convention: UnitConvention, cosmology: Cosmology
+    ):
+        if base_unit is None:
+            return UnitApplicator(base_unit, base_convention, {}, {})
+
+        trans, inv_trans = get_unit_transitions(base_unit, base_convention, cosmology)
+
+        return UnitApplicator(base_unit, base_convention, trans, inv_trans)
 
     def apply(
         self,
@@ -77,13 +91,14 @@ class UnitApplicator:
 
 
 def get_unit_applicators(group: h5py.Group, header: OpenCosmoHeader):
-    convention = UnitConvention(header.file.unit_convention)
-    transitions = get_unit_transitions(header)
+    base_convention = UnitConvention(header.file.unit_convention)
 
     applicators = {}
     for name, column in group.items():
         base_unit = get_raw_units(column)
-        applicators[name] = UnitApplicator(base_unit, convention, transitions)
+        applicators[name] = UnitApplicator.from_unit(
+            base_unit, base_convention, header.cosmology
+        )
     return applicators
 
 

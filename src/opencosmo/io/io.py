@@ -21,7 +21,7 @@ from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
 from opencosmo.spatial.tree import open_tree, read_tree
-from opencosmo.transformations import units as u
+from opencosmo.units import UnitConvention
 from opencosmo.units.get import get_unit_applicators
 
 from .protocols import Writeable
@@ -264,7 +264,7 @@ def open_single_dataset(target: OpenTarget):
     state = dss.DatasetState(
         unit_applicators,
         index,
-        u.UnitConvention.COMOVING,
+        UnitConvention.COMOVING,
         sim_region,
         header,
         InMemoryColumnHandler.empty(index),

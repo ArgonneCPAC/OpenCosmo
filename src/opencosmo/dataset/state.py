@@ -7,7 +7,6 @@ from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import QTable
 from numpy.typing import NDArray
 
-import opencosmo.transformations.units as u
 from opencosmo.dataset.column import DerivedColumn
 from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.header import OpenCosmoHeader
@@ -30,7 +29,7 @@ class DatasetState:
         self,
         applicators: dict,
         index: DataIndex,
-        convention: u.UnitConvention,
+        convention: UnitConvention,
         region: Region,
         header: OpenCosmoHeader,
         im_handler: InMemoryColumnHandler,
@@ -82,13 +81,14 @@ class DatasetState:
         handler: "DatasetHandler",
         ignore_sort: bool = False,
         attach_index: bool = False,
+        **kwargs,
     ) -> table.QTable:
         """
         Get the data for a given handler.
         """
         data = handler.get_data(self.__unit_applicators.keys(), index=self.__index)
         columns = {
-            key: self.__unit_applicators[key].apply(col, self.__convention)
+            key: self.__unit_applicators[key].apply(col, self.__convention, **kwargs)
             for key, col in data.items()
         }
         output = QTable(columns)

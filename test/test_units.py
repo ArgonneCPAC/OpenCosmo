@@ -74,8 +74,9 @@ def test_physcal_units(haloproperties_step_path, input_path):
 
     ds_physical = ds.with_units("physical")
 
-    data_physical = ds_physical.data
     data = ds.data
+
+    data_physical = ds_physical.data
     cols = data.columns
     z = ds.redshift
 
