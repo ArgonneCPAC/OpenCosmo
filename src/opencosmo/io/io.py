@@ -23,6 +23,7 @@ from opencosmo.spatial.region import FullSkyRegion
 from opencosmo.spatial.tree import open_tree, read_tree
 from opencosmo.units import UnitConvention
 from opencosmo.units.get import get_unit_applicators_hdf5
+from opencosmo.units.handler import make_unit_handler
 
 from .protocols import Writeable
 from .schemas import FileSchema
@@ -260,11 +261,11 @@ def open_single_dataset(target: OpenTarget):
     else:
         index = ChunkedIndex.from_size(len(handler))
 
-    unit_applicators = get_unit_applicators_hdf5(handler.data, header)
+    unit_handler = make_unit_handler(handler.data, header, UnitConvention.COMOVING)
     state = dss.DatasetState(
-        unit_applicators,
+        unit_handler,
         index,
-        UnitConvention.COMOVING,
+        set(handler.columns),
         sim_region,
         header,
         InMemoryColumnHandler.empty(index),

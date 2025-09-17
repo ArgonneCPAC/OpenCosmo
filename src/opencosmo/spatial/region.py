@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import singledispatchmethod
-from typing import Any, TypeVar
+from typing import Any, Iterable, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -17,7 +17,7 @@ from opencosmo.spatial.models import (
 )
 from opencosmo.spatial.protocols import Region
 from opencosmo.units import UnitConvention
-from opencosmo.units.get import UnitApplicator
+from opencosmo.units.handler import UnitHandler
 
 T = TypeVar("T", float, u.Quantity)
 
@@ -278,17 +278,21 @@ class BoxRegion:
 
     def into_base_convention(
         self,
-        converters: list[UnitApplicator],
+        unit_handler: UnitHandler,
+        columns: Iterable[str],
         from_: UnitConvention,
         unit_kwargs: dict[str, Any] = {},
     ):
+        center = {col: dim for col, dim in zip(columns, self.__center)}
+        halfwidth = {col: dim for col, dim in zip(columns, self.__halfwidths)}
+
         new_center = tuple(
-            ua.convert_to_base(dim, from_, unit_kwargs=unit_kwargs).value
-            for dim, ua in zip(self.__center, converters)
+            v.value
+            for v in unit_handler.into_base_convention(center, unit_kwargs).values()
         )
         new_halfwidth = tuple(
-            ua.convert_to_base(dim, from_, unit_kwargs=unit_kwargs).value
-            for dim, ua in zip(self.__halfwidths, converters)
+            v.value
+            for v in unit_handler.into_base_convention(halfwidth, unit_kwargs).values()
         )
 
         return BoxRegion(new_center, new_halfwidth)

@@ -32,6 +32,10 @@ class DatasetHandler:
     def data(self):
         return self.__group
 
+    @property
+    def columns(self):
+        return self.__group.keys()
+
     def __len__(self) -> int:
         first_column_name = next(iter(self.__group.keys()))
         return self.__group[first_column_name].shape[0]
