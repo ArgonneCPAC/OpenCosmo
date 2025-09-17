@@ -26,8 +26,8 @@ class Region(Protocol):
     def contains(self, other: SpatialObject): ...
     def into_base_convention(
         self,
-        converters: list[UnitApplicator],
-        from_: UnitConvention,
+        converters: list["UnitApplicator"],
+        from_: "UnitConvention",
         unit_kwargs: dict[str, Any],
     ): ...
 
