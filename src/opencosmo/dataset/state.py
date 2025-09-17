@@ -388,6 +388,15 @@ class DatasetState:
         """
 
         convention_ = UnitConvention(convention)
+        if (
+            convention_ == UnitConvention.SCALEFREE
+            and UnitConvention(self.header.file.unit_convention)
+            != UnitConvention.SCALEFREE
+        ):
+            raise ValueError(
+                f"Cannot convert units with convention {self.header.file.unit_convention} to convention scalefree"
+            )
+
         return DatasetState(
             self.__unit_applicators,
             self.__index,

@@ -257,6 +257,7 @@ def read_header(
             f"Error: {e}"
         )
 
+    print(file_parameters.unit_convention)
     origin_parameter_models = origin.get_origin_parameters(file_parameters.origin)
     required_origin_params, optional_origin_params = read_origin_parameters(
         file, origin_parameter_models
