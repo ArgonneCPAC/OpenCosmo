@@ -1,7 +1,6 @@
-from typing import TYPE_CHECKING, NamedTuple, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, NamedTuple, Optional, Protocol, Union
 
 import numpy as np
-from astropy.cosmology import FLRW  # type: ignore
 from numpy.typing import NDArray
 
 from opencosmo.index import DataIndex, SimpleIndex
@@ -9,6 +8,7 @@ from opencosmo.index import DataIndex, SimpleIndex
 if TYPE_CHECKING:
     from opencosmo.spatial.region import BoxRegion
     from opencosmo.units import UnitConvention
+    from opencosmo.units.get import UnitApplicator
 
 Point3d = tuple[float, float, float]
 Point2d = tuple[float, float]
@@ -24,11 +24,11 @@ class Region(Protocol):
 
     def intersects(self, other: "Region") -> bool: ...
     def contains(self, other: SpatialObject): ...
-    def into_scalefree(
+    def into_base_convention(
         self,
-        from_: "UnitConvention",
-        cosmology: FLRW,
-        redshift: float | tuple[float, float],
+        converters: list[UnitApplicator],
+        from_: UnitConvention,
+        unit_kwargs: dict[str, Any],
     ): ...
 
 

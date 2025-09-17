@@ -1,5 +1,5 @@
 from functools import cache, partial
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import astropy.units as u
 import numpy as np
@@ -7,6 +7,12 @@ from astropy.cosmology import Cosmology
 from astropy.cosmology import units as cu
 
 from opencosmo.units import UnitConvention
+
+if TYPE_CHECKING:
+    from opencosmo.dataset.state import DatasetState
+
+KNOWN_SCALEFACTOR_COLUMNS = {"fof_halo_center_a"}
+KNOWN_REDSHIFT_COLUMNS = {"redshift", "redshift_true"}
 
 
 def get_unit_transitions(
@@ -141,6 +147,21 @@ def comoving_to_physical(
     if power is not None:
         return value * scale_factor**power
     return value
+
+
+def get_scale_factor(dataset: "DatasetState", handler, cosmology, redshift):
+    columns = set(dataset.columns)
+    for column in KNOWN_SCALEFACTOR_COLUMNS:
+        if column in columns:
+            col = dataset.select(column).get_data(handler)[column].data
+            return col
+
+    for column in KNOWN_REDSHIFT_COLUMNS:
+        if column in columns:
+            col = dataset.select(column).get_data(handler)[column].data
+            return 1 / (1 + col)
+
+    return cosmology.scale_factor(redshift)
 
 
 def scalefree_to_physical(

@@ -52,7 +52,7 @@ class DatasetState:
         return self.__index
 
     @property
-    def builder(self):
+    def unit_handlers(self):
         return self.__unit_applicators
 
     @property

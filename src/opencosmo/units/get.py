@@ -98,6 +98,21 @@ class UnitApplicator:
 
         return new_value
 
+    def convert_to_base(
+        self,
+        value: u.Quantity | float,
+        convention: UnitConvention,
+        unit_kwargs: dict[str, Any] = {},
+    ):
+        if not isinstance(value, u.Quantity):
+            value_ = self.apply(value, convention, unit_kwargs=unit_kwargs)
+            value = value * value_.unit
+
+        converter = self.__inv_converters.get(convention)
+        if converter is not None:
+            return converter(value, **unit_kwargs)
+        return value
+
     def __convert(
         self, value: u.Quantity, to_: UnitConvention, unit_kwargs: dict[str, Any]
     ) -> u.Quantity:

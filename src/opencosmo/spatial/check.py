@@ -50,9 +50,7 @@ def find_coordinates_2d(dataset: "Dataset"):
     raise ValueError("Dataset does not contain coordinates")
 
 
-def __check_containment_3d(
-    ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
-):
+def find_coordinates_3d(ds: "Dataset", dtype: str, select_by: Optional[str] = None):
     try:
         allowed_coordinates = ALLOWED_COORDINATES_3D[dtype]
     except KeyError:
@@ -69,11 +67,17 @@ def __check_containment_3d(
             "Unable to find the correct coordinate columns in this dataset! "
             f"Found {cols} but expected {expected_cols}"
         )
+    return expected_cols
 
-    ds = ds.select(expected_cols)
+
+def __check_containment_3d(
+    ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
+):
+    columns = find_coordinates_3d(ds, dtype, select_by)
+    ds = ds.select(columns)
     data = ds.data
 
-    data = np.vstack(tuple(data[col].data for col in expected_cols))
+    data = np.vstack(tuple(data[col].data for col in columns))
     return region.contains(data)
 
 
