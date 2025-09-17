@@ -27,6 +27,7 @@ from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial import check
 from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import Tree
+from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
@@ -240,10 +241,16 @@ class Dataset:
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
+        if self.__state.convention.value == "physical":
+            scale_factor = get_scale_factor(
+                self.__state, self.__handler, self.cosmology, self.redshift
+            )
+            unit_kwargs = {"scale_factor": scale_factor}
+        else:
+            unit_kwargs = {}
+
         data = self.__state.get_data(
-            self.__handler,
-            attach_index=attach_index,
-            unit_kwargs={"scale_factor": self.cosmology.scale_factor(self.redshift)},
+            self.__handler, attach_index=attach_index, unit_kwargs=unit_kwargs
         )  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
@@ -299,9 +306,21 @@ class Dataset:
                 "so spatial querying is not available"
             )
 
-        check_region = region.into_scalefree(
-            self.__state.convention, self.cosmology, self.redshift
-        )
+        if not self.header.file.is_lightcone:
+            columns = check.find_coordinates_3d(self, self.dtype)
+            converters = [self.__state.unit_handlers[column] for column in columns]
+
+            check_region = region.into_base_convention(
+                converters,
+                self.__state.convention,
+                {
+                    "scale_factor": self.cosmology.scale_factor(
+                        self.header.file.redshift
+                    ).value
+                },
+            )
+        else:
+            check_region = region
 
         if not self.__state.region.intersects(check_region):
             new_index = ChunkedIndex.empty()
@@ -738,7 +757,6 @@ class Dataset:
         """
         new_state = self.__state.with_units(convention, self.cosmology, self.redshift)
         new_header = self.__header.with_units(convention)
-        print(new_header.simulation["box_size"])
 
         return Dataset(
             self.__handler,

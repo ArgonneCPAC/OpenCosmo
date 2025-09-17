@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import partial, singledispatchmethod
+from functools import singledispatchmethod
 from typing import Any, TypeVar
 
 import astropy.units as u  # type: ignore
@@ -17,6 +17,7 @@ from opencosmo.spatial.models import (
 )
 from opencosmo.spatial.protocols import Region
 from opencosmo.units import UnitConvention
+from opencosmo.units.get import UnitApplicator
 
 T = TypeVar("T", float, u.Quantity)
 
@@ -57,7 +58,7 @@ class ConeRegion:
             (self.__center.ra.deg, self.center.dec, self.radius.to(u.deg).value)
         )
 
-    def into_scalefree(self, *args, **kwargs):
+    def into_base_convention(self, *args, **kwargs):
         return self
 
     def into_model(self) -> ConeRegionModel:
@@ -160,7 +161,7 @@ class HealPixRegion:
         self.__idxs = idxs
         self.__nside = nside
 
-    def into_scalefree(self, *args, **kwargs):
+    def into_base_convention(self, *args, **kwargs):
         return self
 
     def into_model(self):
@@ -275,20 +276,21 @@ class BoxRegion:
     def bounding_box(self) -> BoxRegion:
         return self
 
-    def into_scalefree(
-        self, from_: UnitConvention, cosmology: FLRW, z: float | tuple[float, float]
+    def into_base_convention(
+        self,
+        converters: list[UnitApplicator],
+        from_: UnitConvention,
+        unit_kwargs: dict[str, Any] = {},
     ):
-        if isinstance(z, tuple):
-            raise ValueError("Expected a single value of redshift for 3D regions")
-        match from_:
-            case UnitConvention.SCALEFREE | UnitConvention.UNITLESS:
-                return self
-            case UnitConvention.COMOVING:
-                fn = partial(comoving_to_scalefree, cosmology=cosmology)
-            case UnitConvention.PHYSICAL:
-                fn = partial(physical_to_scalefree, cosmology=cosmology, z=z)
-        new_center = tuple(fn(dim) for dim in self.__center)
-        new_halfwidth = tuple(fn(dim) for dim in self.__halfwidths)
+        new_center = tuple(
+            ua.convert_to_base(dim, from_, unit_kwargs=unit_kwargs).value
+            for dim, ua in zip(self.__center, converters)
+        )
+        new_halfwidth = tuple(
+            ua.convert_to_base(dim, from_, unit_kwargs=unit_kwargs).value
+            for dim, ua in zip(self.__halfwidths, converters)
+        )
+
         return BoxRegion(new_center, new_halfwidth)
 
     @property

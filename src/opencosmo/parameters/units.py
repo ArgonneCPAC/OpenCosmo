@@ -1,4 +1,4 @@
-from typing import Type
+from typing import Any, Type
 
 from astropy.cosmology import Cosmology
 from astropy.units.typing import UnitLike
@@ -20,6 +20,7 @@ def register_units(
     field_name: str,
     unit: UnitLike,
     convention: UnitConvention = UnitConvention.SCALEFREE,
+    is_comoving: bool = True,
 ):
     model_spec = __KNOWN_UNITFUL_MODELS__.get(model)
     registered_fields: dict[str, UnitLike]
@@ -35,7 +36,7 @@ def register_units(
         raise ValueError(f"Field {field_name} was already registered with units!")
 
     registered_fields[field_name] = unit
-    __KNOWN_UNITFUL_MODELS__[model] = (convention, registered_fields, False)
+    __KNOWN_UNITFUL_MODELS__[model] = (convention, registered_fields, is_comoving)
 
 
 def __get_unit_transformations(
@@ -54,9 +55,12 @@ def apply_units(
     model: BaseModel,
     cosmology: Cosmology,
     convention: UnitConvention = UnitConvention.SCALEFREE,
+    unit_kwargs: dict[str, Any] = {},
 ):
     applicators = __get_unit_transformations(model, cosmology, convention)
     parameters = model.model_dump()
     for name, applicator in applicators.items():
-        parameters[name] = applicator.apply(parameters[name], convention)
+        parameters[name] = applicator.apply(
+            parameters[name], convention, unit_kwargs=unit_kwargs
+        )
     return parameters
