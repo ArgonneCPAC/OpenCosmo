@@ -16,7 +16,7 @@ from opencosmo.spatial.models import (
     HealPixRegionModel,
 )
 from opencosmo.spatial.protocols import Region
-from opencosmo.transformations.units import UnitConvention
+from opencosmo.units import UnitConvention
 
 T = TypeVar("T", float, u.Quantity)
 

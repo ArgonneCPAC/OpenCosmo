@@ -2,26 +2,29 @@ from functools import cache, partial
 from typing import Optional
 
 import astropy.units as u
+import numpy as np
 from astropy.cosmology import Cosmology
 from astropy.cosmology import units as cu
-from numpy.typing import ArrayLike
 
 from opencosmo.units import UnitConvention
 
 
 def get_unit_transitions(
-    unit: u.Unit, base_convention: UnitConvention, cosmology: Cosmology
+    unit: u.Unit,
+    base_convention: UnitConvention,
+    cosmology: Cosmology,
+    is_comoving: bool,
 ):
     match base_convention:
         case (UnitConvention.PHYSICAL, UnitConvention.UNITLESS):
             return {}, {}
         case UnitConvention.SCALEFREE:
-            return get_scalefree_transitions(unit, cosmology)
+            return get_scalefree_transitions(unit, cosmology, is_comoving)
         case UnitConvention.COMOVING:
-            return get_comoving_transitions(unit, cosmology)
+            return get_comoving_transitions(unit, cosmology, is_comoving)
 
 
-def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology):
+def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bool):
     error = partial(
         raise_convert_error, from_=UnitConvention.COMOVING, to_=UnitConvention.SCALEFREE
     )
@@ -29,15 +32,16 @@ def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology):
     transitions = {UnitConvention.SCALEFREE: error}
     inv_transitions = {UnitConvention.SCALEFREE: error}
     distance_power = get_unit_distance_power
-    if distance_power is not None:
-        transitions[UnitConvention.PHYSICAL] = comoving_to_physical
+    if distance_power is not None and is_comoving:
+        transitions[UnitConvention.PHYSICAL] = comoving_to_physical  # type: ignore
         inv_transitions[UnitConvention.PHYSICAL] = partial(
-            physical_to_comoving, base_unit=unit
+            physical_to_comoving,
+            base_unit=unit,
         )
     return transitions, inv_transitions
 
 
-def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology):
+def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bool):
     hless_unit = get_unit_without_h(unit)
     transitions = {}
     inv_transitions = {}
@@ -49,12 +53,12 @@ def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology):
         inv_transitions[UnitConvention.COMOVING] = add_h
 
     distance_power = get_unit_distance_power(unit)
-    if distance_power is not None:
+    if distance_power is not None and is_comoving:
         transitions[UnitConvention.PHYSICAL] = partial(
             scalefree_to_physical, cosmology=cosmology
         )
         inv_transitions[UnitConvention.PHYSICAL] = partial(
-            physical_to_scalefree, base_unit=unit, cosmolgy=cosmology
+            physical_to_scalefree, base_unit=unit, cosmology=cosmology
         )
     elif transitions.get(UnitConvention.COMOVING) is not None:
         transitions[UnitConvention.PHYSICAL] = transitions[UnitConvention.COMOVING]
@@ -81,7 +85,7 @@ def get_unit_without_h(unit: u.Unit) -> u.Unit:
 
     try:
         index = u_base.bases.index(cu.littleh)
-    except ValueError:
+    except (ValueError, AttributeError):
         return unit
     power = u_base.powers[index]
     new_unit = constructor(u_base / cu.littleh**power)
@@ -103,7 +107,7 @@ def add_littleh(value: u.Quantity, cosmology: Cosmology, new_unit: u.Unit, **kwa
 
 
 def physical_to_comoving(
-    value: u.Quantity, scale_factor: ArrayLike, base_unit: u.Unit, **kwargs
+    value: u.Quantity, scale_factor: float | np.ndarray, base_unit: u.Unit, **kwargs
 ):
     power = get_unit_distance_power(base_unit)
     if power is not None:
@@ -123,7 +127,7 @@ def remove_littleh(value: u.Quantity, cosmology: Cosmology, **kwargs) -> u.Quant
 
 
 def comoving_to_physical(
-    value: u.Quantity, scale_factor: ArrayLike, **kwargs
+    value: u.Quantity, scale_factor: float | np.ndarray, **kwargs
 ) -> u.Quantity:
     """
     Convert comoving coordinates to physical coordinates. This is the
@@ -141,7 +145,7 @@ def comoving_to_physical(
 
 def scalefree_to_physical(
     value: u.Quantity,
-    scale_factor: ArrayLike,
+    scale_factor: float | np.ndarray,
     cosmology: Cosmology,
 ):
     new_value = remove_littleh(value, cosmology)
@@ -150,7 +154,7 @@ def scalefree_to_physical(
 
 def physical_to_scalefree(
     value: u.Quantity,
-    scale_factor: ArrayLike,
+    scale_factor: float | np.ndarray,
     base_unit: u.Quantity,
     cosmology: Cosmology,
 ):

@@ -135,7 +135,7 @@ class DatasetState:
         return self.with_index(new_index)
 
     def make_schema(self, handler: "DatasetHandler"):
-        builder_names = set(self.__unit_applicators.columns)
+        builder_names = set(self.__unit_applicators.keys())
         header = self.__header.with_region(self.__region)
         schema = handler.prep_write(self.__index, builder_names - self.__hidden, header)
         derived_names = set(self.__derived.keys()) - self.__hidden
@@ -144,8 +144,10 @@ class DatasetState:
             .with_units("unitless", None, None)
             .get_data(handler)
         )
+        column_units = {
+            name: app.base_unit for name, app in self.__unit_applicators.items()
+        }
 
-        column_units = handler.get_raw_units(builder_names)
         for dn, derived in self.__derived.items():
             column_units[dn] = derived.get_units(column_units)
 

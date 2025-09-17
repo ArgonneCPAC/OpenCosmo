@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from opencosmo.parameters import CosmologyParameters
+from opencosmo.units import UnitConvention
 
 from .diffsky import DiffskyVersionInfo
 from .units import register_units
@@ -231,6 +232,18 @@ DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
     "diffsky_fits": {"diffsky_versions": DiffskyVersionInfo},
 }
 
-register_units(HaccSimulationParameters, "box_size", u.Mpc / cu.littleh)
-register_units(HaccHydroSimulationParameters, "box_size", u.Mpc / cu.littleh)
-register_units(HaccHydroSimulationParameters, "agn_seed_mass", u.Msun / cu.littleh)
+register_units(
+    HaccSimulationParameters, "box_size", u.Mpc / cu.littleh, UnitConvention.SCALEFREE
+)
+register_units(
+    HaccHydroSimulationParameters,
+    "box_size",
+    u.Mpc / cu.littleh,
+    UnitConvention.SCALEFREE,
+)
+register_units(
+    HaccHydroSimulationParameters,
+    "agn_seed_mass",
+    u.Msun / cu.littleh,
+    UnitConvention.SCALEFREE,
+)
