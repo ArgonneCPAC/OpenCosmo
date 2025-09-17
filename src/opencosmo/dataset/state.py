@@ -14,6 +14,7 @@ from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 from opencosmo.spatial.protocols import Region
 from opencosmo.units import UnitConvention
+from opencosmo.units.handler import UnitHandler
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
@@ -27,9 +28,9 @@ class DatasetState:
 
     def __init__(
         self,
-        applicators: dict,
+        unit_handler: UnitHandler,
         index: DataIndex,
-        convention: UnitConvention,
+        columns: set[str],
         region: Region,
         header: OpenCosmoHeader,
         im_handler: InMemoryColumnHandler,
@@ -37,9 +38,9 @@ class DatasetState:
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
-        self.__unit_applicators = applicators
+        self.__unit_handler = unit_handler
         self.__im_handler = im_handler
-        self.__convention = convention
+        self.__columns = columns
         self.__derived: dict[str, DerivedColumn] = derived
         self.__header = header
         self.__hidden = hidden
@@ -52,12 +53,12 @@ class DatasetState:
         return self.__index
 
     @property
-    def unit_handlers(self):
-        return self.__unit_applicators
+    def unit_handler(self):
+        return self.__unit_handler
 
     @property
     def convention(self):
-        return self.__convention
+        return self.__unit_handler.current_convention
 
     @property
     def region(self):
@@ -70,7 +71,7 @@ class DatasetState:
     @property
     def columns(self) -> list[str]:
         columns = (
-            set(self.__unit_applicators.keys())
+            set(self.__columns)
             | set(self.__derived.keys())
             | set(self.__im_handler.keys())
         )
@@ -81,17 +82,14 @@ class DatasetState:
         handler: "DatasetHandler",
         ignore_sort: bool = False,
         attach_index: bool = False,
-        **kwargs,
+        unit_kwargs: dict = {},
     ) -> table.QTable:
         """
         Get the data for a given handler.
         """
-        data = handler.get_data(self.__unit_applicators.keys(), index=self.__index)
-        columns = {
-            key: self.__unit_applicators[key].apply(col, self.__convention, **kwargs)
-            for key, col in data.items()
-        }
-        output = QTable(columns)
+        data = handler.get_data(self.__columns, index=self.__index)
+        data = self.__unit_handler.apply_units(data, unit_kwargs)
+        output = QTable(data)
 
         output = self.__get_im_columns(output)
         output = self.__build_derived_columns(output)
@@ -119,9 +117,9 @@ class DatasetState:
         new_cache = self.__im_handler.project(index)
 
         return DatasetState(
-            self.__unit_applicators,
+            self.__unit_handler,
             index,
-            self.__convention,
+            self.__columns,
             self.__region,
             self.__header,
             new_cache,
@@ -135,9 +133,10 @@ class DatasetState:
         return self.with_index(new_index)
 
     def make_schema(self, handler: "DatasetHandler"):
-        builder_names = set(self.__unit_applicators.keys())
         header = self.__header.with_region(self.__region)
-        schema = handler.prep_write(self.__index, builder_names - self.__hidden, header)
+        schema = handler.prep_write(
+            self.__index, self.__columns - self.__hidden, header
+        )
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (
             self.select(derived_names)
@@ -145,7 +144,7 @@ class DatasetState:
             .get_data(handler)
         )
         column_units = {
-            name: app.base_unit for name, app in self.__unit_applicators.items()
+            name: self.__unit_handler.base_units[name] for name in self.__columns
         }
 
         for dn, derived in self.__derived.items():
@@ -182,7 +181,7 @@ class DatasetState:
         has been created based on the values in another column.
         """
         column_names = (
-            set(self.__unit_applicators.keys())
+            set(self.__columns)
             | set(self.__derived.keys())
             | set(self.__im_handler.keys())
         )
@@ -211,9 +210,9 @@ class DatasetState:
 
         new_derived = self.__derived | derived_update
         return DatasetState(
-            self.__unit_applicators,
+            self.__unit_handler,
             self.__index,
-            self.__convention,
+            self.__columns,
             self.__region,
             self.__header,
             new_im_handler,
@@ -241,9 +240,9 @@ class DatasetState:
         Return the same dataset but with a different region
         """
         return DatasetState(
-            self.__unit_applicators,
+            self.__unit_handler,
             self.__index,
-            self.__convention,
+            self.__columns,
             region,
             self.__header,
             self.__im_handler,
@@ -272,7 +271,7 @@ class DatasetState:
                 new_hidden.add(self.__sort_by[0])
             columns.add(self.__sort_by[0])
 
-        known_raw = set(self.__unit_applicators.keys())
+        known_raw = self.__columns
         known_derived = set(self.__derived.keys())
         known_im = set(self.__im_handler.keys())
         unknown_columns = columns - known_raw - known_derived - known_im
@@ -307,7 +306,6 @@ class DatasetState:
         # to ensure chains of derived columns work correctly
         new_derived = {k: v for k, v in self.__derived.items() if k in required_derived}
         # Builders can be performed in any order
-        new_raw = {key: self.__unit_applicators[key] for key in required_raw}
         new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden.update(all_required - columns)
@@ -315,9 +313,9 @@ class DatasetState:
             new_hidden.add(self.__sort_by[0])
 
         return DatasetState(
-            new_raw,
+            self.__unit_handler,
             self.__index,
-            self.__convention,
+            required_raw,
             self.__region,
             self.__header,
             new_im_handler,
@@ -328,9 +326,9 @@ class DatasetState:
 
     def sort_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
         return DatasetState(
-            self.__unit_applicators,
+            self.__unit_handler,
             self.__index,
-            self.__convention,
+            self.__columns,
             self.__region,
             self.__header,
             self.__im_handler,
@@ -398,9 +396,9 @@ class DatasetState:
             )
 
         return DatasetState(
-            self.__unit_applicators,
+            self.__unit_handler.with_convention(convention),
             self.__index,
-            convention_,
+            self.__columns,
             self.__region,
             self.__header,
             self.__im_handler,

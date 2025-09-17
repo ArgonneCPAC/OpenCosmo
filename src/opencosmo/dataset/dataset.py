@@ -308,10 +308,10 @@ class Dataset:
 
         if not self.header.file.is_lightcone:
             columns = check.find_coordinates_3d(self, self.dtype)
-            converters = [self.__state.unit_handlers[column] for column in columns]
 
             check_region = region.into_base_convention(
-                converters,
+                self.__state.unit_handler,
+                columns,
                 self.__state.convention,
                 {
                     "scale_factor": self.cosmology.scale_factor(

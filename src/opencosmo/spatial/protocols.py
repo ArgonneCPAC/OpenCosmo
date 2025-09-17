@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, Iterable, NamedTuple, Optional, Protocol, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -27,6 +27,7 @@ class Region(Protocol):
     def into_base_convention(
         self,
         converters: list["UnitApplicator"],
+        columns: Iterable[str],
         from_: "UnitConvention",
         unit_kwargs: dict[str, Any],
     ): ...
