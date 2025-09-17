@@ -59,9 +59,17 @@ class FileParameters(BaseModel):
     def validate_is_lightcone(cls, value):
         return bool(value)
 
+    @field_validator("unit_convention", mode="before")
+    def validate_convention(cls, value):
+        if isinstance(value, str):
+            return UnitConvention(value)
+        return value
+
     @field_serializer("unit_convention")
     def serialize_convention(self, value):
-        return value.value
+        if isinstance(value, UnitConvention):
+            return value.value
+        return value
 
     @model_serializer(mode="wrap")
     def serialize_model(self, handle):

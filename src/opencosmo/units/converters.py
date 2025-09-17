@@ -183,7 +183,7 @@ def physical_to_scalefree(
     return add_littleh(new_value, cosmology, base_unit)
 
 
-def raise_convert_error(from_: UnitConvention, to_: UnitConvention, *args, **kwargs):
+def raise_convert_error(*args, from_: UnitConvention, to_: UnitConvention, **kwargs):
     raise ValueError(
         f"Units in convention {str(from_)} cannot be converted to units in convention {str(to_)}"
     )
