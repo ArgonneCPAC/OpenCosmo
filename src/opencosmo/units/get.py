@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import astropy.cosmology.units as cu
 import astropy.units as u
@@ -7,7 +7,8 @@ from astropy.constants import m_p
 from astropy.cosmology import Cosmology
 from numpy.typing import ArrayLike
 
-from opencosmo.header import OpenCosmoHeader
+if TYPE_CHECKING:
+    from opencosmo.header import OpenCosmoHeader
 from opencosmo.units.convention import UnitConvention
 from opencosmo.units.converters import get_unit_transitions
 
@@ -40,8 +41,8 @@ class UnitApplicator:
         self,
         base_unit: Optional[u.Unit],
         base_convention: UnitConvention,
-        converters: dict[str, Callable],
-        invserse_converters: dict[str, Callable],
+        converters: dict[UnitConvention, Callable],
+        invserse_converters: dict[UnitConvention, Callable],
     ):
         self.__base_unit = base_unit
         self.__base_convention = UnitConvention
@@ -50,14 +51,30 @@ class UnitApplicator:
 
     @classmethod
     def from_unit(
-        cls, base_unit: u.Unit, base_convention: UnitConvention, cosmology: Cosmology
+        cls,
+        base_unit: u.Unit,
+        base_convention: UnitConvention,
+        cosmology: Cosmology,
+        is_comoving: bool = True,
     ):
         if base_unit is None:
+            # Certain "units" are not actually units (e.g. m_p)
             return UnitApplicator(base_unit, base_convention, {}, {})
 
-        trans, inv_trans = get_unit_transitions(base_unit, base_convention, cosmology)
+        if isinstance(base_unit, u.Quantity):
+            trans, inv_trans = get_unit_transitions(
+                base_unit.unit, base_convention, cosmology, is_comoving
+            )
+        else:
+            trans, inv_trans = get_unit_transitions(
+                base_unit, base_convention, cosmology, is_comoving
+            )
 
         return UnitApplicator(base_unit, base_convention, trans, inv_trans)
+
+    @property
+    def base_unit(self):
+        return self.__base_unit
 
     def apply(
         self,
@@ -90,14 +107,30 @@ class UnitApplicator:
         return value
 
 
-def get_unit_applicators(group: h5py.Group, header: OpenCosmoHeader):
+def get_unit_applicators_hdf5(
+    group: h5py.Group, header: "OpenCosmoHeader", is_comoving: bool = True
+):
     base_convention = UnitConvention(header.file.unit_convention)
 
     applicators = {}
     for name, column in group.items():
         base_unit = get_raw_units(column)
         applicators[name] = UnitApplicator.from_unit(
-            base_unit, base_convention, header.cosmology
+            base_unit, base_convention, header.cosmology, is_comoving
+        )
+    return applicators
+
+
+def get_unit_applicators_dict(
+    units: dict[str, u.Unit],
+    base_convention: UnitConvention,
+    cosmology: Cosmology,
+    is_comoving: bool = True,
+):
+    applicators = {}
+    for name, base_unit in units.items():
+        applicators[name] = UnitApplicator.from_unit(
+            base_unit, base_convention, cosmology, is_comoving
         )
     return applicators
 

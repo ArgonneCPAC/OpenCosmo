@@ -386,6 +386,7 @@ def test_data_linking_bound(halo_paths):
     p1 = tuple(random.uniform(10, 20) for _ in range(3))
     p2 = tuple(random.uniform(60, 70) for _ in range(3))
     region = oc.make_box(p1, p2)
+    print(region)
     collection = collection.bound(region)
 
     for halo in collection.objects():

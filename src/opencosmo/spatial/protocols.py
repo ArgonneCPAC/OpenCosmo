@@ -8,7 +8,7 @@ from opencosmo.index import DataIndex, SimpleIndex
 
 if TYPE_CHECKING:
     from opencosmo.spatial.region import BoxRegion
-    from opencosmo.transformations.units import UnitConvention
+    from opencosmo.units import UnitConvention
 
 Point3d = tuple[float, float, float]
 Point2d = tuple[float, float]
