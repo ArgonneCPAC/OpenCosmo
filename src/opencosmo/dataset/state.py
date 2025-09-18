@@ -90,10 +90,10 @@ class DatasetState:
         """
         data = handler.get_data(self.__columns, index=self.__index)
         data = self.__get_im_columns(data)
+        data = self.__build_derived_columns(data)
         data = self.__unit_handler.apply_units(data, unit_kwargs)
         output = QTable(data)
 
-        output = self.__build_derived_columns(output)
         data_columns = set(output.columns)
         index_array = self.__index.into_array()
 
@@ -213,6 +213,8 @@ class DatasetState:
                     "that are not in the dataset!"
                 )
             else:
+                unit = new_col.get_units(self.__unit_handler.base_units)
+                new_unit_handler = new_unit_handler.with_new_columns(**{name: unit})
                 derived_update[name] = new_col
             column_names.add(name)
 
@@ -413,10 +415,6 @@ class DatasetState:
         missing_columns = conversion_keys - set(self.columns)
         if missing_columns:
             raise ValueError(f"Dataset does not have columns {missing_columns}")
-
-        derived_column_conversions = conversion_keys.intersection(self.__derived.keys())
-        if derived_column_conversions:
-            raise NotImplementedError
 
         return DatasetState(
             self.__unit_handler.with_convention(convention_).with_conversions(

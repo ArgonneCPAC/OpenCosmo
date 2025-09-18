@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Mapping, Optional
 import astropy.units as u
 import h5py
 import numpy as np
+from astropy.cosmology import Cosmology
 
 from opencosmo.units import UnitConvention
 from opencosmo.units.get import UnitApplicator, get_unit_applicators_hdf5
@@ -20,7 +21,9 @@ def make_unit_handler(
     applicators = get_unit_applicators_hdf5(group, header)
     if target_convention is None:
         target_convention = header.file.unit_convention
-    return UnitHandler(header.file.unit_convention, target_convention, applicators)
+    return UnitHandler(
+        header.file.unit_convention, target_convention, header.cosmology, applicators
+    )
 
 
 class UnitHandler:
@@ -28,6 +31,7 @@ class UnitHandler:
         self,
         base_convention: UnitConvention,
         current_convention: UnitConvention,
+        cosmology: Cosmology,
         applicators: dict[str, UnitApplicator],
         conversions: dict[str, u.Unit] = {},
     ):
@@ -35,12 +39,13 @@ class UnitHandler:
         self.__current_convention = current_convention
         self.__applicators = applicators
         self.__conversions = conversions
+        self.__cosmology = cosmology
 
     @property
     def current_convention(self):
         return self.__current_convention
 
-    @property
+    @cached_property
     def base_units(self):
         return {key: app.base_unit for key, app in self.__applicators.items()}
 
@@ -59,6 +64,21 @@ class UnitHandler:
         return UnitHandler(
             self.__base_convention,
             self.__current_convention,
+            self.__cosmology,
+            self.__applicators | new_applicators,
+            self.__conversions,
+        )
+
+    def with_new_columns(self, **columns: u.Unit):
+        new_applicators = {}
+        for colname, unit in columns.items():
+            new_applicators[colname] = UnitApplicator.from_unit(
+                unit, self.__base_convention, self.__cosmology
+            )
+        return UnitHandler(
+            self.__base_convention,
+            self.__current_convention,
+            self.__cosmology,
             self.__applicators | new_applicators,
             self.__conversions,
         )
@@ -81,7 +101,9 @@ class UnitHandler:
         convention = UnitConvention(convention)
         if convention == self.current_convention:
             return self
-        return UnitHandler(self.__base_convention, convention, self.__applicators)
+        return UnitHandler(
+            self.__base_convention, convention, self.__cosmology, self.__applicators
+        )
 
     def with_conversions(self, conversions: dict[str, u.Unit]):
         if not conversions:
@@ -92,6 +114,7 @@ class UnitHandler:
         return UnitHandler(
             self.__base_convention,
             self.__current_convention,
+            self.__cosmology,
             self.__applicators,
             new_conversions,
         )
