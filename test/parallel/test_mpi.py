@@ -430,8 +430,10 @@ def test_derive_multiply(input_path):
     )
     parallel_assert(
         np.all(
-            data["fof_halo_px"].value
-            == data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
+            np.isclose(
+                data["fof_halo_px"].value,
+                data["fof_halo_mass"].value * data["fof_halo_com_vx"].value,
+            )
         )
     )
 

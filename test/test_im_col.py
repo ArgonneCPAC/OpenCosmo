@@ -136,8 +136,6 @@ def test_add_column_write(properties_path, tmp_path):
     assert "test_random" in ds.columns
     assert np.all(ds.select("test_random").get_data("numpy") == random_data)
     assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
-    print(ds.select("test_unitful").get_data())
-    print(random_unitful)
     assert np.all(ds.select("test_unitful").get_data() == random_unitful)
 
 

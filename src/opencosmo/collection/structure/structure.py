@@ -4,6 +4,7 @@ from typing import Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
 import astropy  # type: ignore
+import astropy.units as u
 import numpy as np
 
 import opencosmo as oc
@@ -552,7 +553,9 @@ class StructureCollection:
             self.__hide_source,
         )
 
-    def with_units(self, convention: str):
+    def with_units(
+        self, convention: Optional[str] = None, **conversions: dict[str, u.Unit]
+    ):
         """
         Apply the given unit convention to the collection.
         See :py:meth:`opencosmo.Dataset.with_units`
@@ -568,11 +571,28 @@ class StructureCollection:
         StructureCollection
             A new collection with the unit convention applied.
         """
-        new_source = self.__source.with_units(convention)
-        new_datasets = {
-            key: dataset.with_units(convention)
-            for key, dataset in self.__datasets.items()
-        }
+        conversion_keys = set(conversions.keys())
+        unknown = conversion_keys.difference(self.keys())
+        if unknown:
+            raise ValueError(f"Unknown datasets in conversions: {unknown}")
+        if convention is None and not conversions:
+            raise ValueError("You must provide a new unit convention or column units")
+
+        if self.__source.dtype in conversion_keys or convention is not None:
+            new_source = self.__source.with_units(
+                convention, **conversions.get(self.__source.dtype, {})
+            )
+        else:
+            new_source = self.__source
+        new_datasets = {}
+        for key, dataset in self.__datasets.items():
+            ds_conversions = conversions.get(key, {})
+            if convention is None and not ds_conversions:
+                new_datasets[key] = dataset
+                continue
+            new_ds = dataset.with_units(convention, **ds_conversions)
+            new_datasets[key] = new_ds
+
         return StructureCollection(
             new_source, self.__header, new_datasets, self.__links, self.__hide_source
         )

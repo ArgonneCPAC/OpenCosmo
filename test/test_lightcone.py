@@ -367,6 +367,19 @@ def test_lc_collection_units(
         )
 
 
+def test_lc_collection_units_convert(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    location_columns = [f"fof_halo_com_{dim}" for dim in ("x", "y", "z")]
+    conversions = {c: u.lyr for c in location_columns}
+    ds_converted = ds.with_units(**conversions)
+    data_original = ds.select(location_columns).get_data()
+    data_converted = ds_converted.select(location_columns).get_data()
+    for column in location_columns:
+        assert np.all(data_original[column].to(u.lyr) == data_converted[column])
+
+
 def test_lc_collection_sort(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds = ds.sort_by("fof_halo_mass")
