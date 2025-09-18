@@ -219,6 +219,17 @@ def test_symbolic_conversion(input_path):
         )
 
 
+def test_im_symbolic_conversion(input_path):
+    ds = oc.open(input_path)
+    random_data = np.random.rand(len(ds)) * 1e-2 * u.kpc / u.yr
+    ds = ds.with_new_columns(random_speed=random_data)
+    original_data = ds.select("random_speed").get_data()
+    assert np.all(original_data == random_data)
+    ds_converted = ds.with_units(random_speed=u.km / u.s)
+    converted_data = ds_converted.select("random_speed").get_data()
+    assert np.all(converted_data == original_data.to(u.km / u.s))
+
+
 def test_invalid_symbolic_conversion(input_path):
     ds = oc.open(input_path)
     if "fof_halo_center_x" in ds.columns:
