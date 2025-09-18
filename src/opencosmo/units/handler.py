@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Mapping, Optional
 
 import astropy.units as u
 import h5py
@@ -50,6 +50,20 @@ class UnitHandler:
             key for key, app in self.__applicators.items() if app.base_unit is None
         )
 
+    def verify_conversions(
+        self, conversions: dict[str, u.Unit], convention: UnitConvention
+    ):
+        conversion_keys = set(conversions.keys())
+        unitless_columns = self.unitless_columns.intersection(conversion_keys)
+        if unitless_columns:
+            raise ValueError(f"Columns {unitless_columns} do not carry units!")
+
+        for name, unit in conversions.items():
+            if not self.__applicators[name].can_convert(unit, convention):
+                raise ValueError(
+                    f"Cannot convert values with units {self.__applicators[name].unit_in_convention(convention)} to value with units {unit}"
+                )
+
     def with_convention(self, convention: str | UnitConvention):
         convention = UnitConvention(convention)
         if convention == self.current_convention:
@@ -59,10 +73,8 @@ class UnitHandler:
     def with_conversions(self, conversions: dict[str, u.Unit]):
         if not conversions:
             return self
-        unitless_columns = self.unitless_columns.intersection(conversions.keys())
-        if unitless_columns:
-            raise ValueError(f"Columns {unitless_columns} do not carry units!")
 
+        self.verify_conversions(conversions, self.__current_convention)
         new_conversions = self.__conversions | conversions
         return UnitHandler(
             self.__base_convention,
@@ -72,7 +84,9 @@ class UnitHandler:
         )
 
     def into_base_convention(
-        self, data: dict[str, float | np.ndarray | u.Quantity], unit_kwargs: dict = {}
+        self,
+        data: Mapping[str, float | np.ndarray | u.Quantity],
+        unit_kwargs: dict = {},
     ):
         return {
             name: self.__applicators[name].convert_to_base(

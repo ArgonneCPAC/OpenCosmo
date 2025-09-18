@@ -798,9 +798,7 @@ class Dataset:
 
         If working in an MPI context, all ranks will recieve the same data.
         """
-        new_handler = self.__handler.collect(
-            self.__state.unit_handlers.keys(), self.__state.index
-        )
+        new_handler = self.__handler.collect(self.__state.columns, self.__state.index)
         new_index = ChunkedIndex.from_size(len(new_handler))
         new_state = self.__state.with_index(new_index)
         return Dataset(

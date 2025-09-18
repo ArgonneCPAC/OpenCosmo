@@ -199,16 +199,12 @@ def test_unit_conversion(input_path):
 
 
 def test_symbolic_conversion(input_path):
-    data = (
+    _ = (
         oc.open(input_path)
         .with_units(fof_halo_center_x=u.lyr)
         .select("fof_halo_center_x")
         .get_data()
     )
-    print(data)
-    assert False
-
-    assert all(data[col].unit is None for col in cols)
 
 
 def test_invalid_unit_convention(input_path):

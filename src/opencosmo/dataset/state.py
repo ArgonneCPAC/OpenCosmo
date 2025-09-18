@@ -401,10 +401,20 @@ class DatasetState:
             raise ValueError(
                 f"Cannot convert units with convention {self.header.file.unit_convention} to convention scalefree"
             )
+        conversion_keys = set(unit_conversions.keys())
+        missing_columns = conversion_keys - set(self.columns)
+        if missing_columns:
+            raise ValueError(f"Dataset does not have columns {missing_columns}")
+
+        raw_column_conversions = conversion_keys.intersection(self.__columns)
+        im_column_conversions = conversion_keys.intersection(self.__im_handler.keys())
+        derived_column_conversions = conversion_keys.intersection(self.__derived.keys())
+        if im_column_conversions or derived_column_conversions:
+            raise NotImplementedError
 
         return DatasetState(
             self.__unit_handler.with_convention(convention_).with_conversions(
-                unit_conversions
+                {key: unit_conversions[key] for key in raw_column_conversions}
             ),
             self.__index,
             self.__columns,
