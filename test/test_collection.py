@@ -369,6 +369,10 @@ def test_data_linking(halo_paths):
                 assert len(species_halo_tags) == 1
                 halo_tags.update(species_halo_tags)
                 n_particles += 1
+            except TypeError:
+                species_halo_tags = set([particle_species.select("fof_halo_tag").data])
+                halo_tags.update(species_halo_tags)
+                n_particles += 1
             except ValueError:
                 bin_tags = set(particle_species.select("unique_tag").data)
                 assert len(bin_tags) == 1
