@@ -571,6 +571,22 @@ def test_simulation_collection_derive(multi_path):
         assert "fof_halo_px" in ds.data.columns
 
 
+def test_simulation_collection_units(multi_path):
+    collection = oc.open(multi_path)
+    collection = collection.with_units(
+        "physical",
+        fof_halo_center_x=u.lyr,
+        fof_halo_center_y=u.lyr,
+        fof_halo_center_z=u.lyr,
+    )
+    for ds in collection.values():
+        data = ds.select(
+            ("fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z")
+        ).get_data()
+        for column in data.itercols():
+            assert column.unit == u.lyr
+
+
 def test_simulation_collection_order(multi_path):
     collection = oc.open(multi_path)
     for ds in collection.values():

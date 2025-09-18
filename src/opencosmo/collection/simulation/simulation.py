@@ -389,7 +389,7 @@ class SimulationCollection(dict):
         """
         return self.__map("sort_by", column=column, invert=invert)
 
-    def with_units(self, convention: str) -> Self:
+    def with_units(self, convention: str, **conversions) -> Self:
         """
         Transform all datasets or collections to use the given unit convention. This
         method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
@@ -401,4 +401,4 @@ class SimulationCollection(dict):
             "scalefree", "comoving", or "physical".
 
         """
-        return self.__map("with_units", convention)
+        return self.__map("with_units", convention, **conversions)
