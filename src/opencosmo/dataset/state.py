@@ -1,6 +1,7 @@
 from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional
 
+import astropy.units as u
 import numpy as np
 from astropy import table, units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
@@ -88,10 +89,10 @@ class DatasetState:
         Get the data for a given handler.
         """
         data = handler.get_data(self.__columns, index=self.__index)
+        data = self.__get_im_columns(data)
         data = self.__unit_handler.apply_units(data, unit_kwargs)
         output = QTable(data)
 
-        output = self.__get_im_columns(output)
         output = self.__build_derived_columns(output)
         data_columns = set(output.columns)
         index_array = self.__index.into_array()
@@ -187,6 +188,7 @@ class DatasetState:
         )
         new_im_handler = self.__im_handler
         derived_update = {}
+        new_unit_handler = self.__unit_handler
         for name, new_col in new_columns.items():
             if name in column_names:
                 raise ValueError(f"Dataset already has column named {name}")
@@ -197,11 +199,17 @@ class DatasetState:
                         f"New column {name} has length {len(new_col)} but this dataset "
                         "has length {len(self.__index)}"
                     )
+                if isinstance(new_col, u.Quantity):
+                    new_unit_handler = new_unit_handler.with_static_columns(
+                        **{name: new_col.unit}
+                    )
+                    new_col = new_col.value
+
                 new_im_handler = new_im_handler.with_new_column(name, new_col)
 
             elif not new_col.check_parent_existance(column_names):
                 raise ValueError(
-                    f"Derived column {name} is derived from columns "
+                    f"Column {name} is derived from columns "
                     "that are not in the dataset!"
                 )
             else:
@@ -210,7 +218,7 @@ class DatasetState:
 
         new_derived = self.__derived | derived_update
         return DatasetState(
-            self.__unit_handler,
+            new_unit_handler,
             self.__index,
             self.__columns,
             self.__region,
@@ -230,7 +238,7 @@ class DatasetState:
             data[colname] = new_column
         return data
 
-    def __get_im_columns(self, data: table.Table) -> table.Table:
+    def __get_im_columns(self, data: dict) -> table.Table:
         for colname, column in self.__im_handler.columns():
             data[colname] = column
         return data
@@ -406,15 +414,13 @@ class DatasetState:
         if missing_columns:
             raise ValueError(f"Dataset does not have columns {missing_columns}")
 
-        raw_column_conversions = conversion_keys.intersection(self.__columns)
-        im_column_conversions = conversion_keys.intersection(self.__im_handler.keys())
         derived_column_conversions = conversion_keys.intersection(self.__derived.keys())
-        if im_column_conversions or derived_column_conversions:
+        if derived_column_conversions:
             raise NotImplementedError
 
         return DatasetState(
             self.__unit_handler.with_convention(convention_).with_conversions(
-                {key: unit_conversions[key] for key in raw_column_conversions}
+                unit_conversions
             ),
             self.__index,
             self.__columns,

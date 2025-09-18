@@ -50,6 +50,19 @@ class UnitApplicator:
         self.__inv_converters = invserse_converters
 
     @classmethod
+    def static(cls, base_unit: u.Unit, base_convention: UnitConvention):
+        """
+        Unit applicator for a column that does not transform under changes in unit convention.
+        This column CAN still be transformed explicitly to an equivalent unit.
+        """
+        units = {base_convention: base_unit}
+        if base_convention in [UnitConvention.COMOVING, UnitConvention.SCALEFREE]:
+            units[UnitConvention.PHYSICAL] = base_unit
+        if base_convention == UnitConvention.SCALEFREE:
+            units[UnitConvention.COMOVING] = base_unit
+        return UnitApplicator(units, base_convention, {}, {})
+
+    @classmethod
     def from_unit(
         cls,
         base_unit: u.Unit,

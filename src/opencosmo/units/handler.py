@@ -50,6 +50,19 @@ class UnitHandler:
             key for key, app in self.__applicators.items() if app.base_unit is None
         )
 
+    def with_static_columns(self, **columns: u.Unit):
+        new_applicators = {}
+        for colname, unit in columns.items():
+            new_applicators[colname] = UnitApplicator.static(
+                unit, self.__base_convention
+            )
+        return UnitHandler(
+            self.__base_convention,
+            self.__current_convention,
+            self.__applicators | new_applicators,
+            self.__conversions,
+        )
+
     def verify_conversions(
         self, conversions: dict[str, u.Unit], convention: UnitConvention
     ):
