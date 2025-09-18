@@ -39,13 +39,13 @@ KNOWN_UNITS = {
 class UnitApplicator:
     def __init__(
         self,
-        base_unit: Optional[u.Unit],
+        units: dict[UnitConvention, u.Unit],
         base_convention: UnitConvention,
         converters: dict[UnitConvention, Callable],
         invserse_converters: dict[UnitConvention, Callable],
     ):
-        self.__base_unit = base_unit
-        self.__base_convention = UnitConvention
+        self.__units = units
+        self.__base_convention = base_convention
         self.__converters = converters
         self.__inv_converters = invserse_converters
 
@@ -59,22 +59,25 @@ class UnitApplicator:
     ):
         if base_unit is None:
             # Certain "units" are not actually units (e.g. m_p)
-            return UnitApplicator(base_unit, base_convention, {}, {})
+            return UnitApplicator({}, base_convention, {}, {})
 
         if isinstance(base_unit, u.Quantity):
-            trans, inv_trans = get_unit_transitions(
+            trans, inv_trans, units = get_unit_transitions(
                 base_unit.unit, base_convention, cosmology, is_comoving
             )
         else:
-            trans, inv_trans = get_unit_transitions(
+            trans, inv_trans, units = get_unit_transitions(
                 base_unit, base_convention, cosmology, is_comoving
             )
 
-        return UnitApplicator(base_unit, base_convention, trans, inv_trans)
+        return UnitApplicator(units, base_convention, trans, inv_trans)
 
     @property
     def base_unit(self):
-        return self.__base_unit
+        return self.unit_in_convention(self.__base_convention)
+
+    def unit_in_convention(self, convention: UnitConvention):
+        return self.__units.get(convention)
 
     def apply(
         self,
@@ -83,13 +86,13 @@ class UnitApplicator:
         convert_to: Optional[u.Unit] = None,
         unit_kwargs: dict[str, Any] = {},
     ) -> u.Quantity:
-        if self.__base_unit is None or convention == UnitConvention.UNITLESS:
+        if not self.__units or convention == UnitConvention.UNITLESS:
             return value
         if hasattr(value, "unit"):
             raise ValueError(
                 "Units can only be applied to unitless scalars and numpy arrays"
             )
-        new_value = value * self.__base_unit
+        new_value = value * self.__units[self.__base_convention]
         if convention != self.__base_convention:
             new_value = self.__convert(new_value, convention, unit_kwargs)
 
@@ -98,15 +101,23 @@ class UnitApplicator:
 
         return new_value
 
+    def can_convert(self, to_: u.Unit, convention: UnitConvention):
+        unit_to_convert = self.__units.get(convention)
+        if unit_to_convert is None:
+            return False
+        return to_.is_equivalent(unit_to_convert)
+
     def convert_to_base(
         self,
         value: u.Quantity | float,
         convention: UnitConvention,
         unit_kwargs: dict[str, Any] = {},
     ):
+        if not self.__units:
+            return value
+
         if not isinstance(value, u.Quantity):
-            value_ = self.apply(value, convention, unit_kwargs=unit_kwargs)
-            value = value * value_.unit
+            value = value * self.__units[convention]
 
         converter = self.__inv_converters.get(convention)
         if converter is not None:

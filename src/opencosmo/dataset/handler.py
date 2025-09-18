@@ -56,6 +56,8 @@ class DatasetHandler:
         file: h5py.File = h5py.File.in_memory()
         group = file.require_group("data")
         for colname in columns:
+            if colname not in self.__group.keys():
+                continue
             dataset = self.__group[colname]
             data = new_index.get_data(dataset)
             group.create_dataset(colname, data=data)

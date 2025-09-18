@@ -391,7 +391,7 @@ def read(
     state = dss.DatasetState(
         unit_applicators,
         index,
-        UnitConvention.COMOVING,
+        set(handler.columns),
         sim_box,
         header,
         InMemoryColumnHandler.empty(index),

@@ -44,7 +44,8 @@ def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bo
             physical_to_comoving,
             base_unit=unit,
         )
-    return transitions, inv_transitions
+    units = {UnitConvention.COMOVING: unit, UnitConvention.PHYSICAL: unit}
+    return transitions, inv_transitions, units
 
 
 def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bool):
@@ -71,7 +72,14 @@ def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: b
         inv_transitions[UnitConvention.PHYSICAL] = inv_transitions[
             UnitConvention.COMOVING
         ]
-    return transitions, inv_transitions
+
+    units = {
+        UnitConvention.SCALEFREE: unit,
+        UnitConvention.COMOVING: hless_unit,
+        UnitConvention.PHYSICAL: hless_unit,
+    }
+
+    return transitions, inv_transitions, units
 
 
 @cache
