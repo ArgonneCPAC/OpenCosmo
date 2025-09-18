@@ -3,6 +3,7 @@ from collections import defaultdict
 from pathlib import Path
 from shutil import copy
 
+import astropy.units as u
 import h5py
 import numpy as np
 import pytest
@@ -385,12 +386,25 @@ def test_data_linking(halo_paths):
     assert n_profiles > 0
 
 
+def test_data_linking_with_unit_conversion(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.with_units(
+        "physical", dm_particles={"x": u.lyr, "y": u.lyr, "z": u.lyr}
+    )
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
+        10, at="random"
+    )
+    for halo in collection.halos():
+        dm_particle_locations = halo["dm_particles"].select(["x", "y", "z"]).get_data()
+        for column in dm_particle_locations.itercols():
+            assert column.unit == u.lyr
+
+
 def test_data_linking_bound(halo_paths):
     collection = oc.open(*halo_paths)
     p1 = tuple(random.uniform(10, 20) for _ in range(3))
     p2 = tuple(random.uniform(60, 70) for _ in range(3))
     region = oc.make_box(p1, p2)
-    print(region)
     collection = collection.bound(region)
 
     for halo in collection.objects():

@@ -828,7 +828,7 @@ class Lightcone(dict):
             raise ValueError(f"Column {column} does not exist in this dataset!")
         return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))
 
-    def with_units(self, convention: str) -> Self:
+    def with_units(self, convention: Optional[str] = None, **unit_conversions) -> Self:
         """
         Create a new dataset from this one with a different unit convention.
 
@@ -844,7 +844,7 @@ class Lightcone(dict):
             The new dataset with the requested unit convention.
 
         """
-        return self.__map("with_units", convention)
+        return self.__map("with_units", convention, **unit_conversions)
 
     def collect(self) -> "Lightcone":
         """
