@@ -219,6 +219,35 @@ def test_symbolic_conversion(input_path):
         )
 
 
+def test_convention_change_clears_symbolic_conversions(input_path):
+    ds = oc.open(input_path)
+    if "fof_halo_center_x" in ds.columns:
+        conversions = {f"fof_halo_center_{dim}": u.lyr for dim in ["x", "y", "z"]}
+        factor = (1.0 * u.Mpc).to(u.lyr).value
+    else:
+        conversions = {
+            "sod_halo_bin_rad_vel": u.lyr / u.yr,
+            "sod_halo_bin_rad_vel_sig": u.lyr / u.yr,
+        }
+        factor = (1.0 * (u.km / u.s)).to(u.lyr / u.yr).value
+
+    converted_data = ds.with_units(**conversions).select(conversions.keys()).get_data()
+    original_data = ds.select(conversions.keys()).get_data()
+    for colname, conversion in conversions.items():
+        assert converted_data[colname].unit == conversion
+        assert np.all(
+            converted_data[colname].value == original_data[colname].value * factor
+        )
+
+    original_transformed = (
+        ds.with_units("physical").select(conversions.keys()).get_data()
+    )
+    converted_transformed = (
+        ds.with_units("physical").select(conversions.keys()).get_data()
+    )
+    assert np.all(original_transformed == converted_transformed)
+
+
 def test_im_symbolic_conversion(input_path):
     ds = oc.open(input_path)
     random_data = np.random.rand(len(ds)) * 1e-2 * u.kpc / u.yr
