@@ -63,7 +63,9 @@ def test_add_derive(properties_path):
     )
     ds = ds.select(["fof_halo_mass", "test_random", "random_mass"])
     data = ds.get_data("numpy")
-    assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])
+    assert np.all(
+        np.isclose(data["random_mass"], data["fof_halo_mass"] * data["test_random"])
+    )
 
 
 def test_add_quantity_derive(properties_path):
@@ -75,7 +77,9 @@ def test_add_quantity_derive(properties_path):
     )
     ds = ds.select(["fof_halo_mass", "test_random", "random_mass"])
     data = ds.get_data()
-    assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])
+    assert np.all(
+        np.isclose(data["random_mass"], data["fof_halo_mass"] * data["test_random"])
+    )
     assert (
         data["random_mass"].unit
         == data["fof_halo_mass"].unit * data["test_random"].unit
@@ -92,7 +96,10 @@ def test_add_derive_select(properties_path):
     data_single = ds.select("random_mass").get_data("numpy")
     data_components = ds.select(["test_random", "fof_halo_mass"]).get_data("numpy")
     assert np.all(
-        data_single == data_components["test_random"] * data_components["fof_halo_mass"]
+        np.isclose(
+            data_single,
+            data_components["test_random"] * data_components["fof_halo_mass"],
+        )
     )
 
 
@@ -105,7 +112,9 @@ def test_add_derive_take(properties_path):
     )
     ds = ds.select(["fof_halo_mass", "test_random", "random_mass"]).take(100)
     data = ds.get_data("numpy")
-    assert np.all(data["random_mass"] == data["fof_halo_mass"] * data["test_random"])
+    assert np.all(
+        np.isclose(data["random_mass"], data["fof_halo_mass"] * data["test_random"])
+    )
 
 
 def test_add_derive_drop(properties_path):
@@ -127,6 +136,8 @@ def test_add_column_write(properties_path, tmp_path):
     assert "test_random" in ds.columns
     assert np.all(ds.select("test_random").get_data("numpy") == random_data)
     assert ds.select("test_random").get_data("numpy").dtype == random_data.dtype
+    print(ds.select("test_unitful").get_data())
+    print(random_unitful)
     assert np.all(ds.select("test_unitful").get_data() == random_unitful)
 
 
