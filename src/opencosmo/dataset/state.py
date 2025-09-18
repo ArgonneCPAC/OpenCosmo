@@ -145,11 +145,8 @@ class DatasetState:
             .get_data(handler)
         )
         column_units = {
-            name: self.__unit_handler.base_units[name] for name in self.__columns
+            name: self.__unit_handler.base_units[name] for name in self.columns
         }
-
-        for dn, derived in self.__derived.items():
-            column_units[dn] = derived.get_units(column_units)
 
         for colname in derived_names:
             attrs = {"unit": str(column_units[colname])}
@@ -163,9 +160,7 @@ class DatasetState:
             if colname in self.__hidden:
                 continue
             attrs = {}
-            if isinstance(coldata, units.Quantity):
-                attrs["unit"] = str(coldata.unit)
-                coldata = coldata.value
+            attrs["unit"] = str(column_units.get(colname))
 
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
@@ -204,6 +199,8 @@ class DatasetState:
                         **{name: new_col.unit}
                     )
                     new_col = new_col.value
+                else:
+                    new_unit_handler = new_unit_handler.with_new_columns(**{name: None})
 
                 new_im_handler = new_im_handler.with_new_column(name, new_col)
 
