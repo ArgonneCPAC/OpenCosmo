@@ -198,7 +198,7 @@ def test_unit_conversion(input_path):
         assert converted_unitless_data[col].unit is None
 
 
-def test_symbolic_conversion(input_path):
+def test_column_conversion(input_path):
     ds = oc.open(input_path)
     if "fof_halo_center_x" in ds.columns:
         conversions = {f"fof_halo_center_{dim}": u.lyr for dim in ["x", "y", "z"]}
@@ -217,6 +217,55 @@ def test_symbolic_conversion(input_path):
         assert np.all(
             converted_data[colname].value == original_data[colname].value * factor
         )
+
+
+def test_all_unit_conversion(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr})
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.lyr
+        return
+    for col in ds.get_data().itercols():
+        assert col.unit == u.lyr
+
+
+def test_all_unit_conversion_with_column(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    overwrite_col = mpc_columns.pop()
+    column_conversion = {overwrite_col: u.km}
+    mpc_columns.add(overwrite_col)
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr}, **column_conversion)
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.km
+        return
+    assert overwrite_col in data.columns
+    for name, col in ds.get_data().items():
+        if name == overwrite_col:
+            assert col.unit == u.km
+        else:
+            assert col.unit == u.lyr
 
 
 def test_convention_change_clears_symbolic_conversions(input_path):

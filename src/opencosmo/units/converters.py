@@ -102,7 +102,11 @@ def get_unit_without_h(unit: u.Unit) -> u.Unit:
     except (ValueError, AttributeError):
         return unit
     power = u_base.powers[index]
-    new_unit = constructor(u_base / cu.littleh**power)
+    new_unit = u_base / cu.littleh**power
+    # There's a bug in astropy here, work around
+    if len(new_unit.powers) == 1 and new_unit.powers[0] == 1:
+        new_unit = new_unit.bases[0]
+
     return new_unit
 
 

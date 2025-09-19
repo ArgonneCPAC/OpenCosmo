@@ -26,6 +26,13 @@ def make_unit_handler(
     )
 
 
+def regularize_quantity_unit(value: u.Quantity):
+    """
+    Astropy 10j
+    """
+    pass
+
+
 class UnitHandler:
     def __init__(
         self,
@@ -34,12 +41,14 @@ class UnitHandler:
         cosmology: Cosmology,
         applicators: dict[str, UnitApplicator],
         conversions: dict[str, u.Unit] = {},
+        column_conversions: dict[str, u.Unit] = {},
     ):
         self.__base_convention = base_convention
         self.__current_convention = current_convention
+        self.__cosmology = cosmology
         self.__applicators = applicators
         self.__conversions = conversions
-        self.__cosmology = cosmology
+        self.__column_conversions = column_conversions
 
     @property
     def current_convention(self):
@@ -67,6 +76,7 @@ class UnitHandler:
             self.__cosmology,
             self.__applicators | new_applicators,
             self.__conversions,
+            self.__column_conversions,
         )
 
     def with_new_columns(self, **columns: u.Unit):
@@ -81,6 +91,7 @@ class UnitHandler:
             self.__cosmology,
             self.__applicators | new_applicators,
             self.__conversions,
+            self.__column_conversions,
         )
 
     def verify_conversions(
@@ -105,11 +116,14 @@ class UnitHandler:
             self.__base_convention, convention, self.__cosmology, self.__applicators
         )
 
-    def with_conversions(self, conversions: dict[str, u.Unit]):
-        if not conversions:
+    def with_conversions(
+        self, conversions: dict[u.Unit, u.Unit], columns: dict[str, u.Unit]
+    ):
+        if not conversions and not columns:
             return self
 
-        self.verify_conversions(conversions, self.__current_convention)
+        self.verify_conversions(columns, self.__current_convention)
+        new_column_conversions = self.__column_conversions | columns
         new_conversions = self.__conversions | conversions
         return UnitHandler(
             self.__base_convention,
@@ -117,6 +131,7 @@ class UnitHandler:
             self.__cosmology,
             self.__applicators,
             new_conversions,
+            new_column_conversions,
         )
 
     def into_base_convention(
@@ -133,16 +148,20 @@ class UnitHandler:
 
     def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):
         columns = {}
-        for key, value in data.items():
-            applicator = self.__applicators.get(key)
-            conversion = self.__conversions.get(key)
-            if applicator is not None:
-                columns[key] = applicator.apply(
+        for colname, value in data.items():
+            applicator = self.__applicators.get(colname)
+            column_conversion = self.__column_conversions.get(colname)
+            if applicator is not None and applicator.base_unit is not None:
+                unitful_value = applicator.apply(
                     value, self.__current_convention, unit_kwargs=unit_kwargs
                 )
-                if conversion is not None:
-                    columns[key] = columns[key].to(conversion)
+                unit_conversion = self.__conversions.get(unitful_value.unit)
+                if unit_conversion is not None and column_conversion is None:
+                    unitful_value = unitful_value.to(unit_conversion)
+                elif column_conversion is not None:
+                    unitful_value = unitful_value.to(column_conversion)
+                columns[colname] = unitful_value
             else:
-                columns[key] = value
+                columns[colname] = value
 
         return columns

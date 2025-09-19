@@ -141,7 +141,7 @@ class DatasetState:
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (
             self.select(derived_names)
-            .with_units("unitless", None, None)
+            .with_units("unitless", {}, {}, None, None)
             .get_data(handler)
         )
         column_units = {
@@ -388,9 +388,10 @@ class DatasetState:
     def with_units(
         self,
         convention: Optional[str],
+        conversions: dict[u.Unit, u.Unit],
+        columns: dict[str, u.Unit],
         cosmology: Cosmology,
         redshift: float | table.Column,
-        **unit_conversions,
     ):
         """
         Change the unit convention
@@ -408,14 +409,14 @@ class DatasetState:
             raise ValueError(
                 f"Cannot convert units with convention {self.header.file.unit_convention} to convention scalefree"
             )
-        conversion_keys = set(unit_conversions.keys())
-        missing_columns = conversion_keys - set(self.columns)
+        column_keys = set(columns.keys())
+        missing_columns = column_keys - set(self.columns)
         if missing_columns:
             raise ValueError(f"Dataset does not have columns {missing_columns}")
 
         return DatasetState(
             self.__unit_handler.with_convention(convention_).with_conversions(
-                unit_conversions
+                conversions, columns
             ),
             self.__index,
             self.__columns,

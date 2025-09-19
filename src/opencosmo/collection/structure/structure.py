@@ -554,11 +554,29 @@ class StructureCollection:
         )
 
     def with_units(
-        self, convention: Optional[str] = None, **conversions: dict[str, u.Unit]
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **dataset_conversions: dict,
     ):
         """
-        Apply the given unit convention to the collection.
-        See :py:meth:`opencosmo.Dataset.with_units`
+        Apply the given unit convention to the collection, or convert a subset
+        of the columns in one or more of these datasets into a compatible
+        unit.
+
+        Because this collection contains several datasets, you must specify
+        the dataset when performing conversions. For example, the equivalent
+        unit conversion to the final one in the example in
+        :py:meth:`opencosmo.Dataset.with_units` looks like this:
+
+        .. code-block:: python
+
+            structures = structures.with_units(
+                "physical",
+                halo_properties={"fof_halo_mass": u.kg, "fof_halo_center_x": u.ly}
+            )
+
+        For more information, see :doc:`units`
 
         Parameters
         ----------
@@ -571,22 +589,31 @@ class StructureCollection:
         StructureCollection
             A new collection with the unit convention applied.
         """
-        conversion_keys = set(conversions.keys())
+        if conversions:
+            for ds_name in self.keys():
+                ds_conversions = dataset_conversions.get(ds_name, {})
+                new_ds_conversions = conversions | ds_conversions.get("conversions", {})
+                ds_conversions["conversions"] = new_ds_conversions
+                dataset_conversions[ds_name] = ds_conversions
+
+        conversion_keys = set(dataset_conversions.keys())
         unknown = conversion_keys.difference(self.keys())
         if unknown:
             raise ValueError(f"Unknown datasets in conversions: {unknown}")
-        if convention is None and not conversions:
-            raise ValueError("You must provide a new unit convention or column units")
+        if convention is None and not dataset_conversions:
+            raise ValueError(
+                "You must provide a new unit convention, unit conversion,or indivdiual column units"
+            )
 
         if self.__source.dtype in conversion_keys or convention is not None:
             new_source = self.__source.with_units(
-                convention, **conversions.get(self.__source.dtype, {})
+                convention, **dataset_conversions.get(self.__source.dtype, {})
             )
         else:
             new_source = self.__source
         new_datasets = {}
         for key, dataset in self.__datasets.items():
-            ds_conversions = conversions.get(key, {})
+            ds_conversions = dataset_conversions.get(key, {})
             if convention is None and not ds_conversions:
                 new_datasets[key] = dataset
                 continue

@@ -1,5 +1,6 @@
 from typing import Callable, Iterable, Mapping, Optional, Self
 
+import astropy.units as u
 import h5py
 from astropy.cosmology import Cosmology  # type: ignore
 
@@ -389,9 +390,15 @@ class SimulationCollection(dict):
         """
         return self.__map("sort_by", column=column, invert=invert)
 
-    def with_units(self, convention: str, **conversions) -> Self:
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Self:
         """
-        Transform all datasets or collections to use the given unit convention. This
+        Transform all datasets or collections to use the given unit convention, or
+        convert some column(s) to a compatible unit. This
         method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
 
         Parameters
@@ -400,5 +407,8 @@ class SimulationCollection(dict):
             The unit convention to use. One of "unitless",
             "scalefree", "comoving", or "physical".
 
+        **conversions: astropy.units.Unit
+            Custom unit conversions for one or more or of the columns
+            in the collection's datasets.
         """
-        return self.__map("with_units", convention, **conversions)
+        return self.__map("with_units", convention, conversions=conversions, **columns)

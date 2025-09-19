@@ -828,23 +828,62 @@ class Lightcone(dict):
             raise ValueError(f"Column {column} does not exist in this dataset!")
         return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))
 
-    def with_units(self, convention: Optional[str] = None, **unit_conversions) -> Self:
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Self:
         """
-        Create a new dataset from this one with a different unit convention.
+        Create a new lightcone from this one with a different unit convention or
+        with certain columns converted to a different compatible unit.
+
+        Unit conversions are always performed after a change of convention, and
+        changing conventions clears any existing unit conversions.
+
+        For more, see :doc:`units`.
+
+        .. code-block:: python
+
+            import astropy.units as u
+
+            # this works
+            lc = lc.with_units(fof_halo_mass=u.kg)
+
+            # this clears the previous conversion
+            lc = lc.with_units("scalefree")
+
+            # This now fails, because the units of masses
+            # are Msun / h, which cannot be converted to kg
+            lc = lc.with_units(fof_halo_mass=u.kg)
+
+            # this will now work, wince the units of halo mass in the "physical"
+            # convention are Msun (no h).
+            lc = lc.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
+
+
 
         Parameters
         ----------
-        convention : str
+        convention : str, optional
             The unit convention to use. One of "physical", "comoving",
             "scalefree", or "unitless".
 
+        **conversions: astropy.units.Unit
+            Custom unit conversions for one or more or of the columns
+            in this dataset.
+
         Returns
         -------
-        dataset : Dataset
-            The new dataset with the requested unit convention.
-
+        lightcone : Lightcone
+            The new lightcone with the requested unit convention and/or conversions.
         """
-        return self.__map("with_units", convention, **unit_conversions)
+        return self.__map(
+            "with_units",
+            convention=convention,
+            conversions=conversions,
+            **columns,
+        )
 
     def collect(self) -> "Lightcone":
         """

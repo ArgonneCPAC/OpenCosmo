@@ -57,4 +57,51 @@ If you change unit conventions after performing a filter, the filter will still 
 
 should output a value of ~1.5 x 10^10 Msun, which is about 1e10/0.67.
 
-   
+Single-Column Conversions
+-------------------------
+
+You can also use :code:`with_units` to convert the values in individual columns to their values in an equivalent unit:
+
+.. code-block:: python
+
+   import astropy.units as u
+
+   dataset = oc.read("haloproperties.hdf5").with_units(
+        fof_halo_center_x = u.lyr,
+        fof_halo_center_y = u.lyr,
+        fof_halo_center_z = u.lyr,
+   )
+
+Unit conversions like these are always performed *after* any change in unit convention, and changing unit conventions clears any existing unit conversions:
+
+.. code-block:: python
+
+    # this works
+    dataset = dataset.with_units(fof_halo_mass=u.kg)
+
+    # this clears the previous conversion,
+    # the masses are now in Msun / h
+    dataset = dataset.with_units("scalefree")
+
+    # This now fails, because the units of masses
+    # are Msun / h, which cannot be converted to kg
+    dataset = dataset.with_units(fof_halo_mass=u.kg)
+
+    # this will work, the units of halo mass in the "physical"
+    # convention are Msun (no h), and the change of convention
+    # happens before the conversions
+    dataset = dataset.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
+
+
+Unit conversions on :py:class:`Lightcones <opencosmo.Lightcone>` and :py:class:`SimulationCollections <opencosmo.SimulationCollection>` behave identically to single datasets. In :py:class:`StructureCollections <opencosmo.StructureCollections>`, unit conversions must be passed on a per-dataset basis:
+
+.. code-block:: python
+
+   import astropy.units as u
+
+   structures = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+   structures = structures.with_units(
+        halo_properties={"fof_halo_mass": u.kg},
+        dm_particles={"mass": u.kg}
+   )
+
