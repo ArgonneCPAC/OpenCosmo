@@ -145,6 +145,8 @@ class UnitHandler:
         }
 
     def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):
+        if self.__current_convention == UnitConvention.UNITLESS:
+            return data
         columns = {}
         for colname, value in data.items():
             applicator = self.__applicators.get(colname)
