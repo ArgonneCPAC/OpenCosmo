@@ -746,11 +746,15 @@ class Dataset:
         **columns: u.Unit,
     ) -> Dataset:
         """
-        Create a new dataset from this one with a different unit convention or
-        with certain columns converted to a different compatible unit.
+        Create a new dataset from this one with a different unit convention, and/or
+        convert one unit to another across the entire dataset, or convert individual
+        columns.
 
         Unit conversions are always performed after a change of convention, and
-        changing conventions clears any existing unit conversions.
+        changing conventions clears any existing unit conversions. Individual
+        column conversions always take precedence over blanket unit conversions.
+
+        Calling this function without arguments will clear any existing unit conversions.
 
         For more, see :doc:`units`.
 
@@ -772,6 +776,11 @@ class Dataset:
             # convention are Msun (no h).
             dataset = dataset.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
 
+            # Suppose you want all distances in lightyears, but the x coordinate of your
+            # halo center in kilometers, for some reason ¯\_(ツ)_/¯
+            blanket_conversions = {u.Mpc: u.lyr}
+            dataset = dataset.with_units(conversions = blanket_conversions, fof_halo_center_x = u.km)
+
 
 
         Parameters
@@ -780,7 +789,11 @@ class Dataset:
             The unit convention to use. One of "physical", "comoving",
             "scalefree", or "unitless".
 
-        **conversions: astropy.units.Unit
+        conversions : dict[astropy.units.Unit, astropy.Units.Unit]
+            Conversions that apply to all columns in the dataset with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
             Custom unit conversions for one or more or of the columns
             in this dataset.
 
@@ -790,8 +803,6 @@ class Dataset:
             The new dataset with the requested unit convention and/or conversions.
 
         """
-        if convention is None and not conversions and not columns:
-            raise ValueError("You must provide a new unit convention or column units")
 
         new_state = self.__state.with_units(
             convention, conversions, columns, self.cosmology, self.redshift

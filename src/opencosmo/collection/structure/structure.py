@@ -571,10 +571,34 @@ class StructureCollection:
 
         .. code-block:: python
 
+            import astropy.units as u
+
             structures = structures.with_units(
                 "physical",
                 halo_properties={"fof_halo_mass": u.kg, "fof_halo_center_x": u.ly}
             )
+
+        You can use :code:`conversions` to specify a conversion that applies to all
+        columns in the collection with the given unit, or specify per-dataset conversions.
+        Per-dataset conversions always take precedent over collection-wide conversions.
+        For example:
+
+        .. code-block:: python
+
+            import astropy.units as u
+
+            conversions = {u.Mpc: u.lyr}
+            structures = structures.with_units(
+                conversions=conversions
+                halo_properties = {
+                    "conversions": {u.Mpc: u.km},
+                    "fof_halo_center_x": u.m
+                }
+            )
+
+        In this example, all values in Mpc will be converted to lightyears, except in the "halo_properties" dataset,
+        where they will be converted to kilometers. The column "fof_halo_center_x" in "halo_properties" will
+        be converted to meters instead.
 
         For more information, see :doc:`units`
 
@@ -583,6 +607,12 @@ class StructureCollection:
         convention : str
             The unit convention to apply. One of "unitless", "scalefree",
             "comoving", or "physical".
+
+        conversions : dict[astropy.units.Unit, astropy.units.Unit]
+            Unit conversions to apply across all columns in the collection
+
+        **dataset_conversion : dict
+            Unit conversions apply to specific datasets in the collection.
 
         Returns
         -------
@@ -600,12 +630,10 @@ class StructureCollection:
         unknown = conversion_keys.difference(self.keys())
         if unknown:
             raise ValueError(f"Unknown datasets in conversions: {unknown}")
-        if convention is None and not dataset_conversions:
-            raise ValueError(
-                "You must provide a new unit convention, unit conversion,or indivdiual column units"
-            )
 
-        if self.__source.dtype in conversion_keys or convention is not None:
+        if self.__source.dtype in conversion_keys or (
+            not conversion_keys and convention is None
+        ):
             new_source = self.__source.with_units(
                 convention, **dataset_conversions.get(self.__source.dtype, {})
             )
@@ -615,7 +643,7 @@ class StructureCollection:
         for key, dataset in self.__datasets.items():
             ds_conversions = dataset_conversions.get(key, {})
             if convention is None and not ds_conversions:
-                new_datasets[key] = dataset
+                new_datasets[key] = dataset.with_units()
                 continue
             new_ds = dataset.with_units(convention, **ds_conversions)
             new_datasets[key] = new_ds

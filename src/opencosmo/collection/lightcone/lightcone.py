@@ -861,7 +861,10 @@ class Lightcone(dict):
             # convention are Msun (no h).
             lc = lc.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
 
-
+            # Suppose you want your distances in lightyears, but the x coordinate of your
+            # halo center in kilometers, for some reason ¯\_(ツ)_/¯
+            blanket_conversions = {u.Mpc: u.lyr}
+            lc = lc.with_units(conversions = blanket_conversions, fof_halo_center_x = u.km)
 
         Parameters
         ----------
@@ -869,8 +872,12 @@ class Lightcone(dict):
             The unit convention to use. One of "physical", "comoving",
             "scalefree", or "unitless".
 
-        **conversions: astropy.units.Unit
-            Custom unit conversions for one or more or of the columns
+        conversions: dict[astropy.units.Unit, astropy.units.Unit]
+            Conversions that apply to all columns in the lightcone with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for specific columns
             in this dataset.
 
         Returns

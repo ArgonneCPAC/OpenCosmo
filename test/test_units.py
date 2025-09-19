@@ -240,6 +240,56 @@ def test_all_unit_conversion(input_path):
         assert col.unit == u.lyr
 
 
+def test_multiple_all_unit_conversion(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr})
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.lyr
+        return
+    for col in ds.get_data().itercols():
+        assert col.unit == u.lyr
+
+
+def test_clear_units(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr})
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.lyr
+        return
+    for col in ds.get_data().itercols():
+        assert col.unit == u.lyr
+
+    ds = ds.with_units()
+    data = ds.get_data()
+    if isinstance(data, u.Quantity):
+        assert data.unit == u.Mpc
+        return
+    for col in data.itercols():
+        assert col.unit == u.Mpc
+
+
 def test_all_unit_conversion_with_column(input_path):
     ds = oc.open(input_path)
     data = ds.take(2, at="start").get_data()
