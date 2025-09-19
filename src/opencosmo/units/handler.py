@@ -122,7 +122,9 @@ class UnitHandler:
 
         self.verify_conversions(columns, self.__current_convention)
         new_column_conversions = self.__column_conversions | columns
-        new_conversions = self.__conversions | conversions
+        new_conversions = self.__conversions | {
+            str(key): value for key, value in conversions.items()
+        }
         return UnitHandler(
             self.__base_convention,
             self.__current_convention,
@@ -155,7 +157,7 @@ class UnitHandler:
                 unitful_value = applicator.apply(
                     value, self.__current_convention, unit_kwargs=unit_kwargs
                 )
-                unit_conversion = self.__conversions.get(unitful_value.unit)
+                unit_conversion = self.__conversions.get(str(unitful_value.unit))
                 if unit_conversion is not None and column_conversion is None:
                     unitful_value = unitful_value.to(unit_conversion)
                 elif column_conversion is not None:
