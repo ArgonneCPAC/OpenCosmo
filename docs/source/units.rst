@@ -71,7 +71,7 @@ You can convert all columns with a given unit into a different unit with the :co
    conversions = {u.Mpc: u.lyr}
    ds = ds.with_units(conversions=conversions)
 
-In the new dataset, all columns that originally had units of megaparsecs will be converted to lightyears. All-column conversions are always peformed after a change of unit conventions. Changing units *after* doing a conversion always clears the conversions.
+In the new dataset, all columns that originally had units of megaparsecs will be converted to lightyears. Composite units including megaparsec (e.g. km / s / Mpc, Mpc^2) will *not* be converted. All-column conversions are always peformed after a change of unit conventions. Changing units *after* doing a conversion always clears the conversions.
 
 .. code-block:: python
 
@@ -133,6 +133,8 @@ Unit conversions on :py:class:`Lightcones <opencosmo.Lightcone>` and :py:class:`
         halo_properties={"fof_halo_mass": u.kg},
         dm_particles={"mass": u.kg}
    )
+
+As with all-column conversions, composite units that include the target unit will not be converted. If you want to convert a composite unit, the conversion must be stated seperately.
 
 Conversion Precedence
 ---------------------

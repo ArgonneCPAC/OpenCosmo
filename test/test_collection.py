@@ -430,6 +430,53 @@ def test_data_linking_with_complex_unit_conversion(halo_paths):
             assert found
 
 
+def test_data_linking_with_complex_unit_conversion_reset(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.with_units(
+        "physical",
+        conversions={u.Mpc: u.km},
+        dm_particles={"x": u.lyr, "y": u.lyr, "z": u.lyr},
+    )
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
+        2, at="random"
+    )
+    for halo in collection.halos():
+        for key, vals in halo.items():
+            if key == "dm_particles":
+                dm_particle_locations = vals.select(["x", "y", "z"]).get_data()
+                for column in dm_particle_locations.itercols():
+                    assert column.unit == u.lyr
+                continue
+            if key == "halo_properties":
+                val_iter = vals.values()
+            else:
+                val_iter = vals.get_data().values()
+            found = False
+            for value in val_iter:
+                if isinstance(value, u.Quantity):
+                    assert value.unit != u.Mpc
+                    if value.unit == u.km:
+                        found = True
+            assert found
+
+    for halo in collection.with_units().halos():
+        for key, vals in halo.items():
+            if key == "halo_properties":
+                val_iter = vals.values()
+            else:
+                val_iter = vals.get_data().values()
+            for value in val_iter:
+                if isinstance(value, u.Quantity):
+                    if isinstance(value.unit, u.DexUnit):
+                        continue
+                    if (
+                        value.unit.bases == 1
+                        and value.unit.bases[0] == u.m
+                        and value.unit.powers[0] == 1
+                    ):
+                        assert value.unit == u.Mpc
+
+
 def test_data_linking_bound(halo_paths):
     collection = oc.open(*halo_paths)
     p1 = tuple(random.uniform(10, 20) for _ in range(3))
