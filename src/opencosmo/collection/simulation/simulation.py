@@ -397,9 +397,9 @@ class SimulationCollection(dict):
         **columns: u.Unit,
     ) -> Self:
         """
-        Transform all datasets or collections to use the given unit convention, or
-        convert some column(s) to a compatible unit. This
-        method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
+        Transform all datasets or collections to use the given unit convention, convert
+        all columns with a given unit into a different unit, and/or convert specific column(s)
+        to a compatible unit. This method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
 
         Parameters
         ----------
@@ -407,8 +407,14 @@ class SimulationCollection(dict):
             The unit convention to use. One of "unitless",
             "scalefree", "comoving", or "physical".
 
-        **conversions: astropy.units.Unit
-            Custom unit conversions for one or more or of the columns
-            in the collection's datasets.
+        conversions: dict[astropy.units.Unit, astropy.units.Unit]
+            Conversions that apply to all columns in the collection with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for any column with a specific
+            name in the datasets in this collection.
+
+
         """
         return self.__map("with_units", convention, conversions=conversions, **columns)

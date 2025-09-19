@@ -110,8 +110,6 @@ class UnitHandler:
 
     def with_convention(self, convention: str | UnitConvention):
         convention = UnitConvention(convention)
-        if convention == self.current_convention:
-            return self
         return UnitHandler(
             self.__base_convention, convention, self.__cosmology, self.__applicators
         )

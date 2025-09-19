@@ -57,6 +57,32 @@ If you change unit conventions after performing a filter, the filter will still 
 
 should output a value of ~1.5 x 10^10 Msun, which is about 1e10/0.67.
 
+Converting Columns to an Equivalent Unit
+----------------------------------------
+
+You can convert all columns with a given unit into a different unit with the :code:`conversions` argument:
+
+
+.. code-block:: python
+
+   import opencosmo as oc
+   
+   ds = oc.read("haloproperties.hdf5")
+   conversions = {u.Mpc: u.lyr}
+   ds = ds.with_units(conversions=conversions)
+
+In the new dataset, all columns that originally had units of megaparsecs will be converted to lightyears. All-column conversions are always peformed after a change of unit conventions. Changing units *after* doing a conversion always clears the conversions.
+
+.. code-block:: python
+
+   import opencosmo as oc
+   
+   ds = oc.read("haloproperties.hdf5")
+   conversions = {u.Mpc: u.lyr}
+   ds = ds.with_units(conversions=conversions)
+
+
+
 Single-Column Conversions
 -------------------------
 
@@ -92,6 +118,9 @@ Unit conversions like these are always performed *after* any change in unit conv
     # happens before the conversions
     dataset = dataset.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
 
+    # reset all units
+    dataset = dataset.with_units("physical")
+
 
 Unit conversions on :py:class:`Lightcones <opencosmo.Lightcone>` and :py:class:`SimulationCollections <opencosmo.SimulationCollection>` behave identically to single datasets. In :py:class:`StructureCollections <opencosmo.StructureCollections>`, unit conversions must be passed on a per-dataset basis:
 
@@ -104,4 +133,54 @@ Unit conversions on :py:class:`Lightcones <opencosmo.Lightcone>` and :py:class:`
         halo_properties={"fof_halo_mass": u.kg},
         dm_particles={"mass": u.kg}
    )
+
+Conversion Precedence
+---------------------
+
+In cases where a blanket conversion is provided alongside a conversion for a specific column, the specific conversion always take precedence:
+
+.. code-block:: python
+
+   import astropy.units as u
+
+   conversions = {u.Mpc: u.lyr}
+   ds = ds.with_units(conversions=conversions, fof_halo_center_x=u.km)
+
+All columns with units of megaparsecs will be converted to lightyears, except for the :code:`fof_halo_center_x` column which will be converted to kilometers.
+
+Structure Collection Conversions
+--------------------------------
+
+When working with a structure collection, you can provide conversions that apply to the entire collection, as single dataset inside the collection, or individual columns within a given dataset. As you might expect, conversions on an individual dataset takes precedence over those that apply to all datasets.
+
+.. code-block:: python
+
+            import astropy.units as u
+
+            conversions = {u.Mpc: u.lyr}
+            structures = structures.with_units(
+                conversions=conversions
+                halo_properties = {
+                    "conversions": {u.Mpc: u.km},
+                    "fof_halo_center_x": u.m
+                }
+            )
+
+In this example, all values in Mpc will be converted to lightyears, except in the "halo_properties" dataset, where they will be converted to kilometers. The column "fof_halo_center_x" in "halo_properties" will be converted to meters instead.
+
+Clearing Conversions
+--------------------
+
+Conversions are always cleared when changing unit conventions, or you can also clear them by calling :code:`with_units` with no arguments.
+
+.. code-block:: python
+
+   dataset = oc.read("haloproperties.hdf5").with_units(
+        conversions={u.Mpc: u.lyr},
+        fof_halo_center_x = u.lyr,
+   )
+
+   dataset = dataset.with_units()
+   # all unit conversion reset
+
 
