@@ -111,6 +111,10 @@ class Dataset:
         return self.__state.columns
 
     @property
+    def descriptions(self) -> dict[str, Optional[str]]:
+        return self.__handler.descriptions | self.__state.descriptions
+
+    @property
     def cosmology(self) -> Cosmology:
         """
         The cosmology of the simulation this dataset is drawn from as
@@ -712,7 +716,7 @@ class Dataset:
             This dataset with the columns added
 
         """
-        new_state = self.__state.with_new_columns(**new_columns)
+        new_state = self.__state.with_new_columns({}, **new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
@@ -745,7 +749,7 @@ class Dataset:
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Dataset:
-        """
+        r"""
         Create a new dataset from this one with a different unit convention, and/or
         convert one unit to another across the entire dataset, or convert individual
         columns.

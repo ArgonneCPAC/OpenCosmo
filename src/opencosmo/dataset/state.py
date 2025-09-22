@@ -54,6 +54,12 @@ class DatasetState:
         return self.__index
 
     @property
+    def descriptions(self):
+        return self.__im_handler.descriptions | {
+            name: col.description for name, col in self.__derived.items()
+        }
+
+    @property
     def unit_handler(self):
         return self.__unit_handler
 
@@ -170,7 +176,9 @@ class DatasetState:
         return schema
 
     def with_new_columns(
-        self, **new_columns: DerivedColumn | np.ndarray | units.Quantity
+        self,
+        descriptions: dict[str, str] = {},
+        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
     ):
         """
         Add a set of derived columns to the dataset. A derived column is a column that

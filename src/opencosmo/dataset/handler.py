@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import cached_property
 from typing import Iterable, Optional
 
 import h5py
@@ -35,6 +36,13 @@ class DatasetHandler:
     @property
     def columns(self):
         return self.__group.keys()
+
+    @cached_property
+    def descriptions(self):
+        return {
+            colname: column.attrs.get("description")
+            for colname, column in self.__group.items()
+        }
 
     def __len__(self) -> int:
         first_column_name = next(iter(self.__group.keys()))
