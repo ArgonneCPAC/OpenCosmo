@@ -685,7 +685,12 @@ class StructureCollection:
             new_source, self.__header, self.__datasets, self.__links, self.__hide_source
         )
 
-    def with_new_columns(self, dataset: str, **new_columns: DerivedColumn):
+    def with_new_columns(
+        self,
+        dataset: str,
+        descriptions: str | dict[str, str] = {},
+        **new_columns: DerivedColumn,
+    ):
         """
         Add new column(s) to one of the datasets in this collection. This behaves
         exactly like :py:meth:`oc.Dataset.with_new_columns`, except that you must
@@ -724,6 +729,11 @@ class StructureCollection:
         dataset : str
             The name of the dataset to add columns to
 
+        descriptions : str | dict[str, str], optional
+            Descriptions for the new columns. These descriptions will be accessible through
+            :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
         ** columns: opencosmo.DerivedColumn
             The new columns
 
@@ -746,7 +756,7 @@ class StructureCollection:
             if not isinstance(new_collection, StructureCollection):
                 raise ValueError(f"{collection_name} is not a collection!")
             new_collection = new_collection.with_new_columns(
-                ".".join(path[1:]), **new_columns
+                ".".join(path[1:]), descriptions=descriptions, **new_columns
             )
             return StructureCollection(
                 self.__source,
@@ -757,7 +767,9 @@ class StructureCollection:
             )
 
         if dataset == self.__source.dtype:
-            new_source = self.__source.with_new_columns(**new_columns)
+            new_source = self.__source.with_new_columns(
+                **new_columns, descriptions=descriptions
+            )
             return StructureCollection(
                 new_source, self.__header, self.__datasets, self.__links
             )
@@ -769,7 +781,7 @@ class StructureCollection:
         if not isinstance(ds, oc.Dataset):
             raise ValueError(f"{dataset} is not a dataset!")
 
-        new_ds = ds.with_new_columns(**new_columns)
+        new_ds = ds.with_new_columns(**new_columns, descriptions=descriptions)
         return StructureCollection(
             self.__source,
             self.__header,

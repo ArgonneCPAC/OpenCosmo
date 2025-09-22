@@ -112,6 +112,17 @@ class Dataset:
 
     @property
     def descriptions(self) -> dict[str, Optional[str]]:
+        """
+        Return the descriptions (if any) of the columns in this dataset as a dictonary.
+        Columns without a description will be included in the dictionary with a value
+        of None
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column descriptions
+        """
         return self.__handler.descriptions | self.__state.descriptions
 
     @property
@@ -697,7 +708,7 @@ class Dataset:
 
     def with_new_columns(
         self,
-        description: str | dict[str, str] = {},
+        descriptions: str | dict[str, str] = {},
         **new_columns: DerivedColumn | np.ndarray | units.Quantity,
     ):
         """
@@ -710,7 +721,13 @@ class Dataset:
 
         Parameters
         ----------
-        ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
+
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
+        ** new_columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
 
         Returns
         -------
@@ -718,9 +735,9 @@ class Dataset:
             This dataset with the columns added
 
         """
-        if isinstance(description, str):
-            description = {key: description for key in new_columns.keys()}
-        new_state = self.__state.with_new_columns(description, **new_columns)
+        if isinstance(descriptions, str):
+            descriptions = {key: descriptions for key in new_columns.keys()}
+        new_state = self.__state.with_new_columns(descriptions, **new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:

@@ -262,6 +262,19 @@ def test_lc_collection_add(haloproperties_600_path, haloproperties_601_path, tmp
     assert np.all(stored_data == data)
 
 
+def test_lc_collection_add_with_description(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    data = np.random.randint(0, 100, len(ds)) * u.deg
+    fof_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    descriptions = {"random": "random data", "px": "com x momentump"}
+    ds = ds.with_new_columns(random=data, px=fof_px, descriptions=descriptions)
+    descs = ds.descriptions
+    for key, value in descriptions.items():
+        assert descs[key] == value
+
+
 def test_lc_collection_filter(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
