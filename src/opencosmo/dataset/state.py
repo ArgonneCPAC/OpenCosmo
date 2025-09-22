@@ -155,18 +155,23 @@ class DatasetState:
         }
 
         for colname in derived_names:
-            attrs = {"unit": str(column_units[colname])}
+            attrs = {
+                "unit": str(column_units[colname]),
+                "description": self.__derived[colname].description,
+            }
             coldata = derived_data[colname].value
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )
             schema.add_child(colschema, colname)
 
+        im_descriptions = self.__im_handler.descriptions
         for colname, coldata in self.__im_handler.columns():
             if colname in self.__hidden:
                 continue
             attrs = {}
             attrs["unit"] = str(column_units.get(colname))
+            attrs["description"] = im_descriptions.get(colname)
 
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
@@ -210,7 +215,9 @@ class DatasetState:
                 else:
                     new_unit_handler = new_unit_handler.with_new_columns(**{name: None})
 
-                new_im_handler = new_im_handler.with_new_column(name, new_col)
+                new_im_handler = new_im_handler.with_new_column(
+                    name, new_col, descriptions.get(name)
+                )
 
             elif not new_col.check_parent_existance(column_names):
                 raise ValueError(
@@ -219,6 +226,7 @@ class DatasetState:
                 )
             else:
                 unit = new_col.get_units(self.__unit_handler.base_units)
+                new_col.description = descriptions.get(name)
                 new_unit_handler = new_unit_handler.with_new_columns(**{name: unit})
                 derived_update[name] = new_col
             column_names.add(name)
