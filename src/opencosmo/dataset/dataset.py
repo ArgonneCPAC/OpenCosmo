@@ -696,7 +696,9 @@ class Dataset:
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def with_new_columns(
-        self, **new_columns: DerivedColumn | np.ndarray | units.Quantity
+        self,
+        description: str | dict[str, str] = {},
+        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
@@ -716,7 +718,9 @@ class Dataset:
             This dataset with the columns added
 
         """
-        new_state = self.__state.with_new_columns({}, **new_columns)
+        if isinstance(description, str):
+            description = {key: description for key in new_columns.keys()}
+        new_state = self.__state.with_new_columns(description, **new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
