@@ -197,6 +197,7 @@ class DatasetState:
         new_im_handler = self.__im_handler
         derived_update = {}
         new_unit_handler = self.__unit_handler
+        print(new_columns)
         for name, new_col in new_columns.items():
             if name in column_names:
                 raise ValueError(f"Dataset already has column named {name}")
@@ -216,7 +217,7 @@ class DatasetState:
                     new_unit_handler = new_unit_handler.with_new_columns(**{name: None})
 
                 new_im_handler = new_im_handler.with_new_column(
-                    name, new_col, descriptions.get(name)
+                    name, new_col, descriptions.get(name, "None")
                 )
 
             elif not new_col.check_parent_existance(column_names):
@@ -226,7 +227,7 @@ class DatasetState:
                 )
             else:
                 unit = new_col.get_units(self.__unit_handler.base_units)
-                new_col.description = descriptions.get(name)
+                new_col.description = descriptions.get(name, "None")
                 new_unit_handler = new_unit_handler.with_new_columns(**{name: unit})
                 derived_update[name] = new_col
             column_names.add(name)
