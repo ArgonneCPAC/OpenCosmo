@@ -60,11 +60,11 @@ def test_descriptions_after_insert(input_path, tmp_path):
     p = tmp_path / "test.hdf5"
     random_data = np.random.randint(0, 100, len(ds))
     ds = ds.with_new_columns(random_data=random_data)
-    assert ds.descriptions["random_data"] is None
+    assert ds.descriptions["random_data"] == "None"
     oc.write(p, ds)
     ds = oc.open(p)
     descriptions = ds.descriptions
-    assert descriptions["random_data"] is None
+    assert descriptions["random_data"] == "None"
 
 
 def test_description_with_insert(input_path, tmp_path):
@@ -72,7 +72,7 @@ def test_description_with_insert(input_path, tmp_path):
     p = tmp_path / "test.hdf5"
     random_data = np.random.randint(0, 100, len(ds))
     ds = ds.with_new_columns(
-        random_data=random_data, description="random data for a test"
+        random_data=random_data, descriptions="random data for a test"
     )
     assert ds.descriptions["random_data"] == "random data for a test"
     oc.write(p, ds)
@@ -89,7 +89,7 @@ def test_description_with_insert_multiple(input_path, tmp_path):
     ds = ds.with_new_columns(
         random_data=random_data,
         halo_px=fof_halo_px,
-        description={
+        descriptions={
             "random_data": "random data for a test",
             "halo_px": "halo x momentum",
         },
