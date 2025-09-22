@@ -1,0 +1,1 @@
+Descriptions of columns can now be accessed with :py:class:`Dataset.descriptions <opencosmo.Dataset.descriptions>`
