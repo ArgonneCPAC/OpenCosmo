@@ -747,6 +747,25 @@ def test_simulation_collection_add(multi_path):
     assert np.all(stored_data == data)
 
 
+def test_simulation_collection_add_with_descriptions(multi_path):
+    collection = oc.open(multi_path)
+    random_data = {
+        key: np.random.randint(0, 100, len(ds)) for key, ds in collection.items()
+    }
+    descriptions = {
+        "fof_halo_px": "x component of momentum",
+        "random_data": "random data",
+    }
+    collection = collection.with_new_columns(
+        fof_halo_px=oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx"),
+        random_data=random_data,
+        descriptions=descriptions,
+    )
+    for ds in collection.values():
+        for name, desc in descriptions.items():
+            assert ds.descriptions[name] == desc
+
+
 def test_simulation_collection_broadcast_attribute(multi_path):
     collection = oc.open(multi_path)
     for key, value in collection.redshift.items():
@@ -848,3 +867,22 @@ def test_data_link_sort_write(halo_paths, tmp_path):
             halo["halo_properties"]["fof_halo_tag"]
             == halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")[0]
         )
+
+
+def test_add_structure_collection_with_descriptions(halo_paths):
+    ds = oc.open(*halo_paths)
+    ds = ds.with_new_columns(
+        "dm_particles",
+        gpe=oc.col("mass") * oc.col("phi"),
+        descriptions="Gravitational potential energy",
+    )
+    ds = ds.with_new_columns(
+        "halo_properties",
+        com_px=oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx"),
+        descriptions="x component of linear momentum",
+    )
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
+    assert ds["dm_particles"].descriptions["gpe"] == "Gravitational potential energy"
+    assert (
+        ds["halo_properties"].descriptions["com_px"] == "x component of linear momentum"
+    )
