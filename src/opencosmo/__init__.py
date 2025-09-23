@@ -15,7 +15,6 @@ __all__ = [
     "StructureCollection",
     "SimulationCollection",
     "Lightcone",
-    "open_linked_files",
     "make_box",
     "make_cone",
 ]

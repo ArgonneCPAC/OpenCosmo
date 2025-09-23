@@ -3,11 +3,17 @@ Working with MPI
 
 OpenCosmo can read and write data in an MPI environment. In general the API works exactly the same within an MPI context as it does otherwise, but there are some things to be aware of in the current version of the library (see below). More flexibility in working in an MPI context is planned for the next version of the library.
 
-I/O with Parallel HDF5 and Select Operations
---------------------------------------------
-Reading HDF5 data in parallel requires no additional work on your part. However parallel writes require that you have a copy of HDF5 on your system that has been compiled with parallel write support turned on. See :doc:`installation` for details on how to install a parallel version of hdf5 on your system.
+File Opening Modes
+------------------
 
-Currently, OpenCosmo does not support writing data in an MPI context unless all ranks are writing to the same data. In practices this means that all ranks must have the same columns in their data, so all :py:meth:`opencosmo.Dataset.select` operations must be identical across ranks. 
+:py:meth:`opencosmo.open` accepts a :code:`mpi_mode` argument which can be used to control the opening behavior under mpi. The currently supported modes are:
+
+- :code:`"ordered"` (default): Each rank recieves a continuous chunk of data (corresponding to a specific spatial region). The chunks are ordered by rank number
+- :code:`None`: No chunking is performed, and all ranks have access to the full dataset.
+
+I/O with Parallel HDF5
+----------------------
+Reading HDF5 data in parallel requires no additional work on your part. However parallel writes require that you have a copy of HDF5 on your system that has been compiled with parallel write support turned on. See :doc:`installation` for details on how to install a parallel version of hdf5 on your system.
 
 
 "Take" Operations

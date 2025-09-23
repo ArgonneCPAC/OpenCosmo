@@ -193,9 +193,10 @@ def open(
     *files: str or pathlib.Path
         The path(s) to the file(s) to open.
 
-    mpi_mode: str, default = "ordered".
+    mpi_mode: str | None, default = "ordered".
         The MPI mode to use when opening the file. This is ignored if the script was not
-        launched with MPI.
+        launched with MPI. Current supported are "ordered" or None. See :doc:`mpi` for more
+        details.
 
     **open_kwargs: bool
         True/False flags that can be used to only load certain datasets from
