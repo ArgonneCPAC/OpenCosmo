@@ -1,10 +1,8 @@
 from collections import defaultdict
-from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import h5py
 import numpy as np
-from deprecated import deprecated
 
 from opencosmo import dataset as d
 from opencosmo import io
@@ -31,26 +29,6 @@ ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
 }
 
 
-@deprecated(
-    version="0.8",
-    reason="oc.open_linked_files is deprecated and will be removed in version 1.0. "
-    "Please use oc.open instead",
-)
-def open_linked_files(*files: Path, **load_kwargs: bool):
-    """
-    **WARNING: THIS METHOD IS DEPCREATED AND WILL BE REMOVED IN A FUTURE
-    VERSION. PLEASE USE** :py:meth:`opencosmo.open`
-
-    Open a collection of files that are linked together, such as a
-    properties file and a particle file.
-
-    """
-    if len(files) == 1 and isinstance(files[0], list):
-        return open_linked_files(*files[0])
-
-    return io.io.open(*files, **load_kwargs)
-
-
 def validate_linked_groups(groups: dict[str, h5py.Group]):
     if "halo_properties" in groups:
         if "data_linked" not in groups["halo_properties"].keys():
@@ -66,28 +44,6 @@ def validate_linked_groups(groups: dict[str, h5py.Group]):
         raise ValueError("Structure collections must have more than one dataset")
 
 
-def get_linked_datasets(
-    linked_files_by_type: dict[str, h5py.File | h5py.Group],
-    header: OpenCosmoHeader,
-):
-    targets = {}
-    for dtype, pointer in linked_files_by_type.items():
-        if "data" not in pointer.keys():
-            targets.update(
-                {
-                    k: io.io.OpenTarget(pointer[k], header)
-                    for k in pointer.keys()
-                    if k != "header"
-                }
-            )
-        else:
-            targets.update({dtype: io.io.OpenTarget(pointer, header)})
-    datasets = {
-        dtype: io.io.open_single_dataset(target) for dtype, target in targets.items()
-    }
-    return datasets
-
-
 def make_index_with_linked_data(
     index: DataIndex, links: dict[str, LinkedDatasetHandler]
 ):
@@ -98,18 +54,21 @@ def make_index_with_linked_data(
     return index.mask(mask)
 
 
-def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bool):
+def build_structure_collection(
+    targets: list[io.io.OpenTarget], mpi_mode: Optional[str], ignore_empty: bool
+):
     link_sources = defaultdict(list)
     link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
         defaultdict(dict)
     )
+
     for target in targets:
         if target.data_type == "halo_properties":
             link_sources["halo_properties"].append(target)
         elif target.data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
         elif target.data_type.startswith("halo"):
-            dataset = io.io.open_single_dataset(target)
+            dataset = io.io.open_single_dataset(target, mpi_mode=None)
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
@@ -117,7 +76,7 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
                 name = name[16:]
             link_targets["halo_targets"][name] = dataset
         elif target.data_type.startswith("galaxy"):
-            dataset = io.io.open_single_dataset(target)
+            dataset = io.io.open_single_dataset(target, mpi_mode=None)
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
@@ -136,7 +95,9 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
             link_sources["galaxy_properties"][0].header,
         )
 
-        source_dataset = io.io.open_single_dataset(link_sources["galaxy_properties"][0])
+        source_dataset = io.io.open_single_dataset(
+            link_sources["galaxy_properties"][0], mpi_mode=mpi_mode
+        )
         if ignore_empty:
             new_index = make_index_with_linked_data(source_dataset.index, handlers)
             source_dataset = source_dataset.with_index(new_index)
@@ -157,7 +118,9 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
             list(link_targets["halo_targets"].keys()),
             link_sources["halo_properties"][0].header,
         )
-        source_dataset = io.io.open_single_dataset(link_sources["halo_properties"][0])
+        source_dataset = io.io.open_single_dataset(
+            link_sources["halo_properties"][0], mpi_mode=mpi_mode
+        )
 
         if ignore_empty:
             new_index = make_index_with_linked_data(source_dataset.index, handlers)

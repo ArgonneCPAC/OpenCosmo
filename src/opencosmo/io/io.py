@@ -4,25 +4,23 @@ from enum import Enum
 from functools import reduce
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Iterable, Optional
+from typing import Callable, Optional
 
 import h5py
-from deprecated import deprecated  # type: ignore
 
 import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.im import InMemoryColumnHandler
-from opencosmo.file import FileExistance, file_reader, resolve_path
+from opencosmo.file import FileExistance, resolve_path
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index import ChunkedIndex
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
-from opencosmo.spatial.tree import open_tree, read_tree
+from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
-from opencosmo.units.get import get_unit_applicators_hdf5
 from opencosmo.units.handler import make_unit_handler
 
 from .protocols import Writeable
@@ -32,8 +30,8 @@ mpiio: Optional[ModuleType]
 partition: Optional[Callable]
 
 if get_comm_world() is not None:
-    from opencosmo.dataset.mpi import partition
-    from opencosmo.io import mpi as mpiio
+    from opencosmo.mpi import io as mpiio
+    from opencosmo.mpi.partition import partition
 else:
     mpiio = None
     partition = None
@@ -155,7 +153,9 @@ def make_file_targets(file: h5py.File):
 
 
 def open(
-    *files: str | Path | h5py.File | h5py.Group, **open_kwargs: bool
+    *files: str | Path | h5py.File | h5py.Group,
+    mpi_mode: Optional[str] = "ordered",
+    **open_kwargs: bool,
 ) -> oc.Dataset | collection.Collection:
     """
     Open a dataset or data collection from one or more opencosmo files.
@@ -193,6 +193,10 @@ def open(
     *files: str or pathlib.Path
         The path(s) to the file(s) to open.
 
+    mpi_mode: str, default = "ordered".
+        The MPI mode to use when opening the file. This is ignored if the script was not
+        launched with MPI.
+
     **open_kwargs: bool
         True/False flags that can be used to only load certain datasets from
         the files. Check the documentation for the data type you are working
@@ -206,22 +210,22 @@ def open(
 
     """
     if len(files) == 1 and isinstance(files[0], list):
-        return oc.open(*files[0], **open_kwargs)
+        return oc.open(*files[0], mpi_mode=mpi_mode, **open_kwargs)
     handles = [h5py.File(f) for f in files]
     file_types = list(map(get_file_type, handles))
     targets = make_all_targets(handles)
     targets = evaluate_load_conditions(targets, open_kwargs)
     if len(targets) > 1:
         collection_type = collection.get_collection_type(targets, file_types)
-        return collection_type.open(targets, **open_kwargs)
+        return collection_type.open(targets, mpi_mode=mpi_mode, **open_kwargs)
 
     else:
-        return open_single_dataset(targets[0])
+        return open_single_dataset(targets[0], mpi_mode=mpi_mode)
 
     # For now the only way to open multiple files is with a StructureCollection
 
 
-def open_single_dataset(target: OpenTarget):
+def open_single_dataset(target: OpenTarget, mpi_mode: Optional[str]):
     header = target.header
     handle = target.group
 
@@ -248,11 +252,11 @@ def open_single_dataset(target: OpenTarget):
     index: ChunkedIndex
     handler = DatasetHandler(handle)
 
-    if (comm := get_comm_world()) is not None:
+    if (comm := get_comm_world()) is not None and mpi_mode is not None:
         assert partition is not None
         idx_data = handle["index"]
 
-        part = partition(comm, len(handler), idx_data, tree)
+        part = partition(comm, len(handler), idx_data, tree, mpi_mode)
         if part is None:
             index = ChunkedIndex.empty()
         else:
@@ -324,84 +328,6 @@ def evaluate_load_conditions(targets: list[OpenTarget], open_kwargs: dict[str, b
         if load:
             output.append(target)
     return output
-
-
-@deprecated(
-    version="0.7",
-    reason="oc.read is deprecated and will be removed in version 1.0. "
-    "Please use oc.open instead",
-)
-@file_reader
-def read(
-    file: h5py.File, datasets: Optional[str | Iterable[str]] = None
-) -> oc.Dataset | collection.Collection:
-    """
-    **WARNING: THIS METHOD IS DEPRECATED AND WILL BE REMOVED IN A FUTURE
-    VERSION. USE** :py:meth:`opencosmo.open`
-
-
-    Read a dataset from a file into memory.
-
-    You should use this function if the data are small enough that having
-    a copy of it (or a few copies of it) in memory is not a problem. For
-    larger datasets, use :py:func:`opencosmo.open`.
-
-    Note that some dataset types cannot be read, due to complexities with
-    how the data is handled. Using :py:func:`opencosmo.open` is recommended
-    for most use cases.
-
-    Parameters
-    ----------
-    file : str or pathlib.Path
-        The path to the file to read.
-    datasets : str or list[str], optional
-        If the file has multiple datasets, the name of the dataset(s) to read.
-        All other datasets will be ignored. If not provided, will read all
-        datasets
-
-    Returns
-    -------
-    dataset : oc.Dataset or oc.Collection
-        The dataset or collection read from the file.
-
-    """
-
-    if "data" not in file:
-        raise ValueError(
-            "oc.read can not be used to read files with multiple datasets. Use oc.open"
-        )
-
-    if datasets is not None and not isinstance(datasets, str):
-        raise ValueError("Asked for multiple datasets, but file has only one")
-    header = read_header(file)
-    try:
-        tree = read_tree(file, header.simulation.box_size)
-    except ValueError:
-        tree = None
-    p1 = (0, 0, 0)
-    p2 = tuple(header.simulation.box_size for _ in range(3))
-    sim_box = oc.make_box(p1, p2)
-
-    path = file.filename
-    file = h5py.File(path, driver="core")
-
-    handler = DatasetHandler(file, group_name=datasets)
-    index = ChunkedIndex.from_size(len(handler))
-    unit_applicators = get_unit_applicators_hdf5(handler.data, header)
-    state = dss.DatasetState(
-        unit_applicators,
-        index,
-        set(handler.columns),
-        sim_box,
-        header,
-        InMemoryColumnHandler.empty(index),
-    )
-
-    ds = oc.Dataset(handler, header, state, tree)
-
-    if header.file.is_lightcone:
-        return collection.Lightcone({"data": ds})
-    return ds
 
 
 def write(path: Path, dataset: Writeable, overwrite=False) -> None:

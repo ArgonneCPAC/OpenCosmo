@@ -73,6 +73,26 @@ def test_mpi(input_path):
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_mpi_nochunk(input_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    with oc.open(input_path, mpi_mode=None) as f:
+        length = len(f)
+
+    lengths = comm.allgather(length)
+    parallel_assert(len(set(lengths)) == 1)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_mpi_structure_nochunk(all_paths):
+    comm = mpi4py.MPI.COMM_WORLD
+    structures = oc.open(*all_paths, mpi_mode=None)
+    structures = structures.take(10, at="start")
+    for halo in structures.halos():
+        halo_tags = comm.allgather(halo["halo_properties"]["fof_halo_tag"])
+        parallel_assert(len(set(halo_tags)) == 1)
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_partitioning_includes_all(input_path):
     with oc.open(input_path) as f:
         tags = f.select("fof_halo_tag").data

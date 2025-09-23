@@ -141,6 +141,16 @@ def test_diffsky_filter(core_path_487, core_path_475):
     assert np.all(original_data == filtered_data)
 
 
+@pytest.mark.parallel(nprocs=4)
+def test_diffsky_nochunk(core_path_487, core_path_475):
+    from mpi4py import MPI
+
+    comm = MPI.COMM_WORLD
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True, mpi_mode=None)
+    lengths = comm.allgather(len(ds))
+    parallel_assert(len(set(lengths)) == 1)
+
+
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 

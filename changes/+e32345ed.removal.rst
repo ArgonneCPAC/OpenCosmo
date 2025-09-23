@@ -1,0 +1,1 @@
+:code:`opencosmo.open_linked_files` (deprecated since 0.8) has been removed

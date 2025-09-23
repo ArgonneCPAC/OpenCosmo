@@ -1,4 +1,4 @@
-from typing import Iterable, Protocol, Self, Union
+from typing import Iterable, Optional, Protocol, Self, Union
 
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.column import ColumnMask
@@ -28,7 +28,7 @@ class Collection(Protocol):
 
     @classmethod
     def open(
-        cls, targets: list[OpenTarget], **kwargs
+        cls, targets: list[OpenTarget], mpi_mode: Optional[str], **kwargs
     ) -> Union["Collection", Dataset]: ...
 
     def make_schema(self) -> DataSchema: ...

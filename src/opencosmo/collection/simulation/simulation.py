@@ -57,7 +57,9 @@ class SimulationCollection(dict):
         )
 
     @classmethod
-    def open(cls, targets: list[io.OpenTarget], **kwargs) -> Collection | Dataset:
+    def open(
+        cls, targets: list[io.OpenTarget], mpi_mode: Optional[str], **kwargs
+    ) -> Collection | Dataset:
         targets_by_name = {
             target.group.name.split("/")[-1]: target for target in targets
         }
@@ -67,7 +69,7 @@ class SimulationCollection(dict):
             )
 
         datasets = {
-            name: io.open_single_dataset(target)
+            name: io.open_single_dataset(target, mpi_mode)
             for name, target in targets_by_name.items()
         }
 

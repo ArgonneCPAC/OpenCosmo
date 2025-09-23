@@ -362,11 +362,11 @@ class Lightcone(dict):
         return self.get_data("astropy")
 
     @classmethod
-    def open(cls, targets: list[OpenTarget], **kwargs):
+    def open(cls, targets: list[OpenTarget], mpi_mode: Optional[str], **kwargs):
         datasets: dict[str, Dataset] = {}
 
         for target in targets:
-            ds = open_single_dataset(target)
+            ds = open_single_dataset(target, mpi_mode=mpi_mode)
             if not isinstance(ds, Lightcone) or len(ds.keys()) != 1:
                 raise ValueError(
                     "Lightcones can only contain datasets (not collections)"

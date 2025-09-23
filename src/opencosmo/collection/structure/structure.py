@@ -89,9 +89,13 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, targets: list[io.OpenTarget], ignore_empty=True, **kwargs
+        cls,
+        targets: list[io.OpenTarget],
+        mpi_mode: Optional[str],
+        ignore_empty=True,
+        **kwargs,
     ) -> StructureCollection:
-        return sio.build_structure_collection(targets, ignore_empty)
+        return sio.build_structure_collection(targets, mpi_mode, ignore_empty)
 
     @classmethod
     def read(cls, *args, **kwargs) -> StructureCollection:
