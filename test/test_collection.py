@@ -55,6 +55,19 @@ def test_multi_filter(multi_path):
         assert all(ds.data["sod_halo_mass"] > 0)
 
 
+def test_link_particles_only(halo_paths):
+    collection = oc.open(halo_paths[0], halo_paths[1])
+    assert isinstance(collection, oc.StructureCollection)
+    for key in collection.keys():
+        assert "particles" in key or key == "halo_properties"
+
+
+def test_link_profiles_only(halo_paths):
+    collection = oc.open(halo_paths[1], halo_paths[2])
+    assert isinstance(collection, oc.StructureCollection)
+    assert set(collection.keys()) == {"halo_properties", "halo_profiles"}
+
+
 def test_galaxy_alias_fails_for_halos(halo_paths):
     ds = oc.open(halo_paths)
     with pytest.raises(AttributeError):

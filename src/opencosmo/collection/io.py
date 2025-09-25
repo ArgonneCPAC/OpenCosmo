@@ -51,6 +51,7 @@ def get_collection_type(
     is_lightcone = [target.header.file.is_lightcone for target in targets]
     unique_data_types = set(handles_by_type.keys())
     unique_file_types = set(file_types)
+    print(unique_file_types)
     if len(unique_data_types) == 1 and all(is_lightcone):
         return oc.Lightcone
 
@@ -60,7 +61,10 @@ def get_collection_type(
 
     elif len(unique_data_types) == 1 and all(not il for il in is_lightcone):
         return oc.SimulationCollection
-    elif unique_file_types == set([FILE_TYPE.PARTICLES, FILE_TYPE.DATASET]):
+
+    elif FILE_TYPE.PROPERTIES in unique_file_types and set(
+        [FILE_TYPE.PARTICLES, FILE_TYPE.SOD_BINS]
+    ).intersection(unique_file_types):
         validate_linked_groups(handles_by_type)
         return oc.StructureCollection
     elif (
