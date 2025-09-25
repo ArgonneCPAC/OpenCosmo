@@ -1,1 +1,1 @@
-Fix a but that could cause opening halo properties and halo profiles without particles to fail.
+Fix a but that could cause opening properties and profiles without particles to fail.
