@@ -47,11 +47,11 @@ def get_collection_type(
     2. The files contain a single non-lightcone datatype.
     3. The files are linked together into a structure collection
     """
+
     handles_by_type = {target.data_type: target.group for target in targets}
     is_lightcone = [target.header.file.is_lightcone for target in targets]
     unique_data_types = set(handles_by_type.keys())
     unique_file_types = set(file_types)
-    print(unique_file_types)
     if len(unique_data_types) == 1 and all(is_lightcone):
         return oc.Lightcone
 

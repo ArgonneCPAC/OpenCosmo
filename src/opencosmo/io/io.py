@@ -213,8 +213,11 @@ def open(
 
     """
     if len(files) == 1 and isinstance(files[0], list):
-        return oc.open(*files[0], **open_kwargs)
-    handles = [h5py.File(f) for f in files]
+        file_list = files[0]
+    else:
+        file_list = list(files)
+    file_list.sort()
+    handles = [h5py.File(f) for f in file_list]
     file_types = list(map(get_file_type, handles))
     targets = make_all_targets(handles)
     targets = evaluate_load_conditions(targets, open_kwargs)

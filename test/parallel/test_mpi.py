@@ -7,6 +7,7 @@ import h5py
 import mpi4py
 import numpy as np
 import pytest
+from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
@@ -20,6 +21,11 @@ def input_path(snapshot_path):
 @pytest.fixture
 def particle_path(snapshot_path):
     return snapshot_path / "haloparticles.hdf5"
+
+
+@pytest.fixture
+def profile_path(snapshot_path):
+    return snapshot_path / "sodproperties.hdf5"
 
 
 @pytest.fixture
@@ -70,6 +76,20 @@ def test_mpi(input_path):
         data = f.data
 
     parallel_assert(len(data) != 0)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_structure_collection_open(input_path, profile_path):
+    oc.open(input_path, profile_path)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_structure_collection_open_2(input_path, profile_path):
+    comm = MPI.COMM_WORLD
+    if comm.Get_rank() in [0, 2]:
+        oc.open(profile_path, input_path)
+    else:
+        oc.open(input_path, profile_path)
 
 
 @pytest.mark.parallel(nprocs=4)
