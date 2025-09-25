@@ -1,1 +1,0 @@
-Fix a but that could cause opening properties and profiles without particles to fail.

@@ -1,3 +1,12 @@
+opencosmo 0.9.2 (2025-09-25)
+============================
+
+Bugfixes
+--------
+
+- Fix a but that could cause opening properties and profiles without particles to fail.
+
+
 opencosmo 0.9.1 (2025-09-16)
 ============================
 
@@ -7,7 +16,7 @@ Bugfixes
 - Re-add license file to package for conda-forge compatability
 
 
-Opencosmo 0.9.0 (2025-09-15)
+opencosmo 0.9.0 (2025-09-15)
 ============================
 
 Features
