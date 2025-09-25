@@ -57,11 +57,12 @@ open works in the following way:
 
 
 class FILE_TYPE(Enum):
-    DATASET = 0
+    PROPERTIES = 0
     PARTICLES = 1
-    LIGHTCONE = 2
-    STRUCTURE_COLLECTION = 3
-    SIMULATION_COLLECTION = 4
+    SOD_BINS = 2
+    LIGHTCONE = 3
+    STRUCTURE_COLLECTION = 4
+    SIMULATION_COLLECTION = 5
 
 
 class COLLECTION_TYPE(Enum):
@@ -82,8 +83,14 @@ class OpenTarget:
 
 def get_file_type(file: h5py.File) -> FILE_TYPE:
     file_keys = set(file.keys())
-    if len(set(["header", "data"]).intersection(file_keys)) == 2:
-        return FILE_TYPE.DATASET
+    if "header" in file.keys():
+        dtype = file["header"]["file"].attrs["data_type"]
+        if "particles" in dtype:
+            return FILE_TYPE.PARTICLES
+        elif dtype == "halo_profiles":
+            return FILE_TYPE.SOD_BINS
+        elif "properties" in dtype:
+            return FILE_TYPE.PROPERTIES
 
     elif all("particles" in fk or fk == "header" for fk in file_keys):
         return FILE_TYPE.PARTICLES
