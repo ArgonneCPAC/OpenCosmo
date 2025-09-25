@@ -91,6 +91,8 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
             return FILE_TYPE.SOD_BINS
         elif "properties" in dtype:
             return FILE_TYPE.PROPERTIES
+        elif file["header"]["file"].attrs["is_lightcone"]:
+            return FILE_TYPE.LIGHTCONE
 
     elif all("particles" in fk or fk == "header" for fk in file_keys):
         return FILE_TYPE.PARTICLES
