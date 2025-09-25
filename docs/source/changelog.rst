@@ -1,3 +1,12 @@
+Opencosmo 0.9.3 (2025-09-25)
+============================
+
+Bugfixes
+--------
+
+- Fix an issue that could cause opens with multiple files to fail in MPI contexts
+
+
 opencosmo 0.9.2 (2025-09-25)
 ============================
 
