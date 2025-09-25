@@ -57,12 +57,14 @@ open works in the following way:
 
 
 class FILE_TYPE(Enum):
-    PROPERTIES = 0
-    PARTICLES = 1
-    SOD_BINS = 2
-    LIGHTCONE = 3
-    STRUCTURE_COLLECTION = 4
-    SIMULATION_COLLECTION = 5
+    HALO_PROPERTIES = 0
+    HALO_PARTICLES = 1
+    GALAXY_PROPERTIES = 2
+    GALAXY_PARTICLES = 3
+    SOD_BINS = 4
+    LIGHTCONE = 5
+    STRUCTURE_COLLECTION = 6
+    SIMULATION_COLLECTION = 7
 
 
 class COLLECTION_TYPE(Enum):
@@ -82,25 +84,20 @@ class OpenTarget:
 
 
 def get_file_type(file: h5py.File) -> FILE_TYPE:
-    file_keys = set(file.keys())
     if "header" in file.keys():
         dtype = file["header"]["file"].attrs["data_type"]
-        if "particles" in dtype:
-            return FILE_TYPE.PARTICLES
+        if dtype == "halo_particles":
+            return FILE_TYPE.HALO_PARTICLES
         elif dtype == "halo_profiles":
             return FILE_TYPE.SOD_BINS
-        elif "properties" in dtype:
-            return FILE_TYPE.PROPERTIES
-        elif file["header"]["file"].attrs["is_lightcone"]:
-            return FILE_TYPE.LIGHTCONE
-
-    elif all("particles" in fk or fk == "header" for fk in file_keys):
-        return FILE_TYPE.PARTICLES
-
-    elif "header" in file.keys():
-        groups = {name: group for name, group in file.items() if name != "header"}
-        collection.structure.io.validate_linked_groups(groups)
-        return FILE_TYPE.STRUCTURE_COLLECTION
+        elif dtype == "halo_properties":
+            return FILE_TYPE.HALO_PROPERTIES
+        elif dtype == "galaxy_properties":
+            return FILE_TYPE.GALAXY_PROPERTIES
+        elif dtype == "galaxy_particles":
+            return FILE_TYPE.GALAXY_PARTICLES
+        else:
+            raise ValueError(f"Unknown file type {dtype}")
 
     if not all("header" in group.keys() for group in file.values()):
         for subgroup in file.values():
