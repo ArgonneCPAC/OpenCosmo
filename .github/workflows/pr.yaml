@@ -3,6 +3,7 @@ on:
   pull_request:
     branches:
       - main
+      - release
 jobs:
   lint:
     uses: ./.github/workflows/lint.yaml
