@@ -27,6 +27,7 @@ from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial import check
 from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.tree import Tree
+from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
@@ -108,6 +109,21 @@ class Dataset:
         columns: list[str]
         """
         return self.__state.columns
+
+    @property
+    def descriptions(self) -> dict[str, Optional[str]]:
+        """
+        Return the descriptions (if any) of the columns in this dataset as a dictonary.
+        Columns without a description will be included in the dictionary with a value
+        of None
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column descriptions
+        """
+        return self.__handler.descriptions | self.__state.descriptions
 
     @property
     def cosmology(self) -> Cosmology:
@@ -240,7 +256,17 @@ class Dataset:
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = self.__state.get_data(self.__handler, attach_index=attach_index)  # table
+        if self.__state.convention.value == "physical":
+            scale_factor = get_scale_factor(
+                self.__state, self.__handler, self.cosmology, self.redshift
+            )
+            unit_kwargs = {"scale_factor": scale_factor}
+        else:
+            unit_kwargs = {}
+
+        data = self.__state.get_data(
+            self.__handler, attach_index=attach_index, unit_kwargs=unit_kwargs
+        )  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
         elif len(data.colnames) == 1:
@@ -295,9 +321,21 @@ class Dataset:
                 "so spatial querying is not available"
             )
 
-        check_region = region.into_scalefree(
-            self.__state.convention, self.cosmology, self.redshift
-        )
+        if not self.header.file.is_lightcone:
+            columns = check.find_coordinates_3d(self, self.dtype)
+
+            check_region = region.into_base_convention(
+                self.__state.unit_handler,
+                columns,
+                self.__state.convention,
+                {
+                    "scale_factor": self.cosmology.scale_factor(
+                        self.header.file.redshift
+                    ).value
+                },
+            )
+        else:
+            check_region = region
 
         if not self.__state.region.intersects(check_region):
             new_index = ChunkedIndex.empty()
@@ -669,7 +707,9 @@ class Dataset:
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def with_new_columns(
-        self, **new_columns: DerivedColumn | np.ndarray | units.Quantity
+        self,
+        descriptions: str | dict[str, str] = {},
+        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
@@ -681,7 +721,13 @@ class Dataset:
 
         Parameters
         ----------
-        ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
+
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
+        ** new_columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
 
         Returns
         -------
@@ -689,7 +735,10 @@ class Dataset:
             This dataset with the columns added
 
         """
-        new_state = self.__state.with_new_columns(**new_columns)
+        if isinstance(descriptions, str):
+            descriptions = {key: descriptions for key in new_columns.keys()}
+        print(descriptions)
+        new_state = self.__state.with_new_columns(descriptions, **new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
@@ -716,24 +765,78 @@ class Dataset:
             schema.add_child(spat_idx_schema, "index")
         return schema
 
-    def with_units(self, convention: str) -> Dataset:
-        """
-        Create a new dataset from this one with a different unit convention.
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Dataset:
+        r"""
+        Create a new dataset from this one with a different unit convention, and/or
+        convert one unit to another across the entire dataset, or convert individual
+        columns.
+
+        Unit conversions are always performed after a change of convention, and
+        changing conventions clears any existing unit conversions. Individual
+        column conversions always take precedence over blanket unit conversions.
+
+        Calling this function without arguments will clear any existing unit conversions.
+
+        For more, see :doc:`units`.
+
+        .. code-block:: python
+
+            import astropy.units as u
+
+            # this works
+            dataset = dataset.with_units(fof_halo_mass=u.kg)
+
+            # this clears the previous conversion
+            dataset = dataset.with_units("scalefree")
+
+            # This now fails, because the units of masses
+            # are Msun / h, which cannot be converted to kg
+            dataset = dataset.with_units(fof_halo_mass=u.kg)
+
+            # this will work, the units of halo mass in the "physical"
+            # convention are Msun (no h).
+            dataset = dataset.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
+
+            # Suppose you want all distances in lightyears, but the x coordinate of your
+            # halo center in kilometers, for some reason ¯\_(ツ)_/¯
+            blanket_conversions = {u.Mpc: u.lyr}
+            dataset = dataset.with_units(conversions = blanket_conversions, fof_halo_center_x = u.km)
+
+
 
         Parameters
         ----------
-        convention : str
+        convention : str, optional
             The unit convention to use. One of "physical", "comoving",
             "scalefree", or "unitless".
+
+        conversions : dict[astropy.units.Unit, astropy.Units.Unit]
+            Conversions that apply to all columns in the dataset with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for one or more or of the columns
+            in this dataset.
 
         Returns
         -------
         dataset : Dataset
-            The new dataset with the requested unit convention.
+            The new dataset with the requested unit convention and/or conversions.
 
         """
-        new_state = self.__state.with_units(convention, self.cosmology, self.redshift)
-        new_header = self.__header.with_units(convention)
+
+        new_state = self.__state.with_units(
+            convention, conversions, columns, self.cosmology, self.redshift
+        )
+        if convention is not None:
+            new_header = self.__header.with_units(convention)
+        else:
+            new_header = self.__header
 
         return Dataset(
             self.__handler,
@@ -765,9 +868,7 @@ class Dataset:
 
         If working in an MPI context, all ranks will recieve the same data.
         """
-        new_handler = self.__handler.collect(
-            self.__state.builder.columns, self.__state.index
-        )
+        new_handler = self.__handler.collect(self.__state.columns, self.__state.index)
         new_index = ChunkedIndex.from_size(len(new_handler))
         new_state = self.__state.with_index(new_index)
         return Dataset(

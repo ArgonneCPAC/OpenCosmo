@@ -21,7 +21,9 @@ from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
 from opencosmo.spatial.tree import open_tree, read_tree
-from opencosmo.transformations import units as u
+from opencosmo.units import UnitConvention
+from opencosmo.units.get import get_unit_applicators_hdf5
+from opencosmo.units.handler import make_unit_handler
 
 from .protocols import Writeable
 from .schemas import FileSchema
@@ -139,7 +141,7 @@ def make_all_targets(files: list[h5py.File]):
 
 def make_file_targets(file: h5py.File):
     try:
-        header = read_header(file, unit_convention="comoving")
+        header = read_header(file, unit_convention=UnitConvention.COMOVING)
     except KeyError:
         header = None
     if header is not None and "data" in file.keys():
@@ -271,14 +273,11 @@ def open_single_dataset(target: OpenTarget):
     else:
         index = ChunkedIndex.from_size(len(handler))
 
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        handle, header
-    )
+    unit_handler = make_unit_handler(handler.data, header, UnitConvention.COMOVING)
     state = dss.DatasetState(
-        base_unit_transformations,
-        builders,
+        unit_handler,
         index,
-        u.UnitConvention.COMOVING,
+        set(handler.columns),
         sim_region,
         header,
         InMemoryColumnHandler.empty(index),
@@ -383,8 +382,6 @@ def read(
         raise ValueError(
             "oc.read can not be used to read files with multiple datasets. Use oc.open"
         )
-    else:
-        group = file
 
     if datasets is not None and not isinstance(datasets, str):
         raise ValueError("Asked for multiple datasets, but file has only one")
@@ -402,14 +399,11 @@ def read(
 
     handler = DatasetHandler(file, group_name=datasets)
     index = ChunkedIndex.from_size(len(handler))
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        group, header
-    )
+    unit_applicators = get_unit_applicators_hdf5(handler.data, header)
     state = dss.DatasetState(
-        base_unit_transformations,
-        builders,
+        unit_applicators,
         index,
-        u.UnitConvention.COMOVING,
+        set(handler.columns),
         sim_box,
         header,
         InMemoryColumnHandler.empty(index),

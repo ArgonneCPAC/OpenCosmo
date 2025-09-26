@@ -50,6 +50,59 @@ def test_dataset_close(input_path):
         file["data"]
 
 
+def test_descriptions(input_path):
+    ds = oc.open(input_path)
+    assert isinstance(ds.descriptions, dict)
+
+
+def test_descriptions_after_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(random_data=random_data)
+    assert ds.descriptions["random_data"] == "None"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "None"
+
+
+def test_description_with_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(
+        random_data=random_data, descriptions="random data for a test"
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+
+
+def test_description_with_insert_multiple(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    fof_halo_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.with_new_columns(
+        random_data=random_data,
+        halo_px=fof_halo_px,
+        descriptions={
+            "random_data": "random data for a test",
+            "halo_px": "halo x momentum",
+        },
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    assert ds.descriptions["halo_px"] == "halo x momentum"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+    assert descriptions["halo_px"] == "halo x momentum"
+
+
 def test_filter_oom(input_path, max_mass):
     # Assuming test_open worked, this is the only
     # thing that needs to be directly tested
@@ -90,7 +143,6 @@ def test_take_sorted(input_path):
         .select("fof_halo_mass")
         .get_data("numpy")
     )
-    print(len(toolkit_sorted_fof_masses))
     manually_sorted_fof_masses = np.sort(fof_masses)
     assert np.all(manually_sorted_fof_masses[:n] == toolkit_sorted_fof_masses)
     assert fof_masses.min() == toolkit_sorted_fof_masses[0]

@@ -1,4 +1,4 @@
-from functools import reduce
+from functools import cached_property, reduce
 from itertools import chain
 from typing import Any, Callable, Generator, Iterable, Optional, Self
 
@@ -202,6 +202,25 @@ class Lightcone(dict):
         cols = next(iter(self.values())).columns
         cols = list(filter(lambda col: col not in self.__hidden, cols))
         return cols
+
+    @cached_property
+    def descriptions(self) -> dict[str, Optional[str]]:
+        """
+        Return the descriptions (if any) of the columns in this lightcone as a dictonary.
+        Columns without a description will be included in the dictionary with a value
+        of None
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column descriptions
+        """
+        descriptions = next(iter(self.values())).descriptions
+        descriptions = dict(
+            filter(lambda kv: kv[0] not in self.__hidden, descriptions.items())
+        )
+        return descriptions
 
     @property
     def cosmology(self) -> Cosmology:
@@ -747,7 +766,11 @@ class Lightcone(dict):
             output = {k: v for k, v in reversed(output.items())}
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 
-    def with_new_columns(self, **columns: DerivedColumn | np.ndarray | u.Quantity):
+    def with_new_columns(
+        self,
+        descriptions: str | dict[str, str] = {},
+        **columns: DerivedColumn | np.ndarray | u.Quantity,
+    ):
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, a numpy array, or an Astropy quantity
@@ -758,7 +781,13 @@ class Lightcone(dict):
 
         Parameters
         ----------
-        ** columns : opencosmo.DerivedColumn
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`Lightcone.descriptions <opencosmo.Lighcone.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
+        ** columns : opencosmo.DerivedColumn | np.ndarray | u.quantity
+            The new columns
 
         Returns
         -------
@@ -786,7 +815,7 @@ class Lightcone(dict):
         for i, (ds_name, ds) in enumerate(self.items()):
             raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
             columns_input = raw_columns | derived
-            new_dataset = ds.with_new_columns(**columns_input)
+            new_dataset = ds.with_new_columns(descriptions, **columns_input)
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__ordered_by)
 
@@ -828,23 +857,69 @@ class Lightcone(dict):
             raise ValueError(f"Column {column} does not exist in this dataset!")
         return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))
 
-    def with_units(self, convention: str) -> Self:
-        """
-        Create a new dataset from this one with a different unit convention.
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Self:
+        r"""
+        Create a new lightcone from this one with a different unit convention or
+        with certain columns converted to a different compatible unit.
+
+        Unit conversions are always performed after a change of convention, and
+        changing conventions clears any existing unit conversions.
+
+        For more, see :doc:`units`.
+
+        .. code-block:: python
+
+            import astropy.units as u
+
+            # this works
+            lc = lc.with_units(fof_halo_mass=u.kg)
+
+            # this clears the previous conversion
+            lc = lc.with_units("scalefree")
+
+            # This now fails, because the units of masses
+            # are Msun / h, which cannot be converted to kg
+            lc = lc.with_units(fof_halo_mass=u.kg)
+
+            # this will now work, wince the units of halo mass in the "physical"
+            # convention are Msun (no h).
+            lc = lc.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
+
+            # Suppose you want your distances in lightyears, but the x coordinate of your
+            # halo center in kilometers, for some reason ¯\_(ツ)_/¯
+            blanket_conversions = {u.Mpc: u.lyr}
+            lc = lc.with_units(conversions = blanket_conversions, fof_halo_center_x = u.km)
 
         Parameters
         ----------
-        convention : str
+        convention : str, optional
             The unit convention to use. One of "physical", "comoving",
             "scalefree", or "unitless".
 
+        conversions: dict[astropy.units.Unit, astropy.units.Unit]
+            Conversions that apply to all columns in the lightcone with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for specific columns
+            in this dataset.
+
         Returns
         -------
-        dataset : Dataset
-            The new dataset with the requested unit convention.
-
+        lightcone : Lightcone
+            The new lightcone with the requested unit convention and/or conversions.
         """
-        return self.__map("with_units", convention)
+        return self.__map(
+            "with_units",
+            convention=convention,
+            conversions=conversions,
+            **columns,
+        )
 
     def collect(self) -> "Lightcone":
         """

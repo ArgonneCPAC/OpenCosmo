@@ -1,6 +1,6 @@
 [project]
 name = "opencosmo"
-version = "0.9.4"
+version = "0.10.0a1"
 description = "OpenCosmo Python Toolkit"
 authors = [
   { name = "Patrick Wells", email = "pwells@anl.gov" },

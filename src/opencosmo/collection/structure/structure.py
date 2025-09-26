@@ -4,6 +4,7 @@ from typing import Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
 import astropy  # type: ignore
+import astropy.units as u
 import numpy as np
 
 import opencosmo as oc
@@ -552,10 +553,54 @@ class StructureCollection:
             self.__hide_source,
         )
 
-    def with_units(self, convention: str):
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **dataset_conversions: dict,
+    ):
         """
-        Apply the given unit convention to the collection.
-        See :py:meth:`opencosmo.Dataset.with_units`
+        Apply the given unit convention to the collection, or convert a subset
+        of the columns in one or more of these datasets into a compatible
+        unit.
+
+        Because this collection contains several datasets, you must specify
+        the dataset when performing conversions. For example, the equivalent
+        unit conversion to the final one in the example in
+        :py:meth:`opencosmo.Dataset.with_units` looks like this:
+
+        .. code-block:: python
+
+            import astropy.units as u
+
+            structures = structures.with_units(
+                "physical",
+                halo_properties={"fof_halo_mass": u.kg, "fof_halo_center_x": u.ly}
+            )
+
+        You can use :code:`conversions` to specify a conversion that applies to all
+        columns in the collection with the given unit, or specify per-dataset conversions.
+        Per-dataset conversions always take precedent over collection-wide conversions.
+        For example:
+
+        .. code-block:: python
+
+            import astropy.units as u
+
+            conversions = {u.Mpc: u.lyr}
+            structures = structures.with_units(
+                conversions=conversions
+                halo_properties = {
+                    "conversions": {u.Mpc: u.km},
+                    "fof_halo_center_x": u.m
+                }
+            )
+
+        In this example, all values in Mpc will be converted to lightyears, except in the "halo_properties" dataset,
+        where they will be converted to kilometers. The column "fof_halo_center_x" in "halo_properties" will
+        be converted to meters instead.
+
+        For more information, see :doc:`units`
 
         Parameters
         ----------
@@ -563,16 +608,46 @@ class StructureCollection:
             The unit convention to apply. One of "unitless", "scalefree",
             "comoving", or "physical".
 
+        conversions : dict[astropy.units.Unit, astropy.units.Unit]
+            Unit conversions to apply across all columns in the collection
+
+        **dataset_conversion : dict
+            Unit conversions apply to specific datasets in the collection.
+
         Returns
         -------
         StructureCollection
             A new collection with the unit convention applied.
         """
-        new_source = self.__source.with_units(convention)
-        new_datasets = {
-            key: dataset.with_units(convention)
-            for key, dataset in self.__datasets.items()
-        }
+        if conversions:
+            for ds_name in self.keys():
+                ds_conversions = dataset_conversions.get(ds_name, {})
+                new_ds_conversions = conversions | ds_conversions.get("conversions", {})
+                ds_conversions["conversions"] = new_ds_conversions
+                dataset_conversions[ds_name] = ds_conversions
+
+        conversion_keys = set(dataset_conversions.keys())
+        unknown = conversion_keys.difference(self.keys())
+        if unknown:
+            raise ValueError(f"Unknown datasets in conversions: {unknown}")
+
+        if self.__source.dtype in conversion_keys or (
+            not conversion_keys and convention is None
+        ):
+            new_source = self.__source.with_units(
+                convention, **dataset_conversions.get(self.__source.dtype, {})
+            )
+        else:
+            new_source = self.__source
+        new_datasets = {}
+        for key, dataset in self.__datasets.items():
+            ds_conversions = dataset_conversions.get(key, {})
+            if convention is None and not ds_conversions:
+                new_datasets[key] = dataset.with_units()
+                continue
+            new_ds = dataset.with_units(convention, **ds_conversions)
+            new_datasets[key] = new_ds
+
         return StructureCollection(
             new_source, self.__header, new_datasets, self.__links, self.__hide_source
         )
@@ -610,7 +685,12 @@ class StructureCollection:
             new_source, self.__header, self.__datasets, self.__links, self.__hide_source
         )
 
-    def with_new_columns(self, dataset: str, **new_columns: DerivedColumn):
+    def with_new_columns(
+        self,
+        dataset: str,
+        descriptions: str | dict[str, str] = {},
+        **new_columns: DerivedColumn,
+    ):
         """
         Add new column(s) to one of the datasets in this collection. This behaves
         exactly like :py:meth:`oc.Dataset.with_new_columns`, except that you must
@@ -649,6 +729,11 @@ class StructureCollection:
         dataset : str
             The name of the dataset to add columns to
 
+        descriptions : str | dict[str, str], optional
+            Descriptions for the new columns. These descriptions will be accessible through
+            :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
         ** columns: opencosmo.DerivedColumn
             The new columns
 
@@ -671,7 +756,7 @@ class StructureCollection:
             if not isinstance(new_collection, StructureCollection):
                 raise ValueError(f"{collection_name} is not a collection!")
             new_collection = new_collection.with_new_columns(
-                ".".join(path[1:]), **new_columns
+                ".".join(path[1:]), descriptions=descriptions, **new_columns
             )
             return StructureCollection(
                 self.__source,
@@ -682,7 +767,9 @@ class StructureCollection:
             )
 
         if dataset == self.__source.dtype:
-            new_source = self.__source.with_new_columns(**new_columns)
+            new_source = self.__source.with_new_columns(
+                **new_columns, descriptions=descriptions
+            )
             return StructureCollection(
                 new_source, self.__header, self.__datasets, self.__links
             )
@@ -694,7 +781,7 @@ class StructureCollection:
         if not isinstance(ds, oc.Dataset):
             raise ValueError(f"{dataset} is not a dataset!")
 
-        new_ds = ds.with_new_columns(**new_columns)
+        new_ds = ds.with_new_columns(**new_columns, descriptions=descriptions)
         return StructureCollection(
             self.__source,
             self.__header,

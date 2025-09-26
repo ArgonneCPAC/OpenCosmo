@@ -1,5 +1,6 @@
 from typing import Callable, Iterable, Mapping, Optional, Self
 
+import astropy.units as u
 import h5py
 from astropy.cosmology import Cosmology  # type: ignore
 
@@ -276,7 +277,11 @@ class SimulationCollection(dict):
         return self.__map("take", n, at)
 
     def with_new_columns(
-        self, *args, datasets: Optional[str | Iterable[str]] = None, **kwargs
+        self,
+        *args,
+        datasets: Optional[str | Iterable[str]] = None,
+        descriptions: str | dict[str, str] = {},
+        **kwargs,
     ):
         """
         Update the datasets within this collection with a set of new columns.
@@ -294,6 +299,11 @@ class SimulationCollection(dict):
         datasets: str | list[str], optional
             The datasets to add the columns to.
 
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`SimulationCollection(datasets).descriptions <opencosmo.SimulationCollection.descriptions>`.
+            If a dictionary, should have keys matching the column names.
+
         ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
             The new columns
         """
@@ -305,10 +315,14 @@ class SimulationCollection(dict):
 
             output = {name: ds for name, ds in self.items()}
             for ds_name in datasets:
-                output[ds_name] = output[ds_name].with_new_columns(*args, **kwargs)
+                output[ds_name] = output[ds_name].with_new_columns(
+                    *args, descriptions=descriptions, **kwargs
+                )
             return SimulationCollection(output)
 
-        return self.__map("with_new_columns", *args, **kwargs)
+        return self.__map(
+            "with_new_columns", *args, descriptions=descriptions, **kwargs
+        )
 
     def evaluate(
         self,
@@ -389,10 +403,16 @@ class SimulationCollection(dict):
         """
         return self.__map("sort_by", column=column, invert=invert)
 
-    def with_units(self, convention: str) -> Self:
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Self:
         """
-        Transform all datasets or collections to use the given unit convention. This
-        method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
+        Transform all datasets or collections to use the given unit convention, convert
+        all columns with a given unit into a different unit, and/or convert specific column(s)
+        to a compatible unit. This method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
 
         Parameters
         ----------
@@ -400,5 +420,14 @@ class SimulationCollection(dict):
             The unit convention to use. One of "unitless",
             "scalefree", "comoving", or "physical".
 
+        conversions: dict[astropy.units.Unit, astropy.units.Unit]
+            Conversions that apply to all columns in the collection with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for any column with a specific
+            name in the datasets in this collection.
+
+
         """
-        return self.__map("with_units", convention)
+        return self.__map("with_units", convention, conversions=conversions, **columns)

@@ -4,12 +4,14 @@ from typing import Optional
 from pydantic import (
     BaseModel,
     ConfigDict,
+    field_serializer,
     field_validator,
     model_serializer,
     model_validator,
 )
 
 from opencosmo.spatial import models as sm
+from opencosmo.units import UnitConvention
 
 
 def empty_string_to_none(value: str) -> Optional[str]:
@@ -35,7 +37,7 @@ class FileParameters(BaseModel):
     redshift: float
     step: int
     region: Optional[sm.RegionModel] = None
-    unit_convention: str = "scalefree"
+    unit_convention: UnitConvention = UnitConvention.SCALEFREE
 
     @model_validator(mode="before")
     @classmethod
@@ -56,6 +58,18 @@ class FileParameters(BaseModel):
     @field_validator("is_lightcone", mode="before")
     def validate_is_lightcone(cls, value):
         return bool(value)
+
+    @field_validator("unit_convention", mode="before")
+    def validate_convention(cls, value):
+        if isinstance(value, str):
+            return UnitConvention(value)
+        return value
+
+    @field_serializer("unit_convention")
+    def serialize_convention(self, value):
+        if isinstance(value, UnitConvention):
+            return value.value
+        return value
 
     @model_serializer(mode="wrap")
     def serialize_model(self, handle):

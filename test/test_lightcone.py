@@ -262,6 +262,19 @@ def test_lc_collection_add(haloproperties_600_path, haloproperties_601_path, tmp
     assert np.all(stored_data == data)
 
 
+def test_lc_collection_add_with_description(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    data = np.random.randint(0, 100, len(ds)) * u.deg
+    fof_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    descriptions = {"random": "random data", "px": "com x momentump"}
+    ds = ds.with_new_columns(random=data, px=fof_px, descriptions=descriptions)
+    descs = ds.descriptions
+    for key, value in descriptions.items():
+        assert descs[key] == value
+
+
 def test_lc_collection_filter(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
@@ -365,6 +378,19 @@ def test_lc_collection_units(
         assert np.all(
             np.isclose(data_scalefree[column].value, data_comoving[column].value * h)
         )
+
+
+def test_lc_collection_units_convert(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    location_columns = [f"fof_halo_com_{dim}" for dim in ("x", "y", "z")]
+    conversions = {c: u.lyr for c in location_columns}
+    ds_converted = ds.with_units(**conversions)
+    data_original = ds.select(location_columns).get_data()
+    data_converted = ds_converted.select(location_columns).get_data()
+    for column in location_columns:
+        assert np.all(data_original[column].to(u.lyr) == data_converted[column])
 
 
 def test_lc_collection_sort(haloproperties_600_path, haloproperties_601_path, tmp_path):

@@ -1,19 +1,21 @@
 from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional
 
+import astropy.units as u
 import numpy as np
 from astropy import table, units  # type: ignore
 from astropy.cosmology import Cosmology  # type: ignore
+from astropy.table import QTable
 from numpy.typing import NDArray
 
-import opencosmo.transformations.units as u
-from opencosmo.dataset.builders import TableBuilder, get_table_builder
 from opencosmo.dataset.column import DerivedColumn
 from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 from opencosmo.spatial.protocols import Region
+from opencosmo.units import UnitConvention
+from opencosmo.units.handler import UnitHandler
 
 if TYPE_CHECKING:
     from opencosmo.dataset.handler import DatasetHandler
@@ -27,10 +29,9 @@ class DatasetState:
 
     def __init__(
         self,
-        base_unit_transformations: dict,
-        builder: TableBuilder,
+        unit_handler: UnitHandler,
         index: DataIndex,
-        convention: u.UnitConvention,
+        columns: set[str],
         region: Region,
         header: OpenCosmoHeader,
         im_handler: InMemoryColumnHandler,
@@ -38,10 +39,9 @@ class DatasetState:
         hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
-        self.__base_unit_transformations = base_unit_transformations
-        self.__builder = builder
+        self.__unit_handler = unit_handler
         self.__im_handler = im_handler
-        self.__convention = convention
+        self.__columns = columns
         self.__derived: dict[str, DerivedColumn] = derived
         self.__header = header
         self.__hidden = hidden
@@ -54,12 +54,18 @@ class DatasetState:
         return self.__index
 
     @property
-    def builder(self):
-        return self.__builder
+    def descriptions(self):
+        return self.__im_handler.descriptions | {
+            name: col.description for name, col in self.__derived.items()
+        }
+
+    @property
+    def unit_handler(self):
+        return self.__unit_handler
 
     @property
     def convention(self):
-        return self.__convention
+        return self.__unit_handler.current_convention
 
     @property
     def region(self):
@@ -72,7 +78,7 @@ class DatasetState:
     @property
     def columns(self) -> list[str]:
         columns = (
-            set(self.__builder.columns)
+            set(self.__columns)
             | set(self.__derived.keys())
             | set(self.__im_handler.keys())
         )
@@ -83,28 +89,32 @@ class DatasetState:
         handler: "DatasetHandler",
         ignore_sort: bool = False,
         attach_index: bool = False,
+        unit_kwargs: dict = {},
     ) -> table.QTable:
         """
         Get the data for a given handler.
         """
-        data = handler.get_data(builder=self.__builder, index=self.__index)
+        data = handler.get_data(self.__columns, index=self.__index)
         data = self.__get_im_columns(data)
         data = self.__build_derived_columns(data)
-        data_columns = set(data.columns)
+        data = self.__unit_handler.apply_units(data, unit_kwargs)
+        output = QTable(data)
+
+        data_columns = set(output.columns)
         index_array = self.__index.into_array()
 
         if not ignore_sort and self.__sort_by is not None:
-            order = data.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
-            data = data[order]
+            order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
+            output = output[order]
             index_array = index_array[order]
         if (
             self.__hidden
             and not self.__hidden.intersection(data_columns) == data_columns
         ):
-            data.remove_columns(self.__hidden)
+            output.remove_columns(self.__hidden)
         if attach_index:
-            data["raw_index"] = index_array
-        return data
+            output["raw_index"] = index_array
+        return output
 
     def with_index(self, index: DataIndex):
         """
@@ -114,10 +124,9 @@ class DatasetState:
         new_cache = self.__im_handler.project(index)
 
         return DatasetState(
-            self.__base_unit_transformations,
-            self.__builder,
+            self.__unit_handler,
             index,
-            self.__convention,
+            self.__columns,
             self.__region,
             self.__header,
             new_cache,
@@ -131,35 +140,38 @@ class DatasetState:
         return self.with_index(new_index)
 
     def make_schema(self, handler: "DatasetHandler"):
-        builder_names = set(self.__builder.columns)
         header = self.__header.with_region(self.__region)
-        schema = handler.prep_write(self.__index, builder_names - self.__hidden, header)
+        schema = handler.prep_write(
+            self.__index, self.__columns - self.__hidden, header
+        )
         derived_names = set(self.__derived.keys()) - self.__hidden
         derived_data = (
             self.select(derived_names)
-            .with_units("unitless", None, None)
+            .with_units("unitless", {}, {}, None, None)
             .get_data(handler)
         )
-
-        column_units = handler.get_raw_units(builder_names)
-        for dn, derived in self.__derived.items():
-            column_units[dn] = derived.get_units(column_units)
+        column_units = {
+            name: self.__unit_handler.base_units[name] for name in self.columns
+        }
 
         for colname in derived_names:
-            attrs = {"unit": str(column_units[colname])}
+            attrs = {
+                "unit": str(column_units[colname]),
+                "description": self.__derived[colname].description,
+            }
             coldata = derived_data[colname].value
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )
             schema.add_child(colschema, colname)
 
+        im_descriptions = self.__im_handler.descriptions
         for colname, coldata in self.__im_handler.columns():
             if colname in self.__hidden:
                 continue
             attrs = {}
-            if isinstance(coldata, units.Quantity):
-                attrs["unit"] = str(coldata.unit)
-                coldata = coldata.value
+            attrs["unit"] = str(column_units.get(colname))
+            attrs["description"] = im_descriptions.get(colname)
 
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
@@ -169,19 +181,23 @@ class DatasetState:
         return schema
 
     def with_new_columns(
-        self, **new_columns: DerivedColumn | np.ndarray | units.Quantity
+        self,
+        descriptions: dict[str, str] = {},
+        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
     ):
         """
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
         column_names = (
-            set(self.builder.columns)
+            set(self.__columns)
             | set(self.__derived.keys())
             | set(self.__im_handler.keys())
         )
         new_im_handler = self.__im_handler
         derived_update = {}
+        new_unit_handler = self.__unit_handler
+        print(new_columns)
         for name, new_col in new_columns.items():
             if name in column_names:
                 raise ValueError(f"Dataset already has column named {name}")
@@ -192,23 +208,35 @@ class DatasetState:
                         f"New column {name} has length {len(new_col)} but this dataset "
                         "has length {len(self.__index)}"
                     )
-                new_im_handler = new_im_handler.with_new_column(name, new_col)
+                if isinstance(new_col, u.Quantity):
+                    new_unit_handler = new_unit_handler.with_static_columns(
+                        **{name: new_col.unit}
+                    )
+                    new_col = new_col.value
+                else:
+                    new_unit_handler = new_unit_handler.with_new_columns(**{name: None})
+
+                new_im_handler = new_im_handler.with_new_column(
+                    name, new_col, descriptions.get(name, "None")
+                )
 
             elif not new_col.check_parent_existance(column_names):
                 raise ValueError(
-                    f"Derived column {name} is derived from columns "
+                    f"Column {name} is derived from columns "
                     "that are not in the dataset!"
                 )
             else:
+                unit = new_col.get_units(self.__unit_handler.base_units)
+                new_col.description = descriptions.get(name, "None")
+                new_unit_handler = new_unit_handler.with_new_columns(**{name: unit})
                 derived_update[name] = new_col
             column_names.add(name)
 
         new_derived = self.__derived | derived_update
         return DatasetState(
-            self.__base_unit_transformations,
-            self.__builder,
+            new_unit_handler,
             self.__index,
-            self.__convention,
+            self.__columns,
             self.__region,
             self.__header,
             new_im_handler,
@@ -226,7 +254,7 @@ class DatasetState:
             data[colname] = new_column
         return data
 
-    def __get_im_columns(self, data: table.Table) -> table.Table:
+    def __get_im_columns(self, data: dict) -> table.Table:
         for colname, column in self.__im_handler.columns():
             data[colname] = column
         return data
@@ -236,10 +264,9 @@ class DatasetState:
         Return the same dataset but with a different region
         """
         return DatasetState(
-            self.__base_unit_transformations,
-            self.__builder,
+            self.__unit_handler,
             self.__index,
-            self.__convention,
+            self.__columns,
             region,
             self.__header,
             self.__im_handler,
@@ -268,10 +295,10 @@ class DatasetState:
                 new_hidden.add(self.__sort_by[0])
             columns.add(self.__sort_by[0])
 
-        known_builders = set(self.__builder.columns)
+        known_raw = self.__columns
         known_derived = set(self.__derived.keys())
         known_im = set(self.__im_handler.keys())
-        unknown_columns = columns - known_builders - known_derived - known_im
+        unknown_columns = columns - known_raw - known_derived - known_im
         if unknown_columns:
             raise ValueError(
                 "Tried to select columns that aren't in this dataset! Missing columns "
@@ -279,7 +306,7 @@ class DatasetState:
             )
 
         required_derived = known_derived.intersection(columns)
-        required_builders = known_builders.intersection(columns)
+        required_raw = known_raw.intersection(columns)
         required_im = known_im.intersection(columns)
 
         additional_derived = required_derived
@@ -293,17 +320,16 @@ class DatasetState:
                 additional_derived,
                 set(),
             )
-            required_builders |= additional_columns.intersection(known_builders)
+            required_raw |= additional_columns.intersection(known_raw)
             required_im |= additional_columns.intersection(known_im)
             additional_derived = additional_columns.intersection(known_derived)
 
-        all_required = required_derived | required_builders | required_im
+        all_required = required_derived | required_raw | required_im
 
         # Derived columns have to be instantiated in the order they are created in order
         # to ensure chains of derived columns work correctly
         new_derived = {k: v for k, v in self.__derived.items() if k in required_derived}
         # Builders can be performed in any order
-        new_builder = self.__builder.with_columns(required_builders)
         new_im_handler = self.__im_handler.with_columns(required_im)
 
         new_hidden.update(all_required - columns)
@@ -311,10 +337,9 @@ class DatasetState:
             new_hidden.add(self.__sort_by[0])
 
         return DatasetState(
-            self.__base_unit_transformations,
-            new_builder,
+            self.__unit_handler,
             self.__index,
-            self.__convention,
+            required_raw,
             self.__region,
             self.__header,
             new_im_handler,
@@ -325,10 +350,9 @@ class DatasetState:
 
     def sort_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
         return DatasetState(
-            self.__base_unit_transformations,
-            self.__builder,
+            self.__unit_handler,
             self.__index,
-            self.__convention,
+            self.__columns,
             self.__region,
             self.__header,
             self.__im_handler,
@@ -379,25 +403,40 @@ class DatasetState:
         return self.with_index(new_index)
 
     def with_units(
-        self, convention: str, cosmology: Cosmology, redshift: float | table.Column
+        self,
+        convention: Optional[str],
+        conversions: dict[u.Unit, u.Unit],
+        columns: dict[str, u.Unit],
+        cosmology: Cosmology,
+        redshift: float | table.Column,
     ):
         """
         Change the unit convention
         """
-        new_transformations = u.get_unit_transition_transformations(
-            self.__header.file.unit_convention,
-            convention,
-            self.__base_unit_transformations,
-            cosmology,
-            redshift,
-        )
-        convention_ = u.UnitConvention(convention)
-        new_builder = get_table_builder(new_transformations, self.__builder.columns)
+
+        if convention is None:
+            convention_ = self.__unit_handler.current_convention
+        else:
+            convention_ = UnitConvention(convention)
+        if (
+            convention_ == UnitConvention.SCALEFREE
+            and UnitConvention(self.header.file.unit_convention)
+            != UnitConvention.SCALEFREE
+        ):
+            raise ValueError(
+                f"Cannot convert units with convention {self.header.file.unit_convention} to convention scalefree"
+            )
+        column_keys = set(columns.keys())
+        missing_columns = column_keys - set(self.columns)
+        if missing_columns:
+            raise ValueError(f"Dataset does not have columns {missing_columns}")
+
         return DatasetState(
-            self.__base_unit_transformations,
-            new_builder,
+            self.__unit_handler.with_convention(convention_).with_conversions(
+                conversions, columns
+            ),
             self.__index,
-            convention_,
+            self.__columns,
             self.__region,
             self.__header,
             self.__im_handler,

@@ -23,7 +23,7 @@ def test_comoving_to_physical(core_path_487):
 
 
 def test_comoving_to_scalefree(core_path_487):
-    with pytest.raises(oc.transformations.units.UnitError):
+    with pytest.raises(ValueError):
         _ = oc.open(core_path_487, synth_cores=True).with_units("scalefree")
 
 
@@ -46,6 +46,7 @@ def test_filter_take(core_path_475, core_path_487):
 
 def test_open_multiple_write(core_path_487, core_path_475, tmp_path):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    print(ds.header.file.unit_convention)
     original_length = len(ds)
     original_redshift_range = ds.z_range
     output = tmp_path / "synth_gals.hdf5"
