@@ -1,4 +1,13 @@
-Opencosmo 0.9.3 (2025-09-25)
+opencosmo 0.9.4 (2025-09-26)
+============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause opening halos and galaxies only to fail
+
+
+opencosmo 0.9.3 (2025-09-25)
 ============================
 
 Bugfixes
@@ -68,7 +77,7 @@ Misc
 - Update evaluate to respect default parameters
 
 
-Opencosmo 0.8.0 (2025-07-22)
+opencosmo 0.8.0 (2025-07-22)
 ============================
 
 Features
