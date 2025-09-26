@@ -393,16 +393,13 @@ def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
 def combine_simcollection_schema(
     schema: SimCollectionSchema, comm: MPI.Comm
 ) -> SimCollectionSchema:
-    verify_structure(schema.children, comm)
-
-    child_names = schema.children.keys()
+    child_names = get_all_child_names(schema, comm)
 
     new_schema = SimCollectionSchema()
     new_child: DatasetSchema | StructCollectionSchema
 
     for child_name in child_names:
-        child_name_ = comm.bcast(child_name)
-        child = schema.children[child_name_]
+        child = schema.children[child_name]
         match child:
             case StructCollectionSchema():
                 new_child = combine_structcollection_schema(child, comm)
