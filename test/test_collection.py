@@ -18,7 +18,7 @@ def multi_path(snapshot_path):
 
 @pytest.fixture
 def halo_paths(snapshot_path: Path):
-    files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
+    files = ["haloproperties.hdf5", "haloparticles.hdf5", "sodproperties.hdf5"]
     hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
@@ -45,6 +45,27 @@ def conditional_path(multi_path, tmp_path):
         f["scidac1"].create_group("load/if")
         f["scidac1/load/if"].attrs["foo"] = True
     return path
+
+
+def test_open_structures(halo_paths, galaxy_paths):
+    c1 = oc.open(galaxy_paths)
+    assert isinstance(c1, oc.StructureCollection)
+    c2 = oc.open(halo_paths[0], galaxy_paths[1])
+    assert isinstance(c2, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], *galaxy_paths)
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], halo_paths[1])
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], halo_paths[2])
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(*halo_paths)
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(*halo_paths, galaxy_paths[1])
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(*halo_paths, *galaxy_paths)
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], halo_paths[1], *galaxy_paths)
+    assert isinstance(c3, oc.StructureCollection)
 
 
 def test_multi_filter(multi_path):
