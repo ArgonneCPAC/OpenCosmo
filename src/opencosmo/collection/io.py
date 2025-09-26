@@ -67,6 +67,10 @@ def get_collection_type(
     ).intersection(unique_file_types):
         validate_linked_groups(handles_by_type)
         return oc.StructureCollection
+
+    elif unique_file_types == {FILE_TYPE.GALAXY_PROPERTIES, FILE_TYPE.GALAXY_PARTICLES}:
+        return oc.StructureCollection
+
     elif (
         len(unique_file_types) == 1
         and unique_file_types.pop() == FILE_TYPE.STRUCTURE_COLLECTION
