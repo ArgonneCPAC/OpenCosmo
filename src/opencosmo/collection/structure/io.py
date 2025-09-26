@@ -151,6 +151,16 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         else:
             return collection
 
+    if (
+        link_sources["halo_properties"]
+        and len(link_sources["galaxy_properties"]) == 1
+        and not link_targets["galaxy_targets"]
+    ):
+        galaxy_properties = io.io.open_single_dataset(
+            link_sources["galaxy_properties"][0]
+        )
+        link_targets["halo_targets"]["galaxy_properties"] = galaxy_properties
+
     if len(link_sources["halo_properties"]) == 1 and link_targets["halo_targets"]:
         handlers = get_link_handlers(
             link_sources["halo_properties"][0].group,

@@ -59,11 +59,15 @@ open works in the following way:
 
 
 class FILE_TYPE(Enum):
-    DATASET = 0
-    PARTICLES = 1
-    LIGHTCONE = 2
-    STRUCTURE_COLLECTION = 3
-    SIMULATION_COLLECTION = 4
+    HALO_PROPERTIES = 0
+    HALO_PARTICLES = 1
+    GALAXY_PROPERTIES = 2
+    GALAXY_PARTICLES = 3
+    SOD_BINS = 4
+    LIGHTCONE = 5
+    STRUCTURE_COLLECTION = 6
+    SIMULATION_COLLECTION = 7
+    SYNTHETIC_CATALOG = 8
 
 
 class COLLECTION_TYPE(Enum):
@@ -83,17 +87,22 @@ class OpenTarget:
 
 
 def get_file_type(file: h5py.File) -> FILE_TYPE:
-    file_keys = set(file.keys())
-    if len(set(["header", "data"]).intersection(file_keys)) == 2:
-        return FILE_TYPE.DATASET
-
-    elif all("particles" in fk or fk == "header" for fk in file_keys):
-        return FILE_TYPE.PARTICLES
-
-    elif "header" in file.keys():
-        groups = {name: group for name, group in file.items() if name != "header"}
-        collection.structure.io.validate_linked_groups(groups)
-        return FILE_TYPE.STRUCTURE_COLLECTION
+    if "header" in file.keys():
+        dtype = file["header"]["file"].attrs["data_type"]
+        if dtype == "halo_particles":
+            return FILE_TYPE.HALO_PARTICLES
+        elif dtype == "halo_profiles":
+            return FILE_TYPE.SOD_BINS
+        elif dtype == "halo_properties":
+            return FILE_TYPE.HALO_PROPERTIES
+        elif dtype == "galaxy_properties":
+            return FILE_TYPE.GALAXY_PROPERTIES
+        elif dtype == "galaxy_particles":
+            return FILE_TYPE.GALAXY_PARTICLES
+        elif dtype == "diffsky_fits":
+            return FILE_TYPE.SYNTHETIC_CATALOG
+        else:
+            raise ValueError(f"Unknown file type {dtype}")
 
     if not all("header" in group.keys() for group in file.values()):
         for subgroup in file.values():
@@ -206,8 +215,11 @@ def open(
 
     """
     if len(files) == 1 and isinstance(files[0], list):
-        return oc.open(*files[0], **open_kwargs)
-    handles = [h5py.File(f) for f in files]
+        file_list = files[0]
+    else:
+        file_list = list(files)
+    file_list.sort()
+    handles = [h5py.File(f) for f in file_list]
     file_types = list(map(get_file_type, handles))
     targets = make_all_targets(handles)
     targets = evaluate_load_conditions(targets, open_kwargs)

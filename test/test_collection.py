@@ -19,7 +19,7 @@ def multi_path(snapshot_path):
 
 @pytest.fixture
 def halo_paths(snapshot_path: Path):
-    files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
+    files = ["haloproperties.hdf5", "haloparticles.hdf5", "sodproperties.hdf5"]
     hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
@@ -48,12 +48,47 @@ def conditional_path(multi_path, tmp_path):
     return path
 
 
+def test_open_structures(halo_paths, galaxy_paths):
+    c1 = oc.open(galaxy_paths)
+    assert isinstance(c1, oc.StructureCollection)
+    c2 = oc.open(halo_paths[0], galaxy_paths[1])
+    assert isinstance(c2, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], *galaxy_paths)
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], halo_paths[1])
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], halo_paths[2])
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(*halo_paths)
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(*halo_paths, galaxy_paths[1])
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(*halo_paths, *galaxy_paths)
+    assert isinstance(c3, oc.StructureCollection)
+    c3 = oc.open(halo_paths[0], halo_paths[1], *galaxy_paths)
+    assert isinstance(c3, oc.StructureCollection)
+
+
 def test_multi_filter(multi_path):
     collection = oc.open(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
 
     for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
+
+
+def test_link_particles_only(halo_paths):
+    collection = oc.open(halo_paths[0], halo_paths[1])
+    assert isinstance(collection, oc.StructureCollection)
+    for key in collection.keys():
+        assert "particles" in key or key == "halo_properties"
+
+
+def test_link_profiles_only(halo_paths):
+    print(halo_paths)
+    collection = oc.open(halo_paths[0], halo_paths[2])
+    assert isinstance(collection, oc.StructureCollection)
+    assert set(collection.keys()) == {"halo_properties", "halo_profiles"}
 
 
 def test_galaxy_alias_fails_for_halos(halo_paths):

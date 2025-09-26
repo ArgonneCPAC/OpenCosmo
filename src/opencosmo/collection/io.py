@@ -47,6 +47,7 @@ def get_collection_type(
     2. The files contain a single non-lightcone datatype.
     3. The files are linked together into a structure collection
     """
+
     handles_by_type = {target.data_type: target.group for target in targets}
     is_lightcone = [target.header.file.is_lightcone for target in targets]
     unique_data_types = set(handles_by_type.keys())
@@ -60,9 +61,16 @@ def get_collection_type(
 
     elif len(unique_data_types) == 1 and all(not il for il in is_lightcone):
         return oc.SimulationCollection
-    elif unique_file_types == set([FILE_TYPE.PARTICLES, FILE_TYPE.DATASET]):
+
+    elif FILE_TYPE.HALO_PROPERTIES in unique_file_types and set(
+        [FILE_TYPE.HALO_PARTICLES, FILE_TYPE.SOD_BINS, FILE_TYPE.GALAXY_PROPERTIES]
+    ).intersection(unique_file_types):
         validate_linked_groups(handles_by_type)
         return oc.StructureCollection
+
+    elif unique_file_types == {FILE_TYPE.GALAXY_PROPERTIES, FILE_TYPE.GALAXY_PARTICLES}:
+        return oc.StructureCollection
+
     elif (
         len(unique_file_types) == 1
         and unique_file_types.pop() == FILE_TYPE.STRUCTURE_COLLECTION
