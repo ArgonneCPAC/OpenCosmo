@@ -56,6 +56,11 @@ def all_paths(snapshot_path: Path):
     return list(hdf_files)
 
 
+@pytest.fixture
+def simcollection_path(snapshot_path):
+    return snapshot_path / "haloproperties_multi.hdf5"
+
+
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
 ):
@@ -535,3 +540,13 @@ def test_derive_write(input_path, tmp_path):
             )
         )
     )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_write_simcollection(simcollection_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "collection.hdf5"
+    temporary_path = comm.bcast(temporary_path)
+    ds = oc.open(simcollection_path)
+    oc.write(temporary_path, ds)
+    pass
