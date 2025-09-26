@@ -65,6 +65,7 @@ class FILE_TYPE(Enum):
     LIGHTCONE = 5
     STRUCTURE_COLLECTION = 6
     SIMULATION_COLLECTION = 7
+    SYNTHETIC_CATALOG = 8
 
 
 class COLLECTION_TYPE(Enum):
@@ -96,6 +97,8 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
             return FILE_TYPE.GALAXY_PROPERTIES
         elif dtype == "galaxy_particles":
             return FILE_TYPE.GALAXY_PARTICLES
+        elif dtype == "diffsky_fits":
+            return FILE_TYPE.SYNTHETIC_CATALOG
         else:
             raise ValueError(f"Unknown file type {dtype}")
 

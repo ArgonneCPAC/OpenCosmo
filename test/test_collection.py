@@ -84,7 +84,8 @@ def test_link_particles_only(halo_paths):
 
 
 def test_link_profiles_only(halo_paths):
-    collection = oc.open(halo_paths[1], halo_paths[2])
+    print(halo_paths)
+    collection = oc.open(halo_paths[0], halo_paths[2])
     assert isinstance(collection, oc.StructureCollection)
     assert set(collection.keys()) == {"halo_properties", "halo_profiles"}
 
