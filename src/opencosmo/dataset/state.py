@@ -197,7 +197,6 @@ class DatasetState:
         new_im_handler = self.__im_handler
         derived_update = {}
         new_unit_handler = self.__unit_handler
-        print(new_columns)
         for name, new_col in new_columns.items():
             if name in column_names:
                 raise ValueError(f"Dataset already has column named {name}")

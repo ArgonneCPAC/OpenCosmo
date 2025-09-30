@@ -8,6 +8,7 @@ from deprecated import deprecated
 
 from opencosmo import dataset as d
 from opencosmo import io
+from opencosmo.collection import lightcone as lc
 from opencosmo.collection.structure import structure as sc
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import DataIndex
@@ -101,8 +102,8 @@ def make_index_with_linked_data(
 
 def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bool):
     link_sources = defaultdict(list)
-    link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
-        defaultdict(dict)
+    link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
+        defaultdict(lambda: defaultdict(list))
     )
     for target in targets:
         if target.data_type == "halo_properties":
@@ -116,7 +117,7 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
                 name = target.data_type
             elif name.startswith("halo_properties"):
                 name = name[16:]
-            link_targets["halo_targets"][name] = dataset
+            link_targets["halo_targets"][name].append(dataset)
         elif target.data_type.startswith("galaxy"):
             dataset = io.io.open_single_dataset(target, bypass_lightcone=True)
             name = target.group.name.split("/")[-1]
@@ -124,7 +125,7 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
                 name = target.data_type
             elif name.startswith("galaxy_properties"):
                 name = name[18:]
-            link_targets["galaxy_targets"][name] = dataset
+            link_targets["galaxy_targets"][name].append(dataset)
         else:
             raise ValueError(
                 f"Unknown data type for structure collection {target.data_type}"
@@ -135,7 +136,26 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         or len(link_sources["galaxy_properties"]) > 1
     ):
         # Potentially a lightcone structure collection
-        raise NotImplementedError()
+        collections = {}
+        sources_by_step, targets_by_step = __sort_by_step(link_sources, link_targets)
+        if set(sources_by_step.keys()) != set(targets_by_step.keys()):
+            raise ValueError("Datasets are not the same across all lightcone steps!")
+        for step, sources in sources_by_step.items():
+            halo_properties = sources.get("halo_properties")
+            galaxy_properties = sources.get("galaxy_properties")
+            targets = targets_by_step[step]
+            collection = __build_structure_collection(
+                halo_properties, galaxy_properties, targets, ignore_empty
+            )
+            collections[step] = collection
+
+        expected_datasets = set(next(iter(collections.values())).keys())
+        for collection in collections.values():
+            if set(collection.keys()) != expected_datasets:
+                raise ValueError(
+                    "All structure collections in a lightcone must have the same set of datasets"
+                )
+        return lc.Lightcone(collections)
 
     halo_properties_target = None
     galaxy_properties_target = None
@@ -143,9 +163,45 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         halo_properties_target = link_sources["halo_properties"][0]
     if link_sources["galaxy_properties"]:
         galaxy_properties_target = link_sources["galaxy_properties"][0]
+
+    input_link_targets = {}
+    for source_type, targets in link_targets.items():
+        if any(len(ts) > 1 for ts in targets.values()):
+            raise ValueError("Found more than one linked file of a given type!")
+        input_link_targets[source_type] = {key: t[0] for key, t in targets.items()}
+
     return __build_structure_collection(
-        halo_properties_target, galaxy_properties_target, link_targets, ignore_empty
+        halo_properties_target,
+        galaxy_properties_target,
+        input_link_targets,
+        ignore_empty,
     )
+
+
+def __sort_by_step(link_sources: dict[str, list[io.io.OpenTarget]], link_targets):
+    sources_by_step: dict[str, io.io.OpenTarget] = defaultdict(dict)
+    targets_by_step: dict[str, dict[str, d.Dataset]] = defaultdict(
+        lambda: defaultdict(dict)
+    )
+    for source_name, sources in link_sources.items():
+        for source in sources:
+            if not source.header.file.is_lightcone:
+                raise ValueError(
+                    "Recived multiple source datasets of a single type, but not all are lightcone datasets!"
+                )
+            sources_by_step[source.header.file.step][source_name] = source
+    for target_type, targets_ in link_targets.items():
+        for target_name, targets in targets_.items():
+            for target in targets:
+                if not target.header.file.is_lightcone:
+                    raise ValueError(
+                        "Recived multiple datasets of a single type, but not all are lightcone datasets!"
+                    )
+                targets_by_step[target.header.file.step][target_type][target_name] = (
+                    target
+                )
+
+    return sources_by_step, targets_by_step
 
 
 def __build_structure_collection(
