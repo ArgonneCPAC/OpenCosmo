@@ -737,7 +737,6 @@ class Dataset:
         """
         if isinstance(descriptions, str):
             descriptions = {key: descriptions for key in new_columns.keys()}
-        print(descriptions)
         new_state = self.__state.with_new_columns(descriptions, **new_columns)
         return Dataset(self.__handler, self.__header, new_state, self.__tree)
 
