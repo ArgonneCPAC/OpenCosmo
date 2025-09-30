@@ -443,6 +443,5 @@ def test_lightcone_structure_collection_open(structure_600):
 
 
 def test_lightcone_structure_collection_open_multiple(structure_600, structure_601):
-    c = oc.open(*structure_600, *structure_601)
-    print(c)
-    assert isinstance(c, oc.StructureCollection)
+    with pytest.raises(NotImplementedError):
+        _ = oc.open(*structure_600, *structure_601)

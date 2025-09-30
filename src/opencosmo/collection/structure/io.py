@@ -135,6 +135,9 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         len(link_sources["halo_properties"]) > 1
         or len(link_sources["galaxy_properties"]) > 1
     ):
+        raise NotImplementedError(
+            "Opening structure collections that span multiple redshifts is not currently supported"
+        )
         # Potentially a lightcone structure collection
         collections = {}
         sources_by_step, targets_by_step = __sort_by_step(link_sources, link_targets)
@@ -165,10 +168,12 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         galaxy_properties_target = link_sources["galaxy_properties"][0]
 
     input_link_targets = {}
-    for source_type, targets in link_targets.items():
-        if any(len(ts) > 1 for ts in targets.values()):
+    for source_type, source_targets in link_targets.items():
+        if any(len(ts) > 1 for ts in source_targets.values()):
             raise ValueError("Found more than one linked file of a given type!")
-        input_link_targets[source_type] = {key: t[0] for key, t in targets.items()}
+        input_link_targets[source_type] = {
+            key: t[0] for key, t in source_targets.items()
+        }
 
     return __build_structure_collection(
         halo_properties_target,
@@ -179,8 +184,8 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
 
 
 def __sort_by_step(link_sources: dict[str, list[io.io.OpenTarget]], link_targets):
-    sources_by_step: dict[str, io.io.OpenTarget] = defaultdict(dict)
-    targets_by_step: dict[str, dict[str, d.Dataset]] = defaultdict(
+    sources_by_step: dict[int, dict[str, io.io.OpenTarget]] = defaultdict(dict)
+    targets_by_step: dict[int, dict[str, dict[str, d.Dataset]]] = defaultdict(
         lambda: defaultdict(dict)
     )
     for source_name, sources in link_sources.items():
