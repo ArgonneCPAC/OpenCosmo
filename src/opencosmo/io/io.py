@@ -233,7 +233,7 @@ def open(
     # For now the only way to open multiple files is with a StructureCollection
 
 
-def open_single_dataset(target: OpenTarget):
+def open_single_dataset(target: OpenTarget, bypass_lightcone: bool = False):
     header = target.header
     handle = target.group
 
@@ -290,7 +290,7 @@ def open_single_dataset(target: OpenTarget):
         tree=tree,
     )
 
-    if header.file.is_lightcone:
+    if header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset

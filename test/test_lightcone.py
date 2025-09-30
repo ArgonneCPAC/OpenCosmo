@@ -18,6 +18,21 @@ def haloproperties_601_path(lightcone_path):
     return lightcone_path / "step_601" / "haloproperties.hdf5"
 
 
+@pytest.fixture
+def all_files():
+    return ["haloparticles.hdf5", "haloproperties.hdf5", "sodpropertybins.hdf5"]
+
+
+@pytest.fixture
+def structure_600(lightcone_path, all_files):
+    return [lightcone_path / "step_600" / f for f in all_files]
+
+
+@pytest.fixture
+def structure_601(lightcone_path, all_files):
+    return [lightcone_path / "step_601" / f for f in all_files]
+
+
 def test_healpix_index(haloproperties_600_path):
     ds = oc.open(haloproperties_600_path)
     raw_data = ds.data
@@ -420,3 +435,9 @@ def test_write_single_lightcone(haloproperties_600_path, tmp_path):
     ds_written = oc.open(tmp_path / "temp.hdf5")
     assert isinstance(ds, oc.Lightcone)
     assert len(ds) == len(ds_written)
+
+
+def test_lightcone_structure_collection(structure_600):
+    c = oc.open(*structure_600)
+    print(c)
+    assert False
