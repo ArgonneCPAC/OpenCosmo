@@ -98,6 +98,9 @@ def with_redshift_column(dataset: Dataset):
     elif "redshift_true" in dataset.columns:
         z_col = 1 * oc.col("redshift_true")
         return dataset.with_new_columns(redshift=z_col)
+    raise ValueError(
+        "Unable to find a redshift or scale factor column for this lightcone dataset"
+    )
 
 
 class Lightcone(dict):
