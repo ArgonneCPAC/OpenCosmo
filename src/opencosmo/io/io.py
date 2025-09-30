@@ -225,6 +225,7 @@ def open(
     targets = evaluate_load_conditions(targets, open_kwargs)
     if len(targets) > 1:
         collection_type = collection.get_collection_type(targets, file_types)
+        print(collection_type)
         return collection_type.open(targets, **open_kwargs)
 
     else:

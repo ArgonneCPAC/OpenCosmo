@@ -1,6 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import h5py
 import numpy as np
@@ -130,15 +130,39 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
                 f"Unknown data type for structure collection {target.data_type}"
             )
 
-    if len(link_sources["galaxy_properties"]) == 1 and link_targets["galaxy_targets"]:
+    if (
+        len(link_sources["halo_properties"]) > 1
+        or len(link_sources["galaxy_properties"]) > 1
+    ):
+        # Potentially a lightcone structure collection
+        raise NotImplementedError()
+
+    halo_properties_target = None
+    galaxy_properties_target = None
+    if link_sources["halo_properties"]:
+        halo_properties_target = link_sources["halo_properties"][0]
+    if link_sources["galaxy_properties"]:
+        galaxy_properties_target = link_sources["galaxy_properties"][0]
+    return __build_structure_collection(
+        halo_properties_target, galaxy_properties_target, link_targets, ignore_empty
+    )
+
+
+def __build_structure_collection(
+    halo_properties_target: Optional[io.io.OpenTarget],
+    galaxy_properties_target: Optional[io.io.OpenTarget],
+    link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]],
+    ignore_empty: bool,
+):
+    if galaxy_properties_target is not None and link_targets["galaxy_targets"]:
         handlers = get_link_handlers(
-            link_sources["galaxy_properties"][0].group,
+            galaxy_properties_target.group,
             list(link_targets["galaxy_targets"].keys()),
-            link_sources["galaxy_properties"][0].header,
+            galaxy_properties_target.header,
         )
 
         source_dataset = io.io.open_single_dataset(
-            link_sources["galaxy_properties"][0], bypass_lightcone=True
+            galaxy_properties_target, bypass_lightcone=True
         )
         if ignore_empty:
             new_index = make_index_with_linked_data(source_dataset.index, handlers)
@@ -149,29 +173,29 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
             link_targets["galaxy_targets"],
             handlers,
         )
-        if len(link_sources["halo_properties"]) != 0:
+        if halo_properties_target is not None:
             link_targets["halo_targets"]["galaxy_properties"] = collection
         else:
             return collection
 
     if (
-        link_sources["halo_properties"]
-        and len(link_sources["galaxy_properties"]) == 1
+        halo_properties_target is not None
+        and galaxy_properties_target is not None
         and not link_targets["galaxy_targets"]
     ):
         galaxy_properties = io.io.open_single_dataset(
-            link_sources["galaxy_properties"][0], bypass_lightcone=True
+            galaxy_properties_target, bypass_lightcone=True
         )
         link_targets["halo_targets"]["galaxy_properties"] = galaxy_properties
 
-    if len(link_sources["halo_properties"]) == 1 and link_targets["halo_targets"]:
+    if halo_properties_target is not None and link_targets["halo_targets"]:
         handlers = get_link_handlers(
-            link_sources["halo_properties"][0].group,
+            halo_properties_target.group,
             list(link_targets["halo_targets"].keys()),
-            link_sources["halo_properties"][0].header,
+            halo_properties_target.header,
         )
         source_dataset = io.io.open_single_dataset(
-            link_sources["halo_properties"][0], bypass_lightcone=True
+            halo_properties_target, bypass_lightcone=True
         )
 
         if ignore_empty:

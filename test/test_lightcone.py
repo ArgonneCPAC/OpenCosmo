@@ -437,7 +437,12 @@ def test_write_single_lightcone(haloproperties_600_path, tmp_path):
     assert len(ds) == len(ds_written)
 
 
-def test_lightcone_structure_collection(structure_600):
+def test_lightcone_structure_collection_open(structure_600):
     c = oc.open(*structure_600)
+    assert isinstance(c, oc.StructureCollection)
+
+
+def test_lightcone_structure_collection_open_multiple(structure_600, structure_601):
+    c = oc.open(*structure_600, *structure_601)
     print(c)
-    assert False
+    assert isinstance(c, oc.StructureCollection)
