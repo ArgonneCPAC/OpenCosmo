@@ -167,7 +167,9 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
     if link_sources["galaxy_properties"]:
         galaxy_properties_target = link_sources["galaxy_properties"][0]
 
-    input_link_targets = {}
+    input_link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
+        defaultdict(dict)
+    )
     for source_type, source_targets in link_targets.items():
         if any(len(ts) > 1 for ts in source_targets.values()):
             raise ValueError("Found more than one linked file of a given type!")
@@ -215,7 +217,7 @@ def __build_structure_collection(
     link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]],
     ignore_empty: bool,
 ):
-    if galaxy_properties_target is not None and link_targets["galaxy_targets"]:
+    if galaxy_properties_target is not None and "galaxy_targets" in link_targets:
         handlers = get_link_handlers(
             galaxy_properties_target.group,
             list(link_targets["galaxy_targets"].keys()),
@@ -242,7 +244,7 @@ def __build_structure_collection(
     if (
         halo_properties_target is not None
         and galaxy_properties_target is not None
-        and not link_targets["galaxy_targets"]
+        and "galaxy_targets" not in link_targets
     ):
         galaxy_properties = io.io.open_single_dataset(
             galaxy_properties_target, bypass_lightcone=True
