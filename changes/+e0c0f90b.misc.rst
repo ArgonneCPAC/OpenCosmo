@@ -1,0 +1,1 @@
+Move all annotation-only imports behind a TYPE_CHECKING block and add :code:`from __future__ import annotations` to most files. This significantly improves initial import time.
