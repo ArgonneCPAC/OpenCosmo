@@ -601,7 +601,7 @@ class Dataset:
 
             dataset = oc.open("haloproperties.hdf5")
             dataset = dataset
-                        .sort_by("fof_halo_mass")
+                        .sort_by("fof_halo_mass", invert=True)
                         .take(100, at="start")
 
         Parameters

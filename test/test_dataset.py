@@ -186,6 +186,12 @@ def test_sort_by_derived(input_path):
     assert np.all(xoff["fof_halo_tag"][idxs][:n] == toolkit_sorted_xoff["fof_halo_tag"])
 
 
+def test_sort_by_unknown(input_path):
+    dataset = oc.open(input_path)
+    with pytest.raises(ValueError):
+        dataset.sort_by("random_column")
+
+
 def test_drop(input_path):
     with oc.open(input_path) as ds:
         data = ds.data
