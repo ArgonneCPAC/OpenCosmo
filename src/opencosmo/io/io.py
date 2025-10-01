@@ -13,7 +13,7 @@ from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import DatasetHandler
 from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.file import FileExistance, file_reader, resolve_path
-from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.header import read_header
 from opencosmo.index import ChunkedIndex
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
@@ -28,6 +28,8 @@ from .schemas import FileSchema
 if TYPE_CHECKING:
     from pathlib import Path
     from types import ModuleType
+
+    from opencosmo.header import OpenCosmoHeader
 
     from .protocols import Writeable
 

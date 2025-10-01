@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Optional
 
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 
-from opencosmo.parameters import FileParameters
-
 if TYPE_CHECKING:
     from opencosmo.dataset.dataset import Dataset
+    from opencosmo.parameters import FileParameters
     from opencosmo.spatial.protocols import Region
 
 ALLOWED_COORDINATES_3D = {

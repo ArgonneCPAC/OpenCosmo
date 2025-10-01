@@ -1,15 +1,17 @@
+from __future__ import annotations
+
 from functools import cached_property
 from typing import TYPE_CHECKING, Mapping, Optional
-
-import astropy.units as u
-import h5py
-import numpy as np
-from astropy.cosmology import Cosmology
 
 from opencosmo.units import UnitConvention
 from opencosmo.units.get import UnitApplicator, get_unit_applicators_hdf5
 
 if TYPE_CHECKING:
+    import astropy.units as u
+    import h5py
+    import numpy as np
+    from astropy.cosmology import Cosmology
+
     from opencosmo.header import OpenCosmoHeader
 
 

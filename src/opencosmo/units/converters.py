@@ -1,14 +1,17 @@
+from __future__ import annotations
+
 from functools import cache, partial
 from typing import TYPE_CHECKING, Optional
 
 import astropy.units as u
-import numpy as np
-from astropy.cosmology import Cosmology
 from astropy.cosmology import units as cu
 
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
+    import numpy as np
+    from astropy.cosmology import Cosmology
+
     from opencosmo.dataset.state import DatasetState
 
 KNOWN_SCALEFACTOR_COLUMNS = {"fof_halo_center_a"}

@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import shutil
 import subprocess
 import sys
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from .specs import DependencySpec
+if TYPE_CHECKING:
+    from .specs import DependencySpec
 
 
 def install_conda_forge(packages: dict[str, Optional[str]]):

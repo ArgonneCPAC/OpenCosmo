@@ -1,23 +1,31 @@
+from __future__ import annotations
+
 from functools import cached_property, reduce
 from itertools import chain
-from typing import Any, Callable, Generator, Iterable, Optional, Self
+from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from astropy.coordinates import SkyCoord  # type: ignore
-from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import Column, Table, vstack  # type: ignore
+from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
-from opencosmo.dataset import Dataset
-from opencosmo.dataset.column import ColumnMask, DerivedColumn
+from opencosmo.dataset.column import DerivedColumn
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import SimpleIndex
-from opencosmo.io.io import OpenTarget, open_single_dataset
+from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
-from opencosmo.parameters.hacc import HaccSimulationParameters
-from opencosmo.spatial import Region
+
+if TYPE_CHECKING:
+    from astropy.coordinates import SkyCoord
+    from astropy.cosmology import Cosmology
+    from astropy.table import Table
+
+    from opencosmo.dataset import Dataset
+    from opencosmo.dataset.column import ColumnMask
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.io import OpenTarget
+    from opencosmo.parameters.hacc import HaccSimulationParameters
+    from opencosmo.spatial import Region
 
 
 def get_redshift_range(datasets: list[Dataset]):

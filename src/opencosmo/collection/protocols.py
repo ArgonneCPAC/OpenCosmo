@@ -1,10 +1,13 @@
-from typing import Iterable, Protocol, Self, Union
+from __future__ import annotations
 
-from opencosmo.dataset import Dataset
-from opencosmo.dataset.column import ColumnMask
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.io.io import OpenTarget
-from opencosmo.io.protocols import DataSchema
+from typing import TYPE_CHECKING, Iterable, Protocol, Self, Union
+
+if TYPE_CHECKING:
+    from opencosmo.dataset import Dataset
+    from opencosmo.dataset.column import ColumnMask
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.protocols import DataSchema
 
 
 class Collection(Protocol):

@@ -1,7 +1,8 @@
+# ruff: noqa: TC001 TC003
 from datetime import date
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore

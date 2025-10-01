@@ -1,12 +1,16 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import yt  # type: ignore
 from pyxsim import CIESourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
-from yt.data_objects.static_output import Dataset as YT_Dataset  # type: ignore
 
-import opencosmo as oc
+if TYPE_CHECKING:
+    from yt.data_objects.static_output import Dataset as YT_Dataset
+
+    import opencosmo as oc
 
 # ---- define some constants ---- #
 mp = unyt_quantity(1.67262192595e-24, "g")

@@ -1,4 +1,6 @@
-from pathlib import Path
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -6,6 +8,9 @@ from pyarrow import parquet as pq
 
 import opencosmo as oc
 from opencosmo.io import write_parquet
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

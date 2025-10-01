@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 from copy import deepcopy
-from typing import TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 import h5py
 import numpy as np
-from numpy.typing import NDArray
 
-from opencosmo.index.protocols import DataIndex
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from opencosmo.index.protocols import DataIndex
 
 
 class SimpleIndex:

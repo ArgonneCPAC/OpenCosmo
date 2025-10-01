@@ -1,4 +1,6 @@
-from pathlib import Path
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -7,6 +9,9 @@ from astropy.cosmology import FlatLambdaCDM
 from astropy.cosmology import units as cu
 
 from opencosmo.header import read_header, write_header
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def update_simulation_parameter(

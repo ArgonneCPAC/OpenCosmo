@@ -1,16 +1,20 @@
-from typing import Any, Dict, Optional, Tuple
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import numpy as np
 import yt  # type: ignore
 from matplotlib.colors import LogNorm  # type: ignore
-from matplotlib.figure import Figure  # type: ignore
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar  # type: ignore
 from unyt import unyt_quantity  # type: ignore
 from yt.visualization.base_plot_types import get_multi_plot  # type: ignore
-from yt.visualization.plot_window import NormalPlot, PlotWindow  # type: ignore
 
 import opencosmo as oc
 from opencosmo.analysis import create_yt_dataset
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+    from yt.visualization.plot_window import NormalPlot, PlotWindow
 
 # ruff: noqa: E501
 

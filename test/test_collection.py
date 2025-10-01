@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import random
 from collections import defaultdict
-from pathlib import Path
 from shutil import copy
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -10,6 +12,9 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

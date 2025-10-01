@@ -1,8 +1,11 @@
-from typing import Protocol, Self
+from __future__ import annotations
 
-import h5py
-import numpy as np
-from numpy.typing import NDArray
+from typing import TYPE_CHECKING, Protocol, Self
+
+if TYPE_CHECKING:
+    import h5py
+    import numpy as np
+    from numpy.typing import NDArray
 
 
 class DataIndex(Protocol):

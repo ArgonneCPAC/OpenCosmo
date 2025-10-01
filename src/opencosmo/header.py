@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 from copy import copy
 from functools import cache
 from itertools import chain
-from pathlib import Path
 from types import UnionType
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
 from pydantic import BaseModel, ValidationError
@@ -18,6 +19,9 @@ from opencosmo.parameters import (
 )
 from opencosmo.parameters.units import apply_units
 from opencosmo.units import UnitConvention
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class OpenCosmoHeader:

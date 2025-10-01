@@ -1,10 +1,13 @@
-from typing import Iterable, Optional, Protocol, Self
+from __future__ import annotations
 
-import h5py
+from typing import TYPE_CHECKING, Iterable, Optional, Protocol, Self
 
-from opencosmo.dataset import Dataset
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
+if TYPE_CHECKING:
+    import h5py
+
+    from opencosmo.dataset import Dataset
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
 
 
 class LinkHandler(Protocol):

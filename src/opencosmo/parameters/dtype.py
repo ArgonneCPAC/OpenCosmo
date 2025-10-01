@@ -1,7 +1,13 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from opencosmo.parameters import hacc
-from opencosmo.parameters.file import FileParameters
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+    from opencosmo.parameters.file import FileParameters
 
 
 def get_dtype_parameters(file_parameters: FileParameters) -> dict[str, type[BaseModel]]:

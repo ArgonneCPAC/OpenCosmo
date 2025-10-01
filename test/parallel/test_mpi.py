@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from functools import reduce
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -11,6 +13,9 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

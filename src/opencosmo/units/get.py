@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import astropy.cosmology.units as cu
 import astropy.units as u
-import h5py
 from astropy.constants import m_p
-from astropy.cosmology import Cosmology
-from numpy.typing import ArrayLike
 
 if TYPE_CHECKING:
+    import h5py
+    from astropy.cosmology import Cosmology
+    from numpy.typing import ArrayLike
+
     from opencosmo.header import OpenCosmoHeader
 from opencosmo.units.convention import UnitConvention
 from opencosmo.units.converters import get_unit_transitions

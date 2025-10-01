@@ -1,19 +1,23 @@
-from typing import Callable, Iterable, Mapping, Optional, Self
+from __future__ import annotations
 
-import astropy.units as u
-import h5py
-from astropy.cosmology import Cosmology  # type: ignore
+from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Self
 
 from opencosmo.collection import structure as sc
-from opencosmo.collection.protocols import Collection
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.column import ColumnMask
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import io
-from opencosmo.io.protocols import DataSchema
 from opencosmo.io.schemas import SimCollectionSchema
-from opencosmo.parameters import HaccSimulationParameters
-from opencosmo.spatial.protocols import Region
+
+if TYPE_CHECKING:
+    import astropy.units as u
+    import h5py
+    from astropy.cosmology import Cosmology
+
+    from opencosmo.collection.protocols import Collection
+    from opencosmo.dataset.column import ColumnMask
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.protocols import DataSchema
+    from opencosmo.parameters import HaccSimulationParameters
+    from opencosmo.spatial.protocols import Region
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
