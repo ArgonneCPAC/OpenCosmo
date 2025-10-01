@@ -5,8 +5,11 @@ from typing import TYPE_CHECKING
 import h5py
 import numpy as np
 
-from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
+
+if TYPE_CHECKING:
+    from opencosmo.index import DataIndex
 
 
 class LinkedDatasetHandler:

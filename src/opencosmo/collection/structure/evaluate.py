@@ -1,14 +1,17 @@
+from __future__ import annotations
+
 from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 from astropy.units import Quantity  # type: ignore
-from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
 from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:
+    from numpy.typing import DTypeLike
+
     from opencosmo import StructureCollection
 
 

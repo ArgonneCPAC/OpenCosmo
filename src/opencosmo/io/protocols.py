@@ -1,6 +1,9 @@
-from typing import Any, Optional, Protocol
+from __future__ import annotations
 
-import h5py
+from typing import TYPE_CHECKING, Any, Optional, Protocol
+
+if TYPE_CHECKING:
+    import h5py
 
 try:
     from mpi4py import MPI

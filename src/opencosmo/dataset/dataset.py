@@ -13,21 +13,22 @@ from warnings import warn
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from astropy import units  # type: ignore
 from astropy.table import QTable  # type: ignore
 
 from opencosmo.dataset.evaluate import visit_dataset
-from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index import ChunkedIndex
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
+    from astropy import units
     from astropy.cosmology import Cosmology
 
     from opencosmo.dataset.column import ColumnMask, DerivedColumn
     from opencosmo.dataset.handler import DatasetHandler
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
     from opencosmo.io.schemas import DatasetSchema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region

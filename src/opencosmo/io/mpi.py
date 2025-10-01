@@ -1,17 +1,16 @@
+from __future__ import annotations
+
 from copy import copy
 from enum import Enum
-from pathlib import Path
-from typing import Iterable, Mapping, Optional, Type, TypeVar, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Optional, Type, TypeVar, cast
 
 import h5py
 import numpy as np
 from mpi4py import MPI
 
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex
 from opencosmo.mpi import get_comm_world
 
-from .protocols import DataSchema
 from .schemas import (
     ColumnSchema,
     DatasetSchema,
@@ -19,7 +18,6 @@ from .schemas import (
     FileSchema,
     IdxLinkSchema,
     LightconeSchema,
-    LinkSchema,
     SimCollectionSchema,
     SpatialIndexLevelSchema,
     SpatialIndexSchema,
@@ -27,6 +25,16 @@ from .schemas import (
     StructCollectionSchema,
     ZeroLengthError,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from opencosmo.header import OpenCosmoHeader
+
+    from .protocols import DataSchema
+    from .schemas import (
+        LinkSchema,
+    )
 
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas

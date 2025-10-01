@@ -1,10 +1,13 @@
-from typing import Iterable, Optional
+from __future__ import annotations
 
-import astropy.units as u  # type: ignore
-import numpy as np
-from numpy.typing import NDArray
+from typing import TYPE_CHECKING, Iterable, Optional
 
-from opencosmo.index import DataIndex
+if TYPE_CHECKING:
+    import astropy.units as u
+    import numpy as np
+    from numpy.typing import NDArray
+
+    from opencosmo.index import DataIndex
 
 
 class InMemoryColumnHandler:

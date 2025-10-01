@@ -1,14 +1,20 @@
-from pathlib import Path
+from __future__ import annotations
+
 from shutil import copyfile
+from typing import TYPE_CHECKING
 
 import astropy.cosmology.units as cu
 import astropy.units as u
 import h5py
 import numpy as np
 import pytest
-from astropy.table import Column
 
 import opencosmo as oc
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from astropy.table import Column
 
 
 def add_column(tmp_path: Path, original_file: Path, column: Column):

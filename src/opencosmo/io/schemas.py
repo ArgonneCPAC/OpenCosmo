@@ -1,17 +1,21 @@
+from __future__ import annotations
+
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
-from numpy.typing import DTypeLike, NDArray
 
-import opencosmo.io.protocols as iop
 import opencosmo.io.writers as iow
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index import ChunkedIndex
 
 if TYPE_CHECKING:
     from mpi4py import MPI
+    from numpy.typing import DTypeLike, NDArray
+
+    import opencosmo.io.protocols as iop
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
 
 ColumnShape = tuple[int, ...]
 

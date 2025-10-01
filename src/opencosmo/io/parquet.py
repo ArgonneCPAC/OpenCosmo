@@ -1,12 +1,18 @@
-from os import PathLike
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 from warnings import warn
 
 import pyarrow  # type: ignore
 from pyarrow import parquet as pq
 
 import opencosmo as oc
-from opencosmo.collection.protocols import Collection
+
+if TYPE_CHECKING:
+    from os import PathLike
+
+    from opencosmo.collection.protocols import Collection
 
 
 def write_parquet(

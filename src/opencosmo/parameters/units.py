@@ -1,11 +1,15 @@
-from typing import Any, Type
+from __future__ import annotations
 
-from astropy.cosmology import Cosmology
+from typing import TYPE_CHECKING, Any, Type
+
 from astropy.units.typing import UnitLike
-from pydantic import BaseModel
 
 from opencosmo.units import UnitConvention
 from opencosmo.units.get import get_unit_applicators_dict
+
+if TYPE_CHECKING:
+    from astropy.cosmology import Cosmology
+    from pydantic import BaseModel
 
 ModelUnitAnnotation = tuple[UnitConvention, dict[str, UnitLike], bool]
 

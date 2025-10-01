@@ -8,7 +8,7 @@ import numpy as np
 import opencosmo as oc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
-from opencosmo.index import DataIndex, SimpleIndex
+from opencosmo.index import SimpleIndex
 from opencosmo.io.schemas import StructCollectionSchema
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     import astropy.units as u
 
     from opencosmo.dataset.column import DerivedColumn
+    from opencosmo.index import DataIndex
     from opencosmo.io import io
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region

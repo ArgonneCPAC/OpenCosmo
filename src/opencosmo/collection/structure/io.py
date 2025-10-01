@@ -1,19 +1,25 @@
-from collections import defaultdict
-from pathlib import Path
-from typing import Iterable, Optional
+from __future__ import annotations
 
-import h5py
+from collections import defaultdict
+from typing import TYPE_CHECKING, Iterable, Optional
+
 import numpy as np
 from deprecated import deprecated
 
-from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection import lightcone as lc
 from opencosmo.collection.structure import structure as sc
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
 
 from .handler import LinkedDatasetHandler
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import h5py
+
+    from opencosmo import dataset as d
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
 
 LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_star_particles": "star_particles",

@@ -1,11 +1,17 @@
-from typing import Callable, Optional
+from __future__ import annotations
 
-import h5py
+from typing import TYPE_CHECKING, Callable, Optional
+
 import numpy as np
 
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex, SimpleIndex
-from opencosmo.io import protocols as iop
+from opencosmo.index import SimpleIndex
+
+if TYPE_CHECKING:
+    import h5py
+
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
+    from opencosmo.io import protocols as iop
 
 try:
     from mpi4py import MPI

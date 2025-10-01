@@ -11,10 +11,11 @@ import numpy as np
 
 import opencosmo as oc
 from opencosmo.index import SimpleIndex
-from opencosmo.spatial.region import BoxRegion, Point3d
+from opencosmo.spatial.region import BoxRegion
 
 if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.region import Point3d
 
 Index3d = tuple[int, int, int]
 

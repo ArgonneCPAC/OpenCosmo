@@ -1,7 +1,10 @@
-from collections import namedtuple
-from typing import NamedTuple, Type, TypeVar
+from __future__ import annotations
 
-from opencosmo import Dataset
+from collections import namedtuple
+from typing import TYPE_CHECKING, NamedTuple, Type, TypeVar
+
+if TYPE_CHECKING:
+    from opencosmo import Dataset
 
 DIFFMAH_INPUT = namedtuple(
     "DIFFMAH_INPUT", ["logm0", "logtc", "early_index", "late_index", "t_peak"]

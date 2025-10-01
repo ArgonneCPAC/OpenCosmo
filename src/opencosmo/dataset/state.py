@@ -1,24 +1,28 @@
+from __future__ import annotations
+
 from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import astropy.units as u
 import numpy as np
-from astropy import table, units  # type: ignore
-from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import QTable
-from numpy.typing import NDArray
 
-from opencosmo.dataset.column import DerivedColumn
-from opencosmo.dataset.im import InMemoryColumnHandler
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
-from opencosmo.spatial.protocols import Region
 from opencosmo.units import UnitConvention
-from opencosmo.units.handler import UnitHandler
 
 if TYPE_CHECKING:
+    from astropy import table, units
+    from astropy.cosmology import Cosmology
+    from numpy.typing import NDArray
+
+    from opencosmo.dataset.column import DerivedColumn
     from opencosmo.dataset.handler import DatasetHandler
+    from opencosmo.dataset.im import InMemoryColumnHandler
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
+    from opencosmo.spatial.protocols import Region
+    from opencosmo.units.handler import UnitHandler
 
 
 class DatasetState:

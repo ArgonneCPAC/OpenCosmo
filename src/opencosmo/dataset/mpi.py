@@ -1,12 +1,16 @@
-from typing import Optional
-from warnings import warn
+from __future__ import annotations
 
-import h5py
-from mpi4py import MPI
+from typing import TYPE_CHECKING, Optional
+from warnings import warn
 
 from opencosmo.index import ChunkedIndex
 from opencosmo.spatial.protocols import TreePartition
-from opencosmo.spatial.tree import Tree
+
+if TYPE_CHECKING:
+    import h5py
+    from mpi4py import MPI
+
+    from opencosmo.spatial.tree import Tree
 
 
 def partition(

@@ -1,13 +1,17 @@
-from pathlib import Path
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Type
 
 import opencosmo as oc
 from opencosmo.collection.simulation import SimulationCollection
 from opencosmo.collection.structure.io import validate_linked_groups
-from opencosmo.io.io import FILE_TYPE, OpenTarget
+from opencosmo.io.io import FILE_TYPE
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from opencosmo.collection.protocols import Collection
+    from opencosmo.io.io import OpenTarget
 
 
 def open_simulation_files(**paths: Path) -> SimulationCollection:

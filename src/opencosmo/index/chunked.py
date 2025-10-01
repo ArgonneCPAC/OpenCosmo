@@ -1,11 +1,16 @@
-from typing import TypeGuard
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, TypeGuard
 
 import h5py
 import numpy as np
-from numpy.typing import NDArray
 
 from opencosmo.index import simple
-from opencosmo.index.protocols import DataIndex
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from opencosmo.index.protocols import DataIndex
 
 
 def pack(start: np.ndarray, size: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

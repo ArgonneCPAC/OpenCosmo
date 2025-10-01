@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import count
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 from uuid import uuid1
 
 import h5py
@@ -12,12 +12,16 @@ try:
 except ImportError:
     MPI = None  # type: ignore
 
-from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
-from opencosmo.spatial.protocols import Region, SpatialIndex, TreePartition
+from opencosmo.spatial.protocols import TreePartition
 from opencosmo.spatial.utils import combine_upwards
+
+if TYPE_CHECKING:
+    from opencosmo.index import DataIndex
+    from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
 def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):

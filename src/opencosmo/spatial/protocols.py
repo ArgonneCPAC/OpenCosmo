@@ -1,11 +1,12 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Iterable, NamedTuple, Optional, Protocol, Union
 
 import numpy as np
 from numpy.typing import NDArray
 
-from opencosmo.index import DataIndex, SimpleIndex
-
 if TYPE_CHECKING:
+    from opencosmo.index import DataIndex, SimpleIndex
     from opencosmo.spatial.region import BoxRegion
     from opencosmo.units import UnitConvention
     from opencosmo.units.get import UnitApplicator

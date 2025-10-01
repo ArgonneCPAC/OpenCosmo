@@ -1,6 +1,12 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from opencosmo.index import SimpleIndex
-from opencosmo.spatial.protocols import Region
 from opencosmo.spatial.region import HealPixRegion
+
+if TYPE_CHECKING:
+    from opencosmo.spatial.protocols import Region
 
 
 class HealPixIndex:
