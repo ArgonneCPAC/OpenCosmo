@@ -429,20 +429,29 @@ class StructureCollection:
             filtered, self.__header, self.__datasets, self.__links, self.__hide_source
         )
 
-    def select(
-        self,
-        columns: str | Iterable[str],
-        dataset: str,
-    ) -> StructureCollection:
+    def select(self, **column_selections: str | Iterable[str]) -> StructureCollection:
         """
         Update a dataset in the collection collection to only include the
-        columns specified.
+        columns specified. The name of the arguments to this function should be
+        dataset names. For example:
+
+        .. code-block:: python
+
+            collection = collection.select(
+                halo_properties = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
+                dm_particles = ["x", "y", "z"]
+            )
+
+        Datasets that do not appear in the argument list will not be modified. You can
+        remove entire datasets from the collection with
+        :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
+
 
 
         Parameters
         ----------
-        columns : str | Iterable[str]
-            The columns to select from the dataset.
+        **columns : str | Iterable[str]
+            The columns to select from a dataset
 
         dataset : str
             The dataset to select from.
@@ -457,23 +466,28 @@ class StructureCollection:
         ValueError
             If the specified dataset is not found in the collection.
         """
-        if dataset == self.__header.file.data_type:
-            new_source = self.__source.select(columns)
-            return StructureCollection(
-                new_source, self.__header, self.__datasets, self.__links
-            )
+        if not column_selections:
+            return self
+        new_source = self.__source
+        new_datasets = {}
+        for dataset, columns in column_selections.items():
+            if dataset == self.__header.file.data_type:
+                new_source = self.__source.select(columns)
 
-        elif dataset not in self.__datasets:
-            raise ValueError(f"Dataset {dataset} not found in collection.")
-        output_ds = self.__datasets[dataset]
-        if not isinstance(output_ds, oc.Dataset):
-            raise NotImplementedError
+            elif dataset not in self.__datasets:
+                raise ValueError(f"Dataset {dataset} not found in collection.")
+            output_ds = self.__datasets[dataset]
 
-        new_dataset = output_ds.select(columns)
+            if not isinstance(output_ds, oc.Dataset):
+                raise NotImplementedError
+
+            new_dataset = output_ds.select(columns)
+            new_datasets[dataset] = new_dataset
+
         return StructureCollection(
-            self.__source,
+            new_source,
             self.__header,
-            {**self.__datasets, dataset: new_dataset},
+            self.__datasets | new_datasets,
             self.__links,
             self.__hide_source,
         )

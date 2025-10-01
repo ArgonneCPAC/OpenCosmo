@@ -101,10 +101,9 @@ def __prepare_collection(
             raise NotImplementedError
     else:
         collection = collection.with_datasets(list(spec.keys()))
-    for ds_name, columns in spec.items():
-        if columns is None:
-            continue
-        collection = collection.select(columns, dataset=ds_name)
+
+    selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}
+    collection = collection.select(**selections)
     return collection
 
 
