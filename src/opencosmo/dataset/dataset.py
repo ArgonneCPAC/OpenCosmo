@@ -14,23 +14,24 @@ from warnings import warn
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import units  # type: ignore
-from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import QTable  # type: ignore
 
-from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.evaluate import visit_dataset
-from opencosmo.dataset.state import DatasetState
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex, DataIndex
-from opencosmo.io.schemas import DatasetSchema
-from opencosmo.parameters import HaccSimulationParameters
 from opencosmo.spatial import check
-from opencosmo.spatial.protocols import Region
-from opencosmo.spatial.tree import Tree
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
+    from astropy.cosmology import Cosmology
+
+    from opencosmo.dataset.column import ColumnMask, DerivedColumn
     from opencosmo.dataset.handler import DatasetHandler
+    from opencosmo.dataset.state import DatasetState
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.schemas import DatasetSchema
+    from opencosmo.parameters import HaccSimulationParameters
+    from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
 
 
 OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import reduce
-from pathlib import Path
-from types import ModuleType
-from typing import Callable, Iterable, Optional
+from typing import TYPE_CHECKING, Callable, Iterable, Optional
 
 import h5py
 from deprecated import deprecated  # type: ignore
@@ -25,8 +23,13 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.get import get_unit_applicators_hdf5
 from opencosmo.units.handler import make_unit_handler
 
-from .protocols import Writeable
 from .schemas import FileSchema
+
+if TYPE_CHECKING:
+    from pathlib import Path
+    from types import ModuleType
+
+    from .protocols import Writeable
 
 mpiio: Optional[ModuleType]
 partition: Optional[Callable]
