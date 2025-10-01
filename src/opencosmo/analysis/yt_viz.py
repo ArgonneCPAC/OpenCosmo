@@ -19,7 +19,9 @@ if TYPE_CHECKING:
 # ruff: noqa: E501
 
 
-def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
+def ParticleProjectionPlot(
+    *args, **kwargs
+) -> yt.AxisAlignedProjectionPlot | yt.OffAxisProjectionPlot:
     """
     Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ParticleProjectionPlot>`_.
 
@@ -37,7 +39,8 @@ def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
     yt.visualization.plot_window.ParticleProjectionPlot
         A ParticleProjectionPlot object containing the particle projection plot.
     """
-    return yt.ParticleProjectionPlot(*args, **kwargs)
+    # mypy gets this wrong. ParticleProjectionPlot is basically a factory class
+    return yt.ParticleProjectionPlot(*args, **kwargs)  # type: ignore
 
 
 def ProjectionPlot(*args, **kwargs) -> NormalPlot:
@@ -62,7 +65,7 @@ def ProjectionPlot(*args, **kwargs) -> NormalPlot:
     return yt.ProjectionPlot(*args, **kwargs)
 
 
-def SlicePlot(*args, **kwargs) -> PlotWindow:
+def SlicePlot(*args, **kwargs) -> NormalPlot:
     """
     Wrapper for `yt.SlicePlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.SlicePlot>`_.
 
@@ -84,7 +87,7 @@ def SlicePlot(*args, **kwargs) -> PlotWindow:
     return yt.SlicePlot(*args, **kwargs)
 
 
-def ProfilePlot(*args, **kwargs) -> PlotWindow:
+def ProfilePlot(*args, **kwargs) -> yt.ProfilePlot:
     """
     Wrapper for `yt.ProfilePlot <https://yt-project.org/doc/reference/api/yt.visualization.particle_plots.html#yt.visualization.particle_plots.ParticleProjectionPlot>`_.
 
@@ -106,7 +109,7 @@ def ProfilePlot(*args, **kwargs) -> PlotWindow:
     return yt.ProfilePlot(*args, **kwargs)
 
 
-def PhasePlot(*args, **kwargs) -> PlotWindow:
+def PhasePlot(*args, **kwargs) -> yt.PhasePlot:
     """
     Wrapper for `yt.PhasePlot <https://yt-project.org/doc/reference/api/yt.visualization.profile_plotter.html#yt.visualization.profile_plotter.PhasePlot>`_.
 
