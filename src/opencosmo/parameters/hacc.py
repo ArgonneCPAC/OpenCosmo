@@ -16,9 +16,9 @@ from pydantic import (
     model_validator,
 )
 
-from opencosmo.parameters import CosmologyParameters
 from opencosmo.units import UnitConvention
 
+from .cosmology import CosmologyParameters
 from .diffsky import DiffskyVersionInfo
 from .units import register_units
 

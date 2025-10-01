@@ -8,9 +8,6 @@ import numpy as np
 from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 
-if TYPE_CHECKING:
-    pass
-
 
 class LinkedDatasetHandler:
     """

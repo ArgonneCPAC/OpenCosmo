@@ -69,8 +69,8 @@ def make_box(p1: Point3d, p2: Point3d):
     if isinstance(width, float) or isinstance(width, int):
         width = (width, width, width)
 
-    halfwidth = cast(BoxSize, tuple(float(w / 2) for w in width))
-    center = cast(Point3d, center)
+    halfwidth = cast("BoxSize", tuple(float(w / 2) for w in width))
+    center = cast("Point3d", center)
 
     return BoxRegion(center, halfwidth)
 

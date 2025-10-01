@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 from functools import singledispatchmethod
-from typing import Any, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, Iterable, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
-from astropy.cosmology import FLRW  # type: ignore
 from healpy import ang2vec, query_disc  # type: ignore
-from numpy.typing import NDArray
 
 from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
     HealPixRegionModel,
 )
-from opencosmo.spatial.protocols import Region
-from opencosmo.units import UnitConvention
-from opencosmo.units.handler import UnitHandler
+
+if TYPE_CHECKING:
+    from astropy.cosmology import FLRW
+    from numpy.typing import NDArray
+
+    from opencosmo.spatial.protocols import Region
+    from opencosmo.units import UnitConvention
+    from opencosmo.units.handler import UnitHandler
 
 T = TypeVar("T", float, u.Quantity)
 

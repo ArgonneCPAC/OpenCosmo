@@ -1,23 +1,26 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Generator, Iterable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
-import astropy  # type: ignore
-import astropy.units as u
 import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
-from opencosmo.dataset.column import DerivedColumn
 from opencosmo.index import DataIndex, SimpleIndex
-from opencosmo.io import io
 from opencosmo.io.schemas import StructCollectionSchema
-from opencosmo.parameters import HaccSimulationParameters
-from opencosmo.spatial.protocols import Region
 
-from .handler import LinkedDatasetHandler
+if TYPE_CHECKING:
+    import astropy
+    import astropy.units as u
+
+    from opencosmo.dataset.column import DerivedColumn
+    from opencosmo.io import io
+    from opencosmo.parameters import HaccSimulationParameters
+    from opencosmo.spatial.protocols import Region
+
+    from .handler import LinkedDatasetHandler
 
 
 def filter_source_by_dataset(

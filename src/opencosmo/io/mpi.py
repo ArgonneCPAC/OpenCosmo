@@ -162,13 +162,13 @@ S = TypeVar("S", DatasetSchema, SimCollectionSchema, StructCollectionSchema)
 def combine_file_child(schema: S | None, comm: MPI.Comm) -> S:
     match schema:
         case DatasetSchema():
-            return cast(S, combine_dataset_schemas(schema, comm))
+            return cast("S", combine_dataset_schemas(schema, comm))
         case SimCollectionSchema():
-            return cast(S, combine_simcollection_schema(schema, comm))
+            return cast("S", combine_simcollection_schema(schema, comm))
         case StructCollectionSchema():
-            return cast(S, combine_structcollection_schema(schema, comm))
+            return cast("S", combine_structcollection_schema(schema, comm))
         case LightconeSchema():
-            return cast(S, combine_lightcone_schema(schema, comm))
+            return cast("S", combine_lightcone_schema(schema, comm))
         case _:
             raise ValueError(f"Invalid file child of type {type(schema)}")
 

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import h5py
-import numpy as np
 
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
+
+if TYPE_CHECKING:
+    import numpy as np
+
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
 
 
 class DatasetHandler:

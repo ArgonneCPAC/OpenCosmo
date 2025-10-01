@@ -74,5 +74,9 @@ filename = "docs/source/changelog.rst"
 [tool.pytest.ini_options]
 testpaths = ["test"]
 
-[tool.ruff.pycodestyle]
+[lint.pycodestyle]
 max-doc-length = 90
+
+[tool.ruff.lint]
+select = ["TC"]
+
