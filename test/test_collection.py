@@ -156,6 +156,27 @@ def test_visit_single(halo_paths):
     assert not np.any(data == 0)
 
 
+def test_visit_single_dataset(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+    }
+
+    def offset(dm_particles):
+        x = np.mean(dm_particles["x"])
+        y = np.mean(dm_particles["y"])
+        z = np.mean(dm_particles["z"])
+        return {"particle_center_x": x, "particle_center_y": y, "particle_center_z": z}
+
+    collection = collection.evaluate(offset, **spec, insert=True)
+    data = (
+        collection["halo_properties"]
+        .select(("particle_center_x", "particle_center_y", "particle_center_z"))
+        .get_data()
+    )
+    assert not np.any(data == 0)
+
+
 def test_visit_with_return_none(halo_paths):
     collection = oc.open(*halo_paths).take(200)
     spec = {

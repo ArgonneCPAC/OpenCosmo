@@ -7,6 +7,7 @@ import numpy as np
 from astropy.units import Quantity  # type: ignore
 
 from opencosmo import dataset as ds
+from opencosmo.dataset.evaluate import visit_dataset
 from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 def visit_structure_collection(
     function: Callable,
     spec: Mapping[str, Optional[list[str]]],
-    collection: "StructureCollection",
+    collection: StructureCollection,
     format: str = "astropy",
     dtype: Optional[DTypeLike] = None,
     evaluator_kwargs: dict[str, Any] = {},
@@ -31,10 +32,6 @@ def visit_structure_collection(
         dtype = np.float64
 
     storage = __make_output(function, to_visit, format, kwargs, iterable_kwargs)
-
-    if isinstance(to_visit, ds.Dataset):
-        raise NotImplementedError()
-
     for i, structure in enumerate(to_visit.objects()):
         if i == 0:
             continue
@@ -65,7 +62,7 @@ def __make_input(structure: dict, format: str = "astropy"):
 
 def __make_output(
     function: Callable,
-    collection: "StructureCollection",
+    collection: StructureCollection,
     format: str = "astropy",
     kwargs: dict[str, Any] = {},
     iterable_kwargs: dict[str, Sequence] = {},
@@ -87,21 +84,9 @@ def __make_output(
 
 
 def __prepare_collection(
-    spec: dict[str, Optional[list[str]]], collection: "StructureCollection"
-):
-    if len(spec.keys()) == 1:
-        ds_name = next(iter(spec.keys()))
-        dataset = collection[ds_name]
-        if isinstance(dataset, ds.Dataset):
-            columns = spec[ds_name]
-            if columns is not None:
-                return dataset.select(columns)
-            return dataset
-        else:
-            raise NotImplementedError
-    else:
-        collection = collection.with_datasets(list(spec.keys()))
-
+    spec: dict[str, Optional[list[str]]], collection: StructureCollection
+) -> StructureCollection:
+    collection = collection.with_datasets(list(spec.keys()))
     selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}
     collection = collection.select(**selections)
     return collection
@@ -110,7 +95,7 @@ def __prepare_collection(
 def __verify(
     function: Callable,
     spec: dict[str, Optional[list[str]]],
-    collection: "StructureCollection",
+    collection: StructureCollection,
     kwarg_keys: Iterable[str],
 ):
     datasets_in_collection = set(collection.keys())
