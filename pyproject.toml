@@ -82,3 +82,22 @@ future-annotations = true
 preview = true
 select = ["TC"]
 
+[tool.towncrier.fragment.improvement]
+name = "Improvements"
+showcontent = true
+
+[tool.towncrier.fragment.feature]
+name = "New Features"
+
+[tool.towncrier.fragment.bugfix]
+name = "Bugfixes"
+
+[tool.towncrier.fragment.doc]
+name = "Documentation"
+
+[tool.towncrier.fragment.removal]
+name = "Deprecations and Removals"
+
+[tool.towncrier.fragment.misc]
+name = "Miscellaneous"
+
