@@ -878,7 +878,7 @@ class StructureCollection:
         """
 
         if not isinstance(datasets, list):
-            raise ValueError("Expected a list with at least one entries")
+            raise ValueError("Expected a list with at least one entry")
 
         known_datasets = set(self.keys())
         requested_datasets = set(datasets)
