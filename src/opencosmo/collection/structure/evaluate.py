@@ -119,7 +119,21 @@ def __verify(
             continue
         dataset = collection[ds_name]
         if not isinstance(dataset, ds.Dataset):
-            raise NotImplementedError
+            if not isinstance(columns_in_spec, dict):
+                raise ValueError(
+                    "When passing columns to a nested structure collection, the argument should be a dictionary"
+                )
+                for key, value in columns_in_spec.items():
+                    if key not in dataset.keys():
+                        raise ValueError(
+                            "No dataset {key} found in structure collection"
+                        )
+                    elif set(dataset[key].columns).difference(value):
+                        raise ValueError(
+                            "Missing some requested columns in this datset!"
+                        )
+            continue
+
         columns_to_check = set(columns_in_spec)
         columns_in_dataset = set(dataset.columns)
         if not columns_to_check.issubset(columns_in_dataset):
