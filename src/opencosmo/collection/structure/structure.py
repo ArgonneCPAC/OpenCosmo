@@ -247,7 +247,8 @@ class StructureCollection:
         You can substantially improve the performance of this method by specifying
         which data is actually needed to do the computation. This method will
         automatically select the requested data, avoiding reading unneeded data
-        from disk.
+        from disk. The semantics for specifying the columns is identical to
+        :py:meth:`select <opencosmo.StructureCollection.select>`.
 
         The function passed to this method must take arguments that match the names
         of datasets that are stored in this collection. You can specify specific
@@ -283,7 +284,11 @@ class StructureCollection:
         way will not respond to changes in unit convention.
 
         It is not required to pass a list of column names for a given dataset. If a list
-        is not provided, all columns will be passed to the computation function.
+        is not provided, all columns will be passed to the computation function. Data will
+        be passed into the function as numpy arrays or astropy tables, depending on the
+        value of the "format" argument. However if the evaluation involes a nested
+        structure collection (e.g. a galaxy collection inside a structure collection),
+        the nested collection will be passed to your function as a structure collection.
 
         For more details and advanced usage see :ref:`Evaluating on Structure Collections`
 

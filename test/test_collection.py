@@ -200,6 +200,38 @@ def test_visit_single_dataset(halo_paths):
     assert not np.any(data == 0)
 
 
+def test_visit_nested_structures(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths).take(100)
+    spec = {
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+        "dm_particles": ["x", "y", "z"],
+        "galaxies": {
+            "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
+            "star_particles": ["x", "y", "z"],
+        },
+    }
+
+    def offset(halo_properties, dm_particles, galaxies):
+        assert set(galaxies["galaxy_properties"].columns) == {
+            "gal_mass_bar",
+            "gal_mass_star",
+        }
+
+        assert set(galaxies["star_particles"].columns) == {
+            "x",
+            "y",
+            "z",
+        }
+        return 6
+
+    collection = collection.evaluate(offset, **spec)
+    assert np.all(collection["halo_properties"].select("offset").get_data("numpy") == 6)
+
+
 def test_visit_with_return_none(halo_paths):
     collection = oc.open(*halo_paths).take(200)
     spec = {
