@@ -68,7 +68,6 @@ def __make_output(
     using_all_columns: bool,
     kwargs: dict[str, Any],
 ) -> dict | None:
-    assert False
     if using_all_columns:
         first_values = function(next(dataset.take(1, at="start").rows()), **kwargs)
     else:
