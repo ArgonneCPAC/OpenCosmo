@@ -90,7 +90,6 @@ def test_link_particles_only(halo_paths):
 
 
 def test_link_profiles_only(halo_paths):
-    print(halo_paths)
     collection = oc.open(halo_paths[0], halo_paths[2])
     assert isinstance(collection, oc.StructureCollection)
     assert set(collection.keys()) == {"halo_properties", "halo_profiles"}
@@ -132,6 +131,30 @@ def test_multi_filter_write(multi_path, tmp_path):
     collection = oc.open(tmp_path / "filtered.hdf5")
     for ds in collection.values():
         assert all(ds.select("sod_halo_mass").data > 0)
+
+
+def test_select_nested_structures(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+    collection = collection.select(
+        halo_properties=["fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z"],
+        dm_particles=["x", "y", "z"],
+        galaxies={
+            "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
+            "star_particles": ["x", "y", "z"],
+        },
+    ).take(100)
+    for halo in collection.halos():
+        assert set(halo["halo_properties"].keys()) == {
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        }
+        assert set(halo["dm_particles"].columns) == {"x", "y", "z"}
+        assert set(halo["galaxies"]["galaxy_properties"].columns) == {
+            "gal_mass_bar",
+            "gal_mass_star",
+        }
+        assert set(halo["galaxies"]["star_particles"].columns) == {"x", "y", "z"}
 
 
 def test_visit_single(halo_paths):
