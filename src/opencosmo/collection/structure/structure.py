@@ -97,10 +97,6 @@ class StructureCollection:
     ) -> StructureCollection:
         return sio.build_structure_collection(targets, ignore_empty)
 
-    @classmethod
-    def read(cls, *args, **kwargs) -> StructureCollection:
-        raise NotImplementedError
-
     @property
     def header(self):
         return self.__header
@@ -429,7 +425,9 @@ class StructureCollection:
             filtered, self.__header, self.__datasets, self.__links, self.__hide_source
         )
 
-    def select(self, **column_selections: str | Iterable[str]) -> StructureCollection:
+    def select(
+        self, **column_selections: str | Iterable[str] | dict
+    ) -> StructureCollection:
         """
         Update a dataset in the collection collection to only include the
         columns specified. The name of the arguments to this function should be
@@ -446,12 +444,27 @@ class StructureCollection:
         remove entire datasets from the collection with
         :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
 
+        For nested structure collections, such as galaxies within halos, you can pass
+        a nested dictionary:
+
+        .. code-block:: python
+
+            collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
+
+            collection = collection.select(
+                halo_properties = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
+                dm_particles = ["x", "y", "z"]
+                galaxies = {
+                    "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
+                    "star_particles": ["x", "y", "z"]
+                }
+            )
 
 
         Parameters
         ----------
-        **column_selections : str | Iterable[str]
-            The columns to select from a given dataset
+        **column_selections : str | Iterable[str] | dict[str, Iterable[str]]
+            The columns to select from a given dataset or sub-collection
 
         dataset : str
             The dataset to select from.
@@ -478,13 +491,18 @@ class StructureCollection:
             elif dataset not in self.__datasets:
                 raise ValueError(f"Dataset {dataset} not found in collection.")
 
-            output_ds = self.__datasets[dataset]
+            new_ds = self.__datasets[dataset]
 
-            if not isinstance(output_ds, oc.Dataset):
-                raise NotImplementedError
+            if not isinstance(new_ds, oc.Dataset):
+                if not isinstance(columns, dict):
+                    raise ValueError(
+                        "When working with nested structure collections, the argument should be a dictionary!"
+                    )
+                new_ds = new_ds.select(**columns)
+            else:
+                new_ds = new_ds.select(columns)
 
-            new_dataset = output_ds.select(columns)
-            new_datasets[dataset] = new_dataset
+            new_datasets[dataset] = new_ds
 
         return StructureCollection(
             new_source,
@@ -497,10 +515,10 @@ class StructureCollection:
     def drop(self, **columns_to_drop):
         """
         Update the linked collection by dropping the specified columns
-        in the specified datasets. Follows the exact same semantics as
+        in the specified datasets. This method follows the exact same semantics as
         :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>`.
         Argument names should be datasets in this collection, and the argument
-        values should be a string or list of strings.
+        values should be a string, list of strings, or dictionary.
 
         Datasets that are not included will not be modified. You can drop
         entire datasets with :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
@@ -535,7 +553,12 @@ class StructureCollection:
 
             elif dataset_name not in self.__datasets:
                 raise ValueError(f"Dataset {dataset_name} not found in collection.")
-            new_ds = self.__datasets[dataset_name].drop(columns)
+            new_ds = self.__datasets[dataset_name]
+            if isinstance(new_ds, oc.Dataset):
+                new_ds = new_ds.drop(columns)
+            elif isinstance(new_ds.StructureCollection):
+                new_ds = new_ds.drop(**columns)
+
             new_datasets[dataset_name] = new_ds
 
         return StructureCollection(
