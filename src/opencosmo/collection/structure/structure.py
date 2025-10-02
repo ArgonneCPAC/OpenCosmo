@@ -450,8 +450,8 @@ class StructureCollection:
 
         Parameters
         ----------
-        **columns : str | Iterable[str]
-            The columns to select from a dataset
+        **column_selections : str | Iterable[str]
+            The columns to select from a given dataset
 
         dataset : str
             The dataset to select from.
@@ -473,9 +473,11 @@ class StructureCollection:
         for dataset, columns in column_selections.items():
             if dataset == self.__header.file.data_type:
                 new_source = self.__source.select(columns)
+                continue
 
             elif dataset not in self.__datasets:
                 raise ValueError(f"Dataset {dataset} not found in collection.")
+
             output_ds = self.__datasets[dataset]
 
             if not isinstance(output_ds, oc.Dataset):
@@ -492,19 +494,21 @@ class StructureCollection:
             self.__hide_source,
         )
 
-    def drop(self, columns: str | Iterable[str], dataset: Optional[str] = None):
+    def drop(self, **columns_to_drop):
         """
         Update the linked collection by dropping the specified columns
-        in the given dataset. If no dataset is specified, the properties dataset
-        is used. For example, if this collection contains galaxies,
-        calling this function without a "dataset" argument will select columns
-        from the galaxy_properties dataset.
+        in the specified datasets. Follows the exact same semantics as
+        :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>`.
+        Argument names should be datasets in this collection, and the argument
+        values should be a string or list of strings.
 
+        Datasets that are not included will not be modified. You can drop
+        entire datasets with :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
 
         Parameters
         ----------
-        columns : str | Iterable[str]
-            The columns to select from the dataset.
+        **columns_to_drop : str | Iterable[str]
+            The columns to drop from the dataset.
 
         dataset : str, optional
             The dataset to select from. If None, the properties dataset is used.
@@ -519,21 +523,25 @@ class StructureCollection:
         ValueError
             If the specified dataset is not found in the collection.
         """
+        if not columns_to_drop:
+            return self
+        new_source = self.__source
+        new_datasets = {}
 
-        if dataset is None or dataset == self.__header.file.data_type:
-            new_source = self.__source.drop(columns)
-            return StructureCollection(
-                new_source, self.__header, self.__datasets, self.__links
-            )
+        for dataset_name, columns in columns_to_drop.items():
+            if dataset_name == self.__header.file.data_type:
+                new_source = self.__source.drop(columns)
+                continue
 
-        elif dataset not in self.__datasets:
-            raise ValueError(f"Dataset {dataset} not found in collection.")
-        output_ds = self.__datasets[dataset]
-        new_dataset = output_ds.drop(columns)
+            elif dataset_name not in self.__datasets:
+                raise ValueError(f"Dataset {dataset_name} not found in collection.")
+            new_ds = self.__datasets[dataset_name].drop(columns)
+            new_datasets[dataset_name] = new_ds
+
         return StructureCollection(
-            self.__source,
+            new_source,
             self.__header,
-            {**self.__datasets, dataset: new_dataset},
+            self.__datasets | new_datasets,
             self.__links,
             self.__hide_source,
         )
