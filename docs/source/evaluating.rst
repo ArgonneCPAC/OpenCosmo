@@ -135,6 +135,40 @@ There are two clear differences between this example and the one with a single d
 
 You will also notice that we set :code:`format = "numpy"` in the call to :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>`. With this option set, the data will be provided to our function as a dictionary of scalars (for halo_properties) and a dictionary of numpy arrays (for dm_particles). If we had chosen instead :code:`format = "astropy"` (the default), the data would have been provided as a dictionary of astropy quantities and a dictionary of quantity arrays, respectively.
 
+If you have a nested :py:class:`StructureCollection <opencosmo.StructureCollection>`, it will be passed to your function directly. You can still select specific columns from these datasets though:
+
+
+.. code-block:: python
+
+   oc.open("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
+
+   def my_cool_function(halo_properties, dm_particles, galaxies):
+        # the "galaxies" argument will be a StructureCollection
+        # You can use its data directly, iterate through its galaxies
+        # or further filter.
+        
+        # do fun stuff here.
+
+
+   collection = collection.evaluate(
+        offset, 
+        insert=True, 
+        format="numpy",
+        dm_particles=["x","y","z"],
+        halo_properties=[
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "sod_halo_com_x",
+            "sod_halo_com_y",
+            "sod_halo_com_z"
+        ]
+        galaxies = {
+            "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
+            "star_particles": ["x", "y", "z"]
+        }
+   )
+
 Evaluating on a Single Dataset in a Structure Collection
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

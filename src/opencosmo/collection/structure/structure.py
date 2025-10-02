@@ -287,8 +287,9 @@ class StructureCollection:
         is not provided, all columns will be passed to the computation function. Data will
         be passed into the function as numpy arrays or astropy tables, depending on the
         value of the "format" argument. However if the evaluation involes a nested
-        structure collection (e.g. a galaxy collection inside a structure collection),
-        the nested collection will be passed to your function as a structure collection.
+        structure collection (e.g. a galaxy collection inside a structure collection)
+        in addition to other datasets, the nested collection will be passed to your
+        function as a StructureCollection.
 
         For more details and advanced usage see :ref:`Evaluating on Structure Collections`
 
