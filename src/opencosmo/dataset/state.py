@@ -351,7 +351,7 @@ class DatasetState:
             new_derived,
         )
 
-    def sort_by(self, column_name: str, handler: "DatasetHandler", invert: bool):
+    def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:
             raise ValueError(f"This dataset has no column {column_name}")
         return DatasetState(

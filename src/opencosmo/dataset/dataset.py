@@ -621,7 +621,7 @@ class Dataset:
 
 
         """
-        new_state = self.__state.sort_by(column, self.__handler, invert)
+        new_state = self.__state.sort_by(column, invert)
         return Dataset(
             self.__handler,
             self.__header,
