@@ -173,17 +173,10 @@ class DatasetState:
 
         return output
 
-    def with_index(self, index: DataIndex):
-        """
-        Return the same dataset state with a new index
-        """
-
-        new_cache = self.__im_handler.project(index)
-        return self.__rebuild(im_handler=new_cache, index=index)
-
     def with_mask(self, mask: NDArray[np.bool_]):
         new_index = self.__index.mask(mask)
-        return self.with_index(new_index)
+        new_im_handler = self.__im_handler.get_rows(mask)
+        return self.__rebuild(im_handler=new_im_handler, index=new_index)
 
     def make_schema(self):
         header = self.__header.with_region(self.__region)
@@ -362,6 +355,16 @@ class DatasetState:
 
         return self.__rebuild(columns=columns)
 
+    def with_index(self, index: DataIndex):
+        if (
+            not isinstance(self.__index, ChunkedIndex)
+            or not self.__index.is_single_chunk()
+            or self.__index.range()[0] != 0
+        ):
+            raise ValueError
+        new_im = self.__im_handler.take_index(index)
+        return self.__rebuild(im_handler=new_im, index=index)
+
     def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:
             raise ValueError(f"This dataset has no column {column_name}")
@@ -385,12 +388,22 @@ class DatasetState:
         else:
             index = self.__index
 
-        new_index = index.take(n, at)
-        if self.__sort_by is not None:
-            new_idxs = self.__index.into_array()[new_index.into_array()]
-            new_index = SimpleIndex(np.sort(new_idxs))
+        if at == "start":
+            new_index = index.take_range(0, n)
+            new_im = self.__im_handler.take_range(0, n)
+        elif at == "end":
+            length = len(index)
+            new_index = index.take_range(length - n, length)
+            new_im = self.__im_handler.take_range(length - n, length)
+        elif at == "random":
+            row_indices = np.sort(np.random.choice(len(self.__index), n, replace=False))
+            new_index = SimpleIndex(index.into_array()[row_indices])
+            new_im = self.__im_handler.get_rows(row_indices)
 
-        return self.with_index(new_index)
+        if self.__sort_by is not None:
+            new_index = SimpleIndex(np.sort(new_index.into_array()))
+
+        return self.__rebuild(index=new_index, im_handler=new_im)
 
     def take_range(self, start: int, end: int):
         """
@@ -407,7 +420,21 @@ class DatasetState:
             raise ValueError("start and end must be within the bounds of the dataset.")
 
         new_index = self.__index.take_range(start, end)
-        return self.with_index(new_index)
+        new_im = self.__im_handler.take_range(start, end)
+        return self.__rebuild(index=new_index, im_handler=new_im)
+
+    def take_rows(self, rows: np.ndarray | DataIndex):
+        if isinstance(rows, ChunkedIndex) and rows.is_single_chunk():
+            start, end = rows.range()
+            return self.take_range(start, end)
+        elif isinstance(rows, (SimpleIndex, ChunkedIndex)):
+            return self.take_rows(rows.into_array())
+
+        if not isinstance(rows, np.ndarray) or not rows.dtype == int:
+            raise ValueError("Expected an array of integers!")
+        new_im = self.__im_handler.get_rows(rows)
+        new_index = SimpleIndex(self.__index.into_array()[rows])
+        return self.__rebuild(im_handler=new_im, index=new_index)
 
     def with_units(
         self,

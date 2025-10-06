@@ -9,6 +9,8 @@ from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
+    from weakref import ref
+
     import numpy as np
 
     from opencosmo.header import OpenCosmoHeader

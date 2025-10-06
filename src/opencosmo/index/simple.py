@@ -125,18 +125,6 @@ class SimpleIndex:
         new_idx = np.where(self_mask & other_mask)[0]
         return SimpleIndex(new_idx)
 
-    def projection(self, other: DataIndex) -> DataIndex:
-        """
-        Given a second index, find the indicies into this index
-        where the second index is true.
-        """
-        other_idxs = other.into_array()
-        is_in_array = np.isin(other_idxs, self.__index)
-        matching_values = other_idxs[is_in_array]
-        indices_into_this_index = np.where(np.isin(self.__index, matching_values))[0]
-
-        return SimpleIndex(indices_into_this_index)
-
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:
             raise np.exceptions.AxisError(
