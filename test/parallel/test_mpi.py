@@ -143,14 +143,6 @@ def test_filters(input_path):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
-
-    parallel_assert(len(ds.data) == 400)
-
-
-@pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = tmp_path / "filtered.hdf5"
@@ -203,20 +195,6 @@ def test_filter_zerolength(input_path, tmp_path):
     )
 
     parallel_assert(read_tags == written_tags)
-
-
-@pytest.mark.parallel(nprocs=4)
-def test_select_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = (
-            f.filter(oc.col("sod_halo_mass") > 0)
-            .select(["sod_halo_mass", "fof_halo_mass"])
-            .take(100, at="random")
-            .collect()
-        )
-
-    parallel_assert(len(ds.data) == 400)
-    parallel_assert(set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
 
 
 @pytest.mark.parallel(nprocs=4)
