@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
+from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import astropy.units as u
@@ -40,7 +41,6 @@ class DatasetState:
         header: OpenCosmoHeader,
         im_handler: InMemoryColumnHandler,
         sort_by: Optional[tuple[str, bool]] = None,
-        hidden: set[str] = set(),
         derived: dict[str, DerivedColumn] = {},
     ):
         self.__unit_handler = unit_handler
@@ -48,7 +48,6 @@ class DatasetState:
         self.__columns = columns
         self.__derived: dict[str, DerivedColumn] = derived
         self.__header = header
-        self.__hidden = hidden
         self.__index = index
         self.__sort_by = sort_by
         self.__region = region
@@ -81,12 +80,7 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        columns = (
-            set(self.__columns)
-            | set(self.__derived.keys())
-            | set(self.__im_handler.keys())
-        )
-        return list(columns - self.__hidden)
+        return list(self.__columns)
 
     def get_data(
         self,
@@ -98,10 +92,16 @@ class DatasetState:
         """
         Get the data for a given handler.
         """
-        data = handler.get_data(self.__columns, index=self.__index)
-        data = self.__get_im_columns(data)
-        data = self.__build_derived_columns(data)
-        data = self.__unit_handler.apply_units(data, unit_kwargs)
+        data = self.__build_derived_columns(handler, unit_kwargs)
+        data = data | self.__get_im_columns(data, unit_kwargs)
+
+        raw_columns = set(self.columns).difference(data.keys())
+        if self.__sort_by is not None and self.__sort_by[0] in handler.columns:
+            raw_columns.add(self.__sort_by[0])
+
+        raw_data = handler.get_data(raw_columns, index=self.__index)
+        data = data | self.__unit_handler.apply_units(raw_data, unit_kwargs)
+
         output = QTable(data)
 
         data_columns = set(output.columns)
@@ -111,13 +111,14 @@ class DatasetState:
             order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
             output = output[order]
             index_array = index_array[order]
-        if (
-            self.__hidden
-            and not self.__hidden.intersection(data_columns) == data_columns
-        ):
-            output.remove_columns(self.__hidden)
+
+        extras = set(data.keys()).difference(self.columns)
+        if extras:
+            output.remove_columns(extras)
+
         if attach_index:
             output["raw_index"] = index_array
+
         return output
 
     def with_index(self, index: DataIndex):
@@ -135,7 +136,6 @@ class DatasetState:
             self.__header,
             new_cache,
             self.__sort_by,
-            self.__hidden,
             self.__derived,
         )
 
@@ -145,10 +145,10 @@ class DatasetState:
 
     def make_schema(self, handler: "DatasetHandler"):
         header = self.__header.with_region(self.__region)
-        schema = handler.prep_write(
-            self.__index, self.__columns - self.__hidden, header
-        )
-        derived_names = set(self.__derived.keys()) - self.__hidden
+        raw_columns = self.__columns.intersection(handler.columns)
+
+        schema = handler.prep_write(self.__index, raw_columns, header)
+        derived_names = set(self.__derived.keys())
         derived_data = (
             self.select(derived_names)
             .with_units("unitless", {}, {}, None, None)
@@ -171,8 +171,6 @@ class DatasetState:
 
         im_descriptions = self.__im_handler.descriptions
         for colname, coldata in self.__im_handler.columns():
-            if colname in self.__hidden:
-                continue
             attrs = {}
             attrs["unit"] = str(column_units.get(colname))
             attrs["description"] = im_descriptions.get(colname)
@@ -193,16 +191,11 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        column_names = (
-            set(self.__columns)
-            | set(self.__derived.keys())
-            | set(self.__im_handler.keys())
-        )
-        new_im_handler = self.__im_handler
         derived_update = {}
         new_unit_handler = self.__unit_handler
+        new_im_handler = self.__im_handler
         for name, new_col in new_columns.items():
-            if name in column_names:
+            if name in self.__columns:
                 raise ValueError(f"Dataset already has column named {name}")
 
             if isinstance(new_col, np.ndarray):
@@ -223,7 +216,7 @@ class DatasetState:
                     name, new_col, descriptions.get(name, "None")
                 )
 
-            elif not new_col.check_parent_existance(column_names):
+            elif not new_col.check_parent_existance(self.__columns):
                 raise ValueError(
                     f"Column {name} is derived from columns "
                     "that are not in the dataset!"
@@ -233,7 +226,7 @@ class DatasetState:
                 new_col.description = descriptions.get(name, "None")
                 new_unit_handler = new_unit_handler.with_new_columns(**{name: unit})
                 derived_update[name] = new_col
-            column_names.add(name)
+            self.__columns.add(name)
 
         new_derived = self.__derived | derived_update
         return DatasetState(
@@ -244,23 +237,47 @@ class DatasetState:
             self.__header,
             new_im_handler,
             self.__sort_by,
-            self.__hidden,
             new_derived,
         )
 
-    def __build_derived_columns(self, data: table.Table) -> table.Table:
+    def __build_derived_columns(
+        self, handler: DatasetHandler, unit_kwargs: dict
+    ) -> table.Table:
         """
         Build any derived columns that are present in this dataset
         """
-        for colname, column in self.__derived.items():
-            new_column = column.evaluate(data)
-            data[colname] = new_column
+        if not self.__derived:
+            return {}
+
+        derived_names = set(self.__derived.keys()).intersection(self.columns)
+        if self.__sort_by is not None and self.__sort_by[0] in self.__derived.keys():
+            derived_names.add(self.__sort_by[0])
+
+        ancestors: set[str] = reduce(
+            lambda acc, der: acc.union(der.requires()), self.__derived.values(), set()
+        )
+        raw_ancestors = ancestors.intersection(handler.columns)
+        additional_derived = ancestors.intersection(self.__derived.keys())
+        derived_names = derived_names.union(additional_derived)
+
+        data = handler.get_data(raw_ancestors, self.__index)
+        data = self.__unit_handler.apply_units(data, unit_kwargs)
+        for name in cycle(derived_names):
+            if derived_names.issubset(data.keys()):
+                break
+            elif name in data:
+                continue
+            elif set(data.keys()).issuperset(self.__derived[name].requires()):
+                data[name] = self.__derived[name].evaluate(data)
+
         return data
 
-    def __get_im_columns(self, data: dict) -> table.Table:
+    def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
+        im_data = {}
         for colname, column in self.__im_handler.columns():
-            data[colname] = column
-        return data
+            im_data[colname] = column
+
+        return self.__unit_handler.apply_units(im_data, unit_kwargs)
 
     def with_region(self, region: Region):
         """
@@ -274,7 +291,6 @@ class DatasetState:
             self.__header,
             self.__im_handler,
             self.__sort_by,
-            self.__hidden,
             self.__derived,
         )
 
@@ -292,63 +308,21 @@ class DatasetState:
             columns = [columns]
 
         columns = set(columns)
-        new_hidden = set()
-        if self.__sort_by is not None:
-            if self.__sort_by[0] not in columns:
-                new_hidden.add(self.__sort_by[0])
-            columns.add(self.__sort_by[0])
-
-        known_raw = self.__columns
-        known_derived = set(self.__derived.keys())
-        known_im = set(self.__im_handler.keys())
-        unknown_columns = columns - known_raw - known_derived - known_im
-        if unknown_columns:
+        missing = columns - self.__columns
+        if missing:
             raise ValueError(
-                "Tried to select columns that aren't in this dataset! Missing columns "
-                + ", ".join(unknown_columns)
+                f"Tried to select columns that are not in this dataset: {missing}"
             )
-
-        required_derived = known_derived.intersection(columns)
-        required_raw = known_raw.intersection(columns)
-        required_im = known_im.intersection(columns)
-
-        additional_derived = required_derived
-
-        while additional_derived:
-            # Follow any chains of derived columns until we reach columns that are
-            # actually in the raw data.
-            required_derived |= additional_derived
-            additional_columns: set[str] = reduce(
-                lambda s, derived: s.union(self.__derived[derived].requires()),
-                additional_derived,
-                set(),
-            )
-            required_raw |= additional_columns.intersection(known_raw)
-            required_im |= additional_columns.intersection(known_im)
-            additional_derived = additional_columns.intersection(known_derived)
-
-        all_required = required_derived | required_raw | required_im
-
-        # Derived columns have to be instantiated in the order they are created in order
-        # to ensure chains of derived columns work correctly
-        new_derived = {k: v for k, v in self.__derived.items() if k in required_derived}
-        # Builders can be performed in any order
-        new_im_handler = self.__im_handler.with_columns(required_im)
-
-        new_hidden.update(all_required - columns)
-        if self.__sort_by is not None and self.__sort_by[0] not in columns:
-            new_hidden.add(self.__sort_by[0])
 
         return DatasetState(
             self.__unit_handler,
             self.__index,
-            required_raw,
+            columns,
             self.__region,
             self.__header,
-            new_im_handler,
+            self.__im_handler,
             self.__sort_by,
-            new_hidden,
-            new_derived,
+            self.__derived,
         )
 
     def sort_by(self, column_name: str, invert: bool):
@@ -362,7 +336,6 @@ class DatasetState:
             self.__header,
             self.__im_handler,
             (column_name, invert),
-            self.__hidden,
             self.__derived,
         )
 
@@ -446,6 +419,5 @@ class DatasetState:
             self.__header,
             self.__im_handler,
             self.__sort_by,
-            self.__hidden,
             self.__derived,
         )

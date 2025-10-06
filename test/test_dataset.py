@@ -343,6 +343,7 @@ def test_visit_rows_single(input_path):
     ds = oc.open(input_path).take(100)
 
     def fof_random(fof_halo_mass):
+        print(fof_halo_mass)
         return fof_halo_mass * np.random.randint(0, 100)
 
     ds = ds.evaluate(fof_random, vectorize=False, insert=True)
