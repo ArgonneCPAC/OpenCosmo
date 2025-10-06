@@ -1,0 +1,1 @@
+opencosmo.read (deprecated since 0.7) has been removed.
