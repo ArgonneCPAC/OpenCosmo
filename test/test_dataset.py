@@ -34,7 +34,7 @@ def test_open(input_path):
 
 def test_open_close(input_path):
     with oc.open(input_path) as ds:
-        file = ds._Dataset__handler._DatasetHandler__file
+        file = ds._Dataset__state._DatasetState__raw_data_handler._DatasetHandler__file
         assert file["data"] is not None
 
     with pytest.raises(KeyError):
@@ -43,7 +43,7 @@ def test_open_close(input_path):
 
 def test_dataset_close(input_path):
     ds = oc.open(input_path)
-    file = ds._Dataset__handler._DatasetHandler__file
+    file = ds._Dataset__state._DatasetState__raw_data_handler._DatasetHandler__file
     assert file["data"] is not None
     ds.close()
     with pytest.raises(KeyError):
@@ -343,7 +343,6 @@ def test_visit_rows_single(input_path):
     ds = oc.open(input_path).take(100)
 
     def fof_random(fof_halo_mass):
-        print(fof_halo_mass)
         return fof_halo_mass * np.random.randint(0, 100)
 
     ds = ds.evaluate(fof_random, vectorize=False, insert=True)
@@ -451,26 +450,6 @@ def test_write_after_evaluate(input_path, tmp_path):
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         written_data = new_ds.select("fof_px").data
         assert np.all(np.isclose(data, written_data))
-
-
-def test_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
-
-    assert len(ds.data) == 100
-
-
-def test_select_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = (
-            f.filter(oc.col("sod_halo_mass") > 0)
-            .select(["sod_halo_mass", "fof_halo_mass"])
-            .take(100, at="random")
-            .collect()
-        )
-
-    assert len(ds.data) == 100
-    assert set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"}
 
 
 def test_sort_after_filter(input_path):

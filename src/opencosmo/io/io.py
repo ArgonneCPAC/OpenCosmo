@@ -262,7 +262,7 @@ def open_single_dataset(target: OpenTarget, bypass_lightcone: bool = False):
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))
         sim_region = oc.make_box(p1, p2)
 
-    index: ChunkedIndex
+    index: Optional[ChunkedIndex] = None
     handler = DatasetHandler(handle)
 
     if (comm := get_comm_world()) is not None:
@@ -275,21 +275,12 @@ def open_single_dataset(target: OpenTarget, bypass_lightcone: bool = False):
         else:
             index = part.idx
             sim_region = part.region if part.region is not None else sim_region
-    else:
-        index = ChunkedIndex.from_size(len(handler))
 
-    unit_handler = make_unit_handler(handler.data, header, UnitConvention.COMOVING)
-    state = dss.DatasetState(
-        unit_handler,
-        index,
-        set(handler.columns),
-        sim_region,
-        header,
-        InMemoryColumnHandler.empty(index),
+    state = dss.DatasetState.from_group(
+        handle, header, UnitConvention.COMOVING, sim_region, index
     )
 
     dataset = oc.Dataset(
-        handler,
         header,
         state,
         tree=tree,
@@ -402,19 +393,10 @@ def read(
     path = file.filename
     file = h5py.File(path, driver="core")
 
-    handler = DatasetHandler(file, group_name=datasets)
-    index = ChunkedIndex.from_size(len(handler))
-    unit_applicators = get_unit_applicators_hdf5(handler.data, header)
-    state = dss.DatasetState(
-        unit_applicators,
-        index,
-        set(handler.columns),
-        sim_box,
-        header,
-        InMemoryColumnHandler.empty(index),
+    state = dss.DatasetState.from_group(
+        file[datasets], header, UnitConvention.COMOVING, sim_box
     )
-
-    ds = oc.Dataset(handler, header, state, tree)
+    ds = oc.Dataset(header, state, tree)
 
     if header.file.is_lightcone:
         return collection.Lightcone({"data": ds})

@@ -161,16 +161,16 @@ def comoving_to_physical(
     return value
 
 
-def get_scale_factor(dataset: "DatasetState", handler, cosmology, redshift):
+def get_scale_factor(dataset: "DatasetState", cosmology, redshift):
     columns = set(dataset.columns)
     for column in KNOWN_SCALEFACTOR_COLUMNS:
         if column in columns:
-            col = dataset.select(column).get_data(handler)[column].data
+            col = dataset.select(column).get_data()[column].data
             return col
 
     for column in KNOWN_REDSHIFT_COLUMNS:
         if column in columns:
-            col = dataset.select(column).get_data(handler)[column].data
+            col = dataset.select(column).get_data()[column].data
             return 1 / (1 + col)
 
     return cosmology.scale_factor(redshift)

@@ -41,12 +41,10 @@ OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndar
 class Dataset:
     def __init__(
         self,
-        handler: DatasetHandler,
         header: OpenCosmoHeader,
         state: DatasetState,
         tree: Optional[Tree] = None,
     ):
-        self.__handler = handler
         self.__header = header
         self.__state = state
         self.__tree = tree
@@ -80,10 +78,10 @@ class Dataset:
         return self
 
     def __exit__(self, *exc_details):
-        return self.__handler.__exit__(*exc_details)
+        return self.__state.__exit__(*exc_details)
 
     def close(self):
-        return self.__handler.__exit__()
+        return self.__state.__exit__()
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -125,7 +123,7 @@ class Dataset:
         descriptions : dict[str, str | None]
             The column descriptions
         """
-        return self.__handler.descriptions | self.__state.descriptions
+        return self.__state.descriptions
 
     @property
     def cosmology(self) -> Cosmology:
@@ -259,15 +257,13 @@ class Dataset:
             raise ValueError(f"Unknown output type {output}")
 
         if self.__state.convention.value == "physical":
-            scale_factor = get_scale_factor(
-                self.__state, self.__handler, self.cosmology, self.redshift
-            )
+            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
             unit_kwargs = {"scale_factor": scale_factor}
         else:
             unit_kwargs = {}
 
         data = self.__state.get_data(
-            self.__handler, attach_index=attach_index, unit_kwargs=unit_kwargs
+            attach_index=attach_index, unit_kwargs=unit_kwargs
         )  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
@@ -342,7 +338,7 @@ class Dataset:
         if not self.__state.region.intersects(check_region):
             new_index = ChunkedIndex.empty()
             new_state = self.__state.with_index(new_index)
-            return Dataset(self.__handler, self.__header, new_state, self.__tree)
+            return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
             warn(
@@ -359,7 +355,6 @@ class Dataset:
 
         check_state = self.__state.with_index(intersects_index)
         check_dataset = Dataset(
-            self.__handler,
             self.__header,
             check_state,
             self.__tree,
@@ -374,7 +369,7 @@ class Dataset:
 
         new_state = self.__state.with_index(new_index).with_region(check_region)
 
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def evaluate(
         self,
@@ -484,7 +479,7 @@ class Dataset:
             bool_mask &= mask.apply(data)
 
         new_state = self.__state.with_mask(bool_mask)
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def rows(
         self,
@@ -551,7 +546,6 @@ class Dataset:
         """
         new_state = self.__state.select(columns)
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
@@ -623,7 +617,6 @@ class Dataset:
         """
         new_state = self.__state.sort_by(column, invert)
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
@@ -663,10 +656,9 @@ class Dataset:
 
         """
 
-        new_state = self.__state.take(n, at, self.__handler)
+        new_state = self.__state.take(n, at)
 
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
@@ -698,7 +690,6 @@ class Dataset:
         new_state = self.__state.take_range(start, end)
 
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
@@ -706,7 +697,7 @@ class Dataset:
 
     def with_index(self, index: DataIndex):
         new_state = self.__state.with_index(index)
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def with_new_columns(
         self,
@@ -740,7 +731,7 @@ class Dataset:
         if isinstance(descriptions, str):
             descriptions = {key: descriptions for key in new_columns.keys()}
         new_state = self.__state.with_new_columns(descriptions, **new_columns)
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
         """
@@ -756,7 +747,7 @@ class Dataset:
 
         """
 
-        schema = self.__state.make_schema(self.__handler)
+        schema = self.__state.make_schema()
         if not with_header:
             schema.header = None
 
@@ -840,41 +831,7 @@ class Dataset:
             new_header = self.__header
 
         return Dataset(
-            self.__handler,
             new_header,
-            new_state,
-            self.__tree,
-        )
-
-    def collect(self) -> Dataset:
-        """
-        Given a dataset that was originally opend with opencosmo.open,
-        return a dataset that is in-memory as though it was read with
-        opencosmo.read.
-
-        This is useful if you have a very large dataset on disk, and you
-        want to filter it down and then close the file.
-
-        For example:
-
-        .. code-block:: python
-
-            import opencosmo as oc
-            with oc.open("path/to/file.hdf5") as file:
-                ds = file.(ds["sod_halo_mass"] > 0)
-                ds = ds.select(["sod_halo_mass", "sod_halo_radius"])
-                ds = ds.collect()
-
-        The selected data will now be in memory, and the file will be closed.
-
-        If working in an MPI context, all ranks will recieve the same data.
-        """
-        new_handler = self.__handler.collect(self.__state.columns, self.__state.index)
-        new_index = ChunkedIndex.from_size(len(new_handler))
-        new_state = self.__state.with_index(new_index)
-        return Dataset(
-            new_handler,
-            self.__header,
             new_state,
             self.__tree,
         )
