@@ -308,13 +308,22 @@ class DatasetState:
         data = self.__raw_data_handler.get_data(raw_ancestors, self.__index)
         data = data | self.__im_handler.get_data(im_ancestors)
         data = self.__unit_handler.apply_units(data, unit_kwargs)
+        seen: set[str] = set()
         for name in cycle(derived_names):
             if derived_names.issubset(data.keys()):
                 break
+            elif name in seen:
+                # We're stuck in a loop
+                raise ValueError(
+                    "Something went wrong when trying to instatiate derived columns!"
+                )
             elif name in data:
                 continue
             elif set(data.keys()).issuperset(self.__derived_columns[name].requires()):
                 data[name] = self.__derived_columns[name].evaluate(data)
+                seen = set()
+            else:
+                seen.add(name)
 
         return data
 
