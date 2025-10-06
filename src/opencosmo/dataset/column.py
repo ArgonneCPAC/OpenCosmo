@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator as op
-from functools import partialmethod
+from functools import cache, partialmethod
 from typing import Any, Callable, Iterable, Optional, Union
 
 import astropy.units as u  # type: ignore
@@ -206,6 +206,7 @@ class DerivedColumn:
             case (_, _):
                 return self.operation(lhs_unit, rhs_unit)
 
+    @cache
     def requires(self):
         """
         Return the raw data columns required to make this column
