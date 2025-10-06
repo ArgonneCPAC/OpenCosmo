@@ -271,13 +271,14 @@ class DatasetState:
                 new_col.description = descriptions.get(name, "None")
                 new_unit_handler = new_unit_handler.with_new_columns(**{name: unit})
                 derived_update[name] = new_col
-            self.__columns.add(name)
 
         new_derived = self.__derived_columns | derived_update
+        new_columns_ = self.__columns.union(new_columns.keys())
         return self.__rebuild(
             unit_handler=new_unit_handler,
             im_handler=new_im_handler,
             derived_columns=new_derived,
+            columns=new_columns_,
         )
 
     def __build_derived_columns(self, unit_kwargs: dict) -> table.Table:
@@ -300,10 +301,12 @@ class DatasetState:
             set(),
         )
         raw_ancestors = ancestors.intersection(self.__raw_data_handler.columns)
+        im_ancestors = ancestors.intersection(self.__im_handler.keys())
         additional_derived = ancestors.intersection(self.__derived_columns.keys())
         derived_names = derived_names.union(additional_derived)
 
         data = self.__raw_data_handler.get_data(raw_ancestors, self.__index)
+        data = data | self.__im_handler.get_data(im_ancestors)
         data = self.__unit_handler.apply_units(data, unit_kwargs)
         for name in cycle(derived_names):
             if derived_names.issubset(data.keys()):

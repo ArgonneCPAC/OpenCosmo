@@ -91,7 +91,7 @@ def test_filter_leaves_original_dataset_unchanged(input_path, max_mass):
     ds = ds.filter(col("sod_halo_mass") > 0, col("sod_halo_mass") < max_mass)
     data = ds.data
     data_len = len(data)
-    original_len = len(ds._Dataset__handler)
+    original_len = len(ds._Dataset__state._DatasetState__raw_data_handler)
     assert data_len < original_len
 
 
