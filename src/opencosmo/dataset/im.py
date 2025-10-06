@@ -38,6 +38,14 @@ class InMemoryColumnHandler:
     def keys(self):
         return self.__columns.keys()
 
+    def get_data(self, keys: str | Iterable[str]):
+        if isinstance(keys, str):
+            keys = [keys]
+        missing = set(keys) - set(self.keys())
+        if missing:
+            raise ValueError(f"Requested unknown columns {missing}")
+        return {name: self.__columns[name] for name in keys}
+
     def with_new_column(
         self,
         name: str,

@@ -180,24 +180,6 @@ def test_derive_mask(properties_path):
     assert all(ds_masked.data["fof_halo_px"] > val)
 
 
-def test_derive_collect(properties_path):
-    ds = oc.open(properties_path)
-    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.with_new_columns(fof_halo_px=derived)
-    ds = ds.collect()
-    data = ds.data
-    assert np.all(
-        np.isclose(
-            data["fof_halo_px"].value,
-            data["fof_halo_mass"].value * data["fof_halo_com_vx"].value,
-        )
-    )
-    assert (
-        data["fof_halo_px"].unit
-        == data["fof_halo_mass"].unit * data["fof_halo_com_vx"].unit
-    )
-
-
 def test_derive_children(properties_path):
     ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")

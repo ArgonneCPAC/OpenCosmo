@@ -9,7 +9,6 @@ from .io import open, read, write
 from .spatial import make_box, make_cone
 
 __all__ = [
-    "read",
     "write",
     "col",
     "open",
