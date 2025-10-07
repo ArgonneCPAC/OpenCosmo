@@ -10,7 +10,7 @@ from deprecated import deprecated  # type: ignore
 import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset import state as dss
-from opencosmo.dataset.handler import DatasetHandler
+from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import read_header
@@ -263,7 +263,7 @@ def open_single_dataset(target: OpenTarget, bypass_lightcone: bool = False):
         sim_region = oc.make_box(p1, p2)
 
     index: Optional[ChunkedIndex] = None
-    handler = DatasetHandler(handle)
+    handler = Hdf5Handler(handle)
 
     if (comm := get_comm_world()) is not None:
         assert partition is not None

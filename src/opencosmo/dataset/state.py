@@ -8,7 +8,7 @@ import astropy.units as u
 import numpy as np
 from astropy.table import QTable
 
-from opencosmo.dataset.handler import DatasetHandler
+from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
@@ -36,7 +36,7 @@ class DatasetState:
 
     def __init__(
         self,
-        raw_data_handler: DatasetHandler,
+        raw_data_handler: Hdf5Handler,
         im_handler: InMemoryColumnHandler,
         derived_columns: dict[str, DerivedColumn],
         unit_handler: UnitHandler,
@@ -82,10 +82,11 @@ class DatasetState:
         region: Region,
         index: Optional[DataIndex] = None,
     ):
-        handler = DatasetHandler(group)
+        handler = Hdf5Handler(group)
         unit_handler = make_unit_handler(handler.data, header, unit_convention)
         if index is None:
             index = ChunkedIndex.single_chunk(0, len(handler))
+
         columns = set(handler.columns)
         im_handler = InMemoryColumnHandler.empty(index)
         return DatasetState(

@@ -34,7 +34,7 @@ def test_open(input_path):
 
 def test_open_close(input_path):
     with oc.open(input_path) as ds:
-        file = ds._Dataset__state._DatasetState__raw_data_handler._DatasetHandler__file
+        file = ds._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__file
         assert file["data"] is not None
 
     with pytest.raises(KeyError):
@@ -43,7 +43,7 @@ def test_open_close(input_path):
 
 def test_dataset_close(input_path):
     ds = oc.open(input_path)
-    file = ds._Dataset__state._DatasetState__raw_data_handler._DatasetHandler__file
+    file = ds._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__file
     assert file["data"] is not None
     ds.close()
     with pytest.raises(KeyError):

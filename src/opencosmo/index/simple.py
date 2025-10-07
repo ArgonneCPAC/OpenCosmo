@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, TypeGuard
 import h5py
 import numpy as np
 
+from opencosmo.index import chunked
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -124,6 +126,14 @@ class SimpleIndex:
         other_mask.resize(length)
         new_idx = np.where(self_mask & other_mask)[0]
         return SimpleIndex(new_idx)
+
+    def projection(self, other: DataIndex):
+        if isinstance(other, chunked.ChunkedIndex):
+            other_simple = SimpleIndex(other.into_array())
+            return self.projection(other_simple)
+
+        isin = np.isin(self.into_array(), other.into_array())
+        return SimpleIndex(np.where(isin)[0])
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:

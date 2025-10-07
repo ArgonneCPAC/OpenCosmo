@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
 
     from opencosmo.dataset.column import ColumnMask, DerivedColumn
-    from opencosmo.dataset.handler import DatasetHandler
+    from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -337,7 +337,7 @@ class Dataset:
 
         if not self.__state.region.intersects(check_region):
             new_index = ChunkedIndex.empty()
-            new_state = self.__state.with_index(new_index)
+            new_state = self.__state.take_rows(new_index)
             return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
@@ -350,10 +350,10 @@ class Dataset:
         intersects_index: DataIndex
         contained_index, intersects_index = self.__tree.query(check_region)
 
-        contained_index = contained_index.intersection(self.__state.index)
-        intersects_index = intersects_index.intersection(self.__state.index)
+        contained_index = self.__state.index.projection(contained_index)
+        intersects_index = self.__state.index.projection(intersects_index)
 
-        check_state = self.__state.with_index(intersects_index)
+        check_state = self.__state.take_rows(intersects_index)
         check_dataset = Dataset(
             self.__header,
             check_state,
@@ -367,7 +367,7 @@ class Dataset:
 
         new_index = contained_index.concatenate(new_intersects_index)
 
-        new_state = self.__state.with_index(new_index).with_region(check_region)
+        new_state = self.__state.take_rows(new_index).with_region(check_region)
 
         return Dataset(self.__header, new_state, self.__tree)
 

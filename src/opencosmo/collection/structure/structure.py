@@ -74,7 +74,6 @@ class StructureCollection:
         self.__links = links
         self.__index = self.__source.index
         self.__hide_source = hide_source
-
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
             self.__links["galaxies"] = self.__links.pop("galaxy_properties")
@@ -920,7 +919,7 @@ class StructureCollection:
             hide_source = False
             requested_datasets.remove(self.__source.dtype)
 
-        new_datasets = {name: self[name] for name in requested_datasets}
+        new_datasets = {name: self.__datasets[name] for name in requested_datasets}
         new_links = {name: self.__links[name] for name in requested_datasets}
         return StructureCollection(
             self.__source, self.__header, new_datasets, new_links, hide_source

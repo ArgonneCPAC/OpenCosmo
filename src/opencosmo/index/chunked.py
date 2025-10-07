@@ -48,7 +48,7 @@ class ChunkedIndex:
         """
         Get the range of the index.
         """
-        return self.__starts[0], self.__starts[-1] + self.__sizes[-1] - 1
+        return self.__starts[0], self.__starts[-1] + self.__sizes[-1]
 
     def is_single_chunk(self):
         return len(self.__starts) == 1
@@ -85,9 +85,47 @@ class ChunkedIndex:
         new_idx = np.where(self_mask & other_mask)[0]
         return simple.SimpleIndex(new_idx)
 
+    def projection(self, other: DataIndex):
+        if isinstance(other, simple.SimpleIndex):
+            return self.__project_simple(other)
+        elif isinstance(other, ChunkedIndex):
+            return self.__project_chunked(other)
+
+    def __project_simple(self, other: simple.SimpleIndex):
+        self_simple = simple.SimpleIndex(self.into_array())
+        return self_simple.projection(other)
+
+    def __project_chunked(self, other: ChunkedIndex):
+        self_ends = self.__starts + self.__sizes
+        other_ends = other.__starts + other.__sizes
+        out_of_range = (other_ends[:, np.newaxis] < self.__starts) | (
+            other.__starts[:, np.newaxis] > self_ends
+        )
+
+        clipped_starts = np.clip(
+            other.__starts[:, np.newaxis], a_min=self.__starts, a_max=None
+        )
+        clipped_ends = np.clip(other_ends[:, np.newaxis], a_min=None, a_max=self_ends)
+
+        rs = np.cumsum(self.__sizes)
+        rs = np.insert(rs, 0, 0)[:-1]
+
+        starts = clipped_starts - self.__starts + rs
+        ends = clipped_ends - self.__starts + rs
+        sizes = ends - starts
+
+        starts = starts.flatten()
+        sizes = sizes.flatten()
+
+        mask = sizes > 0
+        return ChunkedIndex(starts[mask], sizes[mask])
+
     def concatenate(self, *others: DataIndex) -> DataIndex:
-        if len(others) == 0:
+        if len(others) == 0 or all(len(o) == 0 for o in others):
             return self
+
+        elif len(self) == 0:
+            return others[0].concatenate(*others[1:])
 
         if all_are_chunked(others):
             new_starts = np.concatenate(
