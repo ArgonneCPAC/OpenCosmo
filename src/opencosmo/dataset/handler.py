@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
 
 
-class DatasetHandler:
+class Hdf5Handler:
     """
     Handler for opencosmo.Dataset
     """
@@ -60,7 +60,7 @@ class DatasetHandler:
         self.__group = None
         return self.__file.close()
 
-    def collect(self, columns: Iterable[str], index: DataIndex) -> DatasetHandler:
+    def collect(self, columns: Iterable[str], index: DataIndex) -> Hdf5Handler:
         if (comm := get_comm_world()) is not None:
             indices = comm.allgather(index)
             new_index = indices[0].concatenate(*indices[1:])
@@ -77,7 +77,7 @@ class DatasetHandler:
             for name, value in dataset.attrs.items():
                 group[colname].attrs[name] = value
 
-        return DatasetHandler(file, group_name=self.__group_name)
+        return Hdf5Handler(file, group_name=self.__group_name)
 
     def prep_write(
         self,
