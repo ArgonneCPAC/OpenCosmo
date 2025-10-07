@@ -361,7 +361,10 @@ class DatasetState:
             or not self.__index.is_single_chunk()
             or self.__index.range()[0] != 0
         ):
-            raise ValueError
+            raise ValueError(
+                "With_index is only available when working with a full dataset"
+            )
+
         new_im = self.__im_handler.take_index(index)
         return self.__rebuild(im_handler=new_im, index=index)
 
