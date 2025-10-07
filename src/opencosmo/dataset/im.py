@@ -69,6 +69,8 @@ class InMemoryColumnHandler:
         return InMemoryColumnHandler(new_data, self.__descriptions)
 
     def take_index(self, index: DataIndex):
+        if len(self) == 0:
+            return self
         new_data = {key: index.get_data(value) for key, value in self.__columns.items()}
         return InMemoryColumnHandler(new_data, self.__descriptions)
 
