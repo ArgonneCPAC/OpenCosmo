@@ -9,9 +9,8 @@ from deprecated import deprecated
 from opencosmo import io
 from opencosmo.collection import lightcone as lc
 from opencosmo.collection.structure import structure as sc
+from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.index import SimpleIndex
-
-from .handler import LinkedDatasetHandler
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,21 +21,24 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
 
-LINK_ALIASES = {  # Left: Name in file, right: Name in collection
-    "sodbighaloparticles_star_particles": "star_particles",
-    "sodbighaloparticles_dm_particles": "dm_particles",
-    "sodbighaloparticles_gravity_particles": "gravity_particles",
-    "sodbighaloparticles_agn_particles": "agn_particles",
-    "sodbighaloparticles_gas_particles": "gas_particles",
-    "sod_profile": "halo_profiles",
-    "galaxyproperties": "galaxy_properties",
-    "galaxyparticles_star_particles": "star_particles",
-}
-
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles", "galaxy_properties"],
     "galaxy_properties": ["galaxy_particles"],
 }
+
+
+def remove_empty(dataset):
+    metadata = dataset.get_metadata()
+    mask = np.ones(len(dataset), dtype=bool)
+    for name, col in metadata.items():
+        if "size" in name:
+            mask &= col != 0
+        elif "idx" in name:
+            mask &= col != 0
+
+    if not mask.all():
+        dataset = dataset.take_rows(np.where(mask)[0])
+    return dataset
 
 
 @deprecated(
@@ -95,16 +97,6 @@ def get_linked_datasets(
         for dtype, target in targets.items()
     }
     return datasets
-
-
-def make_index_with_linked_data(
-    index: DataIndex, links: dict[str, LinkedDatasetHandler]
-):
-    mask = np.ones(len(index), dtype=bool)
-    for link in links.values():
-        mask &= link.has_linked_data(index)
-
-    return np.where(mask)[0]
 
 
 def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bool):
@@ -229,25 +221,17 @@ def __build_structure_collection(
     ignore_empty: bool,
 ):
     if galaxy_properties_target is not None and "galaxy_targets" in link_targets:
-        handlers = get_link_handlers(
-            galaxy_properties_target.group,
-            list(link_targets["galaxy_targets"].keys()),
-            galaxy_properties_target.header,
-        )
-
         source_dataset = io.io.open_single_dataset(
             galaxy_properties_target,
             bypass_lightcone=True,
             bypass_mpi=halo_properties_target is not None,
         )
         if ignore_empty and halo_properties_target is None:
-            new_index = make_index_with_linked_data(source_dataset.index, handlers)
-            source_dataset = source_dataset.take_rows(new_index)
+            source_dataset = remove_empty(source_dataset)
         collection = sc.StructureCollection(
             source_dataset,
             source_dataset.header,
             link_targets["galaxy_targets"],
-            handlers,
         )
         if halo_properties_target is not None:
             link_targets["halo_targets"]["galaxy_properties"] = collection
@@ -265,52 +249,14 @@ def __build_structure_collection(
         link_targets["halo_targets"]["galaxy_properties"] = galaxy_properties
 
     if halo_properties_target is not None and link_targets["halo_targets"]:
-        handlers = get_link_handlers(
-            halo_properties_target.group,
-            list(link_targets["halo_targets"].keys()),
-            halo_properties_target.header,
-        )
         source_dataset = io.io.open_single_dataset(
-            halo_properties_target, bypass_lightcone=True
+            halo_properties_target, metadata_group="data_linked", bypass_lightcone=True
         )
-
         if ignore_empty:
-            new_index = make_index_with_linked_data(source_dataset.index, handlers)
-            source_dataset = source_dataset.take_rows(new_index)
+            source_dataset = remove_empty(source_dataset)
 
         return sc.StructureCollection(
             source_dataset,
             source_dataset.header,
             link_targets["halo_targets"],
-            handlers,
         )
-
-
-def get_link_handlers(
-    link_file: h5py.File | h5py.Group,
-    linked_files: Iterable[str],
-    header: OpenCosmoHeader,
-) -> dict[str, LinkedDatasetHandler]:
-    if "data_linked" not in link_file.keys():
-        raise KeyError("No linked datasets found in the file.")
-    links = link_file["data_linked"]
-
-    linked_files = list(linked_files)
-    unique_dtypes = {key.rsplit("_", 1)[0] for key in links.keys()}
-    output_links = {}
-    for dtype in unique_dtypes:
-        if dtype not in linked_files and LINK_ALIASES.get(dtype) not in linked_files:
-            continue  # Skip if the linked file is not provided
-
-        key = LINK_ALIASES.get(dtype, dtype)
-        try:
-            start = links[f"{dtype}_start"]
-            size = links[f"{dtype}_size"]
-
-            output_links[key] = LinkedDatasetHandler(
-                (start, size),
-            )
-        except KeyError:
-            index = links[f"{dtype}_idx"]
-            output_links[key] = LinkedDatasetHandler(index)
-    return output_links

@@ -239,7 +239,10 @@ def open(
 
 
 def open_single_dataset(
-    target: OpenTarget, bypass_lightcone: bool = False, bypass_mpi: bool = False
+    target: OpenTarget,
+    metadata_group: Optional[str] = None,
+    bypass_lightcone: bool = False,
+    bypass_mpi: bool = False,
 ):
     header = target.header
     handle = target.group
@@ -278,8 +281,16 @@ def open_single_dataset(
             index = part.idx
             sim_region = part.region if part.region is not None else sim_region
 
+    if metadata_group is not None:
+        metadata_group = handle[metadata_group]
+
     state = dss.DatasetState.from_group(
-        handle["data"], header, UnitConvention.COMOVING, sim_region, index
+        handle["data"],
+        header,
+        UnitConvention.COMOVING,
+        sim_region,
+        index,
+        metadata_group,
     )
 
     dataset = oc.Dataset(

@@ -27,8 +27,6 @@ class Hdf5Handler:
         group: h5py.Group,
         index: DataIndex,
     ):
-        if index is None:
-            raise ValueError
         self.__index = index
         self.__group = group
 

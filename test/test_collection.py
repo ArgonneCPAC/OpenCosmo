@@ -134,15 +134,21 @@ def test_multi_filter_write(multi_path, tmp_path):
 
 
 def test_select_nested_structures(halo_paths, galaxy_paths):
-    collection = oc.open(*halo_paths, *galaxy_paths)
+    collection = oc.open(*halo_paths, *galaxy_paths).filter(
+        oc.col("fof_halo_mass") > 1e14
+    )
     collection = collection.select(
-        halo_properties=["fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z"],
+        halo_properties=[
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
         dm_particles=["x", "y", "z"],
         galaxies={
             "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
             "star_particles": ["x", "y", "z"],
         },
-    ).take(100)
+    )
     for halo in collection.halos():
         assert set(halo["halo_properties"].keys()) == {
             "fof_halo_center_x",
@@ -150,6 +156,7 @@ def test_select_nested_structures(halo_paths, galaxy_paths):
             "fof_halo_center_z",
         }
         assert set(halo["dm_particles"].columns) == {"x", "y", "z"}
+        print(halo.keys())
         assert set(halo["galaxies"]["galaxy_properties"].columns) == {
             "gal_mass_bar",
             "gal_mass_star",
@@ -391,7 +398,12 @@ def test_data_gets_all_particles(halo_paths):
     collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
         10, at="random"
     )
+    from time import time
+
+    start = 0
     for halo in collection.halos():
+        end = time()
+        print(end - start)
         for name, particle_species in halo.items():
             if "particle" not in name:
                 continue
@@ -399,6 +411,8 @@ def test_data_gets_all_particles(halo_paths):
             tag_filter = oc.col("fof_halo_tag") == halo_tag
             ds = collection[name].filter(tag_filter)
             assert len(ds) == len(particle_species)
+        start = time()
+    assert False
 
 
 def test_visit_dataset_in_structure_collection(halo_paths):
