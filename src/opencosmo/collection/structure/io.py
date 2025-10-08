@@ -91,7 +91,7 @@ def get_linked_datasets(
         else:
             targets.update({dtype: io.io.OpenTarget(pointer, header)})
     datasets = {
-        dtype: io.io.open_single_dataset(target, bypass_lightcone=True)
+        dtype: io.io.open_single_dataset(target, bypass_lightcone=True, bypass_mpi=True)
         for dtype, target in targets.items()
     }
     return datasets
@@ -118,7 +118,9 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         elif target.data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
         elif target.data_type.startswith("halo"):
-            dataset = io.io.open_single_dataset(target, bypass_lightcone=True)
+            dataset = io.io.open_single_dataset(
+                target, bypass_lightcone=True, bypass_mpi=True
+            )
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
@@ -126,7 +128,9 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
                 name = name[16:]
             link_targets["halo_targets"][name].append(dataset)
         elif target.data_type.startswith("galaxy"):
-            dataset = io.io.open_single_dataset(target, bypass_lightcone=True)
+            dataset = io.io.open_single_dataset(
+                target, bypass_lightcone=True, bypass_mpi=True
+            )
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
@@ -234,6 +238,7 @@ def __build_structure_collection(
         source_dataset = io.io.open_single_dataset(
             galaxy_properties_target,
             bypass_lightcone=True,
+            bypass_mpi=halo_properties_target is not None,
         )
         if ignore_empty and halo_properties_target is None:
             new_index = make_index_with_linked_data(source_dataset.index, handlers)

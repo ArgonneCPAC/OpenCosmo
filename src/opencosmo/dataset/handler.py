@@ -33,15 +33,22 @@ class Hdf5Handler:
         self.__group = group
 
     @classmethod
-    def from_group(cls, group: h5py.Group):
+    def from_group(cls, group: h5py.Group, index: Optional[DataIndex] = None):
         if not group.name.endswith("data"):
             raise ValueError("Expected a data group")
         lengths = set(len(ds) for ds in group.values())
         if len(lengths) > 1:
             raise ValueError("Not all columns are the same length!")
-        return Hdf5Handler(group, ChunkedIndex.from_size(lengths.pop()))
+
+        if index is None:
+            index = ChunkedIndex.from_size(lengths.pop())
+
+        return Hdf5Handler(group, index)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
+        if len(other) == 0:
+            return Hdf5Handler(self.__group, other)
+
         if sorted is not None:
             return self.__take_sorted(other, sorted)
         new_index = take(self.__index, other)

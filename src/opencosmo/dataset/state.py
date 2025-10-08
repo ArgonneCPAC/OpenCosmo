@@ -79,7 +79,7 @@ class DatasetState:
         region: Region,
         index: Optional[DataIndex] = None,
     ):
-        handler = Hdf5Handler.from_group(group)
+        handler = Hdf5Handler.from_group(group, index)
         unit_handler = make_unit_handler(handler.data, header, unit_convention)
 
         columns = set(handler.columns)
