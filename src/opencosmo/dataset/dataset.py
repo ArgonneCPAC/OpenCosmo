@@ -346,8 +346,8 @@ class Dataset:
         intersects_index: DataIndex
         contained_index, intersects_index = self.__tree.query(check_region)
 
-        contained_index = self.__state.index.projection(contained_index)
-        intersects_index = self.__state.index.projection(intersects_index)
+        contained_index = self.__state.raw_index.projection(contained_index)
+        intersects_index = self.__state.raw_index.projection(intersects_index)
 
         check_state = self.__state.take_rows(intersects_index)
         check_dataset = Dataset(
