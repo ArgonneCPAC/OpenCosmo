@@ -40,7 +40,6 @@ class DatasetState:
         im_handler: InMemoryColumnHandler,
         derived_columns: dict[str, DerivedColumn],
         unit_handler: UnitHandler,
-        index: DataIndex,
         header: OpenCosmoHeader,
         columns: set[str],
         region: Region,
@@ -51,7 +50,6 @@ class DatasetState:
         self.__derived_columns = derived_columns
         self.__unit_handler = unit_handler
         self.__header = header
-        self.__index = index
         self.__columns = columns
         self.__region = region
         self.__sort_by = sort_by
@@ -62,7 +60,6 @@ class DatasetState:
             "im_handler": self.__im_handler,
             "derived_columns": self.__derived_columns,
             "unit_handler": self.__unit_handler,
-            "index": self.__index,
             "header": self.__header,
             "columns": self.__columns,
             "region": self.__region,
@@ -71,7 +68,7 @@ class DatasetState:
         return DatasetState(**new)
 
     def __exit__(self, *exec_details):
-        return self.__raw_data_handler.__exit__(*exec_details)
+        return None
 
     @classmethod
     def from_group(
@@ -82,28 +79,24 @@ class DatasetState:
         region: Region,
         index: Optional[DataIndex] = None,
     ):
-        handler = Hdf5Handler(group)
+        handler = Hdf5Handler.from_group(group)
         unit_handler = make_unit_handler(handler.data, header, unit_convention)
-        if index is None:
-            index = ChunkedIndex.single_chunk(0, len(handler))
 
         columns = set(handler.columns)
-        im_handler = InMemoryColumnHandler.empty(index)
+        im_handler = InMemoryColumnHandler.empty()
         return DatasetState(
             handler,
             im_handler,
             {},
             unit_handler,
-            index,
             header,
             columns,
             region,
             None,
         )
 
-    @property
-    def index(self):
-        return self.__index
+    def __len__(self):
+        return len(self.__raw_data_handler.index)
 
     @property
     def descriptions(self):
@@ -112,6 +105,10 @@ class DatasetState:
             | {name: col.description for name, col in self.__derived_columns.items()}
             | self.__raw_data_handler.descriptions
         )
+
+    @property
+    def raw_index(self):
+        return self.__raw_data_handler.index
 
     @property
     def unit_handler(self):
@@ -152,38 +149,40 @@ class DatasetState:
         ):
             raw_columns.add(self.__sort_by[0])
 
-        raw_data = self.__raw_data_handler.get_data(raw_columns, index=self.__index)
+        raw_data = self.__raw_data_handler.get_data(raw_columns)
         data = data | self.__unit_handler.apply_units(raw_data, unit_kwargs)
 
         output = QTable(data)
 
         data_columns = set(output.columns)
-        index_array = self.__index.into_array()
+        raw_index_array = self.__raw_data_handler.index.into_array()
 
         if not ignore_sort and self.__sort_by is not None:
             order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
             output = output[order]
-            index_array = index_array[order]
+            raw_index_array = raw_index_array[order]
 
         extras = set(data.keys()).difference(self.columns)
         if extras:
             output.remove_columns(extras)
 
         if attach_index:
-            output["raw_index"] = index_array
+            output["raw_index"] = raw_index_array
 
         return output
 
     def with_mask(self, mask: NDArray[np.bool_]):
-        new_index = self.__index.mask(mask)
+        new_raw_handler = self.__raw_data_handler.mask(mask)
         new_im_handler = self.__im_handler.get_rows(mask)
-        return self.__rebuild(im_handler=new_im_handler, index=new_index)
+        return self.__rebuild(
+            im_handler=new_im_handler, raw_data_handler=new_raw_handler
+        )
 
     def make_schema(self):
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
-        schema = self.__raw_data_handler.prep_write(self.__index, raw_columns, header)
+        schema = self.__raw_data_handler.prep_write(raw_columns, header)
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
@@ -238,7 +237,7 @@ class DatasetState:
                 raise ValueError(f"Dataset already has column named {name}")
 
             if isinstance(new_col, np.ndarray):
-                if len(new_col) != len(self.__index):
+                if len(new_col) != len(self):
                     raise ValueError(
                         f"New column {name} has length {len(new_col)} but this dataset "
                         "has length {len(self.__index)}"
@@ -299,7 +298,7 @@ class DatasetState:
         additional_derived = ancestors.intersection(self.__derived_columns.keys())
         derived_names = derived_names.union(additional_derived)
 
-        data = self.__raw_data_handler.get_data(raw_ancestors, self.__index)
+        data = self.__raw_data_handler.get_data(raw_ancestors)
         data = data | self.__im_handler.get_data(im_ancestors)
         data = self.__unit_handler.apply_units(data, unit_kwargs)
         seen: set[str] = set()
@@ -358,16 +357,17 @@ class DatasetState:
 
     def with_index(self, index: DataIndex):
         if (
-            not isinstance(self.__index, ChunkedIndex)
-            or not self.__index.is_single_chunk()
-            or self.__index.range()[0] != 0
+            not isinstance(self.__raw_data_handler.index, ChunkedIndex)
+            or not self.__raw_data_handler.index.is_single_chunk()
+            or self.__raw_data_handler.index.range()[0] != 0
         ):
             raise ValueError(
                 "With_index is only available when working with a full dataset"
             )
 
-        new_im = self.__im_handler.take_index(index)
-        return self.__rebuild(im_handler=new_im, index=index)
+        new_raw = self.__raw_data_handler.take(index)
+        new_im = self.__im_handler.take(index)
+        return self.__rebuild(im_handler=new_im, raw_data_handler=new_raw)
 
     def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:
@@ -375,11 +375,7 @@ class DatasetState:
 
         return self.__rebuild(sort_by=(column_name, invert))
 
-    def take(self, n: int, at: str):
-        """
-        Take rows from the dataset.
-        """
-
+    def get_sorted_index(self):
         if self.__sort_by is not None:
             column = self.select(self.__sort_by[0]).get_data(ignore_sort=True)[
                 self.__sort_by[0]
@@ -388,26 +384,31 @@ class DatasetState:
             if self.__sort_by[1]:
                 sorted = sorted[::-1]
 
-            index: DataIndex = SimpleIndex(sorted)
         else:
-            index = self.__index
+            sorted = None
+
+        return sorted
+
+    def take(self, n: int, at: str):
+        """
+        Take rows from the dataset.
+        """
+
+        sorted = self.get_sorted_index()
+        take_index: DataIndex
 
         if at == "start":
-            new_index = index.take_range(0, n)
-            new_im = self.__im_handler.take_range(0, n)
+            take_index = ChunkedIndex.from_size(n)
         elif at == "end":
-            length = len(index)
-            new_index = index.take_range(length - n, length)
-            new_im = self.__im_handler.take_range(length - n, length)
+            take_index = ChunkedIndex.single_chunk(len(self) - n, len(self))
         elif at == "random":
-            row_indices = np.sort(np.random.choice(len(self.__index), n, replace=False))
-            new_index = SimpleIndex(index.into_array()[row_indices])
-            new_im = self.__im_handler.get_rows(row_indices)
+            row_indices = np.random.choice(len(self), n, replace=False)
+            take_index = SimpleIndex(row_indices)
 
-        if self.__sort_by is not None:
-            new_index = SimpleIndex(np.sort(new_index.into_array()))
+        new_handler = self.__raw_data_handler.take(take_index, sorted)
+        new_im_handler = self.__im_handler.take(take_index, sorted)
 
-        return self.__rebuild(index=new_index, im_handler=new_im)
+        return self.__rebuild(raw_data_handler=new_handler, im_handler=new_im_handler)
 
     def take_range(self, start: int, end: int):
         """
@@ -417,15 +418,19 @@ class DatasetState:
             raise ValueError("start and end must be positive.")
         if end < start:
             raise ValueError("end must be greater than start.")
-        if end > len(self.__index):
+        if end > len(self.__raw_data_handler.index):
             raise ValueError("end must be less than the length of the dataset.")
 
-        if start < 0 or end > len(self.__index):
+        if start < 0 or end > len(self.__raw_data_handler.index):
             raise ValueError("start and end must be within the bounds of the dataset.")
 
-        new_index = self.__index.take_range(start, end)
-        new_im = self.__im_handler.take_range(start, end)
-        return self.__rebuild(index=new_index, im_handler=new_im)
+        sorted = self.get_sorted_index()
+
+        take_index = ChunkedIndex.single_chunk(start, end - start)
+
+        new_raw_handler = self.__raw_data_handler.take(take_index, sorted)
+        new_im = self.__im_handler.take(take_index, sorted)
+        return self.__rebuild(raw_data_handler=new_raw_handler, im_handler=new_im)
 
     def take_rows(self, rows: np.ndarray | DataIndex):
         if isinstance(rows, ChunkedIndex) and rows.is_single_chunk():
@@ -437,8 +442,7 @@ class DatasetState:
         if not isinstance(rows, np.ndarray) or not rows.dtype == int:
             raise ValueError("Expected an array of integers!")
         new_im = self.__im_handler.get_rows(rows)
-        new_index = SimpleIndex(self.__index.into_array()[rows])
-        return self.__rebuild(im_handler=new_im, index=new_index)
+        raise NotImplementedError()
 
     def with_units(
         self,

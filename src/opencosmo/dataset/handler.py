@@ -3,15 +3,15 @@ from __future__ import annotations
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Optional
 
-import h5py
+import numpy as np
 
+from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index.take import take
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
-    from weakref import ref
-
-    import numpy as np
+    import h5py
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -24,19 +24,43 @@ class Hdf5Handler:
 
     def __init__(
         self,
-        file: h5py.File,
-        group_name: Optional[str] = None,
+        group: h5py.Group,
+        index: DataIndex,
     ):
-        self.__group_name = group_name
-        self.__file = file
-        if group_name is None:
-            self.__group = file["data"]
-        else:
-            self.__group = file[f"{group_name}/data"]
+        self.__index = index
+        self.__group = group
+
+    @classmethod
+    def from_group(cls, group: h5py.Group):
+        if not group.name.endswith("data"):
+            raise ValueError("Expected a data group")
+        lengths = set(len(ds) for ds in group.values())
+        if len(lengths) > 1:
+            raise ValueError("Not all columns are the same length!")
+        return Hdf5Handler(group, ChunkedIndex.from_size(lengths.pop()))
+
+    def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
+        if sorted is not None:
+            return self.__take_sorted(other, sorted)
+        new_index = take(self.__index, other)
+        return Hdf5Handler(self.__group, new_index)
+
+    def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
+        if len(sorted) != len(self.__index):
+            raise ValueError("Sorted index has the wrong length!")
+        new_indices = other.get_data(sorted)
+        new_indices = self.__index.into_array()[new_indices]
+        new_index = SimpleIndex(np.sort(new_indices))
+
+        return Hdf5Handler(self.__group, new_index)
 
     @property
     def data(self):
         return self.__group
+
+    @property
+    def index(self):
+        return self.__index
 
     @property
     def columns(self):
@@ -49,6 +73,10 @@ class Hdf5Handler:
             for colname, column in self.__group.items()
         }
 
+    def mask(self, mask):
+        idx = SimpleIndex(np.where(mask)[0])
+        return self.take(idx)
+
     def __len__(self) -> int:
         first_column_name = next(iter(self.__group.keys()))
         return self.__group[first_column_name].shape[0]
@@ -60,42 +88,20 @@ class Hdf5Handler:
         self.__group = None
         return self.__file.close()
 
-    def collect(self, columns: Iterable[str], index: DataIndex) -> Hdf5Handler:
-        if (comm := get_comm_world()) is not None:
-            indices = comm.allgather(index)
-            new_index = indices[0].concatenate(*indices[1:])
-        else:
-            new_index = index
-        file: h5py.File = h5py.File.in_memory()
-        group = file.require_group("data")
-        for colname in columns:
-            if colname not in self.__group.keys():
-                continue
-            dataset = self.__group[colname]
-            data = new_index.get_data(dataset)
-            group.create_dataset(colname, data=data)
-            for name, value in dataset.attrs.items():
-                group[colname].attrs[name] = value
-
-        return Hdf5Handler(file, group_name=self.__group_name)
-
     def prep_write(
         self,
-        index: DataIndex,
         columns: Iterable[str],
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
-        return DatasetSchema.make_schema(self.__group, columns, index, header)
+        return DatasetSchema.make_schema(self.__group, columns, self.__index, header)
 
-    def get_data(
-        self, columns: Iterable[str], index: DataIndex
-    ) -> dict[str, np.ndarray]:
+    def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
         data = {}
         for colname in columns:
-            data[colname] = index.get_data(self.__group[colname])
+            data[colname] = self.__index.get_data(self.__group[colname])
 
         return data
 

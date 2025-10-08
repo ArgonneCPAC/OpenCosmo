@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
 
+from opencosmo.index import SimpleIndex
+
 if TYPE_CHECKING:
     import astropy.units as u
     from numpy.typing import NDArray
@@ -33,7 +35,7 @@ class InMemoryColumnHandler:
         return self.__descriptions
 
     @classmethod
-    def empty(cls, index: DataIndex):
+    def empty(cls):
         return InMemoryColumnHandler({}, {})
 
     def __len__(self):
@@ -68,11 +70,20 @@ class InMemoryColumnHandler:
         new_data = {key: data[start:end] for key, data in self.__columns.items()}
         return InMemoryColumnHandler(new_data, self.__descriptions)
 
-    def take_index(self, index: DataIndex):
+    def take(self, index: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(self) == 0:
             return self
+        if sorted is not None:
+            return self.__take_sorted(index, sorted)
         new_data = {key: index.get_data(value) for key, value in self.__columns.items()}
         return InMemoryColumnHandler(new_data, self.__descriptions)
+
+    def __take_sorted(self, index: DataIndex, sorted_by: np.ndarray):
+        if len(sorted) != len(self):
+            raise ValueError()
+        new_indices = index.get_data(sorted_by)
+        new_index = SimpleIndex(np.sort(new_indices))
+        return self.take(new_index)
 
     def keys(self):
         return self.__columns.keys()

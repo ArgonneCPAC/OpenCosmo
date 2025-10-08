@@ -238,7 +238,9 @@ def open(
     # For now the only way to open multiple files is with a StructureCollection
 
 
-def open_single_dataset(target: OpenTarget, bypass_lightcone: bool = False):
+def open_single_dataset(
+    target: OpenTarget, bypass_lightcone: bool = False, bypass_mpi: bool = False
+):
     header = target.header
     handle = target.group
 
@@ -263,9 +265,9 @@ def open_single_dataset(target: OpenTarget, bypass_lightcone: bool = False):
         sim_region = oc.make_box(p1, p2)
 
     index: Optional[ChunkedIndex] = None
-    handler = Hdf5Handler(handle)
+    handler = Hdf5Handler.from_group(handle["data"])
 
-    if (comm := get_comm_world()) is not None:
+    if not bypass_lightcone and (comm := get_comm_world()) is not None:
         assert partition is not None
         idx_data = handle["index"]
 
@@ -277,7 +279,7 @@ def open_single_dataset(target: OpenTarget, bypass_lightcone: bool = False):
             sim_region = part.region if part.region is not None else sim_region
 
     state = dss.DatasetState.from_group(
-        handle, header, UnitConvention.COMOVING, sim_region, index
+        handle["data"], header, UnitConvention.COMOVING, sim_region, index
     )
 
     dataset = oc.Dataset(
