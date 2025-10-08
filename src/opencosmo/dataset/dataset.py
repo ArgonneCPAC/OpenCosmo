@@ -115,6 +115,10 @@ class Dataset:
         return self.__state.columns
 
     @property
+    def meta_columns(self) -> list[str]:
+        return self.__state.meta_columns
+
+    @property
     def descriptions(self) -> dict[str, Optional[str]]:
         """
         Return the descriptions (if any) of the columns in this dataset as a dictonary.
@@ -219,8 +223,18 @@ class Dataset:
             self.__cached_data = self.get_data("astropy")
         return self.__cached_data.copy()
 
+    @property
+    def index(self) -> DataIndex:
+        return self.__state.raw_index
+
+    def get_metadata(self, columns: list[str] = []):
+        return self.__state.get_metadata(columns)
+
     def get_data(
-        self, output="astropy", unpack=True, attach_index=False
+        self,
+        output="astropy",
+        unpack=True,
+        with_metadata=False,
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -263,7 +277,8 @@ class Dataset:
             unit_kwargs = {}
 
         data = self.__state.get_data(
-            attach_index=attach_index, unit_kwargs=unit_kwargs
+            unit_kwargs=unit_kwargs,
+            with_metadata=with_metadata,
         )  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
@@ -484,7 +499,7 @@ class Dataset:
     def rows(
         self,
         output="astropy",
-        attach_index=False,
+        with_metadata=False,
     ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
@@ -512,7 +527,7 @@ class Dataset:
             raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
-            chunk_data = chunk.get_data(output, attach_index=attach_index)
+            chunk_data = chunk.get_data(output, with_metadata=with_metadata)
             try:
                 output_chunk_data = dict(chunk_data)
             except TypeError:
