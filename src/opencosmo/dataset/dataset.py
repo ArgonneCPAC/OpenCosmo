@@ -16,7 +16,7 @@ import numpy as np
 from astropy.table import QTable  # type: ignore
 
 from opencosmo.dataset.evaluate import visit_dataset
-from opencosmo.index import ChunkedIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -69,6 +69,10 @@ class Dataset:
         head = f"OpenCosmo Dataset (length={length})\n"
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
+
+    @property
+    def index(self):
+        return self.__state.raw_index
 
     def __len__(self):
         return len(self.__state)
@@ -690,6 +694,14 @@ class Dataset:
             new_state,
             self.__tree,
         )
+
+    def take_rows(self, rows: np.ndarray | DataIndex):
+        if not isinstance(rows, np.ndarray):
+            new_state = self.__state.take_rows(rows)
+        else:
+            index = SimpleIndex(rows)
+            new_state = self.__state.take_rows(index)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def with_index(self, index: DataIndex):
         new_state = self.__state.with_index(index)

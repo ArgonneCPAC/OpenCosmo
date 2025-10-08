@@ -79,7 +79,7 @@ class InMemoryColumnHandler:
         return InMemoryColumnHandler(new_data, self.__descriptions)
 
     def __take_sorted(self, index: DataIndex, sorted_by: np.ndarray):
-        if len(sorted) != len(self):
+        if len(sorted_by) != len(self):
             raise ValueError()
         new_indices = index.get_data(sorted_by)
         new_index = SimpleIndex(np.sort(new_indices))
