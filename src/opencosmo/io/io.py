@@ -267,7 +267,7 @@ def open_single_dataset(
     index: Optional[ChunkedIndex] = None
     handler = Hdf5Handler.from_group(handle["data"])
 
-    if not bypass_lightcone and (comm := get_comm_world()) is not None:
+    if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
         idx_data = handle["index"]
 
@@ -292,9 +292,6 @@ def open_single_dataset(
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset
-
-
-pass
 
 
 def get_file_handles(*files: str | Path | h5py.File | h5py.Group):

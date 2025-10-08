@@ -897,6 +897,7 @@ class StructureCollection:
             row = dict(row)
             idx = row.pop("raw_index")
             input_index = SimpleIndex(np.atleast_1d(idx))
+            print(idx)
             output = {
                 key: self.__datasets[key].take_rows(
                     self.__links[key].make_index(input_index)

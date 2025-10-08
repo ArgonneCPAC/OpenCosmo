@@ -71,6 +71,8 @@ class InMemoryColumnHandler:
         return InMemoryColumnHandler(new_data, self.__descriptions)
 
     def take(self, index: DataIndex, sorted: Optional[np.ndarray] = None):
+        if len(index) == 0:
+            return InMemoryColumnHandler.empty()
         if len(self) == 0:
             return self
         if sorted is not None:
