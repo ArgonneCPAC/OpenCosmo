@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import numba as nb
@@ -7,7 +9,7 @@ from numpy.typing import ArrayLike
 from . import ChunkedIndex, SimpleIndex
 
 if TYPE_CHECKING:
-    from opencosmo.index.protocols import DataIndex  # noqa: TC004
+    from opencosmo.index.protocols import DataIndex
 
 
 def take(from_: DataIndex, by: DataIndex):
