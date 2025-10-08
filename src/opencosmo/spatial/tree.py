@@ -146,9 +146,7 @@ def partition_index(n_partitions: int, counts: h5py.Group):
 
 class Tree:
     """
-    The Tree handles the spatial indexing of the data. As of right now, it's only
-    functionality is to read and write the spatial index. Later we will add actual
-    spatial queries
+    The Tree handles the spatial indexing of the data.
     """
 
     def __init__(self, index: SpatialIndex, data: h5py.File | h5py.Group):

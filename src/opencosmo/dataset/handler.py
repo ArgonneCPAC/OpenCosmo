@@ -43,6 +43,7 @@ class Hdf5Handler:
         if sorted is not None:
             return self.__take_sorted(other, sorted)
         new_index = take(self.__index, other)
+        print(new_index)
         return Hdf5Handler(self.__group, new_index)
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):

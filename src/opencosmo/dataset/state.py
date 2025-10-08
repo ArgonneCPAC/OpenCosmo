@@ -398,9 +398,9 @@ class DatasetState:
         take_index: DataIndex
 
         if at == "start":
-            take_index = ChunkedIndex.from_size(n)
+            return self.take_range(0, n)
         elif at == "end":
-            take_index = ChunkedIndex.single_chunk(len(self) - n, len(self))
+            return self.take_range(len(self) - n, len(self))
         elif at == "random":
             row_indices = np.random.choice(len(self), n, replace=False)
             take_index = SimpleIndex(row_indices)
@@ -433,16 +433,12 @@ class DatasetState:
         return self.__rebuild(raw_data_handler=new_raw_handler, im_handler=new_im)
 
     def take_rows(self, rows: np.ndarray | DataIndex):
-        if isinstance(rows, ChunkedIndex) and rows.is_single_chunk():
-            start, end = rows.range()
-            return self.take_range(start, end)
-        elif isinstance(rows, (SimpleIndex, ChunkedIndex)):
-            return self.take_rows(rows.into_array())
-
-        if not isinstance(rows, np.ndarray) or not rows.dtype == int:
-            raise ValueError("Expected an array of integers!")
-        new_im = self.__im_handler.get_rows(rows)
-        raise NotImplementedError()
+        sorted = self.get_sorted_index()
+        print(rows.into_array())
+        print(self.raw_index.into_array())
+        new_handler = self.__raw_data_handler.take(rows, sorted)
+        new_im_handler = self.__im_handler.take(rows, sorted)
+        return self.__rebuild(raw_data_handler=new_handler, im_handler=new_im_handler)
 
     def with_units(
         self,
