@@ -432,10 +432,8 @@ class DatasetState:
         new_im = self.__im_handler.take(take_index, sorted)
         return self.__rebuild(raw_data_handler=new_raw_handler, im_handler=new_im)
 
-    def take_rows(self, rows: np.ndarray | DataIndex):
+    def take_rows(self, rows: DataIndex):
         sorted = self.get_sorted_index()
-        print(rows.into_array())
-        print(self.raw_index.into_array())
         new_handler = self.__raw_data_handler.take(rows, sorted)
         new_im_handler = self.__im_handler.take(rows, sorted)
         return self.__rebuild(raw_data_handler=new_handler, im_handler=new_im_handler)

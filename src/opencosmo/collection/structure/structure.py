@@ -176,9 +176,14 @@ class StructureCollection:
             raise KeyError(f"Dataset {key} not found in collection.")
         elif key == self.__header.file.data_type:
             return self.__source
+        ds = self.__datasets[key]
+        if isinstance(ds, StructureCollection):
+            idx = ds.__source.index
+            if not idx.range()[0] == 0 or len(ds) != idx.range()[1]:
+                return ds
 
         index = self.__links[key].make_index(self.__index)
-        return self.__datasets[key].with_index(index)
+        return self.__datasets[key].take_rows(index)
 
     def __enter__(self):
         return self
@@ -739,6 +744,12 @@ class StructureCollection:
             new_source, self.__header, self.__datasets, self.__links, self.__hide_source
         )
 
+    def take_rows(self, rows: np.ndarray | DataIndex):
+        new_source = self.__source.take_rows(rows)
+        return StructureCollection(
+            new_source, self.__header, self.__datasets, self.__links, self.__hide_source
+        )
+
     def with_new_columns(
         self,
         dataset: str,
@@ -887,7 +898,7 @@ class StructureCollection:
             idx = row.pop("raw_index")
             input_index = SimpleIndex(np.atleast_1d(idx))
             output = {
-                key: self.__datasets[key].with_index(
+                key: self.__datasets[key].take_rows(
                     self.__links[key].make_index(input_index)
                 )
                 for key in data_types
