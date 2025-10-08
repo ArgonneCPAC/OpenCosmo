@@ -231,7 +231,7 @@ def __build_structure_collection(
         )
 
         source_dataset = io.io.open_single_dataset(
-            galaxy_properties_target, bypass_lightcone=True
+            galaxy_properties_target, bypass_lightcone=True, bypass_mpi=True
         )
         if ignore_empty:
             new_index = make_index_with_linked_data(source_dataset.index, handlers)

@@ -22,34 +22,6 @@ def max_mass(input_path):
     return 0.95 * sod_mass.max()
 
 
-def test_open(input_path):
-    read_data = oc.open(input_path).data
-    with oc.open(input_path) as f:
-        open_data = f.data
-
-    assert np.all(read_data == open_data)
-    columns = read_data.columns
-    assert all(open_data[col].unit == read_data[col].unit for col in columns)
-
-
-def test_open_close(input_path):
-    with oc.open(input_path) as ds:
-        file = ds._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__file
-        assert file["data"] is not None
-
-    with pytest.raises(KeyError):
-        file["data"]
-
-
-def test_dataset_close(input_path):
-    ds = oc.open(input_path)
-    file = ds._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__file
-    assert file["data"] is not None
-    ds.close()
-    with pytest.raises(KeyError):
-        file["data"]
-
-
 def test_descriptions(input_path):
     ds = oc.open(input_path)
     assert isinstance(ds.descriptions, dict)

@@ -44,6 +44,14 @@ class ChunkedIndex:
         self.__starts = starts
         self.__sizes = sizes
 
+    @property
+    def starts(self):
+        return self.__starts
+
+    @property
+    def sizes(self):
+        return self.__sizes
+
     def range(self) -> tuple[int, int]:
         """
         Get the range of the index.
@@ -190,71 +198,6 @@ class ChunkedIndex:
         Get the total size of the index.
         """
         return np.sum(self.__sizes)
-
-    def take(self, n: int, at: str = "random") -> DataIndex:
-        if n > len(self):
-            raise ValueError(f"Cannot take {n} elements from index of size {len(self)}")
-
-        if at == "random":
-            idxs = np.concatenate(
-                [
-                    np.arange(start, start + size)
-                    for start, size in zip(self.__starts, self.__sizes)
-                ]
-            )
-            idxs = np.random.choice(idxs, n, replace=False)
-            return simple.SimpleIndex(idxs)
-
-        elif at == "start":
-            last_chunk_in_range = np.searchsorted(np.cumsum(self.__sizes), n)
-            new_starts = self.__starts[: last_chunk_in_range + 1].copy()
-            new_sizes = self.__sizes[: last_chunk_in_range + 1].copy()
-            new_sizes[-1] = n - np.sum(new_sizes[:-1])
-            return ChunkedIndex(new_starts, new_sizes)
-
-        elif at == "end":
-            starting_chunk = np.searchsorted(np.cumsum(self.__sizes), len(self) - n)
-            new_sizes = self.__sizes[starting_chunk:].copy()
-            new_starts = self.__starts[starting_chunk:].copy()
-            new_sizes[0] = n - np.sum(new_sizes[1:])
-            new_starts[0] = (
-                self.__starts[starting_chunk]
-                + self.__sizes[starting_chunk]
-                - new_sizes[0]
-            )
-            return ChunkedIndex(new_starts, new_sizes)
-        else:
-            raise ValueError(f"Unknown value for 'at': {at}")
-
-    def take_range(self, start: int, end: int) -> DataIndex:
-        """
-        Take a range of elements from the index.
-        """
-        if start < 0 or end > len(self):
-            raise ValueError(
-                f"Range {start}:{end} is out of bounds for index of size {len(self)}"
-            )
-
-        if start > end:
-            raise ValueError(f"Start {start} must be less than end {end}")
-
-        if start == end:
-            return ChunkedIndex.empty()
-
-        # Get the indices of the chunks that are in the range
-        cumulative_sizes = np.cumsum(self.__sizes)
-        start_idx = np.argmax(cumulative_sizes > start)
-        end_idx = np.argmax(cumulative_sizes >= end)
-
-        chunk_starts = self.__starts[start_idx : end_idx + 1].copy()
-        chunk_sizes = self.__sizes[start_idx : end_idx + 1].copy()
-
-        chunk_starts[0] = chunk_starts[0] + (
-            start - cumulative_sizes[start_idx] + cumulative_sizes[0]
-        )
-        chunk_sizes[-1] = chunk_sizes[-1] - (np.sum(chunk_sizes) - end + start)
-
-        return ChunkedIndex(chunk_starts, chunk_sizes)
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         """

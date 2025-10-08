@@ -71,7 +71,7 @@ class Dataset:
         return head + cosmo_repr + table_head + table_repr
 
     def __len__(self):
-        return len(self.__state.index)
+        return len(self.__state)
 
     def __enter__(self):
         # Need to write tests
@@ -214,10 +214,6 @@ class Dataset:
         if self.__cached_data is None:
             self.__cached_data = self.get_data("astropy")
         return self.__cached_data.copy()
-
-    @property
-    def index(self) -> DataIndex:
-        return self.__state.index
 
     def get_data(
         self, output="astropy", unpack=True, attach_index=False
@@ -752,7 +748,7 @@ class Dataset:
             schema.header = None
 
         if self.__tree is not None:
-            tree = self.__tree.apply_index(self.__state.index)
+            tree = self.__tree.apply_index(self.__state.raw_index)
             spat_idx_schema = tree.make_schema()
             schema.add_child(spat_idx_schema, "index")
         return schema

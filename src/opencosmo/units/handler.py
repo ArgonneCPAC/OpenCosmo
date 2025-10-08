@@ -28,13 +28,6 @@ def make_unit_handler(
     )
 
 
-def regularize_quantity_unit(value: u.Quantity):
-    """
-    Astropy 10j
-    """
-    pass
-
-
 class UnitHandler:
     def __init__(
         self,
