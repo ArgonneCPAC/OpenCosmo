@@ -398,12 +398,8 @@ def test_data_gets_all_particles(halo_paths):
     collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
         10, at="random"
     )
-    from time import time
 
-    start = 0
     for halo in collection.halos():
-        end = time()
-        print(end - start)
         for name, particle_species in halo.items():
             if "particle" not in name:
                 continue
@@ -411,8 +407,6 @@ def test_data_gets_all_particles(halo_paths):
             tag_filter = oc.col("fof_halo_tag") == halo_tag
             ds = collection[name].filter(tag_filter)
             assert len(ds) == len(particle_species)
-        start = time()
-    assert False
 
 
 def test_visit_dataset_in_structure_collection(halo_paths):
