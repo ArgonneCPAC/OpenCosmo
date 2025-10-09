@@ -241,7 +241,6 @@ def test_evaluate_structure(all_paths):
 
     collection = collection.evaluate(offset, **spec, insert=True, format="numpy")
     data = collection["halo_properties"].select("offset").data
-    print(np.where(data == 0))
     assert not np.any(data == 0)
 
 

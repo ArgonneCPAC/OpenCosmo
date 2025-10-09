@@ -223,10 +223,6 @@ class Dataset:
             self.__cached_data = self.get_data("astropy")
         return self.__cached_data.copy()
 
-    @property
-    def index(self) -> DataIndex:
-        return self.__state.raw_index
-
     def get_metadata(self, columns: list[str] = []):
         return self.__state.get_metadata(columns)
 
@@ -718,10 +714,6 @@ class Dataset:
             new_state = self.__state.take_rows(index)
         return Dataset(self.__header, new_state, self.__tree)
 
-    def with_index(self, index: DataIndex):
-        new_state = self.__state.with_index(index)
-        return Dataset(self.__header, new_state, self.__tree)
-
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
@@ -777,7 +769,8 @@ class Dataset:
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.raw_index)
             spat_idx_schema = tree.make_schema()
-            schema.add_child(spat_idx_schema, "index")
+            for name, column in spat_idx_schema.items():
+                schema.add_child(column, name)
         return schema
 
     def with_units(

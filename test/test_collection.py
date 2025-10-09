@@ -156,7 +156,6 @@ def test_select_nested_structures(halo_paths, galaxy_paths):
             "fof_halo_center_z",
         }
         assert set(halo["dm_particles"].columns) == {"x", "y", "z"}
-        print(halo.keys())
         assert set(halo["galaxies"]["galaxy_properties"].columns) == {
             "gal_mass_bar",
             "gal_mass_star",
@@ -738,10 +737,12 @@ def test_link_write(halo_paths, tmp_path):
             original_output[properties["fof_halo_tag"]].append(name)
 
     read_output = defaultdict(list)
+    print(collection["halo_properties"].select("fof_halo_tag").get_data())
 
     oc.write(tmp_path / "linked.hdf5", collection)
     written_data = oc.open(tmp_path / "linked.hdf5")
     n = 0
+    print(written_data["halo_properties"].select("fof_halo_tag").get_data())
     for halo in written_data.objects():
         halo_tags = set()
         n += 1

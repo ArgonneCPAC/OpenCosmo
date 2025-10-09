@@ -13,7 +13,9 @@ except ImportError:
     MPI = None  # type: ignore
 
 from opencosmo.index import ChunkedIndex, SimpleIndex
-from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
+from opencosmo.io.schemas import (
+    ColumnSchema,
+)
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
 from opencosmo.spatial.protocols import TreePartition
@@ -222,10 +224,18 @@ class Tree:
         return Tree(self.__index, result)
 
     def make_schema(self):
-        schema = SpatialIndexSchema()
+        columns = {}
         for level in range(self.__max_level + 1):
-            level_schema = SpatialIndexLevelSchema.from_source(
-                self.__data[f"level_{level}"]
+            source = self.__data[f"level_{level}"]
+            index = ChunkedIndex.from_size(len(source["start"]))
+            start = ColumnSchema(
+                f"level_{level}/start", index, source["start"], source["start"].attrs
             )
-            schema.add_child(level_schema, level)
-        return schema
+            size = ColumnSchema(
+                f"level_{level}/size", index, source["size"], source["size"].attrs
+            )
+
+            columns[f"index/level_{level}/start"] = start
+            columns[f"index/level_{level}/size"] = size
+
+        return columns

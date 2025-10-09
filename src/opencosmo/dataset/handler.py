@@ -26,12 +26,19 @@ class Hdf5Handler:
         self,
         group: h5py.Group,
         index: DataIndex,
+        metadata_group: Optional[h5py.Group] = None,
     ):
         self.__index = index
         self.__group = group
+        self.__metadata_group = metadata_group
 
     @classmethod
-    def from_group(cls, group: h5py.Group, index: Optional[DataIndex] = None):
+    def from_group(
+        cls,
+        group: h5py.Group,
+        index: Optional[DataIndex] = None,
+        metadata_group: Optional[h5py.Group] = None,
+    ):
         if not group.name.endswith("data"):
             raise ValueError("Expected a data group")
         lengths = set(len(ds) for ds in group.values())
@@ -41,16 +48,16 @@ class Hdf5Handler:
         if index is None:
             index = ChunkedIndex.from_size(lengths.pop())
 
-        return Hdf5Handler(group, index)
+        return Hdf5Handler(group, index, metadata_group)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
-            return Hdf5Handler(self.__group, other)
+            return Hdf5Handler(self.__group, other, self.__metadata_group)
 
         if sorted is not None:
             return self.__take_sorted(other, sorted)
         new_index = take(self.__index, other)
-        return Hdf5Handler(self.__group, new_index)
+        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if len(sorted) != len(self.__index):
@@ -59,7 +66,7 @@ class Hdf5Handler:
         new_indices = self.__index.into_array()[new_indices]
         new_index = SimpleIndex(np.sort(new_indices))
 
-        return Hdf5Handler(self.__group, new_index)
+        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
 
     @property
     def data(self):
@@ -72,6 +79,12 @@ class Hdf5Handler:
     @property
     def columns(self):
         return self.__group.keys()
+
+    @property
+    def metadata_columns(self):
+        if self.__metadata_group is None:
+            return None
+        return self.__metadata_group.keys()
 
     @cached_property
     def descriptions(self):
@@ -100,7 +113,22 @@ class Hdf5Handler:
         columns: Iterable[str],
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
-        return DatasetSchema.make_schema(self.__group, columns, self.__index, header)
+        groups = {}
+        data_columns = [f"data/{n}" for n in columns]
+        groups["data"] = self.__group
+        if self.metadata_columns is not None:
+            assert self.__metadata_group is not None
+            group_name = self.__metadata_group.name.split("/")[-1]
+            metadata_columns = [f"{group_name}/{n}" for n in self.metadata_columns]
+            groups[group_name] = self.__metadata_group
+        else:
+            metadata_columns = []
+        return DatasetSchema.make_schema(
+            groups,
+            data_columns + metadata_columns,
+            self.__index,
+            header,
+        )
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
@@ -109,6 +137,18 @@ class Hdf5Handler:
         data = {}
         for colname in columns:
             data[colname] = self.__index.get_data(self.__group[colname])
+
+        return data
+
+    def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
+        if self.__metadata_group is None:
+            return None
+        if not columns:
+            columns = self.metadata_columns
+
+        data = {}
+        for colname in columns:
+            data[colname] = self.__index.get_data(self.__metadata_group[colname])
 
         return data
 
