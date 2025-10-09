@@ -34,7 +34,7 @@ def remove_empty(dataset):
         if "size" in name:
             mask &= col != 0
         elif "idx" in name:
-            mask &= col != 0
+            mask &= col != -1
 
     if not mask.all():
         dataset = dataset.take_rows(np.where(mask)[0])

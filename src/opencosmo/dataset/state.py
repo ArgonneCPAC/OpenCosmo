@@ -39,7 +39,6 @@ class DatasetState:
         raw_data_handler: Hdf5Handler,
         im_handler: InMemoryColumnHandler,
         derived_columns: dict[str, DerivedColumn],
-        metadata_handler: Optional[Hdf5Handler],
         unit_handler: UnitHandler,
         header: OpenCosmoHeader,
         columns: set[str],
@@ -49,7 +48,6 @@ class DatasetState:
         self.__raw_data_handler = raw_data_handler
         self.__im_handler = im_handler
         self.__derived_columns = derived_columns
-        self.__metadata_handler = metadata_handler
         self.__unit_handler = unit_handler
         self.__header = header
         self.__columns = columns
@@ -61,7 +59,6 @@ class DatasetState:
             "raw_data_handler": self.__raw_data_handler,
             "im_handler": self.__im_handler,
             "derived_columns": self.__derived_columns,
-            "metadata_handler": self.__metadata_handler,
             "unit_handler": self.__unit_handler,
             "header": self.__header,
             "columns": self.__columns,
@@ -83,11 +80,7 @@ class DatasetState:
         index: Optional[DataIndex] = None,
         metadata_group: Optional[h5py.Group] = None,
     ):
-        handler = Hdf5Handler.from_group(group, index)
-        if metadata_group is not None:
-            metadata_handler = Hdf5Handler(metadata_group, handler.index)
-        else:
-            metadata_handler = None
+        handler = Hdf5Handler.from_group(group, index, metadata_group)
         unit_handler = make_unit_handler(handler.data, header, unit_convention)
 
         columns = set(handler.columns)
@@ -96,7 +89,6 @@ class DatasetState:
             handler,
             im_handler,
             {},
-            metadata_handler,
             unit_handler,
             header,
             columns,
@@ -141,9 +133,7 @@ class DatasetState:
 
     @property
     def meta_columns(self) -> list[str]:
-        if self.__metadata_handler is not None:
-            return list(self.__metadata_handler.columns)
-        return []
+        return self.__raw_data_handler.metadata_columns
 
     def get_data(
         self,
@@ -172,10 +162,8 @@ class DatasetState:
         data_columns = set(output.columns)
         raw_index_array = self.__raw_data_handler.index.into_array()
 
-        if with_metadata and self.__metadata_handler is not None:
-            output.update(
-                self.__metadata_handler.get_data(self.__metadata_handler.columns)
-            )
+        if with_metadata:
+            output.update(self.__raw_data_handler.get_metadata(self.meta_columns))
         if not ignore_sort and self.__sort_by is not None:
             order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
             output = output[order]
@@ -188,28 +176,21 @@ class DatasetState:
         return output
 
     def get_metadata(self, columns=[]):
-        if not columns:
-            columns = self.__metadata_handler.columns
-        return self.__metadata_handler.get_data(columns)
+        return self.__raw_data_handler.get_metadata(columns)
 
     def with_mask(self, mask: NDArray[np.bool_]):
         new_raw_handler = self.__raw_data_handler.mask(mask)
         new_im_handler = self.__im_handler.get_rows(mask)
-        if self.__metadata_handler is not None:
-            new_metadata_handler = self.__metadata_handler.mask(mask)
-        else:
-            new_metadata_handler = self.__metadata_handler
         return self.__rebuild(
             im_handler=new_im_handler,
             raw_data_handler=new_raw_handler,
-            metadata_handler=new_metadata_handler,
         )
 
     def make_schema(self):
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
-        dataset_schema = self.__raw_data_handler.prep_write(raw_columns, header)
+        schema = self.__raw_data_handler.prep_write(raw_columns, header)
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
@@ -229,7 +210,7 @@ class DatasetState:
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )
-            schema.add_child(colschema, colname)
+            schema.add_child(colschema, f"data/{colname}")
 
         im_names = set(self.__im_handler.keys()).intersection(self.columns)
         im_descriptions = self.__im_handler.descriptions
@@ -243,7 +224,7 @@ class DatasetState:
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )
-            schema.add_child(colschema, colname)
+            schema.add_child(colschema, f"data/{colname}")
 
         return schema
 
@@ -421,14 +402,9 @@ class DatasetState:
         new_handler = self.__raw_data_handler.take(take_index, sorted)
         new_im_handler = self.__im_handler.take(take_index, sorted)
 
-        if self.__metadata_handler is not None:
-            new_metadata_handler = self.__metadata_handler.take(take_index, sorted)
-        else:
-            new_metadata_handler = self.__metadata_handler
         return self.__rebuild(
             raw_data_handler=new_handler,
             im_handler=new_im_handler,
-            metadata_handler=new_metadata_handler,
         )
 
     def take_range(self, start: int, end: int):
@@ -451,30 +427,19 @@ class DatasetState:
 
         new_raw_handler = self.__raw_data_handler.take(take_index, sorted)
         new_im = self.__im_handler.take(take_index, sorted)
-        if self.__metadata_handler is not None:
-            new_metadata_handler = self.__metadata_handler.take(take_index, sorted)
-        else:
-            new_metadata_handler = self.__metadata_handler
-
         return self.__rebuild(
             raw_data_handler=new_raw_handler,
             im_handler=new_im,
-            metadata_handler=new_metadata_handler,
         )
 
     def take_rows(self, rows: DataIndex):
         sorted = self.get_sorted_index()
         new_handler = self.__raw_data_handler.take(rows, sorted)
         new_im_handler = self.__im_handler.take(rows, sorted)
-        if self.__metadata_handler is not None:
-            new_metadata_handler = self.__metadata_handler.take(rows, sorted)
-        else:
-            new_metadata_handler = self.__metadata_handler
 
         return self.__rebuild(
             raw_data_handler=new_handler,
             im_handler=new_im_handler,
-            metadata_handler=new_metadata_handler,
         )
 
     def with_units(

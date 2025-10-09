@@ -131,7 +131,7 @@ class SimpleIndex:
 
         min_index = self.__index.min()
         max_index = self.__index.max()
-        output = data[min_index : max_index + 1]
+        output = np.atleast_1d(data[min_index : max_index + 1])
         indices_into_output = self.__index - min_index
         return output[indices_into_output]
 

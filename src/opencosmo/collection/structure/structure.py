@@ -109,7 +109,7 @@ class LinkHandler:
     def __init__(self, links: Iterable[str], rename_galaxies=False):
         self.links, self.columns = make_links(links, rename_galaxies)
 
-    def parse(self, data: dict[str, int]):
+    def parse(self, data: dict[str, Any]):
         output = {}
         for name, handler in self.links.items():
             result = handler(data)
@@ -929,12 +929,6 @@ class StructureCollection:
             self.__header,
             {**self.__datasets, dataset: new_ds},
             self.__hide_source,
-        )
-
-    def with_index(self, index: DataIndex):
-        new_source = self.__source.with_index(index)
-        return StructureCollection(
-            new_source, self.__header, self.__datasets, self.__hide_source
         )
 
     def objects(
