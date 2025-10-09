@@ -172,6 +172,10 @@ class DatasetState:
         data_columns = set(output.columns)
         raw_index_array = self.__raw_data_handler.index.into_array()
 
+        if with_metadata and self.__metadata_handler is not None:
+            output.update(
+                self.__metadata_handler.get_data(self.__metadata_handler.columns)
+            )
         if not ignore_sort and self.__sort_by is not None:
             order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
             output = output[order]
@@ -180,10 +184,7 @@ class DatasetState:
         extras = set(data.keys()).difference(self.columns)
         if extras:
             output.remove_columns(extras)
-        if with_metadata and self.__metadata_handler is not None:
-            output.update(
-                self.__metadata_handler.get_data(self.__metadata_handler.columns)
-            )
+
         return output
 
     def get_metadata(self, columns=[]):
@@ -208,7 +209,7 @@ class DatasetState:
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
-        schema = self.__raw_data_handler.prep_write(raw_columns, header)
+        dataset_schema = self.__raw_data_handler.prep_write(raw_columns, header)
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)

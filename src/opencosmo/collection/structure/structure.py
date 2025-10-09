@@ -97,10 +97,11 @@ def make_links(keys, rename_galaxies=False):
 
     for name in idxs:
         output[LINK_ALIASES[name]] = partial(create_idx, idx_name=f"{name}_idx")
-        columns[LINK_ALIASES[name]] = [name]
+        columns[LINK_ALIASES[name]] = [f"{name}_idx"]
 
     if rename_galaxies and "galaxy_properties" in output:
         output["galaxies"] = output.pop("galaxy_properties")
+        columns["galaxies"] = columns.pop("galaxy_properties")
     return output, columns
 
 
@@ -822,7 +823,7 @@ class StructureCollection:
     def take_rows(self, rows: np.ndarray | DataIndex):
         new_source = self.__source.take_rows(rows)
         return StructureCollection(
-            new_source, self.__header, self.__datasets, self.__links, self.__hide_source
+            new_source, self.__header, self.__datasets, self.__hide_source
         )
 
     def with_new_columns(
@@ -1040,11 +1041,5 @@ class StructureCollection:
             if name == "galaxies":
                 name = "galaxy_properties"
             schema.add_child(ds_schema, name)
-
-        for name, handler in self.__links.items():
-            if name == "galaxies":
-                name = "galaxy_properties"
-            link_schema = handler.make_schema(name, self.__index)
-            schema.insert(link_schema, f"{source_name}.{name}")
 
         return schema

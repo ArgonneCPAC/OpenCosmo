@@ -79,15 +79,14 @@ def make_indices_for_sort(
         sorted_indices = sorted_indices[-n:]
 
     sorted_indices = np.sort(sorted_indices)
-    index = SimpleIndex(sorted_indices)
-    ranges = np.fromiter((len(ds) for ds in lightcone.values()), dtype=int)
+    ranges = np.cumsum(np.fromiter((len(ds) for ds in lightcone.values()), dtype=int))
     ranges = np.insert(ranges, 0, 0)
-    slices = np.cumsum(index.n_in_range(ranges[:-1], ranges[1:]))
-    slices = np.insert(slices, 0, 0)
-
     output_indices = []
-    for i in range(len(slices) - 1):
-        output_index = sorted_indices[slices[i] : slices[i + 1]] - ranges[i]
+
+    for i in range(len(ranges) - 1):
+        mask = (sorted_indices >= ranges[i]) & (sorted_indices < ranges[i + 1])
+
+        output_index = sorted_indices[mask] - ranges[i]
         output_indices.append(SimpleIndex(output_index))
     return output_indices
 
@@ -747,7 +746,7 @@ class Lightcone(dict):
                 indices_into_ds = (
                     indices[(indices >= rs) & (indices < rs + len(ds))] - rs
                 )
-                output[key] = ds.take(len(indices_into_ds))
+                output[key] = ds.take_rows(indices_into_ds)
                 rs += len(ds)
             return Lightcone(
                 output, self.z_range, hidden=self.__hidden, ordered_by=self.__ordered_by
@@ -757,7 +756,7 @@ class Lightcone(dict):
         if self.__ordered_by is not None:
             indices = make_indices_for_sort(self, *self.__ordered_by, n=n, at=at)
             output = {
-                k: v.with_index(indices[i]) for i, (k, v) in enumerate(self.items())
+                k: v.take_rows(indices[i]) for i, (k, v) in enumerate(self.items())
             }
             return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 

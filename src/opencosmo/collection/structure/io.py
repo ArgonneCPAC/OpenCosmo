@@ -223,6 +223,7 @@ def __build_structure_collection(
     if galaxy_properties_target is not None and "galaxy_targets" in link_targets:
         source_dataset = io.io.open_single_dataset(
             galaxy_properties_target,
+            metadata_group="data_linked",
             bypass_lightcone=True,
             bypass_mpi=halo_properties_target is not None,
         )
