@@ -677,14 +677,15 @@ class Dataset:
 
     def take_range(self, start: int, end: int) -> Dataset:
         """
-        Create a new dataset from a row range in this dataset.
+        Create a new dataset from a row range in this dataset. We use standard
+        indexing conventions, so the rows included will be start -> end - 1.
 
         Parameters
         ----------
         start : int
-            The first row to get.
+            The beginning of the range
         end : int
-            The last row to get.
+            The end of the range
 
         Returns
         -------
@@ -707,6 +708,25 @@ class Dataset:
         )
 
     def take_rows(self, rows: np.ndarray | DataIndex):
+        """
+        Take the rows of a dataset specified by the :code:`rows` argument.
+        :code:`rows` should be an array of integers.
+
+        Parameters:
+        -----------
+        rows: np.ndarray[int]
+
+        Returns
+        -------
+        dataset: The dataset with only the specified rows included
+
+        Raises:
+        -------
+        ValueError:
+            If any of the indices is less than 0 or greater than the length of the
+            dataset.
+
+        """
         if not isinstance(rows, np.ndarray):
             new_state = self.__state.take_rows(rows)
         else:

@@ -33,11 +33,15 @@ if TYPE_CHECKING:
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
 from several ranks into a single schema that can be allocated by rank 0. Each 
-rank will then write it's own data to the specific section of the file 
+rank will then write its own data to the specific section of the file 
 it is responsible for.
 
 As with schemas and writers, everything is very hierarcical here. A function
 does some consistency checks, then calls a function that combines its children.
+
+Ranks with different schemas are supported. For example, one rank may have data for one
+dataset in a collection but not another. So long as the top-level structure is the same,
+things will be handled.
 """
 
 

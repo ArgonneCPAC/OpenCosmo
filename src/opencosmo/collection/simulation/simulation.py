@@ -191,8 +191,8 @@ class SimulationCollection(dict):
 
         Returns
         -------
-        dataset: opencosmo.Dataset
-            The portion of the dataset inside the selected region
+        dataset: opencosmo.SimulationCollection
+            The portion of each dataset inside the selected region
 
         """
         return self.__map("bound", region, select_by)
@@ -234,6 +234,11 @@ class SimulationCollection(dict):
         kwargs:
             The keyword arguments to pass to the select method.
             This is usually a dictionary of column names to select.
+
+        Returns
+        -------
+        SimulationCollection
+            A new collection with only the specified columns
 
         """
         return self.__map("select", *args, **kwargs)
@@ -279,6 +284,31 @@ class SimulationCollection(dict):
                 f"Not all datasets in this collection have at least {n} rows!"
             )
         return self.__map("take", n, at)
+
+    def take_range(self, start: int, end: int):
+        """
+        Take a range of rows from all datasets or collections in this collection.
+        This method will fail if :code:`start` < 0, or any of the datasets are not at least
+        :code:`end` long.
+
+        Parameters
+        ----------
+        n: int
+            The number of rows to take
+        at: str, default = "random"
+            The method to use to take rows. Must be one of "start", "end", "random".
+
+        Returns
+        -------
+        SimulationCollection
+            The new simulation collection with only the specified rows.
+
+        """
+        if start < 0 or any(len(ds) < end for ds in self.values()):
+            raise ValueError(
+                "The range must be between zero and the length of the shortest dataset"
+            )
+        return self.__map("take_range", start, end)
 
     def with_new_columns(
         self,
@@ -363,6 +393,11 @@ class SimulationCollection(dict):
         insert: bool, default = True
             Whether or not to insert the results as columns in the datasets. If false, the results will
             be returned directly. If true, this method will return a new Simulation Collection.
+
+        Returns
+        -------
+        results: SimulationCollection | dict[str, np.ndarray] | dict[str, astropy.units.Quantity]
+            The results of the computation, or a new simulation collection with the results inserted.
         """
         if datasets is None:
             datasets = list(self.keys())
@@ -431,6 +466,11 @@ class SimulationCollection(dict):
         **column_conversions: astropy.units.Unit
             Custom unit conversions for any column with a specific
             name in the datasets in this collection.
+
+        Returns
+        -------
+        collection
+            A new simulation collection with the requested unit conventions and conversions.
 
 
         """

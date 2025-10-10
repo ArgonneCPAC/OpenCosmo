@@ -56,6 +56,8 @@ class ChunkedIndex:
         """
         Get the range of the index.
         """
+        if len(self) == 0:
+            return 0, 0
         return self.__starts[0], self.__starts[-1] + self.__sizes[-1]
 
     def is_single_chunk(self):
