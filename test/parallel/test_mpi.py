@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from functools import reduce
 from typing import TYPE_CHECKING
@@ -547,6 +548,10 @@ def test_simcollection_write(multi_path, tmp_path):
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
 
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write_one_missing(multi_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
