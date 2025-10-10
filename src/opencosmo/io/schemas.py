@@ -75,15 +75,6 @@ class FileSchema:
                     f"File schema cannot have children of type {type(child)}"
                 )
 
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
-
     def allocate(self, group: h5py.File | h5py.Group):
         self.verify()
         if not isinstance(group, h5py.File):
@@ -120,15 +111,6 @@ class SimCollectionSchema:
 
     def __init__(self):
         self.children = {}
-
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
 
     def add_child(self, child: iop.DataSchema, name: str):
         if name in self.children:
@@ -170,15 +152,6 @@ class SimCollectionSchema:
 class LightconeSchema:
     def __init__(self):
         self.children: dict[str, DatasetSchema] = {}
-
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
 
     def verify(self):
         zero_length = set()
@@ -230,15 +203,6 @@ class StructCollectionSchema:
         self.children: dict[str, DatasetSchema | StructCollectionSchema] = defaultdict(
             dict
         )
-
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
 
     def verify(self):
         if len(self.children) < 2:
@@ -339,11 +303,6 @@ class DatasetSchema:
             )
             schema.add_child(column_schema, colname)
         return schema
-
-    def insert(self, child: iop.DataSchema, path: str):
-        if "." in path:
-            raise ValueError("Datasets do not have grandchildren!")
-        return self.add_child(child, path)
 
     def add_child(self, child: iop.DataSchema, child_id: str):
         if not isinstance(child, ColumnSchema):
