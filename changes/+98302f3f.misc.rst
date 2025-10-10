@@ -1,0 +1,1 @@
+Column management has been reworked and centralized
