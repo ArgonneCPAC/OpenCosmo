@@ -58,7 +58,7 @@ def write_parallel(file: Path, file_schema: FileSchema):
     try:
         file_schema.verify()
         results = comm.allgather(CombineState.VALID)
-    except ValueError:
+    except ValueError as e:
         results = comm.allgather(CombineState.INVALID)
     except ZeroLengthError:
         results = comm.allgather(CombineState.ZERO_LENGTH)
@@ -349,23 +349,20 @@ def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
 
 
 def combine_simcollection_schema(
-    schema: SimCollectionSchema, comm: MPI.Comm
+    schema: SimCollectionSchema | None, comm: MPI.Comm
 ) -> SimCollectionSchema:
-    verify_structure(schema.children, comm)
-
-    child_names = schema.children.keys()
+    if schema is None:
+        children = {}
+    else:
+        children = schema.children
+    all_child_names = get_all_child_names(children, comm)
 
     new_schema = SimCollectionSchema()
     new_child: DatasetSchema | StructCollectionSchema
 
-    for child_name in child_names:
-        child_name_ = comm.bcast(child_name)
-        child = schema.children[child_name_]
-        match child:
-            case StructCollectionSchema():
-                new_child = combine_structcollection_schema(child, comm)
-            case DatasetSchema():
-                new_child = combine_dataset_schemas(child, comm)
+    for child_name in all_child_names:
+        child = children.get(child_name)
+        new_child = combine_dataset_schemas(child, comm)
         new_schema.add_child(new_child, child_name)
     return new_schema
 

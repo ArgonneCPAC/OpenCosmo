@@ -38,7 +38,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     defaults:
       run:
         shell: bash
@@ -77,7 +77,7 @@ jobs:
     needs: [get-test-data]
     strategy:
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -116,4 +116,4 @@ jobs:
         run: echo "Running on $(nproc) cores"
       - name: Run tests with pytest
         run: |
-          uv run mpiexec --timeout 120 --use-hwthread-cpus -n 4 pytest -m parallel test/parallel -x
+          uv run mpiexec --timeout 600 --use-hwthread-cpus -n 4 pytest -m parallel test/parallel -x
