@@ -19,6 +19,11 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
+def multi_path(snapshot_path):
+    return snapshot_path / "haloproperties_multi.hdf5"
+
+
+@pytest.fixture
 def input_path(snapshot_path):
     return snapshot_path / "haloproperties.hdf5"
 
@@ -519,3 +524,67 @@ def test_derive_write(input_path, tmp_path):
             )
         )
     )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_simcollection_write(multi_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "collection.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    data = oc.open(multi_path)
+    halo_tags = {}
+    columns = {}
+    for name, sim in data.items():
+        columns[name] = sim.columns
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+        halo_tags[name] = sim_tags
+
+    oc.write(temporary_path, data)
+    written_data = oc.open(temporary_path)
+    assert isinstance(written_data, oc.SimulationCollection)
+    for name, sim in written_data.items():
+        assert sim.columns == columns[name]
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_simcollection_write_one_missing(multi_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "collection.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    data = oc.open(multi_path)
+
+    halo_tags = {}
+    if comm.Get_rank() == 0:
+        key_to_drop = next(iter(data.keys()))
+        data.pop(key_to_drop)
+
+    for name, sim in data.items():
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+        halo_tags[name] = sim_tags
+
+    all_tags = comm.allgather(halo_tags)
+    all_halo_tags = defaultdict(lambda: np.array([], dtype=int))
+    for rank_tags in all_tags:
+        for simkey, tags in rank_tags.items():
+            all_halo_tags[simkey] = np.append(all_halo_tags[simkey], tags)
+
+    oc.write(temporary_path, data)
+    written_data = oc.open(temporary_path)
+    assert isinstance(written_data, oc.SimulationCollection)
+    assert len(written_data.keys()) == 2
+    written_halo_tags = {}
+    for name, sim in written_data.items():
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+        written_halo_tags[name] = sim_tags
+
+    all_tags = comm.allgather(written_halo_tags)
+    all_written_halo_tags = defaultdict(lambda: np.array([], dtype=int))
+    for rank_tags in all_tags:
+        for simkey, tags in rank_tags.items():
+            all_written_halo_tags[simkey] = np.append(
+                all_written_halo_tags[simkey], tags
+            )
+
+    for simkey, tags in all_written_halo_tags.items():
+        parallel_assert(np.all(tags == all_halo_tags[simkey]))

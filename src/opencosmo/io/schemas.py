@@ -151,8 +151,6 @@ class SimCollectionSchema:
             ds.allocate(ds_group)
 
     def verify(self):
-        if len(self.children) < 2:
-            raise ValueError("A SimulationCollection must have at least two children!")
         zero_length = set()
         for name, child in self.children.items():
             try:
