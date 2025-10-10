@@ -433,6 +433,12 @@ class DatasetState:
         )
 
     def take_rows(self, rows: DataIndex):
+        if len(self) == 0:
+            return self
+        if rows.range()[1] > len(self) or rows.range()[0] < 0:
+            raise ValueError(
+                f"Row indices must be between 0 and the length of this dataset!"
+            )
         sorted = self.get_sorted_index()
         new_handler = self.__raw_data_handler.take(rows, sorted)
         new_im_handler = self.__im_handler.take(rows, sorted)

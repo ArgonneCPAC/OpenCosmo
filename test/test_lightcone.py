@@ -254,6 +254,54 @@ def test_lc_collection_take(haloproperties_600_path, haloproperties_601_path, tm
     assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
 
 
+def test_lc_collection_range(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    start = int(0.25 * len(ds))
+    end = int(0.75 * len(ds))
+
+    ds_range = ds.take_range(start, end)
+    halo_tags = ds.select("fof_halo_tag").get_data("numpy")[start:end]
+    range_halo_tags = ds_range.select("fof_halo_tag").get_data("numpy")
+    assert np.all(halo_tags == range_halo_tags)
+
+
+def test_lc_collection_take_rows(haloproperties_600_path, haloproperties_601_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    n_to_take = int(0.75 * len(ds))
+    rows = np.random.choice(len(ds), n_to_take, replace=False)
+    rows.sort()
+    ds_rows = ds.take_rows(rows)
+
+    tags = ds.select("fof_halo_tag").get_data("numpy")
+    taken_tags = ds_rows.select("fof_halo_tag").get_data("numpy")
+    assert np.all(tags[rows] == taken_tags)
+
+    sorted_ds = ds.sort_by("fof_halo_mass").take_rows(rows)
+    sorted_tags = sorted_ds.select(("fof_halo_mass", "fof_halo_tag")).get_data()
+
+    data = ds.select(("fof_halo_mass", "fof_halo_tag")).get_data()
+    sorted_index = np.argsort(data["fof_halo_mass"])
+
+    assert np.all(
+        data["fof_halo_mass"][sorted_index][rows] == sorted_tags["fof_halo_mass"]
+    )
+    toolkit_sorted_tags_mass = dict(
+        zip(sorted_tags["fof_halo_tag"], sorted_tags["fof_halo_mass"])
+    )
+    sorted_tags_mass = dict(
+        zip(
+            data["fof_halo_tag"][sorted_index][rows],
+            data["fof_halo_mass"][sorted_index][rows],
+        )
+    )
+    # Exact order is not deterministic, because many low_mass halos have the same mass,
+    # So we just make sure the tag->mass mapping is the same in the two datasets.
+
+    assert toolkit_sorted_tags_mass == sorted_tags_mass
+
+
 def test_lc_collection_derive(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):

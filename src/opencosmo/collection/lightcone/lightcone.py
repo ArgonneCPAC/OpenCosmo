@@ -64,31 +64,28 @@ def sort_table(table: Table, column: str, invert: bool):
     return table
 
 
-def make_indices_for_sort(
-    lightcone: "Lightcone", sort_by: str, invert: bool, n: int, at: str
+def take_from_sorted(
+    lightcone: "Lightcone", sort_by: str, invert: bool, n: int, at: str | int
 ):
     column = np.concatenate(
         [ds.select(sort_by).get_data("numpy") for ds in lightcone.values()]
     )
     if invert:
         column = -column
-    sorted_indices = np.argsort(column)
+    sort_index = np.argsort(column)
     if at == "start":
-        sorted_indices = sorted_indices[:n]
-    else:
-        sorted_indices = sorted_indices[-n:]
+        sort_index = sort_index[:n]
+    elif at == "end":
+        sort_index = sort_index[-n:]
+    elif isinstance(at, int):
+        if at + n > len(sort_index) or at < 0:
+            raise ValueError(
+                "Requested a range that is outside the size of this dataset!"
+            )
+        sort_index = sort_index[at : at + n]
 
-    sorted_indices = np.sort(sorted_indices)
-    ranges = np.cumsum(np.fromiter((len(ds) for ds in lightcone.values()), dtype=int))
-    ranges = np.insert(ranges, 0, 0)
-    output_indices = []
-
-    for i in range(len(ranges) - 1):
-        mask = (sorted_indices >= ranges[i]) & (sorted_indices < ranges[i + 1])
-
-        output_index = sorted_indices[mask] - ranges[i]
-        output_indices.append(SimpleIndex(output_index))
-    return output_indices
+    sorted_indices = np.sort(sort_index)
+    return sorted_indices
 
 
 def with_redshift_column(dataset: Dataset):
@@ -670,7 +667,7 @@ class Lightcone(dict):
             hidden = hidden.union({"redshift"})
 
         if self.__ordered_by is not None and self.__ordered_by[0] not in columns:
-            columns.add("redshift")
+            columns.add(self.__ordered_by[0])
             hidden = hidden.union({self.__ordered_by[0]})
 
         return self.__map("select", columns, hidden=hidden)
@@ -739,41 +736,127 @@ class Lightcone(dict):
             )
         if at == "random":
             rs = 0
-            output = {}
             indices = np.random.choice(len(self), n, replace=False)
             indices = np.sort(indices)
-            for key, ds in self.items():
-                indices_into_ds = (
-                    indices[(indices >= rs) & (indices < rs + len(ds))] - rs
-                )
-                output[key] = ds.take_rows(indices_into_ds)
-                rs += len(ds)
-            return Lightcone(
-                output, self.z_range, hidden=self.__hidden, ordered_by=self.__ordered_by
-            )
-        output = {}
-        rs = 0
-        if self.__ordered_by is not None:
-            indices = make_indices_for_sort(self, *self.__ordered_by, n=n, at=at)
-            output = {
-                k: v.take_rows(indices[i]) for i, (k, v) in enumerate(self.items())
-            }
-            return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
+            return self.__take_rows(indices)
 
-        if at == "start":
-            iter = self.items()
+        elif self.__ordered_by is not None:
+            index = take_from_sorted(self, *self.__ordered_by, n=n, at=at)
+            return self.__take_rows(index)
+        elif at == "start":
+            return self.take_range(0, n)
         elif at == "end":
-            iter = reversed(self.items())  # type: ignore
+            return self.take_range(len(self) - n, len(self))
+        else:
+            raise ValueError(
+                f'"at" should be one of ("start", "end", "random", got {at}'
+            )
 
-        for name, ds in iter:
-            if len(ds) < n - rs:
-                output[name] = ds
-                rs += len(ds)
+    def take_range(self, start: int, end: int):
+        """
+        Create a new lightcone from a row range in this lightcone. We use standard
+        indexing conventions, so the rows included will be start -> end - 1. Because
+        lightcones are stacked by redshift, this operation effectively takes a
+        redshift range. If you know the exact redshift range you want, use
+        :py:meth:`with_redshift_range <opencosmo.Lightcone.with_redshift_range>`.
+
+        Parameters
+        ----------
+        start : int
+            The beginning of the range
+        end : int
+            The end of the range
+
+        Returns
+        -------
+        table : astropy.table.Table
+            The table with only the rows from start to end.
+
+        Raises
+        ------
+        ValueError
+            If start or end are negative or greater than the length of the dataset
+            or if end is greater than start.
+
+        """
+        if start < 0 or end > len(self):
+            raise ValueError("Got row indices that are out of range!")
+
+        if self.__ordered_by is not None:
+            indices = take_from_sorted(self, *self.__ordered_by, end - start, at=start)
+            return self.__take_rows(indices)
+
+        ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
+        starts = np.insert(ends, 0, 0)[:-1]
+        clipped_starts = np.clip(starts, a_min=start, a_max=None)
+        clipped_ends = np.clip(ends, a_min=None, a_max=end)
+
+        output = {}
+        for i, (name, dataset) in enumerate(self.items()):
+            if starts[i] == clipped_starts[i] and ends[i] == clipped_ends[i]:
+                output[name] = dataset
+            elif clipped_starts[i] >= clipped_ends[i]:
+                continue
             else:
-                output[name] = ds.take(n - rs, at=at)
-                break
-        if at == "end":
-            output = {k: v for k, v in reversed(output.items())}
+                output[name] = dataset.take_range(
+                    clipped_starts[i] - starts[i], clipped_ends[i] - starts[i]
+                )
+        return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
+
+    def take_rows(self, rows: np.ndarray):
+        """
+        Take the rows of a lightcone specified by the :code:`rows` argument.
+        :code:`rows` should be an array of integers.
+
+        Parameters:
+        -----------
+        rows: np.ndarray[int]
+
+        Returns
+        -------
+        dataset: The dataset with only the specified rows included
+
+        Raises:
+        -------
+        ValueError:
+            If any of the indices is less than 0 or greater than the length of the
+            lightcone.
+
+        """
+        rows = np.sort(rows)
+        if rows[-1] >= len(self) or rows[0] < 0:
+            raise ValueError(
+                "Rows must be between 0 and the length of this dataset - 1"
+            )
+        if self.__ordered_by is not None:
+            data = np.concatenate(
+                [
+                    ds.select(self.__ordered_by[0]).get_data("numpy")
+                    for ds in self.values()
+                ]
+            )
+            if self.__ordered_by[1]:
+                data = -data
+            sort_index = np.argsort(data)
+            rows = sort_index[rows]
+            rows.sort()
+
+        return self.__take_rows(rows)
+
+    def __take_rows(self, rows: np.ndarray):
+        """
+        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorte.
+        For internal use only.
+        """
+        ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
+        partitions = np.searchsorted(rows, ds_ends)
+        splits = np.split(rows, partitions)
+        output = {**self}
+        rs = 0
+        for split, (name, dataset) in zip(splits, self.items()):
+            if len(split) > 0:
+                output[name] = dataset.take_rows(split - rs)
+            rs += len(dataset)
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 
     def with_new_columns(

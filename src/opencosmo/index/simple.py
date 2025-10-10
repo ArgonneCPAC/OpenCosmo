@@ -44,7 +44,7 @@ class SimpleIndex:
         """
         if len(self) == 0:
             return 0, 0
-        return self.__index[0], self.__index[-1]
+        return self.__index[0], self.__index[-1] + 1
 
     def into_mask(self):
         mask = np.zeros(self.__index[-1] + 1, dtype=bool)

@@ -815,12 +815,54 @@ class StructureCollection:
         )
 
     def take_range(self, start: int, end: int):
+        """
+        Create a new collection from a row range in this collection. We use standard
+        indexing conventions, so the rows included will be start -> end - 1.
+
+        Parameters
+        ----------
+        start : int
+            The first row to get.
+        end : int
+            The last row to get.
+
+        Returns
+        -------
+        table : astropy.table.Table
+            The table with only the rows from start to end.
+
+        Raises
+        ------
+        ValueError
+            If start or end are negative or greater than the length of the dataset
+            or if end is greater than start.
+
+        """
         new_source = self.__source.take_range(start, end)
         return StructureCollection(
             new_source, self.__header, self.__datasets, self.__hide_source
         )
 
     def take_rows(self, rows: np.ndarray | DataIndex):
+        """
+        Take the rows of this collection  specified by the :code:`rows` argument.
+        :code:`rows` should be an array of integers.
+
+        Parameters:
+        -----------
+        rows: np.ndarray[int]
+
+        Returns
+        -------
+        dataset: The dataset with only the specified rows included
+
+        Raises:
+        -------
+        ValueError:
+            If any of the indices is less than 0 or greater than the length of the
+            dataset.
+
+        """
         new_source = self.__source.take_rows(rows)
         return StructureCollection(
             new_source, self.__header, self.__datasets, self.__hide_source
