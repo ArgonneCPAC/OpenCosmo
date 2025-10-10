@@ -146,7 +146,7 @@ class ChunkedIndex:
 
         else:
             indexes = np.concatenate([o.into_array() for o in others])
-            indexes = np.concatenate(self.into_array(), indexes)
+            indexes = np.concatenate((self.into_array(), indexes))
             return simple.SimpleIndex(indexes)
 
     @classmethod
