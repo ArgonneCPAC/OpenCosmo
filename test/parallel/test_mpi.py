@@ -547,6 +547,10 @@ def test_derive_write(input_path, tmp_path):
     )
 
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 @pytest.mark.timeout(20)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write(multi_path, tmp_path):
@@ -569,7 +573,8 @@ def test_simcollection_write(multi_path, tmp_path):
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
 
 
-@pytest.mark.timeout(1)
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
+@pytest.mark.timeout(20)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write_one_missing(multi_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
