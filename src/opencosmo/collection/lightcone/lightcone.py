@@ -769,8 +769,8 @@ class Lightcone(dict):
 
         Returns
         -------
-        table : astropy.table.Table
-            The table with only the rows from start to end.
+        lightcone : opencosmo.Lightcone
+            The lightcone with only the specified range of rows.
 
         Raises
         ------
@@ -808,9 +808,10 @@ class Lightcone(dict):
         Take the rows of a lightcone specified by the :code:`rows` argument.
         :code:`rows` should be an array of integers.
 
-        Parameters:
-        -----------
-        rows: np.ndarray[int]
+        Parameters
+        ----------
+        rows : np.ndarray[int]
+            The indices of the rows to take.
 
         Returns
         -------
@@ -1013,29 +1014,3 @@ class Lightcone(dict):
             conversions=conversions,
             **columns,
         )
-
-    def collect(self) -> "Lightcone":
-        """
-        Given a dataset that was originally opend with opencosmo.open,
-        return a dataset that is in-memory as though it was read with
-        opencosmo.read.
-
-        This is useful if you have a very large dataset on disk, and you
-        want to filter it down and then close the file.
-
-        For example:
-
-        .. code-block:: python
-
-            import opencosmo as oc
-            with oc.open("path/to/file.hdf5") as file:
-                ds = file.(ds["sod_halo_mass"] > 0)
-                ds = ds.select(["sod_halo_mass", "sod_halo_radius"])
-                ds = ds.collect()
-
-        The selected data will now be in memory, and the file will be closed.
-
-        If working in an MPI context, all ranks will recieve the same data.
-        """
-        datasets = {k: v.collect() for k, v in self.items()}
-        return Lightcone(datasets, self.z_range, self.__hidden, self.__ordered_by)
