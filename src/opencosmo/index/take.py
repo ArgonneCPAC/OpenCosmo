@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numba as nb
+import numba as nb  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
 
