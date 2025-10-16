@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import partial
+from functools import partial, reduce
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
@@ -1007,8 +1007,11 @@ class StructureCollection:
 
         link_handler = None
         data_columns = set(self.__source.columns)
+        metadata_columns: list[str] = reduce(
+            lambda acc, key: acc + self.__handler.columns[key], data_types, []
+        )
         rename_galaxies = "galaxies" in self.keys()
-        for row in self.__source.rows(with_metadata=True):
+        for row in self.__source.rows(with_metadata=metadata_columns):
             row = dict(row)
             links = self.__handler.parse(row)
             output = {

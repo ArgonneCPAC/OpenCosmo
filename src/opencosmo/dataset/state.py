@@ -138,7 +138,7 @@ class DatasetState:
     def get_data(
         self,
         ignore_sort: bool = False,
-        with_metadata: bool = False,
+        with_metadata: list = [],
         unit_kwargs: dict = {},
     ) -> table.QTable:
         """
@@ -163,7 +163,8 @@ class DatasetState:
         raw_index_array = self.__raw_data_handler.index.into_array()
 
         if with_metadata:
-            output.update(self.__raw_data_handler.get_metadata(self.meta_columns))
+            output.update(self.__raw_data_handler.get_metadata(with_metadata))
+
         if not ignore_sort and self.__sort_by is not None:
             order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
             output = output[order]
