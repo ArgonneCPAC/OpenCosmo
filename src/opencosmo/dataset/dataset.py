@@ -230,7 +230,7 @@ class Dataset:
         self,
         output="astropy",
         unpack=True,
-        with_metadata=False,
+        with_metadata=[],
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -495,7 +495,7 @@ class Dataset:
     def rows(
         self,
         output="astropy",
-        with_metadata=False,
+        with_metadata=[],
     ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
