@@ -230,7 +230,7 @@ class Dataset:
         self,
         output="astropy",
         unpack=True,
-        with_metadata=[],
+        metadata_columns=[],
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -273,8 +273,7 @@ class Dataset:
             unit_kwargs = {}
 
         data = self.__state.get_data(
-            unit_kwargs=unit_kwargs,
-            with_metadata=with_metadata,
+            unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
         )  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
@@ -495,7 +494,7 @@ class Dataset:
     def rows(
         self,
         output="astropy",
-        with_metadata=[],
+        metadata_columns=[],
     ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
@@ -523,7 +522,7 @@ class Dataset:
             raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
-            chunk_data = chunk.get_data(output, with_metadata=with_metadata)
+            chunk_data = chunk.get_data(output, metadata_columns=metadata_columns)
             try:
                 output_chunk_data = dict(chunk_data)
             except TypeError:

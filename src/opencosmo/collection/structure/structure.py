@@ -1011,7 +1011,7 @@ class StructureCollection:
             lambda acc, key: acc + self.__handler.columns[key], data_types, []
         )
         rename_galaxies = "galaxies" in self.keys()
-        for row in self.__source.rows(with_metadata=metadata_columns):
+        for row in self.__source.rows(metadata_columns=metadata_columns):
             row = dict(row)
             links = self.__handler.parse(row)
             output = {
