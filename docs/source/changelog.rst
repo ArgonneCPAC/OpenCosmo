@@ -1,3 +1,11 @@
+opencosmo 0.9.6 (2025-10-20)
+============================
+
+Bugfixes
+--------
+
+- Make diffstar pop optional in diffsky parameters
+
 opencosmo 0.9.4 (2025-09-26)
 ============================
 

@@ -22,11 +22,13 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
     dev_transaction: dict[str, str | None] = {}
 
     for requirement, data in requirements.items():
-        if requirement not in versions:
+        if requirement not in versions and not data.optional:
             versions[requirement] = data.version
 
     for node in nx.topological_sort(graph):
         version = versions.get(node)
+        if version is None:
+            continue
         if version is not None and "dev" in version:
             dev_transaction[node] = version
             continue

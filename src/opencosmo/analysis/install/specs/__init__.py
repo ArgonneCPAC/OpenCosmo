@@ -11,6 +11,7 @@ class DependencySpec(BaseModel):
     repo: Optional[str] = None
     depends_on: Optional[list[str]] = []
     version: Optional[str] = None
+    optional: bool = False
 
 
 class AnalysisSpec(BaseModel):
