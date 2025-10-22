@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 
 from opencosmo.index import simple
-from opencosmo.index.get import get_data_hdf5_chunked
+from opencosmo.index.get import get_data_chunked
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -254,7 +254,7 @@ class ChunkedIndex:
         if len(self.__starts) == 1:
             return data[self.__starts[0] : self.__starts[0] + self.__sizes[0]]
 
-        return get_data_hdf5_chunked(data, self.__starts, self.__sizes)
+        return get_data_chunked(data, self.__starts, self.__sizes)
 
     def n_in_range(
         self, start: NDArray[np.int_], size: NDArray[np.int_]
