@@ -737,12 +737,10 @@ def test_link_write(halo_paths, tmp_path):
             original_output[properties["fof_halo_tag"]].append(name)
 
     read_output = defaultdict(list)
-    print(collection["halo_properties"].select("fof_halo_tag").get_data())
 
     oc.write(tmp_path / "linked.hdf5", collection)
     written_data = oc.open(tmp_path / "linked.hdf5")
     n = 0
-    print(written_data["halo_properties"].select("fof_halo_tag").get_data())
     for halo in written_data.objects():
         halo_tags = set()
         n += 1

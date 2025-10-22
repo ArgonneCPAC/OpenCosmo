@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 
 from opencosmo.index import chunked
+from opencosmo.index.get import get_data_hdf5_simple
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -129,11 +130,11 @@ class SimpleIndex:
         if len(self) == 0:
             return np.array([], dtype=data.dtype)
 
-        min_index = self.__index.min()
-        max_index = self.__index.max()
-        output = np.atleast_1d(data[min_index : max_index + 1])
-        indices_into_output = self.__index - min_index
-        return output[indices_into_output]
+        if isinstance(data, h5py.Dataset):
+            return get_data_hdf5_simple(data, self.into_array())
+
+        else:
+            return data[self.into_array()]
 
     def __getitem__(self, item: int) -> DataIndex:
         """
