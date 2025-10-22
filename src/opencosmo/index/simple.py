@@ -85,17 +85,6 @@ class SimpleIndex:
         data[self.__index] = value
         return data
 
-    def intersection(self, other: DataIndex) -> DataIndex:
-        if len(self) == 0 or len(other) == 0:
-            return SimpleIndex.empty()
-        other_mask = other.into_mask()
-        self_mask = self.into_mask()
-        length = max(len(other_mask), len(self_mask))
-        self_mask.resize(length)
-        other_mask.resize(length)
-        new_idx = np.where(self_mask & other_mask)[0]
-        return SimpleIndex(new_idx)
-
     def projection(self, other: DataIndex):
         if isinstance(other, chunked.ChunkedIndex):
             other_simple = SimpleIndex(other.into_array())
