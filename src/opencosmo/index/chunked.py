@@ -40,9 +40,6 @@ class ChunkedIndex:
             return 0, 0
         return self.__starts[0], self.__starts[-1] + self.__sizes[-1]
 
-    def is_single_chunk(self):
-        return len(self.__starts) == 1
-
     def into_array(self) -> NDArray[np.int_]:
         """
         Convert the ChunkedIndex to a SimpleIndex.
@@ -56,13 +53,6 @@ class ChunkedIndex:
             ]
         )
         return np.unique(idxs)
-
-    def into_mask(self) -> np.ndarray:
-        ends = self.__starts + self.__sizes
-        mask = np.zeros(np.max(ends), dtype=bool)
-        for start, end in np.nditer([self.__starts, ends]):
-            mask[start:end] = True
-        return mask
 
     def projection(self, other: DataIndex):
         if isinstance(other, simple.SimpleIndex):
@@ -267,21 +257,6 @@ class ChunkedIndex:
         # example: row[0] in in_range_starts tells me what happens if I clip the 0th
         # element in self.__starts to each of the values in the start and end array
         # that have been provided in the call.
-
-    def __getitem__(self, item: int) -> DataIndex:
-        """
-        Get an item from the index.
-        """
-        if item < 0 or item >= len(self):
-            raise IndexError(
-                f"Index {item} out of bounds for index of size {len(self)}"
-            )
-        sums = np.cumsum(self.__sizes)
-        index = np.searchsorted(sums, item)
-        start = self.__starts[index]
-        offset = item - sums[index - 1] if index > 0 else item
-        offset = int(offset)
-        return simple.SimpleIndex(np.array([start + offset]))
 
 
 def all_are_chunked(

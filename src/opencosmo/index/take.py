@@ -58,7 +58,7 @@ def __cfs_helper(arr, starts, sizes, storage):
 
 
 def take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
-    if from_.is_single_chunk() and from_.range()[0] == 0:
+    if len(from_.starts) == 1 and from_.range()[0] == 0:
         return by
 
     from_idx = from_.into_array()

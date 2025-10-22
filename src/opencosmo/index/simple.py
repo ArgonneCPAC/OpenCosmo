@@ -47,11 +47,6 @@ class SimpleIndex:
             return 0, 0
         return self.__index[0], self.__index[-1] + 1
 
-    def into_mask(self):
-        mask = np.zeros(self.__index[-1] + 1, dtype=bool)
-        mask[self.__index] = True
-        return mask
-
     def concatenate(self, *others: DataIndex) -> DataIndex:
         if len(others) == 0:
             return self
@@ -120,17 +115,6 @@ class SimpleIndex:
             return np.array([], dtype=data.dtype)
 
         return get_data_simple(data, self.into_array())
-
-    def __getitem__(self, item: int) -> DataIndex:
-        """
-        Get an item from the index.
-        """
-        if item < 0 or item >= len(self):
-            raise IndexError(
-                f"Index {item} out of bounds for index of size {len(self)}"
-            )
-        val = self.__index[item]
-        return SimpleIndex(np.array([val]))
 
 
 def all_are_simple(others: tuple[DataIndex, ...]) -> TypeGuard[tuple[SimpleIndex, ...]]:
