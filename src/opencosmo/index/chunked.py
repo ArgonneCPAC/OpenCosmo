@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 
 from opencosmo.index import simple
+from opencosmo.index.get import get_data_hdf5_chunked
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -41,6 +42,11 @@ def pack(start: np.ndarray, size: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 class ChunkedIndex:
     def __init__(self, starts: np.ndarray, sizes: np.ndarray) -> None:
+        """
+        Assumptions:
+            - self.__starts is sorted
+            - chunks are non-overlapping
+        """
         self.__starts = starts
         self.__sizes = sizes
 
@@ -248,30 +254,7 @@ class ChunkedIndex:
         if len(self.__starts) == 1:
             return data[self.__starts[0] : self.__starts[0] + self.__sizes[0]]
 
-        sorted_start_index = np.argsort(self.__starts)
-        new_starts = self.__starts[sorted_start_index]
-        new_sizes = self.__sizes[sorted_start_index]
-
-        packed_starts, packed_sizes = pack(new_starts, new_sizes)
-
-        shape = (len(self),) + data.shape[1:]
-        temp = np.zeros(shape, dtype=data.dtype)
-        running_index = 0
-        for i, (start, size) in enumerate(zip(packed_starts, packed_sizes)):
-            temp[running_index : running_index + size] = data[start : start + size]
-            running_index += size
-        output = np.zeros(len(self), dtype=data.dtype)
-        cumulative_sorted_sizes = np.insert(np.cumsum(new_sizes), 0, 0)
-        cumulative_original_sizes = np.insert(np.cumsum(self.__sizes), 0, 0)
-
-        # reshuffle the output to match the original order
-        for i, sorted_index in enumerate(sorted_start_index):
-            start = cumulative_original_sizes[sorted_index]
-            end = cumulative_original_sizes[sorted_index + 1]
-            data = temp[cumulative_sorted_sizes[i] : cumulative_sorted_sizes[i + 1]]
-            output[start:end] = data
-
-        return output
+        return get_data_hdf5_chunked(data, self.__starts, self.__sizes)
 
     def n_in_range(
         self, start: NDArray[np.int_], size: NDArray[np.int_]
