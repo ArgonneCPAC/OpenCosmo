@@ -144,16 +144,19 @@ class Hdf5Handler:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
-        data = self.__cache.get_columns(columns)
-        remaining = set(columns).difference(data.keys())
-        additional = {}
+        cached_data = self.__cache.get_columns(columns)
+        remaining = set(columns).difference(cached_data.keys())
+        new_data = {}
 
         for colname in remaining:
-            additional[colname] = self.__index.get_data(self.__group[colname])
-        if additional:
-            self.__cache.add_data(additional)
+            new_data[colname] = self.__index.get_data(self.__group[colname])
+        if new_data:
+            self.__cache.add_data(new_data)
 
-        return data | additional
+        data = new_data | cached_data
+
+        # Ensure order is preserved
+        return {name: data[name] for name in columns}
 
     def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
         if self.__metadata_group is None:
