@@ -101,6 +101,8 @@ class ColumnCache:
         return data | parent.request(column_names, new_index)
 
     def take(self, index: DataIndex):
+        if len(self) == 0:
+            return ColumnCache.empty()
         if index.range()[1] > len(self):
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
