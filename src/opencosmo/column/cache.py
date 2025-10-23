@@ -17,17 +17,11 @@ def finish(
     index: DataIndex,
     cache_ref: ref[ColumnCache],
 ):
-    if not isinstance(cached_data, dict):
-        raise ValueError(cached_data)
     cache = cache_ref()
     if cache is None:
         return
 
-    data = {}
-    for col in cache.columns:
-        if col not in cached_data:
-            continue
-        data[col] = index.get_data(cached_data[col])
+    data = {name: index.get_data(data) for name, data in cached_data.items()}
     if data:
         cache.add_data(data)
 
@@ -63,17 +57,19 @@ class ColumnCache:
     def __init__(
         self,
         cached_data: dict[str, np.ndarray],
-        columns: set[str],
         derived_index: Optional[DataIndex] = None,
         parent: Optional[ref[ColumnCache]] = None,
-        children: list[ref[ColumnCache]] = [],
+        children: Optional[list[ref[ColumnCache]]] = None,
     ):
         self.__cached_data = cached_data
-        self.__columns = columns
         self.__derived_index = derived_index
         self.__parent = parent
+        if children is None:
+            children = []
+        self.__children = children
         self.__children = children
         self.__finalizer = None
+
         if parent is not None and (p := parent()) is not None:
             assert derived_index is not None
             self.__finalizer = finalize(
@@ -83,14 +79,15 @@ class ColumnCache:
                 derived_index,
                 ref(self),
             )
+            self.__finalizer.atexit = False  # type: ignore
 
     @classmethod
-    def empty(cls, columns: Iterable[str]):
-        return ColumnCache({}, set(columns), None, None, [])
+    def empty(cls):
+        return ColumnCache({}, None, None, [])
 
     @property
     def columns(self):
-        return self.__columns
+        return set(self.__cached_data.keys())
 
     def __update_parent(self, parent: ColumnCache):
         assert self.__parent is not None
@@ -98,9 +95,12 @@ class ColumnCache:
         assert self.__finalizer is not None
         self.__finalizer.detach()
         self.__parent = ref(parent)
+        if len(parent) == 8 and self.__derived_index.range()[1] >= 8:
+            raise ValueError
         self.__finalizer = finalize(
             parent, finish, parent.__cached_data, self.__derived_index, ref(self)
         )
+        self.__finalizer.atexit = False  # type: ignore
 
     def __len__(self):
         if not self.__cached_data and self.__derived_index is None:
@@ -109,15 +109,6 @@ class ColumnCache:
             return len(self.__derived_index)
         else:
             return len(next(iter(self.__cached_data.values())))
-
-    def select(self, columns: Iterable[str]):
-        columns = set(columns)
-        if not self.__columns.issuperset(columns):
-            raise ValueError("Tried to select columns that are not in this cache!")
-        data = {
-            key: self.__cached_data[key] for key in columns if key in self.__cached_data
-        }
-        return ColumnCache(data, columns, self.__derived_index, self.__parent)
 
     def add_data(self, data: dict[str, np.ndarray]):
         """
@@ -133,7 +124,6 @@ class ColumnCache:
         new_cached_data = self.__cached_data | data
         new_cache = ColumnCache(
             new_cached_data,
-            self.__columns,
             self.__derived_index,
             self.__parent,
             self.__children,
@@ -142,6 +132,11 @@ class ColumnCache:
             if (child := child_ref()) is not None:
                 child.__update_parent(new_cache)
         return new_cache
+
+    def drop(self, columns: Iterable[str]):
+        columns_in_cache = set(self.__cached_data.keys()).intersection(columns)
+        for column in columns_in_cache:
+            del self.__cached_data[column]
 
     def request(self, column_names: Iterable[str], index: DataIndex):
         column_names = set(column_names)
@@ -163,12 +158,12 @@ class ColumnCache:
 
     def take(self, index: DataIndex):
         if len(self) == 0:
-            return ColumnCache.empty(self.__columns)
+            return ColumnCache.empty()
         if index.range()[1] > len(self):
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
             )
-        new_cache = ColumnCache({}, self.__columns, index, ref(self))
+        new_cache = ColumnCache({}, index, ref(self))
         self.__children.append(ref(new_cache))
         return new_cache
 

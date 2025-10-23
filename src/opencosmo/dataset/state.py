@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import reduce
 from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
+from weakref import finalize
 
 import astropy.units as u
 import numpy as np
@@ -26,6 +27,10 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
     from opencosmo.units.handler import UnitHandler
+
+
+def deregister_state(id: int, handler: Hdf5Handler):
+    handler.deregister(id)
 
 
 class DatasetState:
@@ -53,6 +58,8 @@ class DatasetState:
         self.__columns = columns
         self.__region = region
         self.__sort_by = sort_by
+        self.__raw_data_handler.register(self)
+        finalize(self, deregister_state, id(self), self.__raw_data_handler)
 
     def __rebuild(self, **updates):
         new = {
@@ -362,9 +369,7 @@ class DatasetState:
                 f"Tried to select columns that are not in this dataset: {missing}"
             )
 
-        new_handler = self.__raw_data_handler.select(columns)
-
-        return self.__rebuild(columns=columns, raw_data_handler=new_handler)
+        return self.__rebuild(columns=columns)
 
     def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:

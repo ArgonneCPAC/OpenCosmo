@@ -459,6 +459,20 @@ def test_cache(input_path):
     assert (dt2 / dt1) < 0.2
 
 
+def test_cache_select(input_path):
+    from weakref import ref
+
+    dataset = oc.open(input_path)
+    data = dataset.get_data()
+    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+    assert set(dataset.columns) == cache.columns
+    columns = np.random.choice(dataset.columns, 5, replace=False)
+    dataset2 = dataset.select(columns)
+
+    del dataset
+    assert cache.columns == set(columns)
+
+
 def test_write_after_sorted(input_path, tmp_path):
     dataset = oc.open(input_path)
     dataset = dataset.sort_by("fof_halo_mass", invert=True)
