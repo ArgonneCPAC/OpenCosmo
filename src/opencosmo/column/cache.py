@@ -76,7 +76,7 @@ class ColumnCache:
             return None
         assert self.__derived_index is not None
         new_index = take(self.__derived_index, index)
-        return parent.take(new_index)
+        return parent.request(column_name, new_index)
 
     def take(self, index: DataIndex):
         if index.range()[1] > len(self):
