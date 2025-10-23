@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable, Optional
-from weakref import WeakValueDictionary, ref
+from weakref import finalize, ref
 
 from opencosmo.index.protocols import DataIndex
 from opencosmo.index.take import take
@@ -10,6 +10,17 @@ if TYPE_CHECKING:
     import numpy as np
 
     from opencosmo.index import DataIndex
+
+
+def finish(
+    columns: dict[str, np.ndarray], index: DataIndex, cache_ref: ref[ColumnCache]
+):
+    cache = cache_ref()
+    if cache is None:
+        return
+    data = {name: index.get_data(col) for name, col in columns.items()}
+    if data:
+        cache.add_data(data)
 
 
 class ColumnCache:
@@ -30,6 +41,9 @@ class ColumnCache:
         self.__columns = columns
         self.__derived_index = derived_index
         self.__parent = parent
+        if parent is not None and (p := parent()) is not None:
+            assert self.__derived_index is not None
+            finalize(p, finish, p.__columns, self.__derived_index, ref(self))
 
     @classmethod
     def empty(cls):
@@ -74,7 +88,7 @@ class ColumnCache:
         missing_columns = column_names - columns_in_cache
 
         data = {name: index.get_data(self.__columns[name]) for name in columns_in_cache}
-        if self.__parent is None:
+        if self.__parent is None or column_names == columns_in_cache:
             return data
 
         parent = self.__parent()
