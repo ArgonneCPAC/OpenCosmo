@@ -63,20 +63,28 @@ class ColumnCache:
             return False
         parent = self.__parent()
         if parent is None:
+            self.__parent = None
+            self.__derived_index = None
             return False
         return parent.has(column_name)
 
-    def request(self, column_name: str, index: DataIndex):
-        if column_name in self.__columns:
-            return index.get_data(self.__columns[column_name])
-        elif self.__parent is None:
-            return None
+    def request(self, column_names: Iterable[str], index: DataIndex):
+        column_names = set(column_names)
+        columns_in_cache = column_names.intersection(self.__columns.keys())
+        missing_columns = column_names - columns_in_cache
+
+        data = {name: index.get_data(self.__columns[name]) for name in columns_in_cache}
+        if self.__parent is None:
+            return data
+
         parent = self.__parent()
-        if parent is None or not parent.has(column_name):
-            return None
+        if parent is None:
+            self.__parent = None
+            self.__derived_index = None
+            return data
         assert self.__derived_index is not None
         new_index = take(self.__derived_index, index)
-        return parent.request(column_name, new_index)
+        return data | parent.request(column_names, new_index)
 
     def take(self, index: DataIndex):
         if index.range()[1] > len(self):
@@ -87,22 +95,19 @@ class ColumnCache:
 
     def get_columns(self, columns: Iterable[str]):
         columns = set(columns)
-        output = {}
-        for column in columns:
-            if (existing_column := self.__columns.get(column)) is not None:
-                output[column] = existing_column
-            elif (derived_column := self.__get_derived_column(column)) is not None:
-                output[column] = derived_column
+        columns_in_cache = columns.intersection(self.__columns.keys())
+        missing_columns = columns - columns_in_cache
+        output = {c: self.__columns[c] for c in columns_in_cache}
+        output |= self.__get_derived_columns(missing_columns)
         return output
 
-    def __get_derived_column(self, column_name: str):
+    def __get_derived_columns(self, column_names: set[str]):
         if self.__derived_index is None:
-            return None
+            return {}
         assert self.__parent is not None
         parent = self.__parent()
         if parent is None:
-            return None
-        result = parent.request(column_name, self.__derived_index)
-        if result is not None:
-            self.__columns[column_name] = result
+            return {}
+        result = parent.request(column_names, self.__derived_index)
+        self.__columns = self.__columns | result
         return result
