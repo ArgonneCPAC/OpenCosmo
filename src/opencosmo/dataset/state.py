@@ -362,7 +362,9 @@ class DatasetState:
                 f"Tried to select columns that are not in this dataset: {missing}"
             )
 
-        return self.__rebuild(columns=columns)
+        new_handler = self.__raw_data_handler.select(columns)
+
+        return self.__rebuild(columns=columns, raw_data_handler=new_handler)
 
     def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:
