@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import cached_property
 from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
+from weakref import ref
 
 import numpy as np
 
@@ -15,6 +16,7 @@ from opencosmo.mpi import get_comm_world
 if TYPE_CHECKING:
     import h5py
 
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
 
@@ -29,12 +31,14 @@ class Hdf5Handler:
         group: h5py.Group,
         index: DataIndex,
         cache: ColumnCache,
-        metadata_group: Optional[h5py.Group] = None,
+        metadata_group: Optional[h5py.Group],
+        registered_column_groups: dict[int, set[str]],
     ):
         self.__index = index
         self.__group = group
         self.__cache = cache
         self.__metadata_group = metadata_group
+        self.__registered_column_groups = registered_column_groups
 
     @classmethod
     def from_group(
@@ -56,27 +60,31 @@ class Hdf5Handler:
         if metadata_group is not None:
             colnames = chain(colnames, metadata_group.keys())
 
-        return Hdf5Handler(group, index, ColumnCache.empty(colnames), metadata_group)
+        return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group, {})
 
-    def select(self, columns: set[str]):
-        cache_columns = columns.intersection(self.__cache.columns)
-        new_cache = self.__cache.select(cache_columns)
-        return Hdf5Handler(self.__group, self.__index, new_cache, self.__metadata_group)
+    def register(self, state: DatasetState):
+        self.__registered_column_groups[id(state)] = set(state.columns)
+
+    def deregister(self, state_id: int):
+        columns = self.__registered_column_groups.pop(state_id)
+        remaining_columns = set().union(*list(self.__registered_column_groups.values()))
+        to_drop = columns - remaining_columns
+        self.__cache.drop(to_drop)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
             return Hdf5Handler(
-                self.__group,
-                other,
-                ColumnCache.empty(self.__cache.columns),
-                self.__metadata_group,
+                self.__group, other, ColumnCache.empty(), self.__metadata_group, {}
             )
 
         if sorted is not None:
             return self.__take_sorted(other, sorted)
+
         new_index = take(self.__index, other)
         new_cache = self.__cache.take(other)
-        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
+        return Hdf5Handler(
+            self.__group, new_index, new_cache, self.__metadata_group, {}
+        )
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if len(sorted) != len(self.__index):
@@ -89,7 +97,9 @@ class Hdf5Handler:
         new_cache_index = SimpleIndex(new_indices)
         new_cache = self.__cache.take(new_cache_index)
 
-        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
+        return Hdf5Handler(
+            self.__group, new_index, new_cache, self.__metadata_group, {}
+        )
 
     @property
     def data(self):
