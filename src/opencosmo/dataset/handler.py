@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
 
+from opencosmo.column.cache import ColumnCache
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.take import take
 from opencosmo.io.schemas import DatasetSchema
@@ -26,10 +27,12 @@ class Hdf5Handler:
         self,
         group: h5py.Group,
         index: DataIndex,
+        cache: ColumnCache,
         metadata_group: Optional[h5py.Group] = None,
     ):
         self.__index = index
         self.__group = group
+        self.__cache = cache
         self.__metadata_group = metadata_group
 
     @classmethod
@@ -48,25 +51,32 @@ class Hdf5Handler:
         if index is None:
             index = ChunkedIndex.from_size(lengths.pop())
 
-        return Hdf5Handler(group, index, metadata_group)
+        return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
-            return Hdf5Handler(self.__group, other, self.__metadata_group)
+            return Hdf5Handler(
+                self.__group, other, ColumnCache.empty(), self.__metadata_group
+            )
 
         if sorted is not None:
             return self.__take_sorted(other, sorted)
         new_index = take(self.__index, other)
-        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
+        new_cache = self.__cache.take(other)
+        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if len(sorted) != len(self.__index):
             raise ValueError("Sorted index has the wrong length!")
         new_indices = other.get_data(sorted)
-        new_indices = self.__index.into_array()[new_indices]
-        new_index = SimpleIndex(np.sort(new_indices))
 
-        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
+        new_raw_index = self.__index.into_array()[new_indices]
+        new_index = SimpleIndex(np.sort(new_raw_index))
+
+        new_cache_index = SimpleIndex(new_indices)
+        new_cache = self.__cache.take(new_cache_index)
+
+        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
 
     @property
     def data(self):
@@ -134,11 +144,16 @@ class Hdf5Handler:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
-        data = {}
-        for colname in columns:
-            data[colname] = self.__index.get_data(self.__group[colname])
+        data = self.__cache.get_columns(columns)
+        remaining = set(columns).difference(data.keys())
+        additional = {}
 
-        return data
+        for colname in remaining:
+            additional[colname] = self.__index.get_data(self.__group[colname])
+        if additional:
+            self.__cache.add_data(additional)
+
+        return data | additional
 
     def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
         if self.__metadata_group is None:
