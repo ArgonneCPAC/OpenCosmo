@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
@@ -51,12 +52,24 @@ class Hdf5Handler:
         if index is None:
             index = ChunkedIndex.from_size(lengths.pop())
 
-        return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group)
+        colnames = group.keys()
+        if metadata_group is not None:
+            colnames = chain(colnames, metadata_group.keys())
+
+        return Hdf5Handler(group, index, ColumnCache.empty(colnames), metadata_group)
+
+    def select(self, columns: set[str]):
+        cache_columns = columns.intersection(self.__cache.columns)
+        new_cache = self.__cache.select(cache_columns)
+        return Hdf5Handler(self.__group, self.__index, new_cache, self.__metadata_group)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
             return Hdf5Handler(
-                self.__group, other, ColumnCache.empty(), self.__metadata_group
+                self.__group,
+                other,
+                ColumnCache.empty(self.__cache.columns),
+                self.__metadata_group,
             )
 
         if sorted is not None:
