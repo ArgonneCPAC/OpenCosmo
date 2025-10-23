@@ -151,7 +151,7 @@ class Hdf5Handler:
         for colname in remaining:
             new_data[colname] = self.__index.get_data(self.__group[colname])
         if new_data:
-            self.__cache.add_data(new_data)
+            self.__cache = self.__cache.with_data(new_data)
 
         data = new_data | cached_data
 

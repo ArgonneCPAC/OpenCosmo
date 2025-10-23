@@ -48,7 +48,6 @@ class Dataset:
         self.__header = header
         self.__state = state
         self.__tree = tree
-        self.__cached_data: Optional[OpenCosmoData] = None
 
     def __repr__(self):
         """
@@ -199,17 +198,7 @@ class Dataset:
         """
         Return the data in the dataset in astropy format. The value of this
         attribute is equivalent to the return value of
-        :code:`Dataset.get_data("astropy")`. However data retrieved via this
-        attribute will be cached, meaning further calls to
-        :py:attr:`Dataset.data <opencosmo.Dataset.data>` should be instantaneous.
-
-        However there is one caveat. If you modify the table, those modifications will
-        persist if you later request the data again with this attribute. Calls to
-        :py:meth:`Dataset.get_data <opencosmo.Dataset.get_data>` will be unaffected, and
-        datasets generated from this dataset will not contain the modifications. If you
-        plan to modify the data in this table, you should use
-        :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`.
-
+        :code:`Dataset.get_data("astropy")`.
 
         Returns
         -------
@@ -219,9 +208,7 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        if self.__cached_data is None:
-            self.__cached_data = self.get_data("astropy")
-        return self.__cached_data.copy()
+        return self.get_data("astropy")
 
     def get_metadata(self, columns: list[str] = []):
         return self.__state.get_metadata(columns)
