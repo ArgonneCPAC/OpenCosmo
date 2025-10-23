@@ -442,6 +442,23 @@ def test_sort_rows(input_path):
         assert row["fof_halo_mass"].value == fof_masses[i]
 
 
+def test_cache(input_path):
+    from time import time
+
+    dataset = oc.open(input_path)
+
+    start1 = time()
+    data = dataset.get_data()
+    end1 = time()
+    dt1 = end1 - start1
+
+    start2 = time()
+    data2 = dataset.get_data()
+    end2 = time()
+    dt2 = end2 - start2
+    assert (dt2 / dt1) < 0.2
+
+
 def test_write_after_sorted(input_path, tmp_path):
     dataset = oc.open(input_path)
     dataset = dataset.sort_by("fof_halo_mass", invert=True)

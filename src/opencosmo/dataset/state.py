@@ -157,7 +157,7 @@ class DatasetState:
         raw_data = self.__raw_data_handler.get_data(raw_columns)
         data = data | self.__unit_handler.apply_units(raw_data, unit_kwargs)
 
-        output = QTable(data)
+        output = QTable(data, copy=False)
 
         data_columns = set(output.columns)
         raw_index_array = self.__raw_data_handler.index.into_array()

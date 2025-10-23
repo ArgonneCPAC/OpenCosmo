@@ -23,12 +23,31 @@ def finish(
         cache.add_data(data)
 
 
+def check_length(cache: ColumnCache, data: dict[str, np.ndarray]):
+    lengths = set(len(d) for d in data.values())
+    if len(lengths) > 1:
+        raise ValueError(
+            "When adding data to the cache, all columns must be the same length"
+        )
+    elif (l := len(cache)) > 0 and l != lengths.pop():
+        raise ValueError(
+            "When adding data to the cache, the columns must be the same length as the columns currently in the cache"
+        )
+
+
 class ColumnCache:
     """
     A column cache is used to persist data that is read from an hdf5 file. Caches can get data in one of two ways:
     1. They are explicitly given data that has been recently read from disk or
     2. They take data from a previous cache
 
+    ColumnCaches break some of the rules that most other things follow in this library, notably that they have internal
+    state (which can change). This mutability is required for two reasons.
+
+    1. If the parent cache is garbage collected, the child cache needs to be able to copy over any data it needs
+    2. If a new cache is created by adding columns, we need to signal the child to update their parent to the new
+       cache. This allows us to preserve the standard "operations create new objects" pattern that is present
+       throughout the library.
 
     """
 
@@ -37,17 +56,32 @@ class ColumnCache:
         columns: dict[str, np.ndarray],
         derived_index: Optional[DataIndex] = None,
         parent: Optional[ref[ColumnCache]] = None,
+        children: list[ref[ColumnCache]] = [],
     ):
         self.__columns = columns
         self.__derived_index = derived_index
         self.__parent = parent
+        self.__children = children
+        self.__finalizer = None
         if parent is not None and (p := parent()) is not None:
             assert self.__derived_index is not None
-            finalize(p, finish, p.__columns, self.__derived_index, ref(self))
+            self.__finalizer = finalize(
+                p, finish, p.__columns, self.__derived_index, ref(self)
+            )
 
     @classmethod
     def empty(cls):
-        return ColumnCache({})
+        return ColumnCache({}, None, None, [])
+
+    def __update_parent(self, parent: ColumnCache):
+        assert self.__parent is not None
+        assert self.__derived_index is not None
+        assert self.__finalizer is not None
+        self.__finalizer.detach()
+        self.__parent = ref(parent)
+        self.__finalizer = finalize(
+            parent, finish, parent.__columns, self.__derived_index, ref(self)
+        )
 
     def __len__(self):
         if not self.__columns and self.__derived_index is None:
@@ -58,29 +92,24 @@ class ColumnCache:
             return len(next(iter(self.__columns.values())))
 
     def add_data(self, data: dict[str, np.ndarray]):
-        lengths = set(len(d) for d in data.values())
-        if len(lengths) > 1:
-            raise ValueError(
-                "When adding data to the cache, all columns must be the same length"
-            )
-        elif (l := len(self)) > 0 and l != lengths.pop():
-            raise ValueError(
-                "When adding data to the cache, the columns must be the same length as the columns currently in the cache"
-            )
+        """
+        The in-place equivalent of with_data. Should not be used outside the context of this
+        file.
 
+        """
+        check_length(self, data)
         self.__columns = self.__columns | data
 
-    def has(self, column_name):
-        if column_name in self.__columns:
-            return True
-        if self.__parent is None:
-            return False
-        parent = self.__parent()
-        if parent is None:
-            self.__parent = None
-            self.__derived_index = None
-            return False
-        return parent.has(column_name)
+    def with_data(self, data: dict[str, np.ndarray]):
+        check_length(self, data)
+        new_columns = self.__columns | data
+        new_cache = ColumnCache(
+            new_columns, self.__derived_index, self.__parent, self.__children
+        )
+        for child_ref in self.__children:
+            if (child := child_ref()) is not None:
+                child.__update_parent(new_cache)
+        return new_cache
 
     def request(self, column_names: Iterable[str], index: DataIndex):
         column_names = set(column_names)
@@ -107,7 +136,9 @@ class ColumnCache:
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
             )
-        return ColumnCache({}, index, ref(self))
+        new_cache = ColumnCache({}, index, ref(self))
+        self.__children.append(ref(new_cache))
+        return new_cache
 
     def get_columns(self, columns: Iterable[str]):
         columns = set(columns)
