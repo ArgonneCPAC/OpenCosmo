@@ -1,0 +1,1 @@
+Columns that are read from disk are now cached, ensuring that requesting data second time is always fast.
