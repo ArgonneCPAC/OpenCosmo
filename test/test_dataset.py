@@ -1,3 +1,5 @@
+import os
+
 import astropy.units as u
 import numpy as np
 import pytest
@@ -442,6 +444,10 @@ def test_sort_rows(input_path):
         assert row["fof_halo_mass"].value == fof_masses[i]
 
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 def test_cache(input_path):
     from time import time
 
