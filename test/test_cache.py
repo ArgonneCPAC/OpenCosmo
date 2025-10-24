@@ -38,8 +38,8 @@ def test_cache_passthrough():
     cached_data = cache3.get_columns("abcdefg")
     for colname, column in cached_data.items():
         assert np.all(column == data[colname][indices2[indices3]])
-    assert set(cache3._ColumnCache__columns.keys()) == set("abcdefg")
-    assert len(cache2._ColumnCache__columns) == 0
+    assert set(cache3.columns) == set("abcdefg")
+    assert len(cache2.columns) == 0
 
 
 def test_cache_passthrough_delete():
@@ -58,9 +58,9 @@ def test_cache_passthrough_delete():
     index3 = SimpleIndex(indices3)
     cache3 = cache2.take(index3)
 
-    assert set(cache3._ColumnCache__columns.keys()) == set()
+    assert set(cache3.columns) == set()
     del cache2
-    assert set(cache3._ColumnCache__columns.keys()) == set("abcdefg")
+    assert set(cache3.columns) == set("abcdefg")
     cached_data = cache3.get_columns("abcdefg")
 
     for colname, column in cached_data.items():
@@ -82,12 +82,12 @@ def test_cache_passthrough_twice_delete():
     index3 = SimpleIndex(indices3)
     cache3 = cache2.take(index3)
 
-    assert set(cache2._ColumnCache__columns.keys()) == set()
+    assert set(cache2.columns) == set()
     del cache
-    assert set(cache2._ColumnCache__columns.keys()) == set("abcdefg")
+    assert set(cache2.columns) == set("abcdefg")
 
     cached_data = cache3.get_columns("abcdefg")
 
     for colname, column in cached_data.items():
         assert np.all(column == data[colname][indices2[indices3]])
-    assert set(cache3._ColumnCache__columns.keys()) == set("abcdefg")
+    assert set(cache3.columns) == set("abcdefg")

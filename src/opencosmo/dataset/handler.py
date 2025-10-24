@@ -66,9 +66,10 @@ class Hdf5Handler:
         self.__registered_column_groups[id(state)] = set(state.columns)
 
     def deregister(self, state_id: int):
+        # print(self.__registered_column_groups)
         columns = self.__registered_column_groups.pop(state_id)
         remaining_columns = set().union(*list(self.__registered_column_groups.values()))
-        to_drop = columns - remaining_columns
+        to_drop = columns.difference(remaining_columns)
         self.__cache.drop(to_drop)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):

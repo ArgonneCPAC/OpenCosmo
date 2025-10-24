@@ -67,7 +67,6 @@ class ColumnCache:
         if children is None:
             children = []
         self.__children = children
-        self.__children = children
         self.__finalizer = None
 
         if parent is not None and (p := parent()) is not None:
