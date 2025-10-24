@@ -473,19 +473,6 @@ def test_cache_select(input_path):
     assert cache.columns == set(columns)
 
 
-def test_cache_filter(input_path):
-    from weakref import ref
-
-    dataset = oc.open(input_path)
-    dataset = dataset.filter(oc.col("fof_halo_mass") > 1e13)
-    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
-    print(cache.columns)
-    assert False
-    # assert set(dataset.columns) == cache.columns
-
-    assert cache.columns == set(columns)
-
-
 def test_write_after_sorted(input_path, tmp_path):
     dataset = oc.open(input_path)
     dataset = dataset.sort_by("fof_halo_mass", invert=True)
