@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import reduce
 from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
+from weakref import finalize
 
 import astropy.units as u
 import numpy as np
@@ -26,6 +27,10 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
     from opencosmo.units.handler import UnitHandler
+
+
+def deregister_state(id: int, handler: Hdf5Handler):
+    handler.deregister(id)
 
 
 class DatasetState:
@@ -53,6 +58,8 @@ class DatasetState:
         self.__columns = columns
         self.__region = region
         self.__sort_by = sort_by
+        self.__raw_data_handler.register(self)
+        finalize(self, deregister_state, id(self), self.__raw_data_handler)
 
     def __rebuild(self, **updates):
         new = {
@@ -157,7 +164,7 @@ class DatasetState:
         raw_data = self.__raw_data_handler.get_data(raw_columns)
         data = data | self.__unit_handler.apply_units(raw_data, unit_kwargs)
 
-        output = QTable(data)
+        output = QTable(data, copy=False)
 
         data_columns = set(output.columns)
         raw_index_array = self.__raw_data_handler.index.into_array()
@@ -191,7 +198,7 @@ class DatasetState:
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
-        schema = self.__raw_data_handler.prep_write(raw_columns, header)
+        schema = self.__raw_data_handler.make_schema(raw_columns, header)
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)

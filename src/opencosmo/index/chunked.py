@@ -14,32 +14,6 @@ if TYPE_CHECKING:
     from opencosmo.index.protocols import DataIndex
 
 
-def pack(start: np.ndarray, size: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Combine adjacent chunks into a single chunk.
-    """
-
-    # Calculate the end of each chunk
-    end = start + size
-
-    # Determine where a new chunk should start (i.e., not adjacent to previous)
-    # We prepend True for the first chunk to always start a group
-    new_group = np.ones(len(start), dtype=bool)
-    new_group[1:] = start[1:] != end[:-1]
-
-    # Assign a group ID for each segment
-    group_ids = np.cumsum(new_group)
-
-    # Combine chunks by group
-    combined_start = np.zeros(group_ids[-1], dtype=start.dtype)
-    combined_size = np.zeros_like(combined_start)
-
-    np.add.at(combined_start, group_ids - 1, np.where(new_group, start, 0))
-    np.add.at(combined_size, group_ids - 1, size)
-
-    return combined_start, combined_size
-
-
 class ChunkedIndex:
     def __init__(self, starts: np.ndarray, sizes: np.ndarray) -> None:
         """

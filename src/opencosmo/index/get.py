@@ -44,7 +44,7 @@ def get_data_chunked(
         if isinstance(data, h5py.Dataset):
             data.read_direct(storage, source_slice, dest_slice)
         else:
-            storage[dest_slice] = source_slice
+            storage[dest_slice] = data[source_slice]
 
         running_index += size
     return storage

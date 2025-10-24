@@ -1,3 +1,5 @@
+import os
+
 import astropy.units as u
 import numpy as np
 import pytest
@@ -390,7 +392,7 @@ def test_write_after_filter(input_path, tmp_path):
         data = ds.data
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
-        filtered_data = new_ds.data
+        filtered_data = new_ds.get_data()
         assert np.all(data == filtered_data)
 
 
@@ -440,6 +442,41 @@ def test_sort_rows(input_path):
     fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
     for i, row in enumerate(dataset.rows()):
         assert row["fof_halo_mass"].value == fof_masses[i]
+
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
+def test_cache(input_path):
+    from time import time
+
+    dataset = oc.open(input_path)
+
+    start1 = time()
+    data = dataset.get_data()
+    end1 = time()
+    dt1 = end1 - start1
+
+    start2 = time()
+    data2 = dataset.get_data()
+    end2 = time()
+    dt2 = end2 - start2
+    assert (dt2 / dt1) < 0.2
+
+
+def test_cache_select(input_path):
+    from weakref import ref
+
+    dataset = oc.open(input_path)
+    data = dataset.get_data()
+    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+    assert set(dataset.columns) == cache.columns
+    columns = np.random.choice(dataset.columns, 5, replace=False)
+    dataset2 = dataset.select(columns)
+
+    del dataset
+    assert cache.columns == set(columns)
 
 
 def test_write_after_sorted(input_path, tmp_path):

@@ -11,6 +11,7 @@ import opencosmo.io.writers as iow
 from opencosmo.index import ChunkedIndex
 
 if TYPE_CHECKING:
+    import numpy as np
     from mpi4py import MPI
     from numpy.typing import DTypeLike, NDArray
 
@@ -286,9 +287,11 @@ class DatasetSchema:
         sources: dict[str, h5py.Group],
         columns: Iterable[str],
         index: DataIndex,
+        cache: dict[str, np.ndarray],
         header: Optional[OpenCosmoHeader] = None,
     ):
         schema = DatasetSchema(header)
+        columns = set(columns)
         for colname in columns:
             colname_parts = colname.split("/", maxsplit=1)
             if (
@@ -297,10 +300,21 @@ class DatasetSchema:
             ):
                 raise ValueError("Found a column with no source!")
 
+            # Still need this to get metadata if the column is cached
             colsource = sources[colname_parts[0]][colname_parts[1]]
-            column_schema = ColumnSchema(
-                colname_parts[1], index, colsource, colsource.attrs
-            )
+
+            if colname in cache:
+                coldata = cache[colname]
+                column_schema = ColumnSchema(
+                    colname_parts[1],
+                    index.from_size(len(coldata)),
+                    coldata,
+                    colsource.attrs,
+                )
+            else:
+                column_schema = ColumnSchema(
+                    colname_parts[1], index, colsource, colsource.attrs
+                )
             schema.add_child(column_schema, colname)
         return schema
 

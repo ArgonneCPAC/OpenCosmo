@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from functools import cached_property
+from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
+from weakref import ref
 
 import numpy as np
 
+from opencosmo.column.cache import ColumnCache
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.take import take
 from opencosmo.io.schemas import DatasetSchema
@@ -13,6 +16,7 @@ from opencosmo.mpi import get_comm_world
 if TYPE_CHECKING:
     import h5py
 
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
 
@@ -26,11 +30,15 @@ class Hdf5Handler:
         self,
         group: h5py.Group,
         index: DataIndex,
-        metadata_group: Optional[h5py.Group] = None,
+        cache: ColumnCache,
+        metadata_group: Optional[h5py.Group],
+        registered_column_groups: dict[int, set[str]],
     ):
         self.__index = index
         self.__group = group
+        self.__cache = cache
         self.__metadata_group = metadata_group
+        self.__registered_column_groups = registered_column_groups
 
     @classmethod
     def from_group(
@@ -48,25 +56,51 @@ class Hdf5Handler:
         if index is None:
             index = ChunkedIndex.from_size(lengths.pop())
 
-        return Hdf5Handler(group, index, metadata_group)
+        colnames = group.keys()
+        if metadata_group is not None:
+            colnames = chain(colnames, metadata_group.keys())
+
+        return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group, {})
+
+    def register(self, state: DatasetState):
+        self.__registered_column_groups[id(state)] = set(state.columns)
+
+    def deregister(self, state_id: int):
+        # print(self.__registered_column_groups)
+        columns = self.__registered_column_groups.pop(state_id)
+        remaining_columns = set().union(*list(self.__registered_column_groups.values()))
+        to_drop = columns.difference(remaining_columns)
+        self.__cache.drop(to_drop)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
-            return Hdf5Handler(self.__group, other, self.__metadata_group)
+            return Hdf5Handler(
+                self.__group, other, ColumnCache.empty(), self.__metadata_group, {}
+            )
 
         if sorted is not None:
             return self.__take_sorted(other, sorted)
+
         new_index = take(self.__index, other)
-        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
+        new_cache = self.__cache.take(other)
+        return Hdf5Handler(
+            self.__group, new_index, new_cache, self.__metadata_group, {}
+        )
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if len(sorted) != len(self.__index):
             raise ValueError("Sorted index has the wrong length!")
         new_indices = other.get_data(sorted)
-        new_indices = self.__index.into_array()[new_indices]
-        new_index = SimpleIndex(np.sort(new_indices))
 
-        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
+        new_raw_index = self.__index.into_array()[new_indices]
+        new_index = SimpleIndex(np.sort(new_raw_index))
+
+        new_cache_index = SimpleIndex(new_indices)
+        new_cache = self.__cache.take(new_cache_index)
+
+        return Hdf5Handler(
+            self.__group, new_index, new_cache, self.__metadata_group, {}
+        )
 
     @property
     def data(self):
@@ -108,18 +142,28 @@ class Hdf5Handler:
         self.__group = None
         return self.__file.close()
 
-    def prep_write(
+    def make_schema(
         self,
         columns: Iterable[str],
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
         groups = {}
+        columns = set(columns)
         data_columns = [f"data/{n}" for n in columns]
         groups["data"] = self.__group
+
+        cached_data = {
+            f"data/{n}": data for n, data in self.__cache.get_columns(columns).items()
+        }
+
         if self.metadata_columns is not None:
             assert self.__metadata_group is not None
             group_name = self.__metadata_group.name.split("/")[-1]
             metadata_columns = [f"{group_name}/{n}" for n in self.metadata_columns]
+            cached_data |= {
+                f"{group_name}/{n}": data
+                for n, data in self.__cache.get_columns(self.metadata_columns).items()
+            }
             groups[group_name] = self.__metadata_group
         else:
             metadata_columns = []
@@ -127,6 +171,7 @@ class Hdf5Handler:
             groups,
             data_columns + metadata_columns,
             self.__index,
+            cached_data,
             header,
         )
 
@@ -134,11 +179,19 @@ class Hdf5Handler:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
-        data = {}
-        for colname in columns:
-            data[colname] = self.__index.get_data(self.__group[colname])
+        cached_data = self.__cache.get_columns(columns)
+        remaining = set(columns).difference(cached_data.keys())
+        new_data = {}
 
-        return data
+        for colname in remaining:
+            new_data[colname] = self.__index.get_data(self.__group[colname])
+        if new_data:
+            self.__cache = self.__cache.with_data(new_data)
+
+        data = new_data | cached_data
+
+        # Ensure order is preserved
+        return {name: data[name] for name in columns}
 
     def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
         if self.__metadata_group is None:
