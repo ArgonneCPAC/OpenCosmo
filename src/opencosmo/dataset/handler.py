@@ -141,18 +141,28 @@ class Hdf5Handler:
         self.__group = None
         return self.__file.close()
 
-    def prep_write(
+    def make_schema(
         self,
         columns: Iterable[str],
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
         groups = {}
+        columns = set(columns)
         data_columns = [f"data/{n}" for n in columns]
         groups["data"] = self.__group
+
+        cached_data = {
+            f"data/{n}": data for n, data in self.__cache.get_columns(columns).items()
+        }
+
         if self.metadata_columns is not None:
             assert self.__metadata_group is not None
             group_name = self.__metadata_group.name.split("/")[-1]
             metadata_columns = [f"{group_name}/{n}" for n in self.metadata_columns]
+            cached_data |= {
+                f"{group_name}/{n}": data
+                for n, data in self.__cache.get_columns(self.metadata_columns).items()
+            }
             groups[group_name] = self.__metadata_group
         else:
             metadata_columns = []
@@ -160,6 +170,7 @@ class Hdf5Handler:
             groups,
             data_columns + metadata_columns,
             self.__index,
+            cached_data,
             header,
         )
 

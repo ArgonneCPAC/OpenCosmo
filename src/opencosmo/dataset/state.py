@@ -198,7 +198,7 @@ class DatasetState:
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
-        schema = self.__raw_data_handler.prep_write(raw_columns, header)
+        schema = self.__raw_data_handler.make_schema(raw_columns, header)
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
