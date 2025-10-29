@@ -32,13 +32,11 @@ class Hdf5Handler:
         index: DataIndex,
         cache: ColumnCache,
         metadata_group: Optional[h5py.Group],
-        registered_column_groups: dict[int, set[str]],
     ):
         self.__index = index
         self.__group = group
         self.__cache = cache
         self.__metadata_group = metadata_group
-        self.__registered_column_groups = registered_column_groups
 
     @classmethod
     def from_group(
@@ -60,7 +58,7 @@ class Hdf5Handler:
         if metadata_group is not None:
             colnames = chain(colnames, metadata_group.keys())
 
-        return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group, {})
+        return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group)
 
     def register(self, state: DatasetState):
         self.__cache.register_column_group(id(state), set(state.columns))
@@ -71,7 +69,7 @@ class Hdf5Handler:
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
             return Hdf5Handler(
-                self.__group, other, ColumnCache.empty(), self.__metadata_group, {}
+                self.__group, other, ColumnCache.empty(), self.__metadata_group
             )
 
         if sorted is not None:
@@ -79,9 +77,7 @@ class Hdf5Handler:
 
         new_index = take(self.__index, other)
         new_cache = self.__cache.take(other)
-        return Hdf5Handler(
-            self.__group, new_index, new_cache, self.__metadata_group, {}
-        )
+        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if len(sorted) != len(self.__index):
@@ -94,9 +90,7 @@ class Hdf5Handler:
         new_cache_index = SimpleIndex(new_indices)
         new_cache = self.__cache.take(new_cache_index)
 
-        return Hdf5Handler(
-            self.__group, new_index, new_cache, self.__metadata_group, {}
-        )
+        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
 
     @property
     def data(self):
