@@ -16,6 +16,7 @@ from opencosmo.mpi import get_comm_world
 if TYPE_CHECKING:
     import h5py
 
+    from opencosmo.dataset.column import DerivedColumn
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -60,8 +61,14 @@ class Hdf5Handler:
 
         return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group)
 
-    def register(self, state: DatasetState):
-        self.__cache.register_column_group(id(state), set(state.columns))
+    def register(self, state: DatasetState, derived: dict[str, DerivedColumn]):
+        columns = set(state.columns).difference(derived)
+        for dc in derived.values():
+            columns |= dc.requires()
+
+        self.__cache.register_column_group(
+            id(state), columns.union(self.metadata_columns)
+        )
 
     def deregister(self, state_id: int):
         self.__cache.deregister_column_group(state_id)
@@ -107,7 +114,7 @@ class Hdf5Handler:
     @property
     def metadata_columns(self):
         if self.__metadata_group is None:
-            return None
+            return []
         return self.__metadata_group.keys()
 
     @cached_property
@@ -146,7 +153,7 @@ class Hdf5Handler:
             f"data/{n}": data for n, data in self.__cache.get_columns(columns).items()
         }
 
-        if self.metadata_columns is not None:
+        if self.metadata_columns:
             assert self.__metadata_group is not None
             group_name = self.__metadata_group.name.split("/")[-1]
             metadata_columns = [f"{group_name}/{n}" for n in self.metadata_columns]
