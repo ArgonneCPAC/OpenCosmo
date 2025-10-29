@@ -21,7 +21,10 @@ def finish(
     if cache is None:
         return
 
-    data = {name: index.get_data(data) for name, data in cached_data.items()}
+    columns_to_add = (
+        cache.registered_columns.intersection(cached_data.keys()) - cache.columns
+    )
+    data = {name: index.get_data(cached_data[name]) for name in columns_to_add}
     if data:
         cache.add_data(data)
 
@@ -90,7 +93,11 @@ class ColumnCache:
     def columns(self):
         return set(self.__cached_data.keys())
 
-    def push_down(self, data: dict[str, np.ndarray]):
+    @property
+    def registered_columns(self):
+        return set().union(*list(self.__registered_column_groups.values()))
+
+    def __push_down(self, data: dict[str, np.ndarray]):
         all_columns = set().union(*list(self.__registered_column_groups.values()))
         columns_to_keep = all_columns.intersection(data.keys()).difference(
             self.__cached_data.keys()
@@ -104,8 +111,10 @@ class ColumnCache:
         self.__registered_column_groups[key] = data
 
     def deregister_column_group(self, state_id: int):
+        assert state_id in self.__registered_column_groups
         columns = self.__registered_column_groups.pop(state_id)
         remaining_columns = set().union(*list(self.__registered_column_groups.values()))
+
         to_drop = columns.difference(remaining_columns)
         cached_data = {
             name: self.__cached_data.pop(name)
@@ -118,7 +127,7 @@ class ColumnCache:
         for child_ in self.__children:
             if (child := child_()) is None:
                 continue
-            child.push_down(cached_data)
+            child.__push_down(cached_data)
 
     def __update_parent(self, parent: ColumnCache):
         assert self.__parent is not None

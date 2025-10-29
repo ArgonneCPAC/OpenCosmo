@@ -1,4 +1,5 @@
 import os
+from time import sleep
 
 import astropy.units as u
 import numpy as np
@@ -477,6 +478,17 @@ def test_cache_select(input_path):
 
     del dataset
     assert cache.columns == set(columns)
+
+
+def test_cache_filter(input_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.filter(oc.col("fof_halo_mass") > 1e14)
+
+    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+
+    assert (
+        len(cache.columns) > 0 or cache._ColumnCache__parent() is not None
+    )  # just to be safe
 
 
 def test_write_after_sorted(input_path, tmp_path):
