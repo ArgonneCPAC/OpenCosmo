@@ -57,11 +57,13 @@ class ColumnCache:
     def __init__(
         self,
         cached_data: dict[str, np.ndarray],
+        registered_column_groups: dict[int, set[str]],
         derived_index: Optional[DataIndex] = None,
         parent: Optional[ref[ColumnCache]] = None,
         children: Optional[list[ref[ColumnCache]]] = None,
     ):
         self.__cached_data = cached_data
+        self.__registered_column_groups = registered_column_groups
         self.__derived_index = derived_index
         self.__parent = parent
         if children is None:
@@ -82,11 +84,41 @@ class ColumnCache:
 
     @classmethod
     def empty(cls):
-        return ColumnCache({}, None, None, [])
+        return ColumnCache({}, {}, None, None, [])
 
     @property
     def columns(self):
         return set(self.__cached_data.keys())
+
+    def push_down(self, data: dict[str, np.ndarray]):
+        all_columns = set().union(*list(self.__registered_column_groups.values()))
+        columns_to_keep = all_columns.intersection(data.keys()).difference(
+            self.__cached_data.keys()
+        )
+        assert self.__derived_index is not None
+        for column in columns_to_keep:
+            self.__cached_data[column] = self.__derived_index.get_data(data[column])
+
+    def register_column_group(self, key: int, data: set[str]):
+        assert key not in self.__registered_column_groups
+        self.__registered_column_groups[key] = data
+
+    def deregister_column_group(self, state_id: int):
+        columns = self.__registered_column_groups.pop(state_id)
+        remaining_columns = set().union(*list(self.__registered_column_groups.values()))
+        to_drop = columns.difference(remaining_columns)
+        cached_data = {
+            name: self.__cached_data.pop(name)
+            for name in to_drop
+            if name in self.__cached_data
+        }
+        if not cached_data:
+            return
+
+        for child_ in self.__children:
+            if (child := child_()) is None:
+                continue
+            child.push_down(cached_data)
 
     def __update_parent(self, parent: ColumnCache):
         assert self.__parent is not None
@@ -123,6 +155,7 @@ class ColumnCache:
         new_cached_data = self.__cached_data | data
         new_cache = ColumnCache(
             new_cached_data,
+            self.__registered_column_groups,
             self.__derived_index,
             self.__parent,
             self.__children,
@@ -162,7 +195,7 @@ class ColumnCache:
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
             )
-        new_cache = ColumnCache({}, index, ref(self))
+        new_cache = ColumnCache({}, {}, index, ref(self))
         self.__children.append(ref(new_cache))
         return new_cache
 
