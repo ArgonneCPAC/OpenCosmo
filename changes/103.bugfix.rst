@@ -1,0 +1,1 @@
+Fix a bug that caused structure collections to not open correctly if the individual datasets were lightcone datasets.

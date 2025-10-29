@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import count
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 from uuid import uuid1
 
 import h5py
@@ -12,12 +12,18 @@ try:
 except ImportError:
     MPI = None  # type: ignore
 
-from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
-from opencosmo.io.schemas import SpatialIndexLevelSchema, SpatialIndexSchema
+from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.io.schemas import (
+    ColumnSchema,
+)
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
-from opencosmo.spatial.protocols import Region, SpatialIndex, TreePartition
+from opencosmo.spatial.protocols import TreePartition
 from opencosmo.spatial.utils import combine_upwards
+
+if TYPE_CHECKING:
+    from opencosmo.index import DataIndex
+    from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
 def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):
@@ -142,9 +148,7 @@ def partition_index(n_partitions: int, counts: h5py.Group):
 
 class Tree:
     """
-    The Tree handles the spatial indexing of the data. As of right now, it's only
-    functionality is to read and write the spatial index. Later we will add actual
-    spatial queries
+    The Tree handles the spatial indexing of the data.
     """
 
     def __init__(self, index: SpatialIndex, data: h5py.File | h5py.Group):
@@ -220,10 +224,18 @@ class Tree:
         return Tree(self.__index, result)
 
     def make_schema(self):
-        schema = SpatialIndexSchema()
+        columns = {}
         for level in range(self.__max_level + 1):
-            level_schema = SpatialIndexLevelSchema.from_source(
-                self.__data[f"level_{level}"]
+            source = self.__data[f"level_{level}"]
+            index = ChunkedIndex.from_size(len(source["start"]))
+            start = ColumnSchema(
+                f"level_{level}/start", index, source["start"], source["start"].attrs
             )
-            schema.add_child(level_schema, level)
-        return schema
+            size = ColumnSchema(
+                f"level_{level}/size", index, source["size"], source["size"].attrs
+            )
+
+            columns[f"index/level_{level}/start"] = start
+            columns[f"index/level_{level}/size"] = size
+
+        return columns

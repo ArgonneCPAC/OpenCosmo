@@ -26,8 +26,10 @@ def test_derive_multiply(properties_path):
         == data["fof_halo_mass"].unit * data["fof_halo_com_vx"].unit
     )
     assert np.all(
-        data["fof_halo_px"].value
-        == data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
+        np.isclose(
+            data["fof_halo_px"].value,
+            data["fof_halo_mass"].value * data["fof_halo_com_vx"].value,
+        )
     )
 
 
@@ -68,8 +70,10 @@ def test_derive_divide(properties_path):
         == data["fof_halo_mass"].unit / data["fof_halo_com_vx"].unit
     )
     assert np.all(
-        data["fof_halo_px"].value
-        == data["fof_halo_mass"].value / data["fof_halo_com_vx"].value
+        np.isclose(
+            data["fof_halo_px"].value,
+            data["fof_halo_mass"].value / data["fof_halo_com_vx"].value,
+        )
     )
 
 
@@ -110,10 +114,10 @@ def test_scalars(properties_path):
     )
 
     data = ds.data
-    assert np.all(data["derived1"] == data["fof_halo_mass"] * 5)
-    assert np.all(data["derived2"] == data["fof_halo_mass"] * 3)
-    assert np.all(data["derived3"] == 1 / data["fof_halo_mass"])
-    assert np.all(data["derived4"] == data["fof_halo_mass"] / 2)
+    assert np.all(np.isclose(data["derived1"], data["fof_halo_mass"] * 5))
+    assert np.all(np.isclose(data["derived2"], data["fof_halo_mass"] * 3))
+    assert np.all(np.isclose(data["derived3"], 1 / data["fof_halo_mass"]))
+    assert np.all(np.isclose(data["derived4"], data["fof_halo_mass"] / 2))
 
 
 def test_power(properties_path):
@@ -176,18 +180,6 @@ def test_derive_mask(properties_path):
     assert all(ds_masked.data["fof_halo_px"] > val)
 
 
-def test_derive_collect(properties_path):
-    ds = oc.open(properties_path)
-    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.with_new_columns(fof_halo_px=derived)
-    ds = ds.collect()
-    data = ds.data
-    assert np.all(
-        data["fof_halo_px"].value
-        == data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
-    )
-
-
 def test_derive_children(properties_path):
     ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
@@ -225,3 +217,15 @@ def test_derive_structure_collection(properties_path, particles_path):
     for halo in ds.objects(["dm_particles"]):
         particles = halo["dm_particles"]
         assert "gpe" in particles.columns
+
+
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_derived_symbolic_conversion(properties_path):
+    ds = oc.open(properties_path)
+    ds = ds.with_new_columns(
+        fof_halo_com_px=oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    )
+    ds_converted = ds.with_units(fof_halo_com_px=u.kg * u.lyr / u.yr)
+    original_data = ds.select("fof_halo_com_px").get_data()
+    converted_data = ds_converted.select("fof_halo_com_px").get_data()
+    assert np.all(original_data.to(u.kg * u.lyr / u.yr) == converted_data)

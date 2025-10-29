@@ -1,11 +1,18 @@
+from __future__ import annotations
+
 from copy import deepcopy
-from typing import TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 import h5py
 import numpy as np
-from numpy.typing import NDArray
 
-from opencosmo.index.protocols import DataIndex
+from opencosmo.index import chunked
+from opencosmo.index.get import get_data_simple
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from opencosmo.index.protocols import DataIndex
 
 
 class SimpleIndex:
@@ -14,7 +21,7 @@ class SimpleIndex:
     """
 
     def __init__(self, index: NDArray[np.int_]) -> None:
-        self.__index = index
+        self.__index = np.sort(index)
 
     @classmethod
     def from_size(cls, size: int) -> "SimpleIndex":
@@ -38,7 +45,7 @@ class SimpleIndex:
         """
         if len(self) == 0:
             return 0, 0
-        return self.__index[0], self.__index[-1]
+        return self.__index[0], self.__index[-1] + 1
 
     def into_mask(self):
         mask = np.zeros(self.__index[-1] + 1, dtype=bool)
@@ -78,38 +85,6 @@ class SimpleIndex:
         data[self.__index] = value
         return data
 
-    def take(self, n: int, at: str = "random") -> DataIndex:
-        """
-        Take n elements from the index.
-        """
-        if n > len(self):
-            raise ValueError(f"Cannot take {n} elements from index of size {len(self)}")
-        elif n == 0:
-            return SimpleIndex.empty()
-
-        if at == "random":
-            return SimpleIndex(np.random.choice(self.__index, n, replace=False))
-        elif at == "start":
-            return SimpleIndex(self.__index[:n])
-        elif at == "end":
-            return SimpleIndex(self.__index[-n:])
-        else:
-            raise ValueError(f"Unknown value for 'at': {at}")
-
-    def take_range(self, start: int, end: int) -> DataIndex:
-        """
-        Take a range of elements from the index.
-        """
-        if start < 0 or end > len(self):
-            raise ValueError(
-                f"Range {start}:{end} is out of bounds for index of size {len(self)}"
-            )
-
-        if start >= end:
-            raise ValueError(f"Start {start} must be less than end {end}")
-
-        return SimpleIndex(self.__index[start:end])
-
     def intersection(self, other: DataIndex) -> DataIndex:
         if len(self) == 0 or len(other) == 0:
             return SimpleIndex.empty()
@@ -121,17 +96,13 @@ class SimpleIndex:
         new_idx = np.where(self_mask & other_mask)[0]
         return SimpleIndex(new_idx)
 
-    def projection(self, other: DataIndex) -> DataIndex:
-        """
-        Given a second index, find the indicies into this index
-        where the second index is true.
-        """
-        other_idxs = other.into_array()
-        is_in_array = np.isin(other_idxs, self.__index)
-        matching_values = other_idxs[is_in_array]
-        indices_into_this_index = np.where(np.isin(self.__index, matching_values))[0]
+    def projection(self, other: DataIndex):
+        if isinstance(other, chunked.ChunkedIndex):
+            other_simple = SimpleIndex(other.into_array())
+            return self.projection(other_simple)
 
-        return SimpleIndex(indices_into_this_index)
+        isin = np.isin(self.into_array(), other.into_array())
+        return SimpleIndex(np.where(isin)[0])
 
     def mask(self, mask: np.ndarray) -> DataIndex:
         if mask.shape != self.__index.shape:
@@ -159,11 +130,7 @@ class SimpleIndex:
         if len(self) == 0:
             return np.array([], dtype=data.dtype)
 
-        min_index = self.__index.min()
-        max_index = self.__index.max()
-        output = data[min_index : max_index + 1]
-        indices_into_output = self.__index - min_index
-        return output[indices_into_output]
+        return get_data_simple(data, self.into_array())
 
     def __getitem__(self, item: int) -> DataIndex:
         """

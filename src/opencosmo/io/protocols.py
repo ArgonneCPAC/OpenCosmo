@@ -1,6 +1,9 @@
-from typing import Any, Optional, Protocol
+from __future__ import annotations
 
-import h5py
+from typing import TYPE_CHECKING, Any, Optional, Protocol
+
+if TYPE_CHECKING:
+    import h5py
 
 try:
     from mpi4py import MPI
@@ -24,7 +27,6 @@ class DataSchema(Protocol):
     datasets.
     """
 
-    def insert(self, child: "DataSchema", path: str): ...
     def add_child(self, child: "DataSchema", child_id: Any): ...
     def allocate(self, group: h5py.File | h5py.Group): ...
     def verify(self): ...

@@ -1,17 +1,23 @@
+from __future__ import annotations
+
+from collections import defaultdict
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
-from numpy.typing import DTypeLike, NDArray
 
-import opencosmo.io.protocols as iop
 import opencosmo.io.writers as iow
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex, DataIndex
+from opencosmo.index import ChunkedIndex
 
 if TYPE_CHECKING:
+    import numpy as np
     from mpi4py import MPI
+    from numpy.typing import DTypeLike, NDArray
+
+    import opencosmo.io.protocols as iop
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
 
 ColumnShape = tuple[int, ...]
 
@@ -70,15 +76,6 @@ class FileSchema:
                     f"File schema cannot have children of type {type(child)}"
                 )
 
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
-
     def allocate(self, group: h5py.File | h5py.Group):
         self.verify()
         if not isinstance(group, h5py.File):
@@ -116,15 +113,6 @@ class SimCollectionSchema:
     def __init__(self):
         self.children = {}
 
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
-
     def add_child(self, child: iop.DataSchema, name: str):
         if name in self.children:
             raise ValueError(f"SimCollection already has a dataset with name {name}")
@@ -146,8 +134,6 @@ class SimCollectionSchema:
             ds.allocate(ds_group)
 
     def verify(self):
-        if len(self.children) < 2:
-            raise ValueError("A SimulationCollection must have at least two children!")
         zero_length = set()
         for name, child in self.children.items():
             try:
@@ -167,15 +153,6 @@ class SimCollectionSchema:
 class LightconeSchema:
     def __init__(self):
         self.children: dict[str, DatasetSchema] = {}
-
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
 
     def verify(self):
         zero_length = set()
@@ -224,16 +201,9 @@ class StructCollectionSchema:
     """
 
     def __init__(self):
-        self.children: dict[str, DatasetSchema | StructCollectionSchema] = {}
-
-    def insert(self, child: iop.DataSchema, path: str):
-        try:
-            child_name, remaining_path = path.split(".", maxsplit=1)
-            if child_name not in self.children:
-                raise ValueError(f"File schema has no child {child_name}")
-            self.children[child_name].insert(child, remaining_path)
-        except ValueError:
-            self.add_child(child, path)
+        self.children: dict[str, DatasetSchema | StructCollectionSchema] = defaultdict(
+            dict
+        )
 
     def verify(self):
         if len(self.children) < 2:
@@ -247,10 +217,10 @@ class StructCollectionSchema:
             except ZeroLengthError:
                 zero_length.add(name)
                 continue
-            try:
-                found_links = len(child.links) > 0 or found_links
-            except AttributeError:
-                continue
+            linked_columns = filter(lambda col: "data_linked" in col, child.children)
+            if list(linked_columns):
+                found_links = True
+
         if not found_links:
             raise ValueError("StructCollection must get at least one link!")
         elif len(zero_length) == len(self.children):
@@ -270,11 +240,6 @@ class StructCollectionSchema:
                         self.children[f"{name}_{key}"] = grandchild
                     else:
                         self.children[key] = grandchild
-            case IdxLinkSchema() | StartSizeLinkSchema():
-                raise ValueError(
-                    "LinkSchemas need to be added to a DatasetSchema directly. "
-                    "Perhaps you meant to call insert?"
-                )
             case _:
                 raise ValueError(
                     f"StructCollectionSchema cannot take children of type {type(child)}"
@@ -309,9 +274,7 @@ class DatasetSchema:
         self,
         header: Optional[OpenCosmoHeader] = None,
     ):
-        self.columns: dict[str, ColumnSchema | EmptyColumnSchema] = {}
-        self.links: dict[str, IdxLinkSchema | StartSizeLinkSchema] = {}
-        self.spatial_index: Optional[SpatialIndexSchema] = None
+        self.columns: dict[str, dict[str, ColumnSchema]] = defaultdict(dict)
         self.header = header
 
     @property
@@ -321,87 +284,82 @@ class DatasetSchema:
     @classmethod
     def make_schema(
         cls,
-        source: h5py.Group | h5py.File,
+        sources: dict[str, h5py.Group],
         columns: Iterable[str],
         index: DataIndex,
+        cache: dict[str, np.ndarray],
         header: Optional[OpenCosmoHeader] = None,
     ):
         schema = DatasetSchema(header)
+        columns = set(columns)
         for colname in columns:
-            if colname not in source.keys():
-                raise ValueError("Dataset source is missing some columns!")
-            column_schema = ColumnSchema(
-                colname, index, source[colname], source[colname].attrs
-            )
+            colname_parts = colname.split("/", maxsplit=1)
+            if (
+                colname_parts[0] not in sources
+                or colname_parts[1] not in sources[colname_parts[0]].keys()
+            ):
+                raise ValueError("Found a column with no source!")
+
+            # Still need this to get metadata if the column is cached
+            colsource = sources[colname_parts[0]][colname_parts[1]]
+
+            if colname in cache:
+                coldata = cache[colname]
+                column_schema = ColumnSchema(
+                    colname_parts[1],
+                    index.from_size(len(coldata)),
+                    coldata,
+                    colsource.attrs,
+                )
+            else:
+                column_schema = ColumnSchema(
+                    colname_parts[1], index, colsource, colsource.attrs
+                )
             schema.add_child(column_schema, colname)
         return schema
 
-    def insert(self, child: iop.DataSchema, path: str):
-        if "." in path:
-            raise ValueError("Datasets do not have grandchildren!")
-        return self.add_child(child, path)
+    def add_child(self, child: iop.DataSchema, child_id: str):
+        if not isinstance(child, ColumnSchema):
+            raise ValueError("Dataset schemas can only take columns as childre")
+        colparts = child_id.split("/", maxsplit=1)
 
-    def add_child(self, child: iop.DataSchema, name: str):
-        if name in self.columns or name in self.links:
-            raise ValueError(f"DatasetScheema already has a child named {name}")
-        match child:
-            case IdxLinkSchema() | StartSizeLinkSchema():
-                self.links[name] = child
-            case ColumnSchema():
-                self.columns[name] = child
-            case SpatialIndexSchema():
-                if self.spatial_index is None:
-                    self.spatial_index = child
-                else:
-                    raise ValueError("This writer already has a spatial index!")
-            case _:
-                raise ValueError(
-                    f"Dataset schema cannot take children of type {type(child)}"
-                )
+        if colparts[1] in self.columns[colparts[0]]:
+            raise ValueError(f"DatasetSchema already has a child named {child_id}")
+        self.columns[colparts[0]][colparts[1]] = child
 
     def verify(self):
         if len(self.columns) == 0:
             raise ValueError("Datasets must have at least one column")
 
-        column_lengths = set(len(c) for c in self.columns.values())
-        if len(column_lengths) > 1:
-            raise ValueError("Datasets columns must be the same length!")
+        column_lengths = set()
+        for group, columns in self.columns.items():
+            sizes = set(len(col) for col in columns.values())
 
-        if column_lengths.pop() == 0:
+        if len(sizes) == 1 and column_lengths.pop() == 0:
             raise ZeroLengthError()
 
-        for child in chain(self.columns.values(), self.links.values()):
-            child.verify()
+        for group in self.columns.values():
+            for column in group.values():
+                column.verify()
 
     def allocate(self, group: h5py.File | h5py.Group):
-        data_group = group.require_group("data")
-        for column in self.columns.values():
-            column.allocate(data_group)
-        for link in self.links.values():
-            link_group = group.require_group("data_linked")
-            link.allocate(link_group)
-        if self.spatial_index is not None:
-            idx_group = group.require_group("index")
-            self.spatial_index.allocate(idx_group)
+        for groupname, columns in self.columns.items():
+            data_group = group.require_group(groupname)
+            for colname, column in columns.items():
+                column.allocate(data_group)
         if self.header is not None:
             self.header.write(group)
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         colnames = list(self.columns.keys())
-        linknames = list(self.links.keys())
         colnames.sort()
-        linknames.sort()
 
-        column_writers = {
-            name: self.columns[name].into_writer(comm) for name in colnames
-        }
-        link_writers = {name: self.links[name].into_writer(comm) for name in linknames}
-        spatial_index = (
-            self.spatial_index.into_writer(comm)
-            if self.spatial_index is not None
-            else None
-        )
-        return iow.DatasetWriter(column_writers, link_writers, spatial_index)
+        writers = {}
+        for group, columns in self.columns.items():
+            writers[group] = {
+                name: cs.into_writer(comm) for name, cs in columns.items()
+            }
+        return iow.DatasetWriter(writers, comm)
 
 
 class ColumnSchema:
@@ -454,7 +412,7 @@ class ColumnSchema:
 
     def allocate(self, group: h5py.Group):
         shape = (self.total_length,) + self.source.shape[1:]
-        group.create_dataset(self.name, shape, self.source.dtype)
+        group.require_dataset(self.name, shape, self.source.dtype)
         for name, attr in self.attrs.items():
             group[self.name].attrs[name] = attr
 
@@ -507,145 +465,3 @@ class EmptyColumnSchema:
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         return iow.EmptyColumnWriter(self.name)
-
-
-class SpatialIndexSchema:
-    def __init__(self):
-        self.levels = {}
-
-    def add_child(self, child: iop.DataSchema, child_id: int):
-        if not isinstance(child, SpatialIndexLevelSchema):
-            raise ValueError(
-                "SpatialIndexSchema only takes SpatialIndexLevelIndex as children"
-            )
-        if child_id in self.levels:
-            raise ValueError("Already have a spatial index schema at this level!")
-        self.levels[child_id] = child
-
-    def verify(self):
-        for level in self.levels.values():
-            level.verify()
-
-    def allocate(self, group: h5py.Group):
-        for level_num, level in self.levels.items():
-            level_group = group.require_group(f"level_{level_num}")
-            level.allocate(level_group)
-
-    def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        levels = {n: level.into_writer(comm) for n, level in self.levels.items()}
-        return iow.SpatialIndexWriter(levels)
-
-
-class SpatialIndexLevelSchema:
-    def __init__(self, start: ColumnSchema, size: ColumnSchema):
-        self.start = start
-        self.size = size
-
-    @classmethod
-    def from_source(cls, source: h5py.Group):
-        index = ChunkedIndex.from_size(len(source["start"]))
-        start = ColumnSchema("start", index, source["start"], source["start"].attrs)
-        size = ColumnSchema("size", index, source["size"], source["size"].attrs)
-        return SpatialIndexLevelSchema(start, size)
-
-    def allocate(self, group: h5py.Group):
-        self.start.allocate(group)
-        self.size.allocate(group)
-
-    def add_child(self, *args, **kwargs):
-        raise TypeError("Links do not take children!")
-
-    insert = add_child
-
-    def verify(self):
-        self.start.verify()
-        self.size.verify()
-
-    def into_writer(self, comm: Optional["MPI.Comm"]):
-        return iow.SpatialIndexLevelWriter(
-            self.start.into_writer(), self.size.into_writer(), comm
-        )
-
-
-class IdxLinkSchema:
-    """
-    Schema for links that are one-to-one in rows.
-    """
-
-    def __init__(self, column: ColumnSchema | EmptyColumnSchema):
-        self.column = column
-
-    @classmethod
-    def from_h5py_dataset(cls, name: str, index: DataIndex, source: h5py.Dataset):
-        column = ColumnSchema(f"{name}_idx", index, source, source.attrs)
-        return IdxLinkSchema(column)
-
-    def allocate(self, group: h5py.Group):
-        return self.column.allocate(group)
-
-    def add_child(self, *args, **kwargs):
-        raise TypeError("Links do not take children!")
-
-    insert = add_child
-
-    def verify(self):
-        return self.column.verify()
-
-    def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.IdxLinkWriter(self.column.into_writer(comm), comm)
-
-
-class StartSizeLinkSchema:
-    """
-    Schema for links that define a start and size for a group of rows
-    in a different dataset.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        start: ColumnSchema | EmptyColumnSchema,
-        size: ColumnSchema | EmptyColumnSchema,
-        start_offset: int = 0,
-    ):
-        self.name = name
-        self.start = start
-        self.size = size
-        self.start_offset = start_offset
-
-    @classmethod
-    def from_h5py_dataset(
-        cls,
-        name: str,
-        index: DataIndex,
-        start: h5py.Dataset,
-        size: h5py.Dataset,
-        link_offset: int = 0,
-        start_offset: int = 0,
-    ):
-        start_ = ColumnSchema(f"{name}_start", index, start, start.attrs)
-        size_ = ColumnSchema(f"{name}_size", index, size, size.attrs)
-        start_.set_offset(link_offset)
-        size_.set_offset(link_offset)
-        return StartSizeLinkSchema(name, start_, size_, start_offset)
-
-    def allocate(self, group: h5py.Group):
-        self.start.allocate(group)
-        self.size.allocate(group)
-
-    def add_child(self, *args, **kwargs):
-        raise TypeError("Links do not take children!")
-
-    insert = add_child
-
-    def verify(self):
-        self.start.verify()
-        self.size.verify()
-
-    def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.StartSizeLinkWriter(
-            self.start.into_writer(comm), self.size.into_writer(), comm
-        )
-
-
-LinkSchema = IdxLinkSchema | StartSizeLinkSchema

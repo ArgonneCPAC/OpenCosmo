@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import operator as op
-from functools import partialmethod
-from typing import Any, Callable, Iterable, Union
+from functools import cache, partialmethod
+from typing import Any, Callable, Iterable, Optional, Union
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -141,10 +141,17 @@ class DerivedColumn:
     derived column.
     """
 
-    def __init__(self, lhs: ColumnOrScalar, rhs: ColumnOrScalar, operation: Callable):
+    def __init__(
+        self,
+        lhs: ColumnOrScalar,
+        rhs: ColumnOrScalar,
+        operation: Callable,
+        description: Optional[str] = None,
+    ):
         self.lhs = lhs
         self.rhs = rhs
         self.operation = operation
+        self.description = description
 
     def check_parent_existance(self, names: set[str]):
         match self.rhs:
@@ -190,12 +197,16 @@ class DerivedColumn:
             case (None, None):
                 return None
             case (_, None):
-                return self.operation(lhs_unit, 1)
+                if self.operation == op.pow:
+                    return self.operation(lhs_unit, self.rhs)
+                else:
+                    return self.operation(lhs_unit, 1)
             case (None, _):
                 return self.operation(1, rhs_unit)
             case (_, _):
                 return self.operation(lhs_unit, rhs_unit)
 
+    @cache
     def requires(self):
         """
         Return the raw data columns required to make this column

@@ -18,6 +18,21 @@ def haloproperties_601_path(lightcone_path):
     return lightcone_path / "step_601" / "haloproperties.hdf5"
 
 
+@pytest.fixture
+def all_files():
+    return ["haloparticles.hdf5", "haloproperties.hdf5", "sodpropertybins.hdf5"]
+
+
+@pytest.fixture
+def structure_600(lightcone_path, all_files):
+    return [lightcone_path / "step_600" / f for f in all_files]
+
+
+@pytest.fixture
+def structure_601(lightcone_path, all_files):
+    return [lightcone_path / "step_601" / f for f in all_files]
+
+
 def test_healpix_index(haloproperties_600_path):
     ds = oc.open(haloproperties_600_path)
     raw_data = ds.data
@@ -239,6 +254,54 @@ def test_lc_collection_take(haloproperties_600_path, haloproperties_601_path, tm
     assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
 
 
+def test_lc_collection_range(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    start = int(0.25 * len(ds))
+    end = int(0.75 * len(ds))
+
+    ds_range = ds.take_range(start, end)
+    halo_tags = ds.select("fof_halo_tag").get_data("numpy")[start:end]
+    range_halo_tags = ds_range.select("fof_halo_tag").get_data("numpy")
+    assert np.all(halo_tags == range_halo_tags)
+
+
+def test_lc_collection_take_rows(haloproperties_600_path, haloproperties_601_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    n_to_take = int(0.75 * len(ds))
+    rows = np.random.choice(len(ds), n_to_take, replace=False)
+    rows.sort()
+    ds_rows = ds.take_rows(rows)
+
+    tags = ds.select("fof_halo_tag").get_data("numpy")
+    taken_tags = ds_rows.select("fof_halo_tag").get_data("numpy")
+    assert np.all(tags[rows] == taken_tags)
+
+    sorted_ds = ds.sort_by("fof_halo_mass").take_rows(rows)
+    sorted_tags = sorted_ds.select(("fof_halo_mass", "fof_halo_tag")).get_data()
+
+    data = ds.select(("fof_halo_mass", "fof_halo_tag")).get_data()
+    sorted_index = np.argsort(data["fof_halo_mass"])
+
+    assert np.all(
+        data["fof_halo_mass"][sorted_index][rows] == sorted_tags["fof_halo_mass"]
+    )
+    toolkit_sorted_tags_mass = dict(
+        zip(sorted_tags["fof_halo_tag"], sorted_tags["fof_halo_mass"])
+    )
+    sorted_tags_mass = dict(
+        zip(
+            data["fof_halo_tag"][sorted_index][rows],
+            data["fof_halo_mass"][sorted_index][rows],
+        )
+    )
+    # Exact order is not deterministic, because many low_mass halos have the same mass,
+    # So we just make sure the tag->mass mapping is the same in the two datasets.
+
+    assert toolkit_sorted_tags_mass == sorted_tags_mass
+
+
 def test_lc_collection_derive(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
@@ -260,6 +323,19 @@ def test_lc_collection_add(haloproperties_600_path, haloproperties_601_path, tmp
     ds = ds.with_new_columns(random=data)
     stored_data = ds.select("random").get_data()
     assert np.all(stored_data == data)
+
+
+def test_lc_collection_add_with_description(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    data = np.random.randint(0, 100, len(ds)) * u.deg
+    fof_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    descriptions = {"random": "random data", "px": "com x momentump"}
+    ds = ds.with_new_columns(random=data, px=fof_px, descriptions=descriptions)
+    descs = ds.descriptions
+    for key, value in descriptions.items():
+        assert descs[key] == value
 
 
 def test_lc_collection_filter(
@@ -367,6 +443,19 @@ def test_lc_collection_units(
         )
 
 
+def test_lc_collection_units_convert(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    location_columns = [f"fof_halo_com_{dim}" for dim in ("x", "y", "z")]
+    conversions = {c: u.lyr for c in location_columns}
+    ds_converted = ds.with_units(**conversions)
+    data_original = ds.select(location_columns).get_data()
+    data_converted = ds_converted.select(location_columns).get_data()
+    for column in location_columns:
+        assert np.all(data_original[column].to(u.lyr) == data_converted[column])
+
+
 def test_lc_collection_sort(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds = ds.sort_by("fof_halo_mass")
@@ -394,3 +483,13 @@ def test_write_single_lightcone(haloproperties_600_path, tmp_path):
     ds_written = oc.open(tmp_path / "temp.hdf5")
     assert isinstance(ds, oc.Lightcone)
     assert len(ds) == len(ds_written)
+
+
+def test_lightcone_structure_collection_open(structure_600):
+    c = oc.open(*structure_600)
+    assert isinstance(c, oc.StructureCollection)
+
+
+def test_lightcone_structure_collection_open_multiple(structure_600, structure_601):
+    with pytest.raises(NotImplementedError):
+        _ = oc.open(*structure_600, *structure_601)

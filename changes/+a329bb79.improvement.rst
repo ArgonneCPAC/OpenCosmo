@@ -1,0 +1,1 @@
+Reads from hdf5 now use :code:`read_direct`, which improves read performance especially with large datasets.

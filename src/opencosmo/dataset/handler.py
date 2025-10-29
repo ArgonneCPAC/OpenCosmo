@@ -1,35 +1,132 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from functools import cached_property
+from itertools import chain
+from typing import TYPE_CHECKING, Iterable, Optional
+from weakref import ref
 
-import h5py
 import numpy as np
-from astropy.table import QTable  # type: ignore
 
-from opencosmo.dataset.builders import TableBuilder
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
+from opencosmo.column.cache import ColumnCache
+from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index.take import take
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
-from opencosmo.transformations.units import get_raw_units
+
+if TYPE_CHECKING:
+    import h5py
+
+    from opencosmo.dataset.column import DerivedColumn
+    from opencosmo.dataset.state import DatasetState
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
 
 
-class DatasetHandler:
+class Hdf5Handler:
     """
     Handler for opencosmo.Dataset
     """
 
     def __init__(
         self,
-        file: h5py.File,
-        group_name: Optional[str] = None,
+        group: h5py.Group,
+        index: DataIndex,
+        cache: ColumnCache,
+        metadata_group: Optional[h5py.Group],
     ):
-        self.__group_name = group_name
-        self.__file = file
-        if group_name is None:
-            self.__group = file["data"]
-        else:
-            self.__group = file[f"{group_name}/data"]
+        self.__index = index
+        self.__group = group
+        self.__cache = cache
+        self.__metadata_group = metadata_group
+
+    @classmethod
+    def from_group(
+        cls,
+        group: h5py.Group,
+        index: Optional[DataIndex] = None,
+        metadata_group: Optional[h5py.Group] = None,
+    ):
+        if not group.name.endswith("data"):
+            raise ValueError("Expected a data group")
+        lengths = set(len(ds) for ds in group.values())
+        if len(lengths) > 1:
+            raise ValueError("Not all columns are the same length!")
+
+        if index is None:
+            index = ChunkedIndex.from_size(lengths.pop())
+
+        colnames = group.keys()
+        if metadata_group is not None:
+            colnames = chain(colnames, metadata_group.keys())
+
+        return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group)
+
+    def register(self, state: DatasetState, derived: dict[str, DerivedColumn]):
+        columns = set(state.columns).difference(derived)
+        for dc in derived.values():
+            columns |= dc.requires()
+
+        self.__cache.register_column_group(
+            id(state), columns.union(self.metadata_columns)
+        )
+
+    def deregister(self, state_id: int):
+        self.__cache.deregister_column_group(state_id)
+
+    def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
+        if len(other) == 0:
+            return Hdf5Handler(
+                self.__group, other, ColumnCache.empty(), self.__metadata_group
+            )
+
+        if sorted is not None:
+            return self.__take_sorted(other, sorted)
+
+        new_index = take(self.__index, other)
+        new_cache = self.__cache.take(other)
+        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
+
+    def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
+        if len(sorted) != len(self.__index):
+            raise ValueError("Sorted index has the wrong length!")
+        new_indices = other.get_data(sorted)
+
+        new_raw_index = self.__index.into_array()[new_indices]
+        new_index = SimpleIndex(np.sort(new_raw_index))
+
+        new_cache_index = SimpleIndex(new_indices)
+        new_cache = self.__cache.take(new_cache_index)
+
+        return Hdf5Handler(self.__group, new_index, new_cache, self.__metadata_group)
+
+    @property
+    def data(self):
+        return self.__group
+
+    @property
+    def index(self):
+        return self.__index
+
+    @property
+    def columns(self):
+        return self.__group.keys()
+
+    @property
+    def metadata_columns(self):
+        if self.__metadata_group is None:
+            return []
+        return self.__metadata_group.keys()
+
+    @cached_property
+    def descriptions(self):
+        return {
+            colname: column.attrs.get("description")
+            for colname, column in self.__group.items()
+        }
+
+    def mask(self, mask):
+        idx = SimpleIndex(np.where(mask)[0])
+        return self.take(idx)
 
     def __len__(self) -> int:
         first_column_name = next(iter(self.__group.keys()))
@@ -42,43 +139,68 @@ class DatasetHandler:
         self.__group = None
         return self.__file.close()
 
-    def collect(self, columns: Iterable[str], index: DataIndex) -> DatasetHandler:
-        if (comm := get_comm_world()) is not None:
-            indices = comm.allgather(index)
-            new_index = indices[0].concatenate(*indices[1:])
-        else:
-            new_index = index
-        file: h5py.File = h5py.File.in_memory()
-        group = file.require_group("data")
-        for colname in columns:
-            dataset = self.__group[colname]
-            data = new_index.get_data(dataset)
-            group.create_dataset(colname, data=data)
-            for name, value in dataset.attrs.items():
-                group[colname].attrs[name] = value
-
-        return DatasetHandler(file, group_name=self.__group_name)
-
-    def get_raw_units(self, columns: Iterable[str]):
-        return {col: get_raw_units(self.__group[col]) for col in columns}
-
-    def prep_write(
+    def make_schema(
         self,
-        index: DataIndex,
         columns: Iterable[str],
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
-        return DatasetSchema.make_schema(self.__group, columns, index, header)
+        groups = {}
+        columns = set(columns)
+        data_columns = [f"data/{n}" for n in columns]
+        groups["data"] = self.__group
 
-    def get_data(self, builder: TableBuilder, index: DataIndex) -> QTable:
+        cached_data = {
+            f"data/{n}": data for n, data in self.__cache.get_columns(columns).items()
+        }
+
+        if self.metadata_columns:
+            assert self.__metadata_group is not None
+            group_name = self.__metadata_group.name.split("/")[-1]
+            metadata_columns = [f"{group_name}/{n}" for n in self.metadata_columns]
+            cached_data |= {
+                f"{group_name}/{n}": data
+                for n, data in self.__cache.get_columns(self.metadata_columns).items()
+            }
+            groups[group_name] = self.__metadata_group
+        else:
+            metadata_columns = []
+        return DatasetSchema.make_schema(
+            groups,
+            data_columns + metadata_columns,
+            self.__index,
+            cached_data,
+            header,
+        )
+
+    def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
         if self.__group is None:
             raise ValueError("This file has already been closed")
-        data = {}
-        for colname in builder.columns:
-            data[colname] = index.get_data(self.__group[colname])
+        cached_data = self.__cache.get_columns(columns)
+        remaining = set(columns).difference(cached_data.keys())
+        new_data = {}
 
-        return builder.build(data)
+        for colname in remaining:
+            new_data[colname] = self.__index.get_data(self.__group[colname])
+        if new_data:
+            self.__cache = self.__cache.with_data(new_data)
+
+        data = new_data | cached_data
+
+        # Ensure order is preserved
+        return {name: data[name] for name in columns}
+
+    def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
+        if self.__metadata_group is None:
+            return None
+        if not columns:
+            columns = self.metadata_columns
+
+        data = {}
+        for colname in columns:
+            data[colname] = self.__index.get_data(self.__metadata_group[colname])
+
+        return data
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
         if start < 0 or end > len(indices):

@@ -1,11 +1,19 @@
-from typing import Callable, Optional
+from __future__ import annotations
 
-import h5py
+from collections import defaultdict
+from typing import TYPE_CHECKING, Callable, Optional
+
 import numpy as np
 
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex, SimpleIndex
-from opencosmo.io import protocols as iop
+from opencosmo.index import SimpleIndex
+from opencosmo.io.updaters import apply_updaters
+
+if TYPE_CHECKING:
+    import h5py
+
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
+    from opencosmo.io import protocols as iop
 
 try:
     from mpi4py import MPI
@@ -100,32 +108,21 @@ class DatasetWriter:
 
     def __init__(
         self,
-        columns: dict[str, "ColumnWriter"],
-        links: dict[str, "LinkWriter"] = {},
-        spatial_index: Optional["SpatialIndexWriter"] = None,
+        columns: dict[str, dict[str, ColumnWriter]],
+        comm: Optional[MPI.Comm] = None,
     ):
-        self.columns = columns
-        self.links = links
-        self.spatial_index = spatial_index
+        self.columns = apply_updaters(columns, comm)
+        self.comm = comm
 
     def write(self, group: h5py.Group):
-        data_group = group["data"]
-
-        names = list(self.columns.keys())
-        names.sort()
-        for colname in names:
-            self.columns[colname].write(data_group)
-        if self.links:
-            link_group = group["data_linked"]
-            link_names = list(self.links.keys())
-            link_names.sort()
-
-            for name in link_names:
-                self.links[name].write(link_group)
-
-        if self.spatial_index is not None:
-            index_group = group["index"]
-            self.spatial_index.write(index_group)
+        groupnames = list(self.columns.keys())
+        groupnames.sort()
+        for groupname in groupnames:
+            colnames = list(self.columns[groupname].keys())
+            colnames.sort()
+            data_group = group[groupname]
+            for colname in colnames:
+                self.columns[groupname][colname].write(data_group)
 
 
 class EmptyColumnWriter:
@@ -154,150 +151,19 @@ class ColumnWriter:
         index: DataIndex,
         source: h5py.Dataset,
         offset: int = 0,
+        updater: Optional[Callable] = None,
     ):
         self.name = name
         self.source = source
         self.index = index
         self.offset = offset
+        self.updater = updater
+        self.data = None
 
     def write(
         self,
         group: h5py.Group,
-        updater: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     ):
         ds = group[self.name]
 
-        write_index(self.source, ds, self.index, self.offset, updater)
-
-
-class SpatialIndexWriter:
-    """
-    Writer for spatial indices. Mostly responsible for calling its children
-    """
-
-    def __init__(self, levels: dict[int, "SpatialIndexLevelWriter"]):
-        self.levels = levels
-
-    def write(self, group: h5py.Group):
-        for (
-            level_num,
-            writer,
-        ) in self.levels.items():
-            level_group = group[f"level_{level_num}"]
-            writer.write(level_group)
-
-
-class SpatialIndexLevelWriter:
-    """
-    Writer for writing a single level of the spatial index. If this operation is being
-    performed in an MPI context, the spatial indices must be summed.
-    """
-
-    def __init__(
-        self, start: ColumnWriter, size: ColumnWriter, comm: Optional["MPI.Comm"] = None
-    ):
-        self.start = start
-        self.size = size
-        self.updater = lambda data: sum_updater(data, comm)
-
-    def write(self, group: h5py.Group):
-        self.size.write(group, updater=self.updater)
-        self.start.write(group, updater=self.updater)
-
-
-def sum_updater(data: np.ndarray, comm: Optional["MPI.Comm"] = None):
-    if comm is not None and comm.Get_size():
-        recvbuf = np.zeros_like(data)
-        comm.Allreduce(data, recvbuf, MPI.SUM)
-        return recvbuf
-    return data
-
-
-class IdxLinkWriter:
-    """
-    Writer for links between datasets, where each row in one dataset corresponds
-    to a single row in the other. When the dataset is filtered, this link must be
-    updated.
-    """
-
-    def __init__(self, col_writer: ColumnWriter, comm: Optional["MPI.Comm"] = None):
-        self.writer = col_writer
-        self.updater = make_idx_link_updater(self.writer, comm)
-
-    def write(self, group: h5py.Group):
-        self.writer.write(group, self.updater)
-
-
-def idx_link_updater(input: np.ndarray, offset: int = 0) -> np.ndarray:
-    output = np.full(len(input), -1)
-    good = input >= 0
-    output[good] = np.arange(sum(good)) + offset
-    return output
-
-
-def make_idx_link_updater(
-    input: ColumnWriter, comm: Optional["MPI.Comm"]
-) -> Callable[[np.ndarray], np.ndarray]:
-    """
-    Helper function to update data from a 1-to-1 index
-    link.
-    """
-    arr = input.index.get_data(input.source)
-
-    has_data = arr > 0
-    offset = 0
-    n_good = sum(has_data)
-    if comm is not None:
-        all_sizes = comm.allgather(n_good)
-        offsets = np.insert(np.cumsum(all_sizes), 0, 0)
-        offset = offsets[comm.Get_rank()]
-    return lambda arr_: idx_link_updater(arr_, offset)
-
-
-class StartSizeLinkWriter:
-    """
-    Writer for links between datasets where each row in one datest
-    corresponds to several rows in the other.
-    """
-
-    def __init__(
-        self, start: ColumnWriter, size: ColumnWriter, comm: Optional["MPI.Comm"] = None
-    ):
-        self.start = start
-        self.sizes = size
-        self.updater = make_start_link_updater(size, comm)
-
-    def write(self, group: h5py.Group):
-        self.sizes.write(group)
-        new_sizes = self.sizes.index.get_data(self.sizes.source)
-        self.start.write(group, lambda _: self.updater(new_sizes))
-
-
-def start_link_updater(sizes: np.ndarray, offset: int = 0) -> np.ndarray:
-    cumulative_sizes = np.cumsum(sizes)
-
-    new_starts = np.insert(cumulative_sizes, 0, 0)
-    new_starts = new_starts[:-1] + offset
-    return new_starts
-
-
-def make_start_link_updater(
-    size_writer: ColumnWriter, comm: Optional["MPI.Comm"]
-) -> Callable[[np.ndarray], np.ndarray]:
-    """
-    Helper function to update the starts of a start-size
-    link.
-    """
-    sizes = size_writer.index.get_data(size_writer.source)
-    total_size = np.sum(sizes)
-    if comm is not None:
-        offsets = np.cumsum(comm.allgather(total_size), dtype=np.uint64)
-        offsets = np.insert(offsets, 0, 0)
-        offset = offsets[comm.Get_rank()]
-    else:
-        offset = 0
-
-    return lambda arr_: start_link_updater(arr_, offset)
-
-
-LinkWriter = IdxLinkWriter | StartSizeLinkWriter
+        write_index(self.source, ds, self.index, self.offset, self.updater)

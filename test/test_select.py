@@ -72,7 +72,9 @@ def test_select_doesnt_alter_raw(input_path):
     selected = dataset.select(selected_cols)
     selected_data = selected.data
 
-    raw_data = dataset._Dataset__handler._DatasetHandler__group
+    raw_data = (
+        dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__group
+    )
     assert all(isinstance(raw_data[col], h5py.Dataset) for col in cols)
     assert all(data[col].unit == selected_data[col].unit for col in selected_cols)
     assert not all(np.all(data[col].value == raw_data[col][:]) for col in selected_cols)

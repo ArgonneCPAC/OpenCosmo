@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 import inspect
 from typing import TYPE_CHECKING, Type
 
-import h5py
 from astropy import cosmology  # type: ignore
 
 from opencosmo import header
 from opencosmo.file import broadcast_read, file_reader
 
 if TYPE_CHECKING:
+    import h5py
+
     from opencosmo.parameters import CosmologyParameters
 
 """

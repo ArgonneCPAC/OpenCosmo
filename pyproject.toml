@@ -1,6 +1,6 @@
 [project]
 name = "opencosmo"
-version = "0.9.6"
+version = "1.0.0a1"
 description = "OpenCosmo Python Toolkit"
 authors = [
   { name = "Patrick Wells", email = "pwells@anl.gov" },
@@ -20,6 +20,7 @@ dependencies = [
   "numpy>=1.26",
   "networkx (>=3.5,<4.0)",
   "click (>=8.2.1,<9.0.0)",
+  "numba>=0.62.1",
 ]
 
 [dependency-groups]
@@ -32,8 +33,8 @@ dev = [
   "towncrier (>=24.8.0,<25.0.0)",
   "pip>=25.1.1",
   "pytest>=8.3.4,<9.0.0",
-  "numpy==1.26.4"
-
+  "numpy==1.26.4",
+  "pytest-timeout>=2.4.0",
 ]
 docs = [
   "sphinx>=8.1.3,<9.0.0",
@@ -74,5 +75,30 @@ filename = "docs/source/changelog.rst"
 [tool.pytest.ini_options]
 testpaths = ["test"]
 
-[tool.ruff.pycodestyle]
+[lint.pycodestyle]
 max-doc-length = 90
+
+[tool.ruff.lint]
+future-annotations = true
+preview = true
+select = ["TC"]
+
+[tool.towncrier.fragment.improvement]
+name = "Improvements"
+showcontent = true
+
+[tool.towncrier.fragment.feature]
+name = "New Features"
+
+[tool.towncrier.fragment.bugfix]
+name = "Bugfixes"
+
+[tool.towncrier.fragment.doc]
+name = "Documentation"
+
+[tool.towncrier.fragment.removal]
+name = "Deprecations and Removals"
+
+[tool.towncrier.fragment.misc]
+name = "Miscellaneous"
+

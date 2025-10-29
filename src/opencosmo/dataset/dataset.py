@@ -13,23 +13,26 @@ from warnings import warn
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from astropy import units  # type: ignore
-from astropy.cosmology import Cosmology  # type: ignore
 from astropy.table import QTable  # type: ignore
 
-from opencosmo.dataset.column import ColumnMask, DerivedColumn
 from opencosmo.dataset.evaluate import visit_dataset
-from opencosmo.dataset.state import DatasetState
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex, DataIndex
-from opencosmo.io.schemas import DatasetSchema
-from opencosmo.parameters import HaccSimulationParameters
+from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.spatial import check
-from opencosmo.spatial.protocols import Region
-from opencosmo.spatial.tree import Tree
+from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
-    from opencosmo.dataset.handler import DatasetHandler
+    from astropy import units
+    from astropy.cosmology import Cosmology
+
+    from opencosmo.dataset.column import ColumnMask, DerivedColumn
+    from opencosmo.dataset.handler import Hdf5Handler
+    from opencosmo.dataset.state import DatasetState
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
+    from opencosmo.io.schemas import DatasetSchema
+    from opencosmo.parameters import HaccSimulationParameters
+    from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
 
 
 OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
@@ -38,16 +41,13 @@ OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndar
 class Dataset:
     def __init__(
         self,
-        handler: DatasetHandler,
         header: OpenCosmoHeader,
         state: DatasetState,
         tree: Optional[Tree] = None,
     ):
-        self.__handler = handler
         self.__header = header
         self.__state = state
         self.__tree = tree
-        self.__cached_data: Optional[OpenCosmoData] = None
 
     def __repr__(self):
         """
@@ -69,18 +69,22 @@ class Dataset:
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
 
+    @property
+    def index(self):
+        return self.__state.raw_index
+
     def __len__(self):
-        return len(self.__state.index)
+        return len(self.__state)
 
     def __enter__(self):
         # Need to write tests
         return self
 
     def __exit__(self, *exc_details):
-        return self.__handler.__exit__(*exc_details)
+        return self.__state.__exit__(*exc_details)
 
     def close(self):
-        return self.__handler.__exit__()
+        return self.__state.__exit__()
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -108,6 +112,25 @@ class Dataset:
         columns: list[str]
         """
         return self.__state.columns
+
+    @property
+    def meta_columns(self) -> list[str]:
+        return self.__state.meta_columns
+
+    @property
+    def descriptions(self) -> dict[str, Optional[str]]:
+        """
+        Return the descriptions (if any) of the columns in this dataset as a dictonary.
+        Columns without a description will be included in the dictionary with a value
+        of None
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column descriptions
+        """
+        return self.__state.descriptions
 
     @property
     def cosmology(self) -> Cosmology:
@@ -175,17 +198,7 @@ class Dataset:
         """
         Return the data in the dataset in astropy format. The value of this
         attribute is equivalent to the return value of
-        :code:`Dataset.get_data("astropy")`. However data retrieved via this
-        attribute will be cached, meaning further calls to
-        :py:attr:`Dataset.data <opencosmo.Dataset.data>` should be instantaneous.
-
-        However there is one caveat. If you modify the table, those modifications will
-        persist if you later request the data again with this attribute. Calls to
-        :py:meth:`Dataset.get_data <opencosmo.Dataset.get_data>` will be unaffected, and
-        datasets generated from this dataset will not contain the modifications. If you
-        plan to modify the data in this table, you should use
-        :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`.
-
+        :code:`Dataset.get_data("astropy")`.
 
         Returns
         -------
@@ -195,16 +208,16 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        if self.__cached_data is None:
-            self.__cached_data = self.get_data("astropy")
-        return self.__cached_data.copy()
+        return self.get_data("astropy")
 
-    @property
-    def index(self) -> DataIndex:
-        return self.__state.index
+    def get_metadata(self, columns: list[str] = []):
+        return self.__state.get_metadata(columns)
 
     def get_data(
-        self, output="astropy", unpack=True, attach_index=False
+        self,
+        output="astropy",
+        unpack=True,
+        metadata_columns=[],
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -240,7 +253,15 @@ class Dataset:
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = self.__state.get_data(self.__handler, attach_index=attach_index)  # table
+        if self.__state.convention.value == "physical":
+            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
+            unit_kwargs = {"scale_factor": scale_factor}
+        else:
+            unit_kwargs = {}
+
+        data = self.__state.get_data(
+            unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
+        )  # table
         if len(data) == 1 and unpack:  # unpack length-1 tables
             data = {name: data[0] for name, data in data.items()}
         elif len(data.colnames) == 1:
@@ -295,14 +316,26 @@ class Dataset:
                 "so spatial querying is not available"
             )
 
-        check_region = region.into_scalefree(
-            self.__state.convention, self.cosmology, self.redshift
-        )
+        if not self.header.file.is_lightcone:
+            columns = check.find_coordinates_3d(self, self.dtype)
+
+            check_region = region.into_base_convention(
+                self.__state.unit_handler,
+                columns,
+                self.__state.convention,
+                {
+                    "scale_factor": self.cosmology.scale_factor(
+                        self.header.file.redshift
+                    ).value
+                },
+            )
+        else:
+            check_region = region
 
         if not self.__state.region.intersects(check_region):
             new_index = ChunkedIndex.empty()
-            new_state = self.__state.with_index(new_index)
-            return Dataset(self.__handler, self.__header, new_state, self.__tree)
+            new_state = self.__state.take_rows(new_index)
+            return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
             warn(
@@ -314,12 +347,11 @@ class Dataset:
         intersects_index: DataIndex
         contained_index, intersects_index = self.__tree.query(check_region)
 
-        contained_index = contained_index.intersection(self.__state.index)
-        intersects_index = intersects_index.intersection(self.__state.index)
+        contained_index = self.__state.raw_index.projection(contained_index)
+        intersects_index = self.__state.raw_index.projection(intersects_index)
 
-        check_state = self.__state.with_index(intersects_index)
+        check_state = self.__state.take_rows(intersects_index)
         check_dataset = Dataset(
-            self.__handler,
             self.__header,
             check_state,
             self.__tree,
@@ -332,9 +364,9 @@ class Dataset:
 
         new_index = contained_index.concatenate(new_intersects_index)
 
-        new_state = self.__state.with_index(new_index).with_region(check_region)
+        new_state = self.__state.take_rows(new_index).with_region(check_region)
 
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def evaluate(
         self,
@@ -444,12 +476,12 @@ class Dataset:
             bool_mask &= mask.apply(data)
 
         new_state = self.__state.with_mask(bool_mask)
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def rows(
         self,
         output="astropy",
-        attach_index=False,
+        metadata_columns=[],
     ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
@@ -477,7 +509,7 @@ class Dataset:
             raise StopIteration
         for start, end in chunk_ranges:
             chunk = self.take_range(start, end)
-            chunk_data = chunk.get_data(output, attach_index=attach_index)
+            chunk_data = chunk.get_data(output, metadata_columns=metadata_columns)
             try:
                 output_chunk_data = dict(chunk_data)
             except TypeError:
@@ -511,7 +543,6 @@ class Dataset:
         """
         new_state = self.__state.select(columns)
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
@@ -561,7 +592,7 @@ class Dataset:
 
             dataset = oc.open("haloproperties.hdf5")
             dataset = dataset
-                        .sort_by("fof_halo_mass")
+                        .sort_by("fof_halo_mass", invert=True)
                         .take(100, at="start")
 
         Parameters
@@ -581,9 +612,8 @@ class Dataset:
 
 
         """
-        new_state = self.__state.sort_by(column, self.__handler, invert)
+        new_state = self.__state.sort_by(column, invert)
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
@@ -623,10 +653,9 @@ class Dataset:
 
         """
 
-        new_state = self.__state.take(n, at, self.__handler)
+        new_state = self.__state.take(n, at)
 
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
@@ -634,14 +663,15 @@ class Dataset:
 
     def take_range(self, start: int, end: int) -> Dataset:
         """
-        Create a new dataset from a row range in this dataset.
+        Create a new dataset from a row range in this dataset. We use standard
+        indexing conventions, so the rows included will be start -> end - 1.
 
         Parameters
         ----------
         start : int
-            The first row to get.
+            The beginning of the range
         end : int
-            The last row to get.
+            The end of the range
 
         Returns
         -------
@@ -658,18 +688,42 @@ class Dataset:
         new_state = self.__state.take_range(start, end)
 
         return Dataset(
-            self.__handler,
             self.__header,
             new_state,
             self.__tree,
         )
 
-    def with_index(self, index: DataIndex):
-        new_state = self.__state.with_index(index)
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+    def take_rows(self, rows: np.ndarray | DataIndex):
+        """
+        Take the rows of a dataset specified by the :code:`rows` argument.
+        :code:`rows` should be an array of integers.
+
+        Parameters:
+        -----------
+        rows: np.ndarray[int]
+
+        Returns
+        -------
+        dataset: The dataset with only the specified rows included
+
+        Raises:
+        -------
+        ValueError:
+            If any of the indices is less than 0 or greater than the length of the
+            dataset.
+
+        """
+        if not isinstance(rows, np.ndarray):
+            new_state = self.__state.take_rows(rows)
+        else:
+            index = SimpleIndex(rows)
+            new_state = self.__state.take_rows(index)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def with_new_columns(
-        self, **new_columns: DerivedColumn | np.ndarray | units.Quantity
+        self,
+        descriptions: str | dict[str, str] = {},
+        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
@@ -681,7 +735,13 @@ class Dataset:
 
         Parameters
         ----------
-        ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
+
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
+        ** new_columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
 
         Returns
         -------
@@ -689,8 +749,10 @@ class Dataset:
             This dataset with the columns added
 
         """
-        new_state = self.__state.with_new_columns(**new_columns)
-        return Dataset(self.__handler, self.__header, new_state, self.__tree)
+        if isinstance(descriptions, str):
+            descriptions = {key: descriptions for key in new_columns.keys()}
+        new_state = self.__state.with_new_columns(descriptions, **new_columns)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def make_schema(self, with_header: bool = True) -> DatasetSchema:
         """
@@ -706,73 +768,92 @@ class Dataset:
 
         """
 
-        schema = self.__state.make_schema(self.__handler)
+        schema = self.__state.make_schema()
         if not with_header:
             schema.header = None
 
         if self.__tree is not None:
-            tree = self.__tree.apply_index(self.__state.index)
+            tree = self.__tree.apply_index(self.__state.raw_index)
             spat_idx_schema = tree.make_schema()
-            schema.add_child(spat_idx_schema, "index")
+            for name, column in spat_idx_schema.items():
+                schema.add_child(column, name)
         return schema
 
-    def with_units(self, convention: str) -> Dataset:
-        """
-        Create a new dataset from this one with a different unit convention.
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Dataset:
+        r"""
+        Create a new dataset from this one with a different unit convention, and/or
+        convert one unit to another across the entire dataset, or convert individual
+        columns.
+
+        Unit conversions are always performed after a change of convention, and
+        changing conventions clears any existing unit conversions. Individual
+        column conversions always take precedence over blanket unit conversions.
+
+        Calling this function without arguments will clear any existing unit conversions.
+
+        For more, see :doc:`units`.
+
+        .. code-block:: python
+
+            import astropy.units as u
+
+            # this works
+            dataset = dataset.with_units(fof_halo_mass=u.kg)
+
+            # this clears the previous conversion
+            dataset = dataset.with_units("scalefree")
+
+            # This now fails, because the units of masses
+            # are Msun / h, which cannot be converted to kg
+            dataset = dataset.with_units(fof_halo_mass=u.kg)
+
+            # this will work, the units of halo mass in the "physical"
+            # convention are Msun (no h).
+            dataset = dataset.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
+
+            # Suppose you want all distances in lightyears, but the x coordinate of your
+            # halo center in kilometers, for some reason ¯\_(ツ)_/¯
+            blanket_conversions = {u.Mpc: u.lyr}
+            dataset = dataset.with_units(conversions = blanket_conversions, fof_halo_center_x = u.km)
+
+
 
         Parameters
         ----------
-        convention : str
+        convention : str, optional
             The unit convention to use. One of "physical", "comoving",
             "scalefree", or "unitless".
+
+        conversions : dict[astropy.units.Unit, astropy.Units.Unit]
+            Conversions that apply to all columns in the dataset with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for one or more or of the columns
+            in this dataset.
 
         Returns
         -------
         dataset : Dataset
-            The new dataset with the requested unit convention.
+            The new dataset with the requested unit convention and/or conversions.
 
         """
-        new_state = self.__state.with_units(convention, self.cosmology, self.redshift)
-        new_header = self.__header.with_units(convention)
+
+        new_state = self.__state.with_units(
+            convention, conversions, columns, self.cosmology, self.redshift
+        )
+        if convention is not None:
+            new_header = self.__header.with_units(convention)
+        else:
+            new_header = self.__header
 
         return Dataset(
-            self.__handler,
             new_header,
-            new_state,
-            self.__tree,
-        )
-
-    def collect(self) -> Dataset:
-        """
-        Given a dataset that was originally opend with opencosmo.open,
-        return a dataset that is in-memory as though it was read with
-        opencosmo.read.
-
-        This is useful if you have a very large dataset on disk, and you
-        want to filter it down and then close the file.
-
-        For example:
-
-        .. code-block:: python
-
-            import opencosmo as oc
-            with oc.open("path/to/file.hdf5") as file:
-                ds = file.(ds["sod_halo_mass"] > 0)
-                ds = ds.select(["sod_halo_mass", "sod_halo_radius"])
-                ds = ds.collect()
-
-        The selected data will now be in memory, and the file will be closed.
-
-        If working in an MPI context, all ranks will recieve the same data.
-        """
-        new_handler = self.__handler.collect(
-            self.__state.builder.columns, self.__state.index
-        )
-        new_index = ChunkedIndex.from_size(len(new_handler))
-        new_state = self.__state.with_index(new_index)
-        return Dataset(
-            new_handler,
-            self.__header,
             new_state,
             self.__tree,
         )

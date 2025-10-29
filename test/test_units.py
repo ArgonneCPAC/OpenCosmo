@@ -1,14 +1,20 @@
-from pathlib import Path
+from __future__ import annotations
+
 from shutil import copyfile
+from typing import TYPE_CHECKING
 
 import astropy.cosmology.units as cu
 import astropy.units as u
 import h5py
 import numpy as np
 import pytest
-from astropy.table import Column
 
 import opencosmo as oc
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from astropy.table import Column
 
 
 def add_column(tmp_path: Path, original_file: Path, column: Column):
@@ -74,8 +80,9 @@ def test_physcal_units(haloproperties_step_path, input_path):
 
     ds_physical = ds.with_units("physical")
 
-    data_physical = ds_physical.data
     data = ds.data
+
+    data_physical = ds_physical.data
     cols = data.columns
     z = ds.redshift
 
@@ -195,6 +202,177 @@ def test_unit_conversion(input_path):
     converted_unitless_data = converted_unitless.data
     for col in cols:
         assert converted_unitless_data[col].unit is None
+
+
+def test_column_conversion(input_path):
+    ds = oc.open(input_path)
+    if "fof_halo_center_x" in ds.columns:
+        conversions = {f"fof_halo_center_{dim}": u.lyr for dim in ["x", "y", "z"]}
+        factor = (1.0 * u.Mpc).to(u.lyr).value
+    else:
+        conversions = {
+            "sod_halo_bin_rad_vel": u.lyr / u.yr,
+            "sod_halo_bin_rad_vel_sig": u.lyr / u.yr,
+        }
+        factor = (1.0 * (u.km / u.s)).to(u.lyr / u.yr).value
+
+    converted_data = ds.with_units(**conversions).select(conversions.keys()).get_data()
+    original_data = ds.select(conversions.keys()).get_data()
+    for colname, conversion in conversions.items():
+        assert converted_data[colname].unit == conversion
+        assert np.all(
+            converted_data[colname].value == original_data[colname].value * factor
+        )
+
+
+def test_all_unit_conversion(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr})
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.lyr
+        return
+    for col in ds.get_data().itercols():
+        assert col.unit == u.lyr
+
+
+def test_multiple_all_unit_conversion(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr})
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.lyr
+        return
+    for col in ds.get_data().itercols():
+        assert col.unit == u.lyr
+
+
+def test_clear_units(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr})
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.lyr
+        return
+    for col in ds.get_data().itercols():
+        assert col.unit == u.lyr
+
+    ds = ds.with_units()
+    data = ds.get_data()
+    if isinstance(data, u.Quantity):
+        assert data.unit == u.Mpc
+        return
+    for col in data.itercols():
+        assert col.unit == u.Mpc
+
+
+def test_all_unit_conversion_with_column(input_path):
+    ds = oc.open(input_path)
+    data = ds.take(2, at="start").get_data()
+    mpc_columns = set(
+        name
+        for name, col in data.items()
+        if isinstance(col, u.Quantity) and col.unit == u.Mpc
+    )
+    overwrite_col = mpc_columns.pop()
+    column_conversion = {overwrite_col: u.km}
+    mpc_columns.add(overwrite_col)
+    ds = (
+        ds.with_units(conversions={u.Mpc: u.lyr}, **column_conversion)
+        .select(mpc_columns)
+        .take(2, at="start")
+    )
+    converted_data = ds.get_data()
+    if isinstance(converted_data, u.Quantity):
+        assert converted_data.unit == u.km
+        return
+    assert overwrite_col in data.columns
+    for name, col in ds.get_data().items():
+        if name == overwrite_col:
+            assert col.unit == u.km
+        else:
+            assert col.unit == u.lyr
+
+
+def test_convention_change_clears_symbolic_conversions(input_path):
+    ds = oc.open(input_path)
+    if "fof_halo_center_x" in ds.columns:
+        conversions = {f"fof_halo_center_{dim}": u.lyr for dim in ["x", "y", "z"]}
+        factor = (1.0 * u.Mpc).to(u.lyr).value
+    else:
+        conversions = {
+            "sod_halo_bin_rad_vel": u.lyr / u.yr,
+            "sod_halo_bin_rad_vel_sig": u.lyr / u.yr,
+        }
+        factor = (1.0 * (u.km / u.s)).to(u.lyr / u.yr).value
+
+    converted_data = ds.with_units(**conversions).select(conversions.keys()).get_data()
+    original_data = ds.select(conversions.keys()).get_data()
+    for colname, conversion in conversions.items():
+        assert converted_data[colname].unit == conversion
+        assert np.all(
+            converted_data[colname].value == original_data[colname].value * factor
+        )
+
+    original_transformed = (
+        ds.with_units("physical").select(conversions.keys()).get_data()
+    )
+    converted_transformed = (
+        ds.with_units("physical").select(conversions.keys()).get_data()
+    )
+    assert np.all(original_transformed == converted_transformed)
+
+
+def test_im_symbolic_conversion(input_path):
+    ds = oc.open(input_path)
+    random_data = np.random.rand(len(ds)) * 1e-2 * u.kpc / u.yr
+    ds = ds.with_new_columns(random_speed=random_data)
+    original_data = ds.select("random_speed").get_data()
+    assert np.all(original_data == random_data)
+    ds_converted = ds.with_units(random_speed=u.km / u.s)
+    converted_data = ds_converted.select("random_speed").get_data()
+    assert np.all(converted_data == original_data.to(u.km / u.s))
+
+
+def test_invalid_symbolic_conversion(input_path):
+    ds = oc.open(input_path)
+    if "fof_halo_center_x" in ds.columns:
+        conversions = {f"fof_halo_center_{dim}": u.g for dim in ["x", "y", "z"]}
+    else:
+        conversions = {"sod_halo_bin_rad_vel": u.lyr, "sod_halo_bin_rad_vel_sig": u.lyr}
+
+    with pytest.raises(ValueError):
+        _ = ds.with_units(**conversions).select(conversions.keys()).get_data()
 
 
 def test_invalid_unit_convention(input_path):

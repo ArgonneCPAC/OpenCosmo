@@ -5,5 +5,4 @@ Reading/Writing
 .. autofunction:: opencosmo.write
 .. autofunction:: opencosmo.open_linked_files
 .. autofunction:: opencosmo.io.write_parquet
-.. autofunction:: opencosmo.read
 

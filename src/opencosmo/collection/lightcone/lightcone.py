@@ -1,23 +1,31 @@
-from functools import reduce
+from __future__ import annotations
+
+from functools import cached_property, reduce
 from itertools import chain
-from typing import Any, Callable, Generator, Iterable, Optional, Self
+from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from astropy.coordinates import SkyCoord  # type: ignore
-from astropy.cosmology import Cosmology  # type: ignore
-from astropy.table import Column, Table, vstack  # type: ignore
+from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
-from opencosmo.dataset import Dataset
-from opencosmo.dataset.column import ColumnMask, DerivedColumn
+from opencosmo.dataset.column import DerivedColumn
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import SimpleIndex
-from opencosmo.io.io import OpenTarget, open_single_dataset
+from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
-from opencosmo.parameters.hacc import HaccSimulationParameters
-from opencosmo.spatial import Region
+
+if TYPE_CHECKING:
+    from astropy.coordinates import SkyCoord
+    from astropy.cosmology import Cosmology
+    from astropy.table import Table
+
+    from opencosmo.dataset import Dataset
+    from opencosmo.dataset.column import ColumnMask
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.io import OpenTarget
+    from opencosmo.parameters.hacc import HaccSimulationParameters
+    from opencosmo.spatial import Region
 
 
 def get_redshift_range(datasets: list[Dataset]):
@@ -56,32 +64,28 @@ def sort_table(table: Table, column: str, invert: bool):
     return table
 
 
-def make_indices_for_sort(
-    lightcone: "Lightcone", sort_by: str, invert: bool, n: int, at: str
+def take_from_sorted(
+    lightcone: "Lightcone", sort_by: str, invert: bool, n: int, at: str | int
 ):
     column = np.concatenate(
         [ds.select(sort_by).get_data("numpy") for ds in lightcone.values()]
     )
     if invert:
         column = -column
-    sorted_indices = np.argsort(column)
+    sort_index = np.argsort(column)
     if at == "start":
-        sorted_indices = sorted_indices[:n]
-    else:
-        sorted_indices = sorted_indices[-n:]
+        sort_index = sort_index[:n]
+    elif at == "end":
+        sort_index = sort_index[-n:]
+    elif isinstance(at, int):
+        if at + n > len(sort_index) or at < 0:
+            raise ValueError(
+                "Requested a range that is outside the size of this dataset!"
+            )
+        sort_index = sort_index[at : at + n]
 
-    sorted_indices = np.sort(sorted_indices)
-    index = SimpleIndex(sorted_indices)
-    ranges = np.fromiter((len(ds) for ds in lightcone.values()), dtype=int)
-    ranges = np.insert(ranges, 0, 0)
-    slices = np.cumsum(index.n_in_range(ranges[:-1], ranges[1:]))
-    slices = np.insert(slices, 0, 0)
-
-    output_indices = []
-    for i in range(len(slices) - 1):
-        output_index = sorted_indices[slices[i] : slices[i + 1]] - ranges[i]
-        output_indices.append(SimpleIndex(output_index))
-    return output_indices
+    sorted_indices = np.sort(sort_index)
+    return sorted_indices
 
 
 def with_redshift_column(dataset: Dataset):
@@ -98,6 +102,9 @@ def with_redshift_column(dataset: Dataset):
     elif "redshift_true" in dataset.columns:
         z_col = 1 * oc.col("redshift_true")
         return dataset.with_new_columns(redshift=z_col)
+    raise ValueError(
+        "Unable to find a redshift or scale factor column for this lightcone dataset"
+    )
 
 
 class Lightcone(dict):
@@ -202,6 +209,25 @@ class Lightcone(dict):
         cols = next(iter(self.values())).columns
         cols = list(filter(lambda col: col not in self.__hidden, cols))
         return cols
+
+    @cached_property
+    def descriptions(self) -> dict[str, Optional[str]]:
+        """
+        Return the descriptions (if any) of the columns in this lightcone as a dictonary.
+        Columns without a description will be included in the dictionary with a value
+        of None
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column descriptions
+        """
+        descriptions = next(iter(self.values())).descriptions
+        descriptions = dict(
+            filter(lambda kv: kv[0] not in self.__hidden, descriptions.items())
+        )
+        return descriptions
 
     @property
     def cosmology(self) -> Cosmology:
@@ -641,7 +667,7 @@ class Lightcone(dict):
             hidden = hidden.union({"redshift"})
 
         if self.__ordered_by is not None and self.__ordered_by[0] not in columns:
-            columns.add("redshift")
+            columns.add(self.__ordered_by[0])
             hidden = hidden.union({self.__ordered_by[0]})
 
         return self.__map("select", columns, hidden=hidden)
@@ -710,44 +736,135 @@ class Lightcone(dict):
             )
         if at == "random":
             rs = 0
-            output = {}
             indices = np.random.choice(len(self), n, replace=False)
             indices = np.sort(indices)
-            for key, ds in self.items():
-                indices_into_ds = (
-                    indices[(indices >= rs) & (indices < rs + len(ds))] - rs
-                )
-                output[key] = ds.take(len(indices_into_ds))
-                rs += len(ds)
-            return Lightcone(
-                output, self.z_range, hidden=self.__hidden, ordered_by=self.__ordered_by
-            )
-        output = {}
-        rs = 0
-        if self.__ordered_by is not None:
-            indices = make_indices_for_sort(self, *self.__ordered_by, n=n, at=at)
-            output = {
-                k: v.with_index(indices[i]) for i, (k, v) in enumerate(self.items())
-            }
-            return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
+            return self.__take_rows(indices)
 
-        if at == "start":
-            iter = self.items()
+        elif self.__ordered_by is not None:
+            index = take_from_sorted(self, *self.__ordered_by, n=n, at=at)
+            return self.__take_rows(index)
+        elif at == "start":
+            return self.take_range(0, n)
         elif at == "end":
-            iter = reversed(self.items())  # type: ignore
+            return self.take_range(len(self) - n, len(self))
+        else:
+            raise ValueError(
+                f'"at" should be one of ("start", "end", "random", got {at}'
+            )
 
-        for name, ds in iter:
-            if len(ds) < n - rs:
-                output[name] = ds
-                rs += len(ds)
+    def take_range(self, start: int, end: int):
+        """
+        Create a new lightcone from a row range in this lightcone. We use standard
+        indexing conventions, so the rows included will be start -> end - 1. Because
+        lightcones are stacked by redshift, this operation effectively takes a
+        redshift range. If you know the exact redshift range you want, use
+        :py:meth:`with_redshift_range <opencosmo.Lightcone.with_redshift_range>`.
+
+        Parameters
+        ----------
+        start : int
+            The beginning of the range
+        end : int
+            The end of the range
+
+        Returns
+        -------
+        lightcone : opencosmo.Lightcone
+            The lightcone with only the specified range of rows.
+
+        Raises
+        ------
+        ValueError
+            If start or end are negative or greater than the length of the dataset
+            or if end is greater than start.
+
+        """
+        if start < 0 or end > len(self):
+            raise ValueError("Got row indices that are out of range!")
+
+        if self.__ordered_by is not None:
+            indices = take_from_sorted(self, *self.__ordered_by, end - start, at=start)
+            return self.__take_rows(indices)
+
+        ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
+        starts = np.insert(ends, 0, 0)[:-1]
+        clipped_starts = np.clip(starts, a_min=start, a_max=None)
+        clipped_ends = np.clip(ends, a_min=None, a_max=end)
+
+        output = {}
+        for i, (name, dataset) in enumerate(self.items()):
+            if starts[i] == clipped_starts[i] and ends[i] == clipped_ends[i]:
+                output[name] = dataset
+            elif clipped_starts[i] >= clipped_ends[i]:
+                continue
             else:
-                output[name] = ds.take(n - rs, at=at)
-                break
-        if at == "end":
-            output = {k: v for k, v in reversed(output.items())}
+                output[name] = dataset.take_range(
+                    clipped_starts[i] - starts[i], clipped_ends[i] - starts[i]
+                )
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 
-    def with_new_columns(self, **columns: DerivedColumn | np.ndarray | u.Quantity):
+    def take_rows(self, rows: np.ndarray):
+        """
+        Take the rows of a lightcone specified by the :code:`rows` argument.
+        :code:`rows` should be an array of integers.
+
+        Parameters
+        ----------
+        rows : np.ndarray[int]
+            The indices of the rows to take.
+
+        Returns
+        -------
+        dataset: The dataset with only the specified rows included
+
+        Raises:
+        -------
+        ValueError:
+            If any of the indices is less than 0 or greater than the length of the
+            lightcone.
+
+        """
+        rows = np.sort(rows)
+        if rows[-1] >= len(self) or rows[0] < 0:
+            raise ValueError(
+                "Rows must be between 0 and the length of this dataset - 1"
+            )
+        if self.__ordered_by is not None:
+            data = np.concatenate(
+                [
+                    ds.select(self.__ordered_by[0]).get_data("numpy")
+                    for ds in self.values()
+                ]
+            )
+            if self.__ordered_by[1]:
+                data = -data
+            sort_index = np.argsort(data)
+            rows = sort_index[rows]
+            rows.sort()
+
+        return self.__take_rows(rows)
+
+    def __take_rows(self, rows: np.ndarray):
+        """
+        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorte.
+        For internal use only.
+        """
+        ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
+        partitions = np.searchsorted(rows, ds_ends)
+        splits = np.split(rows, partitions)
+        output = {**self}
+        rs = 0
+        for split, (name, dataset) in zip(splits, self.items()):
+            if len(split) > 0:
+                output[name] = dataset.take_rows(split - rs)
+            rs += len(dataset)
+        return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
+
+    def with_new_columns(
+        self,
+        descriptions: str | dict[str, str] = {},
+        **columns: DerivedColumn | np.ndarray | u.Quantity,
+    ):
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, a numpy array, or an Astropy quantity
@@ -758,7 +875,13 @@ class Lightcone(dict):
 
         Parameters
         ----------
-        ** columns : opencosmo.DerivedColumn
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`Lightcone.descriptions <opencosmo.Lighcone.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
+        ** columns : opencosmo.DerivedColumn | np.ndarray | u.quantity
+            The new columns
 
         Returns
         -------
@@ -786,7 +909,7 @@ class Lightcone(dict):
         for i, (ds_name, ds) in enumerate(self.items()):
             raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
             columns_input = raw_columns | derived
-            new_dataset = ds.with_new_columns(**columns_input)
+            new_dataset = ds.with_new_columns(descriptions, **columns_input)
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__ordered_by)
 
@@ -828,46 +951,66 @@ class Lightcone(dict):
             raise ValueError(f"Column {column} does not exist in this dataset!")
         return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))
 
-    def with_units(self, convention: str) -> Self:
-        """
-        Create a new dataset from this one with a different unit convention.
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Self:
+        r"""
+        Create a new lightcone from this one with a different unit convention or
+        with certain columns converted to a different compatible unit.
 
-        Parameters
-        ----------
-        convention : str
-            The unit convention to use. One of "physical", "comoving",
-            "scalefree", or "unitless".
+        Unit conversions are always performed after a change of convention, and
+        changing conventions clears any existing unit conversions.
 
-        Returns
-        -------
-        dataset : Dataset
-            The new dataset with the requested unit convention.
-
-        """
-        return self.__map("with_units", convention)
-
-    def collect(self) -> "Lightcone":
-        """
-        Given a dataset that was originally opend with opencosmo.open,
-        return a dataset that is in-memory as though it was read with
-        opencosmo.read.
-
-        This is useful if you have a very large dataset on disk, and you
-        want to filter it down and then close the file.
-
-        For example:
+        For more, see :doc:`units`.
 
         .. code-block:: python
 
-            import opencosmo as oc
-            with oc.open("path/to/file.hdf5") as file:
-                ds = file.(ds["sod_halo_mass"] > 0)
-                ds = ds.select(["sod_halo_mass", "sod_halo_radius"])
-                ds = ds.collect()
+            import astropy.units as u
 
-        The selected data will now be in memory, and the file will be closed.
+            # this works
+            lc = lc.with_units(fof_halo_mass=u.kg)
 
-        If working in an MPI context, all ranks will recieve the same data.
+            # this clears the previous conversion
+            lc = lc.with_units("scalefree")
+
+            # This now fails, because the units of masses
+            # are Msun / h, which cannot be converted to kg
+            lc = lc.with_units(fof_halo_mass=u.kg)
+
+            # this will now work, wince the units of halo mass in the "physical"
+            # convention are Msun (no h).
+            lc = lc.with_units("physical", fof_halo_mass=u.kg, fof_halo_center_x=u.lyr)
+
+            # Suppose you want your distances in lightyears, but the x coordinate of your
+            # halo center in kilometers, for some reason ¯\_(ツ)_/¯
+            blanket_conversions = {u.Mpc: u.lyr}
+            lc = lc.with_units(conversions = blanket_conversions, fof_halo_center_x = u.km)
+
+        Parameters
+        ----------
+        convention : str, optional
+            The unit convention to use. One of "physical", "comoving",
+            "scalefree", or "unitless".
+
+        conversions: dict[astropy.units.Unit, astropy.units.Unit]
+            Conversions that apply to all columns in the lightcone with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for specific columns
+            in this dataset.
+
+        Returns
+        -------
+        lightcone : Lightcone
+            The new lightcone with the requested unit convention and/or conversions.
         """
-        datasets = {k: v.collect() for k, v in self.items()}
-        return Lightcone(datasets, self.z_range, self.__hidden, self.__ordered_by)
+        return self.__map(
+            "with_units",
+            convention=convention,
+            conversions=conversions,
+            **columns,
+        )

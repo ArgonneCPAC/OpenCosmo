@@ -105,7 +105,7 @@ def __prepare(function: Callable, dataset: "Dataset", evaluator_kwargs: Iterable
     function_arguments = set(signature(function).parameters.keys())
 
     input_columns = function_arguments.intersection(dataset.columns)
-    if len(input_columns) == 0 and dataset.dtype in function_arguments:
+    if len(input_columns) == 0 and len(function_arguments) == 1:
         return dataset
     return dataset.select(input_columns)
 
@@ -122,7 +122,7 @@ def __verify(function: Callable, dataset: "Dataset", kwarg_names: Iterable[str])
     missing = required_parameters - dataset_columns - kwarg_names
     if not missing:
         return
-    elif len(missing) > 1 or next(iter(missing)) != dataset.dtype:
+    elif len(missing) > 1:
         raise ValueError(
             f"All inputs to the function must either be column names or passed as keyword arguments! Found unknown input(s) {','.join(missing)}"
         )

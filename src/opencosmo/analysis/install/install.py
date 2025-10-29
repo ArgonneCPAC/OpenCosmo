@@ -1,11 +1,16 @@
+from __future__ import annotations
+
 import os
 from logging import getLogger
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import networkx as nx
 
 from .source import install_conda_forge, install_github, install_pip
-from .specs import DependencySpec, get_specs
+from .specs import get_specs
+
+if TYPE_CHECKING:
+    from .specs import DependencySpec
 
 CONDA_ENV = os.environ.get("CONDA_DEFAULT_ENV")
 logger = getLogger("opencosmo")
@@ -26,9 +31,9 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
             versions[requirement] = data.version
 
     for node in nx.topological_sort(graph):
-        version = versions.get(node)
-        if version is None:
+        if node not in versions:
             continue
+        version = versions.get(node)
         if version is not None and "dev" in version:
             dev_transaction[node] = version
             continue

@@ -1,3 +1,6 @@
+import os
+from time import sleep
+
 import astropy.units as u
 import numpy as np
 import pytest
@@ -22,32 +25,57 @@ def max_mass(input_path):
     return 0.95 * sod_mass.max()
 
 
-def test_open(input_path):
-    read_data = oc.open(input_path).data
-    with oc.open(input_path) as f:
-        open_data = f.data
-
-    assert np.all(read_data == open_data)
-    columns = read_data.columns
-    assert all(open_data[col].unit == read_data[col].unit for col in columns)
-
-
-def test_open_close(input_path):
-    with oc.open(input_path) as ds:
-        file = ds._Dataset__handler._DatasetHandler__file
-        assert file["data"] is not None
-
-    with pytest.raises(KeyError):
-        file["data"]
-
-
-def test_dataset_close(input_path):
+def test_descriptions(input_path):
     ds = oc.open(input_path)
-    file = ds._Dataset__handler._DatasetHandler__file
-    assert file["data"] is not None
-    ds.close()
-    with pytest.raises(KeyError):
-        file["data"]
+    assert isinstance(ds.descriptions, dict)
+
+
+def test_descriptions_after_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(random_data=random_data)
+    assert ds.descriptions["random_data"] == "None"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "None"
+
+
+def test_description_with_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(
+        random_data=random_data, descriptions="random data for a test"
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+
+
+def test_description_with_insert_multiple(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    fof_halo_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.with_new_columns(
+        random_data=random_data,
+        halo_px=fof_halo_px,
+        descriptions={
+            "random_data": "random data for a test",
+            "halo_px": "halo x momentum",
+        },
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    assert ds.descriptions["halo_px"] == "halo x momentum"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+    assert descriptions["halo_px"] == "halo x momentum"
 
 
 def test_filter_oom(input_path, max_mass):
@@ -90,7 +118,6 @@ def test_take_sorted(input_path):
         .select("fof_halo_mass")
         .get_data("numpy")
     )
-    print(len(toolkit_sorted_fof_masses))
     manually_sorted_fof_masses = np.sort(fof_masses)
     assert np.all(manually_sorted_fof_masses[:n] == toolkit_sorted_fof_masses)
     assert fof_masses.min() == toolkit_sorted_fof_masses[0]
@@ -132,6 +159,12 @@ def test_sort_by_derived(input_path):
     assert np.all(xoff["xoff"][idxs][:n] == toolkit_sorted_xoff["xoff"])
     assert xoff["xoff"].min() == toolkit_sorted_xoff["xoff"][0]
     assert np.all(xoff["fof_halo_tag"][idxs][:n] == toolkit_sorted_xoff["fof_halo_tag"])
+
+
+def test_sort_by_unknown(input_path):
+    dataset = oc.open(input_path)
+    with pytest.raises(ValueError):
+        dataset.sort_by("random_column")
 
 
 def test_drop(input_path):
@@ -360,7 +393,7 @@ def test_write_after_filter(input_path, tmp_path):
         data = ds.data
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
-        filtered_data = new_ds.data
+        filtered_data = new_ds.get_data()
         assert np.all(data == filtered_data)
 
 
@@ -394,26 +427,6 @@ def test_write_after_evaluate(input_path, tmp_path):
         assert np.all(np.isclose(data, written_data))
 
 
-def test_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
-
-    assert len(ds.data) == 100
-
-
-def test_select_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = (
-            f.filter(oc.col("sod_halo_mass") > 0)
-            .select(["sod_halo_mass", "fof_halo_mass"])
-            .take(100, at="random")
-            .collect()
-        )
-
-    assert len(ds.data) == 100
-    assert set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"}
-
-
 def test_sort_after_filter(input_path):
     dataset = oc.open(input_path)
     dataset = dataset.filter(oc.col("fof_halo_mass") > 1e13)
@@ -430,6 +443,52 @@ def test_sort_rows(input_path):
     fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
     for i, row in enumerate(dataset.rows()):
         assert row["fof_halo_mass"].value == fof_masses[i]
+
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
+def test_cache(input_path):
+    from time import time
+
+    dataset = oc.open(input_path)
+
+    start1 = time()
+    data = dataset.get_data()
+    end1 = time()
+    dt1 = end1 - start1
+
+    start2 = time()
+    data2 = dataset.get_data()
+    end2 = time()
+    dt2 = end2 - start2
+    assert (dt2 / dt1) < 0.2
+
+
+def test_cache_select(input_path):
+    from weakref import ref
+
+    dataset = oc.open(input_path)
+    data = dataset.get_data()
+    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+    assert set(dataset.columns) == cache.columns
+    columns = np.random.choice(dataset.columns, 5, replace=False)
+    dataset2 = dataset.select(columns)
+
+    del dataset
+    assert cache.columns == set(columns)
+
+
+def test_cache_filter(input_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.filter(oc.col("fof_halo_mass") > 1e14)
+
+    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+
+    assert (
+        len(cache.columns) > 0 or cache._ColumnCache__parent() is not None
+    )  # just to be safe
 
 
 def test_write_after_sorted(input_path, tmp_path):

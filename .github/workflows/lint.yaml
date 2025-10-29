@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --group mpi
 
+      - name: install analysis dependencies
+        run: uv run opencosmo install haloviz --dev
+
       - name: Run ruff linter
         run: uv run ruff check .
 

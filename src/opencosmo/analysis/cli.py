@@ -1,9 +1,13 @@
-from pathlib import Path
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
 
 import click
 
 from opencosmo.analysis.install import get_file_versions, install_spec
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @click.group()

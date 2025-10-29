@@ -1,41 +1,47 @@
+from __future__ import annotations
+
+from collections import defaultdict
 from copy import copy
 from enum import Enum
-from pathlib import Path
-from typing import Iterable, Mapping, Optional, Type, TypeVar, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Optional, Type, TypeVar, cast
 
 import h5py
 import numpy as np
 from mpi4py import MPI
 
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.index import ChunkedIndex
 from opencosmo.mpi import get_comm_world
 
-from .protocols import DataSchema
 from .schemas import (
     ColumnSchema,
     DatasetSchema,
     EmptyColumnSchema,
     FileSchema,
-    IdxLinkSchema,
     LightconeSchema,
-    LinkSchema,
     SimCollectionSchema,
-    SpatialIndexLevelSchema,
-    SpatialIndexSchema,
-    StartSizeLinkSchema,
     StructCollectionSchema,
     ZeroLengthError,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from opencosmo.header import OpenCosmoHeader
+
+    from .protocols import DataSchema
+
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
 from several ranks into a single schema that can be allocated by rank 0. Each 
-rank will then write it's own data to the specific section of the file 
+rank will then write its own data to the specific section of the file 
 it is responsible for.
 
 As with schemas and writers, everything is very hierarcical here. A function
 does some consistency checks, then calls a function that combines its children.
+
+Ranks with different schemas are supported. For example, one rank may have data for one
+dataset in a collection but not another. So long as the top-level structure is the same,
+things will be handled.
 """
 
 
@@ -56,7 +62,7 @@ def write_parallel(file: Path, file_schema: FileSchema):
     try:
         file_schema.verify()
         results = comm.allgather(CombineState.VALID)
-    except ValueError:
+    except ValueError as e:
         results = comm.allgather(CombineState.INVALID)
     except ZeroLengthError:
         results = comm.allgather(CombineState.ZERO_LENGTH)
@@ -103,13 +109,8 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     group_write.Free()
 
 
-def get_all_child_names(schema: DataSchema | None, comm: MPI.Comm):
-    if schema is None:
-        child_names = set()
-    elif hasattr(schema, "children") and isinstance(schema.children, dict):
-        child_names = set(schema.children.keys())
-    else:
-        child_names = set()
+def get_all_child_names(children: dict, comm: MPI.Comm, debug=False):
+    child_names = set(children.keys())
     all_child_names: Iterable[str]
     all_child_names = child_names.union(*comm.allgather(child_names))
     all_child_names = list(all_child_names)
@@ -145,11 +146,13 @@ def combine_file_schemas(schema: FileSchema, comm: MPI.Comm) -> FileSchema:
     if comm.Get_size() == 1:
         return schema
 
-    all_child_names = get_all_child_names(schema, comm)
+    all_child_names = get_all_child_names(
+        schema.children if schema is not None else {}, comm
+    )
     new_schema = FileSchema()
 
     for child_name in all_child_names:
-        child = schema.children.get(child_name)
+        child = schema.children.get(child_name) if schema is not None else None
         new_child = combine_file_child(child, comm)
         new_schema.add_child(new_child, child_name)
 
@@ -162,13 +165,13 @@ S = TypeVar("S", DatasetSchema, SimCollectionSchema, StructCollectionSchema)
 def combine_file_child(schema: S | None, comm: MPI.Comm) -> S:
     match schema:
         case DatasetSchema():
-            return cast(S, combine_dataset_schemas(schema, comm))
+            return cast("S", combine_dataset_schemas(schema, comm))
         case SimCollectionSchema():
-            return cast(S, combine_simcollection_schema(schema, comm))
+            return cast("S", combine_simcollection_schema(schema, comm))
         case StructCollectionSchema():
-            return cast(S, combine_structcollection_schema(schema, comm))
+            return cast("S", combine_structcollection_schema(schema, comm))
         case LightconeSchema():
-            return cast(S, combine_lightcone_schema(schema, comm))
+            return cast("S", combine_lightcone_schema(schema, comm))
         case _:
             raise ValueError(f"Invalid file child of type {type(schema)}")
 
@@ -198,40 +201,50 @@ def combine_dataset_schemas(
         columns = schema.columns
     else:
         header = validate_headers(None, comm, header_updates)
-        columns = {}
+        columns = defaultdict(dict)
 
+    children = schema.columns if schema is not None else {}
     new_schema = DatasetSchema(header=header)
-    all_column_names = get_all_child_names(schema, comm)
+    all_group_names = get_all_child_names(children, comm)
 
-    for colname in all_column_names:
-        column = columns.get(colname)
-        assert not isinstance(column, EmptyColumnSchema)
-        new_column_schema = combine_column_schemas(column, comm)
-        new_schema.columns[colname] = new_column_schema
-
-    new_links = combine_links(schema.links if schema is not None else {}, comm)
-    for name, link in new_links.items():
-        new_schema.add_child(link, name)
-
-    new_spatial_idx_schema = combine_spatial_index_schema(
-        schema.spatial_index if schema is not None else None, comm
-    )
-    if new_spatial_idx_schema is not None:
-        new_schema.add_child(new_spatial_idx_schema, "index")
-
+    for groupname in all_group_names:
+        group_column_names = get_all_child_names(children.get(groupname, {}), comm)
+        if groupname in ["data", "data_linked"]:
+            new_schema.columns[groupname] = combine_data_group(
+                columns[groupname], group_column_names, comm
+            )
+        elif groupname == "index":
+            new_schema.columns[groupname] = combine_spatial_index_schema(
+                columns[groupname], comm
+            )
     return new_schema
 
 
+def combine_data_group(columns: dict, order: list[str], comm: MPI.Comm):
+    output = {}
+    for colname in order:
+        column = columns.get(colname)
+        assert not isinstance(column, EmptyColumnSchema)
+        new_column_schema = combine_column_schemas(column, comm)
+
+        output[colname] = new_column_schema
+    return output
+
+
 def combine_spatial_index_schema(
-    schema: Optional[SpatialIndexSchema], comm: MPI.Comm = MPI.COMM_WORLD
+    columns: dict[str, ColumnSchema], comm: MPI.Comm = MPI.COMM_WORLD
 ):
-    has_schema = schema is not None
+    has_schema = len(columns) > 0
     all_has_schema = comm.allgather(has_schema)
 
     if not any(all_has_schema):
         return None
 
-    n_levels = max(schema.levels) if schema is not None else -1
+    levels = set(map(lambda key: int(key.split("/")[0][-1]), columns.keys()))
+    if not levels:
+        n_levels = -1
+    else:
+        n_levels = max(levels)
     all_max_levels = set(comm.allgather(n_levels))
     if -1 in all_max_levels:
         all_max_levels.remove(-1)
@@ -240,25 +253,31 @@ def combine_spatial_index_schema(
         raise ValueError("Schemas for all ranks must have the same number of levels!")
 
     max_level = all_max_levels.pop()
-    level_schemas = schema.levels if schema is not None else {}
-    new_schema = SpatialIndexSchema()
+    output = {}
     for level in range(max_level + 1):
-        level_schema = level_schemas.get(level)
-        new_level_schema = combine_spatial_index_level_schemas(level_schema, comm)
-        new_schema.add_child(new_level_schema, level)
+        level_schemas = {
+            key: val for key, val in columns.items() if f"level_{level}" in key
+        }
+        new_level_schemas = combine_spatial_index_level_schemas(
+            level_schemas, level, comm
+        )
+        output.update(new_level_schemas)
 
-    return new_schema
+    return output
 
 
 def combine_spatial_index_level_schemas(
-    schema: SpatialIndexLevelSchema | None, comm: MPI.Comm
+    schemas: dict[str, ColumnSchema], level: int, comm: MPI.Comm
 ):
-    if schema is None:
+    if schemas:
+        assert len(schemas) == 2
+        start = schemas[f"level_{level}/start"]
+        size = schemas[f"level_{level}/size"]
+        start_len = len(start)
+        size_len = len(size)
+    else:
         start_len = 0
         size_len = 0
-    else:
-        start_len = len(schema.start)
-        size_len = len(schema.size)
 
     all_start_lens = set(filter(lambda s: s is not None, comm.allgather(start_len)))
     all_size_lens = set(filter(lambda s: s is not None, comm.allgather(size_len)))
@@ -271,101 +290,44 @@ def combine_spatial_index_level_schemas(
 
     level_len = all_start_lens.pop()
 
-    if schema is None:
+    if not schemas:
         source = np.zeros(level_len, dtype=np.int32)
         index = ChunkedIndex.from_size(len(source))
-        start = ColumnSchema("start", index, source, {}, total_length=level_len)
-        size = ColumnSchema("size", index, source, {}, total_length=level_len)
-        new_schema = SpatialIndexLevelSchema(start, size)
+        start = ColumnSchema(
+            f"level_{level}/start", index, source, {}, total_length=level_len
+        )
+        size = ColumnSchema(
+            f"level_{level}/size", index, source, {}, total_length=level_len
+        )
+
     else:
         start = ColumnSchema(
-            "start",
-            schema.start.index,
-            schema.start.source,
+            f"level_{level}/start",
+            start.index,
+            start.source,
             {},
             total_length=level_len,
         )
         size = ColumnSchema(
-            "size",
-            schema.size.index,
-            schema.size.source,
+            f"level_{level}/size",
+            size.index,
+            size.source,
             {},
             total_length=level_len,
         )
-        new_schema = SpatialIndexLevelSchema(start, size)
 
-    return new_schema
-
-
-def combine_links(
-    links: dict[str, LinkSchema], comm: MPI.Comm
-) -> Mapping[str, LinkSchema]:
-    link_names = set(links.keys())
-
-    all_link_names: Iterable[str]
-
-    all_link_types: Iterable[Type]
-    all_link_names = link_names.union(*comm.allgather(link_names))
-    all_link_names = list(all_link_names)
-    all_link_names.sort()
-    new_links: dict[str, LinkSchema] = {}
-    for link_name in all_link_names:
-        link = links.get(link_name)
-        all_link_types = comm.allgather(type(link))
-        all_link_types = set(filter(lambda t: t is not type(None), all_link_types))
-        if len(all_link_types) != 1:
-            raise ValueError("Incompatible Links!")
-
-        link_type = all_link_types.pop()
-
-        if link_type is StartSizeLinkSchema:
-            assert not isinstance(link, (IdxLinkSchema, EmptyColumnSchema))
-            new_links[link_name] = combine_start_size_link_schema(link, comm, link_name)
-        else:
-            assert not isinstance(link, (StartSizeLinkSchema, EmptyColumnSchema))
-            new_links[link_name] = combine_idx_link_schema(link, comm)
-
-    return new_links
-
-
-def combine_idx_link_schema(
-    schema: IdxLinkSchema | None, comm: MPI.Comm
-) -> IdxLinkSchema:
-    column = schema.column if schema is not None else None
-    assert not isinstance(column, EmptyColumnSchema)
-    column_schema = combine_column_schemas(column, comm)
-    new_schema = IdxLinkSchema(column_schema)
-    return new_schema
-
-
-def combine_start_size_link_schema(
-    schema: StartSizeLinkSchema | None, comm: MPI.Comm, name: str
-) -> StartSizeLinkSchema:
-    start = schema.start if schema is not None else None
-    size = schema.size if schema is not None else None
-    assert not isinstance(start, EmptyColumnSchema) and not isinstance(
-        size, EmptyColumnSchema
-    )
-
-    start_column_schema = combine_column_schemas(start, comm)
-    size_column_schema = combine_column_schemas(size, comm)
-
-    if schema is None:
-        new_schema = StartSizeLinkSchema(name, start_column_schema, size_column_schema)
-    else:
-        new_schema = copy(schema)
-        new_schema.start = start_column_schema
-        new_schema.size = size_column_schema
-    return new_schema
+    new_schemas = {f"level_{level}/start": start, f"level_{level}/size": size}
+    return new_schemas
 
 
 def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
-    all_child_names = get_all_child_names(schema, comm)
-    new_schema = LightconeSchema()
     if schema is None:
         children = {}
     else:
         children = schema.children
+
+    all_child_names = get_all_child_names(children, comm, debug=True)
+    new_schema = LightconeSchema()
 
     for child_name in all_child_names:
         child = children.get(child_name)
@@ -391,20 +353,20 @@ def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
 
 
 def combine_simcollection_schema(
-    schema: SimCollectionSchema, comm: MPI.Comm
+    schema: SimCollectionSchema | None, comm: MPI.Comm
 ) -> SimCollectionSchema:
-    child_names = get_all_child_names(schema, comm)
+    if schema is None:
+        children = {}
+    else:
+        children = schema.children
+    all_child_names = get_all_child_names(children, comm)
 
     new_schema = SimCollectionSchema()
     new_child: DatasetSchema | StructCollectionSchema
 
-    for child_name in child_names:
-        child = schema.children[child_name]
-        match child:
-            case StructCollectionSchema():
-                new_child = combine_structcollection_schema(child, comm)
-            case DatasetSchema():
-                new_child = combine_dataset_schemas(child, comm)
+    for child_name in all_child_names:
+        child = children.get(child_name)
+        new_child = combine_dataset_schemas(child, comm)
         new_schema.add_child(new_child, child_name)
     return new_schema
 

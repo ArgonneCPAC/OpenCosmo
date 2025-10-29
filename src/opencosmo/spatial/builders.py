@@ -1,9 +1,10 @@
-from typing import cast
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
 
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
-from pydantic import BaseModel
 
 from opencosmo.spatial.models import (
     BoxRegionModel,
@@ -12,12 +13,18 @@ from opencosmo.spatial.models import (
 )
 from opencosmo.spatial.region import (
     BoxRegion,
-    BoxSize,
     ConeRegion,
     HealPixRegion,
-    Point2d,
-    Point3d,
 )
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+    from opencosmo.spatial.region import (
+        BoxSize,
+        Point2d,
+        Point3d,
+    )
 
 
 def from_model(model: BaseModel):
@@ -69,8 +76,8 @@ def make_box(p1: Point3d, p2: Point3d):
     if isinstance(width, float) or isinstance(width, int):
         width = (width, width, width)
 
-    halfwidth = cast(BoxSize, tuple(float(w / 2) for w in width))
-    center = cast(Point3d, center)
+    halfwidth = cast("BoxSize", tuple(float(w / 2) for w in width))
+    center = cast("Point3d", center)
 
     return BoxRegion(center, halfwidth)
 

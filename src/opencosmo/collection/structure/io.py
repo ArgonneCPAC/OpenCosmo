@@ -1,34 +1,44 @@
-from collections import defaultdict
-from pathlib import Path
-from typing import Iterable
+from __future__ import annotations
 
-import h5py
+from collections import defaultdict
+from typing import TYPE_CHECKING, Iterable, Optional
+
 import numpy as np
 from deprecated import deprecated
 
-from opencosmo import dataset as d
 from opencosmo import io
+from opencosmo.collection import lightcone as lc
 from opencosmo.collection.structure import structure as sc
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import DataIndex
+from opencosmo.dataset.handler import Hdf5Handler
+from opencosmo.index import SimpleIndex
 
-from .handler import LinkedDatasetHandler
+if TYPE_CHECKING:
+    from pathlib import Path
 
-LINK_ALIASES = {  # Left: Name in file, right: Name in collection
-    "sodbighaloparticles_star_particles": "star_particles",
-    "sodbighaloparticles_dm_particles": "dm_particles",
-    "sodbighaloparticles_gravity_particles": "gravity_particles",
-    "sodbighaloparticles_agn_particles": "agn_particles",
-    "sodbighaloparticles_gas_particles": "gas_particles",
-    "sod_profile": "halo_profiles",
-    "galaxyproperties": "galaxy_properties",
-    "galaxyparticles_star_particles": "star_particles",
-}
+    import h5py
+
+    from opencosmo import dataset as d
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
 
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles", "galaxy_properties"],
     "galaxy_properties": ["galaxy_particles"],
 }
+
+
+def remove_empty(dataset):
+    metadata = dataset.get_metadata()
+    mask = np.ones(len(dataset), dtype=bool)
+    for name, col in metadata.items():
+        if "size" in name:
+            mask &= col != 0
+        elif "idx" in name:
+            mask &= col != -1
+
+    if not mask.all():
+        dataset = dataset.take_rows(np.where(mask)[0])
+    return dataset
 
 
 @deprecated(
@@ -83,25 +93,16 @@ def get_linked_datasets(
         else:
             targets.update({dtype: io.io.OpenTarget(pointer, header)})
     datasets = {
-        dtype: io.io.open_single_dataset(target) for dtype, target in targets.items()
+        dtype: io.io.open_single_dataset(target, bypass_lightcone=True, bypass_mpi=True)
+        for dtype, target in targets.items()
     }
     return datasets
 
 
-def make_index_with_linked_data(
-    index: DataIndex, links: dict[str, LinkedDatasetHandler]
-):
-    mask = np.ones(len(index), dtype=bool)
-    for link in links.values():
-        mask &= link.has_linked_data(index)
-
-    return index.mask(mask)
-
-
 def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bool):
     link_sources = defaultdict(list)
-    link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
-        defaultdict(dict)
+    link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
+        defaultdict(lambda: defaultdict(list))
     )
     for target in targets:
         if target.data_type == "halo_properties":
@@ -109,103 +110,154 @@ def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bo
         elif target.data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
         elif target.data_type.startswith("halo"):
-            dataset = io.io.open_single_dataset(target)
+            dataset = io.io.open_single_dataset(
+                target, bypass_lightcone=True, bypass_mpi=True
+            )
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
             elif name.startswith("halo_properties"):
                 name = name[16:]
-            link_targets["halo_targets"][name] = dataset
+            link_targets["halo_targets"][name].append(dataset)
         elif target.data_type.startswith("galaxy"):
-            dataset = io.io.open_single_dataset(target)
+            dataset = io.io.open_single_dataset(
+                target, bypass_lightcone=True, bypass_mpi=True
+            )
             name = target.group.name.split("/")[-1]
             if not name:
                 name = target.data_type
             elif name.startswith("galaxy_properties"):
                 name = name[18:]
-            link_targets["galaxy_targets"][name] = dataset
+            link_targets["galaxy_targets"][name].append(dataset)
         else:
             raise ValueError(
                 f"Unknown data type for structure collection {target.data_type}"
             )
 
-    if len(link_sources["galaxy_properties"]) == 1 and link_targets["galaxy_targets"]:
-        handlers = get_link_handlers(
-            link_sources["galaxy_properties"][0].group,
-            list(link_targets["galaxy_targets"].keys()),
-            link_sources["galaxy_properties"][0].header,
+    if (
+        len(link_sources["halo_properties"]) > 1
+        or len(link_sources["galaxy_properties"]) > 1
+    ):
+        raise NotImplementedError(
+            "Opening structure collections that span multiple redshifts is not currently supported"
         )
+        # Potentially a lightcone structure collection
+        collections = {}
+        sources_by_step, targets_by_step = __sort_by_step(link_sources, link_targets)
+        if set(sources_by_step.keys()) != set(targets_by_step.keys()):
+            raise ValueError("Datasets are not the same across all lightcone steps!")
+        for step, sources in sources_by_step.items():
+            halo_properties = sources.get("halo_properties")
+            galaxy_properties = sources.get("galaxy_properties")
+            targets = targets_by_step[step]
+            collection = __build_structure_collection(
+                halo_properties, galaxy_properties, targets, ignore_empty
+            )
+            collections[step] = collection
 
-        source_dataset = io.io.open_single_dataset(link_sources["galaxy_properties"][0])
-        if ignore_empty:
-            new_index = make_index_with_linked_data(source_dataset.index, handlers)
-            source_dataset = source_dataset.with_index(new_index)
+        expected_datasets = set(next(iter(collections.values())).keys())
+        for collection in collections.values():
+            if set(collection.keys()) != expected_datasets:
+                raise ValueError(
+                    "All structure collections in a lightcone must have the same set of datasets"
+                )
+        return lc.Lightcone(collections)
+
+    halo_properties_target = None
+    galaxy_properties_target = None
+    if link_sources["halo_properties"]:
+        halo_properties_target = link_sources["halo_properties"][0]
+    if link_sources["galaxy_properties"]:
+        galaxy_properties_target = link_sources["galaxy_properties"][0]
+
+    input_link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
+        defaultdict(dict)
+    )
+    for source_type, source_targets in link_targets.items():
+        if any(len(ts) > 1 for ts in source_targets.values()):
+            raise ValueError("Found more than one linked file of a given type!")
+        input_link_targets[source_type] = {
+            key: t[0] for key, t in source_targets.items()
+        }
+
+    return __build_structure_collection(
+        halo_properties_target,
+        galaxy_properties_target,
+        input_link_targets,
+        ignore_empty,
+    )
+
+
+def __sort_by_step(link_sources: dict[str, list[io.io.OpenTarget]], link_targets):
+    sources_by_step: dict[int, dict[str, io.io.OpenTarget]] = defaultdict(dict)
+    targets_by_step: dict[int, dict[str, dict[str, d.Dataset]]] = defaultdict(
+        lambda: defaultdict(dict)
+    )
+    for source_name, sources in link_sources.items():
+        for source in sources:
+            if not source.header.file.is_lightcone:
+                raise ValueError(
+                    "Recived multiple source datasets of a single type, but not all are lightcone datasets!"
+                )
+            sources_by_step[source.header.file.step][source_name] = source
+    for target_type, targets_ in link_targets.items():
+        for target_name, targets in targets_.items():
+            for target in targets:
+                if not target.header.file.is_lightcone:
+                    raise ValueError(
+                        "Recived multiple datasets of a single type, but not all are lightcone datasets!"
+                    )
+                targets_by_step[target.header.file.step][target_type][target_name] = (
+                    target
+                )
+
+    return sources_by_step, targets_by_step
+
+
+def __build_structure_collection(
+    halo_properties_target: Optional[io.io.OpenTarget],
+    galaxy_properties_target: Optional[io.io.OpenTarget],
+    link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]],
+    ignore_empty: bool,
+):
+    if galaxy_properties_target is not None and "galaxy_targets" in link_targets:
+        source_dataset = io.io.open_single_dataset(
+            galaxy_properties_target,
+            metadata_group="data_linked",
+            bypass_lightcone=True,
+            bypass_mpi=halo_properties_target is not None,
+        )
+        if ignore_empty and halo_properties_target is None:
+            source_dataset = remove_empty(source_dataset)
         collection = sc.StructureCollection(
             source_dataset,
             source_dataset.header,
             link_targets["galaxy_targets"],
-            handlers,
         )
-        if len(link_sources["halo_properties"]) != 0:
+        if halo_properties_target is not None:
             link_targets["halo_targets"]["galaxy_properties"] = collection
         else:
             return collection
 
     if (
-        link_sources["halo_properties"]
-        and len(link_sources["galaxy_properties"]) == 1
-        and not link_targets["galaxy_targets"]
+        halo_properties_target is not None
+        and galaxy_properties_target is not None
+        and "galaxy_targets" not in link_targets
     ):
         galaxy_properties = io.io.open_single_dataset(
-            link_sources["galaxy_properties"][0]
+            galaxy_properties_target, bypass_lightcone=True
         )
         link_targets["halo_targets"]["galaxy_properties"] = galaxy_properties
 
-    if len(link_sources["halo_properties"]) == 1 and link_targets["halo_targets"]:
-        handlers = get_link_handlers(
-            link_sources["halo_properties"][0].group,
-            list(link_targets["halo_targets"].keys()),
-            link_sources["halo_properties"][0].header,
+    if halo_properties_target is not None and link_targets["halo_targets"]:
+        source_dataset = io.io.open_single_dataset(
+            halo_properties_target, metadata_group="data_linked", bypass_lightcone=True
         )
-        source_dataset = io.io.open_single_dataset(link_sources["halo_properties"][0])
-
         if ignore_empty:
-            new_index = make_index_with_linked_data(source_dataset.index, handlers)
-            source_dataset = source_dataset.with_index(new_index)
+            source_dataset = remove_empty(source_dataset)
 
         return sc.StructureCollection(
             source_dataset,
             source_dataset.header,
             link_targets["halo_targets"],
-            handlers,
         )
-
-
-def get_link_handlers(
-    link_file: h5py.File | h5py.Group,
-    linked_files: Iterable[str],
-    header: OpenCosmoHeader,
-) -> dict[str, LinkedDatasetHandler]:
-    if "data_linked" not in link_file.keys():
-        raise KeyError("No linked datasets found in the file.")
-    links = link_file["data_linked"]
-
-    linked_files = list(linked_files)
-    unique_dtypes = {key.rsplit("_", 1)[0] for key in links.keys()}
-    output_links = {}
-    for dtype in unique_dtypes:
-        if dtype not in linked_files and LINK_ALIASES.get(dtype) not in linked_files:
-            continue  # Skip if the linked file is not provided
-
-        key = LINK_ALIASES.get(dtype, dtype)
-        try:
-            start = links[f"{dtype}_start"]
-            size = links[f"{dtype}_size"]
-
-            output_links[key] = LinkedDatasetHandler(
-                (start, size),
-            )
-        except KeyError:
-            index = links[f"{dtype}_idx"]
-            output_links[key] = LinkedDatasetHandler(index)
-    return output_links

@@ -1,14 +1,20 @@
+from __future__ import annotations
+
 import random
 from collections import defaultdict
-from pathlib import Path
 from shutil import copy
+from typing import TYPE_CHECKING
 
+import astropy.units as u
 import h5py
 import numpy as np
 import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -84,7 +90,6 @@ def test_link_particles_only(halo_paths):
 
 
 def test_link_profiles_only(halo_paths):
-    print(halo_paths)
     collection = oc.open(halo_paths[0], halo_paths[2])
     assert isinstance(collection, oc.StructureCollection)
     assert set(collection.keys()) == {"halo_properties", "halo_profiles"}
@@ -128,6 +133,36 @@ def test_multi_filter_write(multi_path, tmp_path):
         assert all(ds.select("sod_halo_mass").data > 0)
 
 
+def test_select_nested_structures(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths).filter(
+        oc.col("fof_halo_mass") > 1e14
+    )
+    collection = collection.select(
+        halo_properties=[
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+        dm_particles=["x", "y", "z"],
+        galaxies={
+            "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
+            "star_particles": ["x", "y", "z"],
+        },
+    )
+    for halo in collection.halos():
+        assert set(halo["halo_properties"].keys()) == {
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        }
+        assert set(halo["dm_particles"].columns) == {"x", "y", "z"}
+        assert set(halo["galaxies"]["galaxy_properties"].columns) == {
+            "gal_mass_bar",
+            "gal_mass_star",
+        }
+        assert set(halo["galaxies"]["star_particles"].columns) == {"x", "y", "z"}
+
+
 def test_visit_single(halo_paths):
     collection = oc.open(*halo_paths).take(200)
     spec = {
@@ -148,6 +183,59 @@ def test_visit_single(halo_paths):
     collection = collection.evaluate(offset, **spec, insert=True)
     data = collection["halo_properties"].select("offset").data
     assert not np.any(data == 0)
+
+
+def test_visit_single_dataset(halo_paths):
+    collection = oc.open(*halo_paths).take(200)
+    spec = {
+        "dm_particles": ["x", "y", "z"],
+    }
+
+    def offset(dm_particles):
+        x = np.mean(dm_particles["x"])
+        y = np.mean(dm_particles["y"])
+        z = np.mean(dm_particles["z"])
+        return {"particle_center_x": x, "particle_center_y": y, "particle_center_z": z}
+
+    collection = collection.evaluate(offset, **spec, insert=True)
+    data = (
+        collection["halo_properties"]
+        .select(("particle_center_x", "particle_center_y", "particle_center_z"))
+        .get_data()
+    )
+    assert not np.any(data == 0)
+
+
+def test_visit_nested_structures(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths).take(100)
+    spec = {
+        "halo_properties": [
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
+        "dm_particles": ["x", "y", "z"],
+        "galaxies": {
+            "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
+            "star_particles": ["x", "y", "z"],
+        },
+    }
+
+    def offset(halo_properties, dm_particles, galaxies):
+        assert set(galaxies["galaxy_properties"].columns) == {
+            "gal_mass_bar",
+            "gal_mass_star",
+        }
+
+        assert set(galaxies["star_particles"].columns) == {
+            "x",
+            "y",
+            "z",
+        }
+        return 6
+
+    collection = collection.evaluate(offset, **spec)
+    assert np.all(collection["halo_properties"].select("offset").get_data("numpy") == 6)
 
 
 def test_visit_with_return_none(halo_paths):
@@ -309,6 +397,7 @@ def test_data_gets_all_particles(halo_paths):
     collection = collection.filter(oc.col("sod_halo_mass") > 10**14).take(
         10, at="random"
     )
+
     for halo in collection.halos():
         for name, particle_species in halo.items():
             if "particle" not in name:
@@ -404,6 +493,10 @@ def test_data_linking(halo_paths):
                 assert len(species_halo_tags) == 1
                 halo_tags.update(species_halo_tags)
                 n_particles += 1
+            except TypeError:
+                species_halo_tags = set([particle_species.select("fof_halo_tag").data])
+                halo_tags.update(species_halo_tags)
+                n_particles += 1
             except ValueError:
                 bin_tags = set(particle_species.select("unique_tag").data)
                 assert len(bin_tags) == 1
@@ -414,6 +507,97 @@ def test_data_linking(halo_paths):
         assert halo_tags.pop() == halo_properties["fof_halo_tag"]
     assert n_particles > 0
     assert n_profiles > 0
+
+
+def test_data_linking_with_unit_conversion(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.with_units(
+        "physical", dm_particles={"x": u.lyr, "y": u.lyr, "z": u.lyr}
+    )
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
+        10, at="random"
+    )
+    for halo in collection.halos():
+        dm_particle_locations = halo["dm_particles"].select(["x", "y", "z"]).get_data()
+        for column in dm_particle_locations.itercols():
+            assert column.unit == u.lyr
+
+
+def test_data_linking_with_complex_unit_conversion(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.with_units(
+        "physical",
+        conversions={u.Mpc: u.km},
+        dm_particles={"x": u.lyr, "y": u.lyr, "z": u.lyr},
+    )
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
+        2, at="random"
+    )
+    for halo in collection.halos():
+        for key, vals in halo.items():
+            if key == "dm_particles":
+                dm_particle_locations = vals.select(["x", "y", "z"]).get_data()
+                for column in dm_particle_locations.itercols():
+                    assert column.unit == u.lyr
+                continue
+            if key == "halo_properties":
+                val_iter = vals.values()
+            else:
+                val_iter = vals.get_data().values()
+            found = False
+            for value in val_iter:
+                if isinstance(value, u.Quantity):
+                    assert value.unit != u.Mpc
+                    if value.unit == u.km:
+                        found = True
+            assert found
+
+
+def test_data_linking_with_complex_unit_conversion_reset(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.with_units(
+        "physical",
+        conversions={u.Mpc: u.km},
+        dm_particles={"x": u.lyr, "y": u.lyr, "z": u.lyr},
+    )
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
+        2, at="random"
+    )
+    for halo in collection.halos():
+        for key, vals in halo.items():
+            if key == "dm_particles":
+                dm_particle_locations = vals.select(["x", "y", "z"]).get_data()
+                for column in dm_particle_locations.itercols():
+                    assert column.unit == u.lyr
+                continue
+            if key == "halo_properties":
+                val_iter = vals.values()
+            else:
+                val_iter = vals.get_data().values()
+            found = False
+            for value in val_iter:
+                if isinstance(value, u.Quantity):
+                    assert value.unit != u.Mpc
+                    if value.unit == u.km:
+                        found = True
+            assert found
+
+    for halo in collection.with_units().halos():
+        for key, vals in halo.items():
+            if key == "halo_properties":
+                val_iter = vals.values()
+            else:
+                val_iter = vals.get_data().values()
+            for value in val_iter:
+                if isinstance(value, u.Quantity):
+                    if isinstance(value.unit, u.DexUnit):
+                        continue
+                    if (
+                        value.unit.bases == 1
+                        and value.unit.bases[0] == u.m
+                        and value.unit.powers[0] == 1
+                    ):
+                        assert value.unit == u.Mpc
 
 
 def test_data_linking_bound(halo_paths):
@@ -457,8 +641,9 @@ def test_data_link_selection(halo_paths):
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
         10, at="random"
     )
-    collection = collection.select(["x", "y", "z"], dataset="dm_particles")
-    collection = collection.select(["fof_halo_tag", "sod_halo_mass"], "halo_properties")
+    collection = collection.select(
+        dm_particles=["x", "y", "z"], halo_properties=["fof_halo_tag", "sod_halo_mass"]
+    )
     found_dm_particles = False
     for halo in collection.objects():
         properties = halo["halo_properties"]
@@ -477,8 +662,9 @@ def test_data_link_drop(halo_paths):
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13).take(
         10, at="random"
     )
-    collection = collection.drop(["x", "y", "z"], dataset="dm_particles")
-    collection = collection.drop(["fof_halo_tag", "sod_halo_mass"])
+    collection = collection.drop(
+        dm_particles=["x", "y", "z"], halo_properties=["fof_halo_tag", "sod_halo_mass"]
+    )
     found_dm_particles = False
     for halo in collection.objects():
         properties = halo["halo_properties"]
@@ -587,6 +773,22 @@ def test_simulation_collection_derive(multi_path):
         assert "fof_halo_px" in ds.data.columns
 
 
+def test_simulation_collection_units(multi_path):
+    collection = oc.open(multi_path)
+    collection = collection.with_units(
+        "physical",
+        fof_halo_center_x=u.lyr,
+        fof_halo_center_y=u.lyr,
+        fof_halo_center_z=u.lyr,
+    )
+    for ds in collection.values():
+        data = ds.select(
+            ("fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z")
+        ).get_data()
+        for column in data.itercols():
+            assert column.unit == u.lyr
+
+
 def test_simulation_collection_order(multi_path):
     collection = oc.open(multi_path)
     for ds in collection.values():
@@ -668,6 +870,25 @@ def test_simulation_collection_add(multi_path):
     collection = collection.with_new_columns(datasets=ds_name, random_data=data)
     stored_data = collection[ds_name].select("random_data").get_data("numpy")
     assert np.all(stored_data == data)
+
+
+def test_simulation_collection_add_with_descriptions(multi_path):
+    collection = oc.open(multi_path)
+    random_data = {
+        key: np.random.randint(0, 100, len(ds)) for key, ds in collection.items()
+    }
+    descriptions = {
+        "fof_halo_px": "x component of momentum",
+        "random_data": "random data",
+    }
+    collection = collection.with_new_columns(
+        fof_halo_px=oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx"),
+        random_data=random_data,
+        descriptions=descriptions,
+    )
+    for ds in collection.values():
+        for name, desc in descriptions.items():
+            assert ds.descriptions[name] == desc
 
 
 def test_simulation_collection_broadcast_attribute(multi_path):
@@ -771,3 +992,22 @@ def test_data_link_sort_write(halo_paths, tmp_path):
             halo["halo_properties"]["fof_halo_tag"]
             == halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")[0]
         )
+
+
+def test_add_structure_collection_with_descriptions(halo_paths):
+    ds = oc.open(*halo_paths)
+    ds = ds.with_new_columns(
+        "dm_particles",
+        gpe=oc.col("mass") * oc.col("phi"),
+        descriptions="Gravitational potential energy",
+    )
+    ds = ds.with_new_columns(
+        "halo_properties",
+        com_px=oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx"),
+        descriptions="x component of linear momentum",
+    )
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
+    assert ds["dm_particles"].descriptions["gpe"] == "Gravitational potential energy"
+    assert (
+        ds["halo_properties"].descriptions["com_px"] == "x component of linear momentum"
+    )

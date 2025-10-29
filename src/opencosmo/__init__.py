@@ -5,11 +5,10 @@ from .collection import (
     open_linked_files,
 )
 from .dataset import Dataset, col
-from .io import open, read, write
+from .io import open, write
 from .spatial import make_box, make_cone
 
 __all__ = [
-    "read",
     "write",
     "col",
     "open",
