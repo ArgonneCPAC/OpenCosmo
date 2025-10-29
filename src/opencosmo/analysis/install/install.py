@@ -31,9 +31,9 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
             versions[requirement] = data.version
 
     for node in nx.topological_sort(graph):
-        version = versions.get(node)
-        if version is None:
+        if node not in versions:
             continue
+        version = versions.get(node)
         if version is not None and "dev" in version:
             dev_transaction[node] = version
             continue
