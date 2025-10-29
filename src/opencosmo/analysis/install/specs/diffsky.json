@@ -20,7 +20,9 @@
 		"diffstarpop": {
 			"prefer_source": "conda-forge",
 			"repo": "https://github.com/ArgonneCPAC/diffstarpop.git",
-			"depends_on": ["diffmah", "diffstar", "dsps", "jax"]
+			"depends_on": ["diffmah", "diffstar", "dsps", "jax"],
+			"optional": true
+
 		},
 		"dsps" : {
 			"prefer_source": "conda-forge",

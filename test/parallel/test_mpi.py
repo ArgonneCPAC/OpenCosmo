@@ -67,6 +67,11 @@ def all_paths(snapshot_path: Path):
     return list(hdf_files)
 
 
+@pytest.fixture
+def simcollection_path(snapshot_path):
+    return snapshot_path / "haloproperties_multi.hdf5"
+
+
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
 ):
