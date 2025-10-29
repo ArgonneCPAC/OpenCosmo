@@ -63,14 +63,10 @@ class Hdf5Handler:
         return Hdf5Handler(group, index, ColumnCache.empty(), metadata_group, {})
 
     def register(self, state: DatasetState):
-        self.__registered_column_groups[id(state)] = set(state.columns)
+        self.__cache.register_column_group(id(state), set(state.columns))
 
     def deregister(self, state_id: int):
-        # print(self.__registered_column_groups)
-        columns = self.__registered_column_groups.pop(state_id)
-        remaining_columns = set().union(*list(self.__registered_column_groups.values()))
-        to_drop = columns.difference(remaining_columns)
-        self.__cache.drop(to_drop)
+        self.__cache.deregister_column_group(state_id)
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
