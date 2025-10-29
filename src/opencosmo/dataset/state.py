@@ -58,7 +58,7 @@ class DatasetState:
         self.__columns = columns
         self.__region = region
         self.__sort_by = sort_by
-        self.__raw_data_handler.register(self)
+        self.__raw_data_handler.register(self, self.__derived_columns)
         finalize(self, deregister_state, id(self), self.__raw_data_handler)
 
     def __rebuild(self, **updates):

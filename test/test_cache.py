@@ -16,6 +16,7 @@ def test_cache_take():
     index2 = SimpleIndex(indices2)
 
     cache2 = cache.take(index2)
+    cache2.register_column_group(0, set("abcdefg"))
     cached_data = cache2.get_columns("abcdefg")
     for colname, column in cached_data.items():
         assert np.all(column == data[colname][indices2])
@@ -32,10 +33,12 @@ def test_cache_passthrough():
     indices2 = np.sort(np.random.choice(10_000, 1000, replace=False))
     index2 = SimpleIndex(indices2)
     cache2 = cache.take(index2)
+    cache2.register_column_group(0, set("abcdefg"))
 
     indices3 = np.sort(np.random.choice(1000, 100, replace=False))
     index3 = SimpleIndex(indices3)
     cache3 = cache2.take(index3)
+    cache3.register_column_group(0, set("abcdefg"))
 
     cached_data = cache3.get_columns("abcdefg")
     for colname, column in cached_data.items():
