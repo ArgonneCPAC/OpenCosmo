@@ -287,7 +287,6 @@ class DatasetSchema:
         sources: dict[str, h5py.Group],
         columns: Iterable[str],
         index: DataIndex,
-        cache: dict[str, np.ndarray],
         header: Optional[OpenCosmoHeader] = None,
     ):
         schema = DatasetSchema(header)
@@ -303,18 +302,9 @@ class DatasetSchema:
             # Still need this to get metadata if the column is cached
             colsource = sources[colname_parts[0]][colname_parts[1]]
 
-            if colname in cache:
-                coldata = cache[colname]
-                column_schema = ColumnSchema(
-                    colname_parts[1],
-                    index.from_size(len(coldata)),
-                    coldata,
-                    colsource.attrs,
-                )
-            else:
-                column_schema = ColumnSchema(
-                    colname_parts[1], index, colsource, colsource.attrs
-                )
+            column_schema = ColumnSchema(
+                colname_parts[1], index, colsource, colsource.attrs
+            )
             schema.add_child(column_schema, colname)
         return schema
 

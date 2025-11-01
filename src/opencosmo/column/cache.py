@@ -156,18 +156,10 @@ class ColumnCache:
         file.
 
         """
-        if not self.registered_columns.issuperset(data.keys()):
-            raise ValueError(
-                "Tried to add columns to the cache that are not registered to it!"
-            )
         check_length(self, data)
         self.__cached_data = self.__cached_data | data
 
     def with_data(self, data: dict[str, np.ndarray]):
-        if not self.registered_columns.issuperset(data.keys()):
-            raise ValueError(
-                "Tried to add columns to the cache that are not registered to it!"
-            )
         check_length(self, data)
         new_cached_data = self.__cached_data | data
         new_cache = ColumnCache(
@@ -218,11 +210,6 @@ class ColumnCache:
 
     def get_columns(self, columns: Iterable[str]):
         columns = set(columns)
-        if not columns.issubset(self.registered_columns):
-            raise ValueError(
-                "Tried to get columns that are not registered to this cache!"
-            )
-
         columns_in_cache = columns.intersection(self.__cached_data.keys())
         missing_columns = columns - columns_in_cache
         output = {c: self.__cached_data[c] for c in columns_in_cache}

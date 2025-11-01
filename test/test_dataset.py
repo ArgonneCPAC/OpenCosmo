@@ -30,54 +30,6 @@ def test_descriptions(input_path):
     assert isinstance(ds.descriptions, dict)
 
 
-def test_descriptions_after_insert(input_path, tmp_path):
-    ds = oc.open(input_path)
-    p = tmp_path / "test.hdf5"
-    random_data = np.random.randint(0, 100, len(ds))
-    ds = ds.with_new_columns(random_data=random_data)
-    assert ds.descriptions["random_data"] == "None"
-    oc.write(p, ds)
-    ds = oc.open(p)
-    descriptions = ds.descriptions
-    assert descriptions["random_data"] == "None"
-
-
-def test_description_with_insert(input_path, tmp_path):
-    ds = oc.open(input_path)
-    p = tmp_path / "test.hdf5"
-    random_data = np.random.randint(0, 100, len(ds))
-    ds = ds.with_new_columns(
-        random_data=random_data, descriptions="random data for a test"
-    )
-    assert ds.descriptions["random_data"] == "random data for a test"
-    oc.write(p, ds)
-    ds = oc.open(p)
-    descriptions = ds.descriptions
-    assert descriptions["random_data"] == "random data for a test"
-
-
-def test_description_with_insert_multiple(input_path, tmp_path):
-    ds = oc.open(input_path)
-    p = tmp_path / "test.hdf5"
-    random_data = np.random.randint(0, 100, len(ds))
-    fof_halo_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.with_new_columns(
-        random_data=random_data,
-        halo_px=fof_halo_px,
-        descriptions={
-            "random_data": "random data for a test",
-            "halo_px": "halo x momentum",
-        },
-    )
-    assert ds.descriptions["random_data"] == "random data for a test"
-    assert ds.descriptions["halo_px"] == "halo x momentum"
-    oc.write(p, ds)
-    ds = oc.open(p)
-    descriptions = ds.descriptions
-    assert descriptions["random_data"] == "random data for a test"
-    assert descriptions["halo_px"] == "halo x momentum"
-
-
 def test_filter_oom(input_path, max_mass):
     # Assuming test_open worked, this is the only
     # thing that needs to be directly tested
@@ -394,7 +346,9 @@ def test_write_after_filter(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         filtered_data = new_ds.get_data()
-        assert np.all(data == filtered_data)
+        print(filtered_data)
+        for col in filtered_data.columns:
+            assert np.all(filtered_data[col] == data[col])
 
 
 def test_write_after_derive(input_path, tmp_path):
@@ -500,3 +454,51 @@ def test_write_after_sorted(input_path, tmp_path):
     to_check = new_dataset.select(("fof_halo_mass", "fof_halo_tag")).get_data("numpy")
     assert np.all(to_check["fof_halo_mass"][:-1] >= to_check["fof_halo_mass"][1:])
     assert np.all(to_check["fof_halo_tag"] == halo_tags)
+
+
+def test_descriptions_after_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(random_data=random_data)
+    assert ds.descriptions["random_data"] == "None"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "None"
+
+
+def test_description_with_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(
+        random_data=random_data, descriptions="random data for a test"
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+
+
+def test_description_with_insert_multiple(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    fof_halo_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.with_new_columns(
+        random_data=random_data,
+        halo_px=fof_halo_px,
+        descriptions={
+            "random_data": "random data for a test",
+            "halo_px": "halo x momentum",
+        },
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    assert ds.descriptions["halo_px"] == "halo x momentum"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+    assert descriptions["halo_px"] == "halo x momentum"

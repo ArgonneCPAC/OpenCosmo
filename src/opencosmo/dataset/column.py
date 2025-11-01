@@ -151,7 +151,7 @@ class DerivedColumn:
         self.lhs = lhs
         self.rhs = rhs
         self.operation = operation
-        self.description = description
+        self.description = description if description is not None else "None"
 
     def check_parent_existance(self, names: set[str]):
         match self.rhs:

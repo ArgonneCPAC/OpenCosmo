@@ -138,6 +138,8 @@ class UnitHandler:
             name: self.__applicators[name].convert_to_base(
                 val, self.__current_convention, unit_kwargs=unit_kwargs
             )
+            if name in self.__applicators
+            else val
             for name, val in data.items()
         }
 
