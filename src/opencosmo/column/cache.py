@@ -61,12 +61,14 @@ class ColumnCache:
         self,
         cached_data: dict[str, np.ndarray],
         registered_column_groups: dict[int, set[str]],
-        derived_index: Optional[DataIndex] = None,
-        parent: Optional[ref[ColumnCache]] = None,
-        children: Optional[list[ref[ColumnCache]]] = None,
+        column_descriptions: dict[str, str],
+        derived_index: Optional[DataIndex],
+        parent: Optional[ref[ColumnCache]],
+        children: Optional[list[ref[ColumnCache]]],
     ):
         self.__cached_data = cached_data
         self.__registered_column_groups = registered_column_groups
+        self.__descriptions = column_descriptions
         self.__derived_index = derived_index
         self.__parent = parent
         if children is None:
@@ -87,11 +89,15 @@ class ColumnCache:
 
     @classmethod
     def empty(cls):
-        return ColumnCache({}, {}, None, None, [])
+        return ColumnCache({}, {}, {}, None, None, [])
 
     @property
     def columns(self):
         return set(self.__cached_data.keys())
+
+    @property
+    def descriptions(self):
+        return self.__descriptions
 
     @property
     def registered_columns(self):
@@ -150,21 +156,24 @@ class ColumnCache:
         else:
             return len(next(iter(self.__cached_data.values())))
 
-    def add_data(self, data: dict[str, np.ndarray]):
+    def add_data(self, data: dict[str, np.ndarray], descriptions: dict[str, str] = {}):
         """
         The in-place equivalent of with_data. Should not be used outside the context of this
         file.
 
         """
         check_length(self, data)
+        self.__descriptions |= descriptions
         self.__cached_data = self.__cached_data | data
 
-    def with_data(self, data: dict[str, np.ndarray]):
+    def with_data(self, data: dict[str, np.ndarray], descriptions: dict[str, str] = {}):
         check_length(self, data)
         new_cached_data = self.__cached_data | data
+        new_descriptions = self.__descriptions | descriptions
         new_cache = ColumnCache(
             new_cached_data,
             self.__registered_column_groups,
+            self.__descriptions | descriptions,
             self.__derived_index,
             self.__parent,
             self.__children,
@@ -204,7 +213,7 @@ class ColumnCache:
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
             )
-        new_cache = ColumnCache({}, {}, index, ref(self))
+        new_cache = ColumnCache({}, {}, {}, index, ref(self), [])
         self.__children.append(ref(new_cache))
         return new_cache
 

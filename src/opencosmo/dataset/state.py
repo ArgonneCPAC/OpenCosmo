@@ -5,7 +5,6 @@ from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
-import astropy.units as u
 import numpy as np
 from astropy.table import QTable
 
@@ -19,6 +18,7 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
+    import astropy.units as u
     import h5py
     from astropy import table, units
     from astropy.cosmology import Cosmology
@@ -30,8 +30,8 @@ if TYPE_CHECKING:
     from opencosmo.units.handler import UnitHandler
 
 
-def deregister_state(id: int, handler: Hdf5Handler):
-    handler.deregister(id)
+def deregister_state(id: int, cache: ColumnCache):
+    cache.deregister_column_group(id)
 
 
 class DatasetState:
@@ -59,6 +59,8 @@ class DatasetState:
         self.__columns = columns
         self.__region = region
         self.__sort_by = sort_by
+        self.__cache.register_column_group(id(self), self.__columns)
+        finalize(self, deregister_state, id(self), self.__cache)
 
     def __rebuild(self, **updates):
         new = {
@@ -107,9 +109,16 @@ class DatasetState:
 
     @property
     def descriptions(self):
+        all_descriptions = (
+            {name: col.description for name, col in self.__derived_columns.items()}
+            | self.__raw_data_handler.descriptions
+            | self.__cache.descriptions
+        )
         return {
-            name: col.description for name, col in self.__derived_columns.items()
-        } | self.__raw_data_handler.descriptions
+            name: description
+            for name, description in all_descriptions.items()
+            if name in self.columns
+        }
 
     @property
     def raw_index(self):
@@ -162,8 +171,11 @@ class DatasetState:
         ):
             raw_columns.add(self.__sort_by[0])
 
-        raw_data = self.__raw_data_handler.get_data(raw_columns)
-        data |= self.__unit_handler.apply_units(raw_data, unit_kwargs)
+        if raw_columns:
+            raw_data = self.__raw_data_handler.get_data(raw_columns)
+            raw_data = self.__unit_handler.apply_units(raw_data, unit_kwargs)
+            self.__cache.add_data(raw_data)
+            data |= raw_data
 
         output = QTable(data, copy=False)
 
@@ -223,22 +235,21 @@ class DatasetState:
             )
             schema.add_child(colschema, f"data/{colname}")
 
-        cached_data = self.__unit_handler.into_base_convention(
-            self.__cache.get_columns(self.columns)
-        )
+        cached_data = self.__cache.get_columns(self.columns)
 
         for colname, coldata in cached_data.items():
-            schema_name = f"data/{colname}"
             try:
                 data = coldata.value
+                unit_str = str(coldata.unit)
             except AttributeError:
                 data = coldata
-            if schema_name in schema.columns:
-                schema.columns[schema_name].source = data
+                unit_str = ""
+            if colname in schema.columns["data"]:
                 continue
 
             attrs = {}
-            attrs["unit"] = str(coldata.unit)
+            attrs["unit"] = unit_str
+            attrs["description"] = self.descriptions.get(colname, "None")
 
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), data, attrs
@@ -256,9 +267,8 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        derived_update = {}
+        derived_update: dict[str, DerivedColumn] = {}
         new_unit_handler = self.__unit_handler
-        new_cache = self.__cache
 
         if inter := set(self.columns).intersection(new_columns.keys()):
             raise ValueError(f"Some columns are already in the dataset: {inter}")
@@ -266,7 +276,9 @@ class DatasetState:
         new_column_names = self.__columns.copy()
         new_derived = {}
         new_in_memory = {}
+        new_in_memory_descriptions = {}
         for colname, column in new_columns.items():
+            description = descriptions.get(colname, "None")
             match column:
                 case DerivedColumn():
                     ancestor_columns = column.requires()
@@ -275,6 +287,8 @@ class DatasetState:
                         raise ValueError(
                             f"Missing columns {missing} required for derived column {colname}"
                         )
+
+                    column.description = description
                     new_derived[colname] = column
                     new_column_names.add(colname)
                 case np.ndarray():
@@ -284,9 +298,14 @@ class DatasetState:
                         )
                     new_in_memory[colname] = column
                     new_column_names.add(colname)
+                    new_in_memory_descriptions[colname] = description
+                case _:
+                    raise ValueError(f"Unexpected new column type: {type(column)}")
 
         new_derived = self.__derived_columns | new_derived
-        new_cache = self.__cache.with_data(new_in_memory)
+        new_cache = self.__cache.with_data(
+            new_in_memory, descriptions=new_in_memory_descriptions
+        )
         return self.__rebuild(
             cache=new_cache, derived_columns=new_derived, columns=new_column_names
         )
@@ -435,6 +454,7 @@ class DatasetState:
             raise ValueError("start and end must be within the bounds of the dataset.")
 
         sorted = self.get_sorted_index()
+        take_index: DataIndex
         if sorted is None:
             take_index = ChunkedIndex.single_chunk(start, end - start)
         else:
@@ -456,7 +476,7 @@ class DatasetState:
             )
         sorted = self.get_sorted_index()
         new_handler = self.__raw_data_handler.take(rows, sorted)
-        new_cache = self.__cache.take(rows, sorted)
+        new_cache = self.__cache.take(rows)
 
         return self.__rebuild(
             raw_data_handler=new_handler,

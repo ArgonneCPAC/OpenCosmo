@@ -346,7 +346,6 @@ def test_write_after_filter(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         filtered_data = new_ds.get_data()
-        print(filtered_data)
         for col in filtered_data.columns:
             assert np.all(filtered_data[col] == data[col])
 
@@ -425,7 +424,7 @@ def test_cache_select(input_path):
 
     dataset = oc.open(input_path)
     data = dataset.get_data()
-    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+    cache = dataset._Dataset__state._DatasetState__cache
     assert set(dataset.columns) == cache.columns
     columns = np.random.choice(dataset.columns, 5, replace=False)
     dataset2 = dataset.select(columns)
@@ -438,7 +437,7 @@ def test_cache_filter(input_path):
     dataset = oc.open(input_path)
     dataset = dataset.filter(oc.col("fof_halo_mass") > 1e14)
 
-    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+    cache = dataset._Dataset__state._DatasetState__cache
 
     assert (
         len(cache.columns) > 0 or cache._ColumnCache__parent() is not None
