@@ -31,6 +31,8 @@ def get_unit_transitions(
             return get_scalefree_transitions(unit, cosmology, is_comoving)
         case UnitConvention.COMOVING:
             return get_comoving_transitions(unit, cosmology, is_comoving)
+        case _:
+            raise ValueError(f"Invalid unit convention {base_convention}")
 
 
 def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bool):

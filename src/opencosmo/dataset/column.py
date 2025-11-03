@@ -188,7 +188,9 @@ class DerivedColumn:
             case _:
                 rhs_unit = None
 
-        if self.operation in (op.sub, op.add):
+        if self.operation in (op.sub, op.add) and (
+            not isinstance(lhs_unit, u.LogUnit) or not isinstance(rhs_unit, u.LogUnit)
+        ):
             if lhs_unit != rhs_unit:
                 raise UnitsError("Cannot add/subtract columns with different units!")
             return lhs_unit
