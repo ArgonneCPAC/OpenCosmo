@@ -23,8 +23,14 @@ def make_unit_handler(
     applicators = get_unit_applicators_hdf5(group, header)
     if target_convention is None:
         target_convention = header.file.unit_convention
+    if not isinstance(target_convention, UnitConvention):
+        target_convention = UnitConvention(target_convention)
+
     return UnitHandler(
-        header.file.unit_convention, target_convention, header.cosmology, applicators
+        UnitConvention(header.file.unit_convention),
+        target_convention,
+        header.cosmology,
+        applicators,
     )
 
 
@@ -38,6 +44,8 @@ class UnitHandler:
         conversions: dict[str, u.Unit] = {},
         column_conversions: dict[str, u.Unit] = {},
     ):
+        if not isinstance(base_convention, UnitConvention):
+            raise ValueError
         self.__base_convention = base_convention
         self.__current_convention = current_convention
         self.__cosmology = cosmology

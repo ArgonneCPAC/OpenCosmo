@@ -46,7 +46,6 @@ def test_filter_take(core_path_475, core_path_487):
 
 def test_open_multiple_write(core_path_487, core_path_475, tmp_path):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
-    print(ds.header.file.unit_convention)
     original_length = len(ds)
     original_redshift_range = ds.z_range
     output = tmp_path / "synth_gals.hdf5"
@@ -69,3 +68,27 @@ def test_repr(core_path_475, core_path_487):
     ds = ds.with_redshift_range(0, 0.1)
     ds = ds.select(["ra", "dec"])
     assert str(ds)
+
+
+def test_add_logarithmic_units(core_path_487):
+    ds = oc.open(core_path_487, synth_cores=True)
+    log_sfr = oc.col("logsm_obs") + oc.col("logssfr_obs")
+    ds = ds.with_new_columns(log_sfr=log_sfr)
+    data = ds.select(("logsm_obs", "logssfr_obs", "log_sfr")).get_data()
+
+    sfr = data["logssfr_obs"] + data["logsm_obs"]
+    assert np.all(sfr == data["log_sfr"])
+
+
+def test_add_non_logarithmic_units(core_path_487):
+    ds = oc.open(core_path_487, synth_cores=True)
+    log_sfr = oc.col("logsm_obs") + oc.col("x_nfw")
+    with pytest.raises(oc.dataset.column.UnitsError):
+        ds = ds.with_new_columns(log_sfr=log_sfr)
+
+
+def test_add_two_non_logarithmic_units(core_path_487):
+    ds = oc.open(core_path_487, synth_cores=True)
+    log_sfr = oc.col("dec") + oc.col("x_nfw")
+    with pytest.raises(oc.dataset.column.UnitsError):
+        ds = ds.with_new_columns(log_sfr=log_sfr)
