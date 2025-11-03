@@ -496,8 +496,10 @@ class DatasetState:
 
         if convention is None:
             convention_ = self.__unit_handler.current_convention
+            cache = self.__cache
         else:
             convention_ = UnitConvention(convention)
+            cache = ColumnCache.empty()
         if (
             convention_ == UnitConvention.SCALEFREE
             and UnitConvention(self.header.file.unit_convention)
@@ -514,4 +516,4 @@ class DatasetState:
         new_handler = self.__unit_handler.with_convention(convention_).with_conversions(
             conversions, columns
         )
-        return self.__rebuild(unit_handler=new_handler)
+        return self.__rebuild(unit_handler=new_handler, cache=cache)

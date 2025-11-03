@@ -183,6 +183,9 @@ class ColumnCache:
                 child.__update_parent(new_cache)
         return new_cache
 
+    def without_columns(self, columns: Iterable[str]):
+        columns_to_drop = set(self.__cached_data.keys()).intersection(columns)
+
     def drop(self, columns: Iterable[str]):
         columns_in_cache = set(self.__cached_data.keys()).intersection(columns)
         for column in columns_in_cache:
