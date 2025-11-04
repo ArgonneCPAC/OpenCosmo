@@ -263,6 +263,7 @@ class ColumnCache:
             case (None, _):
                 new_index = self.__derived_index
             case _:
+                assert self.__derived_index is not None and index is not None
                 new_index = take(self.__derived_index, index)
 
         return data | parent.request(column_names, new_index)
