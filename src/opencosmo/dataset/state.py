@@ -157,7 +157,8 @@ class DatasetState:
         Get the data for a given handler.
         """
         data = self.__build_derived_columns(unit_kwargs)
-        data |= self.__cache.get_columns(self.columns)
+        cached_data = self.__cache.get_columns(self.columns)
+        data |= self.__unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
 
         raw_columns = (
             set(self.columns)

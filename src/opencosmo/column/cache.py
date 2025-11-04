@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Callable, Iterable, Optional
 from weakref import finalize, ref
+
+import astropy.units as u
+import numpy as np
 
 from opencosmo.index.protocols import DataIndex
 from opencosmo.index.take import take
 
 if TYPE_CHECKING:
-    import numpy as np
-
     from opencosmo.index import DataIndex
+
+
+ColumnUpdater = Callable[[np.ndarray | u.Quantity], np.ndarray | u.Quantity]
 
 
 def finish(
@@ -123,9 +127,6 @@ class ColumnCache:
         )
         self.__cached_data |= {key: data[key] for key in columns_to_keep}
 
-    def duplicate(self):
-        return ColumnCache({}, {}, None, ref(self), None)
-
     def register_column_group(self, key: int, data: set[str]):
         assert key not in self.__registered_column_groups
         self.__registered_column_groups[key] = data
@@ -179,24 +180,11 @@ class ColumnCache:
         check_length(self, data)
         self.__descriptions |= descriptions
         self.__cached_data = self.__cached_data | data
-        if (
-            self.__parent is not None
-            and self.__derived_index is None
-            and (p := self.__parent()) is not None
-        ):
-            p.__push_up(data)
 
     def with_data(self, data: dict[str, np.ndarray], descriptions: dict[str, str] = {}):
         check_length(self, data)
         new_cached_data = self.__cached_data | data
         new_descriptions = self.__descriptions | descriptions
-        if (
-            self.__parent is not None
-            and self.__derived_index is None
-            and (p := self.__parent()) is not None
-        ):
-            p.__push_up(data)
-
         new_cache = ColumnCache(
             new_cached_data,
             self.__registered_column_groups,
@@ -273,5 +261,6 @@ class ColumnCache:
         if parent is None:
             return {}
         result = parent.request(column_names, self.__derived_index)
+
         self.__cached_data = self.__cached_data | result
         return result

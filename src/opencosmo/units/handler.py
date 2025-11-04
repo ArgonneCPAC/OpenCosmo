@@ -3,11 +3,12 @@ from __future__ import annotations
 from functools import cached_property
 from typing import TYPE_CHECKING, Mapping, Optional
 
+import astropy.units as u
+
 from opencosmo.units import UnitConvention
 from opencosmo.units.get import UnitApplicator, get_unit_applicators_hdf5
 
 if TYPE_CHECKING:
-    import astropy.units as u
     import h5py
     import numpy as np
     from astropy.cosmology import Cosmology
@@ -142,6 +143,24 @@ class UnitHandler:
             else val
             for name, val in data.items()
         }
+
+    def apply_unit_conversions(
+        self, data: dict[str, u.Quantity | np.ndarray], unit_kwargs
+    ):
+        # Only apply the unit CONVERSIONS. Useful for cached data
+        output_data = {}
+        for colname, column in data.items():
+            output_data[colname] = column
+            if not isinstance(data, u.Quantiy):
+                continue
+            assert isinstance(column, u.Quantity)
+            column_conversion = self.__column_conversions.get(colname)
+            unit_conversion = self.__conversions.get(str(column.unit))
+            if unit_conversion is not None and column_conversion is None:
+                output_data[colname] = column.to(unit_conversion)
+            elif column_conversion is not None:
+                output_data[colname] = column.to(column_conversion)
+        return output_data
 
     def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):
         if self.__current_convention == UnitConvention.UNITLESS:
