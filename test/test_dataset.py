@@ -457,8 +457,8 @@ def test_cache_column_conversion(input_path):
 
     cache = dataset2._Dataset__state._DatasetState__cache
 
-    assert len(cache.columns) == len(dataset2.columns)
     data2 = dataset2.get_data()
+    assert len(cache.columns) == len(dataset2.columns)
     for col in columns:
         assert data2[col].unit == u.lyr
 

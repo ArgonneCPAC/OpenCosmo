@@ -222,6 +222,17 @@ class ColumnCache:
 
     def without_columns(self, columns: Iterable[str]):
         columns_to_drop = set(self.__cached_data.keys()).intersection(columns)
+        data = {
+            name: data
+            for name, data in self.__cached_data.items()
+            if name not in columns_to_drop
+        }
+        descriptions = {
+            name: desc
+            for name, desc in self.__descriptions.items()
+            if name not in columns_to_drop
+        }
+        return ColumnCache(data, {}, descriptions, None, None, [])
 
     def drop(self, columns: Iterable[str]):
         columns_in_cache = set(self.__cached_data.keys()).intersection(columns)
@@ -276,9 +287,8 @@ class ColumnCache:
         return output
 
     def __get_derived_columns(self, column_names: set[str]):
-        if self.__derived_index is None:
+        if self.__parent is None:
             return {}
-        assert self.__parent is not None
         parent = self.__parent()
         if parent is None:
             return {}

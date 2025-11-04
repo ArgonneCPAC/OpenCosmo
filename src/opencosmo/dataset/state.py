@@ -5,6 +5,7 @@ from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
+import astropy.units as u
 import numpy as np
 from astropy.table import QTable
 
@@ -17,7 +18,6 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
-    import astropy.units as u
     import h5py
     from astropy import table, units
     from astropy.cosmology import Cosmology
@@ -158,10 +158,13 @@ class DatasetState:
         """
         data = self.__build_derived_columns(unit_kwargs)
         cached_data = self.__cache.get_columns(self.columns)
-        cached_data = self.__unit_handler.apply_unit_conversions(
+        converted_cached_data = self.__unit_handler.apply_unit_conversions(
             cached_data, unit_kwargs
         )
-        self.__cache.add_data(cached_data, {}, push_up=False)
+        data |= cached_data
+        if converted_cached_data:
+            self.__cache.add_data(converted_cached_data, {}, push_up=False)
+            data |= converted_cached_data
 
         raw_columns = (
             set(self.columns)
@@ -185,10 +188,15 @@ class DatasetState:
                 self.__cache.add_data(updated_data, push_up=False)
             data |= raw_data | updated_data
 
+        if not set(data.keys()).issuperset(self.columns):
+            raise RuntimeError(
+                "Some columns are missing from the output! This is likely a bug. Please report it on GitHub"
+            )
+
+        # keep ordering
         output = QTable(data, copy=False)
 
         data_columns = set(output.columns)
-        raw_index_array = self.__raw_data_handler.index.into_array()
 
         if metadata_columns:
             output.update(self.__raw_data_handler.get_metadata(metadata_columns))
@@ -196,13 +204,12 @@ class DatasetState:
         if not ignore_sort and self.__sort_by is not None:
             order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
             output = output[order]
-            raw_index_array = raw_index_array[order]
 
-        extras = set(data.keys()).difference(self.columns)
-        if extras:
-            output.remove_columns(extras)
+        new_order = [c for c in self.columns]
+        if metadata_columns:
+            new_order.extend(metadata_columns)
 
-        return output
+        return output[new_order]
 
     def get_metadata(self, columns=[]):
         return self.__raw_data_handler.get_metadata(columns)
@@ -225,7 +232,7 @@ class DatasetState:
         derived_data = (
             self.select(derived_names)
             .with_units("unitless", {}, {}, None, None)
-            .get_data()
+            .get_data(ignore_sort=True)
         )
         column_units = {
             name: self.__unit_handler.base_units[name] for name in raw_columns
@@ -285,6 +292,7 @@ class DatasetState:
         new_derived = {}
         new_in_memory = {}
         new_in_memory_descriptions = {}
+        new_units = {}
         for colname, column in new_columns.items():
             description = descriptions.get(colname, "None")
             match column:
@@ -296,6 +304,10 @@ class DatasetState:
                             f"Missing columns {missing} required for derived column {colname}"
                         )
 
+                    derived_column_unit = column.get_units(
+                        self.__unit_handler.base_units
+                    )
+                    new_units[colname] = derived_column_unit
                     column.description = description
                     new_derived[colname] = column
                     new_column_names.add(colname)
@@ -307,15 +319,25 @@ class DatasetState:
                     new_in_memory[colname] = column
                     new_column_names.add(colname)
                     new_in_memory_descriptions[colname] = description
+                    new_units[colname] = None
+                    if isinstance(column, u.Quantity):
+                        new_units[colname] = column.unit
                 case _:
                     raise ValueError(f"Unexpected new column type: {type(column)}")
+        if new_units:
+            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
         new_derived = self.__derived_columns | new_derived
-        new_cache = self.__cache.with_data(
-            new_in_memory, descriptions=new_in_memory_descriptions
-        )
+        new_cache = self.__cache
+        if new_in_memory:
+            new_cache = self.__cache.with_data(
+                new_in_memory, descriptions=new_in_memory_descriptions
+            )
         return self.__rebuild(
-            cache=new_cache, derived_columns=new_derived, columns=new_column_names
+            cache=new_cache,
+            derived_columns=new_derived,
+            columns=new_column_names,
+            unit_handler=new_unit_handler,
         )
 
     def __build_derived_columns(self, unit_kwargs: dict) -> table.Table:
@@ -337,6 +359,13 @@ class DatasetState:
             self.__derived_columns.values(),
             set(),
         )
+        ad = ancestors.intersection(self.__derived_columns.keys())
+        while ad:
+            derived_names = derived_names.union(ad)
+            for col in ad:
+                ancestors.remove(col)
+                ancestors = ancestors.union(self.__derived_columns[col].requires())
+            ad = ancestors.intersection(derived_names)
 
         cached_data = self.__cache.get_columns(ancestors)
         remaining_ancestors = ancestors.difference(cached_data.keys())
@@ -508,7 +537,7 @@ class DatasetState:
             cache = self.__cache.duplicate()
         else:
             convention_ = UnitConvention(convention)
-            cache = ColumnCache.empty()
+            cache = self.__cache.without_columns(self.__raw_data_handler.columns)
         if (
             convention_ == UnitConvention.SCALEFREE
             and UnitConvention(self.header.file.unit_convention)

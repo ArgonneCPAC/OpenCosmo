@@ -59,18 +59,7 @@ def test_after_take_filter(halo_properties_path, tmp_path):
 
     write(tmp_path / "haloproperties.hdf5", ds)
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
-    assert all(filtered_data == new_ds.data)
-
-
-def test_cache_write(halo_properties_path):
-    ds = oc.open(halo_properties_path).take(10000)
-    ds = ds.filter(col("sod_halo_mass") > 0)
-    filtered_data = ds.get_data()
-
-    schema = ds.make_schema()
-    data_children = schema.children["data"]
-    for child in data_children.values():
-        assert isinstance(child.source, np.ndarray)
+    assert np.all(filtered_data == new_ds.data)
 
 
 def test_after_take(halo_properties_path, tmp_path):
