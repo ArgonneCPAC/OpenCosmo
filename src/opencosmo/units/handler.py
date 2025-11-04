@@ -144,14 +144,29 @@ class UnitHandler:
             for name, val in data.items()
         }
 
+    def apply_raw_units(self, data: dict[str, np.ndarray], unit_kwargs):
+        if self.__current_convention == UnitConvention.UNITLESS:
+            return data
+        columns = {}
+        for colname, value in data.items():
+            columns[colname] = value
+            applicator = self.__applicators.get(colname)
+            if applicator is not None and applicator.base_unit is not None:
+                columns[colname] = applicator.apply(
+                    columns[colname], self.__current_convention, unit_kwargs=unit_kwargs
+                )
+        return columns
+
     def apply_unit_conversions(
         self, data: dict[str, u.Quantity | np.ndarray], unit_kwargs
     ):
         # Only apply the unit CONVERSIONS. Useful for cached data
+        # Does not return data that was not updated
         output_data = {}
+        if not self.__conversions and not self.__column_conversions:
+            return {}
         for colname, column in data.items():
-            output_data[colname] = column
-            if not isinstance(data, u.Quantiy):
+            if not isinstance(column, u.Quantity):
                 continue
             assert isinstance(column, u.Quantity)
             column_conversion = self.__column_conversions.get(colname)
@@ -160,6 +175,7 @@ class UnitHandler:
                 output_data[colname] = column.to(unit_conversion)
             elif column_conversion is not None:
                 output_data[colname] = column.to(column_conversion)
+
         return output_data
 
     def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):

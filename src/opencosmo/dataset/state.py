@@ -158,7 +158,10 @@ class DatasetState:
         """
         data = self.__build_derived_columns(unit_kwargs)
         cached_data = self.__cache.get_columns(self.columns)
-        data |= self.__unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
+        cached_data = self.__unit_handler.apply_unit_conversions(
+            cached_data, unit_kwargs
+        )
+        self.__cache.add_data(cached_data, {}, push_up=False)
 
         raw_columns = (
             set(self.columns)
@@ -173,9 +176,14 @@ class DatasetState:
 
         if raw_columns:
             raw_data = self.__raw_data_handler.get_data(raw_columns)
-            raw_data = self.__unit_handler.apply_units(raw_data, unit_kwargs)
+            raw_data = self.__unit_handler.apply_raw_units(raw_data, unit_kwargs)
             self.__cache.add_data(raw_data)
-            data |= raw_data
+            updated_data = self.__unit_handler.apply_unit_conversions(
+                raw_data, unit_kwargs
+            )
+            if updated_data:
+                self.__cache.add_data(updated_data, push_up=False)
+            data |= raw_data | updated_data
 
         output = QTable(data, copy=False)
 
@@ -497,7 +505,7 @@ class DatasetState:
 
         if convention is None:
             convention_ = self.__unit_handler.current_convention
-            cache = self.__cache
+            cache = self.__cache.duplicate()
         else:
             convention_ = UnitConvention(convention)
             cache = ColumnCache.empty()

@@ -108,6 +108,9 @@ class ColumnCache:
     def registered_columns(self):
         return set().union(*list(self.__registered_column_groups.values()))
 
+    def duplicate(self):
+        return ColumnCache({}, {}, {}, None, ref(self), [])
+
     def __push_down(self, data: dict[str, np.ndarray]):
         columns_to_keep = self.registered_columns.intersection(data.keys()).difference(
             self.__cached_data.keys()
@@ -171,17 +174,35 @@ class ColumnCache:
             return len(p)
         return 0
 
-    def add_data(self, data: dict[str, np.ndarray], descriptions: dict[str, str] = {}):
+    def add_data(
+        self,
+        data: dict[str, np.ndarray],
+        descriptions: dict[str, str] = {},
+        push_up=True,
+    ):
         """
         The in-place equivalent of with_data. Should not be used outside the context of this
         file.
 
         """
         check_length(self, data)
+
         self.__descriptions |= descriptions
+        if (
+            push_up
+            and self.__derived_index is None
+            and self.__parent is not None
+            and (p := self.__parent()) is not None
+        ):
+            p.__push_up(data)
         self.__cached_data = self.__cached_data | data
 
-    def with_data(self, data: dict[str, np.ndarray], descriptions: dict[str, str] = {}):
+    def with_data(
+        self,
+        data: dict[str, np.ndarray],
+        descriptions: dict[str, str] = {},
+        no_push_up=True,
+    ):
         check_length(self, data)
         new_cached_data = self.__cached_data | data
         new_descriptions = self.__descriptions | descriptions
@@ -196,6 +217,7 @@ class ColumnCache:
         for child_ref in self.__children:
             if (child := child_ref()) is not None:
                 child.__update_parent(new_cache)
+
         return new_cache
 
     def without_columns(self, columns: Iterable[str]):

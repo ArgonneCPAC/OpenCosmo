@@ -444,6 +444,56 @@ def test_cache_filter(input_path):
     )  # just to be safe
 
 
+def test_cache_column_conversion(input_path):
+    dataset = oc.open(input_path)
+
+    data = dataset.get_data()
+    columns = set()
+    for col in data.columns:
+        if data[col].unit == u.Mpc:
+            columns.add(col)
+
+    dataset2 = dataset.with_units(conversions={u.Mpc: u.lyr})
+
+    cache = dataset2._Dataset__state._DatasetState__cache
+
+    assert len(cache.columns) == len(dataset2.columns)
+    data2 = dataset2.get_data()
+    for col in columns:
+        assert data2[col].unit == u.lyr
+
+
+def test_cache_change_units(input_path):
+    dataset = oc.open(input_path)
+    data = dataset.get_data()
+    dataset2 = dataset.with_units("scalefree")
+
+    cache = dataset2._Dataset__state._DatasetState__cache
+
+    assert (
+        len(cache.columns) == 0 and cache._ColumnCache__parent is None
+    )  # just to be safe
+
+
+def test_cache_conversion_propogation(input_path):
+    dataset = oc.open(input_path)
+    dataset2 = dataset.with_units(conversions={u.Mpc: u.lyr}, fof_halo_center_x=u.km)
+    data2 = dataset2.get_data()
+
+    cache = dataset._Dataset__state._DatasetState__cache
+    cache2 = dataset2._Dataset__state._DatasetState__cache
+
+    assert len(cache.columns) == len(dataset2.columns)  # just to be safe
+    cached_columns = cache.get_columns(dataset.columns)
+    cached_columns2 = cache2.get_columns(dataset.columns)
+    for col in cached_columns.values():
+        if isinstance(col, u.Quantity):
+            assert col.unit not in [u.lyr, u.km]
+    for col in cached_columns2.values():
+        if isinstance(col, u.Quantity):
+            assert col.unit != u.Mpc
+
+
 def test_write_after_sorted(input_path, tmp_path):
     dataset = oc.open(input_path)
     dataset = dataset.sort_by("fof_halo_mass", invert=True)
