@@ -161,6 +161,7 @@ class DatasetState:
         converted_cached_data = self.__unit_handler.apply_unit_conversions(
             cached_data, unit_kwargs
         )
+
         data |= cached_data
         if converted_cached_data:
             self.__cache.add_data(converted_cached_data, {}, push_up=False)
@@ -180,6 +181,7 @@ class DatasetState:
         if raw_columns:
             raw_data = self.__raw_data_handler.get_data(raw_columns)
             raw_data = self.__unit_handler.apply_raw_units(raw_data, unit_kwargs)
+
             self.__cache.add_data(raw_data)
             updated_data = self.__unit_handler.apply_unit_conversions(
                 raw_data, unit_kwargs

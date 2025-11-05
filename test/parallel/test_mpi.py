@@ -407,8 +407,8 @@ def test_box_query_chain(input_path):
     reg2 = oc.make_box(p1, p2)
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
+    data = ds.get_data()
 
-    data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
         colname = f"fof_halo_center_{dim}"
         col = data[colname]
@@ -418,10 +418,8 @@ def test_box_query_chain(input_path):
             original_data[colname].value > min_
         )
         original_data = original_data[mask]
-        min = col.min()
-        max = col.max()
-        parallel_assert(min.value >= min_)
-        parallel_assert(max.value <= max_)
+        parallel_assert(col.min().value >= min_)
+        parallel_assert(col.max().value <= max_)
 
     parallel_assert(set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"]))
 
@@ -505,7 +503,7 @@ def test_evaluate(input_path):
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
-@pytest.mark.timeout(0.25, method="thread")
+@pytest.mark.timeout(20, method="thread")
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD

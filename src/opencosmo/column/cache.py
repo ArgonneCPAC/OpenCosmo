@@ -121,6 +121,7 @@ class ColumnCache:
                 colname: self.__derived_index.get_data(coldata)
                 for colname, coldata in cached_data.items()
             }
+
         self.__cached_data |= cached_data
 
     def __push_up(self, data: dict[str, np.ndarray]):
@@ -147,7 +148,6 @@ class ColumnCache:
         }
         if not cached_data:
             return
-
         for child_ in self.__children:
             if (child := child_()) is None:
                 continue
@@ -195,6 +195,7 @@ class ColumnCache:
             and (p := self.__parent()) is not None
         ):
             p.__push_up(data)
+
         self.__cached_data = self.__cached_data | data
 
     def with_data(
