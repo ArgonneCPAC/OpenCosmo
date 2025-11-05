@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeGuard
 
+import astropy.units as u
 import h5py
 import numpy as np
 
@@ -34,6 +35,10 @@ def get_data_chunked(
 
     """
 
+    unit = None
+    if isinstance(data, u.Quantity):
+        unit = data.unit
+
     shape = (np.sum(sizes),) + data.shape[1:]
     storage = np.zeros(shape, dtype=data.dtype)
     running_index = 0
@@ -47,4 +52,7 @@ def get_data_chunked(
             storage[dest_slice] = data[source_slice]
 
         running_index += size
+
+    if unit is not None:
+        storage *= unit
     return storage

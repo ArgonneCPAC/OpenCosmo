@@ -11,7 +11,6 @@ import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import Hdf5Handler
-from opencosmo.dataset.im import InMemoryColumnHandler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import read_header
 from opencosmo.index import ChunkedIndex

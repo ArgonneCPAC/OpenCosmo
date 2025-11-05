@@ -1,20 +1,24 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Callable, Iterable, Optional
 from weakref import finalize, ref
+
+import astropy.units as u
+import numpy as np
 
 from opencosmo.index.protocols import DataIndex
 from opencosmo.index.take import take
 
 if TYPE_CHECKING:
-    import numpy as np
-
     from opencosmo.index import DataIndex
+
+
+ColumnUpdater = Callable[[np.ndarray | u.Quantity], np.ndarray | u.Quantity]
 
 
 def finish(
     cached_data: dict[str, np.ndarray],
-    index: DataIndex,
+    index: Optional[DataIndex],
     cache_ref: ref[ColumnCache],
 ):
     cache = cache_ref()
@@ -24,7 +28,9 @@ def finish(
     columns_to_add = (
         cache.registered_columns.intersection(cached_data.keys()) - cache.columns
     )
-    data = {name: index.get_data(cached_data[name]) for name in columns_to_add}
+    data = {name: cached_data[name] for name in columns_to_add}
+    if index is not None:
+        data = {name: index.get_data(cd) for name, cd in data.items()}
     if data:
         cache.add_data(data)
 
@@ -61,12 +67,14 @@ class ColumnCache:
         self,
         cached_data: dict[str, np.ndarray],
         registered_column_groups: dict[int, set[str]],
-        derived_index: Optional[DataIndex] = None,
-        parent: Optional[ref[ColumnCache]] = None,
-        children: Optional[list[ref[ColumnCache]]] = None,
+        column_descriptions: dict[str, str],
+        derived_index: Optional[DataIndex],
+        parent: Optional[ref[ColumnCache]],
+        children: Optional[list[ref[ColumnCache]]],
     ):
         self.__cached_data = cached_data
         self.__registered_column_groups = registered_column_groups
+        self.__descriptions = column_descriptions
         self.__derived_index = derived_index
         self.__parent = parent
         if children is None:
@@ -75,7 +83,6 @@ class ColumnCache:
         self.__finalizer = None
 
         if parent is not None and (p := parent()) is not None:
-            assert derived_index is not None
             self.__finalizer = finalize(
                 p,
                 finish,
@@ -87,24 +94,42 @@ class ColumnCache:
 
     @classmethod
     def empty(cls):
-        return ColumnCache({}, {}, None, None, [])
+        return ColumnCache({}, {}, {}, None, None, [])
 
     @property
     def columns(self):
         return set(self.__cached_data.keys())
 
     @property
+    def descriptions(self):
+        return self.__descriptions
+
+    @property
     def registered_columns(self):
         return set().union(*list(self.__registered_column_groups.values()))
 
+    def duplicate(self):
+        return ColumnCache({}, {}, {}, None, ref(self), [])
+
     def __push_down(self, data: dict[str, np.ndarray]):
-        all_columns = set().union(*list(self.__registered_column_groups.values()))
-        columns_to_keep = all_columns.intersection(data.keys()).difference(
+        columns_to_keep = self.registered_columns.intersection(data.keys()).difference(
             self.__cached_data.keys()
         )
-        assert self.__derived_index is not None
-        for column in columns_to_keep:
-            self.__cached_data[column] = self.__derived_index.get_data(data[column])
+        cached_data = {colname: data[colname] for colname in columns_to_keep}
+        if self.__derived_index is not None:
+            cached_data = {
+                colname: self.__derived_index.get_data(coldata)
+                for colname, coldata in cached_data.items()
+            }
+
+        self.__cached_data |= cached_data
+
+    def __push_up(self, data: dict[str, np.ndarray]):
+        assert len(self) == 0 or all(len(d) == len(self) for d in data.values())
+        columns_to_keep = self.registered_columns.intersection(data.keys()).difference(
+            self.__cached_data.keys()
+        )
+        self.__cached_data |= {key: data[key] for key in columns_to_keep}
 
     def register_column_group(self, key: int, data: set[str]):
         assert key not in self.__registered_column_groups
@@ -123,7 +148,6 @@ class ColumnCache:
         }
         if not cached_data:
             return
-
         for child_ in self.__children:
             if (child := child_()) is None:
                 continue
@@ -131,12 +155,9 @@ class ColumnCache:
 
     def __update_parent(self, parent: ColumnCache):
         assert self.__parent is not None
-        assert self.__derived_index is not None
         assert self.__finalizer is not None
         self.__finalizer.detach()
         self.__parent = ref(parent)
-        if len(parent) == 8 and self.__derived_index.range()[1] >= 8:
-            raise ValueError
         self.__finalizer = finalize(
             parent, finish, parent.__cached_data, self.__derived_index, ref(self)
         )
@@ -147,32 +168,49 @@ class ColumnCache:
             return 0
         elif self.__derived_index is not None:
             return len(self.__derived_index)
-        else:
+        elif self.__cached_data:
             return len(next(iter(self.__cached_data.values())))
+        elif self.__parent is not None and (p := self.__parent()) is not None:
+            return len(p)
+        return 0
 
-    def add_data(self, data: dict[str, np.ndarray]):
+    def add_data(
+        self,
+        data: dict[str, np.ndarray],
+        descriptions: dict[str, str] = {},
+        push_up=True,
+    ):
         """
         The in-place equivalent of with_data. Should not be used outside the context of this
         file.
 
         """
-        if not self.registered_columns.issuperset(data.keys()):
-            raise ValueError(
-                "Tried to add columns to the cache that are not registered to it!"
-            )
         check_length(self, data)
+
+        self.__descriptions |= descriptions
+        if (
+            push_up
+            and self.__derived_index is None
+            and self.__parent is not None
+            and (p := self.__parent()) is not None
+        ):
+            p.__push_up(data)
+
         self.__cached_data = self.__cached_data | data
 
-    def with_data(self, data: dict[str, np.ndarray]):
-        if not self.registered_columns.issuperset(data.keys()):
-            raise ValueError(
-                "Tried to add columns to the cache that are not registered to it!"
-            )
+    def with_data(
+        self,
+        data: dict[str, np.ndarray],
+        descriptions: dict[str, str] = {},
+        no_push_up=True,
+    ):
         check_length(self, data)
         new_cached_data = self.__cached_data | data
+        new_descriptions = self.__descriptions | descriptions
         new_cache = ColumnCache(
             new_cached_data,
             self.__registered_column_groups,
+            self.__descriptions | descriptions,
             self.__derived_index,
             self.__parent,
             self.__children,
@@ -180,29 +218,55 @@ class ColumnCache:
         for child_ref in self.__children:
             if (child := child_ref()) is not None:
                 child.__update_parent(new_cache)
+
         return new_cache
+
+    def without_columns(self, columns: Iterable[str]):
+        columns_to_drop = set(self.__cached_data.keys()).intersection(columns)
+        data = {
+            name: data
+            for name, data in self.__cached_data.items()
+            if name not in columns_to_drop
+        }
+        descriptions = {
+            name: desc
+            for name, desc in self.__descriptions.items()
+            if name not in columns_to_drop
+        }
+        return ColumnCache(data, {}, descriptions, None, None, [])
 
     def drop(self, columns: Iterable[str]):
         columns_in_cache = set(self.__cached_data.keys()).intersection(columns)
         for column in columns_in_cache:
             del self.__cached_data[column]
 
-    def request(self, column_names: Iterable[str], index: DataIndex):
+    def request(self, column_names: Iterable[str], index: Optional[DataIndex]):
         column_names = set(column_names)
         columns_in_cache = column_names.intersection(self.__cached_data.keys())
         missing_columns = column_names - columns_in_cache
 
-        data = {
-            name: index.get_data(self.__cached_data[name]) for name in columns_in_cache
-        }
+        data = {name: self.__cached_data[name] for name in columns_in_cache}
+        if index is not None:
+            data = {name: index.get_data(cd) for name, cd in data.items()}
+
         if self.__parent is None or column_names == columns_in_cache:
             return data
 
         parent = self.__parent()
         if parent is None:
             return data
-        assert self.__derived_index is not None
-        new_index = take(self.__derived_index, index)
+
+        match (index, self.__derived_index):
+            case (None, None):
+                new_index = None
+            case (_, None):
+                new_index = index
+            case (None, _):
+                new_index = self.__derived_index
+            case _:
+                assert self.__derived_index is not None and index is not None
+                new_index = take(self.__derived_index, index)
+
         return data | parent.request(column_names, new_index)
 
     def take(self, index: DataIndex):
@@ -212,17 +276,12 @@ class ColumnCache:
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
             )
-        new_cache = ColumnCache({}, {}, index, ref(self))
+        new_cache = ColumnCache({}, {}, {}, index, ref(self), [])
         self.__children.append(ref(new_cache))
         return new_cache
 
     def get_columns(self, columns: Iterable[str]):
         columns = set(columns)
-        if not columns.issubset(self.registered_columns):
-            raise ValueError(
-                "Tried to get columns that are not registered to this cache!"
-            )
-
         columns_in_cache = columns.intersection(self.__cached_data.keys())
         missing_columns = columns - columns_in_cache
         output = {c: self.__cached_data[c] for c in columns_in_cache}
@@ -230,12 +289,12 @@ class ColumnCache:
         return output
 
     def __get_derived_columns(self, column_names: set[str]):
-        if self.__derived_index is None:
+        if self.__parent is None:
             return {}
-        assert self.__parent is not None
         parent = self.__parent()
         if parent is None:
             return {}
         result = parent.request(column_names, self.__derived_index)
+
         self.__cached_data = self.__cached_data | result
         return result

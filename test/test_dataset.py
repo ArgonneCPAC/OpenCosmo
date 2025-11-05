@@ -30,54 +30,6 @@ def test_descriptions(input_path):
     assert isinstance(ds.descriptions, dict)
 
 
-def test_descriptions_after_insert(input_path, tmp_path):
-    ds = oc.open(input_path)
-    p = tmp_path / "test.hdf5"
-    random_data = np.random.randint(0, 100, len(ds))
-    ds = ds.with_new_columns(random_data=random_data)
-    assert ds.descriptions["random_data"] == "None"
-    oc.write(p, ds)
-    ds = oc.open(p)
-    descriptions = ds.descriptions
-    assert descriptions["random_data"] == "None"
-
-
-def test_description_with_insert(input_path, tmp_path):
-    ds = oc.open(input_path)
-    p = tmp_path / "test.hdf5"
-    random_data = np.random.randint(0, 100, len(ds))
-    ds = ds.with_new_columns(
-        random_data=random_data, descriptions="random data for a test"
-    )
-    assert ds.descriptions["random_data"] == "random data for a test"
-    oc.write(p, ds)
-    ds = oc.open(p)
-    descriptions = ds.descriptions
-    assert descriptions["random_data"] == "random data for a test"
-
-
-def test_description_with_insert_multiple(input_path, tmp_path):
-    ds = oc.open(input_path)
-    p = tmp_path / "test.hdf5"
-    random_data = np.random.randint(0, 100, len(ds))
-    fof_halo_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
-    ds = ds.with_new_columns(
-        random_data=random_data,
-        halo_px=fof_halo_px,
-        descriptions={
-            "random_data": "random data for a test",
-            "halo_px": "halo x momentum",
-        },
-    )
-    assert ds.descriptions["random_data"] == "random data for a test"
-    assert ds.descriptions["halo_px"] == "halo x momentum"
-    oc.write(p, ds)
-    ds = oc.open(p)
-    descriptions = ds.descriptions
-    assert descriptions["random_data"] == "random data for a test"
-    assert descriptions["halo_px"] == "halo x momentum"
-
-
 def test_filter_oom(input_path, max_mass):
     # Assuming test_open worked, this is the only
     # thing that needs to be directly tested
@@ -394,7 +346,8 @@ def test_write_after_filter(input_path, tmp_path):
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         filtered_data = new_ds.get_data()
-        assert np.all(data == filtered_data)
+        for col in filtered_data.columns:
+            assert np.all(filtered_data[col] == data[col])
 
 
 def test_write_after_derive(input_path, tmp_path):
@@ -471,7 +424,7 @@ def test_cache_select(input_path):
 
     dataset = oc.open(input_path)
     data = dataset.get_data()
-    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+    cache = dataset._Dataset__state._DatasetState__cache
     assert set(dataset.columns) == cache.columns
     columns = np.random.choice(dataset.columns, 5, replace=False)
     dataset2 = dataset.select(columns)
@@ -484,11 +437,61 @@ def test_cache_filter(input_path):
     dataset = oc.open(input_path)
     dataset = dataset.filter(oc.col("fof_halo_mass") > 1e14)
 
-    cache = dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__cache
+    cache = dataset._Dataset__state._DatasetState__cache
 
     assert (
         len(cache.columns) > 0 or cache._ColumnCache__parent() is not None
     )  # just to be safe
+
+
+def test_cache_column_conversion(input_path):
+    dataset = oc.open(input_path)
+
+    data = dataset.get_data()
+    columns = set()
+    for col in data.columns:
+        if data[col].unit == u.Mpc:
+            columns.add(col)
+
+    dataset2 = dataset.with_units(conversions={u.Mpc: u.lyr})
+
+    cache = dataset2._Dataset__state._DatasetState__cache
+
+    data2 = dataset2.get_data()
+    assert len(cache.columns) == len(dataset2.columns)
+    for col in columns:
+        assert data2[col].unit == u.lyr
+
+
+def test_cache_change_units(input_path):
+    dataset = oc.open(input_path)
+    data = dataset.get_data()
+    dataset2 = dataset.with_units("scalefree")
+
+    cache = dataset2._Dataset__state._DatasetState__cache
+
+    assert (
+        len(cache.columns) == 0 and cache._ColumnCache__parent is None
+    )  # just to be safe
+
+
+def test_cache_conversion_propogation(input_path):
+    dataset = oc.open(input_path)
+    dataset2 = dataset.with_units(conversions={u.Mpc: u.lyr}, fof_halo_center_x=u.km)
+    data2 = dataset2.get_data()
+
+    cache = dataset._Dataset__state._DatasetState__cache
+    cache2 = dataset2._Dataset__state._DatasetState__cache
+
+    assert len(cache.columns) == len(dataset2.columns)  # just to be safe
+    cached_columns = cache.get_columns(dataset.columns)
+    cached_columns2 = cache2.get_columns(dataset.columns)
+    for col in cached_columns.values():
+        if isinstance(col, u.Quantity):
+            assert col.unit not in [u.lyr, u.km]
+    for col in cached_columns2.values():
+        if isinstance(col, u.Quantity):
+            assert col.unit != u.Mpc
 
 
 def test_write_after_sorted(input_path, tmp_path):
@@ -500,3 +503,51 @@ def test_write_after_sorted(input_path, tmp_path):
     to_check = new_dataset.select(("fof_halo_mass", "fof_halo_tag")).get_data("numpy")
     assert np.all(to_check["fof_halo_mass"][:-1] >= to_check["fof_halo_mass"][1:])
     assert np.all(to_check["fof_halo_tag"] == halo_tags)
+
+
+def test_descriptions_after_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(random_data=random_data)
+    assert ds.descriptions["random_data"] == "None"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "None"
+
+
+def test_description_with_insert(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    ds = ds.with_new_columns(
+        random_data=random_data, descriptions="random data for a test"
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+
+
+def test_description_with_insert_multiple(input_path, tmp_path):
+    ds = oc.open(input_path)
+    p = tmp_path / "test.hdf5"
+    random_data = np.random.randint(0, 100, len(ds))
+    fof_halo_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.with_new_columns(
+        random_data=random_data,
+        halo_px=fof_halo_px,
+        descriptions={
+            "random_data": "random data for a test",
+            "halo_px": "halo x momentum",
+        },
+    )
+    assert ds.descriptions["random_data"] == "random data for a test"
+    assert ds.descriptions["halo_px"] == "halo x momentum"
+    oc.write(p, ds)
+    ds = oc.open(p)
+    descriptions = ds.descriptions
+    assert descriptions["random_data"] == "random data for a test"
+    assert descriptions["halo_px"] == "halo x momentum"

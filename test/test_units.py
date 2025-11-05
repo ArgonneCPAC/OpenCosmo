@@ -361,6 +361,7 @@ def test_im_symbolic_conversion(input_path):
     assert np.all(original_data == random_data)
     ds_converted = ds.with_units(random_speed=u.km / u.s)
     converted_data = ds_converted.select("random_speed").get_data()
+    print(converted_data)
     assert np.all(converted_data == original_data.to(u.km / u.s))
 
 
