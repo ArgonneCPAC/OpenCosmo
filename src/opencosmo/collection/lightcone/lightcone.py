@@ -9,7 +9,7 @@ import numpy as np
 from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
-from opencosmo.dataset.column import DerivedColumn
+from opencosmo.column.column import DerivedColumn
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
     from astropy.table import Table
 
+    from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
-    from opencosmo.dataset.column import ColumnMask
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
     from opencosmo.parameters.hacc import HaccSimulationParameters

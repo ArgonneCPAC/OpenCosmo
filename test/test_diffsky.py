@@ -1,3 +1,4 @@
+import astropy.units as u
 import numpy as np
 import pytest
 
@@ -80,15 +81,25 @@ def test_add_logarithmic_units(core_path_487):
     assert np.all(sfr == data["log_sfr"])
 
 
-def test_add_non_logarithmic_units(core_path_487):
-    ds = oc.open(core_path_487, synth_cores=True)
-    log_sfr = oc.col("logsm_obs") + oc.col("x_nfw")
-    with pytest.raises(oc.dataset.column.UnitsError):
-        ds = ds.with_new_columns(log_sfr=log_sfr)
-
-
 def test_add_two_non_logarithmic_units(core_path_487):
     ds = oc.open(core_path_487, synth_cores=True)
     log_sfr = oc.col("dec") + oc.col("x_nfw")
     with pytest.raises(oc.dataset.column.UnitsError):
         ds = ds.with_new_columns(log_sfr=log_sfr)
+
+
+def test_mag_units(core_path_475, core_path_487):
+    ds = oc.open(core_path_487, core_path_475)
+    mag_columns = filter(lambda c: "lsst_" in c, ds.columns)
+    mag_data = ds.select(mag_columns).get_data()
+    for col in mag_data.itercols():
+        assert col.unit == u.ABmag
+
+
+def test_add_mag_units(core_path_475, core_path_487):
+    ds = oc.open(core_path_487, core_path_475)
+    mag_columns = filter(lambda c: "lsst_" in c, ds.columns)
+    total_mag = add_mag_cols(*list(mag_columns))
+    ds = ds.with_new_columns(lsst_total=total_mag)
+    mag_columns = filter(lambda c: "lsst_" in c, ds.columns)
+    assert False

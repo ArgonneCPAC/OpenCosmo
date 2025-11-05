@@ -16,7 +16,7 @@ from opencosmo.mpi import get_comm_world
 if TYPE_CHECKING:
     import h5py
 
-    from opencosmo.dataset.column import DerivedColumn
+    from opencosmo.column.column import DerivedColumn
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex

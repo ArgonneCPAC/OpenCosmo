@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator as op
-from functools import cache, partialmethod
+from functools import cache, partial, partialmethod
 from typing import Any, Callable, Iterable, Optional, Union
 
 import astropy.units as u  # type: ignore
@@ -38,11 +38,15 @@ def col(column_name: str) -> Column:
 ColumnOrScalar = Union["Column", "DerivedColumn", int, float]
 
 
-def log(left: np.ndarray | u.Unit, right: None):
+def _log10(
+    left: np.ndarray | u.Unit,
+    right: None,
+    unit_container: u.LogUnit,
+):
     vals = left
     unit = None
     if isinstance(left, u.UnitBase):
-        return u.DexUnit(left)
+        return unit_container(left)
 
     elif isinstance(left, u.Quantity):
         vals = left.value
@@ -52,15 +56,23 @@ def log(left: np.ndarray | u.Unit, right: None):
 
     new_vals = np.log10(vals)
     if unit is not None:
-        return new_vals * u.DexUnit(unit)
+        return new_vals * unit_container(unit)
     return new_vals
 
 
-def exp10(left: np.ndarray | u.Unit, right: None):
+def _exp10(
+    left: np.ndarray | u.Unit,
+    right: None,
+    expected_unit_container: u.LogUnit,
+):
     vals = left
     unit = None
     if isinstance(left, u.LogUnit):
-        return left.to_physical()
+        if not isinstance(left, expected_unit_container):
+            raise ValueError(
+                f"Expected a unit of type {expected_unit_container}, found {type(left)}"
+            )
+        return left.physical_unit
 
     elif isinstance(left, u.Quantity):
         vals = left.value
@@ -69,10 +81,14 @@ def exp10(left: np.ndarray | u.Unit, right: None):
             raise ValueError(
                 "Can only raise 10 to a unitful value if the unit is logarithmic"
             )
+        if not isinstance(unit, expected_unit_container):
+            raise ValueError(
+                f"Expected a unit of type {expected_unit_container}, found {type(left)}"
+            )
 
     new_vals = 10**vals
     if unit is not None:
-        return new_vals * unit.to_physical()
+        return new_vals * unit.physical_unit
     return new_vals
 
 
@@ -162,11 +178,13 @@ class Column:
             case _:
                 return NotImplemented
 
-    def log(self) -> DerivedColumn:
-        return DerivedColumn(self, None, log)
+    def log10(self, unit_container: u.LogUnit = u.DexUnit) -> DerivedColumn:
+        op = partial(_log10, unit_container=unit_container)
+        return DerivedColumn(self, None, op)
 
-    def exp10(self) -> DerivedColumn:
-        return DerivedColumn(self, None, exp10)
+    def exp10(self, expected_unit_container: u.LogUnit = u.DexUnit) -> DerivedColumn:
+        op = partial(_exp10, expected_unit_container=expected_unit_container)
+        return DerivedColumn(self, None, op)
 
 
 class DerivedColumn:
@@ -301,11 +319,13 @@ class DerivedColumn:
     __sub__ = partialmethod(combine_on_left, operation=op.sub)
     __rsub__ = partialmethod(combine_on_right, operation=op.sub)
 
-    def log(self):
-        return DerivedColumn(self, None, log)
+    def log10(self, unit_container=u.DexUnit):
+        op = partial(_log10, unit_container=unit_container)
+        return DerivedColumn(self, None, op)
 
-    def exp10(self):
-        return DerivedColumn(self, None, exp10)
+    def exp10(self, expected_unit_container: u.LogUnit = u.DexUnit):
+        op = partial(_exp10, expected_unit_container=expected_unit_container)
+        return DerivedColumn(self, None, op)
 
     def evaluate(self, data: table.Table) -> table.Column:
         match self.lhs:

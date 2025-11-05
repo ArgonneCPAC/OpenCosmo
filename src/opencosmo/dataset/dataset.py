@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from astropy import units
     from astropy.cosmology import Cosmology
 
-    from opencosmo.dataset.column import ColumnMask, DerivedColumn
+    from opencosmo.column.column import ColumnMask, DerivedColumn
     from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
