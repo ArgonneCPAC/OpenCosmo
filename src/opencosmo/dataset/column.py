@@ -38,6 +38,44 @@ def col(column_name: str) -> Column:
 ColumnOrScalar = Union["Column", "DerivedColumn", int, float]
 
 
+def log(left: np.ndarray | u.Unit, right: None):
+    vals = left
+    unit = None
+    if isinstance(left, u.UnitBase):
+        return u.DexUnit(left)
+
+    elif isinstance(left, u.Quantity):
+        vals = left.value
+        unit = left.unit
+        if isinstance(unit, u.LogUnit):
+            raise ValueError("Cannot take the log of a log unit!")
+
+    new_vals = np.log10(vals)
+    if unit is not None:
+        return new_vals * u.DexUnit(unit)
+    return new_vals
+
+
+def exp10(left: np.ndarray | u.Unit, right: None):
+    vals = left
+    unit = None
+    if isinstance(left, u.LogUnit):
+        return left.to_physical()
+
+    elif isinstance(left, u.Quantity):
+        vals = left.value
+        unit = left.unit
+        if not isinstance(unit, u.LogUnit):
+            raise ValueError(
+                "Can only raise 10 to a unitful value if the unit is logarithmic"
+            )
+
+    new_vals = 10**vals
+    if unit is not None:
+        return new_vals * unit.to_physical()
+    return new_vals
+
+
 class Column:
     """
     A column representa a column in the table. This is used first and foremost
@@ -124,6 +162,12 @@ class Column:
             case _:
                 return NotImplemented
 
+    def log(self) -> DerivedColumn:
+        return DerivedColumn(self, None, log)
+
+    def exp10(self) -> DerivedColumn:
+        return DerivedColumn(self, None, exp10)
+
 
 class DerivedColumn:
     """
@@ -144,7 +188,7 @@ class DerivedColumn:
     def __init__(
         self,
         lhs: ColumnOrScalar,
-        rhs: ColumnOrScalar,
+        rhs: Optional[ColumnOrScalar],
         operation: Callable,
         description: Optional[str] = None,
     ):
@@ -256,6 +300,12 @@ class DerivedColumn:
     __radd__ = partialmethod(combine_on_right, operation=op.add)
     __sub__ = partialmethod(combine_on_left, operation=op.sub)
     __rsub__ = partialmethod(combine_on_right, operation=op.sub)
+
+    def log(self):
+        return DerivedColumn(self, None, log)
+
+    def exp10(self):
+        return DerivedColumn(self, None, exp10)
 
     def evaluate(self, data: table.Table) -> table.Column:
         match self.lhs:

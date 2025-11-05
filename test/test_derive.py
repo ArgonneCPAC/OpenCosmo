@@ -229,3 +229,14 @@ def test_derived_symbolic_conversion(properties_path):
     original_data = ds.select("fof_halo_com_px").get_data()
     converted_data = ds_converted.select("fof_halo_com_px").get_data()
     assert np.all(original_data.to(u.kg * u.lyr / u.yr) == converted_data)
+
+
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_derived_log(properties_path):
+    ds = oc.open(properties_path)
+    ds = ds.with_new_columns(fof_halo_mass_dex=oc.col("fof_halo_mass").log())
+    data = ds.select(("fof_halo_mass", "fof_halo_mass_dex")).get_data()
+    assert np.all(
+        np.log10(data["fof_halo_mass"].value) == data["fof_halo_mass_dex"].value
+    )
+    assert u.DexUnit(data["fof_halo_mass"].unit) == data["fof_halo_mass_dex"].unit
