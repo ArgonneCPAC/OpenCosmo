@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 import opencosmo as oc
-from opencosmo.column import norm_cols
+from opencosmo.column import norm_cols, offset_3d
 
 
 @pytest.fixture
@@ -36,10 +36,7 @@ def test_derive_multiply(properties_path):
 
 def test_derive_addition(properties_path, particles_path, tmp_path):
     ds = oc.open(properties_path, particles_path)
-    dx = oc.col("fof_halo_com_x") - oc.col("sod_halo_com_x")
-    dy = oc.col("fof_halo_com_y") - oc.col("sod_halo_com_y")
-    dz = oc.col("fof_halo_com_z") - oc.col("sod_halo_com_z")
-    dr = (dx**2 + dy**2 + dz**2) ** (0.5)
+    dr = offset_3d("fof_halo_com", "sod_halo_com")
     xoff = dr / oc.col("sod_halo_radius")
 
     ds = ds.with_new_columns("halo_properties", xoff=xoff)
