@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 import opencosmo as oc
+from opencosmo.column import norm_cols
 
 
 @pytest.fixture
@@ -120,13 +121,11 @@ def test_scalars(properties_path):
     assert np.all(np.isclose(data["derived4"], data["fof_halo_mass"] / 2))
 
 
-def test_power(properties_path):
+def test_norm_(properties_path):
     ds = oc.open(properties_path)
-    total_speed = (
-        oc.col("fof_halo_com_vx") ** 2
-        + oc.col("fof_halo_com_vy") ** 2
-        + oc.col("fof_halo_com_vz") ** 2
-    ) ** 0.5
+
+    total_speed = norm_cols("fof_halo_com_vx", "fof_halo_com_vy", "fof_halo_com_vz")
+
     ke = 0.5 * oc.col("fof_halo_mass") * total_speed**2
     ds = ds.with_new_columns(ke=ke)
     data = ds.data
@@ -234,7 +233,7 @@ def test_derived_symbolic_conversion(properties_path):
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_derived_log(properties_path):
     ds = oc.open(properties_path)
-    ds = ds.with_new_columns(fof_halo_mass_dex=oc.col("fof_halo_mass").log())
+    ds = ds.with_new_columns(fof_halo_mass_dex=oc.col("fof_halo_mass").log10())
     data = ds.select(("fof_halo_mass", "fof_halo_mass_dex")).get_data()
     assert np.all(
         np.log10(data["fof_halo_mass"].value) == data["fof_halo_mass_dex"].value

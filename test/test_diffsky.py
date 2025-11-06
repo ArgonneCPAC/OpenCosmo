@@ -103,3 +103,15 @@ def test_add_mag_units(core_path_475, core_path_487):
     ds = ds.with_new_columns(lsst_total=total_mag)
     mag_columns = filter(lambda c: "lsst_" in c, ds.columns)
     assert False
+
+
+def test_add_mag_units_unitless(core_path_475, core_path_487):
+    from opencosmo.column import add_mag_cols
+
+    ds = oc.open(core_path_487, core_path_475).with_units("unitless")
+    mag_columns = filter(lambda c: "lsst_" in c, ds.columns)
+    total_mag = add_mag_cols(*list(mag_columns))
+    ds = ds.with_new_columns(lsst_total=total_mag)
+    mag_columns = filter(lambda c: "lsst_" in c, ds.columns)
+    print(ds.select(mag_columns).take(10, at="start").get_data())
+    assert False

@@ -92,6 +92,10 @@ def _exp10(
     return new_vals
 
 
+def _sqrt(left: np.ndarray | u.Unit, right: None):
+    return left**0.5
+
+
 class Column:
     """
     A column representa a column in the table. This is used first and foremost
@@ -185,6 +189,9 @@ class Column:
     def exp10(self, expected_unit_container: u.LogUnit = u.DexUnit) -> DerivedColumn:
         op = partial(_exp10, expected_unit_container=expected_unit_container)
         return DerivedColumn(self, None, op)
+
+    def sqrt(self) -> DerivedColumn:
+        return DerivedColumn(self, None, _sqrt)
 
 
 class DerivedColumn:
@@ -326,6 +333,9 @@ class DerivedColumn:
     def exp10(self, expected_unit_container: u.LogUnit = u.DexUnit):
         op = partial(_exp10, expected_unit_container=expected_unit_container)
         return DerivedColumn(self, None, op)
+
+    def sqrt(self):
+        return DerivedColumn(self, None, _sqrt)
 
     def evaluate(self, data: table.Table) -> table.Column:
         match self.lhs:
