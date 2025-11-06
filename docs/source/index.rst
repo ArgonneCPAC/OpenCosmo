@@ -50,6 +50,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    io_ref
    dataset_ref
    collection_ref
+   column_ref
    parameters_ref
    spatial_ref
    analysis_ref

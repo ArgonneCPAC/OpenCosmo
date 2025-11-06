@@ -8,11 +8,9 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import table  # type: ignore
 
+from opencosmo.units import UnitsError
+
 Comparison = Callable[[float, float], bool]
-
-
-class UnitsError(Exception):
-    pass
 
 
 def col(column_name: str) -> Column:
@@ -98,14 +96,40 @@ def _sqrt(left: np.ndarray | u.Unit, right: None):
 
 class Column:
     """
-    A column representa a column in the table. This is used first and foremost
-    for masking purposes. For example, if a user has loaded a dataset they
-    can mask it with
+    Represents a reference to a column with a given name. Column reference
+    are created independently of the datasets that actually contain data.
+    You should not create this class directly, instead use :py:meth:`opencosmo.col`.
 
-    dataset.mask(oc.Col("column_name") < 5)
+    Columns can be combined, and support comparison operators for masking datasets.
 
-    In practice, this is just a factory class that returns masks and
-    derived columns
+    Combinations:
+
+        - Basic arithmetic with +, -, \*, and /
+        - Powers with :code:`\*\*`, and :code:`column.sqrt()`
+        - log and exponentiation with :code:`column.log10()` and :code:`column.exp10()`
+
+    Comparison operators:
+
+        - Arithmetic comparisons such as <, <=, >, ==, !=
+        - Membership with :code:`column.isin`
+
+    In general, combinations of columns produce a :code:`DerivedColumn`, which can be treated
+    the exact same was as basic Columns.
+
+    For example, to compute the x-component of a halo's momentum, and then filter out
+    halos below a certain value of that momentum
+
+    .. code-block:: python
+
+        import opencosmo as oc
+
+        dataset = oc.open("haloproperties.hdf5")
+        halo_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+        dataset = dataset.with_new_columns(fof_halo_com_px = halo_px)
+
+        min_momentum_filter = oc.col("fof_halo_com_px) > 10**14
+        dataset = dataset.filter(min_momentum_filter)
+
     """
 
     def __init__(self, column_name: str):
@@ -183,14 +207,34 @@ class Column:
                 return NotImplemented
 
     def log10(self, unit_container: u.LogUnit = u.DexUnit) -> DerivedColumn:
+        """
+        Create a derived column that will compute the log of a given column. If
+        the column contains units, the units must not be an astropy LogUnit
+        (such as Dex or Mag)
+
+        If you want the units of the new column to be a particular type of LogUnit,
+        you can pass that type to the :code:`unit_container` argument. Defaults
+        to DexUnit.
+        """
         op = partial(_log10, unit_container=unit_container)
         return DerivedColumn(self, None, op)
 
     def exp10(self, expected_unit_container: u.LogUnit = u.DexUnit) -> DerivedColumn:
+        """
+        Create a derived column that will contain the base-10 exponentiation of the
+        given column. If the column being exponentiated contains units, it must be an
+        astropy LogUnit (e.g. Dex or Mag)
+
+        You can specify the type of LogUnit container you expect the column to have with
+        expected_unit_container. Defaults to DexUnit.
+        """
         op = partial(_exp10, expected_unit_container=expected_unit_container)
         return DerivedColumn(self, None, op)
 
     def sqrt(self) -> DerivedColumn:
+        """
+        Create a derived column that will contain the square root of the given column.
+        """
         return DerivedColumn(self, None, _sqrt)
 
 

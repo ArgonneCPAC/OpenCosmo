@@ -1,7 +1,6 @@
 Dataset
 =======
 
-.. autofunction:: opencosmo.col
 
 .. autoclass:: opencosmo.Dataset
    :members:

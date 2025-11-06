@@ -4,6 +4,7 @@ import pytest
 
 import opencosmo as oc
 from opencosmo.column import norm_cols, offset_3d
+from opencosmo.units import UnitsError
 
 
 @pytest.fixture
@@ -213,6 +214,14 @@ def test_derive_structure_collection(properties_path, particles_path):
     for halo in ds.objects(["dm_particles"]):
         particles = halo["dm_particles"]
         assert "gpe" in particles.columns
+
+
+def test_derive_invalid_units(properties_path):
+    ds = oc.open(properties_path)
+    invalid_col = oc.col("fof_halo_com_vx") ** 2 + oc.col("fof_halo_com_vy")
+
+    with pytest.raises(UnitsError):
+        ds = ds.with_new_columns(invalid_col=invalid_col)
 
 
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
