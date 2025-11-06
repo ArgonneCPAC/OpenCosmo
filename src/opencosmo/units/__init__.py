@@ -6,4 +6,8 @@ from .convention import UnitConvention
 _ = u.add_enabled_units(cu)
 
 
-__all__ = ["UnitConvention"]
+class UnitsError(Exception):
+    pass
+
+
+__all__ = ["UnitConvention", "UnitsError"]

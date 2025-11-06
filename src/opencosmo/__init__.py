@@ -4,7 +4,8 @@ from .collection import (
     StructureCollection,
     open_linked_files,
 )
-from .dataset import Dataset, col
+from .column import col
+from .dataset import Dataset
 from .io import open, write
 from .spatial import make_box, make_cone
 

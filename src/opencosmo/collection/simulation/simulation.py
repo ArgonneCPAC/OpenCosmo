@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
 
     from opencosmo.collection.protocols import Collection
-    from opencosmo.dataset.column import ColumnMask
+    from opencosmo.column.column import ColumnMask
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.protocols import DataSchema
     from opencosmo.parameters import HaccSimulationParameters

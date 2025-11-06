@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import astropy
     import astropy.units as u
 
-    from opencosmo.dataset.column import DerivedColumn
+    from opencosmo.column.column import DerivedColumn
     from opencosmo.index import DataIndex
     from opencosmo.io import io
     from opencosmo.parameters import HaccSimulationParameters

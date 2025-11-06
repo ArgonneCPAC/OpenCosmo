@@ -10,7 +10,7 @@ import numpy as np
 from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.dataset.column import DerivedColumn
+from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios

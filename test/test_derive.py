@@ -3,6 +3,8 @@ import numpy as np
 import pytest
 
 import opencosmo as oc
+from opencosmo.column import norm_cols, offset_3d
+from opencosmo.units import UnitsError
 
 
 @pytest.fixture
@@ -35,10 +37,7 @@ def test_derive_multiply(properties_path):
 
 def test_derive_addition(properties_path, particles_path, tmp_path):
     ds = oc.open(properties_path, particles_path)
-    dx = oc.col("fof_halo_com_x") - oc.col("sod_halo_com_x")
-    dy = oc.col("fof_halo_com_y") - oc.col("sod_halo_com_y")
-    dz = oc.col("fof_halo_com_z") - oc.col("sod_halo_com_z")
-    dr = (dx**2 + dy**2 + dz**2) ** (0.5)
+    dr = offset_3d("fof_halo_com", "sod_halo_com")
     xoff = dr / oc.col("sod_halo_radius")
 
     ds = ds.with_new_columns("halo_properties", xoff=xoff)
@@ -120,13 +119,11 @@ def test_scalars(properties_path):
     assert np.all(np.isclose(data["derived4"], data["fof_halo_mass"] / 2))
 
 
-def test_power(properties_path):
+def test_norm_(properties_path):
     ds = oc.open(properties_path)
-    total_speed = (
-        oc.col("fof_halo_com_vx") ** 2
-        + oc.col("fof_halo_com_vy") ** 2
-        + oc.col("fof_halo_com_vz") ** 2
-    ) ** 0.5
+
+    total_speed = norm_cols("fof_halo_com_vx", "fof_halo_com_vy", "fof_halo_com_vz")
+
     ke = 0.5 * oc.col("fof_halo_mass") * total_speed**2
     ds = ds.with_new_columns(ke=ke)
     data = ds.data
@@ -219,6 +216,14 @@ def test_derive_structure_collection(properties_path, particles_path):
         assert "gpe" in particles.columns
 
 
+def test_derive_invalid_units(properties_path):
+    ds = oc.open(properties_path)
+    invalid_col = oc.col("fof_halo_com_vx") ** 2 + oc.col("fof_halo_com_vy")
+
+    with pytest.raises(UnitsError):
+        ds = ds.with_new_columns(invalid_col=invalid_col)
+
+
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_derived_symbolic_conversion(properties_path):
     ds = oc.open(properties_path)
@@ -229,3 +234,14 @@ def test_derived_symbolic_conversion(properties_path):
     original_data = ds.select("fof_halo_com_px").get_data()
     converted_data = ds_converted.select("fof_halo_com_px").get_data()
     assert np.all(original_data.to(u.kg * u.lyr / u.yr) == converted_data)
+
+
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_derived_log(properties_path):
+    ds = oc.open(properties_path)
+    ds = ds.with_new_columns(fof_halo_mass_dex=oc.col("fof_halo_mass").log10())
+    data = ds.select(("fof_halo_mass", "fof_halo_mass_dex")).get_data()
+    assert np.all(
+        np.log10(data["fof_halo_mass"].value) == data["fof_halo_mass_dex"].value
+    )
+    assert u.DexUnit(data["fof_halo_mass"].unit) == data["fof_halo_mass_dex"].unit
