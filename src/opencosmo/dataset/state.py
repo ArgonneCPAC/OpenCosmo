@@ -13,6 +13,7 @@ from opencosmo.column.cache import ColumnCache
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.derived import build_derived_columns, validate_derived_columns
 from opencosmo.dataset.handler import Hdf5Handler
+from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 from opencosmo.units import UnitConvention
@@ -315,29 +316,28 @@ class DatasetState:
                         f"Got an invalid new column of type {type(column)}"
                     )
 
-        new_unit_handler = validate_derived_columns(
-            self.__derived_columns | new_derived_columns,
-            existing_columns.union(new_in_memory_columns.keys()).difference(
-                self.__derived_columns.keys()
-            ),
-            self.__unit_handler,
-        )
-
-        new_derived = self.__derived_columns | new_derived_columns
-
-        if (
-            new_in_memory_columns
-            and (sorted_index := self.get_sorted_index()) is not None
-        ):
-            in_memory_order = np.argsort(sorted_index)
-            new_in_memory_columns = {
-                name: data[in_memory_order]
-                for name, data in new_in_memory_columns.items()
-            }
-
+        new_unit_handler = self.__unit_handler
         new_cache = self.__cache
+        new_derived = self.__derived_columns
+
+        if new_derived_columns:
+            new_unit_handler = validate_derived_columns(
+                self.__derived_columns | new_derived_columns,
+                existing_columns.union(new_in_memory_columns.keys()).difference(
+                    self.__derived_columns.keys()
+                ),
+                self.__unit_handler,
+            )
+            new_derived = self.__derived_columns | new_derived_columns
+
         if new_in_memory_columns:
-            new_cache = self.__cache.with_data(
+            new_unit_handler = validate_in_memory_columns(
+                new_in_memory_columns, self.__unit_handler, len(self)
+            )
+            new_in_memory_columns = resort(
+                new_in_memory_columns, self.get_sorted_index()
+            )
+            new_cache = new_cache.with_data(
                 new_in_memory_columns, descriptions=new_in_memory_descriptions
             )
 
