@@ -303,6 +303,20 @@ def test_visit_rows_all_vectorize(input_path):
     assert data.dtype == np.int64
 
 
+def test_visit_with_sort(input_path, tmp_path):
+    ds = oc.open(input_path).take(1000).sort_by("fof_halo_mass")
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    ds = ds.evaluate(fof_px, vectorize=True, insert=True)
+    oc.write(tmp_path / "data.hdf5", ds)
+    ds_new = oc.open(tmp_path / "data.hdf5")
+
+    data = ds.select(("fof_halo_mass", "fof_halo_com_vx", "fof_px")).get_data("numpy")
+    assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+
+
 def test_select_oom(input_path):
     with oc.open(input_path) as ds:
         data = ds.data

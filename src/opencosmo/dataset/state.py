@@ -290,11 +290,13 @@ class DatasetState:
         if inter := set(self.columns).intersection(new_columns.keys()):
             raise ValueError(f"Some columns are already in the dataset: {inter}")
 
+        in_memory_order = None
         new_column_names = self.__columns.copy()
         new_derived = {}
         new_in_memory = {}
         new_in_memory_descriptions = {}
         new_units = {}
+
         for colname, column in new_columns.items():
             description = descriptions.get(colname, "None")
             match column:
@@ -331,6 +333,13 @@ class DatasetState:
 
         new_derived = self.__derived_columns | new_derived
         new_cache = self.__cache
+
+        if new_in_memory and (sorted_index := self.get_sorted_index()) is not None:
+            in_memory_order = np.argsort(sorted_index)
+            new_in_memory = {
+                name: data[in_memory_order] for name, data in new_in_memory.items()
+            }
+
         if new_in_memory:
             new_cache = self.__cache.with_data(
                 new_in_memory, descriptions=new_in_memory_descriptions
