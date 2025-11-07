@@ -6,11 +6,13 @@ from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
 import astropy.units as u
+import networkx as nx
 import numpy as np
 from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
 from opencosmo.column.column import DerivedColumn
+from opencosmo.dataset.derived import build_derived_columns
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
@@ -365,44 +367,14 @@ class DatasetState:
         ):
             derived_names.add(self.__sort_by[0])
 
-        ancestors: set[str] = reduce(
-            lambda acc, der: acc.union(der.requires()),
-            self.__derived_columns.values(),
-            set(),
+        return build_derived_columns(
+            derived_names,
+            self.__derived_columns,
+            self.__cache,
+            self.__raw_data_handler,
+            self.__unit_handler,
+            unit_kwargs,
         )
-        ad = ancestors.intersection(self.__derived_columns.keys())
-        while ad:
-            derived_names = derived_names.union(ad)
-            for col in ad:
-                ancestors.remove(col)
-                ancestors = ancestors.union(self.__derived_columns[col].requires())
-            ad = ancestors.intersection(derived_names)
-
-        cached_data = self.__cache.get_columns(ancestors)
-        remaining_ancestors = ancestors.difference(cached_data.keys())
-        raw_ancestors = ancestors.intersection(remaining_ancestors)
-
-        raw_data = self.__raw_data_handler.get_data(raw_ancestors)
-        data = cached_data | self.__unit_handler.apply_units(raw_data, unit_kwargs)
-        seen: set[str] = set()
-
-        for name in cycle(derived_names):
-            if derived_names.issubset(data.keys()):
-                break
-            elif name in seen:
-                # We're stuck in a loop
-                raise ValueError(
-                    "Something went wrong when trying to instatiate derived columns!"
-                )
-            elif name in data:
-                continue
-            elif set(data.keys()).issuperset(self.__derived_columns[name].requires()):
-                data[name] = self.__derived_columns[name].evaluate(data)
-                seen = set()
-            else:
-                seen.add(name)
-
-        return data
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
         im_data = {}
