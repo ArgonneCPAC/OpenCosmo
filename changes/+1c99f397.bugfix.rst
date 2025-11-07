@@ -1,1 +1,1 @@
-Fix a bug that could cause user-created columns to be ordered incorrectly if they were inserted into a sorted dataset.
+Fix a bug that could cause user-created columns to be ordered incorrectly if they were inserted into a sorted dataset or lighcone.
