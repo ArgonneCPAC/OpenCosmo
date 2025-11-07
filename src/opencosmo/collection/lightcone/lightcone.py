@@ -830,19 +830,21 @@ class Lightcone(dict):
                 "Rows must be between 0 and the length of this dataset - 1"
             )
         if self.__ordered_by is not None:
-            data = np.concatenate(
-                [
-                    ds.select(self.__ordered_by[0]).get_data("numpy")
-                    for ds in self.values()
-                ]
-            )
-            if self.__ordered_by[1]:
-                data = -data
-            sort_index = np.argsort(data)
+            sort_index = self.__make_sort_index()
             rows = sort_index[rows]
             rows.sort()
 
         return self.__take_rows(rows)
+
+    def __make_sort_index(self):
+        if self.__ordered_by is None:
+            return None
+        data = np.concatenate(
+            [ds.select(self.__ordered_by[0]).get_data("numpy") for ds in self.values()]
+        )
+        if self.__ordered_by[1]:
+            data = -data
+        return np.argsort(data)
 
     def __take_rows(self, rows: np.ndarray):
         """
@@ -901,6 +903,11 @@ class Lightcone(dict):
                 )
             else:
                 raw[name] = column
+
+        if self.__ordered_by is not None:
+            sort_index = self.__make_sort_index()
+            sort_index = np.argsort(sort_index)
+            raw = {name: raw_data[sort_index] for name, raw_data in raw.items()}
 
         split_points = np.cumsum([len(ds) for ds in self.values()])
         split_points = np.insert(0, 0, split_points)[:-1]
