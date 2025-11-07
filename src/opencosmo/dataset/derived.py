@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 import networkx as nx
 
@@ -11,6 +11,47 @@ if TYPE_CHECKING:
     from opencosmo.column.column import DerivedColumn
     from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.units.handler import UnitHandler
+
+
+def validate_derived_columns(
+    derived_columns: dict[str, DerivedColumn],
+    known_raw_columns: set[str],
+    unit_handler: UnitHandler,
+):
+    dependency_graph = nx.DiGraph(
+        {colname: dc.requires() for colname, dc in derived_columns.items()}
+    )
+    sources = set(
+        map(
+            lambda node: node[0],
+            filter(
+                lambda node: node[1] == 0 and node[0] in derived_columns,
+                dependency_graph.out_degree,
+            ),
+        )
+    )
+    if missing := sources.difference(known_raw_columns.union(derived_columns)):
+        raise ValueError(f"Columns {missing} do not exist in this dataset!")
+
+    if cycles := list(nx.simple_cycles(dependency_graph)):
+        raise ValueError(
+            f"Found a cycle of derived columns which depend on each other! Cycle: {cycles[0]}"
+        )
+
+    dependency_graph.remove_nodes_from(known_raw_columns)
+    units = unit_handler.base_units
+    for derived_column_name in nx.topological_sort(dependency_graph):
+        units[derived_column_name] = derived_columns[derived_column_name].get_units(
+            units
+        )
+
+    new_unit_handler = unit_handler.with_new_columns(
+        **{
+            derived_column_name: units[derived_column_name]
+            for derived_column_name in derived_columns
+        }
+    )
+    return new_unit_handler
 
 
 def build_derived_columns(

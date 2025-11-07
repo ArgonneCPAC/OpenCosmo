@@ -5,14 +5,13 @@ from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
-import astropy.units as u
 import networkx as nx
 import numpy as np
 from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
 from opencosmo.column.column import DerivedColumn
-from opencosmo.dataset.derived import build_derived_columns
+from opencosmo.dataset.derived import build_derived_columns, validate_derived_columns
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
@@ -20,6 +19,7 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
+    import astropy.units as u
     import h5py
     from astropy import table, units
     from astropy.cosmology import Cosmology
@@ -287,65 +287,61 @@ class DatasetState:
         has been created based on the values in another column.
         """
         derived_update: dict[str, DerivedColumn] = {}
-        new_unit_handler = self.__unit_handler
+        existing_columns = set(self.columns)
 
-        if inter := set(self.columns).intersection(new_columns.keys()):
+        if inter := existing_columns.intersection(new_columns.keys()):
             raise ValueError(f"Some columns are already in the dataset: {inter}")
 
-        in_memory_order = None
-        new_column_names = self.__columns.copy()
-        new_derived = {}
-        new_in_memory = {}
+        new_derived_columns = {}
+        new_in_memory_columns = {}
         new_in_memory_descriptions = {}
-        new_units = {}
 
         for colname, column in new_columns.items():
-            description = descriptions.get(colname, "None")
             match column:
                 case DerivedColumn():
-                    ancestor_columns = column.requires()
-                    missing = ancestor_columns.difference(ancestor_columns)
-                    if missing:
-                        raise ValueError(
-                            f"Missing columns {missing} required for derived column {colname}"
-                        )
-
-                    derived_column_unit = column.get_units(
-                        self.__unit_handler.base_units
-                    )
-                    new_units[colname] = derived_column_unit
-                    column.description = description
-                    new_derived[colname] = column
-                    new_column_names.add(colname)
+                    column.description = descriptions.get(colname, "None")
+                    new_derived_columns[colname] = column
                 case np.ndarray():
                     if len(column) != len(self):
                         raise ValueError(
-                            f"In-memory columns must have the same length as the dataset!"
+                            f"New column {colname} does not have the same length as this dataset!"
                         )
-                    new_in_memory[colname] = column
-                    new_column_names.add(colname)
-                    new_in_memory_descriptions[colname] = description
-                    new_units[colname] = None
-                    if isinstance(column, u.Quantity):
-                        new_units[colname] = column.unit
+                    new_in_memory_descriptions[colname] = descriptions.get(
+                        colname, "None"
+                    )
+                    new_in_memory_columns[colname] = column
                 case _:
-                    raise ValueError(f"Unexpected new column type: {type(column)}")
-        if new_units:
-            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
+                    raise ValueError(
+                        f"Got an invalid new column of type {type(column)}"
+                    )
 
-        new_derived = self.__derived_columns | new_derived
-        new_cache = self.__cache
+        new_unit_handler = validate_derived_columns(
+            self.__derived_columns | new_derived_columns,
+            existing_columns.union(new_in_memory_columns.keys()).difference(
+                self.__derived_columns.keys()
+            ),
+            self.__unit_handler,
+        )
 
-        if new_in_memory and (sorted_index := self.get_sorted_index()) is not None:
+        new_derived = self.__derived_columns | new_derived_columns
+
+        if (
+            new_in_memory_columns
+            and (sorted_index := self.get_sorted_index()) is not None
+        ):
             in_memory_order = np.argsort(sorted_index)
-            new_in_memory = {
-                name: data[in_memory_order] for name, data in new_in_memory.items()
+            new_in_memory_columns = {
+                name: data[in_memory_order]
+                for name, data in new_in_memory_columns.items()
             }
 
-        if new_in_memory:
+        new_cache = self.__cache
+        if new_in_memory_columns:
             new_cache = self.__cache.with_data(
-                new_in_memory, descriptions=new_in_memory_descriptions
+                new_in_memory_columns, descriptions=new_in_memory_descriptions
             )
+
+        new_column_names = set(self.columns).union(new_columns.keys())
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
