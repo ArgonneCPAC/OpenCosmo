@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import operator as op
-from functools import cache, partial, partialmethod
-from typing import Any, Callable, Iterable, Optional, Union
+from functools import cache, cached_property, partial, partialmethod
+from typing import Any, Callable, Iterable, Optional, Protocol, Union
 
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import table  # type: ignore
 
+from opencosmo.dataset.evaluate import visit_data, visit_dataset
 from opencosmo.units import UnitsError
 
 Comparison = Callable[[float, float], bool]
@@ -104,8 +105,8 @@ class Column:
 
     Combinations:
 
-        - Basic arithmetic with +, -, \*, and /
-        - Powers with :code:`\*\*`, and :code:`column.sqrt()`
+        - Basic arithmetic with +, -, \\*, and /
+        - Powers with :code:`\\*\\*`, and :code:`column.sqrt()`
         - log and exponentiation with :code:`column.log10()` and :code:`column.exp10()`
 
     Comparison operators:
@@ -238,6 +239,23 @@ class Column:
         return DerivedColumn(self, None, _sqrt)
 
 
+class ConstructedColumn(Protocol):
+    pass
+
+    @property
+    def requires(self) -> set[str]: ...
+    @property
+    def produces(self) -> Optional[set[str]]: ...
+    @property
+    def description(self) -> Optional[str]: ...
+
+    def evaluate(
+        self, data: dict[str, np.ndarray]
+    ) -> np.ndarray | dict[str, np.ndarray]: ...
+
+    def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]: ...
+
+
 class DerivedColumn:
     """
     A derived column represents a combination of multiple columns that already exist in
@@ -265,6 +283,29 @@ class DerivedColumn:
         self.rhs = rhs
         self.operation = operation
         self.description = description if description is not None else "None"
+
+    @cached_property
+    def requires(self):
+        """
+        Return the raw data columns required to make this column
+        """
+        vals = set()
+        match self.lhs:
+            case Column():
+                vals.add(self.lhs.column_name)
+            case DerivedColumn():
+                vals = vals | self.lhs.requires
+        match self.rhs:
+            case Column():
+                vals.add(self.rhs.column_name)
+            case DerivedColumn():
+                vals = vals | self.rhs.requires
+
+        return vals
+
+    @property
+    def produces(self):
+        return None
 
     def check_parent_existance(self, names: set[str]):
         match self.rhs:
@@ -321,25 +362,6 @@ class DerivedColumn:
             case (_, _):
                 return self.operation(lhs_unit, rhs_unit)
 
-    @cache
-    def requires(self):
-        """
-        Return the raw data columns required to make this column
-        """
-        vals = set()
-        match self.lhs:
-            case Column():
-                vals.add(self.lhs.column_name)
-            case DerivedColumn():
-                vals = vals | self.lhs.requires()
-        match self.rhs:
-            case Column():
-                vals.add(self.rhs.column_name)
-            case DerivedColumn():
-                vals = vals | self.rhs.requires()
-
-        return vals
-
     def combine_on_left(self, other: Column | DerivedColumn, operation: Callable):
         """
         Combine such that this column becomes the lhs of a new derived column.
@@ -381,7 +403,9 @@ class DerivedColumn:
     def sqrt(self):
         return DerivedColumn(self, None, _sqrt)
 
-    def evaluate(self, data: table.Table) -> table.Column:
+    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
+        lhs: np.typing.ArrayLike
+        rhs: Optional[np.typing.ArrayLike]
         match self.lhs:
             case DerivedColumn():
                 lhs = self.lhs.evaluate(data)
@@ -399,6 +423,58 @@ class DerivedColumn:
 
         result = self.operation(lhs, rhs)
         return result
+
+
+class EvaluatedColumn:
+    def __init__(
+        self,
+        func: Callable,
+        requires: set[str],
+        produces: set[str],
+        kwargs: dict[str, Any],
+        format: str,
+        vectorize: bool,
+        description: Optional[str] = None,
+    ):
+        self.__func = func
+        self.__requires = requires
+        self.__kwargs = kwargs
+        self.__produces = produces
+        self.__format = format
+        self.__vectorize = vectorize
+        self.description = description
+
+    @property
+    def requires(self):
+        return self.__requires
+
+    @property
+    def produces(self):
+        return self.__produces
+
+    def get_units(self, units: dict[str, np.ndarray]):
+        test_data = {
+            name: np.random.randint(20, 40) * units[name]
+            if units.get(name) is not None
+            else np.random.randint(20, 40)
+            for name in self.__requires
+        }
+        results = self.__func(**test_data, **self.__kwargs)
+        if not isinstance(results, dict):
+            results = {self.__func.__name__: results}
+
+        return {
+            name: result.unit if isinstance(result, u.Quantity) else None
+            for name, result in results.items()
+        }
+
+    def evaluate(self, data: dict[str, np.ndarray]):
+        input_columns = {r: data[r] for r in self.__requires}
+        input_data = input_columns | self.__kwargs
+
+        return visit_data(
+            self.__func, data, self.__vectorize, self.__format, self.__kwargs
+        )
 
 
 class ColumnMask:

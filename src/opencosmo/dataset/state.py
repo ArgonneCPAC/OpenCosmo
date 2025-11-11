@@ -5,13 +5,17 @@ from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
+import astropy.units as u
 import networkx as nx
 import numpy as np
 from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import DerivedColumn
-from opencosmo.dataset.derived import build_derived_columns, validate_derived_columns
+from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.dataset.derived import (
+    build_derived_columns,
+    validate_derived_columns,
+)
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.index import ChunkedIndex, SimpleIndex
@@ -20,12 +24,12 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
-    import astropy.units as u
     import h5py
     from astropy import table, units
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
 
+    from opencosmo.column.column import ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
@@ -46,7 +50,7 @@ class DatasetState:
         self,
         raw_data_handler: Hdf5Handler,
         cache: ColumnCache,
-        derived_columns: dict[str, DerivedColumn],
+        derived_columns: dict[str, ConstructedColumn],
         unit_handler: UnitHandler,
         header: OpenCosmoHeader,
         columns: set[str],
@@ -236,7 +240,7 @@ class DatasetState:
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
-            .with_units("unitless", {}, {}, None, None)
+            .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
             .get_data(ignore_sort=True)
         )
         column_units = {
@@ -244,9 +248,14 @@ class DatasetState:
         }
 
         for colname in derived_names:
-            unit = self.__derived_columns[colname].get_units(column_units)
+            coldata = derived_data[colname]
+            unit = ""
+            if isinstance(coldata, u.Quantity):
+                unit = str(coldata.unit)
+                coldata = derived_data[colname].value
+
             attrs = {
-                "unit": str(unit),
+                "unit": unit,
                 "description": self.__derived_columns[colname].description,
             }
             coldata = derived_data[colname].value
@@ -287,6 +296,8 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
+        from time import time
+
         derived_update: dict[str, DerivedColumn] = {}
         existing_columns = set(self.columns)
 
@@ -299,7 +310,7 @@ class DatasetState:
 
         for colname, column in new_columns.items():
             match column:
-                case DerivedColumn():
+                case DerivedColumn() | EvaluatedColumn():
                     column.description = descriptions.get(colname, "None")
                     new_derived_columns[colname] = column
                 case np.ndarray():
@@ -319,16 +330,23 @@ class DatasetState:
         new_unit_handler = self.__unit_handler
         new_cache = self.__cache
         new_derived = self.__derived_columns
+        new_column_names: set[str] = set()
 
         if new_derived_columns:
-            new_unit_handler = validate_derived_columns(
+            new_units = validate_derived_columns(
                 self.__derived_columns | new_derived_columns,
                 existing_columns.union(new_in_memory_columns.keys()).difference(
                     self.__derived_columns.keys()
                 ),
-                self.__unit_handler,
+                self.__unit_handler.base_units,
             )
-            new_derived = self.__derived_columns | new_derived_columns
+            new_derived |= new_derived_columns
+            for colname, derived in new_derived.items():
+                if (prod := derived.produces) is not None:
+                    new_column_names |= prod
+                else:
+                    new_column_names.add(colname)
+            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
         if new_in_memory_columns:
             new_unit_handler = validate_in_memory_columns(
@@ -340,8 +358,9 @@ class DatasetState:
             new_cache = new_cache.with_data(
                 new_in_memory_columns, descriptions=new_in_memory_descriptions
             )
+            new_column_names |= set(new_in_memory_columns.keys())
 
-        new_column_names = set(self.columns).union(new_columns.keys())
+        new_column_names = set(self.columns).union(new_column_names)
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
@@ -364,7 +383,6 @@ class DatasetState:
             derived_names.add(self.__sort_by[0])
 
         return build_derived_columns(
-            derived_names,
             self.__derived_columns,
             self.__cache,
             self.__raw_data_handler,

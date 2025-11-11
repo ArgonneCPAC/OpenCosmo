@@ -58,6 +58,10 @@ class UnitHandler:
     def current_convention(self):
         return self.__current_convention
 
+    @property
+    def base_convention(self):
+        return self.__base_convention
+
     @cached_property
     def base_units(self):
         return {key: app.base_unit for key, app in self.__applicators.items()}

@@ -187,8 +187,8 @@ def test_visit_with_return_none(input_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx, random_val=5):
         return None
 
-    result = ds.evaluate(fof_px, vectorize=True, insert=True)
-    assert result is None
+    with pytest.raises(ValueError):
+        result = ds.evaluate(fof_px, vectorize=True, insert=True)
 
 
 def test_visit_multiple_with_kwargs_numpy(input_path):
@@ -279,28 +279,6 @@ def test_visit_rows_single(input_path):
     factor = data["fof_random"] / data["fof_halo_mass"]
     factor = factor.value
     assert np.all(factor == np.floor(factor))
-
-
-def test_visit_rows_all(input_path):
-    ds = oc.open(input_path).take(100)
-
-    def fof_random(halo_properties):
-        return np.random.randint(0, 100)
-
-    ds = ds.evaluate(fof_random, vectorize=False, insert=True)
-    data = ds.select(["fof_random"]).get_data()
-    assert data.dtype == np.int64
-
-
-def test_visit_rows_all_vectorize(input_path):
-    ds = oc.open(input_path).take(100)
-
-    def fof_random(halo_properties):
-        return np.random.randint(0, 100, len(halo_properties["fof_halo_tag"]))
-
-    ds = ds.evaluate(fof_random, vectorize=True, insert=True)
-    data = ds.select(["fof_random"]).get_data()
-    assert data.dtype == np.int64
 
 
 def test_visit_with_sort(input_path, tmp_path):

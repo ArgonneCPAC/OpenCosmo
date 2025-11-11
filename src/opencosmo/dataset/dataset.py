@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from inspect import signature
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -15,7 +16,8 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import QTable  # type: ignore
 
-from opencosmo.dataset.evaluate import visit_dataset
+from opencosmo.column.column import EvaluatedColumn
+from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
     from astropy import units
     from astropy.cosmology import Cosmology
 
-    from opencosmo.column.column import ColumnMask, DerivedColumn
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
@@ -389,9 +391,7 @@ class Dataset:
         The function should take in arguments with the same name as the columns in this dataset that
         are needed for the computation, and should return a dictionary of output values.
         The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
-        data from disk. You may also include all columns in the dataset by providing a function with a single
-        import argument with the same name as the data type of this dataset (see :py:attr:`Dataset.dtype <opencosmo.Dataset.dtype>`
-        In this case, the data will be provided as a dictionary of astropy quantity arrays or numpy arrays
+        data from disk
 
         The new columns will have the same names as the keys of the output dictionary
         See :ref:`Evaluating On Datasets` for more details.
@@ -434,18 +434,18 @@ class Dataset:
                 "Keyword arguments cannot have the same name as columns in your dataset!"
             )
 
-        output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
-        if output is None or not insert:
+        if not insert:
+            output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
             return output
-        is_same_length = all(
-            isinstance(o, np.ndarray) and len(o) == len(self) for o in output.values()
+
+        required_columns, output_names = verify_for_lazy_evaluation(
+            func, self, evaluate_kwargs
+        )
+        column = EvaluatedColumn(
+            func, required_columns, output_names, evaluate_kwargs, format, vectorize
         )
 
-        if not is_same_length:
-            raise ValueError(
-                "The function to evaluate must produce an array with the same length as this dataset!"
-            )
-        return self.with_new_columns(**output)
+        return self.with_new_columns(descriptions={}, **{func.__name__: column})
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
@@ -723,7 +723,7 @@ class Dataset:
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
+        **new_columns: ConstructedColumn | np.ndarray | units.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
