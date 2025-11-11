@@ -4,7 +4,7 @@ import os
 from logging import getLogger
 from typing import TYPE_CHECKING, Optional
 
-import networkx as nx
+import rustworkx as rx
 
 from .source import install_conda_forge, install_github, install_pip
 from .specs import get_specs
@@ -20,8 +20,18 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
     spec = get_specs()[name]
     logger.info(f"Installing analysis package {name}")
     requirements = spec.requirements
+
     raw_graph = {name: dep.depends_on for name, dep in requirements.items()}
-    graph = nx.DiGraph(raw_graph).reverse()
+    names = list(raw_graph.keys())
+
+    dependency_graph = rx.PyDiGraph()
+    nodes = dependency_graph.add_nodes_from(names)
+    node_map = {name: node for name, node in zip(names, nodes)}
+
+    for name, i in node_map.items():
+        depends_on = [node_map[don] for don in raw_graph[name]]
+        dependency_graph.add_edges_from_no_data((don, i) for don in depends_on)
+
     transaction = {}
     method: Optional[str] = None
     dev_transaction: dict[str, str | None] = {}
@@ -30,24 +40,25 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
         if requirement not in versions and not data.optional:
             versions[requirement] = data.version
 
-    for node in nx.topological_sort(graph):
-        if node not in versions:
+    for node in rx.topological_sort(dependency_graph):
+        nodename = dependency_graph[node]
+        if nodename not in versions:
             continue
-        version = versions.get(node)
+        version = versions.get(nodename)
         if version is not None and "dev" in version:
-            dev_transaction[node] = version
+            dev_transaction[nodename] = version
             continue
 
         requirement_method = resolve_method(
-            versions.get(node), requirements[node].prefer_source
+            versions.get(nodename), requirements[nodename].prefer_source
         )
         if method is None or requirement_method == method:
             method = requirement_method
-            transaction.update({node: versions.get(node)})
+            transaction.update({nodename: versions.get(nodename)})
             continue
         execute_transaction(method, transaction, requirements, dev)
         method = requirement_method
-        transaction = {node: versions.get(node)}
+        transaction = {nodename: versions.get(nodename)}
     execute_transaction(method, transaction, requirements, dev)
     execute_transaction("pip-git", dev_transaction, requirements, dev)
 

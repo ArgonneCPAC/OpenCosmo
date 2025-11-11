@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def insert_derived_subgraph(
-    dependency_graph: rx.DiGraph,
+    dependency_graph: rx.PyDiGraph,
     requires: set[str],
     produces: set[str],
     replaced_node_index: int,
@@ -54,7 +54,7 @@ def build_dependency_graph(
 
 
 def replace_multi_producers(
-    graph: rx.DiGraph, derived_columns: Mapping[str, ConstructedColumn]
+    graph: rx.PyDiGraph, derived_columns: Mapping[str, ConstructedColumn]
 ):
     node_map = {name: i for i, name in enumerate(graph.nodes())}
     missing = set(derived_columns.keys()).difference(node_map.keys())
@@ -99,7 +99,7 @@ def validate_derived_columns(
 
 
 def validate_derived_units(
-    dependency_graph: rx.DiGraph,
+    dependency_graph: rx.PyDiGraph,
     derived_columns: dict[str, ConstructedColumn],
     units: dict[str, u.Unit],
 ):
