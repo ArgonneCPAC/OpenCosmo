@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
 import astropy.units as u
-import networkx as nx
 import numpy as np
 from astropy.table import QTable
 

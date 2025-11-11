@@ -587,7 +587,6 @@ dev = [
     { name = "ruff" },
     { name = "towncrier" },
     { name = "types-deprecated" },
-    { name = "types-networkx" },
 ]
 docs = [
     { name = "autodoc-pydantic" },
@@ -628,7 +627,6 @@ dev = [
     { name = "ruff", specifier = ">=0.9.4,<1.0.0" },
     { name = "towncrier", specifier = ">=24.8.0,<25.0.0" },
     { name = "types-deprecated", specifier = ">=1.2.15.20250304" },
-    { name = "types-networkx", specifier = ">=3.5.0.20250712,<4.0.0.0" },
 ]
 docs = [
     { name = "autodoc-pydantic", specifier = ">=2.2.0,<3.0.0" },
@@ -1136,18 +1134,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0e/67/eeefaaabb03b288aad85483d410452c8bbcbf8b2bd876b0e467ebd97415b/types_deprecated-1.2.15.20250304.tar.gz", hash = "sha256:c329030553029de5cc6cb30f269c11f4e00e598c4241290179f63cda7d33f719", size = 8015, upload-time = "2025-03-04T02:48:17.894Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/e3/c18aa72ab84e0bc127a3a94e93be1a6ac2cb281371d3a45376ab7cfdd31c/types_deprecated-1.2.15.20250304-py3-none-any.whl", hash = "sha256:86a65aa550ea8acf49f27e226b8953288cd851de887970fbbdf2239c116c3107", size = 8553, upload-time = "2025-03-04T02:48:16.666Z" },
-]
-
-[[package]]
-name = "types-networkx"
-version = "3.5.0.20250712"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/b3/e59b54e086ee20f97fb02d58896f49ee9b51fd45a4b26d7fb35405227d4f/types_networkx-3.5.0.20250712.tar.gz", hash = "sha256:7a85012d27617b6762ea42395783530dfbd37c99fa89123e001840ba801e9d4e", size = 65653, upload-time = "2025-07-12T03:19:13.981Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/37/89adad27b1653ad4c6cd9590a7db4d932384cc5b5450c8975ba2640aa05f/types_networkx-3.5.0.20250712-py3-none-any.whl", hash = "sha256:426246c2f09b88a9d7c302245ea55677a698e77281ce480781d336939ba65afb", size = 153228, upload-time = "2025-07-12T03:19:12.351Z" },
 ]
 
 [[package]]
