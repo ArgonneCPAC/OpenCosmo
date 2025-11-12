@@ -16,16 +16,6 @@ if TYPE_CHECKING:
     from opencosmo.units.handler import UnitHandler
 
 
-def insert_derived_subgraph(
-    dependency_graph: rx.PyDiGraph,
-    requires: set[str],
-    produces: set[str],
-    replaced_node_index: int,
-):
-    node_indices = dependency_graph.add_nodes_from(chain(requires, produces))
-    _ = dependency_graph.add_edges_from_no_data(product(requires, produces))
-
-
 def build_dependency_graph(
     derived_columns: Mapping[str, ConstructedColumn],
 ):
