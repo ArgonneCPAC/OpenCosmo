@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
     from .protocols import DataSchema
 
+#NOTE: PL: probably need to alter this once we have MPI read-ins working - really it's only the z-ranges that are going to cause problems here 
+
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
 from several ranks into a single schema that can be allocated by rank 0. Each 
@@ -332,7 +334,7 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     for child_name in all_child_names:
         child = children.get(child_name)
         z_range = get_z_range(child, comm)
-
+        #TODO: healpix map will break this
         new_dataset_schema = combine_dataset_schemas(
             children.get(child_name), comm, {"lightcone/z_range": z_range}
         )
@@ -340,6 +342,7 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     return new_schema
 
 
+#NOTE: This is going to cause problems - do we need to check if it's a map type and if so look at healpix_map['z_range']
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
     if ds is not None and ds.header is not None:
         z_ranges = comm.allgather(ds.header.lightcone["z_range"])

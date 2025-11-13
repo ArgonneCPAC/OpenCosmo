@@ -1,5 +1,6 @@
 from .collection import (
     Lightcone,
+    HealpixMap,
     SimulationCollection,
     StructureCollection,
     open_linked_files,
@@ -17,6 +18,7 @@ __all__ = [
     "StructureCollection",
     "SimulationCollection",
     "Lightcone",
+    "HealpixMap",
     "open_linked_files",
     "make_box",
     "make_cone",

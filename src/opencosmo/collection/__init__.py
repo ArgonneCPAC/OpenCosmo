@@ -1,5 +1,5 @@
 from .io import get_collection_type, open_simulation_files
-from .lightcone import Lightcone
+from .lightcone import Lightcone, HealpixMap
 from .protocols import Collection
 from .simulation import SimulationCollection
 from .structure import StructureCollection, open_linked_files
@@ -13,5 +13,6 @@ __all__ = [
     "open_simulation_files",
     "open_linked_files",
     "Lightcone",
+    "HealpixMap",
     "get_collection_type",
 ]
