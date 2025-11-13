@@ -246,25 +246,33 @@ class Dataset:
         Parameters
         ----------
         output: str, default="astropy"
-            The format to output the data in
+            The format to output the data in.
+            Currently supported are "astropy", "numpy", "pandas", "polars", "arrow"
 
         Returns
         -------
-        data: Table | Quantity | dict[str, ndarray] | ndarray
+        data: Any
             The data in this dataset.
         """
         verify_format(output)
 
         if self.__state.convention.value == "physical":
             scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
-            print(scale_factor)
             unit_kwargs = {"scale_factor": scale_factor}
         else:
             unit_kwargs = {}
 
         data = self.__state.get_data(
             unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
-        )  # table
+        )  # dict
+        if unpack:
+            data = {
+                key: value[0]
+                if isinstance(value, np.ndarray) and len(value) == 1
+                else value
+                for key, value in data.items()
+            }
+
         return convert_data(data, output)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
@@ -397,7 +405,8 @@ class Dataset:
             as the function. Otherwise the data will be returned directly.
 
         format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
@@ -409,6 +418,10 @@ class Dataset:
         result : Dataset | dict[str, np.ndarray | astropy.units.Quantity]
             The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
+        if format not in ["astropy", "numpy"]:
+            raise ValueError(
+                f"Evaluate only supports numpy and astropy format, got: {format}"
+            )
         kwarg_columns = set(evaluate_kwargs.keys()).intersection(self.columns)
         if kwarg_columns:
             raise ValueError(

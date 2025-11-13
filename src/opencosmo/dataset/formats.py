@@ -54,6 +54,11 @@ def convert_data(data: dict[str, np.ndarray], output_format: str):
 def __convert_to_astropy(data: dict[str, np.ndarray]) -> QTable:
     if len(data) == 1:
         return next(iter(data.values()))
+    if any(
+        (isinstance(d, u.Quantity) and d.isscalar) or not isinstance(d, np.ndarray)
+        for d in data.values()
+    ):
+        return data
 
     return QTable(data, copy=False)
 

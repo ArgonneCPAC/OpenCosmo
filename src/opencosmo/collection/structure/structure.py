@@ -399,7 +399,8 @@ class StructureCollection:
             will be returned directly.
 
         format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
@@ -407,6 +408,8 @@ class StructureCollection:
             it will be treated as an additional column.
 
         """
+        if format not in ["astropy", "numpy"]:
+            raise ValueError(f"Invalid format requested for data: {format}")
         if dataset is not None:
             datasets = dataset.split(".", 1)
             ds = self[datasets[0]]

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 from astropy.table import Column, QTable  # type: ignore
 from astropy.units import Quantity
 
+from opencosmo.dataset.formats import convert_data
 from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:
@@ -27,8 +28,11 @@ def visit_data(
     format: str,
     kwargs: dict[str, Any],
 ):
+    if format != "astropy":
+        data = convert_data(data, format)
+
     if vectorize:
-        return __visit_vectorize(function, data, format, kwargs)
+        return __visit_vectorize(function, data, kwargs)
     else:
         return __visit_rows_in_data(function, data, format, kwargs)
 
@@ -44,8 +48,8 @@ def visit_dataset(
     dataset = dataset.select(columns)
 
     if vectorize:
-        data = dict(dataset.get_data())
-        result = __visit_vectorize(function, data, format, evaluator_kwargs)
+        data = dict(dataset.get_data(format))
+        result = __visit_vectorize(function, data, evaluator_kwargs)
         if result is not None and not isinstance(result, dict):
             return {function.__name__: result}
         return result
@@ -92,7 +96,7 @@ def verify_for_lazy_evaluation(
 def __visit_rows_in_dataset(
     function: Callable,
     dataset: Dataset,
-    format="astropy",
+    format: str,
     kwargs: dict[str, Any] = {},
     iterable_kwargs: dict[str, Sequence] = {},
 ):
@@ -154,20 +158,11 @@ def __make_output(
 
 def __visit_vectorize(
     function: Callable,
-    data: dict[str, np.ndarray],
-    format: str = "astropy",
+    data: dict[str, Iterable] | Iterable,
     evaluator_kwargs: dict[str, Any] = {},
 ):
-    if format == "numpy":
-        data = {
-            key: arr.value if isinstance(arr, Quantity) else arr
-            for key, arr in data.items()
-        }
-
-    elif isinstance(data, Column):
-        data = {data.name: data.quantity}
-
     pars = signature(function).parameters
+
     if not isinstance(data, dict) or (len(data) > 1 and len(pars) == 1):
         return function(data, **evaluator_kwargs)
 

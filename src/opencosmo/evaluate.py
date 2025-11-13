@@ -23,11 +23,12 @@ def insert(
 def make_output_from_first_values(first_values: dict, n_rows: int):
     storage = {}
     new_first_values = {}
-    print(first_values)
     for name, value in first_values.items():
         shape: tuple[int, ...] = (n_rows,)
         dtype = type(value)
-        if isinstance(value, u.Quantity) and value.isscalar:
+        if not isinstance(value, np.ndarray):
+            new_first_values[name] = value
+        elif isinstance(value, u.Quantity) and value.isscalar:
             dtype = value.value.dtype
             new_first_values[name] = value
         elif isinstance(value, np.ndarray) and len(value) == 1:

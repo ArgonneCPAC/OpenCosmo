@@ -43,6 +43,13 @@ docs = [
 mpi = [
   "mpi4py>=3.1.0,<5.0.0"
 ]
+test = [
+    "pandas>=2.3.3",
+    "polars>=1.35.2",
+    "pyarrow>=21.0.0",
+    "pyxsim>=4.4.3",
+    "yt>=4.4.1",
+]
 test-mpi = [
   "mpi-pytest>=2025.4.0,<2026.0.0"
 ]

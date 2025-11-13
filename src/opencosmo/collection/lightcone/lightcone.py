@@ -308,15 +308,11 @@ class Lightcone(dict):
         If the dataset only contains a single column, it will be returned as an
         astropy.table.Column or a single numpy array.
 
-        This method does not cache data. Calling "get_data" always reads data
-        from disk, even if you have already called "get_data" in the past.
-        You can use :py:attr:`Dataset.data <opencosmo.Lightcone.data>` to return
-        data and keep it in memory.
-
         Parameters
         ----------
         output: str, default="astropy"
-            The format to output the data in
+            The format to output the data in. Currently supported are "astropy", "numpy",
+            "pandas", "polars", and "arrow"
 
         Returns
         -------
@@ -344,17 +340,7 @@ class Lightcone(dict):
         """
         Return the data in the dataset in astropy format. The value of this
         attribute is equivalent to the return value of
-        :code:`Dataset.get_data("astropy")`. However data retrieved via this
-        attribute will be cached, meaning further calls to
-        :py:attr:`Dataset.data <opencosmo.Lightcone.data>` should be instantaneous.
-
-        However there is one caveat. If you modify the table, those modifications will
-        persist if you later request the data again with this attribute. Calls to
-        :py:meth:`Lightcone.get_data <opencosmo.Lightcone.get_data>` will be unaffected,
-        and datasets generated from this dataset will not contain the modifications.
-        If you plan to modify the data in this table, you should use
-        :py:meth:`Lightcone.with_new_columns <opencosmo.Lightcone.with_new_columns>`.
-
+        :code:`Dataset.get_data("astropy")`.
 
         Returns
         -------
@@ -552,7 +538,8 @@ class Lightcone(dict):
 
         format: str, default = "astropy"
             The format of the data that is provided to your function. If "astropy", will be a dictionary of
-            astropy quantities. If "numpy", will be a dictionary of numpy arrays.
+            astropy quantities. If "numpy", will be a dictionary of numpy arrays. Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Lightcone.get_data>`
 
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)

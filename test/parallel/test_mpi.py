@@ -520,7 +520,9 @@ def test_evaluate_write(input_path, tmp_path):
 
     assert "fof_px" in ds.columns
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
-    assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+    assert np.all(
+        np.isclose(data["fof_px"], data["fof_halo_mass"] * data["fof_halo_com_vx"])
+    )
 
 
 @pytest.mark.timeout(20)
