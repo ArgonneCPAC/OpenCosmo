@@ -18,6 +18,7 @@ from astropy.table import QTable  # type: ignore
 
 from opencosmo.column.column import EvaluatedColumn
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
+from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
@@ -252,8 +253,7 @@ class Dataset:
         data: Table | Quantity | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
-        if output not in {"astropy", "numpy"}:
-            raise ValueError(f"Unknown output type {output}")
+        verify_format(output)
 
         if self.__state.convention.value == "physical":
             scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
@@ -264,27 +264,7 @@ class Dataset:
         data = self.__state.get_data(
             unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
         )  # table
-        if len(data) == 1 and unpack:  # unpack length-1 tables
-            data = {name: data[0] for name, data in data.items()}
-        elif len(data.colnames) == 1:
-            cn = data.colnames[0]
-            data = data[cn]
-
-        if output == "numpy":
-            if isinstance(data, u.Quantity):
-                data = data.value
-            elif isinstance(data, (QTable, dict)):
-                data = dict(data)
-                is_quantity = filter(
-                    lambda v: isinstance(data[v], u.Quantity), data.keys()
-                )
-                for colname in is_quantity:
-                    data[colname] = data[colname].value
-
-        if isinstance(data, dict) and len(data) == 1:
-            return next(iter(data.values()))
-
-        return data
+        return convert_data(data, output)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """

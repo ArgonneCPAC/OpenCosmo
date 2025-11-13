@@ -4,14 +4,12 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 import astropy.units as u
+import numpy as np
 from astropy.table import QTable
 
-if TYPE_CHECKING:
-    import numpy as np
 
-
-def verify_format(format: str):
-    match format:
+def verify_format(output_format: str):
+    match output_format:
         case "astropy":
             return
         case "numpy":  # these two are core dependencies
@@ -23,9 +21,9 @@ def verify_format(format: str):
         case "polars":
             import_name = "polars"
         case _:
-            raise ValueError(f"Unknown data format {format}")
+            raise ValueError(f"Unknown data output format {output_format}")
 
-    __verify_import(import_name, format)
+    __verify_import(import_name, output_format)
 
 
 def __verify_import(import_name: str, format_name: str):
@@ -37,8 +35,8 @@ def __verify_import(import_name: str, format_name: str):
         )
 
 
-def convert_data(data: dict[str, np.ndarray], format: str):
-    match format:
+def convert_data(data: dict[str, np.ndarray], output_format: str):
+    match output_format:
         case "astropy":
             return __convert_to_astropy(data)
         case "numpy":
@@ -50,25 +48,37 @@ def convert_data(data: dict[str, np.ndarray], format: str):
         case "arrow":
             return __convert_to_arrow(data)
         case _:
-            raise ValueError(f"Unknown data format {format}")
+            raise ValueError(f"Unknown data output format {output_format}")
 
 
 def __convert_to_astropy(data: dict[str, np.ndarray]) -> QTable:
+    if len(data) == 1:
+        return next(iter(data.values()))
+
     return QTable(data, copy=False)
 
 
-def __convert_to_numpy(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    converted_data = map(
-        lambda kv: (kv[0], kv[1].value if isinstance(kv[1], u.Quantity) else kv[1]),
-        data.items(),
+def __convert_to_numpy(
+    data: dict[str, np.ndarray],
+) -> dict[str, np.ndarray] | np.ndarray:
+    converted_data = dict(
+        map(
+            lambda kv: (kv[0], kv[1].value if isinstance(kv[1], u.Quantity) else kv[1]),
+            data.items(),
+        )
     )
-    return dict(converted_data)
+    if len(converted_data) == 1:
+        return next(iter(converted_data.values()))
+    return converted_data
 
 
 def __convert_to_pandas(data: dict[str, np.ndarray]):
     import pandas as pd
 
     numpy_data = __convert_to_numpy(data)
+    if isinstance(numpy_data, np.ndarray):  # only one column
+        return pd.Series(numpy_data, name=next(iter(data.keys())))
+
     return pd.DataFrame(numpy_data, copy=True)
 
 
@@ -76,6 +86,9 @@ def __convert_to_arrow(data: dict[str, np.ndarray]):
     import pyarrow as pa
 
     numpy_data = __convert_to_numpy(data)
+    if isinstance(numpy_data, np.ndarray):
+        return pa.array(numpy_data)
+
     converted_data = map(
         lambda kv: (kv[0], pa.array(kv[1])),
         data.items(),
@@ -86,5 +99,8 @@ def __convert_to_arrow(data: dict[str, np.ndarray]):
 def __convert_to_polars(data: dict[str, np.ndarray]):
     import polars as pl
 
-    data = __convert_to_numpy(data)
+    numpy_data = __convert_to_numpy(data)
+    if isinstance(numpy_data, np.ndarray):
+        return pl.Series(name=next(iter(data.keys())), values=numpy_data)
+
     return pl.from_dict(data)
