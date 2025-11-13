@@ -108,4 +108,4 @@ def __convert_to_polars(data: dict[str, np.ndarray]):
     if isinstance(numpy_data, np.ndarray):
         return pl.Series(name=next(iter(data.keys())), values=numpy_data)
 
-    return pl.from_dict(data)
+    return pl.from_dict(data)  # type: ignore
