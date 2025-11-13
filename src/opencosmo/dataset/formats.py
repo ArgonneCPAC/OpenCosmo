@@ -88,7 +88,7 @@ def __convert_to_pandas(data: dict[str, np.ndarray]):
 
 
 def __convert_to_arrow(data: dict[str, np.ndarray]):
-    import pyarrow as pa
+    import pyarrow as pa  # type: ignore
 
     numpy_data = __convert_to_numpy(data)
     if isinstance(numpy_data, np.ndarray):
