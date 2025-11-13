@@ -234,10 +234,9 @@ class Dataset:
         and numpy are core dependencies of OpenCosmo, the remaining formats
         require you to have the relevant libraries installed in your python
         environment. This method will check that it can import the necessary
-        libraries before attempting to read data.
-
-        Note that outputting as "polars" or "arrow" requires copying the data
-        out of its original numpy arrays, which will impact performance.
+        libraries before attempting to read data. Note that outputting as
+        "polars" or "arrow" requires copying the data out of its original
+        numpy arrays, which will impact performance.
 
         If the dataset only contains a single column, it will not be put in a table
         or dictionary. "astropy", "numpy" and "arrow" will return a single array
