@@ -7,7 +7,7 @@ import numpy as np
 from astropy.units import Quantity  # type: ignore
 
 from opencosmo import dataset as ds
-from opencosmo.dataset.evaluate import visit_dataset
+from opencosmo.dataset.evaluate import visit_data, visit_dataset
 from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:

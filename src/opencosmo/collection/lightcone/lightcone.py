@@ -325,7 +325,7 @@ class Lightcone(dict):
         if output not in {"astropy", "numpy"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = [ds.get_data(unpack=False) for ds in self.values()]
+        data = [ds.get_data(unpack=False) for ds in self.values() if len(ds) > 0]
         table = vstack(data, join_type="exact")
         if self.__ordered_by is not None:
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])

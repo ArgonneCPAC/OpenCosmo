@@ -10,8 +10,13 @@ import numpy as np
 from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import DerivedColumn
+from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.dataset.derived import (
+    build_derived_columns,
+    validate_derived_columns,
+)
 from opencosmo.dataset.handler import Hdf5Handler
+from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 from opencosmo.units import UnitConvention
@@ -23,6 +28,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
 
+    from opencosmo.column.column import ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
@@ -43,7 +49,7 @@ class DatasetState:
         self,
         raw_data_handler: Hdf5Handler,
         cache: ColumnCache,
-        derived_columns: dict[str, DerivedColumn],
+        derived_columns: dict[str, ConstructedColumn],
         unit_handler: UnitHandler,
         header: OpenCosmoHeader,
         columns: set[str],
@@ -233,7 +239,7 @@ class DatasetState:
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
-            .with_units("unitless", {}, {}, None, None)
+            .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
             .get_data(ignore_sort=True)
         )
         column_units = {
@@ -241,9 +247,14 @@ class DatasetState:
         }
 
         for colname in derived_names:
-            unit = self.__derived_columns[colname].get_units(column_units)
+            coldata = derived_data[colname]
+            unit = ""
+            if isinstance(coldata, u.Quantity):
+                unit = str(coldata.unit)
+                coldata = derived_data[colname].value
+
             attrs = {
-                "unit": str(unit),
+                "unit": unit,
                 "description": self.__derived_columns[colname].description,
             }
             coldata = derived_data[colname].value
@@ -284,66 +295,71 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        derived_update: dict[str, DerivedColumn] = {}
-        new_unit_handler = self.__unit_handler
+        from time import time
 
-        if inter := set(self.columns).intersection(new_columns.keys()):
+        derived_update: dict[str, DerivedColumn] = {}
+        existing_columns = set(self.columns)
+
+        if inter := existing_columns.intersection(new_columns.keys()):
             raise ValueError(f"Some columns are already in the dataset: {inter}")
 
-        in_memory_order = None
-        new_column_names = self.__columns.copy()
-        new_derived = {}
-        new_in_memory = {}
+        new_derived_columns = {}
+        new_in_memory_columns = {}
         new_in_memory_descriptions = {}
-        new_units = {}
 
         for colname, column in new_columns.items():
-            description = descriptions.get(colname, "None")
             match column:
-                case DerivedColumn():
-                    ancestor_columns = column.requires()
-                    missing = ancestor_columns.difference(ancestor_columns)
-                    if missing:
-                        raise ValueError(
-                            f"Missing columns {missing} required for derived column {colname}"
-                        )
-
-                    derived_column_unit = column.get_units(
-                        self.__unit_handler.base_units
-                    )
-                    new_units[colname] = derived_column_unit
-                    column.description = description
-                    new_derived[colname] = column
-                    new_column_names.add(colname)
+                case DerivedColumn() | EvaluatedColumn():
+                    column.description = descriptions.get(colname, "None")
+                    new_derived_columns[colname] = column
                 case np.ndarray():
                     if len(column) != len(self):
                         raise ValueError(
-                            f"In-memory columns must have the same length as the dataset!"
+                            f"New column {colname} does not have the same length as this dataset!"
                         )
-                    new_in_memory[colname] = column
-                    new_column_names.add(colname)
-                    new_in_memory_descriptions[colname] = description
-                    new_units[colname] = None
-                    if isinstance(column, u.Quantity):
-                        new_units[colname] = column.unit
+                    new_in_memory_descriptions[colname] = descriptions.get(
+                        colname, "None"
+                    )
+                    new_in_memory_columns[colname] = column
                 case _:
-                    raise ValueError(f"Unexpected new column type: {type(column)}")
-        if new_units:
+                    raise ValueError(
+                        f"Got an invalid new column of type {type(column)}"
+                    )
+
+        new_unit_handler = self.__unit_handler
+        new_cache = self.__cache
+        new_derived = self.__derived_columns
+        new_column_names: set[str] = set()
+
+        if new_derived_columns:
+            new_units = validate_derived_columns(
+                self.__derived_columns | new_derived_columns,
+                existing_columns.union(new_in_memory_columns.keys()).difference(
+                    self.__derived_columns.keys()
+                ),
+                self.__unit_handler.base_units,
+            )
+            new_derived |= new_derived_columns
+            for colname, derived in new_derived.items():
+                if (prod := derived.produces) is not None:
+                    new_column_names |= prod
+                else:
+                    new_column_names.add(colname)
             new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
-        new_derived = self.__derived_columns | new_derived
-        new_cache = self.__cache
-
-        if new_in_memory and (sorted_index := self.get_sorted_index()) is not None:
-            in_memory_order = np.argsort(sorted_index)
-            new_in_memory = {
-                name: data[in_memory_order] for name, data in new_in_memory.items()
-            }
-
-        if new_in_memory:
-            new_cache = self.__cache.with_data(
-                new_in_memory, descriptions=new_in_memory_descriptions
+        if new_in_memory_columns:
+            new_unit_handler = validate_in_memory_columns(
+                new_in_memory_columns, self.__unit_handler, len(self)
             )
+            new_in_memory_columns = resort(
+                new_in_memory_columns, self.get_sorted_index()
+            )
+            new_cache = new_cache.with_data(
+                new_in_memory_columns, descriptions=new_in_memory_descriptions
+            )
+            new_column_names |= set(new_in_memory_columns.keys())
+
+        new_column_names = set(self.columns).union(new_column_names)
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
@@ -365,44 +381,13 @@ class DatasetState:
         ):
             derived_names.add(self.__sort_by[0])
 
-        ancestors: set[str] = reduce(
-            lambda acc, der: acc.union(der.requires()),
-            self.__derived_columns.values(),
-            set(),
+        return build_derived_columns(
+            self.__derived_columns,
+            self.__cache,
+            self.__raw_data_handler,
+            self.__unit_handler,
+            unit_kwargs,
         )
-        ad = ancestors.intersection(self.__derived_columns.keys())
-        while ad:
-            derived_names = derived_names.union(ad)
-            for col in ad:
-                ancestors.remove(col)
-                ancestors = ancestors.union(self.__derived_columns[col].requires())
-            ad = ancestors.intersection(derived_names)
-
-        cached_data = self.__cache.get_columns(ancestors)
-        remaining_ancestors = ancestors.difference(cached_data.keys())
-        raw_ancestors = ancestors.intersection(remaining_ancestors)
-
-        raw_data = self.__raw_data_handler.get_data(raw_ancestors)
-        data = cached_data | self.__unit_handler.apply_units(raw_data, unit_kwargs)
-        seen: set[str] = set()
-
-        for name in cycle(derived_names):
-            if derived_names.issubset(data.keys()):
-                break
-            elif name in seen:
-                # We're stuck in a loop
-                raise ValueError(
-                    "Something went wrong when trying to instatiate derived columns!"
-                )
-            elif name in data:
-                continue
-            elif set(data.keys()).issuperset(self.__derived_columns[name].requires()):
-                data[name] = self.__derived_columns[name].evaluate(data)
-                seen = set()
-            else:
-                seen.add(name)
-
-        return data
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
         im_data = {}
