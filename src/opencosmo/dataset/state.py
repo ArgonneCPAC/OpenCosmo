@@ -202,22 +202,25 @@ class DatasetState:
             )
 
         # keep ordering
-        output = QTable(data, copy=False)
 
-        data_columns = set(output.columns)
+        data_columns = set(data.keys())
 
         if metadata_columns:
-            output.update(self.__raw_data_handler.get_metadata(metadata_columns))
+            data.update(self.__raw_data_handler.get_metadata(metadata_columns))
 
         if not ignore_sort and self.__sort_by is not None:
-            order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
-            output = output[order]
+            sort_by = data[self.__sort_by[0]]
+            order = np.argsort(sort_by)
+            if self.__sort_by[1]:
+                order = order[::-1]
+
+            data = {key: value[order] for key, value in data.items()}
 
         new_order = [c for c in self.columns]
         if metadata_columns:
             new_order.extend(metadata_columns)
 
-        return output[new_order]
+        return {name: data[name] for name in new_order}
 
     def get_metadata(self, columns=[]):
         return self.__raw_data_handler.get_metadata(columns)
@@ -257,7 +260,6 @@ class DatasetState:
                 "unit": unit,
                 "description": self.__derived_columns[colname].description,
             }
-            coldata = derived_data[colname].value
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )

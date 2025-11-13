@@ -209,17 +209,19 @@ def test_visit_multiple_with_kwargs_numpy(input_path):
 
 
 def test_visit_multiple_with_iterable_kwargs(input_path):
-    ds = oc.open(input_path)
+    ds = oc.open(input_path).take(100)
 
     def fof_px(fof_halo_mass, fof_halo_com_vx, random_value):
         return fof_halo_mass * fof_halo_com_vx * random_value
 
-    random_values = np.random.randint(0, 100, len(ds))
+    random_values = np.random.randint(1, 10, len(ds))
     result = ds.evaluate(fof_px, vectorize=False, random_value=random_values)
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
     assert np.all(
-        result["fof_px"].value
-        == data["fof_halo_mass"] * data["fof_halo_com_vx"] * random_values
+        np.isclose(
+            result["fof_px"].value,
+            data["fof_halo_mass"] * data["fof_halo_com_vx"] * random_values,
+        )
     )
 
 

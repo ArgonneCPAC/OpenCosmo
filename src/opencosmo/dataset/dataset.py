@@ -18,6 +18,7 @@ from astropy.table import QTable  # type: ignore
 
 from opencosmo.column.column import EvaluatedColumn
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
+from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
@@ -228,32 +229,31 @@ class Dataset:
         this function until you have performed any transformations you plan to
         on the data.
 
-        You can get the data in two formats, "astropy" (the default) and "numpy".
-        "astropy" format will return the data as an astropy table with associated
-        units. "numpy" will return the data as a dictionary of numpy arrays. The
-        numpy values will be in the associated unit convention, but no actual
-        units will be attached.
+        The method supports output into several different formats, including
+        "astropy", "numpy", "pandas", "polars", and "pyarrow". Although astropy
+        and numpy are core dependencies of OpenCosmo, the remaining formats
+        require you to have the relevant libraries installed in your python
+        environment. This method will check that it can import the necessary
+        libraries before attempting to read data. Note that outputting as
+        "polars" or "arrow" requires copying the data out of its original
+        numpy arrays, which will impact performance.
 
-        If the dataset only contains a single column, it will be returned as an
-        astropy quantity (if it has units) or numpy array.
-
-        This method does not cache data. Calling "get_data" always reads data
-        from disk, even if you have already called "get_data" in the past.
-        You can use :py:attr:`Dataset.data <opencosmo.Dataset.data>` to return
-        data and keep it in memory.
+        If the dataset only contains a single column, it will not be put in a table
+        or dictionary. "astropy", "numpy" and "arrow" will return a single array
+        in this case, while "polars" and "pandas" will return a Series object.
 
         Parameters
         ----------
         output: str, default="astropy"
-            The format to output the data in
+            The format to output the data in.
+            Currently supported are "astropy", "numpy", "pandas", "polars", "arrow"
 
         Returns
         -------
-        data: Table | Quantity | dict[str, ndarray] | ndarray
+        data: Any
             The data in this dataset.
         """
-        if output not in {"astropy", "numpy"}:
-            raise ValueError(f"Unknown output type {output}")
+        verify_format(output)
 
         if self.__state.convention.value == "physical":
             scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
@@ -263,28 +263,16 @@ class Dataset:
 
         data = self.__state.get_data(
             unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
-        )  # table
-        if len(data) == 1 and unpack:  # unpack length-1 tables
-            data = {name: data[0] for name, data in data.items()}
-        elif len(data.colnames) == 1:
-            cn = data.colnames[0]
-            data = data[cn]
+        )  # dict
+        if unpack:
+            data = {
+                key: value[0]
+                if isinstance(value, np.ndarray) and len(value) == 1
+                else value
+                for key, value in data.items()
+            }
 
-        if output == "numpy":
-            if isinstance(data, u.Quantity):
-                data = data.value
-            elif isinstance(data, (QTable, dict)):
-                data = dict(data)
-                is_quantity = filter(
-                    lambda v: isinstance(data[v], u.Quantity), data.keys()
-                )
-                for colname in is_quantity:
-                    data[colname] = data[colname].value
-
-        if isinstance(data, dict) and len(data) == 1:
-            return next(iter(data.values()))
-
-        return data
+        return convert_data(data, output)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -416,7 +404,8 @@ class Dataset:
             as the function. Otherwise the data will be returned directly.
 
         format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
@@ -428,6 +417,10 @@ class Dataset:
         result : Dataset | dict[str, np.ndarray | astropy.units.Quantity]
             The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
+        if format not in ["astropy", "numpy"]:
+            raise ValueError(
+                f"Evaluate only supports numpy and astropy format, got: {format}"
+            )
         kwarg_columns = set(evaluate_kwargs.keys()).intersection(self.columns)
         if kwarg_columns:
             raise ValueError(
