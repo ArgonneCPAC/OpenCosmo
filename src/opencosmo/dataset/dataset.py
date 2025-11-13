@@ -257,6 +257,7 @@ class Dataset:
 
         if self.__state.convention.value == "physical":
             scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
+            print(scale_factor)
             unit_kwargs = {"scale_factor": scale_factor}
         else:
             unit_kwargs = {}

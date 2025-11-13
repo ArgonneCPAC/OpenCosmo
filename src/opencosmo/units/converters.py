@@ -167,12 +167,12 @@ def get_scale_factor(dataset: "DatasetState", cosmology, redshift):
     columns = set(dataset.columns)
     for column in KNOWN_SCALEFACTOR_COLUMNS:
         if column in columns:
-            col = dataset.select(column).get_data()[column].data
+            col = dataset.select(column).get_data("numpy")[column]
             return col
 
     for column in KNOWN_REDSHIFT_COLUMNS:
         if column in columns:
-            col = dataset.select(column).get_data()[column].data
+            col = dataset.select(column).get_data("numpy")[column]
             return 1 / (1 + col)
 
     return cosmology.scale_factor(redshift)

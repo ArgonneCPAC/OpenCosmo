@@ -260,7 +260,6 @@ class DatasetState:
                 "unit": unit,
                 "description": self.__derived_columns[colname].description,
             }
-            coldata = derived_data[colname].value
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )

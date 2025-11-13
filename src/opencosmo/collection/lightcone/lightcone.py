@@ -4,18 +4,19 @@ from functools import cached_property, reduce
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
-import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
+from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 
 if TYPE_CHECKING:
+    import astropy.units as u  # type: ignore
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
     from astropy.table import Table
@@ -322,24 +323,19 @@ class Lightcone(dict):
         data: Table | Column | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
-        if output not in {"astropy", "numpy"}:
-            raise ValueError(f"Unknown output type {output}")
+        verify_format(output)
 
         data = [ds.get_data(unpack=False) for ds in self.values() if len(ds) > 0]
         table = vstack(data, join_type="exact")
+
         if self.__ordered_by is not None:
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
 
         table.remove_columns(self.__hidden)
-
-        if len(table.colnames) == 1:
-            table = next(table.itercols())
-
-        if output == "numpy":
-            if isinstance(table, (u.Quantity, Column)):
-                return table.value
-            else:
-                return {name: col.value for name, col in table.items()}
+        if output != "astropy":
+            return convert_data(dict(table), output)
+        elif len(table.columns) == 1:
+            return next(iter(dict(table).values()))
 
         return table
 
