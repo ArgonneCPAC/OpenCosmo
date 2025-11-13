@@ -229,19 +229,19 @@ class Dataset:
         this function until you have performed any transformations you plan to
         on the data.
 
-        You can get the data in two formats, "astropy" (the default) and "numpy".
-        "astropy" format will return the data as an astropy table with associated
-        units. "numpy" will return the data as a dictionary of numpy arrays. The
-        numpy values will be in the associated unit convention, but no actual
-        units will be attached.
+        The method supports output into several different formats, including
+        "astropy", "numpy", "pandas", "polars", and "pyarrow". Although astropy
+        and numpy are core dependencies of OpenCosmo, the remaining formats
+        require you to have the relevant libraries installed in your python
+        environment. This method will check that it can import the necessary
+        libraries before attempting to read data.
 
-        If the dataset only contains a single column, it will be returned as an
-        astropy quantity (if it has units) or numpy array.
+        Note that outputting as "polars" or "arrow" requires copying the data
+        out of its original numpy arrays, which will impact performance.
 
-        This method does not cache data. Calling "get_data" always reads data
-        from disk, even if you have already called "get_data" in the past.
-        You can use :py:attr:`Dataset.data <opencosmo.Dataset.data>` to return
-        data and keep it in memory.
+        If the dataset only contains a single column, it will not be put in a table
+        or dictionary. "astropy", "numpy" and "arrow" will return a single array
+        in this case, while "polars" and "pandas" will return a Series object.
 
         Parameters
         ----------
