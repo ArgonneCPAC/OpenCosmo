@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, 
 
 import astropy.units as u  # type: ignore
 import healsparse as hsp
+import healpy as hp
 import numpy as np
 from astropy.table import Column, vstack  # type: ignore
 
@@ -83,6 +84,12 @@ class HealpixMap(dict):
         self.__full_sky = full_sky
         self.__z_range = z_range
         self.__ordering = ordering
+
+        columns: set[str] = reduce(
+            lambda left, right: left.union(set(right.columns)), self.values(), set()
+        )
+        if len(columns) != len(next(iter(self.values())).columns):
+            raise ValueError("Not all map datasets have the same columns!")
 
         header = next(iter(self.values())).header
         self.__header = header
@@ -291,7 +298,7 @@ class HealpixMap(dict):
             for name, col in table.items():
                 if name != "pixel":
                     hsp_out = hsp.HealSparseMap.make_empty(
-                        self.nside_lr, self.nside, np.float64, nest=True
+                        self.nside_lr, self.nside,dtype=np.float32
                     )
                     hsp_out[table["pixel"].value] = col.value
                     dict_maps[name] = hsp_out
@@ -571,13 +578,8 @@ class HealpixMap(dict):
         columns = set(columns)
         hidden = self.__hidden
 
-        if "pixel" not in columns:
-            columns.add("pixel")
-            hidden = hidden.union({"pixel"})
-
         if self.__ordered_by is not None and self.__ordered_by[0] not in columns:
             columns.add(self.__ordered_by[0])
-            hidden = hidden.union({self.__ordered_by[0]})
 
         return self.__map("select", columns, hidden=hidden)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 import astropy.units as u  # type: ignore
-import healpix as hp
+import healpy as hp
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 
