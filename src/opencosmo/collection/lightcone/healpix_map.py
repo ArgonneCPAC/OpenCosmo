@@ -5,6 +5,7 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
 import astropy.units as u  # type: ignore
+import healsparse as hsp
 import numpy as np
 from astropy.table import Column, vstack  # type: ignore
 
@@ -52,21 +53,8 @@ def take_from_sorted(
     return sorted_indices
 
 
-
-def with_pixel_column(dataset: Dataset):
-    """
-    Ensures a column exists called "redshift" which contains the redshift of the objects
-    in the lightcone.
-    """
-    if "pixel" in dataset.columns:
-        return dataset
-    raise ValueError(
-        "Unable to find a pixel column for this map dataset"
-    )
-
-
-#TODO: do I need to initialize the nside etc using the input dataset and assert that these are all identical?
-# want to assert that ordering is "NESTED" exactly. 
+# TODO: do I need to initialize the nside etc using the input dataset and assert that these are all identical?
+# want to assert that ordering is "NESTED" exactly.
 class HealpixMap(dict):
     """
     A lightcone contains two or more datasets that are part of a lightcone. Typically
@@ -82,18 +70,20 @@ class HealpixMap(dict):
         nside: int,
         nside_lr: int,
         ordering: str,
-        full_sky: bool,        
+        full_sky: bool,
         z_range: tuple[float, float],
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
     ):
-
-        datasets = {k: with_pixel_column(ds) for k, ds in datasets.items()}
+        if any("pixel" not in dataset.meta_columns for dataset in datasets.values()):
+            raise ValueError("Missing a pixel column for this map!")
         self.update(datasets)
+        self.__nside = nside
+        self.__nside_lr = nside_lr
+        self.__full_sky = full_sky
+        self.__z_range = z_range
+        self.__ordering = ordering
 
-        columns: set[str] = reduce(
-            lambda left, right: left.union(set(right.columns)), self.values(), set()
-        )
         header = next(iter(self.values())).header
         self.__header = header
         if hidden is None:
@@ -101,6 +91,26 @@ class HealpixMap(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
+
+    @property
+    def z_range(self):
+        return self.__z_range
+
+    @property
+    def nside(self):
+        return self.__nside
+
+    @property
+    def nside_lr(self):
+        return self.__nside_lr
+
+    @property
+    def ordering(self):
+        return self.__ordering
+
+    @property
+    def full_sky(self):
+        return self.__full_sky
 
     def __repr__(self):
         """
@@ -118,9 +128,7 @@ class HealpixMap(dict):
         table_repr = repr_ds.data.__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
-        head = (
-            f"OpenCosmo Healpix Map Dataset (length={length}, "
-        )
+        head = f"OpenCosmo Healpix Map Dataset (length={length}, "
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
 
@@ -246,40 +254,48 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    #NOTE: PL altered this to a healsparse or healpix map
+    # NOTE: PL altered this to a healsparse or healpix map
     def get_data(self, output="healsparse"):
         if output not in {"healsparse", "healpix"}:
             raise ValueError(f"Unknown output type {output}")
 
-        data = [ds.get_data(unpack=False) for ds in self.values()]
+        data = [
+            ds.get_data(unpack=False, metadata_columns=["pixel"])
+            for ds in self.values()
+        ]
         table = vstack(data, join_type="exact")
-        table.sort("pixel", reverse=False) #NOTE: we could here give an option to convert to ring-format otput if we like
+        table.sort(
+            "pixel", reverse=False
+        )  # NOTE: we could here give an option to convert to ring-format otput if we like
 
-        if output=="healpix":
-            if (self.__len__() != hp.nside2npix(self.nside))
-            raise ValueError(f"healpix type chosen but length of dataset doesn't match nside value") 
-            #TODO assert length of dataset is hp.nside2npix size (not sure if self.__len__() gets me what i want)
+        if output == "healpix":
+            if self.__len__() != hp.nside2npix(self.nside):
+                raise ValueError(
+                    f"healpix type chosen but length of dataset doesn't match nside value"
+                )
+            # TODO assert length of dataset is hp.nside2npix size (not sure if self.__len__() gets me what i want)
 
         if len(table.colnames) == 1:
             table = next(table.itercols())
 
-        #TODO: let's output this to either a healpix map (numpy array) or healsparse map format, to do this we need the pixel number to be 
+        # TODO: let's output this to either a healpix map (numpy array) or healsparse map format, to do this we need the pixel number to be
         # input as a hidden column (it will be removed for healpix maps after sorting, and healsparse maps order it internally)
         if output == "healpix":
             if isinstance(table, (u.Quantity, Column)):
                 return table.value
             else:
-                table.remove_columns(self.__hidden) 
+                table.remove_columns(self.__hidden)
                 return {name: col.value for name, col in table.items()}
-        elif output=="healsparse": 
+        elif output == "healsparse":
             dict_maps = {}
             for name, col in table.items():
-                if name!='pixel':
-                    hsp_out = healsparse.HealSparseMap.make_empty(self.nside_lr, self.nside, np.float64, nest=True)
-                    hsp_out[table['pixel'].value] = col.value 
-                    dict_maps[name]= hsp_out
+                if name != "pixel":
+                    hsp_out = hsp.HealSparseMap.make_empty(
+                        self.nside_lr, self.nside, np.float64, nest=True
+                    )
+                    hsp_out[table["pixel"].value] = col.value
+                    dict_maps[name] = hsp_out
             return dict_maps
-
 
     @property
     def data(self):
@@ -291,7 +307,7 @@ class HealpixMap(dict):
 
         for target in targets:
             ds = open_single_dataset(target)
-            #TODO: check if we need some equivalent here
+            # TODO: check if we need some equivalent here
             if not isinstance(ds, Lightcone) or len(ds.keys()) != 1:
                 raise ValueError(
                     "Lightcones can only contain datasets (not collections)"
@@ -303,7 +319,6 @@ class HealpixMap(dict):
             datasets[key] = next(iter(ds.values()))
 
         return cls(datasets)
-
 
     def __map(
         self,
@@ -330,14 +345,23 @@ class HealpixMap(dict):
             )
 
         if construct:
-            return HealpixMap(output, self.nside, self.nside_lr, self.ordering, self.full_sky, self.z_range, self.__hidden, self.__ordered_by)
+            return HealpixMap(
+                output,
+                self.nside,
+                self.nside_lr,
+                self.ordering,
+                self.full_sky,
+                self.z_range,
+                self.__hidden,
+                self.__ordered_by,
+            )
         return output
 
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
     def make_schema(self) -> LightconeSchema:
-        schema = LightconeSchema() #NOTE: so far we're keeping the lightcone schema
+        schema = LightconeSchema()  # NOTE: so far we're keeping the lightcone schema
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
             ds_schema.header = ds_schema.header
@@ -521,7 +545,7 @@ class HealpixMap(dict):
         """
         yield from chain.from_iterable(v.rows() for v in self.values())
 
-    #NOTE: PL: pixel number is a required element so we can understand sky coverage
+    # NOTE: PL: pixel number is a required element so we can understand sky coverage
     def select(self, columns: str | Iterable[str]) -> Self:
         """
         Create a new dataset from a subset of columns in this dataset.
@@ -556,7 +580,6 @@ class HealpixMap(dict):
             hidden = hidden.union({self.__ordered_by[0]})
 
         return self.__map("select", columns, hidden=hidden)
-
 
     def drop(self, columns: str | Iterable[str]) -> Self:
         """
@@ -661,9 +684,16 @@ class HealpixMap(dict):
                 output[name] = dataset.take_range(
                     clipped_starts[i] - starts[i], clipped_ends[i] - starts[i]
                 )
-        return HealpixMap(output, self.nside, self.nside_lr, self.ordering, self.full_sky, self.z_range, self.__hidden, self.__ordered_by)
-
-
+        return HealpixMap(
+            output,
+            self.nside,
+            self.nside_lr,
+            self.ordering,
+            self.full_sky,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+        )
 
     def take_rows(self, rows: np.ndarray):
         """
@@ -720,8 +750,16 @@ class HealpixMap(dict):
             if len(split) > 0:
                 output[name] = dataset.take_rows(split - rs)
             rs += len(dataset)
-        return HealpixMap(output, self.nside, self.nside_lr, self.ordering, self.full_sky, self.z_range, self.__hidden, self.__ordered_by)
-
+        return HealpixMap(
+            output,
+            self.nside,
+            self.nside_lr,
+            self.ordering,
+            self.full_sky,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+        )
 
     def with_new_columns(
         self,
@@ -750,13 +788,30 @@ class HealpixMap(dict):
             columns_input = raw_columns | derived
             new_dataset = ds.with_new_columns(descriptions, **columns_input)
             new_datasets[ds_name] = new_dataset
-        return HealpixMap(new_datasets, self.nside, self.nside_lr, self.ordering, self.full_sky, self.z_range, self.__hidden, self.__ordered_by)
-
+        return HealpixMap(
+            new_datasets,
+            self.nside,
+            self.nside_lr,
+            self.ordering,
+            self.full_sky,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+        )
 
     def sort_by(self, column: str, invert: bool = False):
         if column not in self.columns:
             raise ValueError(f"Column {column} does not exist in this dataset!")
-        return HealpixMap(dict(self), self.nside, self.nside_lr, self.ordering, self.full_sky, self.z_range, self.__hidden, self.__ordered_by)
+        return HealpixMap(
+            dict(self),
+            self.nside,
+            self.nside_lr,
+            self.ordering,
+            self.full_sky,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+        )
 
     def with_units(
         self,
@@ -764,7 +819,8 @@ class HealpixMap(dict):
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Self:
-        r"""
-        """
+        r""" """
 
-        raise NotImplementedError("Unit conversions not supported on maps, these are integrated over redshift so conversions are non-trivial!")
+        raise NotImplementedError(
+            "Unit conversions not supported on maps, these are integrated over redshift so conversions are non-trivial!"
+        )

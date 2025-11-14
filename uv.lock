@@ -284,6 +284,39 @@ wheels = [
 ]
 
 [[package]]
+name = "healsparse"
+version = "1.11.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "astropy" },
+    { name = "hpgeom" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/27/b3/107766e21d622dfa001779716aa179f950a20222e8df836cb57b33d7142f/healsparse-1.11.1.tar.gz", hash = "sha256:e52c3054c906cca39c32be31fb97398c1a2cfa172d22a958816e962e602ae127", size = 126278, upload-time = "2025-03-03T23:01:24.76Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/42/3c/cccb7cbc2900b101e565e5ce8c10d6f6ea11418a82586cb58f73044685f4/healsparse-1.11.1-py3-none-any.whl", hash = "sha256:dfcab7635059abcbbb0b247a8319e96fb68a9c27b7f9f6eef886a5325ba987da", size = 64944, upload-time = "2025-03-03T23:01:22.894Z" },
+]
+
+[[package]]
+name = "hpgeom"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a1/7b/4b5d38f4774477a1af3d3a2e200f54e7ebe6a7405e220d2bc46006b8c07f/hpgeom-1.4.0.tar.gz", hash = "sha256:95f7b355a4ca9e923e7b37f13f14c828670435645c51fb41e92223894532a26e", size = 147819, upload-time = "2024-10-07T20:53:57.73Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/51/827a48bbe613b5216cf84eb69281c098eee02c9bc324116eef11c8037c17/hpgeom-1.4.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:5650f5be65f3aecf9b86fce8fe4b22895e0b3480fb3ecfa2ffc3b7fa1138a4e9", size = 66781, upload-time = "2024-10-07T20:53:42.612Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/70/ab872cea239c4934fc90e2ea9da5f34a1a9f7bd6b640cda16c5f7ac67a5a/hpgeom-1.4.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:1429d101db6342febc40fca5eb5d407603fe2af4cda3b3bf9ddb6173b0c058fd", size = 63061, upload-time = "2024-10-07T20:53:43.824Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/22/13c4bf82b11cd7bf4afa6c70fdefaaefab99117f59ef0924f8352432f7c5/hpgeom-1.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:91abaf5841215dc8bcccd194f0d7351f7bd7163ec6ff69449abfb20a76250506", size = 154082, upload-time = "2024-10-07T20:53:45.137Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/1c/1d2ee336410ca257fcef31952cb0d8d3791c92affc1af05f5b209987cb38/hpgeom-1.4.0-cp311-cp311-win_amd64.whl", hash = "sha256:8f3af4974d86e8d922dd5b81badb93e2d9dcc068538bd93eab002a23ebd9f7f2", size = 65698, upload-time = "2024-10-07T20:53:46.238Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/36/415c1a8483f827360bad8fb111c10244970b3e9c5845e2fdb78ea0dd4091/hpgeom-1.4.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:e70c81bf01c6b2bbe417a4b164d0effb349259b9ddcaed81a14b02a57a3a13b6", size = 66463, upload-time = "2024-10-07T20:53:47.626Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/09/5b96961f4d48156685b1a998c6c243cfad562d9304344f70b9ddd82b92b7/hpgeom-1.4.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:8c73de4b08abf736b2dadeca4a6428b514df0c9387bc560e7428ef7a2ae5b723", size = 62918, upload-time = "2024-10-07T20:53:48.977Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/0c/ef330cf846111482179af71f5af311cd381c58a40b7a787017947017a73c/hpgeom-1.4.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:adc5e9a27c5da2219c1ef76c6ddf2ed4f74ea217e3a639d430e84a567de6ec0c", size = 156454, upload-time = "2024-10-07T20:53:50.043Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/bb/f9a433c4fe2dae2d6329caac97e34a1825d6632bc88937f91cb5d99e61cf/hpgeom-1.4.0-cp312-cp312-win_amd64.whl", hash = "sha256:56b75fea7ff008e40a1acbe37ab112a6e0d3d3d018a16606ad12b93cd79412c3", size = 65914, upload-time = "2024-10-07T20:53:51.149Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.12"
 source = { registry = "https://pypi.org/simple" }
@@ -565,7 +598,7 @@ wheels = [
 
 [[package]]
 name = "opencosmo"
-version = "0.10.0a1"
+version = "1.0.0a2"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
@@ -574,6 +607,7 @@ dependencies = [
     { name = "h5py" },
     { name = "hdf5plugin" },
     { name = "healpy" },
+    { name = "healsparse" },
     { name = "networkx" },
     { name = "numba" },
     { name = "numpy" },
@@ -618,6 +652,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.12.1,<4.0.0" },
     { name = "hdf5plugin", specifier = ">=5.0.0,<6.0.0" },
     { name = "healpy", specifier = ">=1.18.1,<2.0.0" },
+    { name = "healsparse", specifier = "==1.11.1" },
     { name = "networkx", specifier = ">=3.5,<4.0" },
     { name = "numba", specifier = ">=0.62.1" },
     { name = "numpy", specifier = ">=1.26" },

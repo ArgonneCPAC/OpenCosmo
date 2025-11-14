@@ -17,7 +17,6 @@ from pydantic import (
     model_validator,
 )
 
-
 from opencosmo.units import UnitConvention
 
 from .cosmology import CosmologyParameters
@@ -214,6 +213,7 @@ class LightconeParams(BaseModel):
             return {k: empty_string_to_none(v) for k, v in data.items()}
         return data
 
+
 class MapParams(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "healpix_map"
@@ -231,6 +231,12 @@ class MapParams(BaseModel):
             return {k: empty_string_to_none(v) for k, v in data.items()}
         return data
 
+    @field_validator("full_sky", mode="before")
+    @classmethod
+    def numpy_bool_to_base(cls, value):
+        if isinstance(value, np.bool_):
+            return bool(value)
+        return value
 
 
 ORIGIN_PARAMETERS = {
@@ -250,7 +256,7 @@ DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
     "galaxy_particles": {},
     "halo_profiles": {},
     "diffsky_fits": {"diffsky_versions": DiffskyVersionInfo},
-    "healpix_map": {},
+    "healpix_map": {"map_params": MapParams},
 }
 
 register_units(

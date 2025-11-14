@@ -10,17 +10,18 @@ import opencosmo as oc
 
 @pytest.fixture
 def healpix_map_path(map_path):
-    return map_path / "test_map_small.hdf5"
+    return map_path / "test_map.hdf5"
+
 
 @pytest.fixture
 def all_files():
-    return ["test_map_small.hdf5"]
+    return ["test_map.hdf5"]
+
 
 @pytest.fixture
 def structure_maps(map_path, all_files):
     return [map_path / f for f in all_files]
 
-def test_lightcone_structure_collection_open(structure_600):
-    c = oc.open(*structure_maps)
-    assert isinstance(c, oc.StructureCollection)
 
+def test_open_single_map(healpix_map_path):
+    c = oc.open(healpix_map_path)
