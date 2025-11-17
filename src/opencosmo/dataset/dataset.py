@@ -364,6 +364,7 @@ class Dataset:
         vectorize=False,
         insert=False,
         format="astropy",
+        chunk_by_index: bool = False,
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
         """
@@ -426,19 +427,19 @@ class Dataset:
             raise ValueError(
                 "Keyword arguments cannot have the same name as columns in your dataset!"
             )
-
+        strategy = evaluate_kwargs.pop(
+            "strategy", "row_wise" if not vectorize else "vectorize"
+        )
         if not insert:
-            output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
+            output = visit_dataset(func, strategy, format, evaluate_kwargs, self)
             return output
 
-        required_columns, output_names = verify_for_lazy_evaluation(
-            func, self, evaluate_kwargs
+        evaluated_column = verify_for_lazy_evaluation(
+            func, strategy, format, evaluate_kwargs, self
         )
-        column = EvaluatedColumn(
-            func, required_columns, output_names, evaluate_kwargs, format, vectorize
+        return self.with_new_columns(
+            descriptions={}, **{func.__name__: evaluated_column}
         )
-
-        return self.with_new_columns(descriptions={}, **{func.__name__: column})
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """

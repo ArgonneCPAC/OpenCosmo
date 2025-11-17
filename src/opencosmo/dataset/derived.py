@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from opencosmo.column.cache import ColumnCache
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.dataset.handler import Hdf5Handler
+    from opencosmo.index import DataIndex
     from opencosmo.units.handler import UnitHandler
 
 
@@ -112,6 +113,7 @@ def build_derived_columns(
     hdf5_handler: Hdf5Handler,
     unit_handler: UnitHandler,
     unit_kwargs: dict,
+    index: DataIndex,
 ) -> dict[str, np.ndarray]:
     """
     Build any derived columns that are present in this dataset. Also returns any columns that
@@ -158,7 +160,7 @@ def build_derived_columns(
             produces = set((colname,))
         if all(name in data for name in produces):
             continue
-        output = derived_columns[colname].evaluate(data)
+        output = derived_columns[colname].evaluate(data, index)
         if isinstance(output, dict):
             data = data | output
         else:

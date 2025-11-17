@@ -421,6 +421,7 @@ class StructureCollection:
                     format=format,
                     vectorize=vectorize,
                     insert=insert,
+                    chunk_by_index=True,
                     **evaluate_kwargs,
                 )
             elif isinstance(ds, StructureCollection):

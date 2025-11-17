@@ -389,6 +389,7 @@ class DatasetState:
             self.__raw_data_handler,
             self.__unit_handler,
             unit_kwargs,
+            self.__raw_data_handler.index,
         )
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:

@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 import operator as op
+from copy import copy
 from functools import cache, cached_property, partial, partialmethod
-from typing import Any, Callable, Iterable, Optional, Protocol, Union
+from inspect import signature
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional, Protocol, Union
 
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy import table  # type: ignore
 
-from opencosmo.dataset.evaluate import visit_data, visit_dataset
+from opencosmo.column.evaluate import (
+    EvaluateStrategy,
+    evaluate_chunks,
+    evaluate_rows,
+    evaluate_vectorized,
+)
+from opencosmo.index import ChunkedIndex
 from opencosmo.units import UnitsError
+
+if TYPE_CHECKING:
+    from opencosmo import Dataset
+    from opencosmo.index import DataIndex
 
 Comparison = Callable[[float, float], bool]
 
@@ -250,7 +262,9 @@ class ConstructedColumn(Protocol):
     def description(self) -> Optional[str]: ...
 
     def evaluate(
-        self, data: dict[str, np.ndarray]
+        self,
+        data: dict[str, np.ndarray],
+        index: DataIndex,
     ) -> np.ndarray | dict[str, np.ndarray]: ...
 
     def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]: ...
@@ -403,19 +417,19 @@ class DerivedColumn:
     def sqrt(self):
         return DerivedColumn(self, None, _sqrt)
 
-    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray], index: DataIndex) -> np.ndarray:
         lhs: np.typing.ArrayLike
         rhs: Optional[np.typing.ArrayLike]
         match self.lhs:
             case DerivedColumn():
-                lhs = self.lhs.evaluate(data)
+                lhs = self.lhs.evaluate(data, index)
             case Column():
                 lhs = data[self.lhs.column_name]
             case _:
                 lhs = self.lhs
         match self.rhs:
             case DerivedColumn():
-                rhs = self.rhs.evaluate(data)
+                rhs = self.rhs.evaluate(data, index)
             case Column():
                 rhs = data[self.rhs.column_name]
             case _:
@@ -431,26 +445,34 @@ class EvaluatedColumn:
         func: Callable,
         requires: set[str],
         produces: set[str],
-        kwargs: dict[str, Any],
         format: str,
-        vectorize: bool,
+        strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         description: Optional[str] = None,
+        **kwargs: Any,
     ):
         self.__func = func
         self.__requires = requires
         self.__kwargs = kwargs
         self.__produces = produces
         self.__format = format
-        self.__vectorize = vectorize
+        self.__strategy = strategy
         self.description = description
 
     @property
     def requires(self):
-        return self.__requires
+        return copy(self.__requires)
 
     @property
     def produces(self):
-        return self.__produces
+        return copy(self.__produces)
+
+    @property
+    def signature(self):
+        return signature(self.__func)
+
+    @property
+    def kwarg_names(self):
+        return self.__kwargs.keys()
 
     def get_units(self, units: dict[str, np.ndarray]):
         test_data = {
@@ -468,13 +490,48 @@ class EvaluatedColumn:
             for name, result in results.items()
         }
 
-    def evaluate(self, data: dict[str, np.ndarray]):
-        input_columns = {r: data[r] for r in self.__requires}
-        input_data = input_columns | self.__kwargs
+    def evaluate(self, data: dict[str, np.ndarray], index: DataIndex):
+        match self.__strategy:
+            case EvaluateStrategy.VECTORIZE:
+                return evaluate_vectorized(data, self.__func, self.__kwargs)
+            case EvaluateStrategy.ROW_WISE:
+                return evaluate_rows(data, self.__func, self.__kwargs)
+            case EvaluateStrategy.CHUNKED:
+                return evaluate_chunks(data, self.__func, self.__kwargs, index)
 
-        return visit_data(
-            self.__func, data, self.__vectorize, self.__format, self.__kwargs
-        )
+    def evaluate_one(self, dataset: Dataset):
+        match self.__strategy:
+            case EvaluateStrategy.VECTORIZE:
+                values = (
+                    dataset.select(self._requires)
+                    .take(1)
+                    .get_data(self.__format, unpack=False)
+                )
+                values = dict(values)
+                return self.__func(**values, **self.__kwargs)
+
+            case EvaluateStrategy.ROW_WISE:
+                values = (
+                    dataset.select(self._requires)
+                    .take(1)
+                    .get_data(self.__format, unpack=True)
+                )
+                values = dict(values)
+                return self.__func(**values, **self.__kwargs)
+
+            case EvaluateStrategy.CHUNKED:
+                index = dataset.index
+                assert isinstance(index, ChunkedIndex)
+                first_chunk_size = index.sizes[0]
+                first_chunk = (
+                    dataset.select(self.__requires)
+                    .take(first_chunk_size)
+                    .get_data(self.__format)
+                )
+                first_chunk = dict(first_chunk)
+                return self.__func(**first_chunk, **self.__kwargs)
+
+        pass
 
 
 class ColumnMask:

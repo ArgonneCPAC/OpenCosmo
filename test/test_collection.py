@@ -411,6 +411,16 @@ def test_data_gets_all_particles(halo_paths):
 def test_visit_dataset_in_structure_collection(halo_paths):
     collection = oc.open(*halo_paths)
 
+    def particle_id(x, y, z):
+        return np.arange(len(x))
+
+    collection = collection.evaluate(particle_id, dataset="dm_particles", insert=True)
+    collection.select("particle_id").get_data()
+
+
+def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
+    collection = oc.open(*halo_paths)
+
     def offset(
         fof_halo_center_x,
         fof_halo_center_y,

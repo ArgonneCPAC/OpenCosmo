@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Callable
+
+import astropy.units as u
+import numpy as np
+
+from opencosmo.evaluate import insert, prepare_kwargs
+
+
+class EvaluateStrategy(Enum):
+    VECTORIZE = "vectorize"
+    ROW_WISE = "row_wise"
+    CHUNKED = "chunked"
+
+
+if TYPE_CHECKING:
+    from opencosmo import Dataset
+
+
+def evaluate_rows(data: dict[str, np.ndarray], func: Callable, kwargs: dict[str, Any]):
+    data_length = len(next(iter(data.values())))
+    kwargs_, iterable_kwargs = prepare_kwargs(data_length, kwargs)
+    iterable_data = data | iterable_kwargs
+    storage = {}
+    for i in range(data_length):
+        iterable_inputs = {name: values[i] for name, values in iterable_data.items()}
+        output = func(**iterable_inputs, **kwargs_)
+        if not isinstance(output, dict):
+            output = {func.__name__: output}
+        if i == 0:
+            storage = __make_row_based_output_from_first_values(output, data_length)
+            continue
+        insert(storage, i, output)
+    return storage
+
+
+def __make_row_based_output_from_first_values(values, data_length):
+    storage = {}
+    for name, value in values.items():
+        try:
+            shape = (data_length,) + value.shape
+        except AttributeError:
+            shape = (data_length,)
+        try:
+            dtype = value.dtype
+        except AttributeError:
+            dtype = type(value)
+        column_storage = np.zeros(shape, dtype=dtype)
+        if isinstance(value, u.Quantity):
+            column_storage *= value.unit
+        column_storage[0] = value
+        storage[name] = column_storage
+
+    return storage
+
+
+def __visit_rows_in_data(
+    data: dict[str, np.ndarray],
+    function: Callable,
+    kwargs: dict[str, Any] = {},
+):
+    data = {key: d for key, d in data.items() if key in signature(function).parameters}
+    first_row_data = {name: arr[0] for name, arr in data.items()}
+    first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
+    n_rows = len(next(iter(data.values())))
+    storage = __make_output(function, first_row_data | first_row_kwargs, n_rows)
+    if format == "numpy":
+        data = {
+            key: arr.value if isinstance(arr, Quantity) else arr
+            for key, arr in data.items()
+        }
+
+    for i in range(1, n_rows):
+        row = {
+            name: arr[i] for name, arr in chain(data.items(), iterable_kwargs.items())
+        }
+        output = function(**row, **kwargs)
+        if storage is not None:
+            insert(storage, i, output)
+    return storage
+
+
+def evaluate_chunks():
+    pass
+
+
+def evaluate_vectorized(data, func, kwargs):
+    return func(**data, **kwargs)
+
+
+def do_first_evaluation(
+    func: Callable, strategy: str, format: str, kwargs: dict[str, Any], dataset: Dataset
+):
+    strategy = EvaluateStrategy(strategy)
+    match strategy:
+        case EvaluateStrategy.VECTORIZE:
+            values = dataset.take(1).get_data(format, unpack=False)
+            try:
+                values = dict(values)
+            except TypeError:
+                values = {dataset.columns[0]: values}
+
+            return func(**values, **kwargs), strategy
+
+        case EvaluateStrategy.ROW_WISE:
+            values = dataset.take(1).get_data(format, unpack=True)
+            try:
+                values = dict(values)
+            except TypeError:
+                values = {dataset.columns[0]: values}
+            return func(**values, **kwargs), strategy
+
+        case EvaluateStrategy.CHUNKED:
+            index = dataset.index
+            assert isinstance(index, ChunkedIndex)
+            first_chunk_size = index.sizes[0]
+            first_chunk = dataset.take(first_chunk_size).get_data(format)
+            first_chunk = dict(first_chunk)
+            return func(**first_chunk, **kwargs), strategy
