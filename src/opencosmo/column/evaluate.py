@@ -7,6 +7,7 @@ import astropy.units as u
 import numpy as np
 
 from opencosmo.evaluate import insert, prepare_kwargs
+from opencosmo.index import ChunkedIndex
 
 
 class EvaluateStrategy(Enum):
@@ -82,8 +83,44 @@ def __visit_rows_in_data(
     return storage
 
 
-def evaluate_chunks():
-    pass
+def evaluate_chunks(
+    data: dict[str, np.ndarray],
+    func: Callable,
+    kwargs: dict[str, Any],
+    index: ChunkedIndex,
+):
+    data_length = len(next(iter(data.values())))
+    kwargs_, iterable_kwargs = prepare_kwargs(data_length, kwargs)
+    data = data | iterable_kwargs
+
+    chunk_splits = np.cumsum(index.sizes)
+    storage = {}
+    data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
+    for i in range(len(chunk_splits)):
+        input_data = {name: split[i] for name, split in data.items()}
+        output = func(**input_data, **kwargs_)
+        if not isinstance(output, dict):
+            output = {func.__name__: output}
+        if i == 0:
+            storage = __make_chunked_based_output_from_first_values(output, data_length)
+            continue
+        for name, values in output.items():
+            storage[name][chunk_splits[i - 1] : chunk_splits[i]] = values
+    return storage
+
+
+def __make_chunked_based_output_from_first_values(values, data_length):
+    storage = {}
+    for name, value in values.items():
+        shape = (data_length,) + value.shape[1:]
+        dtype = value.dtype
+        column_storage = np.zeros(shape, dtype=dtype)
+        if isinstance(value, u.Quantity):
+            column_storage *= value.unit
+        column_storage[0 : len(value)] = value
+        storage[name] = column_storage
+
+    return storage
 
 
 def evaluate_vectorized(data, func, kwargs):
@@ -116,6 +153,6 @@ def do_first_evaluation(
             index = dataset.index
             assert isinstance(index, ChunkedIndex)
             first_chunk_size = index.sizes[0]
-            first_chunk = dataset.take(first_chunk_size).get_data(format)
+            first_chunk = dataset.take(first_chunk_size, at="start").get_data(format)
             first_chunk = dict(first_chunk)
             return func(**first_chunk, **kwargs), strategy

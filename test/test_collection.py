@@ -409,13 +409,15 @@ def test_data_gets_all_particles(halo_paths):
 
 
 def test_visit_dataset_in_structure_collection(halo_paths):
-    collection = oc.open(*halo_paths)
+    collection = oc.open(*halo_paths).take(20)
 
     def particle_id(x, y, z):
         return np.arange(len(x))
 
     collection = collection.evaluate(particle_id, dataset="dm_particles", insert=True)
-    collection.select("particle_id").get_data()
+    for halo in collection.halos(["dm_particles"]):
+        particle_id = halo["dm_particles"].select("particle_id").get_data()
+        assert np.all(particle_id == np.arange(len(particle_id)))
 
 
 def test_visit_dataset_in_structure_collection_nochunk(halo_paths):

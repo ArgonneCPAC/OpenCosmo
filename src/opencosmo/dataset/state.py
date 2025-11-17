@@ -66,6 +66,12 @@ class DatasetState:
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
         finalize(self, deregister_state, id(self), self.__cache)
+        if (
+            len(self.__raw_data_handler.index) == 33595973
+            and isinstance(self.__raw_data_handler.index, ChunkedIndex)
+            and len(self.__raw_data_handler.index.sizes) == 1
+        ):
+            pass
 
     def __rebuild(self, **updates):
         new = {

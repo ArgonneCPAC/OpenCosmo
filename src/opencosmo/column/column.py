@@ -475,12 +475,23 @@ class EvaluatedColumn:
         return self.__kwargs.keys()
 
     def get_units(self, units: dict[str, np.ndarray]):
+        match self.__strategy:
+            case EvaluateStrategy.ROW_WISE:
+                test_data = {
+                    name: np.random.randint(20, 40) * units[name]
+                    for name in self.__requires
+                }
+            case _:
+                test_data = {
+                    name: np.random.randint(20, 40, 2) * units[name]
+                    for name in self.__requires
+                }
+
         test_data = {
-            name: np.random.randint(20, 40) * units[name]
-            if units.get(name) is not None
-            else np.random.randint(20, 40)
-            for name in self.__requires
+            name: td * units[name] if name in units else td
+            for name, td in test_data.items()
         }
+
         results = self.__func(**test_data, **self.__kwargs)
         if not isinstance(results, dict):
             results = {self.__func.__name__: results}

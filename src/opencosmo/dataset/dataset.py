@@ -364,7 +364,6 @@ class Dataset:
         vectorize=False,
         insert=False,
         format="astropy",
-        chunk_by_index: bool = False,
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
         """

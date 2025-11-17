@@ -263,8 +263,11 @@ class StructureCollection:
         indices = self.__handler.parse(meta)
         ds = self.__datasets[key]
         index = indices[key]
+        print(len(index.starts))
 
-        return self.__datasets[key].take_rows(index)
+        ds = self.__datasets[key].take_rows(index)
+        print(len(ds.index.starts))
+        return ds
 
     def __enter__(self):
         return self
@@ -410,9 +413,15 @@ class StructureCollection:
         """
         if format not in ["astropy", "numpy"]:
             raise ValueError(f"Invalid format requested for data: {format}")
+
         if dataset is not None:
             datasets = dataset.split(".", 1)
             ds = self[datasets[0]]
+            if insert:
+                ds = self.__datasets[datasets[0]]
+            else:
+                ds = self[datasets[0]]
+
             if isinstance(ds, oc.Dataset) and len(datasets) > 1:
                 raise ValueError("Datasets cannot be nested!")
             elif isinstance(ds, oc.Dataset):
@@ -421,7 +430,7 @@ class StructureCollection:
                     format=format,
                     vectorize=vectorize,
                     insert=insert,
-                    chunk_by_index=True,
+                    strategy="chunked",
                     **evaluate_kwargs,
                 )
             elif isinstance(ds, StructureCollection):
