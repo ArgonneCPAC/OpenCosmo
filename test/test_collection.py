@@ -438,10 +438,10 @@ def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
         dr = np.sqrt(dx**2 + dy**2 + dz**2)
         return dr / sod_halo_radius
 
-    collection_vec = collection.evaluate(
+    collection_vec = collection.evaluate_on_dataset(
         offset, dataset="halo_properties", vectorize=True, insert=True
     )
-    collection_loop = collection.evaluate(
+    collection_loop = collection.evaluate_on_dataset(
         offset, dataset="halo_properties", insert=True
     )
 

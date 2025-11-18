@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from enum import Enum
+from inspect import signature
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable
 
 import astropy.units as u
@@ -57,32 +59,6 @@ def __make_row_based_output_from_first_values(values, data_length):
     return storage
 
 
-def __visit_rows_in_data(
-    data: dict[str, np.ndarray],
-    function: Callable,
-    kwargs: dict[str, Any] = {},
-):
-    data = {key: d for key, d in data.items() if key in signature(function).parameters}
-    first_row_data = {name: arr[0] for name, arr in data.items()}
-    first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
-    n_rows = len(next(iter(data.values())))
-    storage = __make_output(function, first_row_data | first_row_kwargs, n_rows)
-    if format == "numpy":
-        data = {
-            key: arr.value if isinstance(arr, Quantity) else arr
-            for key, arr in data.items()
-        }
-
-    for i in range(1, n_rows):
-        row = {
-            name: arr[i] for name, arr in chain(data.items(), iterable_kwargs.items())
-        }
-        output = function(**row, **kwargs)
-        if storage is not None:
-            insert(storage, i, output)
-    return storage
-
-
 def evaluate_chunks(
     data: dict[str, np.ndarray],
     func: Callable,
@@ -91,14 +67,14 @@ def evaluate_chunks(
 ):
     data_length = len(next(iter(data.values())))
     kwargs_, iterable_kwargs = prepare_kwargs(data_length, kwargs)
-    data = data | iterable_kwargs
+    input_data = data | iterable_kwargs
 
     chunk_splits = np.cumsum(index.sizes)
     storage = {}
-    data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
+    input_data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
     for i in range(len(chunk_splits)):
-        input_data = {name: split[i] for name, split in data.items()}
-        output = func(**input_data, **kwargs_)
+        chunk_input_data = {name: split[i] for name, split in data.items()}
+        output = func(**chunk_input_data, **kwargs_)
         if not isinstance(output, dict):
             output = {func.__name__: output}
         if i == 0:
@@ -130,8 +106,8 @@ def evaluate_vectorized(data, func, kwargs):
 def do_first_evaluation(
     func: Callable, strategy: str, format: str, kwargs: dict[str, Any], dataset: Dataset
 ):
-    strategy = EvaluateStrategy(strategy)
-    match strategy:
+    eval_strategy = EvaluateStrategy(strategy)
+    match eval_strategy:
         case EvaluateStrategy.VECTORIZE:
             values = dataset.take(1).get_data(format, unpack=False)
             try:
@@ -139,7 +115,7 @@ def do_first_evaluation(
             except TypeError:
                 values = {dataset.columns[0]: values}
 
-            return func(**values, **kwargs), strategy
+            return func(**values, **kwargs), eval_strategy
 
         case EvaluateStrategy.ROW_WISE:
             values = dataset.take(1).get_data(format, unpack=True)
@@ -147,7 +123,7 @@ def do_first_evaluation(
                 values = dict(values)
             except TypeError:
                 values = {dataset.columns[0]: values}
-            return func(**values, **kwargs), strategy
+            return func(**values, **kwargs), eval_strategy
 
         case EvaluateStrategy.CHUNKED:
             index = dataset.index
@@ -155,4 +131,4 @@ def do_first_evaluation(
             first_chunk_size = index.sizes[0]
             first_chunk = dataset.take(first_chunk_size, at="start").get_data(format)
             first_chunk = dict(first_chunk)
-            return func(**first_chunk, **kwargs), strategy
+            return func(**first_chunk, **kwargs), eval_strategy

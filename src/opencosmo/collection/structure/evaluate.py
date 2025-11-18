@@ -7,7 +7,7 @@ import numpy as np
 from astropy.units import Quantity  # type: ignore
 
 from opencosmo import dataset as ds
-from opencosmo.dataset.evaluate import visit_data, visit_dataset
+from opencosmo.dataset.evaluate import visit_dataset
 from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
 
 if TYPE_CHECKING:
@@ -16,10 +16,19 @@ if TYPE_CHECKING:
     from opencosmo import StructureCollection
 
 
+def evaluate_on_single_dataset():
+    pass
+
+
+def evaluate_on_multiple_datasets():
+    pass
+
+
 def visit_structure_collection(
     function: Callable,
     spec: Mapping[str, Optional[list[str]]],
     collection: StructureCollection,
+    dataset: Optional[str],
     format: str = "astropy",
     dtype: Optional[DTypeLike] = None,
     evaluator_kwargs: dict[str, Any] = {},

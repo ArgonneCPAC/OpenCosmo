@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import partial, reduce
+from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
@@ -263,10 +264,8 @@ class StructureCollection:
         indices = self.__handler.parse(meta)
         ds = self.__datasets[key]
         index = indices[key]
-        print(len(index.starts))
 
         ds = self.__datasets[key].take_rows(index)
-        print(len(ds.index.starts))
         return ds
 
     def __enter__(self):
@@ -321,7 +320,6 @@ class StructureCollection:
         func: Callable,
         dataset: Optional[str] = None,
         format: str = "astropy",
-        vectorize: bool = False,
         insert: bool = True,
         **evaluate_kwargs: Any,
     ):
@@ -368,8 +366,7 @@ class StructureCollection:
             )
 
         The collection will now contain a column named "offset" with the results of the
-        computation applied to each halo in the collection. Columns produced in this
-        way will not respond to changes in unit convention.
+        computation applied to each halo in the collection.
 
         It is not required to pass a list of column names for a given dataset. If a list
         is not provided, all columns will be passed to the computation function. Data will
@@ -389,17 +386,14 @@ class StructureCollection:
 
         dataset: Optional[str], default = None
             The dataset inside this collection to evaluate the function on. If none, assumes the function requires data from
-            multiple datasets.
-
-        vectorize: bool, default = False
-            Whether to provide the values as full columns (True) or one row at a time (False) if evaluating on aa single dataset.
-            Has no effect if evaluating over structures, since structures require input from multiple datasets which will not in
-            general be the same length.
+            multiple datasets. You can visit a dataset inside a nested structure collection by passing the path
+            separated by dots, for example "galaxies.star_particles". Data will be fed to the function on a structure-by-structure
+            basis, and the output should be the same length as the input data.
 
         insert: bool, default = True
-            If true, the data will be inserted as a column in the specified dataset, or the main "properties" dataset
-            if no dataset is specified. The new column will have the same name as the function. Otherwise the data
-            will be returned directly.
+            If true, the data will be inserted as a column in the specified dataset. If no dataset is specified, insert
+            into the "halo_properties" dataset if this collection contains halos, or the "galaxy properties" if this
+            collection contains galaxies. If False, simply return the data.
 
         format: str, default = astropy
             Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
@@ -411,35 +405,52 @@ class StructureCollection:
             it will be treated as an additional column.
 
         """
+        # Note: there are four real cases
+        # 1. Evaluating using multiple datasets and inserting into a single dataset
+        # 2. Evaluating using a single dataset and inserting into a single dataset
+        # 3. Evaluating using multiple datasets and returning
+        # 4. Evaluating using a single dataset and returning
+
         if format not in ["astropy", "numpy"]:
             raise ValueError(f"Invalid format requested for data: {format}")
 
-        if dataset is not None:
+        parameter_names = set(signature(func).parameters.keys())
+        required_datasets = parameter_names.intersection(self.keys())
+        if not required_datasets and not dataset:
+            raise ValueError(
+                "If your function does not take dataset names as arguments, you must specify which dataset you want to evaluate on!"
+            )
+
+        if (
+            dataset is not None and not required_datasets
+        ):  # evaluate on a single dataset
+            ds: oc.Dataset | StructureCollection
             datasets = dataset.split(".", 1)
-            ds = self[datasets[0]]
-            if insert:
+            if dataset == self.__source.dtype:
+                ds = self.__source
+            elif insert:
                 ds = self.__datasets[datasets[0]]
             else:
                 ds = self[datasets[0]]
 
             if isinstance(ds, oc.Dataset) and len(datasets) > 1:
                 raise ValueError("Datasets cannot be nested!")
+
             elif isinstance(ds, oc.Dataset):
                 result = ds.evaluate(
                     func,
                     format=format,
-                    vectorize=vectorize,
                     insert=insert,
                     strategy="chunked",
                     **evaluate_kwargs,
                 )
             elif isinstance(ds, StructureCollection):
+                ds = self[datasets[0]]
                 ds_name = datasets[1] if len(datasets) > 1 else None
                 result = ds.evaluate(
                     func,
                     ds_name,
                     format=format,
-                    vectorize=vectorize,
                     insert=insert,
                     **evaluate_kwargs,
                 )
@@ -460,22 +471,110 @@ class StructureCollection:
                 new_datasets,
                 self.__hide_source,
             )
-        else:
-            known_datasets = set(self.keys())
-            kwarg_names = set(evaluate_kwargs.keys())
-
-            requested_datasets = kwarg_names.intersection(known_datasets)
-            other_kwarg_names = kwarg_names.difference(known_datasets)
-
-            columns = {key: evaluate_kwargs[key] for key in requested_datasets}
-            kwargs = {key: evaluate_kwargs[key] for key in other_kwarg_names}
-
-            output = evaluate.visit_structure_collection(
-                func, columns, self, format=format, evaluator_kwargs=kwargs
+        if dataset is not None:
+            raise NotImplementedError(
+                f"Visiting a single dataset using data from multiple datasets is not yet supported."
             )
-            if not insert or output is None:
-                return output
-            return self.with_new_columns(**output, dataset=self.__source.dtype)
+        kwarg_names = set(evaluate_kwargs.keys())
+        other_kwarg_names = kwarg_names.difference(self.keys())
+
+        dataset_columns = {key: evaluate_kwargs.get(key) for key in required_datasets}
+        kwargs = {key: evaluate_kwargs[key] for key in other_kwarg_names}
+
+        output = evaluate.visit_structure_collection(
+            func,
+            dataset_columns,
+            self,
+            dataset=dataset,
+            format=format,
+            evaluator_kwargs=kwargs,
+        )
+        if not insert or output is None:
+            return output
+        return self.with_new_columns(**output, dataset=self.__source.dtype)
+
+    def evaluate_on_dataset(
+        self,
+        func: Callable,
+        dataset: Optional[str] = None,
+        vectorize: bool = False,
+        format: str = "astropy",
+        insert: bool = True,
+        **evaluate_kwargs: Any,
+    ):
+        """
+        Evaluate an expression on a specific dataset in this collection. This method is different from calling
+        :py:meth:`evaulate <opencosmo.StructureCollection.evaluate>` with a :code:`dataset` argument
+        in that this method does not apply the function on a per-structure basis. It is roughtly equivalent
+        to the following code:
+
+        .. code-block:: python
+
+            results = collection[dataset_name].evaluate(func, format, vectorize, insert=False)
+            collection = collection.with_new_columns(dataset_name, my_computed_value = results)
+
+        Keep in mind that the following code:
+
+        .. code-block:: python
+
+            collection[dataset_name].evaluate(func, format, vectorize, insert=true)
+
+        *does* produces a new dataset with the given new column, but this dataset will not be a part of the
+        original collection.
+
+
+        """
+
+        ds: oc.Dataset | StructureCollection
+        if dataset is None or dataset == self.__source.dtype:
+            result = self.__source.evaluate(
+                func, vectorize, insert, format, **evaluate_kwargs
+            )
+            if not insert:
+                return result
+            assert isinstance(result, oc.Dataset)
+            return StructureCollection(
+                result, self.__header, self.__datasets, self.__hide_source
+            )
+
+        ds_path = dataset.split(".")
+        if ds_path[0] not in self.__datasets:
+            raise ValueError(f"Unknown dataset {dataset}")
+        ds = self.__datasets[ds_path[0]]
+        if len(ds_path) > 1 and isinstance(ds, oc.Dataset):
+            raise ValueError(
+                f"Recieved {dataset} as the dataset argument but {ds_path[0]} is a dataset, not a collection!"
+            )
+
+        if len(ds_path) == 1 and isinstance(ds, oc.Dataset):
+            result = ds.evaluate(func, vectorize, insert, format, **evaluate_kwargs)
+            if not insert:
+                return result
+            assert isinstance(result, oc.Dataset)
+            return StructureCollection(
+                self.__source,
+                self.__header,
+                self.__datasets | {dataset: result},
+                self.__hide_source,
+            )
+        elif len(ds_path) == 1 and isinstance(ds, oc.StructureCollection):
+            result = ds.evaluate(func, None, format, insert)
+
+        elif len(ds_path) > 1 and isinstance(ds, oc.StructureCollection):
+            result = ds.evaluate_on_dataset(
+                func, ".".join(dataset[1:]), vectorize, format, insert
+            )
+
+        if not insert:
+            return result
+
+        assert isinstance(result, (oc.Dataset, StructureCollection))
+        return StructureCollection(
+            self.__source,
+            self.__header,
+            self.__datasets | {ds_path[0]: result},
+            self.__hide_source,
+        )
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
         """
@@ -999,13 +1098,12 @@ class StructureCollection:
 
         .. code-block:: python
 
-            for row, particles in
-                collection.objects(data_types=["gas_particles", "star_particles"]):
+            for halo in collection.objects(data_types=["halo_properties", "gas_particles", "star_particles"]):
                 # do work
 
-        At each iteration, "row" will be a dictionary of halo properties with associated
-        units, and "particles" will be a dictionary of datasets with the same keys as
-        the data types.
+        At each iteration, :code:`halo` will be a dictionary with halo properties, gas_particles,
+        and star particles. The "halo_properties" entry will itself be a dictionary with the halo's properties,
+        while "gas_particles" and "star_particles" will be full :py:meth:`Datasets <opencosmo.Dataset>`.
         """
         if data_types is None:
             data_types = self.__datasets.keys()

@@ -475,20 +475,19 @@ class EvaluatedColumn:
         return self.__kwargs.keys()
 
     def get_units(self, units: dict[str, np.ndarray]):
+        test_data: dict[str, Any]
         match self.__strategy:
             case EvaluateStrategy.ROW_WISE:
                 test_data = {
-                    name: np.random.randint(20, 40) * units[name]
-                    for name in self.__requires
+                    name: np.random.randint(20, 40) for name in self.__requires
                 }
             case _:
                 test_data = {
-                    name: np.random.randint(20, 40, 2) * units[name]
-                    for name in self.__requires
+                    name: np.random.randint(20, 40, 2) for name in self.__requires
                 }
 
         test_data = {
-            name: td * units[name] if name in units else td
+            name: td * units[name] if units.get(name) is not None else td
             for name, td in test_data.items()
         }
 
@@ -508,13 +507,17 @@ class EvaluatedColumn:
             case EvaluateStrategy.ROW_WISE:
                 return evaluate_rows(data, self.__func, self.__kwargs)
             case EvaluateStrategy.CHUNKED:
+                if not isinstance(index, ChunkedIndex):
+                    raise ValueError(
+                        "Cannot evaluate in CHUNKED strategy with a non-chunked index"
+                    )
                 return evaluate_chunks(data, self.__func, self.__kwargs, index)
 
     def evaluate_one(self, dataset: Dataset):
         match self.__strategy:
             case EvaluateStrategy.VECTORIZE:
                 values = (
-                    dataset.select(self._requires)
+                    dataset.select(self.__requires)
                     .take(1)
                     .get_data(self.__format, unpack=False)
                 )
@@ -523,7 +526,7 @@ class EvaluatedColumn:
 
             case EvaluateStrategy.ROW_WISE:
                 values = (
-                    dataset.select(self._requires)
+                    dataset.select(self.__requires)
                     .take(1)
                     .get_data(self.__format, unpack=True)
                 )

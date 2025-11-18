@@ -23,22 +23,6 @@ we are using here is known as a "visitor."
 """
 
 
-def visit_data(
-    function: Callable,
-    data: dict[str, np.ndarray],
-    vectorize: bool,
-    format: str,
-    kwargs: dict[str, Any],
-):
-    if format != "astropy":
-        data = convert_data(data, format)
-
-    if vectorize:
-        return __visit_vectorize(function, data, kwargs)
-    else:
-        return __visit_rows_in_data(function, data, format, kwargs)
-
-
 def visit_dataset(
     function: Callable,
     strategy: str,
@@ -53,7 +37,7 @@ def visit_dataset(
     data = dataset.select(column.requires).get_data(output=format)
     try:
         data = dict(data)
-    except TypError:
+    except TypeError:
         data = {column.requires.pop(): data}
     output = column.evaluate(data, dataset.index)
     if not isinstance(output, dict):
@@ -86,7 +70,7 @@ def verify_for_lazy_evaluation(
             f"Function expects columns {diff} which are not in the dataset"
         )
     dataset = dataset.select(required_columns)
-    first_values, strategy = do_first_evaluation(
+    first_values, eval_strategy = do_first_evaluation(
         func, strategy, format, evaluator_kwargs, dataset
     )
     if first_values is None and not allow_none:
@@ -99,7 +83,7 @@ def verify_for_lazy_evaluation(
     else:
         produces = {func.__name__}
     column = EvaluatedColumn(
-        func, required_columns, produces, format, strategy, **evaluator_kwargs
+        func, required_columns, produces, format, eval_strategy, **evaluator_kwargs
     )
     return column
 
