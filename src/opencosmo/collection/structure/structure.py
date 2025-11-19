@@ -1016,6 +1016,7 @@ class StructureCollection:
         rename_galaxies = "galaxies" in self.keys()
         for row in self.__source.rows(metadata_columns=metadata_columns):
             row = dict(row)
+            print(row)
             links = self.__handler.parse(row)
             output = {
                 key: self.__datasets[key].take_rows(index)

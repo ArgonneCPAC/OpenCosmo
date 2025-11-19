@@ -103,7 +103,7 @@ def __visit_rows_in_dataset(
     first_row_values = dict(dataset.take(1, at="start").get_data())
     first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
     storage = __make_output(function, first_row_values | first_row_kwargs, len(dataset))
-    for i, row in enumerate(dataset.rows(output=format)):
+    for i, row in enumerate(dataset.rows(include_units=format == "astropy")):
         if i == 0:
             continue
         iter_kwargs = {name: arr[i] for name, arr in iterable_kwargs.items()}

@@ -222,6 +222,44 @@ class DatasetState:
 
         return {name: data[name] for name in new_order}
 
+    def rows(self, metadata_columns: list = [], unit_kwargs: dict = {}):
+        derived_to_collect = (
+            set(self.__derived_columns.keys())
+            .intersection(self.columns)
+            .difference(self.__cache.columns)
+        )
+        derived_storage: dict[str, list[np.ndarray]] = {
+            name: [] for name in derived_to_collect
+        }
+        total_length = len(self)
+        chunk_ranges = [
+            (i, min(i + 1000, total_length)) for i in range(0, total_length, 1000)
+        ]
+        if not chunk_ranges:
+            raise StopIteration
+
+        try:
+            for start, end in chunk_ranges:
+                chunk = self.take_range(start, end)
+                data = chunk.get_data(
+                    metadata_columns=metadata_columns, unit_kwargs=unit_kwargs
+                )
+                for name in derived_to_collect:
+                    derived_storage[name].append(data[name])
+
+                for i in range(len(chunk)):
+                    yield {name: column[i] for name, column in data.items()}
+            all_derived = {
+                name: np.concatenate(arr) for name, arr in derived_storage.items()
+            }
+            derived_storage = resort(all_derived, self.get_sorted_index())
+            if derived_storage:
+                self.__cache.add_data(data)
+        except GeneratorExit:
+            pass
+        except BaseException:
+            raise
+
     def get_metadata(self, columns=[]):
         return self.__raw_data_handler.get_metadata(columns)
 
