@@ -117,6 +117,59 @@ class LinkHandler:
                 output[name] = result
         return output
 
+    def prep_datasets(self, source: oc.Dataset, datasets: dict[str, oc.Dataset]):
+        all_columns = reduce(
+            lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
+        )
+        meta = source.get_metadata(all_columns)
+        indices = self.parse(meta)
+        new_datasets = datasets
+        for name, index in indices.items():
+            new_datasets[name] = new_datasets[name].take_rows(index)
+        return new_datasets
+
+    def rebuild_datasets(
+        self,
+        source: oc.Dataset,
+        new_source: oc.Dataset,
+        datasets: dict[str, oc.Dataset],
+    ):
+        """
+        We have a few guarantees here:
+        1. The rows in new_source is a strict subset of the rows in source
+        2. The rows in both are unique
+
+        What is NOT guaranteed:
+        1. The rows are sorted
+        """
+        original_index = source.index.into_array()
+        new_index = new_source.index.into_array()
+        _, index_into_original, _ = np.intersect1d(
+            original_index, new_index, assume_unique=True, return_indices=True
+        )
+        index_into_original.sort()
+        all_columns = reduce(
+            lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
+        )
+        metadata = source.get_metadata(all_columns)
+        new_datasets = {}
+        for name, dataset in datasets.items():
+            if len(self.columns[name]) == 1:
+                new_datasets[name] = dataset.take_rows(index_into_original)
+                continue
+            size_column = [name for name in self.columns[name] if "size" in name]
+            assert len(size_column) == 1
+            size_column_name = size_column[0]
+            size_column_data = metadata[size_column_name]
+            chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=int)
+            _ = np.cumsum(size_column_data, out=chunk_boundaries[1:])
+            starts = chunk_boundaries[index_into_original]
+            sizes = size_column_data[index_into_original]
+            index = ChunkedIndex(starts, sizes)
+            new_datasets[name] = dataset.take_rows(index)
+
+        return new_datasets
+
 
 class StructureCollection:
     """
@@ -137,6 +190,7 @@ class StructureCollection:
         header: oc.header.OpenCosmoHeader,
         datasets: Mapping[str, oc.Dataset | StructureCollection],
         hide_source: bool = False,
+        link_handler: Optional[LinkHandler] = None,
         **kwargs,
     ):
         """
@@ -151,9 +205,16 @@ class StructureCollection:
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
 
+        self.__handler = link_handler
+
+    def __get_datasets(self):
+        if self.__handler is not None:
+            return self.__datasets
         self.__handler = LinkHandler(
             self.__source.meta_columns, "galaxies" in self.__datasets
         )
+        self.__datasets = self.__handler.prep_datasets(self.__source, self.__datasets)
+        return self.__datasets
 
     def __repr__(self):
         structure_type = self.__header.file.data_type.split("_")[0] + "s"
@@ -249,22 +310,12 @@ class StructureCollection:
         """
         Return the linked dataset with the given key.
         """
-        if key not in self.keys():
+        datasets = self.__get_datasets()
+        if key not in datasets.keys():
             raise KeyError(f"Dataset {key} not found in collection.")
         elif key == self.__header.file.data_type:
             return self.__source
-        ds = self.__datasets[key]
-        if isinstance(ds, StructureCollection):
-            idx = ds.__source.index
-            if not idx.range()[0] == 0 or len(ds) != idx.range()[1]:
-                return ds
-
-        meta = self.__source.get_metadata(self.__handler.columns[key])
-        indices = self.__handler.parse(meta)
-        ds = self.__datasets[key]
-        index = indices[key]
-
-        return self.__datasets[key].take_rows(index)
+        return datasets[key]
 
     def __enter__(self):
         return self
@@ -514,8 +565,13 @@ class StructureCollection:
             filtered = filter_source_by_dataset(
                 galaxy_properties, self.__source, self.__header, *masks
             )
+
+        datasets = self.__get_datasets()
+        new_datasets = self.__handler.rebuild_datasets(
+            self.__source, filtered, datasets
+        )
         return StructureCollection(
-            filtered, self.__header, self.__datasets, self.__hide_source
+            filtered, self.__header, new_datasets, self.__hide_source, self.__handler
         )
 
     def select(
@@ -810,11 +866,17 @@ class StructureCollection:
             A new collection with the structures taken from the original.
         """
         new_source = self.__source.take(n, at)
+        datasets = self.__get_datasets()
+        new_datasets = self.__handler.rebuild_datasets(
+            self.__source, new_source, datasets
+        )
+
         return StructureCollection(
             new_source,
             self.__header,
-            self.__datasets,
+            new_datasets,
             self.__hide_source,
+            self.__handler,
         )
 
     def take_range(self, start: int, end: int):
@@ -1014,15 +1076,17 @@ class StructureCollection:
             lambda acc, key: acc + self.__handler.columns[key], data_types, []
         )
         rename_galaxies = "galaxies" in self.keys()
+        rs = {name: 0 for name in self.__datasets.keys()}
         for row in self.__source.rows(metadata_columns=metadata_columns):
             row = dict(row)
-            print(row)
             links = self.__handler.parse(row)
-            output = {
-                key: self.__datasets[key].take_rows(index)
-                for key, index in links.items()
-                if key in data_types
-            }
+            output = {}
+            for name, index in links.items():
+                output[name] = self.__datasets[name].take_range(
+                    rs[name], rs[name] + len(index)
+                )
+                rs[name] += len(index)
+
             if not output:
                 continue
             if not self.__hide_source:

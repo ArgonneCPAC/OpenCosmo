@@ -398,13 +398,18 @@ def test_data_gets_all_particles(halo_paths):
         10, at="random"
     )
 
-    for halo in collection.halos():
+    halo_tags = collection["dm_particles"].select("fof_halo_tag").get_data()
+    print(np.where(halo_tags == halo_tags[0])[0][-1])
+    for i, halo in enumerate(collection.halos()):
         for name, particle_species in halo.items():
             if "particle" not in name:
                 continue
             halo_tag = halo["halo_properties"]["fof_halo_tag"]
             tag_filter = oc.col("fof_halo_tag") == halo_tag
             ds = collection[name].filter(tag_filter)
+            assert np.all(
+                particle_species.select("fof_halo_tag").get_data() == halo_tag
+            )
             assert len(ds) == len(particle_species)
 
 
