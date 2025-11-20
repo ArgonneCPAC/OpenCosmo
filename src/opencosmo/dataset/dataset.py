@@ -362,7 +362,7 @@ class Dataset:
         self,
         func: Callable,
         vectorize=False,
-        insert=False,
+        insert=True,
         format="astropy",
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
