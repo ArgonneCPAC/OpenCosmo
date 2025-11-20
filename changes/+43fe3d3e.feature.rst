@@ -1,0 +1,1 @@
+Add :py:meth:`StructureCollection.evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`, which performs evaluate on a single dataset in the structure collection without chunking.

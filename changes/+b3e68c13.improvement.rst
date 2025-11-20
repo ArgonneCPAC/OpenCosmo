@@ -1,0 +1,1 @@
+Evaluations in individual dataset are now performed lazily unless `insert = False`

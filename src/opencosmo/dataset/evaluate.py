@@ -7,8 +7,14 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 from astropy.table import Column, QTable  # type: ignore
 from astropy.units import Quantity
 
+from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
+from opencosmo.column.evaluate import do_first_evaluation
 from opencosmo.dataset.formats import convert_data
-from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
+from opencosmo.evaluate import (
+    insert_data,
+    make_output_from_first_values,
+    prepare_kwargs,
+)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -21,48 +27,37 @@ we are using here is known as a "visitor."
 """
 
 
-def visit_data(
-    function: Callable,
-    data: dict[str, np.ndarray],
-    vectorize: bool,
-    format: str,
-    kwargs: dict[str, Any],
-):
-    if format != "astropy":
-        data = convert_data(data, format)
-
-    if vectorize:
-        return __visit_vectorize(function, data, kwargs)
-    else:
-        return __visit_rows_in_data(function, data, format, kwargs)
-
-
 def visit_dataset(
     function: Callable,
+    strategy: str,
+    format: str,
+    evaluator_kwargs: dict[str, Any],
     dataset: Dataset,
-    vectorize: bool = False,
-    format: str = "astropy",
-    evaluator_kwargs: dict[str, Any] = {},
 ):
-    columns = __verify(function, dataset.columns, evaluator_kwargs.keys())
-    dataset = dataset.select(columns)
+    column = verify_for_lazy_evaluation(
+        function, strategy, format, evaluator_kwargs, dataset
+    )
 
-    if vectorize:
-        data = dict(dataset.get_data(format))
-        result = __visit_vectorize(function, data, evaluator_kwargs)
-        if result is not None and not isinstance(result, dict):
-            return {function.__name__: result}
-        return result
-    else:
-        kwargs, iterable_kwargs = prepare_kwargs(len(dataset), evaluator_kwargs)
-        return __visit_rows_in_dataset(
-            function, dataset, format, kwargs, iterable_kwargs
-        )
+    data = dataset.select(column.requires).get_data(output=format)
+    try:
+        data = dict(data)
+    except TypeError:
+        data = {column.requires.pop(): data}
+    output = column.evaluate(data, dataset.index)
+    if not isinstance(output, dict):
+        assert len(column.produces) == 1
+        output = {column.produces.pop(): output}
+    return output
 
 
 def verify_for_lazy_evaluation(
-    func: Callable, dataset: Dataset, evaluator_kwargs: dict[str, Any]
-) -> tuple[set[str], set[str]]:
+    func: Callable,
+    strategy: str,
+    format: str,
+    evaluator_kwargs: dict[str, Any],
+    dataset: Dataset,
+    allow_none=False,
+) -> EvaluatedColumn:
     """
     Verify the function behaves correctly and determine the names of its output columns.
     """
@@ -71,26 +66,30 @@ def verify_for_lazy_evaluation(
     required_arguments = filter(
         lambda param: param.default == Parameter.empty, sig.parameters.values()
     )
-    required_argument_names = map(lambda param: param.name, required_arguments)
-    required_columns = set(required_argument_names).difference(evaluator_kwargs.keys())
+    required_argument_names = set(map(lambda param: param.name, required_arguments))
+    required_columns = required_argument_names.difference(evaluator_kwargs.keys())
 
     if diff := required_columns.difference(dataset.columns):
         raise ValueError(
             f"Function expects columns {diff} which are not in the dataset"
         )
-    first_values = func(
-        **next(dataset.select(required_columns).take(1, at="start").rows()),
-        **evaluator_kwargs,
+    dataset = dataset.select(required_columns)
+    first_values, eval_strategy = do_first_evaluation(
+        func, strategy, format, evaluator_kwargs, dataset
     )
-    if first_values is None:
+    if first_values is None and not allow_none:
         raise ValueError(
             "Cannot insert values from an evaluate function that returns None!"
         )
 
     if isinstance(first_values, dict):
-        return required_columns, set(first_values.keys())
+        produces = set(first_values.keys())
     else:
-        return required_columns, {func.__name__}
+        produces = {func.__name__}
+    column = EvaluatedColumn(
+        func, required_columns, produces, format, eval_strategy, **evaluator_kwargs
+    )
+    return column
 
 
 def __visit_rows_in_dataset(
@@ -103,13 +102,13 @@ def __visit_rows_in_dataset(
     first_row_values = dict(dataset.take(1, at="start").get_data())
     first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
     storage = __make_output(function, first_row_values | first_row_kwargs, len(dataset))
-    for i, row in enumerate(dataset.rows(output=format)):
+    for i, row in enumerate(dataset.rows(include_units=format == "astropy")):
         if i == 0:
             continue
         iter_kwargs = {name: arr[i] for name, arr in iterable_kwargs.items()}
         output = function(**row, **kwargs, **iter_kwargs)
         if storage is not None:
-            insert(storage, i, output)
+            insert_data(storage, i, output)
     return storage
 
 
@@ -137,7 +136,7 @@ def __visit_rows_in_data(
         }
         output = function(**row, **kwargs)
         if storage is not None:
-            insert(storage, i, output)
+            insert_data(storage, i, output)
     return storage
 
 

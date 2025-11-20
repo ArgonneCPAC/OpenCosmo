@@ -1,0 +1,1 @@
+:py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` now performs evaluation on individual structures when `dataset` argument is passed.

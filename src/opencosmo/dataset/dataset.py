@@ -362,7 +362,7 @@ class Dataset:
         self,
         func: Callable,
         vectorize=False,
-        insert=False,
+        insert=True,
         format="astropy",
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
@@ -426,19 +426,19 @@ class Dataset:
             raise ValueError(
                 "Keyword arguments cannot have the same name as columns in your dataset!"
             )
-
+        strategy = evaluate_kwargs.pop(
+            "strategy", "row_wise" if not vectorize else "vectorize"
+        )
         if not insert:
-            output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
+            output = visit_dataset(func, strategy, format, evaluate_kwargs, self)
             return output
 
-        required_columns, output_names = verify_for_lazy_evaluation(
-            func, self, evaluate_kwargs
+        evaluated_column = verify_for_lazy_evaluation(
+            func, strategy, format, evaluate_kwargs, self
         )
-        column = EvaluatedColumn(
-            func, required_columns, output_names, evaluate_kwargs, format, vectorize
+        return self.with_new_columns(
+            descriptions={}, **{func.__name__: evaluated_column}
         )
-
-        return self.with_new_columns(descriptions={}, **{func.__name__: column})
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
@@ -473,7 +473,7 @@ class Dataset:
 
     def rows(
         self,
-        output="astropy",
+        include_units: bool = True,
         metadata_columns=[],
     ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
@@ -493,27 +493,23 @@ class Dataset:
             A dictionary of values for each row in the dataset with units.
 
         """
-        max = len(self)
-        if max == 0:
-            warn("Tried to iterate over a dataset with no rows!")
+        if self.__state.convention.value == "physical":
+            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
+            unit_kwargs = {"scale_factor": scale_factor}
+        else:
+            unit_kwargs = {}
 
-        chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
-        if len(chunk_ranges) == 0:
-            raise StopIteration
-        for start, end in chunk_ranges:
-            chunk = self.take_range(start, end)
-            chunk_data = chunk.get_data(output, metadata_columns=metadata_columns)
-            try:
-                output_chunk_data = dict(chunk_data)
-            except TypeError:
-                output_chunk_data = {self.columns[0]: chunk_data}
+        for row in self.__state.rows(metadata_columns, unit_kwargs):
+            output_data = row
+            if not isinstance(output_data, dict):
+                output_data = {self.columns[0]: row}
 
-            if len(chunk) == 1:
-                yield output_chunk_data
-                return
-
-            for i in range(len(chunk)):
-                yield {k: v[i] for k, v in output_chunk_data.items()}
+            if not include_units:
+                output_data = {
+                    name: val.value if isinstance(val, u.Quantity) else val
+                    for name, val in output_data.items()
+                }
+            yield output_data
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
@@ -678,6 +674,7 @@ class Dataset:
             or if end is greater than start.
 
         """
+
         new_state = self.__state.take_range(start, end)
 
         return Dataset(

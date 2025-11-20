@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy
 from functools import reduce
 from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
@@ -66,6 +67,12 @@ class DatasetState:
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
         finalize(self, deregister_state, id(self), self.__cache)
+        if (
+            len(self.__raw_data_handler.index) == 33595973
+            and isinstance(self.__raw_data_handler.index, ChunkedIndex)
+            and len(self.__raw_data_handler.index.sizes) == 1
+        ):
+            pass
 
     def __rebuild(self, **updates):
         new = {
@@ -127,6 +134,10 @@ class DatasetState:
 
     @property
     def raw_index(self):
+        if (si := self.get_sorted_index()) is not None:
+            ni = self.__raw_data_handler.index.into_array()
+            return SimpleIndex(ni[si])
+
         return self.__raw_data_handler.index
 
     @property
@@ -222,8 +233,50 @@ class DatasetState:
 
         return {name: data[name] for name in new_order}
 
+    def rows(self, metadata_columns: list = [], unit_kwargs: dict = {}):
+        derived_to_collect = (
+            set(self.__derived_columns.keys())
+            .intersection(self.columns)
+            .difference(self.__cache.columns)
+        )
+        derived_storage: dict[str, list[np.ndarray]] = {
+            name: [] for name in derived_to_collect
+        }
+        total_length = len(self)
+        chunk_ranges = [
+            (i, min(i + 1000, total_length)) for i in range(0, total_length, 1000)
+        ]
+        if not chunk_ranges:
+            raise StopIteration
+
+        try:
+            for start, end in chunk_ranges:
+                chunk = self.take_range(start, end)
+                data = chunk.get_data(
+                    metadata_columns=metadata_columns, unit_kwargs=unit_kwargs
+                )
+                for name in derived_to_collect:
+                    derived_storage[name].append(data[name])
+
+                for i in range(len(chunk)):
+                    yield {name: column[i] for name, column in data.items()}
+            all_derived = {
+                name: np.concatenate(arr) for name, arr in derived_storage.items()
+            }
+            derived_storage = resort(all_derived, self.get_sorted_index())
+            if derived_storage:
+                self.__cache.add_data(data)
+        except GeneratorExit:
+            pass
+        except BaseException:
+            raise
+
     def get_metadata(self, columns=[]):
-        return self.__raw_data_handler.get_metadata(columns)
+        metadata = self.__raw_data_handler.get_metadata(columns)
+        sorted_index = self.get_sorted_index()
+        if sorted_index is not None:
+            metadata = {name: values[sorted_index] for name, values in metadata.items()}
+        return metadata
 
     def with_mask(self, mask: NDArray[np.bool_]):
         index = SimpleIndex(np.where(mask)[0])
@@ -330,7 +383,7 @@ class DatasetState:
 
         new_unit_handler = self.__unit_handler
         new_cache = self.__cache
-        new_derived = self.__derived_columns
+        new_derived = copy(self.__derived_columns)
         new_column_names: set[str] = set()
 
         if new_derived_columns:
@@ -389,6 +442,7 @@ class DatasetState:
             self.__raw_data_handler,
             self.__unit_handler,
             unit_kwargs,
+            self.__raw_data_handler.index,
         )
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
@@ -459,6 +513,7 @@ class DatasetState:
             return self.take_range(len(self) - n, len(self))
         elif at == "random":
             row_indices = np.random.choice(len(self), n, replace=False)
+            row_indices.sort()
 
         sorted = self.get_sorted_index()
         if sorted is None:
@@ -494,6 +549,8 @@ class DatasetState:
             take_index = ChunkedIndex.single_chunk(start, end - start)
         else:
             take_index = SimpleIndex(np.sort(sorted[start:end]))
+
+        from time import time
 
         new_raw_handler = self.__raw_data_handler.take(take_index)
         new_im = self.__cache.take(take_index)
