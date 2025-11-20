@@ -501,6 +501,7 @@ class EvaluatedColumn:
         }
 
     def evaluate(self, data: dict[str, np.ndarray], index: DataIndex):
+        data = {name: data[name] for name in self.__requires}
         match self.__strategy:
             case EvaluateStrategy.VECTORIZE:
                 return evaluate_vectorized(data, self.__func, self.__kwargs)

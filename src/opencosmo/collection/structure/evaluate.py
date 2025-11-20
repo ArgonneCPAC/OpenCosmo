@@ -8,7 +8,11 @@ from astropy.units import Quantity  # type: ignore
 
 from opencosmo import dataset as ds
 from opencosmo.dataset.evaluate import visit_dataset
-from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
+from opencosmo.evaluate import (
+    insert_data,
+    make_output_from_first_values,
+    prepare_kwargs,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import DTypeLike
@@ -46,7 +50,7 @@ def verify_evaluate_on_collection(
         evaluate_kwargs.keys()
     ):
         raise ValueError(
-            "Your function has required arguments {missing}, but you didn't provide them!"
+            f"Your function has required arguments {missing}, but you didn't provide them!"
         )
 
     spec = {name: evaluate_kwargs.pop(name, None) for name in requested_datasets}
@@ -59,6 +63,7 @@ def visit_structure_collection_eagerly(
     format: str = "astropy",
     dataset: Optional[str] = None,
     evaluate_kwargs: dict[str, Any] = {},
+    insert: bool = True,
 ):
     spec, kwargs = verify_evaluate_on_collection(
         function, collection, evaluate_kwargs, dataset
@@ -67,9 +72,11 @@ def visit_structure_collection_eagerly(
     to_visit = __prepare_collection(spec, collection)
 
     if dataset is None:
-        return evaluate_into_properties(function, to_visit, format, kwargs)
+        return evaluate_into_properties(function, to_visit, format, kwargs, insert)
     else:
-        return evaluate_into_dataset(function, to_visit, format, kwargs, dataset)
+        return evaluate_into_dataset(
+            function, to_visit, format, kwargs, dataset, insert
+        )
 
 
 def evaluate_into_properties(
@@ -77,10 +84,13 @@ def evaluate_into_properties(
     collection: StructureCollection,
     format: str,
     kwargs: dict[str, Any],
+    insert: bool,
 ):
     kwargs, iterable_kwargs = prepare_kwargs(len(collection), kwargs)
 
-    storage = __make_output(function, collection, format, kwargs, iterable_kwargs)
+    storage = __make_output(
+        function, collection, format, kwargs, iterable_kwargs, insert
+    )
     for i, structure in enumerate(collection.objects()):
         if i == 0:
             continue
@@ -89,7 +99,7 @@ def evaluate_into_properties(
 
         output = function(**input_structure, **kwargs, **iterable_kwarg_values)
         if storage is not None:
-            insert(storage, i, output)
+            insert_data(storage, i, output)
 
     return storage
 
@@ -100,6 +110,7 @@ def evaluate_into_dataset(
     format: str,
     kwargs: dict[str, Any],
     dataset: str,
+    insert: bool,
 ):
     kwargs, iterable_kwargs = prepare_kwargs(len(collection[dataset]), kwargs)
     storage = __make_chunked_output(
@@ -144,6 +155,7 @@ def __make_output(
     format: str = "astropy",
     kwargs: dict[str, Any] = {},
     iterable_kwargs: dict[str, Sequence] = {},
+    insert: bool = True,
 ) -> dict | None:
     first_structure = next(collection.take(1, at="start").objects())
     first_input = __make_input(first_structure, format)
@@ -152,7 +164,11 @@ def __make_output(
         **kwargs,
         **{name: arr[0] for name, arr in iterable_kwargs.items()},
     )
-    if first_values is None:
+    if first_values is None and insert:
+        raise ValueError(
+            "You asked to insert these values, but your function returns None!"
+        )
+    elif first_values is None:
         return None
     if not isinstance(first_values, dict):
         name = function.__name__
@@ -168,6 +184,7 @@ def __make_chunked_output(
     format: str = "astropy",
     kwargs: dict[str, Any] = {},
     iterable_kwargs: dict[str, Sequence] = {},
+    insert: bool = True,
 ) -> dict | None:
     first_structure = collection.take(1, at="start").objects()
     expected_length = len(first_structure[dataset])
@@ -179,7 +196,11 @@ def __make_chunked_output(
         **kwargs,
         **{name: arr[0] for name, arr in iterable_kwargs.items()},
     )
-    if first_values is None:
+    if first_values is None and insert:
+        raise ValueError(
+            "You asked to insert these values, but your function returns None!"
+        )
+    elif first_values is None:
         return None
     if not isinstance(first_values, dict):
         name = function.__name__

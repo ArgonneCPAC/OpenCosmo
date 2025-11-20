@@ -259,8 +259,8 @@ def test_visit_with_return_none(halo_paths):
     def offset(halo_properties, dm_particles):
         return None
 
-    result = collection.evaluate(offset, **spec, insert=True)
-    assert result is None
+    with pytest.raises(ValueError):
+        result = collection.evaluate(offset, **spec, insert=True)
 
 
 def test_visit_multiple_with_numpy(halo_paths):

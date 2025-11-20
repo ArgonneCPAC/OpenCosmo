@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy
 from functools import reduce
 from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
@@ -382,7 +383,7 @@ class DatasetState:
 
         new_unit_handler = self.__unit_handler
         new_cache = self.__cache
-        new_derived = self.__derived_columns
+        new_derived = copy(self.__derived_columns)
         new_column_names: set[str] = set()
 
         if new_derived_columns:

@@ -416,6 +416,7 @@ class StructureCollection:
                 dataset=dataset,
                 format=format,
                 evaluate_kwargs=evaluate_kwargs,
+                insert=insert,
             )
             if not insert or output is None:
                 return output

@@ -8,7 +8,7 @@ General helper routines for evaluating expressions on datasets and collections
 """
 
 
-def insert(
+def insert_data(
     storage: dict[str, np.ndarray], index: int, values_to_insert: dict[str, Any]
 ):
     if isinstance(values_to_insert, dict):

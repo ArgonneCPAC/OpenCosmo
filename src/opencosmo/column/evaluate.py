@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import astropy.units as u
 import numpy as np
 
-from opencosmo.evaluate import insert, prepare_kwargs
+from opencosmo.evaluate import insert_data, prepare_kwargs
 from opencosmo.index import ChunkedIndex
 
 
@@ -35,7 +35,7 @@ def evaluate_rows(data: dict[str, np.ndarray], func: Callable, kwargs: dict[str,
         if i == 0:
             storage = __make_row_based_output_from_first_values(output, data_length)
             continue
-        insert(storage, i, output)
+        insert_data(storage, i, output)
     return storage
 
 

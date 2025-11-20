@@ -10,7 +10,11 @@ from astropy.units import Quantity
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.column.evaluate import do_first_evaluation
 from opencosmo.dataset.formats import convert_data
-from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
+from opencosmo.evaluate import (
+    insert_data,
+    make_output_from_first_values,
+    prepare_kwargs,
+)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -104,7 +108,7 @@ def __visit_rows_in_dataset(
         iter_kwargs = {name: arr[i] for name, arr in iterable_kwargs.items()}
         output = function(**row, **kwargs, **iter_kwargs)
         if storage is not None:
-            insert(storage, i, output)
+            insert_data(storage, i, output)
     return storage
 
 
@@ -132,7 +136,7 @@ def __visit_rows_in_data(
         }
         output = function(**row, **kwargs)
         if storage is not None:
-            insert(storage, i, output)
+            insert_data(storage, i, output)
     return storage
 
 
