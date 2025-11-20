@@ -215,7 +215,9 @@ def test_visit_multiple_with_iterable_kwargs(input_path):
         return fof_halo_mass * fof_halo_com_vx * random_value
 
     random_values = np.random.randint(1, 10, len(ds))
-    result = ds.evaluate(fof_px, vectorize=False, random_value=random_values)
+    result = ds.evaluate(
+        fof_px, insert=False, vectorize=False, random_value=random_values
+    )
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
     assert np.all(
         np.isclose(
