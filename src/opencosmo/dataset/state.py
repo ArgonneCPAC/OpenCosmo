@@ -127,6 +127,10 @@ class DatasetState:
 
     @property
     def raw_index(self):
+        if (si := self.get_sorted_index()) is not None:
+            ni = self.__raw_data_handler.index.into_array()
+            return SimpleIndex(ni[si])
+
         return self.__raw_data_handler.index
 
     @property
@@ -261,7 +265,11 @@ class DatasetState:
             raise
 
     def get_metadata(self, columns=[]):
-        return self.__raw_data_handler.get_metadata(columns)
+        metadata = self.__raw_data_handler.get_metadata(columns)
+        sorted_index = self.get_sorted_index()
+        if sorted_index is not None:
+            metadata = {name: values[sorted_index] for name, values in metadata.items()}
+        return metadata
 
     def with_mask(self, mask: NDArray[np.bool_]):
         index = SimpleIndex(np.where(mask)[0])
@@ -497,6 +505,7 @@ class DatasetState:
             return self.take_range(len(self) - n, len(self))
         elif at == "random":
             row_indices = np.random.choice(len(self), n, replace=False)
+            row_indices.sort()
 
         sorted = self.get_sorted_index()
         if sorted is None:
@@ -532,6 +541,8 @@ class DatasetState:
             take_index = ChunkedIndex.single_chunk(start, end - start)
         else:
             take_index = SimpleIndex(np.sort(sorted[start:end]))
+
+        from time import time
 
         new_raw_handler = self.__raw_data_handler.take(take_index)
         new_im = self.__cache.take(take_index)

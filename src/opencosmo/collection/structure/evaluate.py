@@ -32,6 +32,7 @@ def visit_structure_collection(
         dtype = np.float64
 
     storage = __make_output(function, to_visit, format, kwargs, iterable_kwargs)
+
     for i, structure in enumerate(to_visit.objects()):
         if i == 0:
             continue

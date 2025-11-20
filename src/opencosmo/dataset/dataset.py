@@ -674,6 +674,7 @@ class Dataset:
             or if end is greater than start.
 
         """
+
         new_state = self.__state.take_range(start, end)
 
         return Dataset(

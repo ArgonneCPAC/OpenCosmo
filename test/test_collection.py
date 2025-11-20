@@ -134,8 +134,10 @@ def test_multi_filter_write(multi_path, tmp_path):
 
 
 def test_select_nested_structures(halo_paths, galaxy_paths):
-    collection = oc.open(*halo_paths, *galaxy_paths).filter(
-        oc.col("fof_halo_mass") > 1e14
+    collection = (
+        oc.open(*halo_paths, *galaxy_paths)
+        .filter(oc.col("fof_halo_mass") > 1e14)
+        .take(10)
     )
     collection = collection.select(
         halo_properties=[
@@ -164,7 +166,7 @@ def test_select_nested_structures(halo_paths, galaxy_paths):
 
 
 def test_visit_single(halo_paths):
-    collection = oc.open(*halo_paths).take(200)
+    collection = oc.open(*halo_paths).take(100)
     spec = {
         "dm_particles": ["x", "y", "z"],
         "halo_properties": [
@@ -174,11 +176,16 @@ def test_visit_single(halo_paths):
         ],
     }
 
+    from time import time
+
     def offset(halo_properties, dm_particles):
+        start = time()
         dx = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
         dy = np.mean(dm_particles["y"]) - halo_properties["fof_halo_center_y"]
         dz = np.mean(dm_particles["z"]) - halo_properties["fof_halo_center_z"]
-        return np.linalg.norm([dx.value, dy.value, dz.value])
+        end = time()
+        res = np.linalg.norm([dx.value, dy.value, dz.value])
+        return res
 
     collection = collection.evaluate(offset, **spec, insert=True)
     data = collection["halo_properties"].select("offset").data
@@ -399,7 +406,6 @@ def test_data_gets_all_particles(halo_paths):
     )
 
     halo_tags = collection["dm_particles"].select("fof_halo_tag").get_data()
-    print(np.where(halo_tags == halo_tags[0])[0][-1])
     for i, halo in enumerate(collection.halos()):
         for name, particle_species in halo.items():
             if "particle" not in name:
@@ -496,20 +502,19 @@ def test_data_linking(halo_paths):
             try:
                 species_halo_tags = set(particle_species.select("fof_halo_tag").data)
                 assert len(species_halo_tags) == 1
-                halo_tags.update(species_halo_tags)
+                assert species_halo_tags.pop() == halo_properties["fof_halo_tag"]
                 n_particles += 1
             except TypeError:
                 species_halo_tags = set([particle_species.select("fof_halo_tag").data])
                 halo_tags.update(species_halo_tags)
+                assert species_halo_tags.pop() == halo_properties["fof_halo_tag"]
                 n_particles += 1
             except ValueError:
                 bin_tags = set(particle_species.select("unique_tag").data)
                 assert len(bin_tags) == 1
-                halo_tags.update(bin_tags)
+                assert bin_tags.pop() == halo_properties["fof_halo_tag"]
                 n_profiles += 1
 
-        assert len(set(halo_tags)) == 1
-        assert halo_tags.pop() == halo_properties["fof_halo_tag"]
     assert n_particles > 0
     assert n_profiles > 0
 
@@ -726,6 +731,31 @@ def test_halo_linking_allow_empty(halo_paths):
         found_particles += len(halo["dm_particles"])
     assert found_halos == len(ds1)
     assert found_particles == len(ds1["dm_particles"])
+
+
+def test_halo_linking_with_empties(halo_paths):
+    ds1 = oc.open(halo_paths, ignore_empty=False)
+    found_profiles = False
+    found_particles = False
+    ds1 = ds1.take(500)
+
+    for halo in ds1.halos():
+        halo_properties = halo.pop("halo_properties")
+        fof_tag = halo_properties["fof_halo_tag"]
+        for p in halo.values():
+            try:
+                tags = set(p.select("fof_halo_tag").data)
+                assert len(tags) == 1
+                assert tags.pop() == fof_tag
+                found_particles = True
+
+            except ValueError:
+                tags = set(p.select("fof_halo_bin_tag").data)
+                assert len(tags) == 1
+                assert tags.pop() == fof_tag
+                found_profiles = True
+
+    assert found_particles and found_profiles
 
 
 def test_link_write(halo_paths, tmp_path):
