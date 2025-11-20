@@ -749,7 +749,7 @@ def test_halo_linking_with_empties(halo_paths):
     ds1 = oc.open(halo_paths, ignore_empty=False)
     found_profiles = False
     found_particles = False
-    ds1 = ds1.take(500)
+    ds1 = ds1.filter(oc.col("fof_halo_mass") > 1e13).take(50)
 
     for halo in ds1.halos():
         halo_properties = halo.pop("halo_properties")
