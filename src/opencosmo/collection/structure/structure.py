@@ -360,9 +360,7 @@ class StructureCollection:
                 "If your function does not take dataset names as arguments, you must specify which dataset you want to evaluate on!"
             )
 
-        if (
-            dataset is not None and not required_datasets
-        ):  # evaluate on a single dataset
+        if dataset is not None:  # evaluate on a single dataset
             ds: oc.Dataset | StructureCollection
             datasets = dataset.split(".", 1)
             if dataset == self.__source.dtype:
@@ -474,7 +472,11 @@ class StructureCollection:
                 return result
             assert isinstance(result, oc.Dataset)
             return StructureCollection(
-                result, self.__header, self.__datasets, self.__hide_source
+                result,
+                self.__header,
+                self.__datasets,
+                self.__hide_source,
+                self.__handler.make_derived(self.__source),
             )
 
         ds_path = dataset.split(".")

@@ -73,7 +73,7 @@ def evaluate_chunks(
     storage = {}
     input_data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
     for i in range(len(chunk_splits)):
-        chunk_input_data = {name: split[i] for name, split in data.items()}
+        chunk_input_data = {name: split[i] for name, split in input_data.items()}
         output = func(**chunk_input_data, **kwargs_)
         if not isinstance(output, dict):
             output = {func.__name__: output}
