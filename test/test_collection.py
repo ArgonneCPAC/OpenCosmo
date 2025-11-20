@@ -1058,3 +1058,15 @@ def test_add_structure_collection_with_descriptions(halo_paths):
     assert (
         ds["halo_properties"].descriptions["com_px"] == "x component of linear momentum"
     )
+
+
+def test_data_cached_after_objects(halo_paths):
+    ds = oc.open(*halo_paths)
+    ds = ds.with_new_columns(
+        "dm_particles",
+        gpe=oc.col("mass") * oc.col("phi"),
+        descriptions="Gravitational potential energy",
+    )
+    ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(20)
+    for _ in ds.objects():
+        pass

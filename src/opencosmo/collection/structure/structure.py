@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from functools import partial, reduce
 from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
+
+import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.structure import evaluate
@@ -16,7 +19,6 @@ from .handler import LinkHandler
 if TYPE_CHECKING:
     import astropy
     import astropy.units as u
-    import numpy as np
 
     from opencosmo.column.column import DerivedColumn
     from opencosmo.index import DataIndex
@@ -63,6 +65,7 @@ class StructureCollection:
         datasets: Mapping[str, oc.Dataset | StructureCollection],
         hide_source: bool = False,
         link_handler: Optional[LinkHandler] = None,
+        derived_columns: Optional[set[str]] = None,
         **kwargs,
     ):
         """
@@ -84,6 +87,10 @@ class StructureCollection:
             datasets = self.__handler.prep_datasets(self.__source, self.__datasets)
         else:
             self.__handler = link_handler
+
+        if derived_columns is None:
+            derived_columns = set()
+        self.__derived_columns = derived_columns
 
     def __get_datasets(self):
         """
@@ -252,6 +259,7 @@ class StructureCollection:
             self.__datasets,
             self.__hide_source,
             new_handler,
+            self.__derived_columns,
         )
 
     def evaluate(
@@ -373,6 +381,7 @@ class StructureCollection:
                 self.__get_datasets() | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
+                self.__derived_columns,
             )
 
         parameter_names = set(signature(func).parameters.keys())
@@ -383,6 +392,7 @@ class StructureCollection:
             )
 
         if dataset is not None and not required_datasets:
+            # case two
             if dataset not in self.keys():
                 raise ValueError(f"Unknown dataset {dataset}")
             ds = self[dataset]
@@ -394,17 +404,23 @@ class StructureCollection:
                 strategy="chunked",
                 **evaluate_kwargs,
             )
+
             if not insert:
                 return result
+            assert isinstance(result, oc.Dataset)
+            assert isinstance(ds, oc.Dataset)
+
+            new_derived_columns = set(result.columns).difference(ds.columns)
+            new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
             return StructureCollection(
                 self.__source,
                 self.__header,
                 self.__get_datasets() | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
+                self.__derived_columns.union(new_derived_columns_),
             )
 
-            # case two
         else:
             # case one/3
             kwarg_names = set(evaluate_kwargs.keys())
@@ -471,6 +487,7 @@ class StructureCollection:
                 self.__datasets,
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
+                self.__derived_columns,
             )
 
         ds_path = dataset.split(".")
@@ -487,11 +504,16 @@ class StructureCollection:
             if not insert:
                 return result
             assert isinstance(result, oc.Dataset)
+            assert isinstance(ds, oc.Dataset)
+            new_derived_columns = set(result.columns).difference(ds.columns)
+            new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
             return StructureCollection(
                 self.__source,
                 self.__header,
                 self.__datasets | {dataset: result},
                 self.__hide_source,
+                self.__handler.make_derived(self.__source),
+                self.__derived_columns.union(new_derived_columns_),
             )
         elif len(ds_path) == 1 and isinstance(ds, oc.StructureCollection):
             result = ds.evaluate(func, None, format, insert)
@@ -510,6 +532,8 @@ class StructureCollection:
             self.__header,
             self.__datasets | {ds_path[0]: result},
             self.__hide_source,
+            self.__handler.make_derived(self.__source),
+            self.__derived_columns,
         )
 
     def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
@@ -567,6 +591,7 @@ class StructureCollection:
             self.__datasets,
             self.__hide_source,
             new_handler,
+            self.__derived_columns,
         )
 
     def select(
@@ -654,6 +679,7 @@ class StructureCollection:
             self.__datasets | new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
+            self.__derived_columns,
         )
 
     def drop(self, **columns_to_drop):
@@ -711,6 +737,7 @@ class StructureCollection:
             self.__datasets | new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
+            self.__derived_columns,
         )
 
     def sort_by(self, column: str, invert: bool = False) -> StructureCollection:
@@ -745,6 +772,7 @@ class StructureCollection:
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
+            self.__derived_columns,
         )
 
     def with_units(
@@ -877,6 +905,7 @@ class StructureCollection:
             self.__datasets,
             self.__hide_source,
             new_handler,
+            self.__derived_columns,
         )
 
     def take_range(self, start: int, end: int):
@@ -910,6 +939,7 @@ class StructureCollection:
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
+            self.__derived_columns,
         )
 
     def take_rows(self, rows: np.ndarray | DataIndex):
@@ -939,6 +969,7 @@ class StructureCollection:
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
+            self.__derived_columns,
         )
 
     def with_new_columns(
@@ -1032,22 +1063,32 @@ class StructureCollection:
                 self.__datasets,
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
+                self.__derived_columns,
             )
         elif dataset not in self.__datasets.keys():
             raise ValueError(f"Dataset {dataset} not found in this collection!")
 
+        new_im_cols = {
+            name for name, col in new_columns.items() if isinstance(col, np.ndarray)
+        }
         ds = self.__datasets[dataset]
 
         if not isinstance(ds, oc.Dataset):
             raise ValueError(f"{dataset} is not a dataset!")
 
         new_ds = ds.with_new_columns(**new_columns, descriptions=descriptions)
+        new_derived_columns = (
+            set(new_ds.columns).difference(ds.columns).difference(new_im_cols)
+        )
+        new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
+
         return StructureCollection(
             self.__source,
             self.__header,
             {**self.__datasets, dataset: new_ds},
             self.__hide_source,
             self.__handler.make_derived(self.__source),
+            self.__derived_columns.union(new_derived_columns_),
         )
 
     def objects(
@@ -1090,21 +1131,68 @@ class StructureCollection:
         rename_galaxies = "galaxies" in self.keys()
         rs = {name: 0 for name in self.__datasets.keys()}
 
-        for row in self.__source.rows(metadata_columns=metadata_columns):
-            row = dict(row)
-            links = self.__handler.parse(row)
-            output = {}
-            for name, index in links.items():
-                output[name] = datasets[name].take_range(
-                    rs[name], rs[name] + len(index)
-                )
-                rs[name] += len(index)
+        columns_to_collect: dict[str, dict[str, list[np.ndarray]]] = defaultdict(dict)
+        for column in self.__derived_columns:
+            name_parts = column.split(".")
+            columns_to_collect[name_parts[0]][name_parts[1]] = []
 
-            if not self.__hide_source:
-                output.update({self.__source.dtype: row})
-            if not output:
-                continue
-            yield output
+        try:
+            for row in self.__source.rows(metadata_columns=metadata_columns):
+                row = dict(row)
+                links = self.__handler.parse(row)
+                output = {}
+                for name, index in links.items():
+                    output[name] = datasets[name].take_range(
+                        rs[name], rs[name] + len(index)
+                    )
+                    rs[name] += len(index)
+
+                if not self.__hide_source:
+                    output.update({self.__source.dtype: row})
+                if not output:
+                    continue
+
+                for ds_name, ds_columns_to_collect in columns_to_collect.items():
+                    if ds_name not in output:
+                        continue
+                    column_names = set(output[ds_name].columns).intersection(
+                        ds_columns_to_collect.keys()
+                    )
+                    data = output[ds_name].select(column_names).get_data()
+                    if not isinstance(data, dict):
+                        ds_columns_to_collect[
+                            next(iter(ds_columns_to_collect.keys()))
+                        ].append(data)
+                        continue
+
+                    for colname, coldata in data.items():
+                        ds_columns_to_collect[colname].append(coldata)
+
+                yield output
+
+            new_datasets = self.__get_datasets()
+            for ds_name, collected_data in columns_to_collect.items():
+                ds_data = {
+                    name: np.concatenate(cd)
+                    for name, cd in collected_data.items()
+                    if len(cd) > 0
+                }
+                if not ds_data:
+                    continue
+                self.__derived_columns = self.__derived_columns.difference(
+                    f"{ds_name}.{name}" for name in ds_data.keys()
+                )
+
+                new_dataset = (
+                    new_datasets[ds_name]
+                    .drop(ds_data.keys())
+                    .with_new_columns(**ds_data)
+                )
+            self.__datasets = new_datasets
+        except GeneratorExit:
+            pass
+        except BaseException:
+            raise
 
     def with_datasets(self, datasets: list[str]):
         """
@@ -1136,6 +1224,7 @@ class StructureCollection:
             new_datasets,
             hide_source,
             self.__handler.make_derived(self.__source),
+            self.__derived_columns,
         )
 
     def halos(self, *args, **kwargs):
