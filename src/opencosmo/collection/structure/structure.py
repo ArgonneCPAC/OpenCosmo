@@ -990,8 +990,6 @@ class StructureCollection:
         for row in self.__source.rows(metadata_columns=metadata_columns):
             row = dict(row)
             links = self.__handler.parse(row)
-            for name, link in links.items():
-                print(name, len(link))
             output = {}
             for name, index in links.items():
                 output[name] = datasets[name].take_range(
