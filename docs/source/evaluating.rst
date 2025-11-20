@@ -294,3 +294,7 @@ Some computations may be *stateful*, meaning that the result of a computation on
 In cases like these, the stateful part of the computation should be passed into :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>` as a keyword argument, and mutated inside the provided function. OpenCosmo simply passes the keyword argument along to the eavluated function, so any mutated state will persist between function calls.
 
 
+Performance Note
+----------------
+
+Evaluations on individual datasets (and lightcones) are lazy, whether processed through :code:`evaluate` or a StructureCollection's :code:`evaluate_on_dataset` method. Evaluations on StructureCollections that involve multiple datasets are performed eagerly. 

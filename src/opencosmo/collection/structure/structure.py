@@ -344,92 +344,85 @@ class StructureCollection:
             it will be treated as an additional column.
 
         """
-        # Note: there are four real cases
-        # 1. Evaluating using multiple datasets and inserting into a single dataset
-        # 2. Evaluating using a single dataset and inserting into a single dataset
-        # 3. Evaluating using multiple datasets and returning
-        # 4. Evaluating using a single dataset and returning
+        # Note: there are a few cases we support
+        # 1. Evaluating on multiple datasets and inserting into halo_properties/galaxy_properties
+        # 2. Evaluating on a single dataset and inserting into that dataset
+        # 3. Evaluating on multiple dataset and inserting into one of them
+
+        # The second of these can (and has) been made lazy. The 1st and 3rd are eager, for now.
+        # If the user sets insert=False, everything is eager.
 
         if format not in ["astropy", "numpy"]:
             raise ValueError(f"Invalid format requested for data: {format}")
 
+        if dataset is not None and dataset.startswith("galaxies"):
+            # Nested structure collection, special case
+            dataset_path = dataset.split(".")
+            sub_dataset = None
+            if len(dataset_path) == 2:
+                sub_dataset = dataset_path[1]
+
+            result = self[dataset_path[0]].evaluate(
+                func, sub_dataset, format, insert, **evaluate_kwargs
+            )
+            if not insert:
+                return result
+            return StructureCollection(
+                self.__source,
+                self.__header,
+                self.__get_datasets() | {dataset: result},
+                self.__hide_source,
+                self.__handler.make_derived(self.__source),
+            )
+
         parameter_names = set(signature(func).parameters.keys())
         required_datasets = parameter_names.intersection(self.keys())
-        if not required_datasets and not dataset:
+        if not required_datasets and dataset is None:
             raise ValueError(
                 "If your function does not take dataset names as arguments, you must specify which dataset you want to evaluate on!"
             )
 
-        if dataset is not None:  # evaluate on a single dataset
-            ds: oc.Dataset | StructureCollection
-            datasets = dataset.split(".", 1)
-            if dataset == self.__source.dtype:
-                ds = self.__source
-            elif insert:
-                ds = self.__datasets[datasets[0]]
-            else:
-                ds = self[datasets[0]]
+        if dataset is not None and not required_datasets:
+            if dataset not in self.keys():
+                raise ValueError(f"Unknown dataset {dataset}")
+            ds = self[dataset]
 
-            if isinstance(ds, oc.Dataset) and len(datasets) > 1:
-                raise ValueError("Datasets cannot be nested!")
-
-            elif isinstance(ds, oc.Dataset):
-                result = ds.evaluate(
-                    func,
-                    format=format,
-                    insert=insert,
-                    strategy="chunked",
-                    **evaluate_kwargs,
-                )
-            elif isinstance(ds, StructureCollection):
-                ds = self[datasets[0]]
-                ds_name = datasets[1] if len(datasets) > 1 else None
-                result = ds.evaluate(
-                    func,
-                    ds_name,
-                    format=format,
-                    insert=insert,
-                    **evaluate_kwargs,
-                )
-
-            if result is None or not insert:
+            result = ds.evaluate(
+                func,
+                insert=insert,
+                format=format,
+                strategy="chunked",
+                **evaluate_kwargs,
+            )
+            if not insert:
                 return result
-
-            assert isinstance(result, (oc.Dataset, StructureCollection))
-            if ds.dtype == self.__source.dtype:
-                new_source = result
-                new_datasets = self.__datasets
-            else:
-                new_source = self.__source
-                new_datasets = {**self.__datasets, datasets[0]: result}
             return StructureCollection(
-                new_source,
+                self.__source,
                 self.__header,
-                new_datasets,
+                self.__get_datasets() | {dataset: result},
                 self.__hide_source,
-                self.__handler.make_derived(new_source),
+                self.__handler.make_derived(self.__source),
             )
-        if dataset is not None:
-            raise NotImplementedError(
-                f"Visiting a single dataset using data from multiple datasets is not yet supported."
+
+            # case two
+        else:
+            # case one/3
+            kwarg_names = set(evaluate_kwargs.keys())
+            other_kwarg_names = kwarg_names.difference(self.keys())
+
+            output = evaluate.visit_structure_collection_eagerly(
+                func,
+                self,
+                dataset=dataset,
+                format=format,
+                evaluate_kwargs=evaluate_kwargs,
             )
-        kwarg_names = set(evaluate_kwargs.keys())
-        other_kwarg_names = kwarg_names.difference(self.keys())
-
-        dataset_columns = {key: evaluate_kwargs.get(key) for key in required_datasets}
-        kwargs = {key: evaluate_kwargs[key] for key in other_kwarg_names}
-
-        output = evaluate.visit_structure_collection(
-            func,
-            dataset_columns,
-            self,
-            dataset=dataset,
-            format=format,
-            evaluator_kwargs=kwargs,
-        )
-        if not insert or output is None:
-            return output
-        return self.with_new_columns(**output, dataset=self.__source.dtype)
+            if not insert or output is None:
+                return output
+            return self.with_new_columns(
+                **output,
+                dataset=dataset if dataset is not None else self.__source.dtype,
+            )
 
     def evaluate_on_dataset(
         self,
