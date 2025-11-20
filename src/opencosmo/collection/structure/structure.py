@@ -5,17 +5,18 @@ from inspect import signature
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Mapping, Optional
 from warnings import warn
 
-import numpy as np
-
 import opencosmo as oc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io.schemas import StructCollectionSchema
 
+from .handler import LinkHandler
+
 if TYPE_CHECKING:
     import astropy
     import astropy.units as u
+    import numpy as np
 
     from opencosmo.column.column import DerivedColumn
     from opencosmo.index import DataIndex
@@ -42,83 +43,6 @@ def filter_source_by_dataset(
     return new_source
 
 
-LINK_ALIASES = {  # Left: Name in file, right: Name in collection
-    "sodbighaloparticles_star_particles": "star_particles",
-    "sodbighaloparticles_dm_particles": "dm_particles",
-    "sodbighaloparticles_gravity_particles": "gravity_particles",
-    "sodbighaloparticles_agn_particles": "agn_particles",
-    "sodbighaloparticles_gas_particles": "gas_particles",
-    "sod_profile": "halo_profiles",
-    "galaxyproperties": "galaxy_properties",
-    "galaxyparticles_star_particles": "star_particles",
-}
-
-
-def create_start_size(data, start_name, size_name):
-    start = data.pop(start_name, None)
-    size = data.pop(size_name, None)
-    if start is None:
-        return None
-    if isinstance(start, np.ndarray):
-        return ChunkedIndex(start, size)
-    if size == 0:
-        return None
-    return ChunkedIndex.single_chunk(start, size)
-
-
-def create_idx(data, idx_name):
-    idx = data.pop(idx_name, None)
-    if idx is None:
-        return None
-
-    if isinstance(idx, np.ndarray):
-        return SimpleIndex(idx)
-    elif idx == -1:
-        return None
-    return SimpleIndex(np.atleast_1d(idx))
-
-
-def make_links(keys, rename_galaxies=False):
-    starts = list(filter(lambda key: "start" in key, keys))
-    sizes = list(filter(lambda key: "size" in key, keys))
-    idxs = list(filter(lambda key: "idx" in key, keys))
-
-    starts = set(map(lambda key: key[:-6], starts))
-    sizes = set(map(lambda key: key[:-5], sizes))
-    idxs = set(map(lambda key: key[:-4], idxs))
-
-    assert starts == sizes
-    output = {}
-    columns = {}
-    for name in starts:
-        output[LINK_ALIASES[name]] = partial(
-            create_start_size, start_name=f"{name}_start", size_name=f"{name}_size"
-        )
-        columns[LINK_ALIASES[name]] = [f"{name}_start", f"{name}_size"]
-
-    for name in idxs:
-        output[LINK_ALIASES[name]] = partial(create_idx, idx_name=f"{name}_idx")
-        columns[LINK_ALIASES[name]] = [f"{name}_idx"]
-
-    if rename_galaxies and "galaxy_properties" in output:
-        output["galaxies"] = output.pop("galaxy_properties")
-        columns["galaxies"] = columns.pop("galaxy_properties")
-    return output, columns
-
-
-class LinkHandler:
-    def __init__(self, links: Iterable[str], rename_galaxies=False):
-        self.links, self.columns = make_links(links, rename_galaxies)
-
-    def parse(self, data: dict[str, Any]):
-        output = {}
-        for name, handler in self.links.items():
-            result = handler(data)
-            if result is not None:
-                output[name] = result
-        return output
-
-
 class StructureCollection:
     """
     A collection of datasets that contain both high-level properties
@@ -138,6 +62,7 @@ class StructureCollection:
         header: oc.header.OpenCosmoHeader,
         datasets: Mapping[str, oc.Dataset | StructureCollection],
         hide_source: bool = False,
+        link_handler: Optional[LinkHandler] = None,
         **kwargs,
     ):
         """
@@ -152,9 +77,29 @@ class StructureCollection:
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
 
-        self.__handler = LinkHandler(
+        if link_handler is None:
+            self.__handler = LinkHandler.from_link_names(
+                self.__source.meta_columns, "galaxies" in self.__datasets
+            )
+            datasets = self.__handler.prep_datasets(self.__source, self.__datasets)
+        else:
+            self.__handler = link_handler
+
+    def __get_datasets(self):
+        """
+        Methods should never access __datasets directly. Instead,
+        get them through this method, which ensures all the rebuilding is
+        done when necessary.
+        """
+        if self.__handler is None:
+            return self.__datasets
+        self.__datasets = self.__handler.rebuild_datasets(
+            self.__source, self.__datasets
+        )
+        self.__handler = LinkHandler.from_link_names(
             self.__source.meta_columns, "galaxies" in self.__datasets
         )
+        return self.__datasets
 
     def __repr__(self):
         structure_type = self.__header.file.data_type.split("_")[0] + "s"
@@ -250,23 +195,12 @@ class StructureCollection:
         """
         Return the linked dataset with the given key.
         """
-        if key not in self.keys():
-            raise KeyError(f"Dataset {key} not found in collection.")
-        elif key == self.__header.file.data_type:
+        if key == self.__header.file.data_type:
             return self.__source
-        ds = self.__datasets[key]
-        if isinstance(ds, StructureCollection):
-            idx = ds.__source.index
-            if not idx.range()[0] == 0 or len(ds) != idx.range()[1]:
-                return ds
-
-        meta = self.__source.get_metadata(self.__handler.columns[key])
-        indices = self.__handler.parse(meta)
-        ds = self.__datasets[key]
-        index = indices[key]
-
-        ds = self.__datasets[key].take_rows(index)
-        return ds
+        datasets = self.__get_datasets()
+        if key not in datasets.keys():
+            raise KeyError(f"Dataset {key} not found in collection.")
+        return datasets[key]
 
     def __enter__(self):
         return self
@@ -311,8 +245,13 @@ class StructureCollection:
         """
 
         bounded = self.__source.bound(region, select_by)
+        new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
-            bounded, self.__header, self.__datasets, self.__hide_source
+            bounded,
+            self.__header,
+            self.__datasets,
+            self.__hide_source,
+            new_handler,
         )
 
     def evaluate(
@@ -470,6 +409,7 @@ class StructureCollection:
                 self.__header,
                 new_datasets,
                 self.__hide_source,
+                self.__handler.make_derived(new_source),
             )
         if dataset is not None:
             raise NotImplementedError(
@@ -623,8 +563,14 @@ class StructureCollection:
             filtered = filter_source_by_dataset(
                 galaxy_properties, self.__source, self.__header, *masks
             )
+
+        new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
-            filtered, self.__header, self.__datasets, self.__hide_source
+            filtered,
+            self.__header,
+            self.__datasets,
+            self.__hide_source,
+            new_handler,
         )
 
     def select(
@@ -711,6 +657,7 @@ class StructureCollection:
             self.__header,
             self.__datasets | new_datasets,
             self.__hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def drop(self, **columns_to_drop):
@@ -767,6 +714,7 @@ class StructureCollection:
             self.__header,
             self.__datasets | new_datasets,
             self.__hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def sort_by(self, column: str, invert: bool = False) -> StructureCollection:
@@ -794,11 +742,13 @@ class StructureCollection:
         """
 
         new_source = self.__source.sort_by(column, invert=invert)
+
         return StructureCollection(
             new_source,
             self.__header,
             self.__datasets,
             self.__hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def with_units(
@@ -897,7 +847,11 @@ class StructureCollection:
             new_datasets[key] = new_ds
 
         return StructureCollection(
-            new_source, self.__header, new_datasets, self.__hide_source
+            new_source,
+            self.__header,
+            new_datasets,
+            self.__hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def take(self, n: int, at: str = "random"):
@@ -919,11 +873,14 @@ class StructureCollection:
             A new collection with the structures taken from the original.
         """
         new_source = self.__source.take(n, at)
+        new_handler = self.__handler.make_derived(self.__source)
+
         return StructureCollection(
             new_source,
             self.__header,
             self.__datasets,
             self.__hide_source,
+            new_handler,
         )
 
     def take_range(self, start: int, end: int):
@@ -952,7 +909,11 @@ class StructureCollection:
         """
         new_source = self.__source.take_range(start, end)
         return StructureCollection(
-            new_source, self.__header, self.__datasets, self.__hide_source
+            new_source,
+            self.__header,
+            self.__datasets,
+            self.__hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def take_rows(self, rows: np.ndarray | DataIndex):
@@ -977,7 +938,11 @@ class StructureCollection:
         """
         new_source = self.__source.take_rows(rows)
         return StructureCollection(
-            new_source, self.__header, self.__datasets, self.__hide_source
+            new_source,
+            self.__header,
+            self.__datasets,
+            self.__hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def with_new_columns(
@@ -1058,6 +1023,7 @@ class StructureCollection:
                 self.__header,
                 {**self.__datasets, collection_name: new_collection},
                 self.__hide_source,
+                self.__handler.make_derived(self.__source),
             )
 
         if dataset == self.__source.dtype:
@@ -1068,6 +1034,8 @@ class StructureCollection:
                 new_source,
                 self.__header,
                 self.__datasets,
+                self.__hide_source,
+                self.__handler.make_derived(self.__source),
             )
         elif dataset not in self.__datasets.keys():
             raise ValueError(f"Dataset {dataset} not found in this collection!")
@@ -1083,6 +1051,7 @@ class StructureCollection:
             self.__header,
             {**self.__datasets, dataset: new_ds},
             self.__hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def objects(
@@ -1121,19 +1090,24 @@ class StructureCollection:
         metadata_columns: list[str] = reduce(
             lambda acc, key: acc + self.__handler.columns[key], data_types, []
         )
+        datasets = self.__get_datasets()
         rename_galaxies = "galaxies" in self.keys()
+        rs = {name: 0 for name in self.__datasets.keys()}
+
         for row in self.__source.rows(metadata_columns=metadata_columns):
             row = dict(row)
             links = self.__handler.parse(row)
-            output = {
-                key: self.__datasets[key].take_rows(index)
-                for key, index in links.items()
-                if key in data_types
-            }
-            if not output:
-                continue
+            output = {}
+            for name, index in links.items():
+                output[name] = datasets[name].take_range(
+                    rs[name], rs[name] + len(index)
+                )
+                rs[name] += len(index)
+
             if not self.__hide_source:
                 output.update({self.__source.dtype: row})
+            if not output:
+                continue
             yield output
 
     def with_datasets(self, datasets: list[str]):
@@ -1161,7 +1135,11 @@ class StructureCollection:
 
         new_datasets = {name: self.__datasets[name] for name in requested_datasets}
         return StructureCollection(
-            self.__source, self.__header, new_datasets, hide_source
+            self.__source,
+            self.__header,
+            new_datasets,
+            hide_source,
+            self.__handler.make_derived(self.__source),
         )
 
     def halos(self, *args, **kwargs):
@@ -1185,8 +1163,11 @@ class StructureCollection:
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema()
         source_name = self.__source.dtype
+        datasets = self.__handler.resort(self.__source, self.__get_datasets())
 
-        for name, dataset in self.items():
+        source_schema = self.__source.make_schema()
+        schema.add_child(source_schema, source_name)
+        for name, dataset in datasets.items():
             ds_schema = dataset.make_schema()
             if name == "galaxies":
                 name = "galaxy_properties"

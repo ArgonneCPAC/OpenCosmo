@@ -392,6 +392,24 @@ def test_sort_rows(input_path):
         assert row["fof_halo_mass"].value == fof_masses[i]
 
 
+def test_rows_cache(input_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.sort_by("sod_halo_mass")
+    dataset = dataset.take(100)
+    fof_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    dataset = dataset.with_new_columns(fof_px=fof_px)
+
+    for i, row in enumerate(dataset.rows()):
+        assert row["fof_px"] == row["fof_halo_mass"] * row["fof_halo_com_vx"]
+
+    cache = dataset._Dataset__state._DatasetState__cache
+    cached_data = cache.get_columns(["fof_halo_mass", "fof_halo_com_vx", "fof_px"])
+    assert np.all(
+        cached_data["fof_px"]
+        == cached_data["fof_halo_mass"] * cached_data["fof_halo_com_vx"]
+    )
+
+
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 

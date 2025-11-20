@@ -88,6 +88,84 @@ def verify_for_lazy_evaluation(
     return column
 
 
+def __visit_rows_in_dataset(
+    function: Callable,
+    dataset: Dataset,
+    format: str,
+    kwargs: dict[str, Any] = {},
+    iterable_kwargs: dict[str, Sequence] = {},
+):
+    first_row_values = dict(dataset.take(1, at="start").get_data())
+    first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
+    storage = __make_output(function, first_row_values | first_row_kwargs, len(dataset))
+    for i, row in enumerate(dataset.rows(include_units=format == "astropy")):
+        if i == 0:
+            continue
+        iter_kwargs = {name: arr[i] for name, arr in iterable_kwargs.items()}
+        output = function(**row, **kwargs, **iter_kwargs)
+        if storage is not None:
+            insert(storage, i, output)
+    return storage
+
+
+def __visit_rows_in_data(
+    function: Callable,
+    data: dict[str, np.ndarray],
+    format="astropy",
+    kwargs: dict[str, Any] = {},
+    iterable_kwargs: dict[str, np.ndarray] = {},
+):
+    data = {key: d for key, d in data.items() if key in signature(function).parameters}
+    first_row_data = {name: arr[0] for name, arr in data.items()}
+    first_row_kwargs = kwargs | {name: arr[0] for name, arr in iterable_kwargs.items()}
+    n_rows = len(next(iter(data.values())))
+    storage = __make_output(function, first_row_data | first_row_kwargs, n_rows)
+    if format == "numpy":
+        data = {
+            key: arr.value if isinstance(arr, Quantity) else arr
+            for key, arr in data.items()
+        }
+
+    for i in range(1, n_rows):
+        row = {
+            name: arr[i] for name, arr in chain(data.items(), iterable_kwargs.items())
+        }
+        output = function(**row, **kwargs)
+        if storage is not None:
+            insert(storage, i, output)
+    return storage
+
+
+def __make_output(
+    function: Callable,
+    first_input_values: dict[str, Any],
+    n_rows: int,
+) -> dict | None:
+    first_values = function(**first_input_values)
+    if first_values is None:
+        return None
+    if not isinstance(first_values, dict):
+        name = function.__name__
+        first_values = {name: first_values}
+
+    return make_output_from_first_values(first_values, n_rows)
+
+
+def __visit_vectorize(
+    function: Callable,
+    data: dict[str, Iterable] | Iterable,
+    evaluator_kwargs: dict[str, Any] = {},
+):
+    pars = signature(function).parameters
+
+    if not isinstance(data, dict) or (len(data) > 1 and len(pars) == 1):
+        return function(data, **evaluator_kwargs)
+
+    input_data = {pname: data[pname] for pname in pars if pname in data}
+
+    return function(**input_data, **evaluator_kwargs)
+
+
 def __verify(
     function: Callable, data_columns: Iterable[str], kwarg_names: Iterable[str]
 ):

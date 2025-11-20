@@ -21,7 +21,7 @@ class SimpleIndex:
     """
 
     def __init__(self, index: NDArray[np.int_]) -> None:
-        self.__index = np.sort(index)
+        self.__index = index
 
     @classmethod
     def from_size(cls, size: int) -> "SimpleIndex":
@@ -41,7 +41,7 @@ class SimpleIndex:
 
     def range(self) -> tuple[int, int]:
         """
-        Guranteed to be sorted
+        Not guaranteed to be sorted
         """
         if len(self) == 0:
             return 0, 0
@@ -71,8 +71,9 @@ class SimpleIndex:
             return np.zeros_like(start)
 
         ends = start + size
-        start_idxs = np.searchsorted(self.__index, start, "left")
-        end_idxs = np.searchsorted(self.__index, ends, "left")
+        index_to_search = np.sort(self.__index)
+        start_idxs = np.searchsorted(index_to_search, start, "left")
+        end_idxs = np.searchsorted(index_to_search, ends, "left")
         return end_idxs - start_idxs
 
     def set_data(self, data: np.ndarray, value: bool) -> np.ndarray:
