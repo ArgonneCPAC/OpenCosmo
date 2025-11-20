@@ -1172,22 +1172,32 @@ class StructureCollection:
 
             new_datasets = self.__get_datasets()
             for ds_name, collected_data in columns_to_collect.items():
+                ds_length = len(new_datasets[ds_name])
                 ds_data = {
                     name: np.concatenate(cd)
                     for name, cd in collected_data.items()
                     if len(cd) > 0
+                }
+                ds_data = {
+                    name: d.reshape((ds_length, -1)) if len(d) > ds_length else d
+                    for name, d in ds_data.items()
                 }
                 if not ds_data:
                     continue
                 self.__derived_columns = self.__derived_columns.difference(
                     f"{ds_name}.{name}" for name in ds_data.keys()
                 )
+                descriptions = {
+                    name: new_datasets[ds_name].descriptions[name]
+                    for name in ds_data.keys()
+                }
 
                 new_dataset = (
                     new_datasets[ds_name]
                     .drop(ds_data.keys())
-                    .with_new_columns(**ds_data)
+                    .with_new_columns(descriptions=descriptions, **ds_data)
                 )
+                new_datasets[ds_name] = new_dataset
             self.__datasets = new_datasets
         except GeneratorExit:
             pass

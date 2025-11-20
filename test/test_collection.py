@@ -1070,3 +1070,9 @@ def test_data_cached_after_objects(halo_paths):
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(20)
     for _ in ds.objects():
         pass
+
+    dataset = ds["dm_particles"]
+    cache = dataset._Dataset__state._DatasetState__cache
+    data = cache.get_columns(("gpe",))
+    assert data.get("gpe") is not None
+    assert dataset.descriptions["gpe"] != "None"
