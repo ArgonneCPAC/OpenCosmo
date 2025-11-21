@@ -96,6 +96,12 @@ class CollectionWriter:
             self.children[name].write(file[name])
 
 
+class StackedDatasetWriter:
+    def __init__(self, children: list[DatasetWriter], order: list[np.ndarray]):
+        self.children = children
+        self.__order = order
+
+
 class DatasetWriter:
     """
     Writes datasets to a file or group. Datasets must have at least one column.

@@ -485,7 +485,7 @@ def test_write_single_lightcone(haloproperties_600_path, tmp_path):
     assert len(ds) == len(ds_written)
 
 
-def test_insert_to_sroted(haloproperties_600_path, haloproperties_601_path, tmp_path):
+def test_insert_to_sorted(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds = ds.sort_by("fof_halo_mass")
     ranking = np.arange(0, len(ds))

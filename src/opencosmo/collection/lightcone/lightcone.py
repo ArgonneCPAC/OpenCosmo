@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from functools import cached_property, reduce
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
@@ -13,7 +14,7 @@ from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
-from opencosmo.io.schemas import LightconeSchema
+from opencosmo.io.schemas import LightconeSchema, StackedLightconeDatasetSchema
 
 if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
@@ -30,26 +31,28 @@ if TYPE_CHECKING:
 
 
 def get_redshift_range(datasets: list[Dataset]):
-    redshift_ranges = [ds.header.lightcone["z_range"] for ds in datasets]
-    if all(rr is not None for rr in redshift_ranges):
-        min_redshift = min(rr[0] for rr in redshift_ranges)
-        max_redshift = max(rr[1] for rr in redshift_ranges)
+    redshift_ranges = list(map(get_single_redshift_range, datasets))
+    min_z = min(rr[0] for rr in redshift_ranges)
+    max_z = max(rr[1] for rr in redshift_ranges)
 
-    else:
-        steps = np.fromiter((ds.header.file.step for ds in datasets), dtype=int)
-        step_zs = datasets[0].header.simulation["step_zs"]
-        min_step = np.min(steps)
-        max_step = np.max(steps)
+    return (min_z, max_z)
 
-        min_redshift = step_zs[max_step]
-        max_redshift = step_zs[min_step - 1]
+
+def get_single_redshift_range(dataset: Dataset):
+    redshift_range = dataset.header.lightcone["z_range"]
+    if redshift_range is not None:
+        return redshift_range
+    step_zs = dataset.header.simulation["step_zs"]
+    step = dataset.header.file.step
+    min_redshift = step_zs[step]
+    max_redshift = step_zs[step - 1]
     return (min_redshift, max_redshift)
 
 
 def is_in_range(dataset: Dataset, z_low: float, z_high: float):
     z_range = dataset.header.lightcone["z_range"]
     if z_range is None:
-        z_range = get_redshift_range([dataset])
+        z_range = get_single_redshift_range(dataset)
     if z_high < z_range[0] or z_low > z_range[1]:
         return False
     return True
@@ -87,6 +90,36 @@ def take_from_sorted(
 
     sorted_indices = np.sort(sort_index)
     return sorted_indices
+
+
+def order_by_redshift_range(datasets: dict[str, Dataset]):
+    redshift_ranges = {
+        key: get_single_redshift_range(ds) for key, ds in datasets.items()
+    }
+    sorted_ranges = sorted(redshift_ranges.items(), key=lambda item: item[1][0])
+    output = OrderedDict()
+    for name, _ in sorted_ranges:
+        output[name] = datasets[name]
+    return output
+
+
+def combine_adjacent_datasets(ordered_datasets: dict[str, Dataset]):
+    MIN_DATASET_SIZE = 100_000
+    rs = 0
+    current = []
+    current_key = next(iter(ordered_datasets.keys()))
+    output = OrderedDict({current_key: []})
+
+    for key, ds in ordered_datasets.items():
+        if rs < MIN_DATASET_SIZE:
+            rs += len(ds)
+            output[current_key].append(ds)
+            continue
+        current_key = key
+        output[current_key] = [ds]
+        rs = len(ds)
+
+    return output
 
 
 def with_redshift_column(dataset: Dataset):
@@ -435,12 +468,20 @@ class Lightcone(dict):
 
     def make_schema(self) -> LightconeSchema:
         schema = LightconeSchema()
-        for name, dataset in self.items():
-            ds_schema = dataset.make_schema()
-            ds_schema.header = ds_schema.header.with_parameter(
-                "lightcone/z_range", self.z_range
-            )
-            schema.add_child(ds_schema, name)
+        datasets = order_by_redshift_range(self)
+        output_datasets = combine_adjacent_datasets(datasets)
+
+        for name, datasets in output_datasets.items():
+            if len(datasets) == 1:
+                ds_schema = datasets[0].make_schema()
+                ds_schema.header = ds_schema.header.with_parameter(
+                    "lightcone/z_range", self.z_range
+                )
+                schema.add_child(ds_schema, name)
+                continue
+            stacked_schema = StackedLightconeDatasetSchema(datasets)
+            schema.add_child(stacked_schema, name)
+
         return schema
 
     def bound(self, region: Region, select_by: Optional[str] = None):
