@@ -300,7 +300,7 @@ class HealpixMap(dict):
                     hsp_out = hsp.HealSparseMap.make_empty(
                         self.nside_lr, self.nside,dtype=np.float32
                     )
-                    hsp_out[table["pixel"].value] = col.value
+                    hsp_out[table["pixel"].value] = (col.value).astype(np.float32)
                     dict_maps[name] = hsp_out
             return dict_maps
 
@@ -315,7 +315,7 @@ class HealpixMap(dict):
         for target in targets:
             ds = open_single_dataset(target)
             # TODO: check if we need some equivalent here
-            if not isinstance(ds, Lightcone) or len(ds.keys()) != 1:
+            if not isinstance(ds, HealpixMap) or len(ds.keys()) != 1:
                 raise ValueError(
                     "Lightcones can only contain datasets (not collections)"
                 )
@@ -506,7 +506,7 @@ class HealpixMap(dict):
             return
 
         if insert:
-            assert isinstance(result, Lightcone)
+            assert isinstance(result, HealpixMap)
             return result
 
         keys = next(iter(result.values())).keys()
@@ -614,7 +614,7 @@ class HealpixMap(dict):
         kept_columns = current_columns - dropped_columns
         return self.select(kept_columns)
 
-    def take(self, n: int, at: str = "random") -> "Lightcone":
+    def take(self, n: int, at: str = "random") -> "HealpixMap":
         """
         Create a new dataset from some number of rows from this dataset.
 
@@ -740,7 +740,7 @@ class HealpixMap(dict):
 
     def __take_rows(self, rows: np.ndarray):
         """
-        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorte.
+        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorted.
         For internal use only.
         """
         ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))

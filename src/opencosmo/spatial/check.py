@@ -45,24 +45,27 @@ def get_theta_phi_coordinates(dataset: "Dataset"):
 
 
 def get_theta_phi_coordinates_pixel(dataset: "Dataset"):
-    pixel_values = dataset.select(["pixel"]).data
+
+    pixel_values = dataset.get_metadata(['pixel'])['pixel']
     theta, phi = hp.pix2ang(
-        dataset.header.healpix_map["nside"], pixel_values, lonlat=False
+        dataset.header.healpix_map["nside"], pixel_values, lonlat=False, nest=True
     )
     ra = phi
     dec = np.pi / 2 - theta
     return SkyCoord(ra, dec, unit=u.rad)
 
 
+
+
 def find_coordinates_2d(dataset: "Dataset"):
     columns = set(dataset.columns)
-    if len(columns.intersection(set(["theta", "phi"]))) == 2:
+    if dataset.header.file.data_type == "healpix_map":
+        return get_theta_phi_coordinates_pixel(dataset)
+    elif len(columns.intersection(set(["theta", "phi"]))) == 2:
         return get_theta_phi_coordinates(dataset)
     elif len(columns.intersection(set(["ra", "dec"]))) == 2:
         data = dataset.select(["ra", "dec"]).data
         return SkyCoord(data["ra"], data["dec"])
-    elif len(columns.intersection(set(["pixel"]))) == 1:
-        return get_theta_phi_coordinates_pixel(dataset)
     raise ValueError("Dataset does not contain coordinates")
 
 
