@@ -244,7 +244,6 @@ def open(
     # For now the only way to open multiple files is with a StructureCollection
 
 
-# TODO: alter all this to allow healpix map
 def open_single_dataset(
     target: OpenTarget,
     metadata_group: Optional[str] = None,
@@ -269,7 +268,6 @@ def open_single_dataset(
         sim_region = from_model(header.file.region)
     elif header.file.is_lightcone:
         sim_region = FullSkyRegion()
-    # TODO: make sure we have is_lightcone set
     else:
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))
@@ -317,8 +315,7 @@ def open_single_dataset(
             header.healpix_map["ordering"],
             header.healpix_map["full_sky"],
             header.healpix_map["z_range"],
-            "pixel",
-        )  # hidden pixel column
+        )  
     elif header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 

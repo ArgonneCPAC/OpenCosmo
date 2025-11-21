@@ -1,0 +1,112 @@
+import os
+
+import astropy.units as u
+import numpy as np
+import pytest
+from astropy.coordinates import SkyCoord
+from healpy import pix2ang
+from mpi4py import MPI
+from pytest_mpi.parallel_assert import parallel_assert
+import healsparse as hsp
+import healpy as hp
+
+import opencosmo as oc
+
+
+@pytest.fixture
+def healpix_map_path(map_path):
+    return map_path / "test_map.hdf5"
+
+
+@pytest.fixture
+def all_files():
+    return ["test_map.hdf5"]
+
+
+@pytest.fixture
+def structure_maps(map_path, all_files):
+    return [map_path / f for f in all_files]
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_index(healpix_map_path):
+    ds = oc.open(healpix_map_path)
+    raw_data = next(iter(ds.values())).get_metadata(['pixel'])
+
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
+    radius = 2 * u.deg
+    center_coord = SkyCoord(*center, unit=("deg","deg"))
+
+    theta, phi = hp.pix2ang(ds.nside, raw_data['pixel'], nest=True)
+    raw_data_coords = SkyCoord( phi, np.pi / 2 - theta, unit="rad")
+
+    raw_data_seps = center_coord.separation(raw_data_coords)
+    n_raw = np.sum(raw_data_seps < radius)
+
+    region = oc.make_cone(center, radius)
+    data = ds.bound(region).get_data("healsparse")
+    theta, phi = hp.pix2ang(ds.nside, data['tsz'].valid_pixels, nest=True)
+    ra = phi
+    dec = np.pi / 2 - theta
+    coordinates = SkyCoord(ra, dec, unit="radian")
+    seps = center_coord.separation(coordinates)
+    seps = seps.to(u.degree)
+    parallel_assert(all(seps < radius))
+    parallel_assert(len(data['tsz'].valid_pixels) == n_raw)
+
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_index_chain_failure(healpix_map_path):
+    ds = oc.open(healpix_map_path)
+
+    center1 = (45 * u.deg, -45 * u.deg)
+    center2 = (45 * u.deg, 45 * u.deg)
+    radius = 2 * u.deg
+
+    region1 = oc.make_cone(center1, radius)
+    region2 = oc.make_cone(center2, radius)
+    ds = ds.bound(region1)
+    ds = ds.bound(region2)
+    parallel_assert(len(ds) == 0)
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_write(healpix_map_path, tmp_path):
+    ds = oc.open(healpix_map_path)
+
+    path = MPI.COMM_WORLD.bcast(tmp_path)
+
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
+
+    region = oc.make_cone(center, 2 * u.deg)
+    ds = ds.bound(region)
+
+    oc.write(path / "map_test.hdf5", ds)
+    new_ds = oc.open(path / "map_test.hdf5")
+
+    radius2 = 2 * u.deg
+    region2 = oc.make_cone(center, radius2)
+    new_ds = new_ds.bound(region2)
+    ds = ds.bound(region2)
+
+    parallel_assert( set(ds.data["tsz"].valid_pixels) == set(new_ds.data["tsz"].valid_pixels) ) 
+
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_write_single_map(healpix_map_path, tmp_path):
+    path = MPI.COMM_WORLD.bcast(tmp_path)
+    ds = oc.open(healpix_map_path)
+
+    original_length = len(ds.data['tsz'].valid_pixels)
+    oc.write(path / "map.hdf5", ds)
+    ds = oc.open(path / "map.hdf5")
+    parallel_asster(len(ds.data['tsz'].valid_pixels)==original_length)
+
+
