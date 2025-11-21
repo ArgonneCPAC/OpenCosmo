@@ -146,7 +146,7 @@ The :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` method acce
 
 .. code-block:: python
 
-        random_time = np.random.randint(0, 1000, size = len(ds)) * u.s
+        random_data = np.random.randint(0, 1000, size = len(ds)) * u.s
         dataset  = dataset.with_new_columns(random_time = random_data)
 
 
