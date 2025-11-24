@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
-from opencosmo.index import SimpleIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io.updaters import apply_updaters
 
 if TYPE_CHECKING:
@@ -31,6 +31,22 @@ and that all the datasets have the correct size, datatype, etc.
 """
 
 
+def get_data(
+    input_ds: h5py.Dataset | np.ndarray,
+    index: DataIndex,
+    dtype,
+    updater: Optional[Callable] = None,
+):
+    data = np.array([])
+    if len(index) > 0 and input_ds is not None:
+        data = index.get_data(input_ds)
+        if updater is not None:
+            data = updater(data)
+
+        data = data.astype(dtype)
+    return data
+
+
 def write_index(
     input_ds: h5py.Dataset | np.ndarray | None,
     output_ds: h5py.Dataset,
@@ -42,13 +58,7 @@ def write_index(
     Helper function to take elements from one h5py.Dataset using an index
     and put it in a different one.
     """
-    data = np.array([])
-    if len(index) > 0 and input_ds is not None:
-        data = index.get_data(input_ds)
-        if updater is not None:
-            data = updater(data)
-
-        data = data.astype(input_ds.dtype)
+    data = get_data(input_ds, index, output_ds.dtype, updater)
 
     if input_ds is not None:
         output_ds[offset : offset + len(data)] = data
@@ -99,7 +109,34 @@ class CollectionWriter:
 class StackedDatasetWriter:
     def __init__(self, children: list[DatasetWriter], order: list[np.ndarray]):
         self.children = children
-        self.__order = order
+        self.__order = np.concatenate(order)
+
+    def write(self, file):
+        reference_child = self.children[0]
+        reference_columns = reference_child.columns
+        for key, columns in reference_columns.items():
+            for colname, column in columns.items():
+                if "index" in key:
+                    data = np.array(
+                        [
+                            child.columns[key][colname].get_data()
+                            for i, child in enumerate(self.children)
+                        ]
+                    )
+                    data = np.sum(data, axis=0)
+
+                else:
+                    data = np.concatenate(
+                        [
+                            child.columns[key][colname].get_data()
+                            for i, child in enumerate(self.children)
+                        ]
+                    )
+                    data = data[self.__order]
+                new_writer = ColumnWriter(
+                    column.name, ChunkedIndex.from_size(len(data)), data
+                )
+                new_writer.write(file[key])
 
 
 class DatasetWriter:
@@ -157,6 +194,7 @@ class ColumnWriter:
         index: DataIndex,
         source: h5py.Dataset,
         offset: int = 0,
+        write_index: Optional[np.ndarray] = None,
         updater: Optional[Callable] = None,
     ):
         self.name = name
@@ -164,7 +202,10 @@ class ColumnWriter:
         self.index = index
         self.offset = offset
         self.updater = updater
-        self.data = None
+
+    def get_data(self):
+        data = get_data(self.source, self.index, self.source.dtype, self.updater)
+        return data
 
     def write(
         self,

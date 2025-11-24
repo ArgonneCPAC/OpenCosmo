@@ -479,7 +479,7 @@ class Lightcone(dict):
                 )
                 schema.add_child(ds_schema, name)
                 continue
-            stacked_schema = StackedLightconeDatasetSchema(datasets)
+            stacked_schema = StackedLightconeDatasetSchema(datasets, self.header)
             schema.add_child(stacked_schema, name)
 
         return schema

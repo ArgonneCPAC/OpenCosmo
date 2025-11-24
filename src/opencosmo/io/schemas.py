@@ -15,7 +15,6 @@ from opencosmo.index import ChunkedIndex
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
-    import numpy as np
     from mpi4py import MPI
     from numpy.typing import DTypeLike, NDArray
 
@@ -157,7 +156,7 @@ class SimCollectionSchema:
 
 class LightconeSchema:
     def __init__(self):
-        self.children: dict[str, DatasetSchema] = {}
+        self.children: dict[str, DatasetSchema | StackedLightconeDatasetSchema] = {}
 
     def verify(self):
         zero_length = set()
@@ -372,8 +371,9 @@ def get_stacked_order(datasets: Iterable[oc.Dataset], max_index_depth: int):
 
 
 class StackedLightconeDatasetSchema:
-    def __init__(self, datasets: list[oc.Datastet]):
+    def __init__(self, datasets: list[oc.Datastet], header: OpenCosmoHeader):
         self.children = [ds.make_schema(with_header=True) for ds in datasets]
+        self.header = header
         max_depth = -1
         for child in self.children:
             if "index" not in child.children:
@@ -387,6 +387,12 @@ class StackedLightconeDatasetSchema:
         if max_depth == -1:
             max_depth = 6
         self.__order = get_stacked_order(datasets, max_depth)
+        for i, child in enumerate(self.children):
+            for group, columns in child.columns.items():
+                if "data" not in group:
+                    continue
+                for column in columns.values():
+                    column.output_order = self.__order[i]
 
     def verify(self):
         zero_length = set()
@@ -411,11 +417,16 @@ class StackedLightconeDatasetSchema:
             data_group = group.require_group(groupname)
             for colname, column in columns.items():
                 new_column = copy(column)
-                new_column.total_length = total_length
+                if "data" in groupname:
+                    new_column.total_length = total_length
                 new_column.allocate(data_group)
 
+        if self.header is not None:
+            self.header.write(group)
+
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
-        return iow.StackedDatasetWriter(self.children, self.__order)
+        children = [child.into_writer() for child in self.children]
+        return iow.StackedDatasetWriter(children, self.__order)
 
 
 class ColumnSchema:
@@ -432,12 +443,14 @@ class ColumnSchema:
         source: h5py.Dataset | NDArray,
         attrs: dict[str, Any],
         total_length: Optional[int] = None,
+        output_order: Optional[np.ndarray] = None,
     ):
         self.name = name
         self.index = index
         self.source = source
         self.attrs = attrs
         self.offset = 0
+        self.output_order = output_order
         if total_length is None:
             total_length = len(index)
         self.total_length = total_length
@@ -464,7 +477,7 @@ class ColumnSchema:
         self.offset = offset
 
     def verify(self):
-        return True
+        assert self.output_order is None or self.offset == 0
 
     def allocate(self, group: h5py.Group):
         shape = (self.total_length,) + self.source.shape[1:]

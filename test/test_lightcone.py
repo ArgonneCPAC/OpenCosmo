@@ -487,13 +487,21 @@ def test_write_single_lightcone(haloproperties_600_path, tmp_path):
 
 def test_insert_to_sorted(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
-    ds = ds.sort_by("fof_halo_mass")
-    ranking = np.arange(0, len(ds))
-    ds = ds.with_new_columns(ranking=ranking)
+    ds = ds.sort_by("fof_halo_mass").take(10_000, at="end")
+    random_value = np.random.normal(1.0, 0.1, len(ds))
+    ds = ds.with_new_columns(
+        random_value=random_value,
+        random_mass=oc.col("fof_halo_mass") * oc.col("random_value"),
+    )
     output_path = tmp_path / "data.hdf5"
     oc.write(output_path, ds)
     ds = oc.open(output_path).sort_by("fof_halo_mass")
-    assert np.all(ds.select("ranking").get_data("numpy") == ranking)
+    data = ds.select(("random_value", "random_mass", "fof_halo_mass")).get_data()
+    assert np.all(
+        np.isclose(data["random_mass"], data["random_value"] * data["fof_halo_mass"])
+    )
+    # This test also checks stacking
+    assert len(ds.keys()) == 1
 
 
 def test_lightcone_structure_collection_open(structure_600):

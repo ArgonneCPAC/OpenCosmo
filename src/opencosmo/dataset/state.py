@@ -385,23 +385,6 @@ class DatasetState:
         new_cache = self.__cache
         new_derived = copy(self.__derived_columns)
         new_column_names: set[str] = set()
-
-        if new_derived_columns:
-            new_units = validate_derived_columns(
-                self.__derived_columns | new_derived_columns,
-                existing_columns.union(new_in_memory_columns.keys()).difference(
-                    self.__derived_columns.keys()
-                ),
-                self.__unit_handler.base_units,
-            )
-            new_derived |= new_derived_columns
-            for colname, derived in new_derived.items():
-                if (prod := derived.produces) is not None:
-                    new_column_names |= prod
-                else:
-                    new_column_names.add(colname)
-            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
-
         if new_in_memory_columns:
             new_unit_handler = validate_in_memory_columns(
                 new_in_memory_columns, self.__unit_handler, len(self)
@@ -414,7 +397,23 @@ class DatasetState:
             )
             new_column_names |= set(new_in_memory_columns.keys())
 
-        new_column_names = set(self.columns).union(new_column_names)
+        if new_derived_columns:
+            new_units = validate_derived_columns(
+                self.__derived_columns | new_derived_columns,
+                existing_columns.union(new_in_memory_columns.keys()).difference(
+                    self.__derived_columns.keys()
+                ),
+                new_unit_handler.base_units,
+            )
+            new_derived |= new_derived_columns
+            for colname, derived in new_derived.items():
+                if (prod := derived.produces) is not None:
+                    new_column_names |= prod
+                else:
+                    new_column_names.add(colname)
+            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
+
+            new_column_names = set(self.columns).union(new_column_names)
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
