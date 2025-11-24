@@ -36,12 +36,23 @@ from several ranks into a single schema that can be allocated by rank 0. Each
 rank will then write its own data to the specific section of the file 
 it is responsible for.
 
-As with schemas and writers, everything is very hierarcical here. A function
-does some consistency checks, then calls a function that combines its children.
+When writing data with MPI, there are basically 3 things we have to verify in order to 
+determine if everything is valid.
 
-Ranks with different schemas are supported. For example, one rank may have data for one
-dataset in a collection but not another. So long as the top-level structure is the same,
-things will be handled.
+1. Is the top-level file structure the same for all ranks (e.g. lightcone? dataset?).
+2. Do all columns that are going to be written to by two or more ranks have the same data type and compatible shapes?
+3. Is metadata consistent across ranks? If not, are there rules in place to combine/update the fields?
+
+If all three of these checks pass, it is guaranteed we can create a schema that can accomodate the data being written.
+
+File schemas are simply collections of columns and metadata. Columns contain:
+
+1. A reference to the underying data that will be written (either an h5py dataset or a numpy array)
+2. An index which tells us which elements in 1 we are going to actually write
+3. Possibly an output index, which tells us where in the output we are going to actually write to.
+3. Possibly a function to update those values before writing. For example, a spatial index should be summed across ranks rather than concatenated.
+
+In order to avoid MPI deadlocks, we always sort columns in alphabetical order before performing operations on the file.
 """
 
 

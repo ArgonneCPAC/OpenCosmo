@@ -371,7 +371,7 @@ def get_stacked_order(datasets: Iterable[oc.Dataset], max_index_depth: int):
 
 
 class StackedLightconeDatasetSchema:
-    def __init__(self, datasets: list[oc.Datastet], header: OpenCosmoHeader):
+    def __init__(self, datasets: list[oc.Dataset], header: OpenCosmoHeader):
         self.children = [ds.make_schema(with_header=True) for ds in datasets]
         self.header = header
         max_depth = -1

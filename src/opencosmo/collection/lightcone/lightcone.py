@@ -106,9 +106,9 @@ def order_by_redshift_range(datasets: dict[str, Dataset]):
 def combine_adjacent_datasets(ordered_datasets: dict[str, Dataset]):
     MIN_DATASET_SIZE = 100_000
     rs = 0
-    current = []
+    current: list[Dataset] = []
     current_key = next(iter(ordered_datasets.keys()))
-    output = OrderedDict({current_key: []})
+    output: dict[str, list[Dataset]] = OrderedDict({current_key: []})
 
     for key, ds in ordered_datasets.items():
         if rs < MIN_DATASET_SIZE:
@@ -475,11 +475,14 @@ class Lightcone(dict):
             if len(datasets) == 1:
                 ds_schema = datasets[0].make_schema()
                 ds_schema.header = ds_schema.header.with_parameter(
-                    "lightcone/z_range", self.z_range
+                    "lightcone/z_range", get_single_redshift_range(datasets[0])
                 )
                 schema.add_child(ds_schema, name)
                 continue
-            stacked_schema = StackedLightconeDatasetSchema(datasets, self.header)
+            z_range = get_redshift_range(datasets)
+            stacked_schema = StackedLightconeDatasetSchema(
+                datasets, self.header.with_parameter("lightcone/z_range", z_range)
+            )
             schema.add_child(stacked_schema, name)
 
         return schema
