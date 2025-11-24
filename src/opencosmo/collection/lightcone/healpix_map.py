@@ -5,8 +5,8 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
 import astropy.units as u  # type: ignore
-import healsparse as hsp
 import healpy as hp
+import healsparse as hsp
 import numpy as np
 from astropy.table import Column, vstack  # type: ignore
 
@@ -298,7 +298,7 @@ class HealpixMap(dict):
             for name, col in table.items():
                 if name != "pixel":
                     hsp_out = hsp.HealSparseMap.make_empty(
-                        self.nside_lr, self.nside,dtype=np.float32
+                        self.nside_lr, self.nside, dtype=np.float32
                     )
                     hsp_out[table["pixel"].value] = (col.value).astype(np.float32)
                     dict_maps[name] = hsp_out

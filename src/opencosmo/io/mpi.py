@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from .protocols import DataSchema
 
-#NOTE: PL: probably need to alter this once we have MPI read-ins working - really it's only the z-ranges that are going to cause problems here 
+# NOTE: PL: probably need to alter this once we have MPI read-ins working - really it's only the z-ranges that are going to cause problems here
 
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
@@ -211,13 +211,13 @@ def combine_dataset_schemas(
 
     for groupname in all_group_names:
         group_column_names = get_all_child_names(children.get(groupname, {}), comm)
-        if groupname in ["data", "data_linked"]:
-            new_schema.columns[groupname] = combine_data_group(
-                columns[groupname], group_column_names, comm
-            )
-        elif groupname == "index":
+        if groupname == "index":
             new_schema.columns[groupname] = combine_spatial_index_schema(
                 columns[groupname], comm
+            )
+        else:
+            new_schema.columns[groupname] = combine_data_group(
+                columns[groupname], group_column_names, comm
             )
     return new_schema
 
@@ -335,7 +335,8 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
         child = children.get(child_name)
         if child.header.file.data_type == "healpix_map":
             new_dataset_schema = combine_dataset_schemas(
-                children.get(child_name), comm,
+                children.get(child_name),
+                comm,
             )
         else:
             z_range = get_z_range(child, comm)
@@ -344,8 +345,6 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
             )
         new_schema.add_child(new_dataset_schema, child_name)
     return new_schema
-
-
 
 
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
