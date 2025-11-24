@@ -199,6 +199,11 @@ def __sort_by_step(link_sources: dict[str, list[io.io.OpenTarget]], link_targets
                 raise ValueError(
                     "Recived multiple source datasets of a single type, but not all are lightcone datasets!"
                 )
+            if source.header.file.step is None:
+                raise ValueError(
+                    "No step in source!"
+                )
+   
             sources_by_step[source.header.file.step][source_name] = source
     for target_type, targets_ in link_targets.items():
         for target_name, targets in targets_.items():

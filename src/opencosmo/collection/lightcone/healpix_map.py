@@ -56,12 +56,12 @@ def take_from_sorted(
 
 class HealpixMap(dict):
     """
-    A HealpixMap contains one or more datasets of map format. Each dataset will 
-    typically contain a different type of data over a specified integrated 
-    redshift range. The HealpixMap object provides an API identical to the standard 
+    A HealpixMap contains one or more datasets of map format. Each dataset will
+    typically contain a different type of data over a specified integrated
+    redshift range. The HealpixMap object provides an API identical to the standard
     Dataset API, however the data that is provided is returned in healpix or healsparse
-    format, which are different than other opencosmo datasets. This also contains some 
-    convenience functions for standard operations. 
+    format, which are different than other opencosmo datasets. This also contains some
+    convenience functions for standard operations.
     """
 
     def __init__(
@@ -98,11 +98,10 @@ class HealpixMap(dict):
         self.__hidden = hidden
         self.__ordered_by = ordered_by
 
-
     @property
     def nside(self):
         """
-        The healpix nside resolution parameter for this map 
+        The healpix nside resolution parameter for this map
 
         Returns
         -------
@@ -113,7 +112,7 @@ class HealpixMap(dict):
     @property
     def nside_lr(self):
         """
-        The low resolution nside resolution parameter used to 
+        The low resolution nside resolution parameter used to
         access this map with healsparse.
         Returns
         -------
@@ -124,9 +123,9 @@ class HealpixMap(dict):
     @property
     def ordering(self):
         """
-        The order of pixelization for the map. Either 
+        The order of pixelization for the map. Either
         NESTED or RING. Maps are currently always saved
-        in NESTED format.  
+        in NESTED format.
 
         Returns
         -------
@@ -137,8 +136,8 @@ class HealpixMap(dict):
     @property
     def full_sky(self):
         """
-        Whether the map has full-sky coverage or not 
-        (note if not you must ask for the data in 
+        Whether the map has full-sky coverage or not
+        (note if not you must ask for the data in
         healsparse format and not full healpix format)
         Returns
         -------
@@ -254,7 +253,7 @@ class HealpixMap(dict):
     def region(self) -> Region:
         """
         The region this dataset is contained in. If no spatial
-        queries have been performed, this will be the full sky for 
+        queries have been performed, this will be the full sky for
         lightcone maps.
 
         Returns
@@ -290,23 +289,18 @@ class HealpixMap(dict):
 
     def get_data(self, output="healsparse"):
         """
-        Get the data in this dataset as healsparse map or as healpix maps 
-        (nest-ordered numpy array). Note that a dataset does not load data from 
-        disk into memory until this function is called. As a result, you should 
-        not call this function until you have performed any transformations you 
+        Get the data in this dataset as healsparse map or as healpix maps
+        (nest-ordered numpy array). Note that a dataset does not load data from
+        disk into memory until this function is called. As a result, you should
+        not call this function until you have performed any transformations you
         plan to on the data.
 
         You can get the data in two formats, "healsparse" (the default) and "healpix".
         "healsparse" format will return the data as a healsparse sparse map.
-        "healpix" will return the data as a dictionary of numpy arrays. For map data, 
-        due to format requirements, no units will be attached to the data itself, 
+        "healpix" will return the data as a dictionary of numpy arrays. For map data,
+        due to format requirements, no units will be attached to the data itself,
         although these will match the units from the data attributes.
 
-
-        This method does not cache data. Calling "get_data" always reads data
-        from disk, even if you have already called "get_data" in the past.
-        You can use :py:attr:`Dataset.data <opencosmo.HealpixMap.data>` to return
-        data and keep it in memory.
 
         Parameters
         ----------
@@ -327,9 +321,7 @@ class HealpixMap(dict):
             for ds in self.values()
         ]
         table = vstack(data, join_type="exact")
-        table.sort(
-            "pixel", reverse=False
-        )  
+        table.sort("pixel", reverse=False)
 
         if output == "healpix":
             if self.__len__() != hp.nside2npix(self.nside):
@@ -362,16 +354,7 @@ class HealpixMap(dict):
         """
         Return the data in the dataset in healsparse format. The value of this
         attribute is equivalent to the return value of
-        :code:`Dataset.get_data("healsparse")`. However data retrieved via this
-        attribute will be cached, meaning further calls to
-        :py:attr:`Dataset.data <opencosmo.HealpixMap.data>` should be instantaneous.
-
-        However there is one caveat. If you modify the data, those modifications will
-        persist if you later request the data again with this attribute. Calls to
-        :py:meth:`HealsparseMap.get_data <opencosmo.HealsparseMap.get_data>` will be unaffected,
-        and datasets generated from this dataset will not contain the modifications.
-        If you plan to modify the data in this table, you should use
-        :py:meth:`HealsparseMap.with_new_columns <opencosmo.HealsparseMap.with_new_columns>`.
+        :code:`Dataset.get_data("healsparse")`.
 
 
         Returns
@@ -391,15 +374,22 @@ class HealpixMap(dict):
             # TODO: check if we need some equivalent here
             if not isinstance(ds, HealpixMap) or len(ds.keys()) != 1:
                 raise ValueError(
-                    "Lightcones can only contain datasets (not collections)"
+                    "HealpixMap class can only contain datasets (not collections)"
                 )
             if target.group.name != "/":
                 key = target.group.name.split("/")[-1]
             else:
-                key = f"{target.header.file.step}_{target.header.file.data_type}"
+                key = f"{target.header.healpix_map.z_range}_{target.header.file.data_type}"
             datasets[key] = next(iter(ds.values()))
 
-        return cls(datasets)
+        return cls(
+            datasets,
+            ds.nside(),
+            ds.nside_lr(),
+            ds.ordering(),
+            ds.full_sky(),
+            ds.z_range(),
+        )
 
     def __map(
         self,
@@ -544,7 +534,7 @@ class HealpixMap(dict):
 
         format: str, default = "numpy"
             The format of the data that is provided to your function. If "astropy", will be a dictionary of
-            astropy quantities. If "numpy", will be a dictionary of numpy arrays. 
+            astropy quantities. If "numpy", will be a dictionary of numpy arrays.
 
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)
@@ -773,7 +763,7 @@ class HealpixMap(dict):
     def take_rows(self, rows: np.ndarray):
         """
         Take the rows of a map specified by the :code:`rows` argument.
-        :code:`rows` should be an array of integers. Note that for healpix 
+        :code:`rows` should be an array of integers. Note that for healpix
         maps the rows refers to the pixel indices.
 
         Parameters
@@ -904,8 +894,8 @@ class HealpixMap(dict):
         ascending order (least to greatest). Pass invert = True to sort in descending
         order (greatest to least).
 
-        This is not generally particular useful in map queries, but can be used to 
-        enforce ordering schemes or find outlier pixels. 
+        This is not generally particular useful in map queries, but can be used to
+        enforce ordering schemes or find outlier pixels.
 
         Parameters
         ----------
@@ -944,10 +934,10 @@ class HealpixMap(dict):
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Self:
-        r""" 
-        Unit conversion is usually supported for OpenCosmo datasets, however maps tend to be integrated 
-        quantities over a range of redshifts which correspond to observed units so applying unit conversions 
-        is not generally easy or appropriate.  
+        r"""
+        Unit conversion is usually supported for OpenCosmo datasets, however maps tend to be integrated
+        quantities over a range of redshifts which correspond to observed units so applying unit conversions
+        is not generally easy or appropriate.
         """
 
         raise NotImplementedError(

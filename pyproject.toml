@@ -10,7 +10,6 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 
-#NOTE: PL added healsparse dependency, 1.11.1 is current version
 dependencies = [
   "h5py>=3.12.1,<4.0.0",
   "astropy>=7.1.0,<8.0.0",

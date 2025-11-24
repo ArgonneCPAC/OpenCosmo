@@ -332,6 +332,10 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
 
     for child_name in all_child_names:
         child = children.get(child_name)
+        if child is None:
+            continue 
+        if child.header is None:
+            continue
         if child.header.file.data_type == "healpix_map":
             new_dataset_schema = combine_dataset_schemas(
                 children.get(child_name),
@@ -348,7 +352,7 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
 
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
     if ds is not None and ds.header is not None:
-        if dataset.header.file.data_type == "healpix_map":
+        if ds.header.file.data_type == "healpix_map":
             z_ranges = comm.allgather(ds.header.healpix_map["z_range"])
         else:
             z_ranges = comm.allgather(ds.header.lightcone["z_range"])

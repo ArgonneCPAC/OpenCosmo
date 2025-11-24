@@ -151,7 +151,7 @@ class StructureCollection:
         return self.__source.columns
 
     @property
-    def redshift(self) -> float | tuple[float, float]:
+    def redshift(self) -> float | tuple[float, float] | None:
         """
         For snapshots, return the redshift or redshift range
         this dataset was drawn from.
