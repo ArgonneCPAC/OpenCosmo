@@ -45,4 +45,22 @@ The toolkit provides a number of other astrophysics-relevant tools including aut
 
 # Design Principles
 
-The toolkit is ...
+The toolkit is designed around lazy evaluation and immutability. Operations on a given dataset produce new datasets (rather than modifying the existing one) and data is not read from disk or processed into user-created columns until that data is actually requested. A lazy approach is inevitable when working with very large quantities of data, but it also allows for optimization of user-defined queries. For example, consider the following query:
+
+
+```python
+import opencosmo as oc
+
+ds = oc.open("haloproperties.hdf5")
+fof_halo_px = oc.col("fof_halo_mass")*oc.col("fof_halo_com_vx")
+
+ds = ds
+    .with_new_columns(fof_halo_com_px = fof_halo_px)
+    .filter(oc.col("fof_halo_mass") > 1e14)
+    .take(1000, at="random")
+    .select(("fof_halo_tag", "fof_halo_com_px"))
+    .get_data()
+
+```
+This operation creates a new column containing the x component of linear momentum, queries the dataset for 1000 random halos with a mass above 10**14, and then selects the newly-created column and the column containing the halo tags. The toolkit will only load the three columns from the underlying data that are required to perform this operation. The newly-created column will only be evaluated for the 1000 halos in the sample, even though the `with_new_columns` operation preceeds the filter` and `take` operations.
+
