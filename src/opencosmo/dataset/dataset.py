@@ -159,7 +159,7 @@ class Dataset:
         return str(self.__header.file.data_type)
 
     @property
-    def redshift(self) -> float | tuple[float, float]:
+    def redshift(self) -> float | tuple[float, float] | None:
         """
         The redshift slice or range this dataset was drawn from
 
