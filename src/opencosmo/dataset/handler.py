@@ -66,6 +66,8 @@ class Hdf5Handler:
         if sorted is not None:
             return self.__take_sorted(other, sorted)
 
+        from time import time
+
         new_index = take(self.__index, other)
         return Hdf5Handler(self.__group, new_index, self.__metadata_group)
 

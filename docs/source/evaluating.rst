@@ -169,10 +169,33 @@ If you have a nested :py:class:`StructureCollection <opencosmo.StructureCollecti
         }
    )
 
+Currently, there are three use cases that are supported if you want the data to be inserted as a new column:
+
+1. You evaluate using data from multiple datasets in the collection, and insert into the halo_properties or galaxy_properties dataset.
+2. You evaluate using the data from a single dataset (chunked by structure), and insert the results into that dataset
+3. You evaaluate using all the data in a single dataset, and insert into that dataset (using :py:meth:`evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`)
+
 Evaluating on a Single Dataset in a Structure Collection
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Just because you have a structure collection doesn't mean you need to use multiple datasets for every evaluation. Suppose you have a structure collection, and as part of a longer, more-complex analysis you want compute the perturbed mass we saw in the :ref:`previous example <Vectorizing Computations>`. You can accomplish this by passing a dataset argument to :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>`
+You can evaluate on individual datasets in the structure collection either in a structure-by-structure fashion, or in one go. For example, suppose you wanted to run a novel clustering algorithm on the star particles in a halo collection, but you only care about clustering within the individual halos:
+
+.. code-block:: python
+
+        collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+
+        def cluster_id(x, y, z):
+                num_clusters = 10
+                np.random.randint(0, 10, len(x))
+                
+        collection.evaluate(cluster_id, dataset = "star_particles", insert=True)
+
+The coordinates of the star particles will be provided to the function on a structure-by-structure basis. Each star particle in your star_particles dataset will now have a cluster id that is local to its halo. Obviously this is not a good clustering algorithm, but you can replace it with whatever you want (k-means, DBSCA, FoF). Note that the function follows the same rules as if we we're calling :code:`evaluate` on the dataset itself. The required columns are determined from the function arguments.
+
+Note that for now, we only support this type of workflow if the function only depends on data from the dataset it will be insrted into. We expect this to change in the future.
+
+
+You may also want to do an evaluation on an individual dataset that without worrying about chunking by structure. Suppose you have a structure collection, and as part of a longer, more-complex analysis you want compute the perturbed mass we saw in the :ref:`previous example <Vectorizing Computations>`. You can accomplish this by instead using :py:meth:`evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`
 
 .. code-block:: python
 
@@ -186,22 +209,21 @@ Just because you have a structure collection doesn't mean you need to use multip
                 mass_perturbation = sod_halo_mass * dm / sod_halo_cdelta
                 return mass_perturbation
         
-        result = collection.evaluate(perturbed_mass, dataset = "halo_properties", insert = True, vectorize = True, dm = dm_vals)
+        result = collection.evaluate_on_dataset(perturbed_mass, dataset = "halo_properties", insert = True, vectorize = True, dm = dm_vals)
 
 Notice that because we are operating on a single dataset, the format of the function looks exactly as if we were evaluating on a single dataset. If you only care about the result, you could also evaluate on the dataset directly:
 
 .. code-block:: python
 
-        result = collection["halo_properties"].evaluate(perturbed_mass, vectorize = True, dm = dm_vals)
+        result = collection["halo_properties"].evaluate_on_dataset(perturbed_mass, vectorize = True, dm = dm_vals)
 
 However if you try to do the above while inserting the values
 
 .. code-block:: python
 
-        new_halo_properties = collection["halo_properties"].evaluate(perturbed_mass, insert = True, vectorize = True, dm = dm_vals)
+        new_halo_properties = collection["halo_properties"].evaluate_on_dataset(perturbed_mass, insert = True, vectorize = True, dm = dm_vals)
 
 the return value will be a new dataset with the new :code:`perturbed_mass` column, but it will be not be part of the collection. By using :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>` on the structure collection directly, the result will be a new structure collection with the new column.
-
 
 
 Evaluating on Lightcones and Simulation Collections
@@ -272,3 +294,7 @@ Some computations may be *stateful*, meaning that the result of a computation on
 In cases like these, the stateful part of the computation should be passed into :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>` as a keyword argument, and mutated inside the provided function. OpenCosmo simply passes the keyword argument along to the eavluated function, so any mutated state will persist between function calls.
 
 
+Performance Note
+----------------
+
+Evaluations on individual datasets (and lightcones) are lazy, whether processed through :code:`evaluate` or a StructureCollection's :code:`evaluate_on_dataset` method. Evaluations on StructureCollections that involve multiple datasets are performed eagerly. 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from inspect import signature
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -15,7 +16,9 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import QTable  # type: ignore
 
-from opencosmo.dataset.evaluate import visit_dataset
+from opencosmo.column.column import EvaluatedColumn
+from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
+from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
@@ -24,7 +27,7 @@ if TYPE_CHECKING:
     from astropy import units
     from astropy.cosmology import Cosmology
 
-    from opencosmo.column.column import ColumnMask, DerivedColumn
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
@@ -226,32 +229,31 @@ class Dataset:
         this function until you have performed any transformations you plan to
         on the data.
 
-        You can get the data in two formats, "astropy" (the default) and "numpy".
-        "astropy" format will return the data as an astropy table with associated
-        units. "numpy" will return the data as a dictionary of numpy arrays. The
-        numpy values will be in the associated unit convention, but no actual
-        units will be attached.
+        The method supports output into several different formats, including
+        "astropy", "numpy", "pandas", "polars", and "pyarrow". Although astropy
+        and numpy are core dependencies of OpenCosmo, the remaining formats
+        require you to have the relevant libraries installed in your python
+        environment. This method will check that it can import the necessary
+        libraries before attempting to read data. Note that outputting as
+        "polars" or "arrow" requires copying the data out of its original
+        numpy arrays, which will impact performance.
 
-        If the dataset only contains a single column, it will be returned as an
-        astropy quantity (if it has units) or numpy array.
-
-        This method does not cache data. Calling "get_data" always reads data
-        from disk, even if you have already called "get_data" in the past.
-        You can use :py:attr:`Dataset.data <opencosmo.Dataset.data>` to return
-        data and keep it in memory.
+        If the dataset only contains a single column, it will not be put in a table
+        or dictionary. "astropy", "numpy" and "arrow" will return a single array
+        in this case, while "polars" and "pandas" will return a Series object.
 
         Parameters
         ----------
         output: str, default="astropy"
-            The format to output the data in
+            The format to output the data in.
+            Currently supported are "astropy", "numpy", "pandas", "polars", "arrow"
 
         Returns
         -------
-        data: Table | Quantity | dict[str, ndarray] | ndarray
+        data: Any
             The data in this dataset.
         """
-        if output not in {"astropy", "numpy"}:
-            raise ValueError(f"Unknown output type {output}")
+        verify_format(output)
 
         if self.__state.convention.value == "physical":
             scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
@@ -261,28 +263,16 @@ class Dataset:
 
         data = self.__state.get_data(
             unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
-        )  # table
-        if len(data) == 1 and unpack:  # unpack length-1 tables
-            data = {name: data[0] for name, data in data.items()}
-        elif len(data.colnames) == 1:
-            cn = data.colnames[0]
-            data = data[cn]
+        )  # dict
+        if unpack:
+            data = {
+                key: value[0]
+                if isinstance(value, np.ndarray) and len(value) == 1
+                else value
+                for key, value in data.items()
+            }
 
-        if output == "numpy":
-            if isinstance(data, u.Quantity):
-                data = data.value
-            elif isinstance(data, (QTable, dict)):
-                data = dict(data)
-                is_quantity = filter(
-                    lambda v: isinstance(data[v], u.Quantity), data.keys()
-                )
-                for colname in is_quantity:
-                    data[colname] = data[colname].value
-
-        if isinstance(data, dict) and len(data) == 1:
-            return next(iter(data.values()))
-
-        return data
+        return convert_data(data, output)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -373,7 +363,7 @@ class Dataset:
         self,
         func: Callable,
         vectorize=False,
-        insert=False,
+        insert=True,
         format="astropy",
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
@@ -390,9 +380,7 @@ class Dataset:
         The function should take in arguments with the same name as the columns in this dataset that
         are needed for the computation, and should return a dictionary of output values.
         The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
-        data from disk. You may also include all columns in the dataset by providing a function with a single
-        import argument with the same name as the data type of this dataset (see :py:attr:`Dataset.dtype <opencosmo.Dataset.dtype>`
-        In this case, the data will be provided as a dictionary of astropy quantity arrays or numpy arrays
+        data from disk
 
         The new columns will have the same names as the keys of the output dictionary
         See :ref:`Evaluating On Datasets` for more details.
@@ -417,7 +405,8 @@ class Dataset:
             as the function. Otherwise the data will be returned directly.
 
         format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy"
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
@@ -429,24 +418,28 @@ class Dataset:
         result : Dataset | dict[str, np.ndarray | astropy.units.Quantity]
             The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
+        if format not in ["astropy", "numpy"]:
+            raise ValueError(
+                f"Evaluate only supports numpy and astropy format, got: {format}"
+            )
         kwarg_columns = set(evaluate_kwargs.keys()).intersection(self.columns)
         if kwarg_columns:
             raise ValueError(
                 "Keyword arguments cannot have the same name as columns in your dataset!"
             )
-
-        output = visit_dataset(func, self, vectorize, format, evaluate_kwargs)
-        if output is None or not insert:
-            return output
-        is_same_length = all(
-            isinstance(o, np.ndarray) and len(o) == len(self) for o in output.values()
+        strategy = evaluate_kwargs.pop(
+            "strategy", "row_wise" if not vectorize else "vectorize"
         )
+        if not insert:
+            output = visit_dataset(func, strategy, format, evaluate_kwargs, self)
+            return output
 
-        if not is_same_length:
-            raise ValueError(
-                "The function to evaluate must produce an array with the same length as this dataset!"
-            )
-        return self.with_new_columns(**output)
+        evaluated_column = verify_for_lazy_evaluation(
+            func, strategy, format, evaluate_kwargs, self
+        )
+        return self.with_new_columns(
+            descriptions={}, **{func.__name__: evaluated_column}
+        )
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
@@ -481,7 +474,7 @@ class Dataset:
 
     def rows(
         self,
-        output="astropy",
+        include_units: bool = True,
         metadata_columns=[],
     ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
         """
@@ -501,27 +494,23 @@ class Dataset:
             A dictionary of values for each row in the dataset with units.
 
         """
-        max = len(self)
-        if max == 0:
-            warn("Tried to iterate over a dataset with no rows!")
+        if self.__state.convention.value == "physical":
+            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
+            unit_kwargs = {"scale_factor": scale_factor}
+        else:
+            unit_kwargs = {}
 
-        chunk_ranges = [(i, min(i + 1000, max)) for i in range(0, max, 1000)]
-        if len(chunk_ranges) == 0:
-            raise StopIteration
-        for start, end in chunk_ranges:
-            chunk = self.take_range(start, end)
-            chunk_data = chunk.get_data(output, metadata_columns=metadata_columns)
-            try:
-                output_chunk_data = dict(chunk_data)
-            except TypeError:
-                output_chunk_data = {self.columns[0]: chunk_data}
+        for row in self.__state.rows(metadata_columns, unit_kwargs):
+            output_data = row
+            if not isinstance(output_data, dict):
+                output_data = {self.columns[0]: row}
 
-            if len(chunk) == 1:
-                yield output_chunk_data
-                return
-
-            for i in range(len(chunk)):
-                yield {k: v[i] for k, v in output_chunk_data.items()}
+            if not include_units:
+                output_data = {
+                    name: val.value if isinstance(val, u.Quantity) else val
+                    for name, val in output_data.items()
+                }
+            yield output_data
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
@@ -686,6 +675,7 @@ class Dataset:
             or if end is greater than start.
 
         """
+
         new_state = self.__state.take_range(start, end)
 
         return Dataset(
@@ -724,7 +714,7 @@ class Dataset:
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
+        **new_columns: ConstructedColumn | np.ndarray | units.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived

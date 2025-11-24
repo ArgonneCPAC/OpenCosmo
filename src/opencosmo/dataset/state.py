@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy
 from functools import reduce
 from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
@@ -10,8 +11,13 @@ import numpy as np
 from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import DerivedColumn
+from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.dataset.derived import (
+    build_derived_columns,
+    validate_derived_columns,
+)
 from opencosmo.dataset.handler import Hdf5Handler
+from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.io import schemas as ios
 from opencosmo.units import UnitConvention
@@ -23,6 +29,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
 
+    from opencosmo.column.column import ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
@@ -43,7 +50,7 @@ class DatasetState:
         self,
         raw_data_handler: Hdf5Handler,
         cache: ColumnCache,
-        derived_columns: dict[str, DerivedColumn],
+        derived_columns: dict[str, ConstructedColumn],
         unit_handler: UnitHandler,
         header: OpenCosmoHeader,
         columns: set[str],
@@ -60,6 +67,12 @@ class DatasetState:
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
         finalize(self, deregister_state, id(self), self.__cache)
+        if (
+            len(self.__raw_data_handler.index) == 33595973
+            and isinstance(self.__raw_data_handler.index, ChunkedIndex)
+            and len(self.__raw_data_handler.index.sizes) == 1
+        ):
+            pass
 
     def __rebuild(self, **updates):
         new = {
@@ -121,6 +134,10 @@ class DatasetState:
 
     @property
     def raw_index(self):
+        if (si := self.get_sorted_index()) is not None:
+            ni = self.__raw_data_handler.index.into_array()
+            return SimpleIndex(ni[si])
+
         return self.__raw_data_handler.index
 
     @property
@@ -196,25 +213,70 @@ class DatasetState:
             )
 
         # keep ordering
-        output = QTable(data, copy=False)
 
-        data_columns = set(output.columns)
+        data_columns = set(data.keys())
 
         if metadata_columns:
-            output.update(self.__raw_data_handler.get_metadata(metadata_columns))
+            data.update(self.__raw_data_handler.get_metadata(metadata_columns))
 
         if not ignore_sort and self.__sort_by is not None:
-            order = output.argsort(self.__sort_by[0], reverse=self.__sort_by[1])
-            output = output[order]
+            sort_by = data[self.__sort_by[0]]
+            order = np.argsort(sort_by)
+            if self.__sort_by[1]:
+                order = order[::-1]
+
+            data = {key: value[order] for key, value in data.items()}
 
         new_order = [c for c in self.columns]
         if metadata_columns:
             new_order.extend(metadata_columns)
 
-        return output[new_order]
+        return {name: data[name] for name in new_order}
+
+    def rows(self, metadata_columns: list = [], unit_kwargs: dict = {}):
+        derived_to_collect = (
+            set(self.__derived_columns.keys())
+            .intersection(self.columns)
+            .difference(self.__cache.columns)
+        )
+        derived_storage: dict[str, list[np.ndarray]] = {
+            name: [] for name in derived_to_collect
+        }
+        total_length = len(self)
+        chunk_ranges = [
+            (i, min(i + 1000, total_length)) for i in range(0, total_length, 1000)
+        ]
+        if not chunk_ranges:
+            raise StopIteration
+
+        try:
+            for start, end in chunk_ranges:
+                chunk = self.take_range(start, end)
+                data = chunk.get_data(
+                    metadata_columns=metadata_columns, unit_kwargs=unit_kwargs
+                )
+                for name in derived_to_collect:
+                    derived_storage[name].append(data[name])
+
+                for i in range(len(chunk)):
+                    yield {name: column[i] for name, column in data.items()}
+            all_derived = {
+                name: np.concatenate(arr) for name, arr in derived_storage.items()
+            }
+            derived_storage = resort(all_derived, self.get_sorted_index())
+            if derived_storage:
+                self.__cache.add_data(data)
+        except GeneratorExit:
+            pass
+        except BaseException:
+            raise
 
     def get_metadata(self, columns=[]):
-        return self.__raw_data_handler.get_metadata(columns)
+        metadata = self.__raw_data_handler.get_metadata(columns)
+        sorted_index = self.get_sorted_index()
+        if sorted_index is not None:
+            metadata = {name: values[sorted_index] for name, values in metadata.items()}
+        return metadata
 
     def with_mask(self, mask: NDArray[np.bool_]):
         index = SimpleIndex(np.where(mask)[0])
@@ -233,7 +295,7 @@ class DatasetState:
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
-            .with_units("unitless", {}, {}, None, None)
+            .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
             .get_data(ignore_sort=True)
         )
         column_units = {
@@ -241,12 +303,16 @@ class DatasetState:
         }
 
         for colname in derived_names:
-            unit = self.__derived_columns[colname].get_units(column_units)
+            coldata = derived_data[colname]
+            unit = ""
+            if isinstance(coldata, u.Quantity):
+                unit = str(coldata.unit)
+                coldata = derived_data[colname].value
+
             attrs = {
-                "unit": str(unit),
+                "unit": unit,
                 "description": self.__derived_columns[colname].description,
             }
-            coldata = derived_data[colname].value
             colschema = ios.ColumnSchema(
                 colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
             )
@@ -284,66 +350,71 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        derived_update: dict[str, DerivedColumn] = {}
-        new_unit_handler = self.__unit_handler
+        from time import time
 
-        if inter := set(self.columns).intersection(new_columns.keys()):
+        derived_update: dict[str, DerivedColumn] = {}
+        existing_columns = set(self.columns)
+
+        if inter := existing_columns.intersection(new_columns.keys()):
             raise ValueError(f"Some columns are already in the dataset: {inter}")
 
-        in_memory_order = None
-        new_column_names = self.__columns.copy()
-        new_derived = {}
-        new_in_memory = {}
+        new_derived_columns = {}
+        new_in_memory_columns = {}
         new_in_memory_descriptions = {}
-        new_units = {}
 
         for colname, column in new_columns.items():
-            description = descriptions.get(colname, "None")
             match column:
-                case DerivedColumn():
-                    ancestor_columns = column.requires()
-                    missing = ancestor_columns.difference(ancestor_columns)
-                    if missing:
-                        raise ValueError(
-                            f"Missing columns {missing} required for derived column {colname}"
-                        )
-
-                    derived_column_unit = column.get_units(
-                        self.__unit_handler.base_units
-                    )
-                    new_units[colname] = derived_column_unit
-                    column.description = description
-                    new_derived[colname] = column
-                    new_column_names.add(colname)
+                case DerivedColumn() | EvaluatedColumn():
+                    column.description = descriptions.get(colname, "None")
+                    new_derived_columns[colname] = column
                 case np.ndarray():
                     if len(column) != len(self):
                         raise ValueError(
-                            f"In-memory columns must have the same length as the dataset!"
+                            f"New column {colname} does not have the same length as this dataset!"
                         )
-                    new_in_memory[colname] = column
-                    new_column_names.add(colname)
-                    new_in_memory_descriptions[colname] = description
-                    new_units[colname] = None
-                    if isinstance(column, u.Quantity):
-                        new_units[colname] = column.unit
+                    new_in_memory_descriptions[colname] = descriptions.get(
+                        colname, "None"
+                    )
+                    new_in_memory_columns[colname] = column
                 case _:
-                    raise ValueError(f"Unexpected new column type: {type(column)}")
-        if new_units:
+                    raise ValueError(
+                        f"Got an invalid new column of type {type(column)}"
+                    )
+
+        new_unit_handler = self.__unit_handler
+        new_cache = self.__cache
+        new_derived = copy(self.__derived_columns)
+        new_column_names: set[str] = set()
+
+        if new_derived_columns:
+            new_units = validate_derived_columns(
+                self.__derived_columns | new_derived_columns,
+                existing_columns.union(new_in_memory_columns.keys()).difference(
+                    self.__derived_columns.keys()
+                ),
+                self.__unit_handler.base_units,
+            )
+            new_derived |= new_derived_columns
+            for colname, derived in new_derived.items():
+                if (prod := derived.produces) is not None:
+                    new_column_names |= prod
+                else:
+                    new_column_names.add(colname)
             new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
-        new_derived = self.__derived_columns | new_derived
-        new_cache = self.__cache
-
-        if new_in_memory and (sorted_index := self.get_sorted_index()) is not None:
-            in_memory_order = np.argsort(sorted_index)
-            new_in_memory = {
-                name: data[in_memory_order] for name, data in new_in_memory.items()
-            }
-
-        if new_in_memory:
-            new_cache = self.__cache.with_data(
-                new_in_memory, descriptions=new_in_memory_descriptions
+        if new_in_memory_columns:
+            new_unit_handler = validate_in_memory_columns(
+                new_in_memory_columns, self.__unit_handler, len(self)
             )
+            new_in_memory_columns = resort(
+                new_in_memory_columns, self.get_sorted_index()
+            )
+            new_cache = new_cache.with_data(
+                new_in_memory_columns, descriptions=new_in_memory_descriptions
+            )
+            new_column_names |= set(new_in_memory_columns.keys())
+
+        new_column_names = set(self.columns).union(new_column_names)
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
@@ -365,44 +436,14 @@ class DatasetState:
         ):
             derived_names.add(self.__sort_by[0])
 
-        ancestors: set[str] = reduce(
-            lambda acc, der: acc.union(der.requires()),
-            self.__derived_columns.values(),
-            set(),
+        return build_derived_columns(
+            self.__derived_columns,
+            self.__cache,
+            self.__raw_data_handler,
+            self.__unit_handler,
+            unit_kwargs,
+            self.__raw_data_handler.index,
         )
-        ad = ancestors.intersection(self.__derived_columns.keys())
-        while ad:
-            derived_names = derived_names.union(ad)
-            for col in ad:
-                ancestors.remove(col)
-                ancestors = ancestors.union(self.__derived_columns[col].requires())
-            ad = ancestors.intersection(derived_names)
-
-        cached_data = self.__cache.get_columns(ancestors)
-        remaining_ancestors = ancestors.difference(cached_data.keys())
-        raw_ancestors = ancestors.intersection(remaining_ancestors)
-
-        raw_data = self.__raw_data_handler.get_data(raw_ancestors)
-        data = cached_data | self.__unit_handler.apply_units(raw_data, unit_kwargs)
-        seen: set[str] = set()
-
-        for name in cycle(derived_names):
-            if derived_names.issubset(data.keys()):
-                break
-            elif name in seen:
-                # We're stuck in a loop
-                raise ValueError(
-                    "Something went wrong when trying to instatiate derived columns!"
-                )
-            elif name in data:
-                continue
-            elif set(data.keys()).issuperset(self.__derived_columns[name].requires()):
-                data[name] = self.__derived_columns[name].evaluate(data)
-                seen = set()
-            else:
-                seen.add(name)
-
-        return data
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
         im_data = {}
@@ -472,6 +513,7 @@ class DatasetState:
             return self.take_range(len(self) - n, len(self))
         elif at == "random":
             row_indices = np.random.choice(len(self), n, replace=False)
+            row_indices.sort()
 
         sorted = self.get_sorted_index()
         if sorted is None:
@@ -507,6 +549,8 @@ class DatasetState:
             take_index = ChunkedIndex.single_chunk(start, end - start)
         else:
             take_index = SimpleIndex(np.sort(sorted[start:end]))
+
+        from time import time
 
         new_raw_handler = self.__raw_data_handler.take(take_index)
         new_im = self.__cache.take(take_index)

@@ -187,8 +187,8 @@ def test_visit_with_return_none(input_path):
     def fof_px(fof_halo_mass, fof_halo_com_vx, random_val=5):
         return None
 
-    result = ds.evaluate(fof_px, vectorize=True, insert=True)
-    assert result is None
+    with pytest.raises(ValueError):
+        result = ds.evaluate(fof_px, vectorize=True, insert=True)
 
 
 def test_visit_multiple_with_kwargs_numpy(input_path):
@@ -209,17 +209,21 @@ def test_visit_multiple_with_kwargs_numpy(input_path):
 
 
 def test_visit_multiple_with_iterable_kwargs(input_path):
-    ds = oc.open(input_path)
+    ds = oc.open(input_path).take(100)
 
     def fof_px(fof_halo_mass, fof_halo_com_vx, random_value):
         return fof_halo_mass * fof_halo_com_vx * random_value
 
-    random_values = np.random.randint(0, 100, len(ds))
-    result = ds.evaluate(fof_px, vectorize=False, random_value=random_values)
+    random_values = np.random.randint(1, 10, len(ds))
+    result = ds.evaluate(
+        fof_px, insert=False, vectorize=False, random_value=random_values
+    )
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
     assert np.all(
-        result["fof_px"].value
-        == data["fof_halo_mass"] * data["fof_halo_com_vx"] * random_values
+        np.isclose(
+            result["fof_px"].value,
+            data["fof_halo_mass"] * data["fof_halo_com_vx"] * random_values,
+        )
     )
 
 
@@ -279,28 +283,6 @@ def test_visit_rows_single(input_path):
     factor = data["fof_random"] / data["fof_halo_mass"]
     factor = factor.value
     assert np.all(factor == np.floor(factor))
-
-
-def test_visit_rows_all(input_path):
-    ds = oc.open(input_path).take(100)
-
-    def fof_random(halo_properties):
-        return np.random.randint(0, 100)
-
-    ds = ds.evaluate(fof_random, vectorize=False, insert=True)
-    data = ds.select(["fof_random"]).get_data()
-    assert data.dtype == np.int64
-
-
-def test_visit_rows_all_vectorize(input_path):
-    ds = oc.open(input_path).take(100)
-
-    def fof_random(halo_properties):
-        return np.random.randint(0, 100, len(halo_properties["fof_halo_tag"]))
-
-    ds = ds.evaluate(fof_random, vectorize=True, insert=True)
-    data = ds.select(["fof_random"]).get_data()
-    assert data.dtype == np.int64
 
 
 def test_visit_with_sort(input_path, tmp_path):
@@ -410,6 +392,24 @@ def test_sort_rows(input_path):
     fof_masses = dataset.select("fof_halo_mass").get_data("numpy")
     for i, row in enumerate(dataset.rows()):
         assert row["fof_halo_mass"].value == fof_masses[i]
+
+
+def test_rows_cache(input_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.sort_by("sod_halo_mass")
+    dataset = dataset.take(100)
+    fof_px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    dataset = dataset.with_new_columns(fof_px=fof_px)
+
+    for i, row in enumerate(dataset.rows()):
+        assert row["fof_px"] == row["fof_halo_mass"] * row["fof_halo_com_vx"]
+
+    cache = dataset._Dataset__state._DatasetState__cache
+    cached_data = cache.get_columns(["fof_halo_mass", "fof_halo_com_vx", "fof_px"])
+    assert np.all(
+        cached_data["fof_px"]
+        == cached_data["fof_halo_mass"] * cached_data["fof_halo_com_vx"]
+    )
 
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"

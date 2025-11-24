@@ -485,6 +485,17 @@ def test_write_single_lightcone(haloproperties_600_path, tmp_path):
     assert len(ds) == len(ds_written)
 
 
+def test_insert_to_sroted(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    ds = ds.sort_by("fof_halo_mass")
+    ranking = np.arange(0, len(ds))
+    ds = ds.with_new_columns(ranking=ranking)
+    output_path = tmp_path / "data.hdf5"
+    oc.write(output_path, ds)
+    ds = oc.open(output_path).sort_by("fof_halo_mass")
+    assert np.all(ds.select("ranking").get_data("numpy") == ranking)
+
+
 def test_lightcone_structure_collection_open(structure_600):
     c = oc.open(*structure_600)
     assert isinstance(c, oc.StructureCollection)

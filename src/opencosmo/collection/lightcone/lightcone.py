@@ -4,18 +4,19 @@ from functools import cached_property, reduce
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
-import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
+from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 
 if TYPE_CHECKING:
+    import astropy.units as u  # type: ignore
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
     from astropy.table import Table
@@ -307,39 +308,30 @@ class Lightcone(dict):
         If the dataset only contains a single column, it will be returned as an
         astropy.table.Column or a single numpy array.
 
-        This method does not cache data. Calling "get_data" always reads data
-        from disk, even if you have already called "get_data" in the past.
-        You can use :py:attr:`Dataset.data <opencosmo.Lightcone.data>` to return
-        data and keep it in memory.
-
         Parameters
         ----------
         output: str, default="astropy"
-            The format to output the data in
+            The format to output the data in. Currently supported are "astropy", "numpy",
+            "pandas", "polars", and "arrow"
 
         Returns
         -------
         data: Table | Column | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
-        if output not in {"astropy", "numpy"}:
-            raise ValueError(f"Unknown output type {output}")
+        verify_format(output)
 
-        data = [ds.get_data(unpack=False) for ds in self.values()]
+        data = [ds.get_data(unpack=False) for ds in self.values() if len(ds) > 0]
         table = vstack(data, join_type="exact")
+
         if self.__ordered_by is not None:
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
 
         table.remove_columns(self.__hidden)
-
-        if len(table.colnames) == 1:
-            table = next(table.itercols())
-
-        if output == "numpy":
-            if isinstance(table, (u.Quantity, Column)):
-                return table.value
-            else:
-                return {name: col.value for name, col in table.items()}
+        if output != "astropy":
+            return convert_data(dict(table), output)
+        elif len(table.columns) == 1:
+            return next(iter(dict(table).values()))
 
         return table
 
@@ -348,17 +340,7 @@ class Lightcone(dict):
         """
         Return the data in the dataset in astropy format. The value of this
         attribute is equivalent to the return value of
-        :code:`Dataset.get_data("astropy")`. However data retrieved via this
-        attribute will be cached, meaning further calls to
-        :py:attr:`Dataset.data <opencosmo.Lightcone.data>` should be instantaneous.
-
-        However there is one caveat. If you modify the table, those modifications will
-        persist if you later request the data again with this attribute. Calls to
-        :py:meth:`Lightcone.get_data <opencosmo.Lightcone.get_data>` will be unaffected,
-        and datasets generated from this dataset will not contain the modifications.
-        If you plan to modify the data in this table, you should use
-        :py:meth:`Lightcone.with_new_columns <opencosmo.Lightcone.with_new_columns>`.
-
+        :code:`Dataset.get_data("astropy")`.
 
         Returns
         -------
@@ -556,7 +538,8 @@ class Lightcone(dict):
 
         format: str, default = "astropy"
             The format of the data that is provided to your function. If "astropy", will be a dictionary of
-            astropy quantities. If "numpy", will be a dictionary of numpy arrays.
+            astropy quantities. If "numpy", will be a dictionary of numpy arrays. Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Lightcone.get_data>`
 
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)
@@ -830,19 +813,21 @@ class Lightcone(dict):
                 "Rows must be between 0 and the length of this dataset - 1"
             )
         if self.__ordered_by is not None:
-            data = np.concatenate(
-                [
-                    ds.select(self.__ordered_by[0]).get_data("numpy")
-                    for ds in self.values()
-                ]
-            )
-            if self.__ordered_by[1]:
-                data = -data
-            sort_index = np.argsort(data)
+            sort_index = self.__make_sort_index()
             rows = sort_index[rows]
             rows.sort()
 
         return self.__take_rows(rows)
+
+    def __make_sort_index(self):
+        if self.__ordered_by is None:
+            return None
+        data = np.concatenate(
+            [ds.select(self.__ordered_by[0]).get_data("numpy") for ds in self.values()]
+        )
+        if self.__ordered_by[1]:
+            data = -data
+        return np.argsort(data)
 
     def __take_rows(self, rows: np.ndarray):
         """
@@ -901,6 +886,11 @@ class Lightcone(dict):
                 )
             else:
                 raw[name] = column
+
+        if self.__ordered_by is not None:
+            sort_index = self.__make_sort_index()
+            sort_index = np.argsort(sort_index)
+            raw = {name: raw_data[sort_index] for name, raw_data in raw.items()}
 
         split_points = np.cumsum([len(ds) for ds in self.values()])
         split_points = np.insert(0, 0, split_points)[:-1]
