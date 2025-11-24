@@ -20,7 +20,6 @@ ALLOWED_COORDINATES_3D = {
     }
 }
 
-# NOTE: PL: added pixel-based theta, phi coordinates to find_coordinates_2d
 
 
 def check_containment(

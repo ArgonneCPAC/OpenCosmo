@@ -54,15 +54,14 @@ def take_from_sorted(
     return sorted_indices
 
 
-# TODO: do I need to initialize the nside etc using the input dataset and assert that these are all identical?
-# want to assert that ordering is "NESTED" exactly.
 class HealpixMap(dict):
     """
-    A lightcone contains two or more datasets that are part of a lightcone. Typically
-    each dataset will cover a specific redshift range. The Lightcone object
-    hides these details, providing an API that is identical to the standard
-    Dataset API. Additionally, the lightcone contains some convinience functions
-    for standard operations.
+    A HealpixMap contains one or more datasets of map format. Each dataset will 
+    typically contain a different type of data over a specified integrated 
+    redshift range. The HealpixMap object provides an API identical to the standard 
+    Dataset API, however the data that is provided is returned in healpix or healsparse
+    format, which are different than other opencosmo datasets. This also contains some 
+    convenience functions for standard operations. 
     """
 
     def __init__(
@@ -99,25 +98,53 @@ class HealpixMap(dict):
         self.__hidden = hidden
         self.__ordered_by = ordered_by
 
-    @property
-    def z_range(self):
-        return self.__z_range
 
     @property
     def nside(self):
-        return self.__nside
+        """
+        The healpix nside resolution parameter for this map 
+
+        Returns
+        -------
+        dtype: int
+        """
+        return self.__header.healpix_map["nside"]
 
     @property
     def nside_lr(self):
-        return self.__nside_lr
+        """
+        The low resolution nside resolution parameter used to 
+        access this map with healsparse.
+        Returns
+        -------
+        dtype: int
+        """
+        return self.__header.healpix_map["nside_lr"]
 
     @property
     def ordering(self):
-        return self.__ordering
+        """
+        The order of pixelization for the map. Either 
+        NESTED or RING. Maps are currently always saved
+        in NESTED format.  
+
+        Returns
+        -------
+        dtype: str
+        """
+        return self.__header.healpix_map["ordering"]
 
     @property
     def full_sky(self):
-        return self.__full_sky
+        """
+        Whether the map has full-sky coverage or not 
+        (note if not you must ask for the data in 
+        healsparse format and not full healpix format)
+        Returns
+        -------
+        dtype: bool
+        """
+        return self.__header.healpix_map["full_sky"]
 
     def __repr__(self):
         """
@@ -184,7 +211,7 @@ class HealpixMap(dict):
     @cached_property
     def descriptions(self) -> dict[str, Optional[str]]:
         """
-        Return the descriptions (if any) of the columns in this lightcone as a dictonary.
+        Return the descriptions (if any) of the columns in this map as a dictonary.
         Columns without a description will be included in the dictionary with a value
         of None
 
@@ -227,8 +254,8 @@ class HealpixMap(dict):
     def region(self) -> Region:
         """
         The region this dataset is contained in. If no spatial
-        queries have been performed, this will be the entire
-        simulation box for snapshots or the full sky for lightcones
+        queries have been performed, this will be the full sky for 
+        lightcone maps.
 
         Returns
         -------
@@ -252,7 +279,7 @@ class HealpixMap(dict):
     @property
     def z_range(self):
         """
-        The redshift range of this lightcone.
+        The redshift range of the data which created this map.
 
         Returns
         -------
@@ -261,8 +288,37 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    # NOTE: PL altered this to a healsparse or healpix map
     def get_data(self, output="healsparse"):
+        """
+        Get the data in this dataset as healsparse map or as healpix maps 
+        (nest-ordered numpy array). Note that a dataset does not load data from 
+        disk into memory until this function is called. As a result, you should 
+        not call this function until you have performed any transformations you 
+        plan to on the data.
+
+        You can get the data in two formats, "healsparse" (the default) and "healpix".
+        "healsparse" format will return the data as a healsparse sparse map.
+        "healpix" will return the data as a dictionary of numpy arrays. For map data, 
+        due to format requirements, no units will be attached to the data itself, 
+        although these will match the units from the data attributes.
+
+
+        This method does not cache data. Calling "get_data" always reads data
+        from disk, even if you have already called "get_data" in the past.
+        You can use :py:attr:`Dataset.data <opencosmo.HealpixMap.data>` to return
+        data and keep it in memory.
+
+        Parameters
+        ----------
+        output: str, default="healsparse"
+            The format to output the data in
+
+        Returns
+        -------
+        data: HealsparseMap | Column | dict[str, ndarray] | ndarray
+            The data in this dataset.
+        """
+
         if output not in {"healsparse", "healpix"}:
             raise ValueError(f"Unknown output type {output}")
 
@@ -273,20 +329,17 @@ class HealpixMap(dict):
         table = vstack(data, join_type="exact")
         table.sort(
             "pixel", reverse=False
-        )  # NOTE: we could here give an option to convert to ring-format otput if we like
+        )  
 
         if output == "healpix":
             if self.__len__() != hp.nside2npix(self.nside):
                 raise ValueError(
                     f"healpix type chosen but length of dataset doesn't match nside value"
                 )
-            # TODO assert length of dataset is hp.nside2npix size (not sure if self.__len__() gets me what i want)
 
         if len(table.colnames) == 1:
             table = next(table.itercols())
 
-        # TODO: let's output this to either a healpix map (numpy array) or healsparse map format, to do this we need the pixel number to be
-        # input as a hidden column (it will be removed for healpix maps after sorting, and healsparse maps order it internally)
         if output == "healpix":
             if isinstance(table, (u.Quantity, Column)):
                 return table.value
@@ -306,6 +359,27 @@ class HealpixMap(dict):
 
     @property
     def data(self):
+        """
+        Return the data in the dataset in healsparse format. The value of this
+        attribute is equivalent to the return value of
+        :code:`Dataset.get_data("healsparse")`. However data retrieved via this
+        attribute will be cached, meaning further calls to
+        :py:attr:`Dataset.data <opencosmo.HealpixMap.data>` should be instantaneous.
+
+        However there is one caveat. If you modify the data, those modifications will
+        persist if you later request the data again with this attribute. Calls to
+        :py:meth:`HealsparseMap.get_data <opencosmo.HealsparseMap.get_data>` will be unaffected,
+        and datasets generated from this dataset will not contain the modifications.
+        If you plan to modify the data in this table, you should use
+        :py:meth:`HealsparseMap.with_new_columns <opencosmo.HealsparseMap.with_new_columns>`.
+
+
+        Returns
+        -------
+        data : HealsparseMap
+            The data in the dataset.
+
+        """
         return self.get_data("healsparse")
 
     @classmethod
@@ -407,7 +481,7 @@ class HealpixMap(dict):
         """
         Perform a search for objects within some angular distance of some
         given point on the sky. This is a convinience function around
-        :py:meth:`bound <opencosmo.Lightcone.bound>` and is exactly
+        :py:meth:`bound <opencosmo.HealpixMap.bound>` and is exactly
         equivalent to
 
         .. code-block:: python
@@ -427,8 +501,8 @@ class HealpixMap(dict):
 
         Returns
         -------
-        new_lightcone: opencosmo.Lightcone
-            The rows in this lightcone that fall within the given region.
+        new_map: opencosmo.HealpixMap
+            The pixels in these maps that fall within the given region.
 
         """
         region = oc.make_cone(center, radius)
@@ -437,7 +511,7 @@ class HealpixMap(dict):
     def evaluate(
         self,
         func: Callable,
-        format: str = "astropy",
+        format: str = "numpy",
         vectorize=False,
         insert=True,
         **evaluate_kwargs,
@@ -447,14 +521,14 @@ class HealpixMap(dict):
         the result as new columns in the dataset. You may also choose to simply return thevalues
         instead of inserting them as a column
 
-        This function is the equivalent of :py:meth:`with_new_columns <opencosmo.Lightcone.with_new_columns>`
+        This function is the equivalent of :py:meth:`with_new_columns <opencosmo.HealpixMap.with_new_columns>`
         for cases where the new column is not a simple algebraic combination of existing columns. Unlike
         :code:`with_new_columns`, this method will evaluate the results immediately and the resulting
         columns will not change under unit transformations.
 
         The function should take in arguments with the same name as the columns in this dataset that
         are needed for the computation, and should return a dictionary of output values.
-        The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
+        The dataset will automatically select the needed columns to avoid unnecessarily reading
         data from disk. The new columns will have the same names as the keys of the output dictionary
         See :ref:`Evaluating On Datasets` for more details.
 
@@ -468,9 +542,9 @@ class HealpixMap(dict):
         func: Callable
             The function to evaluate on the rows in the dataset.
 
-        format: str, default = "astropy"
+        format: str, default = "numpy"
             The format of the data that is provided to your function. If "astropy", will be a dictionary of
-            astropy quantities. If "numpy", will be a dictionary of numpy arrays.
+            astropy quantities. If "numpy", will be a dictionary of numpy arrays. 
 
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)
@@ -480,7 +554,7 @@ class HealpixMap(dict):
 
         Returns
         -------
-        dataset : Lightcone
+        dataset : HealpixMap
             The new lightcone dataset with the evaluated column(s)
         """
         kwargs, iterable_kwargs = prepare_kwargs(len(self), evaluate_kwargs)
@@ -552,7 +626,6 @@ class HealpixMap(dict):
         """
         yield from chain.from_iterable(v.rows() for v in self.values())
 
-    # NOTE: PL: pixel number is a required element so we can understand sky coverage
     def select(self, columns: str | Iterable[str]) -> Self:
         """
         Create a new dataset from a subset of columns in this dataset.
@@ -699,8 +772,9 @@ class HealpixMap(dict):
 
     def take_rows(self, rows: np.ndarray):
         """
-        Take the rows of a lightcone specified by the :code:`rows` argument.
-        :code:`rows` should be an array of integers.
+        Take the rows of a map specified by the :code:`rows` argument.
+        :code:`rows` should be an array of integers. Note that for healpix 
+        maps the rows refers to the pixel indices.
 
         Parameters
         ----------
@@ -715,7 +789,7 @@ class HealpixMap(dict):
         -------
         ValueError:
             If any of the indices is less than 0 or greater than the length of the
-            lightcone.
+            map.
 
         """
         rows = np.sort(rows)
@@ -740,7 +814,7 @@ class HealpixMap(dict):
 
     def __take_rows(self, rows: np.ndarray):
         """
-        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorted.
+        Takes rows from this map while ignoring sort. "rows" is assumed to be sorted.
         For internal use only.
         """
         ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
@@ -768,6 +842,29 @@ class HealpixMap(dict):
         descriptions: str | dict[str, str] = {},
         **columns: DerivedColumn | np.ndarray | u.Quantity,
     ):
+        """
+        Create a new dataset with additional columns. These new columns can be derived
+        from columns already in the dataset, or a numpy array.  See :ref:`Adding Custom Columns`
+        and :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`
+        for examples.
+
+        Parameters
+        ----------
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`HealpixMap.descriptions <opencosmo.HealpixMap.descriptions>`. If a dictionary,
+            should have keys matching the column names.
+
+        ** columns : opencosmo.DerivedColumn | np.ndarray | u.quantity
+            The new columns
+
+        Returns
+        -------
+        dataset : opencosmo.Dataset
+            This dataset with the columns added
+
+        """
+
         derived = {}
         raw = {}
         for name, column in columns.items():
@@ -802,6 +899,32 @@ class HealpixMap(dict):
         )
 
     def sort_by(self, column: str, invert: bool = False):
+        """
+        Sort this dataset by the values in a given column. By default sorting is in
+        ascending order (least to greatest). Pass invert = True to sort in descending
+        order (greatest to least).
+
+        This is not generally particular useful in map queries, but can be used to 
+        enforce ordering schemes or find outlier pixels. 
+
+        Parameters
+        ----------
+        column : str
+            The column in the map dataset to
+            order the collection by.
+
+        invert : bool, default = False
+            If False (the default), ordering will be from least to greatest.
+            Otherwise greatest to least.
+
+        Returns
+        -------
+        result : Dataset
+            A new Dataset ordered by the given column.
+
+
+        """
+
         if column not in self.columns:
             raise ValueError(f"Column {column} does not exist in this dataset!")
         return HealpixMap(
@@ -821,7 +944,11 @@ class HealpixMap(dict):
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Self:
-        r""" """
+        r""" 
+        Unit conversion is usually supported for OpenCosmo datasets, however maps tend to be integrated 
+        quantities over a range of redshifts which correspond to observed units so applying unit conversions 
+        is not generally easy or appropriate.  
+        """
 
         raise NotImplementedError(
             "Unit conversions not supported on maps, these are integrated over redshift so conversions are non-trivial!"

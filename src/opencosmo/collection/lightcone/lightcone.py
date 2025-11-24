@@ -540,7 +540,7 @@ class Lightcone(dict):
 
         The function should take in arguments with the same name as the columns in this dataset that
         are needed for the computation, and should return a dictionary of output values.
-        The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
+        The dataset will automatically select the needed columns to avoid unnecessarily reading
         data from disk. The new columns will have the same names as the keys of the output dictionary
         See :ref:`Evaluating On Datasets` for more details.
 

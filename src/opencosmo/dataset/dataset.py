@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region
     from opencosmo.spatial.tree import Tree
 
-#NOTE: PL: add map stuff here - effectively we need to suppress any unit conversions for the maps
 
 OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
 

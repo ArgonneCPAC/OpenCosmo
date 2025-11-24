@@ -30,7 +30,6 @@ class FileType(Enum):
     diffsky_fits = "diffsky_fits"
     healpix_map = "healpix_map"
 
-#NOTE: PL: had to make redshift and step optional to allow for integrated redshift ranges on map class
 class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True, frozen=True)
     origin: str = "HACC"

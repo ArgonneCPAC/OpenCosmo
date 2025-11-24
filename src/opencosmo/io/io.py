@@ -61,7 +61,6 @@ else:
     5. Call the merge functionality for the appropriate collection.
     """
 
-    # NOTE: PL: add stuff here - note fix z range
 
 
 class FILE_TYPE(Enum):

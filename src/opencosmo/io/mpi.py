@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 
     from .protocols import DataSchema
 
-#NOTE: PL: probably need to alter this once we have MPI read-ins working - really it's only the z-ranges that are going to cause problems here 
 
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
