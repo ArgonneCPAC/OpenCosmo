@@ -59,6 +59,29 @@ def test_healpix_downgrade(healpix_map_path):
     raise ValueError("Need to implement additional checks")
 
 
+def test_healpix_downgrade_doesnt_cache(healpix_map_path):
+    """
+    Downgrading data produces an entirely new dataset, which exists as an
+    in-memory hdf5 file. We want to ensure this data is not also sent
+    to the cache.
+    """
+
+    ds = oc.open(healpix_map_path)
+    data = ds.get_data()
+    output = ds.downgrade_map(128)
+
+    # First dataset backed by actual file, data should be cached
+    dataset = next(iter(ds.values()))
+    cache = dataset._Dataset__state._DatasetState__cache
+    assert len(cache.columns) > 1
+
+    # New dataset entirely in-memory, so no cache
+    downgraded_data = output.get_data()
+    downgraded_dataset = next(iter(output.values()))
+    cache = downgraded_dataset._Dataset__state._DatasetState__cache
+    assert len(cache.columns) == 0
+
+
 def test_healpix_index_chain_failure(healpix_map_path):
     ds = oc.open(healpix_map_path)
 

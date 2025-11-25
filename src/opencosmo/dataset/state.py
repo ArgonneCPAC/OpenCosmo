@@ -67,12 +67,6 @@ class DatasetState:
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
         finalize(self, deregister_state, id(self), self.__cache)
-        if (
-            len(self.__raw_data_handler.index) == 33595973
-            and isinstance(self.__raw_data_handler.index, ChunkedIndex)
-            and len(self.__raw_data_handler.index.sizes) == 1
-        ):
-            pass
 
     def __rebuild(self, **updates):
         new = {
@@ -99,6 +93,7 @@ class DatasetState:
         region: Region,
         index: Optional[DataIndex] = None,
         metadata_group: Optional[h5py.Group] = None,
+        in_memory: bool = False,
     ):
         handler = Hdf5Handler.from_group(group, index, metadata_group)
         unit_handler = make_unit_handler(handler.data, header, unit_convention)
@@ -199,11 +194,12 @@ class DatasetState:
             raw_data = self.__raw_data_handler.get_data(raw_columns)
             raw_data = self.__unit_handler.apply_raw_units(raw_data, unit_kwargs)
 
-            self.__cache.add_data(raw_data)
+            if not self.__raw_data_handler.in_memory:
+                self.__cache.add_data(raw_data)
             updated_data = self.__unit_handler.apply_unit_conversions(
                 raw_data, unit_kwargs
             )
-            if updated_data:
+            if updated_data and not self.__raw_data_handler.in_memory:
                 self.__cache.add_data(updated_data, push_up=False)
             data |= raw_data | updated_data
 
