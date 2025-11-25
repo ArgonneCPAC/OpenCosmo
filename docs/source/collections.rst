@@ -44,6 +44,29 @@ Lightcones hold datasets from several different redshift steps, which are stacke
            11 119.049706            49.151897        0.96145815         126.78099 ...      0.12496548 1.5141958             (1049601, 60492121202) 0.040086865
            11  119.60659             43.32933         0.9612831        127.099144 ...       -149.2758  1.519284             (1049601, 60492184203)  0.04027629
 
+Healpix Maps
+------------
+Maps contain pixelized spatial data, integrated over a redshift range, in a single dataset. This may contain one or more different types of data (e.g. x-ray emission or projected density fields) for a given simulation and range. The :py:class:`HealpixMap <opencosmo.HealpixMap>` API is identical to the standard :py:class:`Dataset <opencosmo.Dataset>` API, with a few notable differences. We do not support unit conversions, as we do not assume fine-grained redshift sampling, and instead keep everything in the observed frame. We also provide the data in either Healpix Map format (a numpy array with nested pixelization), or Healsparse format (a sparse implementation which supports partial sky coverage). Some knowledge of Healsparse formats may be useful to work with this data. A simple pixel, value return is demonstrated below. 
+ 
+
+.. code-block:: python
+
+   import opencosmo as oc
+   ds = oc.open(healpix_map_path)
+   ds.get_data()
+
+.. code-block:: text
+
+    {'ksz': HealSparseMap: nside_coverage = 64, nside_sparse = 2048, float32, 50331648 valid pixels,
+     'tsz': HealSparseMap: nside_coverage = 64, nside_sparse = 2048, float32, 50331648 valid pixels}
+
+.. code-block:: python
+
+   tsz_map = ds.data['tsz']
+   pix_list = tsz_map.valid_pixels
+   vals = tsz_map.get_values_pix(pix_list)
+
+
 
 
 

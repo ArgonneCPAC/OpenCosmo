@@ -2,6 +2,9 @@ from pathlib import Path
 
 import pytest
 
+@pytest.fixture(scope="session")
+def map_path():
+    return Path("test_data") / "healpix_map"
 
 @pytest.fixture(scope="session")
 def lightcone_path():

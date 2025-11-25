@@ -16,6 +16,7 @@ dependencies = [
   "pydantic>=2.10.6,<3.0.0",
   "hdf5plugin>=5.0.0,<6.0.0",
   "healpy>=1.18.1,<2.0.0",
+  "healsparse==1.11.1",
   "deprecated>=1.2.18,<2.0.0",
   "numpy>=1.26",
   "click (>=8.2.1,<9.0.0)",
@@ -71,7 +72,7 @@ source-include = ["LICENSE.md"]
 
 
 [[tool.mypy.overrides]]
-module = ["h5py", "astropy.*"]
+module = ["h5py", "astropy.*", "healpy", "healsparse"]
 ignore_missing_imports = true
 
 [tool.towncrier]

@@ -32,8 +32,8 @@ if TYPE_CHECKING:
 
     from .protocols import Writeable
 
-mpiio: Optional[ModuleType]
-partition: Optional[Callable]
+    mpiio: Optional[ModuleType]
+    partition: Optional[Callable]
 
 if get_comm_world() is not None:
     from opencosmo.dataset.mpi import partition
@@ -42,24 +42,25 @@ else:
     mpiio = None
     partition = None
 
-"""
-This module defines the main user-facing io functions: open and write
+    """
+    This module defines the main user-facing io functions: open and write
 
-open can take any number of file paths, and will always construct a single object 
-(either a dataset or a collection).
+    open can take any number of file paths, and will always construct a single object 
+    (either a dataset or a collection).
 
-write takes exactly one path and exactly one opencosmo dataset or collection
+    write takes exactly one path and exactly one opencosmo dataset or collection
 
-open works in the following way:
+    open works in the following way:
 
-1. Read headers and get dataset names and types for all files passed
-2. If there is only a single dataset, simply open it as such
-3. If there are multiple datasets, user the headers to determine
-   if the dataset are compatible (i.e. capabale of existing together in
-   a collection)
-4. Open all datasets individually
-5. Call the merge functionality for the appropriate collection.
-"""
+    1. Read headers and get dataset names and types for all files passed
+    2. If there is only a single dataset, simply open it as such
+    3. If there are multiple datasets, user the headers to determine
+       if the dataset are compatible (i.e. capabale of existing together in
+       a collection)
+    4. Open all datasets individually
+    5. Call the merge functionality for the appropriate collection.
+    """
+
 
 
 class FILE_TYPE(Enum):
@@ -72,6 +73,7 @@ class FILE_TYPE(Enum):
     STRUCTURE_COLLECTION = 6
     SIMULATION_COLLECTION = 7
     SYNTHETIC_CATALOG = 8
+    HEALPIX_MAP = 9
 
 
 class COLLECTION_TYPE(Enum):
@@ -105,6 +107,8 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
             return FILE_TYPE.GALAXY_PARTICLES
         elif dtype == "diffsky_fits":
             return FILE_TYPE.SYNTHETIC_CATALOG
+        elif dtype == "healpix_map":
+            return FILE_TYPE.HEALPIX_MAP
         else:
             raise ValueError(f"Unknown file type {dtype}")
 
@@ -115,6 +119,8 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
                     "Unknown file type. "
                     "It appears to have multiple datasets, but organized incorrectly"
                 )
+    # TODO: currently a large set of maps will return as a lightcone collection. We should either assert that you can't open
+    # a group of maps this way, or create a catch for it
     if all(group["header"]["file"].attrs["is_lightcone"] for group in file.values()):
         return FILE_TYPE.LIGHTCONE
     elif (
@@ -283,6 +289,9 @@ def open_single_dataset(
     if metadata_group is not None:
         metadata_group = handle[metadata_group]
 
+    elif "metadata" in handle.keys():
+        metadata_group = handle["metadata"]
+
     state = dss.DatasetState.from_group(
         handle["data"],
         header,
@@ -297,8 +306,16 @@ def open_single_dataset(
         state,
         tree=tree,
     )
-
-    if header.file.is_lightcone and not bypass_lightcone:
+    if header.file.data_type == "healpix_map":
+        return collection.HealpixMap(
+            {"data": dataset},
+            header.healpix_map["nside"],
+            header.healpix_map["nside_lr"],
+            header.healpix_map["ordering"],
+            header.healpix_map["full_sky"],
+            header.healpix_map["z_range"],
+        )  
+    elif header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset

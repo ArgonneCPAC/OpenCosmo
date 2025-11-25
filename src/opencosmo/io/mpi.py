@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from .protocols import DataSchema
 
+
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
 from several ranks into a single schema that can be allocated by rank 0. Each 
@@ -209,13 +210,13 @@ def combine_dataset_schemas(
 
     for groupname in all_group_names:
         group_column_names = get_all_child_names(children.get(groupname, {}), comm)
-        if groupname in ["data", "data_linked"]:
-            new_schema.columns[groupname] = combine_data_group(
-                columns[groupname], group_column_names, comm
-            )
-        elif groupname == "index":
+        if groupname == "index":
             new_schema.columns[groupname] = combine_spatial_index_schema(
                 columns[groupname], comm
+            )
+        else:
+            new_schema.columns[groupname] = combine_data_group(
+                columns[groupname], group_column_names, comm
             )
     return new_schema
 
@@ -331,18 +332,30 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
 
     for child_name in all_child_names:
         child = children.get(child_name)
-        z_range = get_z_range(child, comm)
-
-        new_dataset_schema = combine_dataset_schemas(
-            children.get(child_name), comm, {"lightcone/z_range": z_range}
-        )
+        if child is None:
+            continue 
+        if child.header is None:
+            continue
+        if child.header.file.data_type == "healpix_map":
+            new_dataset_schema = combine_dataset_schemas(
+                children.get(child_name),
+                comm,
+            )
+        else:
+            z_range = get_z_range(child, comm)
+            new_dataset_schema = combine_dataset_schemas(
+                children.get(child_name), comm, {"lightcone/z_range": z_range}
+            )
         new_schema.add_child(new_dataset_schema, child_name)
     return new_schema
 
 
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
     if ds is not None and ds.header is not None:
-        z_ranges = comm.allgather(ds.header.lightcone["z_range"])
+        if ds.header.file.data_type == "healpix_map":
+            z_ranges = comm.allgather(ds.header.healpix_map["z_range"])
+        else:
+            z_ranges = comm.allgather(ds.header.lightcone["z_range"])
     else:
         z_ranges = comm.allgather(None)
     z_ranges = list(filter(lambda dz: dz is not None, z_ranges))
