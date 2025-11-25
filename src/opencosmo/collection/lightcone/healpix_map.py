@@ -12,6 +12,7 @@ from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
+from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
+    from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
     from opencosmo.parameters.hacc import HaccSimulationParameters
@@ -364,6 +366,66 @@ class HealpixMap(dict):
 
         """
         return self.get_data("healsparse")
+
+    def downgrade_map(self, nside_out: int):
+        """
+        Downgrade map to a new nside resolution.
+        """
+
+        data = [
+            ds.get_data(unpack=False, metadata_columns=["pixel"])
+            for ds in self.values()
+        ]
+        table = vstack(data, join_type="exact")
+        table.sort("pixel", reverse=False)
+
+        if nside_out >= self.__nside:
+            raise ValueError(
+                f"New nside {nside_out} is greater than or equal to input value: {self.__nside}."
+            )
+        if not hp.isnsideok(nside_out):
+            raise ValueError(f"New nside {nside_out} is invalid.")
+
+        nside_ratio = self.__nside // nside_out
+        pixel_lores = table["pixel"].value // (nside_ratio * nside_ratio)
+
+        unique_vals, boundaries = np.unique(pixel_lores, return_index=True)
+        counts = np.add.reduceat(np.ones_like(table["pixel"].value), boundaries).astype(
+            float
+        )
+        new_pixels = np.arange(len(counts))
+
+        new_data: GroupedColumnData = {"data": {}, "metadata": {"pixel": new_pixels}}
+        for name in self.columns:
+            new_data["data"][name] = (
+                np.add.reduceat(np.ones_like(table[name].value), boundaries) / counts
+            ).astype(np.float32)
+
+        new_header = self.header.with_parameters({"map_params/nside": nside_out})
+
+        new_dataset = build_dataset_from_data(
+            new_data,
+            new_header,
+            self.region,
+            descriptions={
+                "data": {
+                    key: desc
+                    for key, desc in self.descriptions.items()
+                    if desc is not None
+                }
+            },
+        )
+
+        return HealpixMap(
+            {"data": new_dataset},
+            nside_out,
+            self.nside_lr,
+            self.ordering,
+            self.full_sky,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+        )
 
     @classmethod
     def open(cls, targets: list[OpenTarget], **kwargs):
