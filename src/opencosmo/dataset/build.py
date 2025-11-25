@@ -5,25 +5,28 @@ from typing import TYPE_CHECKING, Optional, TypeVar
 
 import astropy.units as u
 import h5py
+import numpy as np
 
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.state import DatasetState
+from opencosmo.spatial.healpix import HealPixIndex
+from opencosmo.spatial.tree import Tree
+from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
-    import numpy as np
-
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.spatial import Region
 
 T = TypeVar("T")
 GroupedColumnData = dict[str, dict[str, T]]
+SpatialIndexData = dict[int, tuple[np.ndarray, int]]
 
 
 def build_dataset_from_data(
     data: GroupedColumnData[np.ndarray] | h5py.Group,
     header: OpenCosmoHeader,
     region: Region,
-    spatial_index_data: Optional[GroupedColumnData | h5py.Group] = None,
+    spatial_index_data: SpatialIndexData,
     descriptions: GroupedColumnData[str] = {},
 ) -> Dataset:
     data_keys = set(data.keys())
@@ -40,7 +43,9 @@ def build_dataset_from_data(
     if isinstance(data, dict):
         data = make_in_memory_h5_file_from_data(data, descriptions)
     if isinstance(spatial_index_data, dict):
-        spatial_index_data = make_in_memory_h5_file_from_data(spatial_index_data)
+        spatial_index_data = make_spatial_index(spatial_index_data)
+
+    tree = Tree(HealPixIndex(), spatial_index_data)
     if len(data_keys) == 2:
         data_keys.remove("data")
         metadata_key = data_keys.pop()
@@ -53,7 +58,7 @@ def build_dataset_from_data(
         region,
         metadata_group=metadata_group,
     )
-    return Dataset(header, new_state)
+    return Dataset(header, new_state, tree=tree)
 
 
 def make_in_memory_h5_file_from_data(
@@ -76,6 +81,24 @@ def make_in_memory_h5_file_from_data(
             group.create_dataset(column_name, data=column_data)
             group[column_name].attrs.update(group_metadata[column_name])
     return file
+
+
+def make_spatial_index(data: SpatialIndexData):
+    """
+    allowed input (for now)
+
+    a single level > 0
+    """
+    if len(data) != 1:
+        raise ValueError("Spatial index creation routines should have a single level")
+    level = next(iter(data.keys()))
+    size, fold_factor = data[level]
+    if level <= 0:
+        raise ValueError("Data for creating spatial index should include one level > 0")
+    name = uuid.uuid1()
+    file = h5py.File(f"{name}.hdf5", "w", driver="core", backing_store=False)
+
+    return combine_upwards(size, fold_factor, level, file)
 
 
 def split_data_and_metadata(data: dict[str, np.ndarray], descriptions: dict[str, str]):

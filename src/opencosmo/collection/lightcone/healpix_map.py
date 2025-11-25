@@ -289,7 +289,7 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    def get_data(self, output="healsparse"):
+    def get_data(self, output="healsparse", nside_out: Optional[int] = None):
         """
         Get the data in this dataset as healsparse map or as healpix maps
         (nest-ordered numpy array). Note that a dataset does not load data from
@@ -317,6 +317,9 @@ class HealpixMap(dict):
 
         if output not in {"healsparse", "healpix"}:
             raise ValueError(f"Unknown output type {output}")
+
+        if nside_out is not None:
+            return self.downgrade_map(nside_out).get_data(output)
 
         data = [
             ds.get_data(unpack=False, metadata_columns=["pixel"])
@@ -403,10 +406,23 @@ class HealpixMap(dict):
 
         new_header = self.header.with_parameters({"map_params/nside": nside_out})
 
+        index_level = 6
+        index_nside = 2**index_level
+        while index_nside > nside_out:
+            index_level -= 1
+            index_nside = 2**index_level
+
+        out_npix = hp.nside2npix(nside_out)
+        index_npix = hp.nside2npix(index_nside)
+
+        pix_per_idx = out_npix / index_npix
+        size = np.full(index_npix, pix_per_idx)
+
         new_dataset = build_dataset_from_data(
             new_data,
             new_header,
             self.region,
+            {index_level: (size, 4)},
             descriptions={
                 "data": {
                     key: desc
