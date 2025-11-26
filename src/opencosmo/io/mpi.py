@@ -183,6 +183,8 @@ def validate_headers(
     all_headers: Iterable[OpenCosmoHeader] = comm.allgather(header)
     all_headers = filter(lambda h: h is not None, all_headers)
     all_headers = list(map(lambda h: h.with_parameters(header_updates), all_headers))
+    print(header_updates)
+    print(all_headers)
     regions = set([h.file.region for h in all_headers])
     if len(regions) > 1:
         all_headers = [h.with_region(None) for h in all_headers]
@@ -333,7 +335,7 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     for child_name in all_child_names:
         child = children.get(child_name)
         if child is None:
-            continue 
+            continue
         if child.header is None:
             continue
         if child.header.file.data_type == "healpix_map":

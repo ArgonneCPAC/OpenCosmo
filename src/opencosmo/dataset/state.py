@@ -429,11 +429,15 @@ class DatasetState:
         if not self.__derived_columns:
             return {}
 
-        derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
-        if (
-            self.__sort_by is not None
-            and self.__sort_by[0] in self.__derived_columns.keys()
-        ):
+        all_derived_columns: set[str] = reduce(
+            lambda acc, dc: acc.union(
+                dc[1].produces if dc[1].produces is not None else {dc[0]}
+            ),
+            self.__derived_columns.items(),
+            set(),
+        )
+        derived_names = all_derived_columns.intersection(self.columns)
+        if self.__sort_by is not None and self.__sort_by[0] in all_derived_columns:
             derived_names.add(self.__sort_by[0])
 
         dc = build_derived_columns(

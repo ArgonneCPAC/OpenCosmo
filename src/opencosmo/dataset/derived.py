@@ -63,7 +63,9 @@ def replace_multi_producers(
     for missing_column in missing:
         missing_column_produces = derived_columns[missing_column].produces
         assert missing_column_produces is not None
-        outputs = [node_map[name] for name in missing_column_produces]
+        outputs = [
+            node_map[name] for name in missing_column_produces if name in node_map
+        ]
         graph.contract_nodes(outputs, missing_column)
     return graph
 
