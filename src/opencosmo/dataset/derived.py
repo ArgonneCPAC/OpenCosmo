@@ -140,17 +140,16 @@ def build_derived_columns(
         set(),
     )
 
-    cached_data = cache.get_columns(column_names)
+    dependency_graph = build_dependency_graph(
+        all_derived_columns, derived_columns_to_get
+    )
+    cached_data = cache.get_columns(dependency_graph.nodes())
+    cached_data |= unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
+
     additional_derived = column_names.difference(cached_data.keys())
 
     if not additional_derived:
         return cached_data
-
-    dependency_graph = build_dependency_graph(
-        all_derived_columns, derived_columns_to_get
-    )
-    cached_data |= cache.get_columns(dependency_graph.nodes())
-    cached_data |= unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
 
     columns_to_fetch = (
         set(dependency_graph.nodes())
@@ -175,8 +174,11 @@ def build_derived_columns(
             continue
         output = derived_column.evaluate(data, index)
         if isinstance(output, dict):
-            new_derived = new_derived | output
+            data |= output
+            new_derived |= output
         else:
+            data[colname] = output
             new_derived[colname] = output
+
     cache.add_data(new_derived)
     return data | new_derived

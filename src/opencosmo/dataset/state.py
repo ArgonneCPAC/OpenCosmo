@@ -595,6 +595,8 @@ class DatasetState:
         else:
             convention_ = UnitConvention(convention)
             cache = self.__cache.without_columns(self.__raw_data_handler.columns)
+            cache = cache.without_columns(self.__derived_columns.keys())
+
         if (
             convention_ == UnitConvention.SCALEFREE
             and UnitConvention(self.header.file.unit_convention)
