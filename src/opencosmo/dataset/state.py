@@ -436,14 +436,16 @@ class DatasetState:
         ):
             derived_names.add(self.__sort_by[0])
 
-        return build_derived_columns(
+        dc = build_derived_columns(
             self.__derived_columns,
+            derived_names,
             self.__cache,
             self.__raw_data_handler,
             self.__unit_handler,
             unit_kwargs,
             self.__raw_data_handler.index,
         )
+        return dc
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
         im_data = {}
