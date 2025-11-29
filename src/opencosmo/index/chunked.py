@@ -57,24 +57,6 @@ class ChunkedIndex:
         )
         return np.unique(idxs)
 
-    def into_mask(self) -> np.ndarray:
-        ends = self.__starts + self.__sizes
-        mask = np.zeros(np.max(ends), dtype=bool)
-        for start, end in np.nditer([self.__starts, ends]):
-            mask[start:end] = True
-        return mask
-
-    def intersection(self, other: DataIndex) -> DataIndex:
-        if len(self) == 0 or len(other) == 0:
-            return simple.SimpleIndex.empty()
-        other_mask = other.into_mask()
-        self_mask = self.into_mask()
-        length = max(len(other_mask), len(self_mask))
-        self_mask.resize(length)
-        other_mask.resize(length)
-        new_idx = np.where(self_mask & other_mask)[0]
-        return simple.SimpleIndex(new_idx)
-
     def projection(self, other: DataIndex):
         if isinstance(other, simple.SimpleIndex):
             return self.__project_simple(other)
