@@ -8,7 +8,8 @@ from weakref import ref
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex, from_size
+from opencosmo.index.get import get_data
 from opencosmo.index.take import take
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
@@ -36,6 +37,7 @@ class Hdf5Handler:
         self.__index = index
         self.__group = group
         self.__metadata_group = metadata_group
+        assert index is not None
 
     @classmethod
     def from_group(
@@ -51,7 +53,7 @@ class Hdf5Handler:
             raise ValueError("Not all columns are the same length!")
 
         if index is None:
-            index = ChunkedIndex.from_size(lengths.pop())
+            index = from_size(lengths.pop())
 
         colnames = group.keys()
         if metadata_group is not None:
@@ -65,8 +67,6 @@ class Hdf5Handler:
 
         if sorted is not None:
             return self.__take_sorted(other, sorted)
-
-        from time import time
 
         new_index = take(self.__index, other)
         return Hdf5Handler(self.__group, new_index, self.__metadata_group)
@@ -153,7 +153,7 @@ class Hdf5Handler:
         data = {}
 
         for colname in columns:
-            data[colname] = self.__index.get_data(self.__group[colname])
+            data[colname] = get_data(self.__group[colname], self.__index)
 
         # Ensure order is preserved
         return {name: data[name] for name in columns}

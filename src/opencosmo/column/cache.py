@@ -6,8 +6,10 @@ from weakref import finalize, ref
 import astropy.units as u
 import numpy as np
 
+from opencosmo.index.get import get_data
 from opencosmo.index.protocols import DataIndex
 from opencosmo.index.take import take
+from opencosmo.index.unary import get_range
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex
@@ -30,7 +32,7 @@ def finish(
     )
     data = {name: cached_data[name] for name in columns_to_add}
     if index is not None:
-        data = {name: index.get_data(cd) for name, cd in data.items()}
+        data = {name: get_data(cd, index) for name, cd in data.items()}
     if data:
         cache.add_data(data)
 
@@ -118,7 +120,7 @@ class ColumnCache:
         cached_data = {colname: data[colname] for colname in columns_to_keep}
         if self.__derived_index is not None:
             cached_data = {
-                colname: self.__derived_index.get_data(coldata)
+                colname: get_data(coldata, self.__derived_index)
                 for colname, coldata in cached_data.items()
             }
 
@@ -247,7 +249,7 @@ class ColumnCache:
 
         data = {name: self.__cached_data[name] for name in columns_in_cache}
         if index is not None:
-            data = {name: index.get_data(cd) for name, cd in data.items()}
+            data = {name: get_data(cd, index) for name, cd in data.items()}
 
         if self.__parent is None or column_names == columns_in_cache:
             return data
@@ -272,7 +274,7 @@ class ColumnCache:
     def take(self, index: DataIndex):
         if len(self) == 0:
             return ColumnCache.empty()
-        if index.range()[1] > len(self):
+        if get_range(index)[1] > len(self):
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
             )

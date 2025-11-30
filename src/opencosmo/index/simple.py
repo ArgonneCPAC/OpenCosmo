@@ -8,6 +8,7 @@ import numpy as np
 
 from opencosmo.index import chunked
 from opencosmo.index.get import get_data_simple
+from opencosmo.index.mask import mask
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -89,22 +90,9 @@ class SimpleIndex:
         isin = np.isin(self.into_array(), other.into_array())
         return SimpleIndex(np.where(isin)[0])
 
-    def mask(self, mask: np.ndarray) -> DataIndex:
-        if mask.shape != self.__index.shape:
-            raise np.exceptions.AxisError(
-                f"Mask shape {mask.shape} does not match index size {len(self)}"
-            )
-
-        if mask.dtype != bool:
-            raise TypeError(f"Mask dtype {mask.dtype} is not boolean")
-
-        if not mask.any():
-            return SimpleIndex.empty()
-
-        if mask.all():
-            return self
-
-        return SimpleIndex(self.__index[mask])
+    def mask(self, boolean_mask: np.ndarray) -> DataIndex:
+        new_index = mask(self.__index, boolean_mask)
+        return SimpleIndex(new_index)
 
     def get_data(self, data: h5py.Dataset) -> np.ndarray:
         """

@@ -19,6 +19,9 @@ from opencosmo.dataset.derived import (
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index.build import single_chunk
+from opencosmo.index.mask import into_array
+from opencosmo.index.unary import get_length
 from opencosmo.io import schemas as ios
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
@@ -67,12 +70,6 @@ class DatasetState:
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
         finalize(self, deregister_state, id(self), self.__cache)
-        if (
-            len(self.__raw_data_handler.index) == 33595973
-            and isinstance(self.__raw_data_handler.index, ChunkedIndex)
-            and len(self.__raw_data_handler.index.sizes) == 1
-        ):
-            pass
 
     def __rebuild(self, **updates):
         new = {
@@ -117,7 +114,7 @@ class DatasetState:
         )
 
     def __len__(self):
-        return len(self.__raw_data_handler.index)
+        return get_length(self.__raw_data_handler.index)
 
     @property
     def descriptions(self):
@@ -135,8 +132,8 @@ class DatasetState:
     @property
     def raw_index(self):
         if (si := self.get_sorted_index()) is not None:
-            ni = self.__raw_data_handler.index.into_array()
-            return SimpleIndex(ni[si])
+            ni = into_array(self.__raw_data_handler.index)
+            return ni[si]
 
         return self.__raw_data_handler.index
 
@@ -279,8 +276,8 @@ class DatasetState:
         return metadata
 
     def with_mask(self, mask: NDArray[np.bool_]):
-        index = SimpleIndex(np.where(mask)[0])
-        new_raw_handler = self.__raw_data_handler.mask(mask)
+        index = np.where(mask)[0]
+        new_raw_handler = self.__raw_data_handler.take(index)
         new_cache = self.__cache.take(index)
         return self.__rebuild(
             cache=new_cache,
@@ -517,9 +514,9 @@ class DatasetState:
 
         sorted = self.get_sorted_index()
         if sorted is None:
-            take_index = SimpleIndex(row_indices)
+            take_index = row_indices
         else:
-            take_index = SimpleIndex(np.sort(sorted[row_indices]))
+            take_index = np.sort(sorted[row_indices])
 
         new_handler = self.__raw_data_handler.take(take_index)
         new_cache = self.__cache.take(take_index)
@@ -537,20 +534,15 @@ class DatasetState:
             raise ValueError("start and end must be positive.")
         if end < start:
             raise ValueError("end must be greater than start.")
-        if end > len(self.__raw_data_handler.index):
+        if end > len(self):
             raise ValueError("end must be less than the length of the dataset.")
-
-        if start < 0 or end > len(self.__raw_data_handler.index):
-            raise ValueError("start and end must be within the bounds of the dataset.")
 
         sorted = self.get_sorted_index()
         take_index: DataIndex
         if sorted is None:
-            take_index = ChunkedIndex.single_chunk(start, end - start)
+            take_index = single_chunk(start, end - start)
         else:
-            take_index = SimpleIndex(np.sort(sorted[start:end]))
-
-        from time import time
+            take_index = np.sort(sorted[start:end])
 
         new_raw_handler = self.__raw_data_handler.take(take_index)
         new_im = self.__cache.take(take_index)

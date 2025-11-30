@@ -6,35 +6,34 @@ import numba as nb  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
 
-from . import ChunkedIndex, SimpleIndex
-
+SimpleIndex = np.ndarray
+ChunkedIndex = tuple[np.ndarray, np.ndarray]
 if TYPE_CHECKING:
     from opencosmo.index.protocols import DataIndex
 
 
 def take(from_: DataIndex, by: DataIndex):
     match (from_, by):
-        case (SimpleIndex(), SimpleIndex()):
+        case (np.ndarray(), np.ndarray()):
             return take_simple_from_simple(from_, by)
-        case (SimpleIndex(), ChunkedIndex()):
+        case (np.ndarray(), (np.ndarray(), np.ndarray())):
             return take_chunked_from_simple(from_, by)
-        case (ChunkedIndex(), SimpleIndex()):
+        case ((np.ndarray(), np.ndarray()), np.ndarray()):
             return take_simple_from_chunked(from_, by)
-        case (ChunkedIndex(), ChunkedIndex()):
+        case ((np.ndarray(), np.ndarray()), (np.ndarray(), np.ndarray())):
             return take_chunked_from_chunked(from_, by)
 
 
 def take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex):
-    cumulative = np.insert(np.cumsum(from_.sizes), 0, 0)[:-1]
-    arr = by.into_array()
+    cumulative = np.insert(np.cumsum(from_[1]), 0, 0)[:-1]
 
-    indices_into_chunks = np.argmax(arr[:, np.newaxis] < cumulative, axis=1) - 1
-    output = arr - cumulative[indices_into_chunks] + from_.starts[indices_into_chunks]
-    return SimpleIndex(output)
+    indices_into_chunks = np.argmax(by[:, np.newaxis] < cumulative, axis=1) - 1
+    output = by - cumulative[indices_into_chunks] + from_[0][indices_into_chunks]
+    return output
 
 
-def take_simple_from_simple(from_: SimpleIndex, by: SimpleIndex):
-    return SimpleIndex(from_.into_array()[by.into_array()])
+def take_simple_from_simple(from_: np.ndarray, by: np.ndarray):
+    return from_[by]
 
 
 def take_chunked_from_simple(from_: SimpleIndex, by: ChunkedIndex):

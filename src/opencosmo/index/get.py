@@ -10,6 +10,16 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+def get_data(data: h5py.Dataset | np.ndarray, index: np.ndarray | tuple):
+    match index:
+        case np.ndarray():
+            return get_data_simple(data, index)
+        case (np.ndarray(), np.ndarray()):
+            return get_data_chunked(data, *index)
+        case _:
+            raise ValueError(f"Got invalid index of type {type(index)}")
+
+
 def get_data_simple(data: h5py.Dataset | np.ndarray, index: NDArray[np.int_]):
     if isinstance(data, np.ndarray):
         return data[index]

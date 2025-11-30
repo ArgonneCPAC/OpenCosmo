@@ -7,6 +7,7 @@ import numpy as np
 
 from opencosmo.index import simple
 from opencosmo.index.get import get_data_chunked
+from opencosmo.index.mask import mask
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -163,34 +164,12 @@ class ChunkedIndex:
         """
         return np.sum(self.__sizes)
 
-    def mask(self, mask: np.ndarray) -> DataIndex:
+    def mask(self, boolean_mask: np.ndarray) -> DataIndex:
         """
         Mask the index with a boolean mask.
         """
-        if mask.shape != (len(self),):
-            raise ValueError(
-                f"Mask shape {mask.shape} does not match index size {len(self)}"
-            )
-
-        if mask.dtype != bool:
-            raise ValueError(f"Mask dtype {mask.dtype} is not boolean")
-
-        if not mask.any():
-            return simple.SimpleIndex.empty()
-
-        if mask.all():
-            return self
-
-        # Get the indices of the chunks that are masked
-        idxs = np.concatenate(
-            [
-                np.arange(start, start + size)
-                for start, size in zip(self.__starts, self.__sizes)
-            ]
-        )
-        masked_idxs = idxs[mask]
-
-        return simple.SimpleIndex(masked_idxs)
+        new_index = mask(self.starts, self.sizes)
+        return simple.SimpleIndex(new_index)
 
     def get_data(self, data: h5py.Dataset | np.ndarray) -> np.ndarray:
         """
