@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 import numpy as np
 
 from opencosmo.index import SimpleIndex
+from opencosmo.index.get import get_data
 from opencosmo.io.updaters import apply_updaters
 
 if TYPE_CHECKING:
@@ -44,7 +45,7 @@ def write_index(
     """
     data = np.array([])
     if len(index) > 0 and input_ds is not None:
-        data = index.get_data(input_ds)
+        data = get_data(input_ds, index)
         if updater is not None:
             data = updater(data)
 

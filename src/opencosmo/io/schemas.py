@@ -6,12 +6,13 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
+import numpy as np
 
 import opencosmo.io.writers as iow
 from opencosmo.index import ChunkedIndex
+from opencosmo.index.unary import get_length
 
 if TYPE_CHECKING:
-    import numpy as np
     from mpi4py import MPI
     from numpy.typing import DTypeLike, NDArray
 
@@ -372,11 +373,11 @@ class ColumnSchema:
         self.attrs = attrs
         self.offset = 0
         if total_length is None:
-            total_length = len(index)
+            total_length = get_length(index)
         self.total_length = total_length
 
     def __len__(self):
-        return len(self.index)
+        return get_length(self.index)
 
     def concatenate(self, *others: "ColumnSchema"):
         for other in others:

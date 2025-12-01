@@ -144,4 +144,4 @@ def take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
     )
     out_start = np.resize(out_start, (n,))
     out_size = np.resize(out_size, (n,))
-    return ChunkedIndex(out_start, out_size)
+    return out_start, out_size

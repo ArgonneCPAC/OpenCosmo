@@ -37,7 +37,7 @@ class Hdf5Handler:
         self.__index = index
         self.__group = group
         self.__metadata_group = metadata_group
-        assert index is not None
+        assert isinstance(index, np.ndarray) or isinstance(index, tuple)
 
     @classmethod
     def from_group(

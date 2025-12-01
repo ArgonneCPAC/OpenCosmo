@@ -31,8 +31,8 @@ def into_array(index: np.ndarray | tuple):
 
 @nb.njit
 def __chunked_into_array(starts: NDArray[np.int_], sizes: NDArray[np.int_]):
-    output = np.zeros(np.sum(sizes), dtype=int)
+    output = np.zeros(np.sum(sizes), dtype=np.int64)
     rs = 0
     for i in range(len(starts)):
-        output[rs : rs + sizes[i]] = np.arange(start[i], start[i] + size[i])
-    output
+        output[rs : rs + sizes[i]] = np.arange(starts[i], starts[i] + sizes[i])
+    return output

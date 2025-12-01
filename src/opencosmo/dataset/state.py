@@ -18,8 +18,7 @@ from opencosmo.dataset.derived import (
 )
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
-from opencosmo.index import ChunkedIndex, SimpleIndex
-from opencosmo.index.build import single_chunk
+from opencosmo.index.build import from_size, single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_length
 from opencosmo.io import schemas as ios
@@ -132,6 +131,7 @@ class DatasetState:
     @property
     def raw_index(self):
         if (si := self.get_sorted_index()) is not None:
+            print(self.__raw_data_handler.index)
             ni = into_array(self.__raw_data_handler.index)
             return ni[si]
 
@@ -311,7 +311,7 @@ class DatasetState:
                 "description": self.__derived_columns[colname].description,
             }
             colschema = ios.ColumnSchema(
-                colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
+                colname, from_size(len(coldata)), coldata, attrs
             )
             schema.add_child(colschema, f"data/{colname}")
 
@@ -331,9 +331,7 @@ class DatasetState:
             attrs["unit"] = unit_str
             attrs["description"] = self.descriptions.get(colname, "None")
 
-            colschema = ios.ColumnSchema(
-                colname, ChunkedIndex.from_size(len(coldata)), data, attrs
-            )
+            colschema = ios.ColumnSchema(colname, from_size(len(coldata)), data, attrs)
             schema.add_child(colschema, f"data/{colname}")
 
         return schema
