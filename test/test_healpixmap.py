@@ -52,11 +52,31 @@ def test_healpix_index(healpix_map_path):
 
 
 def test_healpix_downgrade(healpix_map_path):
-    ds = oc.open(healpix_map_path)
-    output = ds.downgrade_map(128)
-    assert output.descriptions == ds.descriptions
-    assert output.nside == 128
-    raise ValueError("Need to implement additional checks")
+    ds = oc.open(healpix_map_path).select("tsz")
+    downgraded_ds = ds.downgrade_map(ds.nside / 2)
+    assert downgraded_ds.descriptions == ds.descriptions
+    assert downgraded_ds.nside == ds.nside / 2
+
+    original_nside = ds.nside
+    original_npix = hp.nside2npix(original_nside)
+
+    downgraded_nside = downgraded_ds.nside
+    downgraded_npix = hp.nside2npix(downgraded_nside)
+
+    factor = original_npix // downgraded_npix
+
+    original_data = ds.get_data("healpix")
+    downgraded_data = downgraded_ds.get_data("healpix")
+
+    downgraded_data_2 = original_data["tsz"].reshape((-1, 4)).sum(axis=1) / 4
+
+    assert np.all(
+        np.isclose(
+            downgraded_data_2,
+            downgraded_data["tsz"],
+            atol=0.001 * downgraded_data["tsz"].max(),
+        )
+    )
 
 
 def test_healpix_downgrade_doesnt_cache(healpix_map_path):

@@ -401,7 +401,7 @@ class HealpixMap(dict):
         new_data: GroupedColumnData = {"data": {}, "metadata": {"pixel": new_pixels}}
         for name in self.columns:
             new_data["data"][name] = (
-                np.add.reduceat(np.ones_like(table[name].value), boundaries) / counts
+                np.add.reduceat(table[name].value, boundaries) / counts
             ).astype(np.float32)
 
         new_header = self.header.with_parameters({"map_params/nside": nside_out})
