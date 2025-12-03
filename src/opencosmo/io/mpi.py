@@ -333,7 +333,7 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     for child_name in all_child_names:
         child = children.get(child_name)
         if child is None:
-            continue 
+            continue
         if child.header is None:
             continue
         if child.header.file.data_type == "healpix_map":
