@@ -53,7 +53,7 @@ def test_healpix_index(healpix_map_path):
 
 def test_healpix_downgrade(healpix_map_path):
     ds = oc.open(healpix_map_path).select("tsz")
-    downgraded_ds = ds.downgrade_map(ds.nside / 2)
+    downgraded_ds = ds.downgrade_map(int(ds.nside / 2))
     assert downgraded_ds.descriptions == ds.descriptions
     assert downgraded_ds.nside == ds.nside / 2
 
@@ -70,13 +70,32 @@ def test_healpix_downgrade(healpix_map_path):
 
     downgraded_data_2 = original_data["tsz"].reshape((-1, 4)).sum(axis=1) / 4
 
+    center = (0 * u.deg, 0 * u.deg)
+    radius = 1 * u.deg
+    center_coord = SkyCoord(*center)
+    region = oc.make_cone(center, radius)
+    data_region_original = ds.bound(region).get_data("healsparse")
+    data_region_downgraded = downgraded_ds.bound(region).get_data("healsparse")
+
+    npix_region = len(hp.query_disc(original_nside,[1,0,0],1*(np.pi/180.)))
+    npix_region_downgraded = len(hp.query_disc(downgraded_nside,[1,0,0],1*(np.pi/180.)))
+
+    assert(len(original_data["tsz"])==original_npix)
+    assert(len(downgraded_data["tsz"])==downgraded_npix)
+
+
+    assert(len(data_region_original["tsz"].valid_pixels)==npix_region)
+    assert(len(data_region_downgraded["tsz"].valid_pixels)==npix_region_downgraded)
+
     assert np.all(
         np.isclose(
             downgraded_data_2,
             downgraded_data["tsz"],
-            atol=0.001 * downgraded_data["tsz"].max(),
+            atol = 1.e-13,
         )
     )
+
+    assert np.isclose(np.mean(original_data["tsz"]), np.mean(downgraded_data["tsz"]), atol = 1.e-13)
 
 
 def test_healpix_downgrade_doesnt_cache(healpix_map_path):
