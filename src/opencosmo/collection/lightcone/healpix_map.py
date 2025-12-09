@@ -14,7 +14,7 @@ import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.index import SimpleIndex
+from opencosmo.index import SimpleIndex, into_array
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.spatial.region import ConeRegion, HealPixRegion
@@ -115,6 +115,10 @@ class HealpixMap(dict):
         dtype: int
         """
         return self.__header.healpix_map["nside"]
+
+    @property
+    def pixels(self):
+        return into_array(next(iter(self.values())).index)
 
     @property
     def nside_lr(self):
@@ -324,7 +328,7 @@ class HealpixMap(dict):
             raise ValueError(f"Unknown output type {output}")
 
         if nside_out is not None:
-            return self.downgrade_map(nside_out).get_data(output)
+            return self.with_resolution(nside_out).get_data(output)
 
         data = [
             ds.get_data(unpack=False, metadata_columns=["pixel"])
@@ -375,10 +379,21 @@ class HealpixMap(dict):
         """
         return self.get_data("healsparse")
 
-    def downgrade_map(self, nside_out: int):
+    def with_resolution(self, nside):
         """
-        Downgrade map to a new nside resolution.
+        Return a copy of the map with a new nside resolution.
+
+        The new resolution must be strictly less than the current
+        resolution.
+
         """
+        nside_out = nside
+        if nside_out == self.nside:
+            return self
+        elif nside_out > self.nside:
+            raise ValueError(
+                "You cannot change the resolution of a map to be higher than its original resolution!"
+            )
 
         data = [
             ds.get_data(unpack=False, metadata_columns=["pixel"])
@@ -397,11 +412,10 @@ class HealpixMap(dict):
         nside_ratio = self.__nside // nside_out
         pixel_lores = table["pixel"].value // (nside_ratio * nside_ratio)
 
-        unique_vals, boundaries = np.unique(pixel_lores, return_index=True)
+        new_pixels, boundaries = np.unique(pixel_lores, return_index=True)
         counts = np.add.reduceat(np.ones_like(table["pixel"].value), boundaries).astype(
             float
         )
-        new_pixels = np.arange(len(counts))
 
         new_data: GroupedColumnData = {"data": {}, "metadata": {"pixel": new_pixels}}
         for name in self.columns:
@@ -522,31 +536,34 @@ class HealpixMap(dict):
             schema.add_child(ds_schema, name)
         return schema
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
+    def bound(self, region: Region, inclusive: bool = False):
         """
-        Restrict the dataset to some subregion. The subregion will always be evaluated
-        in the same units as the current dataset. For example, if the dataset is
-        in the default "comoving" unit convention, positions are always in units of
-        comoving Mpc. However Region objects themselves do not carry units.
-        See :doc:`spatial_ref` for details of how to construct regions.
+        Restrict this map to some subregion. Be default this will
+        include all pixels whose centers fall within the subregion. You can additionally
+        include pixels that overalp without there centers being within the
+        specified region by passing :code:`inclusive=True`
+
+        If trying to query in a circular region, consider using
+        :py:meth:`cone_search <opencosmo.HealpixMap.cone_search>` for simplicity.
 
         Parameters
         ----------
         region: opencosmo.spatial.Region
             The region to query.
 
+        incluive: bool, default = Flase
+            Whether to include pixels that overlap but whose centers are not in the region1
+
         Returns
         -------
-        dataset: opencosmo.Dataset
-            The portion of the dataset inside the selected region
+        new_map: opencosmo.HealpixMap
+            The map including the pixels within the region.
 
         Raises
         ------
         ValueError
-            If the query region does not overlap with the region this dataset resides
+            If the query region does not overlap with the coverage of this map
             in
-        AttributeError:
-            If the dataset does not contain a spatial index
         """
         # The best we can do here is turn
         if not isinstance(region, ConeRegion):
@@ -559,7 +576,7 @@ class HealpixMap(dict):
             self.nside,
             vec,
             region.radius.to(u.radian).value,
-            inclusive=False,
+            inclusive=inclusive,
             nest=self.__ordering,
         )
         new_datasets = {}

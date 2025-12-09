@@ -191,9 +191,6 @@ class UnitHandler:
             elif column_conversion is not None:
                 output_data[colname] = column.to(column_conversion)
 
-        if "fof_halo_px" in data:
-            print("H")
-            print(output_data.keys())
         return output_data
 
     def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):
