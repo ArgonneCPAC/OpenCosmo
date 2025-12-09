@@ -354,7 +354,6 @@ class Dataset:
         )
         new_intersects_index = mask(intersects_index, index_mask)
 
-        print(contained_index, new_intersects_index.dtype)
         new_index = np.concatenate(
             [into_array(contained_index), into_array(new_intersects_index)]
         )

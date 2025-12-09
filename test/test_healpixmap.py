@@ -8,6 +8,7 @@ from astropy.cosmology import units as cu
 from numpy import random
 
 import opencosmo as oc
+from opencosmo.spatial.healpix import HealPixRegion
 
 
 @pytest.fixture
@@ -77,25 +78,28 @@ def test_healpix_downgrade(healpix_map_path):
     data_region_original = ds.bound(region).get_data("healsparse")
     data_region_downgraded = downgraded_ds.bound(region).get_data("healsparse")
 
-    npix_region = len(hp.query_disc(original_nside,[1,0,0],1*(np.pi/180.)))
-    npix_region_downgraded = len(hp.query_disc(downgraded_nside,[1,0,0],1*(np.pi/180.)))
+    npix_region = len(hp.query_disc(original_nside, [1, 0, 0], 1 * (np.pi / 180.0)))
+    npix_region_downgraded = len(
+        hp.query_disc(downgraded_nside, [1, 0, 0], 1 * (np.pi / 180.0))
+    )
 
-    assert(len(original_data["tsz"])==original_npix)
-    assert(len(downgraded_data["tsz"])==downgraded_npix)
+    assert len(original_data["tsz"]) == original_npix
+    assert len(downgraded_data["tsz"]) == downgraded_npix
 
-
-    assert(len(data_region_original["tsz"].valid_pixels)==npix_region)
-    assert(len(data_region_downgraded["tsz"].valid_pixels)==npix_region_downgraded)
+    assert len(data_region_original["tsz"].valid_pixels) == npix_region
+    assert len(data_region_downgraded["tsz"].valid_pixels) == npix_region_downgraded
 
     assert np.all(
         np.isclose(
             downgraded_data_2,
             downgraded_data["tsz"],
-            atol = 1.e-13,
+            atol=1.0e-13,
         )
     )
 
-    assert np.isclose(np.mean(original_data["tsz"]), np.mean(downgraded_data["tsz"]), atol = 1.e-13)
+    assert np.isclose(
+        np.mean(original_data["tsz"]), np.mean(downgraded_data["tsz"]), atol=1.0e-13
+    )
 
 
 def test_healpix_downgrade_doesnt_cache(healpix_map_path):
@@ -177,13 +181,16 @@ def test_healpix_collection_bound(healpix_map_path):
     n_raw = np.sum(raw_data_seps < radius)
 
     region = oc.make_cone(center, radius)
-    data = ds.bound(region).data
+    bounded_ds = ds.bound(region)
+    data = bounded_ds.data
+    ds_region = bounded_ds.region
     theta, phi = hp.pix2ang(ds.nside, data["tsz"].valid_pixels, nest=True)
     ra = phi
     dec = np.pi / 2 - theta
     coordinates = SkyCoord(ra, dec, unit="radian")
     seps = center_coord.separation(coordinates)
     seps = seps.to(u.degree)
+    assert isinstance(ds_region, HealPixRegion)
     assert all(seps < radius)
     assert len(data["tsz"].valid_pixels) == n_raw
 

@@ -17,6 +17,7 @@ from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
+from opencosmo.spatial.region import ConeRegion, HealPixRegion
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
@@ -76,6 +77,7 @@ class HealpixMap(dict):
         z_range: tuple[float, float],
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
+        region: Optional[Region] = None,
     ):
         if any("pixel" not in dataset.meta_columns for dataset in datasets.values()):
             raise ValueError("Missing a pixel column for this map!")
@@ -99,6 +101,9 @@ class HealpixMap(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
+        if region is None:
+            region = next(iter(self.values())).region
+        self.__region = region
 
     @property
     def nside(self):
@@ -263,7 +268,7 @@ class HealpixMap(dict):
         region: opencosmo.spatial.Region
 
         """
-        return next(iter(self.values())).region
+        return self.__region
 
     @property
     def simulation(self) -> HaccSimulationParameters:
@@ -543,7 +548,38 @@ class HealpixMap(dict):
         AttributeError:
             If the dataset does not contain a spatial index
         """
-        return self.__map("bound", region, select_by)
+        # The best we can do here is turn
+        if not isinstance(region, ConeRegion):
+            raise TypeError(
+                "Currently only cone regions are supported when performing spatial queries on HealpixMaps"
+            )
+
+        vec = hp.ang2vec(region.center.ra.value, region.center.dec.value, lonlat=True)
+        pixels = hp.query_disc(
+            self.nside,
+            vec,
+            region.radius.to(u.radian).value,
+            inclusive=False,
+            nest=self.__ordering,
+        )
+        new_datasets = {}
+        for name, dataset in self.items():
+            ds_pixels = dataset.get_metadata(["pixel"])["pixel"]
+
+            rows_to_take = np.where(np.isin(ds_pixels, pixels, assume_unique=True))[0]
+            new_datasets[name] = dataset.take_rows(rows_to_take)
+
+        return HealpixMap(
+            new_datasets,
+            self.nside,
+            self.nside_lr,
+            self.ordering,
+            False,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+            region=HealPixRegion(pixels, self.nside),
+        )
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
