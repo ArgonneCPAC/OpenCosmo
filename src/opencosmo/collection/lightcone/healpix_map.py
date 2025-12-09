@@ -12,10 +12,12 @@ from astropy.table import Column, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
+from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.index import SimpleIndex
+from opencosmo.index import SimpleIndex, into_array
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema
+from opencosmo.spatial.region import ConeRegion, HealPixRegion
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
@@ -24,6 +26,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
+    from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
     from opencosmo.parameters.hacc import HaccSimulationParameters
@@ -74,6 +77,7 @@ class HealpixMap(dict):
         z_range: tuple[float, float],
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
+        region: Optional[Region] = None,
     ):
         if any("pixel" not in dataset.meta_columns for dataset in datasets.values()):
             raise ValueError("Missing a pixel column for this map!")
@@ -97,6 +101,9 @@ class HealpixMap(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
+        if region is None:
+            region = next(iter(self.values())).region
+        self.__region = region
 
     @property
     def nside(self):
@@ -108,6 +115,13 @@ class HealpixMap(dict):
         dtype: int
         """
         return self.__header.healpix_map["nside"]
+
+    @property
+    def pixels(self):
+        """
+        The healoix pixels that are included in this map
+        """
+        return next(iter(self.values())).get_metadata("pixel")["pixel"]
 
     @property
     def nside_lr(self):
@@ -197,7 +211,7 @@ class HealpixMap(dict):
     @property
     def columns(self) -> list[str]:
         """
-        The names of the columns in this dataset.
+        The names of the columns in this map.
 
         Returns
         -------
@@ -239,29 +253,16 @@ class HealpixMap(dict):
         return self.__header.cosmology
 
     @property
-    def dtype(self) -> str:
-        """
-        The data type of this dataset.
-
-        Returns
-        -------
-        dtype: str
-        """
-        return self.__header.file.data_type
-
-    @property
     def region(self) -> Region:
         """
-        The region this dataset is contained in. If no spatial
-        queries have been performed, this will be the full sky for
-        lightcone maps.
+        The region this map covers.
 
         Returns
         -------
         region: opencosmo.spatial.Region
 
         """
-        return next(iter(self.values())).region
+        return self.__region
 
     @property
     def simulation(self) -> HaccSimulationParameters:
@@ -287,7 +288,7 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    def get_data(self, output="healsparse"):
+    def get_data(self, output="healsparse", nside_out: Optional[int] = None):
         """
         Get the data in this dataset as healsparse map or as healpix maps
         (nest-ordered numpy array). Note that a dataset does not load data from
@@ -315,6 +316,9 @@ class HealpixMap(dict):
 
         if output not in {"healsparse", "healpix"}:
             raise ValueError(f"Unknown output type {output}")
+
+        if nside_out is not None:
+            return self.with_resolution(nside_out).get_data(output)
 
         data = [
             ds.get_data(unpack=False, metadata_columns=["pixel"])
@@ -364,6 +368,89 @@ class HealpixMap(dict):
 
         """
         return self.get_data("healsparse")
+
+    def with_resolution(self, nside):
+        """
+        Return a copy of the map with a new nside resolution.
+
+        The new resolution must be strictly less than the current
+        resolution.
+
+        """
+        nside_out = nside
+        if nside_out == self.nside:
+            return self
+        elif nside_out > self.nside:
+            raise ValueError(
+                "You cannot change the resolution of a map to be higher than its original resolution!"
+            )
+
+        data = [
+            ds.get_data(unpack=False, metadata_columns=["pixel"])
+            for ds in self.values()
+        ]
+        table = vstack(data, join_type="exact")
+        table.sort("pixel", reverse=False)
+
+        if nside_out >= self.__nside:
+            raise ValueError(
+                f"New nside {nside_out} is greater than or equal to input value: {self.__nside}."
+            )
+        if not hp.isnsideok(nside_out):
+            raise ValueError(f"New nside {nside_out} is invalid.")
+
+        nside_ratio = self.__nside // nside_out
+        pixel_lores = table["pixel"].value // (nside_ratio * nside_ratio)
+
+        new_pixels, boundaries = np.unique(pixel_lores, return_index=True)
+        counts = np.add.reduceat(np.ones_like(table["pixel"].value), boundaries).astype(
+            float
+        )
+
+        new_data: GroupedColumnData = {"data": {}, "metadata": {"pixel": new_pixels}}
+        for name in self.columns:
+            new_data["data"][name] = (
+                np.add.reduceat(table[name].value, boundaries) / counts
+            ).astype(np.float32)
+
+        new_header = self.header.with_parameters({"map_params/nside": nside_out})
+
+        index_level = 6
+        index_nside = 2**index_level
+        while index_nside > nside_out:
+            index_level -= 1
+            index_nside = 2**index_level
+
+        out_npix = hp.nside2npix(nside_out)
+        index_npix = hp.nside2npix(index_nside)
+
+        pix_per_idx = out_npix / index_npix
+        size = np.full(index_npix, pix_per_idx)
+
+        new_dataset = build_dataset_from_data(
+            new_data,
+            new_header,
+            self.region,
+            {index_level: (size, 4)},
+            descriptions={
+                "data": {
+                    key: desc
+                    for key, desc in self.descriptions.items()
+                    if desc is not None
+                }
+            },
+        )
+
+        return HealpixMap(
+            {"data": new_dataset},
+            nside_out,
+            self.nside_lr,
+            self.ordering,
+            self.full_sky,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+        )
 
     @classmethod
     def open(cls, targets: list[OpenTarget], **kwargs):
@@ -439,33 +526,67 @@ class HealpixMap(dict):
             schema.add_child(ds_schema, name)
         return schema
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
+    def bound(self, region: Region, inclusive: bool = False):
         """
-        Restrict the dataset to some subregion. The subregion will always be evaluated
-        in the same units as the current dataset. For example, if the dataset is
-        in the default "comoving" unit convention, positions are always in units of
-        comoving Mpc. However Region objects themselves do not carry units.
-        See :doc:`spatial_ref` for details of how to construct regions.
+        Restrict this map to some subregion. Be default this will
+        include all pixels whose centers fall within the subregion. You can additionally
+        include pixels that overalp without there centers being within the
+        specified region by passing :code:`inclusive=True`
+
+        If trying to query in a circular region, consider using
+        :py:meth:`cone_search <opencosmo.HealpixMap.cone_search>` for simplicity.
 
         Parameters
         ----------
         region: opencosmo.spatial.Region
             The region to query.
 
+        incluive: bool, default = Flase
+            Whether to include pixels that overlap but whose centers are not in the region1
+
         Returns
         -------
-        dataset: opencosmo.Dataset
-            The portion of the dataset inside the selected region
+        new_map: opencosmo.HealpixMap
+            The map including the pixels within the region.
 
         Raises
         ------
         ValueError
-            If the query region does not overlap with the region this dataset resides
+            If the query region does not overlap with the coverage of this map
             in
-        AttributeError:
-            If the dataset does not contain a spatial index
         """
-        return self.__map("bound", region, select_by)
+        # The best we can do here is turn
+        if not isinstance(region, ConeRegion):
+            raise TypeError(
+                "Currently only cone regions are supported when performing spatial queries on HealpixMaps"
+            )
+
+        vec = hp.ang2vec(region.center.ra.value, region.center.dec.value, lonlat=True)
+        pixels = hp.query_disc(
+            self.nside,
+            vec,
+            region.radius.to(u.radian).value,
+            inclusive=inclusive,
+            nest=self.__ordering,
+        )
+        new_datasets = {}
+        for name, dataset in self.items():
+            ds_pixels = dataset.get_metadata(["pixel"])["pixel"]
+
+            rows_to_take = np.where(np.isin(ds_pixels, pixels, assume_unique=True))[0]
+            new_datasets[name] = dataset.take_rows(rows_to_take)
+
+        return HealpixMap(
+            new_datasets,
+            self.nside,
+            self.nside_lr,
+            self.ordering,
+            False,
+            self.z_range,
+            self.__hidden,
+            self.__ordered_by,
+            region=HealPixRegion(pixels, self.nside),
+        )
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
@@ -581,7 +702,7 @@ class HealpixMap(dict):
 
     def filter(self, *masks: ColumnMask, **kwargs) -> Self:
         """
-        Filter the dataset based on some criteria. See :ref:`Querying Based on Column
+        Filter the map based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
 
         Parameters
@@ -605,9 +726,9 @@ class HealpixMap(dict):
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
-        Iterate over the rows in the dataset. Rows are returned as a dictionary
-        For performance, it is recommended to first select the columns you need to
-        work with.
+        Iterate over the pixels in the map, returning their individual values.
+        Rows are returned as a dictionary. For performance, it is recommended
+        to first select the columns you need to work with.
 
         Yields
         -------
@@ -618,7 +739,7 @@ class HealpixMap(dict):
 
     def select(self, columns: str | Iterable[str]) -> Self:
         """
-        Create a new dataset from a subset of columns in this dataset.
+        Create a new map from a subset of columns in this map.
 
         Parameters
         ----------
@@ -648,7 +769,7 @@ class HealpixMap(dict):
 
     def drop(self, columns: str | Iterable[str]) -> Self:
         """
-        Produce a new dataset by dropping columns from this dataset.
+        Produce a new dataset by dropping columns from this map.
 
         Parameters
         ----------
@@ -679,7 +800,7 @@ class HealpixMap(dict):
 
     def take(self, n: int, at: str = "random") -> "HealpixMap":
         """
-        Create a new dataset from some number of rows from this dataset.
+        Create a new dataset from some number of rows from this map.
 
         Can take the first n rows, the last n rows, or n random rows
         depending on the value of 'at'.
@@ -833,7 +954,7 @@ class HealpixMap(dict):
         **columns: DerivedColumn | np.ndarray | u.Quantity,
     ):
         """
-        Create a new dataset with additional columns. These new columns can be derived
+        Create a new map with additional columns. These new columns can be derived
         from columns already in the dataset, or a numpy array.  See :ref:`Adding Custom Columns`
         and :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`
         for examples.
@@ -890,7 +1011,7 @@ class HealpixMap(dict):
 
     def sort_by(self, column: str, invert: bool = False):
         """
-        Sort this dataset by the values in a given column. By default sorting is in
+        Sort this map by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
         order (greatest to least).
 

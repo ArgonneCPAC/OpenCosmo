@@ -34,8 +34,8 @@ def test_healpix_index(healpix_map_path):
     ds = oc.open(healpix_map_path)
     raw_data = next(iter(ds.values())).get_metadata(["pixel"])
 
-    pixel = np.random.choice(ds.region.pixels)
-    center = pix2ang(ds.region.nside, pixel, True, True)
+    pixel = np.random.choice(ds.pixels)
+    center = pix2ang(ds.nside, pixel, True, True)
     radius = 2 * u.deg
     center_coord = SkyCoord(*center, unit=("deg", "deg"))
 
@@ -80,8 +80,8 @@ def test_healpix_write(healpix_map_path, tmp_path):
 
     path = MPI.COMM_WORLD.bcast(tmp_path)
 
-    pixel = np.random.choice(ds.region.pixels)
-    center = pix2ang(ds.region.nside, pixel, True, True)
+    pixel = np.random.choice(ds.pixels)
+    center = pix2ang(ds.nside, pixel, True, True)
 
     region = oc.make_cone(center, 2 * u.deg)
     ds = ds.bound(region)
@@ -89,14 +89,19 @@ def test_healpix_write(healpix_map_path, tmp_path):
     oc.write(path / "map_test.hdf5", ds)
     new_ds = oc.open(path / "map_test.hdf5")
 
-    radius2 = 2 * u.deg
+    radius2 = 1 * u.deg
     region2 = oc.make_cone(center, radius2)
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    parallel_assert(
-        set(ds.data["tsz"].valid_pixels) == set(new_ds.data["tsz"].valid_pixels)
+    all_valid_pixels = np.concatenate(
+        MPI.COMM_WORLD.allgather(ds.data["tsz"].valid_pixels)
     )
+    written_valid_pixels = np.concatenate(
+        MPI.COMM_WORLD.allgather(new_ds.data["tsz"].valid_pixels)
+    )
+
+    parallel_assert(set(all_valid_pixels) == set(written_valid_pixels))
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -108,3 +113,41 @@ def test_write_single_map(healpix_map_path, tmp_path):
     oc.write(path / "map.hdf5", ds)
     ds = oc.open(path / "map.hdf5")
     parallel_assert(len(ds.data["tsz"].valid_pixels) == original_length)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_downgrade(healpix_map_path):
+    ds = oc.open(healpix_map_path)
+    downgraded_ds = ds.with_resolution(ds.nside // 16)
+    data = downgraded_ds.get_data()
+    expected_pixels = hp.nside2npix(ds.nside // 16)
+    for map_ in data.values():
+        all_pixels = np.concatenate(MPI.COMM_WORLD.allgather(map_.valid_pixels))
+        assert np.all(all_pixels == np.arange(expected_pixels))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_downgrade_write(healpix_map_path, tmp_path):
+    path = MPI.COMM_WORLD.bcast(tmp_path)
+    ds = oc.open(healpix_map_path)
+    original_data = ds.get_data()
+    downgraded_ds = ds.with_resolution(ds.nside // 16)
+    oc.write(path / "map.hdf5", downgraded_ds)
+    expected_pixels = hp.nside2npix(ds.nside // 16)
+    downgraded_ds = oc.open(path / "map.hdf5")
+    data = downgraded_ds.get_data()
+    for name, map_ in data.items():
+        all_pixels = np.concatenate(MPI.COMM_WORLD.allgather(map_.valid_pixels))
+        assert np.all(all_pixels == np.arange(expected_pixels))
+
+        manually_downgraded_data = original_data[name][
+            original_data[name].valid_pixels
+        ].reshape((-1, (16**2))).sum(axis=1) / (16**2)
+        toolkt_downgraded_data = map_[map_.valid_pixels]
+        assert np.all(
+            np.isclose(
+                manually_downgraded_data,
+                toolkt_downgraded_data,
+                atol=1.0e-13,
+            )
+        )

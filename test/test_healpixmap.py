@@ -1,12 +1,14 @@
 import astropy.units as u
+import healpy as hp
+import healsparse as hsp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import units as cu
 from numpy import random
-import healsparse as hsp
-import healpy as hp
+
 import opencosmo as oc
+from opencosmo.spatial.healpix import HealPixRegion
 
 
 @pytest.fixture
@@ -26,28 +28,101 @@ def structure_maps(map_path, all_files):
 
 def test_healpix_index(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    raw_data = next(iter(ds.values())).get_metadata(['pixel'])
+    raw_data = next(iter(ds.values())).get_metadata(["pixel"])
 
     center = (45 * u.deg, -45 * u.deg)
     radius = 2 * u.deg
     center_coord = SkyCoord(*center)
 
-    theta, phi = hp.pix2ang(ds.nside, raw_data['pixel'], nest=True)
-    raw_data_coords = SkyCoord( phi, np.pi / 2 - theta, unit="rad")
+    theta, phi = hp.pix2ang(ds.nside, raw_data["pixel"], nest=True)
+    raw_data_coords = SkyCoord(phi, np.pi / 2 - theta, unit="rad")
 
     raw_data_seps = center_coord.separation(raw_data_coords)
     n_raw = np.sum(raw_data_seps < radius)
 
     region = oc.make_cone(center, radius)
     data = ds.bound(region).get_data("healsparse")
-    theta, phi = hp.pix2ang(ds.nside, data['tsz'].valid_pixels, nest=True)
+    theta, phi = hp.pix2ang(ds.nside, data["tsz"].valid_pixels, nest=True)
     ra = phi
     dec = np.pi / 2 - theta
     coordinates = SkyCoord(ra, dec, unit="radian")
     seps = center_coord.separation(coordinates)
     seps = seps.to(u.degree)
     assert all(seps < radius)
-    assert len(data['tsz'].valid_pixels) == n_raw
+    assert len(data["tsz"].valid_pixels) == n_raw
+
+
+def test_healpix_downgrade(healpix_map_path):
+    ds = oc.open(healpix_map_path).select("tsz")
+    downgraded_ds = ds.with_resolution(int(ds.nside / 2))
+    assert downgraded_ds.descriptions == ds.descriptions
+    assert downgraded_ds.nside == ds.nside / 2
+
+    original_nside = ds.nside
+    original_npix = hp.nside2npix(original_nside)
+
+    downgraded_nside = downgraded_ds.nside
+    downgraded_npix = hp.nside2npix(downgraded_nside)
+
+    factor = original_npix // downgraded_npix
+
+    original_data = ds.get_data("healpix")
+    downgraded_data = downgraded_ds.get_data("healpix")
+
+    downgraded_data_2 = original_data["tsz"].reshape((-1, 4)).sum(axis=1) / 4
+
+    center = (0 * u.deg, 0 * u.deg)
+    radius = 1 * u.deg
+    center_coord = SkyCoord(*center)
+    region = oc.make_cone(center, radius)
+    data_region_original = ds.bound(region).get_data("healsparse")
+    data_region_downgraded = downgraded_ds.bound(region).get_data("healsparse")
+
+    npix_region = len(hp.query_disc(original_nside, [1, 0, 0], 1 * (np.pi / 180.0)))
+    npix_region_downgraded = len(
+        hp.query_disc(downgraded_nside, [1, 0, 0], 1 * (np.pi / 180.0))
+    )
+
+    assert len(original_data["tsz"]) == original_npix
+    assert len(downgraded_data["tsz"]) == downgraded_npix
+
+    assert len(data_region_original["tsz"].valid_pixels) == npix_region
+    assert len(data_region_downgraded["tsz"].valid_pixels) == npix_region_downgraded
+
+    assert np.all(
+        np.isclose(
+            downgraded_data_2,
+            downgraded_data["tsz"],
+            atol=1.0e-13,
+        )
+    )
+
+    assert np.isclose(
+        np.mean(original_data["tsz"]), np.mean(downgraded_data["tsz"]), atol=1.0e-13
+    )
+
+
+def test_healpix_downgrade_doesnt_cache(healpix_map_path):
+    """
+    Downgrading data produces an entirely new dataset, which exists as an
+    in-memory hdf5 file. We want to ensure this data is not also sent
+    to the cache.
+    """
+
+    ds = oc.open(healpix_map_path)
+    data = ds.get_data()
+    output = ds.with_resolution(128)
+
+    # First dataset backed by actual file, data should be cached
+    dataset = next(iter(ds.values()))
+    cache = dataset._Dataset__state._DatasetState__cache
+    assert len(cache.columns) > 1
+
+    # New dataset entirely in-memory, so no cache
+    downgraded_data = output.get_data()
+    downgraded_dataset = next(iter(output.values()))
+    cache = downgraded_dataset._Dataset__state._DatasetState__cache
+    assert len(cache.columns) == 0
 
 
 def test_healpix_index_chain_failure(healpix_map_path):
@@ -66,8 +141,7 @@ def test_healpix_index_chain_failure(healpix_map_path):
 
 def test_healpix_index_chain(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    raw_data = next(iter(ds.values())).get_metadata(['pixel'])
-
+    raw_data = next(iter(ds.values())).get_metadata(["pixel"])
 
     center = (45 * u.deg, -45 * u.deg)
     center_coord = SkyCoord(*center)
@@ -92,7 +166,7 @@ def test_healpix_index_chain(healpix_map_path):
 
 def test_healpix_collection_bound(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    raw_data = next(iter(ds.values())).get_metadata(['pixel'])
+    raw_data = next(iter(ds.values())).get_metadata(["pixel"])
 
     center = (45 * u.deg, -45 * u.deg)
     radius = 2 * u.deg
@@ -107,16 +181,18 @@ def test_healpix_collection_bound(healpix_map_path):
     n_raw = np.sum(raw_data_seps < radius)
 
     region = oc.make_cone(center, radius)
-    data = ds.bound(region).data
-    theta, phi = hp.pix2ang(ds.nside, data['tsz'].valid_pixels, nest=True)
+    bounded_ds = ds.bound(region)
+    data = bounded_ds.data
+    ds_region = bounded_ds.region
+    theta, phi = hp.pix2ang(ds.nside, data["tsz"].valid_pixels, nest=True)
     ra = phi
     dec = np.pi / 2 - theta
     coordinates = SkyCoord(ra, dec, unit="radian")
     seps = center_coord.separation(coordinates)
     seps = seps.to(u.degree)
+    assert isinstance(ds_region, HealPixRegion)
     assert all(seps < radius)
-    assert len(data['tsz'].valid_pixels) == n_raw
-
+    assert len(data["tsz"].valid_pixels) == n_raw
 
 
 def test_healpix_write(healpix_map_path, tmp_path):
@@ -160,7 +236,7 @@ def test_healpix_write_fail(healpix_map_path, tmp_path):
 def test_healpix_collection_drop(healpix_map_path):
     ds = oc.open(healpix_map_path)
     columns = ds.columns
-    to_drop = set(['tsz'])
+    to_drop = set(["tsz"])
 
     ds = ds.drop(to_drop)
     columns_found = set(ds.data.keys())
@@ -174,34 +250,34 @@ def test_healpix_collection_take(healpix_map_path):
     ds_start = ds.take(n_to_take, "start")
     ds_end = ds.take(n_to_take, "end")
     ds_random = ds.take(n_to_take, "random")
-    tags = ds.select("tsz").data['tsz'].valid_pixels
-    tags_start = ds_start.select("tsz").data['tsz'].valid_pixels
-    tags_end = ds_end.select("tsz").data['tsz'].valid_pixels
-    tags_random = ds_random.select("tsz").data['tsz'].valid_pixels
+    tags = ds.select("tsz").data["tsz"].valid_pixels
+    tags_start = ds_start.select("tsz").data["tsz"].valid_pixels
+    tags_end = ds_end.select("tsz").data["tsz"].valid_pixels
+    tags_random = ds_random.select("tsz").data["tsz"].valid_pixels
     assert np.all(tags[:n_to_take] == tags_start)
     assert np.all(tags[-n_to_take:] == tags_end)
     assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
-    
-    
-def test_healpix_collection_range(healpix_map_path):      
+
+
+def test_healpix_collection_range(healpix_map_path):
     ds = oc.open(healpix_map_path)
     start = int(0.25 * len(ds))
     end = int(0.75 * len(ds))
 
     ds_range = ds.take_range(start, end)
-    halo_tags = ds.select("tsz").get_data("healsparse")['tsz'].valid_pixels[start:end]
-    range_halo_tags = ds_range.select("tsz").get_data("healsparse")['tsz'].valid_pixels
+    halo_tags = ds.select("tsz").get_data("healsparse")["tsz"].valid_pixels[start:end]
+    range_halo_tags = ds_range.select("tsz").get_data("healsparse")["tsz"].valid_pixels
     assert np.all(halo_tags == range_halo_tags)
-
 
 
 def test_open_single_map(healpix_map_path):
     c = oc.open(healpix_map_path)
 
+
 def test_healpix_collection_select(healpix_map_path):
     ds = oc.open(healpix_map_path)
     columns = ds.columns
-    to_select = set(['tsz','ksz'])
+    to_select = set(["tsz", "ksz"])
     ds = ds.select(to_select)
     columns_found = set(ds.columns)
     assert columns_found == to_select
@@ -210,17 +286,18 @@ def test_healpix_collection_select(healpix_map_path):
 def test_healpix_collection_select_healsparse(healpix_map_path):
     ds = oc.open(healpix_map_path)
     columns = ds.columns
-    to_select = set(['tsz','ksz'])
+    to_select = set(["tsz", "ksz"])
     ds = ds.select(to_select)
     data = ds.get_data("healsparse")
     assert isinstance(data, dict)
     assert all(ts in data.keys() for ts in to_select)
     assert all(isinstance(col, hsp.HealSparseMap) for col in data.values())
 
+
 def test_healpix_collection_select_healpix(healpix_map_path):
     ds = oc.open(healpix_map_path)
     columns = ds.columns
-    to_select = set(['tsz','ksz'])
+    to_select = set(["tsz", "ksz"])
     ds = ds.select(to_select)
     data = ds.get_data("healpix")
     assert isinstance(data, dict)
@@ -230,10 +307,7 @@ def test_healpix_collection_select_healpix(healpix_map_path):
 
 def test_healpix_collection_derive(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    sz_sqrd = (
-        oc.col("tsz") ** 2
-        + oc.col("ksz") ** 2
-    )
+    sz_sqrd = oc.col("tsz") ** 2 + oc.col("ksz") ** 2
     ds = ds.with_new_columns(weird_sz=sz_sqrd)
     weird = ds.select("weird_sz").data
     assert isinstance(weird, dict)
@@ -241,26 +315,28 @@ def test_healpix_collection_derive(healpix_map_path):
 
 def test_healpix_collection_add(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    map_data = ds.get_data('healsparse')['tsz'].valid_pixels
-    data = np.zeros(len(map_data)) 
+    map_data = ds.get_data("healsparse")["tsz"].valid_pixels
+    data = np.zeros(len(map_data))
     ds = ds.with_new_columns(random=data)
-    stored_data = ds.select("random").get_data('healpix')['random']
+    stored_data = ds.select("random").get_data("healpix")["random"]
     assert np.all(stored_data == data)
 
 
 def test_healpix_collection_add_sparse(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    map_data = ds.get_data('healsparse')['tsz'].valid_pixels
+    map_data = ds.get_data("healsparse")["tsz"].valid_pixels
     data = np.zeros(len(map_data))
     ds = ds.with_new_columns(random=data)
-    stored_data = ds.select("random").get_data('healsparse')['random'].get_values_pix(map_data)
+    stored_data = (
+        ds.select("random").get_data("healsparse")["random"].get_values_pix(map_data)
+    )
     assert np.all(stored_data == data)
 
 
 def test_healpix_collection_filter(healpix_map_path):
     ds = oc.open(healpix_map_path)
     ds = ds.filter(oc.col("tsz") > 0)
-    hsp_map = ds.get_data('healsparse')["tsz"]
+    hsp_map = ds.get_data("healsparse")["tsz"]
     valid_pix = hsp_map.valid_pixels
     assert np.all(hsp_map.get_values_pix(valid_pix) > 0)
 
@@ -275,9 +351,9 @@ def test_healpix_collection_evaluate(healpix_map_path):
     ds_vec = ds.evaluate(offset, vectorize=True, insert=True)
     ds_iter = ds.evaluate(offset, insert=True)
 
-    offset_vec = ds_vec.select("offset").get_data("healsparse")['offset']
+    offset_vec = ds_vec.select("offset").get_data("healsparse")["offset"]
     offset_vec = offset_vec.get_values_pix(offset_vec.valid_pixels)
-    offset_iter = ds_iter.select("offset").get_data("healsparse")['offset']
+    offset_iter = ds_iter.select("offset").get_data("healsparse")["offset"]
     offset_iter = offset_iter.get_values_pix(offset_iter.valid_pixels)
     assert np.all(offset_vec == offset_iter)
 
@@ -291,8 +367,8 @@ def test_healpix_collection_evaluate_noinsert(healpix_map_path):
 
     result = ds.evaluate(offset, vectorize=True, insert=False)
 
-    assert len(result['offset'])== 200
-    assert np.all(result['offset']>=0)
+    assert len(result["offset"]) == 200
+    assert np.all(result["offset"] >= 0)
 
 
 def test_write_single_map(healpix_map_path, tmp_path):
@@ -302,4 +378,3 @@ def test_write_single_map(healpix_map_path, tmp_path):
     ds_written = oc.open(tmp_path / "temp.hdf5")
     assert isinstance(ds, oc.HealpixMap)
     assert len(ds) == len(ds_written)
-

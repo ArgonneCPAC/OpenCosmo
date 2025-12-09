@@ -13,7 +13,7 @@ from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import read_header
-from opencosmo.index.build import empty
+from opencosmo.index.build import empty, from_range
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
@@ -119,8 +119,6 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
                     "Unknown file type. "
                     "It appears to have multiple datasets, but organized incorrectly"
                 )
-    # TODO: currently a large set of maps will return as a lightcone collection. We should either assert that you can't open
-    # a group of maps this way, or create a catch for it
     if all(group["header"]["file"].attrs["is_lightcone"] for group in file.values()):
         return FILE_TYPE.LIGHTCONE
     elif (
@@ -277,14 +275,21 @@ def open_single_dataset(
 
     if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
-        idx_data = handle["index"]
-
-        part = partition(comm, len(handler), idx_data, tree)
-        if part is None:
-            index = empty()
-        else:
-            index = part.idx
-            sim_region = part.region if part.region is not None else sim_region
+        try:
+            idx_data = handle["index"]
+            part = partition(comm, len(handler), idx_data, tree)
+            if part is None:
+                index = empty()
+            else:
+                index = part.idx
+                sim_region = part.region if part.region is not None else sim_region
+        except KeyError:
+            n_ranks = comm.Get_size()
+            n_per = len(handler) // n_ranks
+            chunk_boundaries = [i * n_per for i in range(n_ranks + 1)]
+            chunk_boundaries[-1] = len(handler)
+            rank = comm.Get_rank()
+            index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
 
     if metadata_group is not None:
         metadata_group = handle[metadata_group]

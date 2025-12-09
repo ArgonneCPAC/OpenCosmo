@@ -22,5 +22,10 @@ def empty():
     return (np.array([], dtype=int), np.array([], dtype=int))
 
 
+def from_range(start: int, end: int):
+    size = end - start
+    return (np.atleast_1d(start), np.atleast_1d(size))
+
+
 def concatenate(*indices: DataIndex):
     np.concatenate(list(map(into_array, indices)))

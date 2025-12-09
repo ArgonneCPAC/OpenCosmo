@@ -39,11 +39,12 @@ class Hdf5Handler:
         group: h5py.Group,
         index: DataIndex,
         metadata_group: Optional[h5py.Group],
+        in_memory: bool = False,
     ):
         self.__index = index
         self.__group = group
         self.__metadata_group = metadata_group
-        assert isinstance(index, np.ndarray) or isinstance(index, tuple)
+        self.__in_memory = group.file.driver == "core"
 
     @classmethod
     def from_group(
@@ -66,6 +67,10 @@ class Hdf5Handler:
             colnames = chain(colnames, metadata_group.keys())
 
         return Hdf5Handler(group, index, metadata_group)
+
+    @property
+    def in_memory(self) -> bool:
+        return self.__in_memory
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
