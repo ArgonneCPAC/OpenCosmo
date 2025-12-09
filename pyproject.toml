@@ -83,6 +83,12 @@ filename = "docs/source/changelog.rst"
 [tool.pytest.ini_options]
 testpaths = ["test"]
 
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+]
+replace-imports-with-any = ["astropy.units", "astropy.constants"]
+
 [lint.pycodestyle]
 max-doc-length = 90
 
