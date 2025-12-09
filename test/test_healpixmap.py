@@ -54,7 +54,7 @@ def test_healpix_index(healpix_map_path):
 
 def test_healpix_downgrade(healpix_map_path):
     ds = oc.open(healpix_map_path).select("tsz")
-    downgraded_ds = ds.downgrade_map(int(ds.nside / 2))
+    downgraded_ds = ds.with_resolution(int(ds.nside / 2))
     assert downgraded_ds.descriptions == ds.descriptions
     assert downgraded_ds.nside == ds.nside / 2
 
@@ -111,7 +111,7 @@ def test_healpix_downgrade_doesnt_cache(healpix_map_path):
 
     ds = oc.open(healpix_map_path)
     data = ds.get_data()
-    output = ds.downgrade_map(128)
+    output = ds.with_resolution(128)
 
     # First dataset backed by actual file, data should be cached
     dataset = next(iter(ds.values()))

@@ -118,7 +118,10 @@ class HealpixMap(dict):
 
     @property
     def pixels(self):
-        return into_array(next(iter(self.values())).index)
+        """
+        The healoix pixels that are included in this map
+        """
+        return next(iter(self.values())).get_metadata("pixel")["pixel"]
 
     @property
     def nside_lr(self):
@@ -208,7 +211,7 @@ class HealpixMap(dict):
     @property
     def columns(self) -> list[str]:
         """
-        The names of the columns in this dataset.
+        The names of the columns in this map.
 
         Returns
         -------
@@ -250,22 +253,9 @@ class HealpixMap(dict):
         return self.__header.cosmology
 
     @property
-    def dtype(self) -> str:
-        """
-        The data type of this dataset.
-
-        Returns
-        -------
-        dtype: str
-        """
-        return self.__header.file.data_type
-
-    @property
     def region(self) -> Region:
         """
-        The region this dataset is contained in. If no spatial
-        queries have been performed, this will be the full sky for
-        lightcone maps.
+        The region this map covers.
 
         Returns
         -------
@@ -712,7 +702,7 @@ class HealpixMap(dict):
 
     def filter(self, *masks: ColumnMask, **kwargs) -> Self:
         """
-        Filter the dataset based on some criteria. See :ref:`Querying Based on Column
+        Filter the map based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
 
         Parameters
@@ -736,9 +726,9 @@ class HealpixMap(dict):
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
-        Iterate over the rows in the dataset. Rows are returned as a dictionary
-        For performance, it is recommended to first select the columns you need to
-        work with.
+        Iterate over the pixels in the map, returning their individual values.
+        Rows are returned as a dictionary. For performance, it is recommended
+        to first select the columns you need to work with.
 
         Yields
         -------
@@ -749,7 +739,7 @@ class HealpixMap(dict):
 
     def select(self, columns: str | Iterable[str]) -> Self:
         """
-        Create a new dataset from a subset of columns in this dataset.
+        Create a new map from a subset of columns in this map.
 
         Parameters
         ----------
@@ -779,7 +769,7 @@ class HealpixMap(dict):
 
     def drop(self, columns: str | Iterable[str]) -> Self:
         """
-        Produce a new dataset by dropping columns from this dataset.
+        Produce a new dataset by dropping columns from this map.
 
         Parameters
         ----------
@@ -810,7 +800,7 @@ class HealpixMap(dict):
 
     def take(self, n: int, at: str = "random") -> "HealpixMap":
         """
-        Create a new dataset from some number of rows from this dataset.
+        Create a new dataset from some number of rows from this map.
 
         Can take the first n rows, the last n rows, or n random rows
         depending on the value of 'at'.
@@ -964,7 +954,7 @@ class HealpixMap(dict):
         **columns: DerivedColumn | np.ndarray | u.Quantity,
     ):
         """
-        Create a new dataset with additional columns. These new columns can be derived
+        Create a new map with additional columns. These new columns can be derived
         from columns already in the dataset, or a numpy array.  See :ref:`Adding Custom Columns`
         and :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>`
         for examples.
@@ -1021,7 +1011,7 @@ class HealpixMap(dict):
 
     def sort_by(self, column: str, invert: bool = False):
         """
-        Sort this dataset by the values in a given column. By default sorting is in
+        Sort this map by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
         order (greatest to least).
 
