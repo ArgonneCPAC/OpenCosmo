@@ -14,6 +14,7 @@ except ImportError:
 
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.build import from_size
+from opencosmo.index.get import get_data
 from opencosmo.index.ops import n_in_range
 from opencosmo.io.schemas import (
     ColumnSchema,
@@ -144,8 +145,7 @@ def partition_index(n_partitions: int, counts: h5py.Group):
 
     split_level_indices = full_region_indices
 
-    partition_indices = np.array_split(split_level_indices, n_partitions)
-    return [SimpleIndex(idx) for idx in partition_indices], split_level
+    return np.array_split(split_level_indices, n_partitions), split_level
 
 
 class Tree:
@@ -183,11 +183,11 @@ class Tree:
         for index_ in partition_indices:
             if len(index_) == 0:
                 continue
-            index_starts = index_.get_data(start)
-            index_sizes = index_.get_data(size)
+            index_starts = get_data(start, index_)
+            index_sizes = get_data(size, index_)
             partition_start = index_starts[0]
             partition_size = np.sum(index_sizes)
-            idx = ChunkedIndex.single_chunk(partition_start, partition_size)
+            idx = (np.atleast_1d(partition_start), np.atleast_1d(partition_size))
             region = self.__index.get_partition_region(index_, split_level)
             partitions.append(TreePartition(idx, region, split_level))
 
@@ -196,24 +196,24 @@ class Tree:
     def query(self, region: Region) -> tuple[ChunkedIndex, ChunkedIndex]:
         indices = self.__index.query(region, self.__max_level)
 
-        contains = [ChunkedIndex.empty()]
-        intersects = [ChunkedIndex.empty()]
+        contains = []
+        intersects = []
         for level, (cidx, iidx) in indices.items():
             level_key = f"level_{level}"
             level_starts = self.__data[level_key]["start"]
             level_sizes = self.__data[level_key]["size"]
-            c_starts = cidx.get_data(level_starts)
-            c_sizes = cidx.get_data(level_sizes)
-            i_starts = iidx.get_data(level_starts)
-            i_sizes = iidx.get_data(level_sizes)
-            c_idx = ChunkedIndex(c_starts, c_sizes)
-            i_idx = ChunkedIndex(i_starts, i_sizes)
-            contains.append(c_idx)
-            intersects.append(i_idx)
+            c_starts = get_data(level_starts, cidx)
+            c_sizes = get_data(level_sizes, cidx)
+            i_starts = get_data(level_starts, iidx)
+            i_sizes = get_data(level_sizes, iidx)
+            contains.append((c_starts, c_sizes))
+            intersects.append((i_starts, i_sizes))
 
-        c_ = contains[0].concatenate(*contains[1:])
-        i_ = intersects[0].concatenate(*intersects[1:])
-        return c_, i_
+        contains_start = np.concatenate([c[0] for c in contains])
+        contains_size = np.concatenate([c[1] for c in contains])
+        intersects_start = np.concatenate([i[0] for i in intersects])
+        intersects_size = np.concatenate([i[1] for i in intersects])
+        return (contains_start, contains_size), (intersects_start, intersects_size)
 
     def apply_index(self, index: DataIndex, min_counts: int = 100) -> Tree:
         max_level_starts = self.__data[f"level_{self.__max_level}"]["start"][:]

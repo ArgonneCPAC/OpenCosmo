@@ -49,7 +49,7 @@ def test_add_take(properties_path):
     random_data = np.random.randint(0, 1000, size=len(ds))
     ds = ds.with_new_columns(test_random=random_data)
     ds = ds.take(100)
-    index = ds.index.into_array()
+    index = ds.index
     assert "test_random" in ds.columns
     assert np.all(ds.select("test_random").get_data("numpy") == random_data[index])
 

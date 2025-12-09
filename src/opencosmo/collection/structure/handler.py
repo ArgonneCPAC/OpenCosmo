@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import numpy as np
 
-from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index.mask import into_array
 
 if TYPE_CHECKING:
     import opencosmo as oc
@@ -44,10 +44,10 @@ def create_start_size(data, start_name, size_name):
         return None
     valid = size > 0
     if isinstance(start, np.ndarray):
-        return ChunkedIndex(start[valid], size[valid])
+        return (start[valid], size[valid])
     if size == 0:
         return None
-    return ChunkedIndex.single_chunk(start, size)
+    return (np.atleast_1d(start), np.atleast_1d(size))
 
 
 def create_idx(data, idx_name):
@@ -58,10 +58,10 @@ def create_idx(data, idx_name):
     valid = idx >= 0
 
     if isinstance(idx, np.ndarray):
-        return SimpleIndex(idx[valid])
+        return idx[valid]
     elif idx == -1:
         return None
-    return SimpleIndex(np.atleast_1d(idx))
+    return np.atleast_1d(idx)
 
 
 def make_links(keys, rename_galaxies=False):
@@ -188,8 +188,8 @@ class LinkHandler:
         """
         if self.__derived_from is None:
             return datasets
-        original_index = self.__derived_from.index.into_array()
-        new_index = new_source.index.into_array()
+        original_index = into_array(self.__derived_from.index)
+        new_index = into_array(new_source.index)
 
         _, index_into_original, index_into_new = np.intersect1d(
             original_index, new_index, assume_unique=True, return_indices=True
@@ -231,7 +231,7 @@ class LinkHandler:
             filter(lambda name: "idx" in name or "size" in name, all_columns)
         )
 
-        sort_index = np.argsort(source.index.into_array())
+        sort_index = np.argsort(into_array(source.index))
 
         if np.all(sort_index[1:] >= sort_index[:-1]):
             # Already sorted. Carry on!
@@ -252,7 +252,7 @@ class LinkHandler:
                 starts = chunk_boundaries[sort_index]
                 sizes = size_column_data[sort_index]
                 valid = sizes > 0
-                idx = ChunkedIndex(starts[valid], sizes[valid])
+                idx = (starts[valid], sizes[valid])
                 new_dataset = dataset.take_rows(idx)
             output[name] = new_dataset
         return output
@@ -286,6 +286,5 @@ def rebuild_chunk_index(
     starts = chunk_boundaries[index_into_original[valid_rows]]
     sizes = original_size_column[index_into_original[valid_rows]]
 
-    index = ChunkedIndex(starts, sizes)
-    ds = dataset.take_rows(index)
+    ds = dataset.take_rows((starts, sizes))
     return ds

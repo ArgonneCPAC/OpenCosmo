@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 import numpy as np
 
 from opencosmo.index import SimpleIndex
+from opencosmo.index.build import empty
 from opencosmo.index.get import get_data
 from opencosmo.io.updaters import apply_updaters
 
@@ -137,7 +138,7 @@ class EmptyColumnWriter:
     ):
         ds = group[self.name]
 
-        write_index(None, ds, SimpleIndex.empty(), updater=updater)
+        write_index(None, ds, empty(), updater=updater)
 
 
 class ColumnWriter:

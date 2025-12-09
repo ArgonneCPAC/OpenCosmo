@@ -508,7 +508,7 @@ class EvaluatedColumn:
             case EvaluateStrategy.ROW_WISE:
                 return evaluate_rows(data, self.__func, self.__kwargs)
             case EvaluateStrategy.CHUNKED:
-                if not isinstance(index, ChunkedIndex):
+                if not isinstance(index, tuple):
                     raise ValueError(
                         "Cannot evaluate in CHUNKED strategy with a non-chunked index"
                     )
@@ -536,7 +536,7 @@ class EvaluatedColumn:
 
             case EvaluateStrategy.CHUNKED:
                 index = dataset.index
-                assert isinstance(index, ChunkedIndex)
+                assert isinstance(index, tuple)
                 first_chunk_size = index.sizes[0]
                 first_chunk = (
                     dataset.select(self.__requires)

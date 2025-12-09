@@ -166,7 +166,7 @@ class Hdf5Handler:
 
         data = {}
         for colname in columns:
-            data[colname] = self.__index.get_data(self.__metadata_group[colname])
+            data[colname] = get_data(self.__metadata_group[colname], self.__index)
 
         return data
 

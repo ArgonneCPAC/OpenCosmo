@@ -6,11 +6,15 @@ import astropy.units as u
 import h5py
 import numpy as np
 
+from opencosmo.index.unary import get_length
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
 def get_data(data: h5py.Dataset | np.ndarray, index: np.ndarray | tuple):
+    if get_length(index) == 0:
+        return np.array([])
     match index:
         case np.ndarray():
             return get_data_simple(data, index)
@@ -24,17 +28,17 @@ def get_data_simple(data: h5py.Dataset | np.ndarray, index: NDArray[np.int_]):
     if isinstance(data, np.ndarray):
         return data[index]
 
-    min = index.min()
-    max = index.max()
+    min_ = index.min()
+    max_ = index.max()
     remaining_shape = data.shape[1:]
-    length = max + 1 - min
+    length = int(max_ + 1 - min_)
 
     shape = (length,) + remaining_shape
 
     buffer = np.zeros(shape, data.dtype)
 
-    data.read_direct(buffer, np.s_[min : max + 1], np.s_[0:length])
-    return buffer[index - min]
+    data.read_direct(buffer, np.s_[min_ : max_ + 1], np.s_[0:length])
+    return buffer[index - min_]
 
 
 def get_data_chunked(

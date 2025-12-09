@@ -37,12 +37,9 @@ def take_simple_from_simple(from_: np.ndarray, by: np.ndarray):
 
 
 def take_chunked_from_simple(from_: SimpleIndex, by: ChunkedIndex):
-    from_arr = from_.into_array()
-    starts = by.starts
-    sizes = by.sizes
-    output = np.zeros(sizes.sum(), dtype=int)
-    output = __cfs_helper(from_arr, starts, sizes, output)
-    return SimpleIndex(output)
+    output = np.zeros(by[1].sum(), dtype=int)
+    output = __cfs_helper(from_, *by, output)
+    return output
 
 
 @nb.njit
@@ -131,16 +128,16 @@ def resolve_spanning_numba(
 
 
 def take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
-    if from_.is_single_chunk() and from_.range()[0] == 0:
+    if len(from_[0]) == 0 and from_[0][0] == 0:
         return by
 
-    max_out = len(by.sizes) * len(from_.sizes)
+    max_out = len(by[1]) * len(from_[1])
     out_start = np.empty(max_out, dtype=np.int64)
     out_size = np.empty(max_out, dtype=np.int64)
     out_owner = np.empty(max_out, dtype=np.int64)
 
     n = resolve_spanning_numba(
-        from_.starts, from_.sizes, by.starts, by.sizes, out_start, out_size, out_owner
+        from_[0], from_[1], by[0], by[1], out_start, out_size, out_owner
     )
     out_start = np.resize(out_start, (n,))
     out_size = np.resize(out_size, (n,))

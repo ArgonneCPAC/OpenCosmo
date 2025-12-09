@@ -17,7 +17,9 @@ def get_length(index: SimpleIndex | ChunkedIndex):
         case np.ndarray():
             return len(index)
         case (np.ndarray(), np.ndarray()):
-            return np.sum(index[1])
+            return int(np.sum(index[1]))
+        case _:
+            raise TypeError(f"Invalid index type {type(index)}")
 
 
 def get_range(index: SimpleIndex | ChunkedIndex):

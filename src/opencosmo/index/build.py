@@ -7,3 +7,7 @@ def from_size(size: int):
 
 def single_chunk(start: int, size: int):
     return (np.atleast_1d(start), np.atleast_1d(size))
+
+
+def empty():
+    return (np.array([], dtype=int), np.array([], dtype=int))

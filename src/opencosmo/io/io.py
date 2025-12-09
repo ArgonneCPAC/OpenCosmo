@@ -14,6 +14,7 @@ from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import read_header
 from opencosmo.index import ChunkedIndex
+from opencosmo.index.build import empty
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
@@ -60,7 +61,6 @@ else:
     4. Open all datasets individually
     5. Call the merge functionality for the appropriate collection.
     """
-
 
 
 class FILE_TYPE(Enum):
@@ -281,7 +281,7 @@ def open_single_dataset(
 
         part = partition(comm, len(handler), idx_data, tree)
         if part is None:
-            index = ChunkedIndex.empty()
+            index = empty()
         else:
             index = part.idx
             sim_region = part.region if part.region is not None else sim_region
@@ -314,7 +314,7 @@ def open_single_dataset(
             header.healpix_map["ordering"],
             header.healpix_map["full_sky"],
             header.healpix_map["z_range"],
-        )  
+        )
     elif header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 

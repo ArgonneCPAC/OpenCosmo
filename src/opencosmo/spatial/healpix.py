@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from opencosmo.index import SimpleIndex
+from opencosmo.index.mask import into_array
 from opencosmo.spatial.region import HealPixRegion
 
 if TYPE_CHECKING:
@@ -16,7 +19,7 @@ class HealPixIndex:
         pass
 
     def get_partition_region(self, index: SimpleIndex, level: int) -> Region:
-        idxs = index.into_array()
+        idxs = into_array(index)
         return HealPixRegion(idxs, 2**level)
 
     def query(
@@ -44,4 +47,4 @@ class HealPixIndex:
             raise ValueError("Didn't recieve a 2D region!")
         nside = 2**level
         intersects = region.get_healpix_intersections(nside)
-        return {level: (SimpleIndex.empty(), SimpleIndex(intersects))}
+        return {level: (np.array([]), intersects)}

@@ -20,7 +20,7 @@ from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.index.build import from_size, single_chunk
 from opencosmo.index.mask import into_array
-from opencosmo.index.unary import get_length
+from opencosmo.index.unary import get_length, get_range
 from opencosmo.io import schemas as ios
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
@@ -131,7 +131,6 @@ class DatasetState:
     @property
     def raw_index(self):
         if (si := self.get_sorted_index()) is not None:
-            print(self.__raw_data_handler.index)
             ni = into_array(self.__raw_data_handler.index)
             return ni[si]
 
@@ -552,7 +551,9 @@ class DatasetState:
     def take_rows(self, rows: DataIndex):
         if len(self) == 0:
             return self
-        if rows.range()[1] > len(self) or rows.range()[0] < 0:
+        row_range = get_range(rows)
+
+        if row_range[1] > len(self) or row_range[0] < 0:
             raise ValueError(
                 f"Row indices must be between 0 and the length of this dataset!"
             )

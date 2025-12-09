@@ -9,7 +9,8 @@ import h5py
 import numpy as np
 from mpi4py import MPI
 
-from opencosmo.index import ChunkedIndex
+from opencosmo.index.build import from_size
+from opencosmo.index.unary import get_length
 from opencosmo.mpi import get_comm_world
 
 from .schemas import (
@@ -293,7 +294,7 @@ def combine_spatial_index_level_schemas(
 
     if not schemas:
         source = np.zeros(level_len, dtype=np.int32)
-        index = ChunkedIndex.from_size(len(source))
+        index = from_size(len(source))
         start = ColumnSchema(
             f"level_{level}/start", index, source, {}, total_length=level_len
         )
@@ -333,7 +334,7 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     for child_name in all_child_names:
         child = children.get(child_name)
         if child is None:
-            continue 
+            continue
         if child.header is None:
             continue
         if child.header.file.data_type == "healpix_map":
@@ -443,7 +444,7 @@ def combine_column_schemas(
     if schema is None:
         length = 0
     else:
-        length = len(schema.index)
+        length = get_length(schema.index)
 
     shape, name, attrs, dtype = verify_column_schemas(schema, comm)
 

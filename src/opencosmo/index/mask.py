@@ -4,6 +4,8 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
+from opencosmo.index.unary import get_length
+
 
 @singledispatch
 def mask(index: NDArray[np.int_], boolean_mask: NDArray[bool]):
@@ -17,11 +19,14 @@ def mask(index: NDArray[np.int_], boolean_mask: NDArray[bool]):
 
 @mask.register
 def _(index: tuple, boolean_mask: NDArray[bool]):
-    array = into_array(index[0], index[1])
+    array = into_array(index)
     return array[boolean_mask]
 
 
 def into_array(index: np.ndarray | tuple):
+    if get_length(index) == 0:
+        return np.array([], dtype=int)
+
     match index:
         case np.ndarray():
             return index
@@ -35,4 +40,5 @@ def __chunked_into_array(starts: NDArray[np.int_], sizes: NDArray[np.int_]):
     rs = 0
     for i in range(len(starts)):
         output[rs : rs + sizes[i]] = np.arange(starts[i], starts[i] + sizes[i])
+        rs += sizes[i]
     return output

@@ -9,7 +9,7 @@ import numpy as np
 from opencosmo.index.get import get_data
 from opencosmo.index.protocols import DataIndex
 from opencosmo.index.take import take
-from opencosmo.index.unary import get_range
+from opencosmo.index.unary import get_length, get_range
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex
@@ -169,7 +169,7 @@ class ColumnCache:
         if not self.__cached_data and self.__derived_index is None:
             return 0
         elif self.__derived_index is not None:
-            return len(self.__derived_index)
+            return get_length(self.__derived_index)
         elif self.__cached_data:
             return len(next(iter(self.__cached_data.values())))
         elif self.__parent is not None and (p := self.__parent()) is not None:
