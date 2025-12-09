@@ -159,14 +159,17 @@ class UnitHandler:
     def apply_raw_units(self, data: dict[str, np.ndarray], unit_kwargs):
         if self.__current_convention == UnitConvention.UNITLESS:
             return data
-        columns = {}
+        columns: dict[str, np.ndarray] = {}
         for colname, value in data.items():
             columns[colname] = value
             applicator = self.__applicators.get(colname)
             if applicator is not None and applicator.base_unit is not None:
-                columns[colname] = applicator.apply(
+                unitful = applicator.apply(
                     columns[colname], self.__current_convention, unit_kwargs=unit_kwargs
                 )
+                assert isinstance(unitful, u.Quantity)
+
+                columns[colname] = unitful
         return columns
 
     def apply_unit_conversions(
@@ -188,6 +191,9 @@ class UnitHandler:
             elif column_conversion is not None:
                 output_data[colname] = column.to(column_conversion)
 
+        if "fof_halo_px" in data:
+            print("H")
+            print(output_data.keys())
         return output_data
 
     def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):
@@ -201,6 +207,7 @@ class UnitHandler:
                 unitful_value = applicator.apply(
                     value, self.__current_convention, unit_kwargs=unit_kwargs
                 )
+                assert isinstance(unitful_value, u.Quantity)
                 unit_conversion = self.__conversions.get(str(unitful_value.unit))
                 if unit_conversion is not None and column_conversion is None:
                     unitful_value = unitful_value.to(unit_conversion)

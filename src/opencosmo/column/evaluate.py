@@ -9,17 +9,16 @@ import astropy.units as u
 import numpy as np
 
 from opencosmo.evaluate import insert_data, prepare_kwargs
-from opencosmo.index import ChunkedIndex
+
+if TYPE_CHECKING:
+    from opencosmo import Dataset
+    from opencosmo.index import ChunkedIndex
 
 
 class EvaluateStrategy(Enum):
     VECTORIZE = "vectorize"
     ROW_WISE = "row_wise"
     CHUNKED = "chunked"
-
-
-if TYPE_CHECKING:
-    from opencosmo import Dataset
 
 
 def evaluate_rows(data: dict[str, np.ndarray], func: Callable, kwargs: dict[str, Any]):
@@ -69,7 +68,7 @@ def evaluate_chunks(
     kwargs_, iterable_kwargs = prepare_kwargs(data_length, kwargs)
     input_data = data | iterable_kwargs
 
-    chunk_splits = np.cumsum(index.sizes)
+    chunk_splits = np.cumsum(index[1])
     storage = {}
     input_data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
     for i in range(len(chunk_splits)):
@@ -127,8 +126,8 @@ def do_first_evaluation(
 
         case EvaluateStrategy.CHUNKED:
             index = dataset.index
-            assert isinstance(index, ChunkedIndex)
-            first_chunk_size = index.sizes[0]
+            assert isinstance(index, tuple)
+            first_chunk_size = index[1][0]
             first_chunk = dataset.take(first_chunk_size, at="start").get_data(format)
             first_chunk = dict(first_chunk)
             return func(**first_chunk, **kwargs), eval_strategy

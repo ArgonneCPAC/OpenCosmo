@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 def build_dependency_graph(
     derived_columns: Mapping[str, ConstructedColumn],
+    names_to_keep: Optional[set[str]] = None,
 ):
     dependency_graph = rx.PyDiGraph()
     all_requires: set[str] = reduce(
@@ -41,6 +42,14 @@ def build_dependency_graph(
 
         dependency_graph.add_edges_from_no_data(product(requires_idx, produces_idx))
 
+    if names_to_keep is not None:
+        nodes_to_keep = reduce(
+            lambda acc, name: acc.union(rx.ancestors(dependency_graph, nodemap[name])),
+            names_to_keep,
+            {nodemap[name] for name in names_to_keep},
+        )
+        dependency_graph = dependency_graph.subgraph(list(nodes_to_keep))
+
     return dependency_graph
 
 
@@ -54,7 +63,9 @@ def replace_multi_producers(
     for missing_column in missing:
         missing_column_produces = derived_columns[missing_column].produces
         assert missing_column_produces is not None
-        outputs = [node_map[name] for name in missing_column_produces]
+        outputs = [
+            node_map[name] for name in missing_column_produces if name in node_map
+        ]
         graph.contract_nodes(outputs, missing_column)
     return graph
 
@@ -108,7 +119,8 @@ def validate_derived_units(
 
 
 def build_derived_columns(
-    derived_columns: dict[str, ConstructedColumn],
+    all_derived_columns: dict[str, ConstructedColumn],
+    derived_columns_to_get: set[str],
     cache: ColumnCache,
     hdf5_handler: Hdf5Handler,
     unit_handler: UnitHandler,
@@ -119,26 +131,27 @@ def build_derived_columns(
     Build any derived columns that are present in this dataset. Also returns any columns that
     had to be instantiated in order to build these derived columns.
     """
-    if not derived_columns:
+    if not derived_columns_to_get:
         return {}
 
     column_names: set[str] = reduce(
         lambda known, dc: known.union(dc[1].produces)
         if dc[1].produces is not None
         else known.union((dc[0],)),
-        derived_columns.items(),
+        all_derived_columns.items(),
         set(),
     )
 
-    cached_data = cache.get_columns(column_names)
+    dependency_graph = build_dependency_graph(
+        all_derived_columns, derived_columns_to_get
+    )
+    cached_data = cache.get_columns(dependency_graph.nodes())
+    cached_data |= unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
+
     additional_derived = column_names.difference(cached_data.keys())
 
     if not additional_derived:
         return cached_data
-
-    dependency_graph = build_dependency_graph(derived_columns)
-    cached_data |= cache.get_columns(dependency_graph.nodes())
-    cached_data |= unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
 
     columns_to_fetch = (
         set(dependency_graph.nodes())
@@ -148,22 +161,26 @@ def build_derived_columns(
 
     raw_data = hdf5_handler.get_data(columns_to_fetch)
     data = cached_data | unit_handler.apply_units(raw_data, unit_kwargs)
-    dependency_graph = replace_multi_producers(dependency_graph, derived_columns)
+    dependency_graph = replace_multi_producers(dependency_graph, all_derived_columns)
+    new_derived: dict[str, np.ndarray] = {}
 
     for colidx in rx.topological_sort(dependency_graph):
         colname = dependency_graph[colidx]
         if colname in data:
             continue
-        derived_column = derived_columns[colname]
+        derived_column = all_derived_columns[colname]
         produces = derived_column.produces
         if produces is None:
             produces = set((colname,))
         if all(name in data for name in produces):
             continue
-        output = derived_columns[colname].evaluate(data, index)
+        output = derived_column.evaluate(data, index)
         if isinstance(output, dict):
-            data = data | output
+            data |= output
+            new_derived |= output
         else:
             data[colname] = output
+            new_derived[colname] = output
 
-    return data
+    cache.add_data(new_derived)
+    return data | new_derived

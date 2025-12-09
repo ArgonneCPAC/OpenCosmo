@@ -12,6 +12,7 @@ import opencosmo as oc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index.unary import get_length
 from opencosmo.io.schemas import StructCollectionSchema
 
 from .handler import LinkHandler
@@ -1142,10 +1143,11 @@ class StructureCollection:
                 links = self.__handler.parse(row)
                 output = {}
                 for name, index in links.items():
+                    ilength = get_length(index)
                     output[name] = datasets[name].take_range(
-                        rs[name], rs[name] + len(index)
+                        rs[name], rs[name] + ilength
                     )
-                    rs[name] += len(index)
+                    rs[name] += ilength
 
                 if not self.__hide_source:
                     output.update({self.__source.dtype: row})
@@ -1258,6 +1260,7 @@ class StructureCollection:
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema()
         source_name = self.__source.dtype
+        print("ASDF")
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
 
         source_schema = self.__source.make_schema()

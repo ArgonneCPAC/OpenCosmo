@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
-from opencosmo.index import SimpleIndex
+from opencosmo.index import SimpleIndex, empty, get_data
 from opencosmo.io.updaters import apply_updaters
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ def write_index(
     """
     data = np.array([])
     if len(index) > 0 and input_ds is not None:
-        data = index.get_data(input_ds)
+        data = get_data(input_ds, index)
         if updater is not None:
             data = updater(data)
 
@@ -136,7 +136,8 @@ class EmptyColumnWriter:
     ):
         ds = group[self.name]
 
-        write_index(None, ds, SimpleIndex.empty(), updater=updater)
+        write_index(None, ds, empty(), updater=updater)
+        ds.file.flush()
 
 
 class ColumnWriter:
@@ -167,3 +168,4 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, self.updater)
+        ds.file.flush()

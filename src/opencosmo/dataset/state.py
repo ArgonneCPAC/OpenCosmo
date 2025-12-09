@@ -18,7 +18,9 @@ from opencosmo.dataset.derived import (
 )
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
-from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index.build import from_size, single_chunk
+from opencosmo.index.mask import into_array
+from opencosmo.index.unary import get_length, get_range
 from opencosmo.io import schemas as ios
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
@@ -112,7 +114,7 @@ class DatasetState:
         )
 
     def __len__(self):
-        return len(self.__raw_data_handler.index)
+        return get_length(self.__raw_data_handler.index)
 
     @property
     def descriptions(self):
@@ -130,8 +132,8 @@ class DatasetState:
     @property
     def raw_index(self):
         if (si := self.get_sorted_index()) is not None:
-            ni = self.__raw_data_handler.index.into_array()
-            return SimpleIndex(ni[si])
+            ni = into_array(self.__raw_data_handler.index)
+            return ni[si]
 
         return self.__raw_data_handler.index
 
@@ -275,8 +277,8 @@ class DatasetState:
         return metadata
 
     def with_mask(self, mask: NDArray[np.bool_]):
-        index = SimpleIndex(np.where(mask)[0])
-        new_raw_handler = self.__raw_data_handler.mask(mask)
+        index = np.where(mask)[0]
+        new_raw_handler = self.__raw_data_handler.take(index)
         new_cache = self.__cache.take(index)
         return self.__rebuild(
             cache=new_cache,
@@ -310,7 +312,7 @@ class DatasetState:
                 "description": self.__derived_columns[colname].description,
             }
             colschema = ios.ColumnSchema(
-                colname, ChunkedIndex.from_size(len(coldata)), coldata, attrs
+                colname, from_size(len(coldata)), coldata, attrs
             )
             schema.add_child(colschema, f"data/{colname}")
 
@@ -330,9 +332,7 @@ class DatasetState:
             attrs["unit"] = unit_str
             attrs["description"] = self.descriptions.get(colname, "None")
 
-            colschema = ios.ColumnSchema(
-                colname, ChunkedIndex.from_size(len(coldata)), data, attrs
-            )
+            colschema = ios.ColumnSchema(colname, from_size(len(coldata)), data, attrs)
             schema.add_child(colschema, f"data/{colname}")
 
         return schema
@@ -425,21 +425,27 @@ class DatasetState:
         if not self.__derived_columns:
             return {}
 
-        derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
-        if (
-            self.__sort_by is not None
-            and self.__sort_by[0] in self.__derived_columns.keys()
-        ):
+        all_derived_columns: set[str] = reduce(
+            lambda acc, dc: acc.union(
+                dc[1].produces if dc[1].produces is not None else {dc[0]}
+            ),
+            self.__derived_columns.items(),
+            set(),
+        )
+        derived_names = all_derived_columns.intersection(self.columns)
+        if self.__sort_by is not None and self.__sort_by[0] in all_derived_columns:
             derived_names.add(self.__sort_by[0])
 
-        return build_derived_columns(
+        dc = build_derived_columns(
             self.__derived_columns,
+            derived_names,
             self.__cache,
             self.__raw_data_handler,
             self.__unit_handler,
             unit_kwargs,
             self.__raw_data_handler.index,
         )
+        return dc
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
         im_data = {}
@@ -513,9 +519,9 @@ class DatasetState:
 
         sorted = self.get_sorted_index()
         if sorted is None:
-            take_index = SimpleIndex(row_indices)
+            take_index = row_indices
         else:
-            take_index = SimpleIndex(np.sort(sorted[row_indices]))
+            take_index = np.sort(sorted[row_indices])
 
         new_handler = self.__raw_data_handler.take(take_index)
         new_cache = self.__cache.take(take_index)
@@ -533,20 +539,15 @@ class DatasetState:
             raise ValueError("start and end must be positive.")
         if end < start:
             raise ValueError("end must be greater than start.")
-        if end > len(self.__raw_data_handler.index):
+        if end > len(self):
             raise ValueError("end must be less than the length of the dataset.")
-
-        if start < 0 or end > len(self.__raw_data_handler.index):
-            raise ValueError("start and end must be within the bounds of the dataset.")
 
         sorted = self.get_sorted_index()
         take_index: DataIndex
         if sorted is None:
-            take_index = ChunkedIndex.single_chunk(start, end - start)
+            take_index = single_chunk(start, end - start)
         else:
-            take_index = SimpleIndex(np.sort(sorted[start:end]))
-
-        from time import time
+            take_index = np.sort(sorted[start:end])
 
         new_raw_handler = self.__raw_data_handler.take(take_index)
         new_im = self.__cache.take(take_index)
@@ -558,7 +559,9 @@ class DatasetState:
     def take_rows(self, rows: DataIndex):
         if len(self) == 0:
             return self
-        if rows.range()[1] > len(self) or rows.range()[0] < 0:
+        row_range = get_range(rows)
+
+        if row_range[1] > len(self) or row_range[0] < 0:
             raise ValueError(
                 f"Row indices must be between 0 and the length of this dataset!"
             )
@@ -589,6 +592,8 @@ class DatasetState:
         else:
             convention_ = UnitConvention(convention)
             cache = self.__cache.without_columns(self.__raw_data_handler.columns)
+            cache = cache.without_columns(self.__derived_columns.keys())
+
         if (
             convention_ == UnitConvention.SCALEFREE
             and UnitConvention(self.header.file.unit_convention)

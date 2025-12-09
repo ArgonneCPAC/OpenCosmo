@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Iterable, Optional, TypeGuard
 import numpy as np
 
 import opencosmo as oc
-from opencosmo.index import SimpleIndex
 from opencosmo.spatial.region import BoxRegion
 
 if TYPE_CHECKING:
+    from opencosmo.index import SimpleIndex
     from opencosmo.spatial.protocols import Region
     from opencosmo.spatial.region import Point3d
 
@@ -117,10 +117,7 @@ class OctTreeIndex:
         self.root = root
 
     def get_partition_region(self, index: SimpleIndex, level: int):
-        octants = [
-            get_octant(idx, level, 2 * self.root.halfwidth)
-            for idx in index.into_array()
-        ]
+        octants = [get_octant(idx, level, 2 * self.root.halfwidth) for idx in index]
         return get_region(octants)
 
     @classmethod
@@ -140,7 +137,7 @@ class OctTreeIndex:
         for level, (cidx, iidx) in make_octree_indices(
             new_root, 0, containment
         ).items():
-            output[level] = (SimpleIndex(cidx), SimpleIndex(iidx))
+            output[level] = (cidx, iidx)
 
         return output
 
