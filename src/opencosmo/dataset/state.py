@@ -423,21 +423,27 @@ class DatasetState:
         if not self.__derived_columns:
             return {}
 
-        derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
-        if (
-            self.__sort_by is not None
-            and self.__sort_by[0] in self.__derived_columns.keys()
-        ):
+        all_derived_columns: set[str] = reduce(
+            lambda acc, dc: acc.union(
+                dc[1].produces if dc[1].produces is not None else {dc[0]}
+            ),
+            self.__derived_columns.items(),
+            set(),
+        )
+        derived_names = all_derived_columns.intersection(self.columns)
+        if self.__sort_by is not None and self.__sort_by[0] in all_derived_columns:
             derived_names.add(self.__sort_by[0])
 
-        return build_derived_columns(
+        dc = build_derived_columns(
             self.__derived_columns,
+            derived_names,
             self.__cache,
             self.__raw_data_handler,
             self.__unit_handler,
             unit_kwargs,
             self.__raw_data_handler.index,
         )
+        return dc
 
     def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
         im_data = {}
@@ -584,6 +590,8 @@ class DatasetState:
         else:
             convention_ = UnitConvention(convention)
             cache = self.__cache.without_columns(self.__raw_data_handler.columns)
+            cache = cache.without_columns(self.__derived_columns.keys())
+
         if (
             convention_ == UnitConvention.SCALEFREE
             and UnitConvention(self.header.file.unit_convention)

@@ -137,6 +137,7 @@ class EmptyColumnWriter:
         ds = group[self.name]
 
         write_index(None, ds, empty(), updater=updater)
+        ds.file.flush()
 
 
 class ColumnWriter:
@@ -167,3 +168,4 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, self.updater)
+        ds.file.flush()
