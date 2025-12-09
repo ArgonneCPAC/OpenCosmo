@@ -8,6 +8,7 @@ from astropy.constants import m_p
 
 if TYPE_CHECKING:
     import h5py
+    import numpy as np
     from astropy.cosmology import Cosmology
     from numpy.typing import ArrayLike
 
@@ -68,7 +69,7 @@ class UnitApplicator:
     @classmethod
     def from_unit(
         cls,
-        base_unit: u.Unit,
+        base_unit: Optional[u.Unit],
         base_convention: UnitConvention,
         cosmology: Cosmology,
         is_comoving: bool = True,
@@ -101,7 +102,7 @@ class UnitApplicator:
         convention: UnitConvention,
         convert_to: Optional[u.Unit] = None,
         unit_kwargs: dict[str, Any] = {},
-    ) -> u.Quantity:
+    ) -> ArrayLike | u.Quantity:
         if not self.__units or convention == UnitConvention.UNITLESS:
             return value
         if hasattr(value, "unit"):
@@ -125,7 +126,7 @@ class UnitApplicator:
 
     def convert_to_base(
         self,
-        value: u.Quantity | float,
+        value: np.ndarray | float,
         convention: UnitConvention,
         unit_kwargs: dict[str, Any] = {},
     ):
@@ -177,7 +178,7 @@ def get_unit_applicators_dict(
     return applicators
 
 
-def get_raw_units(column: h5py.Dataset):
+def get_raw_units(column: h5py.Dataset) -> Optional[u.Unit]:
     if "unit" in column.attrs:
         if (us := column.attrs["unit"]) == "None" or us == "":
             return None

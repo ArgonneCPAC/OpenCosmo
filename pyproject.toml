@@ -72,7 +72,7 @@ source-include = ["LICENSE.md"]
 
 
 [[tool.mypy.overrides]]
-module = ["h5py", "astropy.*", "healpy", "healsparse"]
+module = ["h5py", "astropy.*", "healpy", "healsparse", "numba"]
 ignore_missing_imports = true
 
 [tool.towncrier]
@@ -82,6 +82,12 @@ filename = "docs/source/changelog.rst"
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+]
+replace-imports-with-any = ["astropy.units", "astropy.constants"]
 
 [lint.pycodestyle]
 max-doc-length = 90

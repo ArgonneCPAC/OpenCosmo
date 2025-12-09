@@ -756,15 +756,13 @@ def test_halo_linking_with_empties(halo_paths):
         fof_tag = halo_properties["fof_halo_tag"]
         for p in halo.values():
             try:
-                tags = set(p.select("fof_halo_tag").data)
-                assert len(tags) == 1
-                assert tags.pop() == fof_tag
+                tags = p.select("fof_halo_tag").get_data(unpack=False)
+                assert np.all(tags == fof_tag)
                 found_particles = True
 
             except ValueError:
-                tags = set(p.select("fof_halo_bin_tag").data)
-                assert len(tags) == 1
-                assert tags.pop() == fof_tag
+                tags = p.select("fof_halo_bin_tag").get_data(unpack=False)
+                assert np.all(tags == fof_tag)
                 found_profiles = True
 
     assert found_particles and found_profiles

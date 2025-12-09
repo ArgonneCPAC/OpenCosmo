@@ -19,7 +19,7 @@ from astropy.table import QTable  # type: ignore
 from opencosmo.column.column import EvaluatedColumn
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index import ChunkedIndex, SimpleIndex, into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -324,8 +324,7 @@ class Dataset:
             check_region = region
 
         if not self.__state.region.intersects(check_region):
-            new_index = ChunkedIndex.empty()
-            new_state = self.__state.take_rows(new_index)
+            new_state = self.__state.take_rows(np.array([]))
             return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
@@ -338,8 +337,8 @@ class Dataset:
         intersects_index: DataIndex
         contained_index, intersects_index = self.__tree.query(check_region)
 
-        contained_index = self.__state.raw_index.projection(contained_index)
-        intersects_index = self.__state.raw_index.projection(intersects_index)
+        contained_index = project(self.__state.raw_index, contained_index)
+        intersects_index = project(self.__state.raw_index, intersects_index)
 
         check_state = self.__state.take_rows(intersects_index)
         check_dataset = Dataset(
@@ -350,10 +349,15 @@ class Dataset:
         if not self.__header.file.is_lightcone:
             check_dataset = check_dataset.with_units("scalefree")
 
-        mask = check.check_containment(check_dataset, check_region, self.__header.file)
-        new_intersects_index = intersects_index.mask(mask)
+        index_mask = check.check_containment(
+            check_dataset, check_region, self.__header.file
+        )
+        new_intersects_index = mask(intersects_index, index_mask)
 
-        new_index = contained_index.concatenate(new_intersects_index)
+        print(contained_index, new_intersects_index.dtype)
+        new_index = np.concatenate(
+            [into_array(contained_index), into_array(new_intersects_index)]
+        )
 
         new_state = self.__state.take_rows(new_index).with_region(check_region)
 
@@ -704,11 +708,7 @@ class Dataset:
             dataset.
 
         """
-        if not isinstance(rows, np.ndarray):
-            new_state = self.__state.take_rows(rows)
-        else:
-            index = SimpleIndex(rows)
-            new_state = self.__state.take_rows(index)
+        new_state = self.__state.take_rows(rows)
         return Dataset(self.__header, new_state, self.__tree)
 
     def with_new_columns(

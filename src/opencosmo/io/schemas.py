@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import hdf5plugin  # type: ignore
+import numpy as np
 
 import opencosmo.io.writers as iow
-from opencosmo.index import ChunkedIndex
+from opencosmo.index import ChunkedIndex, concatenate, get_length
 
 if TYPE_CHECKING:
-    import numpy as np
     from mpi4py import MPI
     from numpy.typing import DTypeLike, NDArray
 
@@ -151,7 +151,7 @@ class SimCollectionSchema:
 
 
 class LightconeSchema:
-    def __init__(self):
+    def __init__(self) -> None:
         self.children: dict[str, DatasetSchema] = {}
 
     def verify(self):
@@ -200,10 +200,8 @@ class StructCollectionSchema:
     contain several datasets from the same simulation.
     """
 
-    def __init__(self):
-        self.children: dict[str, DatasetSchema | StructCollectionSchema] = defaultdict(
-            dict
-        )
+    def __init__(self) -> None:
+        self.children: dict[str, DatasetSchema | StructCollectionSchema] = {}
 
     def verify(self):
         if len(self.children) < 2:
@@ -372,11 +370,11 @@ class ColumnSchema:
         self.attrs = attrs
         self.offset = 0
         if total_length is None:
-            total_length = len(index)
+            total_length = get_length(index)
         self.total_length = total_length
 
     def __len__(self):
-        return len(self.index)
+        return get_length(self.index)
 
     def concatenate(self, *others: "ColumnSchema"):
         for other in others:
@@ -385,7 +383,7 @@ class ColumnSchema:
             if self.source.shape[1:] != other.source.shape[1:]:
                 raise ValueError("Tried to combine columns with incompatible shapes")
 
-        new_index = self.index.concatenate(*[o.index for o in others])
+        new_index = concatenate(self.index, *[o.index for o in others])
         return ColumnSchema(self.name, new_index, self.source, self.attrs)
 
     def add_child(self, *args, **kwargs):
