@@ -72,7 +72,7 @@ source-include = ["LICENSE.md"]
 
 
 [[tool.mypy.overrides]]
-module = ["h5py", "astropy.*", "healpy", "healsparse"]
+module = ["h5py", "astropy.*", "healpy", "healsparse", "numba"]
 ignore_missing_imports = true
 
 [tool.towncrier]

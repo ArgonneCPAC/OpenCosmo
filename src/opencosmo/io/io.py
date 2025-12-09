@@ -13,7 +13,6 @@ from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import read_header
-from opencosmo.index import ChunkedIndex
 from opencosmo.index.build import empty
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
@@ -30,6 +29,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import ChunkedIndex
 
     from .protocols import Writeable
 

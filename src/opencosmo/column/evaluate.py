@@ -9,17 +9,16 @@ import astropy.units as u
 import numpy as np
 
 from opencosmo.evaluate import insert_data, prepare_kwargs
-from opencosmo.index import ChunkedIndex
+
+if TYPE_CHECKING:
+    from opencosmo import Dataset
+    from opencosmo.index import ChunkedIndex
 
 
 class EvaluateStrategy(Enum):
     VECTORIZE = "vectorize"
     ROW_WISE = "row_wise"
     CHUNKED = "chunked"
-
-
-if TYPE_CHECKING:
-    from opencosmo import Dataset
 
 
 def evaluate_rows(data: dict[str, np.ndarray], func: Callable, kwargs: dict[str, Any]):

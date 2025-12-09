@@ -151,7 +151,7 @@ class SimCollectionSchema:
 
 
 class LightconeSchema:
-    def __init__(self):
+    def __init__(self) -> None:
         self.children: dict[str, DatasetSchema] = {}
 
     def verify(self):
@@ -200,10 +200,8 @@ class StructCollectionSchema:
     contain several datasets from the same simulation.
     """
 
-    def __init__(self):
-        self.children: dict[str, DatasetSchema | StructCollectionSchema] = defaultdict(
-            dict
-        )
+    def __init__(self) -> None:
+        self.children: dict[str, DatasetSchema | StructCollectionSchema] = {}
 
     def verify(self):
         if len(self.children) < 2:
