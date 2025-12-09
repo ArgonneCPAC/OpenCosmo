@@ -6,8 +6,8 @@ from weakref import finalize, ref
 import astropy.units as u
 import numpy as np
 
+from opencosmo.index import DataIndex
 from opencosmo.index.get import get_data
-from opencosmo.index.protocols import DataIndex
 from opencosmo.index.take import take
 from opencosmo.index.unary import get_length, get_range
 

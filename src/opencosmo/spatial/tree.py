@@ -12,10 +12,8 @@ try:
 except ImportError:
     MPI = None  # type: ignore
 
-from opencosmo.index import ChunkedIndex, SimpleIndex
-from opencosmo.index.build import from_size
-from opencosmo.index.get import get_data
-from opencosmo.index.ops import n_in_range
+
+from opencosmo.index import from_size, get_data, n_in_range
 from opencosmo.io.schemas import (
     ColumnSchema,
 )
@@ -25,7 +23,7 @@ from opencosmo.spatial.protocols import TreePartition
 from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
-    from opencosmo.index import DataIndex
+    from opencosmo.index import ChunkedIndex, DataIndex
     from opencosmo.spatial.protocols import Region, SpatialIndex
 
 

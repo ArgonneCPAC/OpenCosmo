@@ -537,7 +537,7 @@ class EvaluatedColumn:
             case EvaluateStrategy.CHUNKED:
                 index = dataset.index
                 assert isinstance(index, tuple)
-                first_chunk_size = index.sizes[0]
+                first_chunk_size = index[1][0]
                 first_chunk = (
                     dataset.select(self.__requires)
                     .take(first_chunk_size)

@@ -9,8 +9,7 @@ import h5py
 import numpy as np
 from mpi4py import MPI
 
-from opencosmo.index.build import from_size
-from opencosmo.index.unary import get_length
+from opencosmo.index import from_size, get_length
 from opencosmo.mpi import get_comm_world
 
 from .schemas import (

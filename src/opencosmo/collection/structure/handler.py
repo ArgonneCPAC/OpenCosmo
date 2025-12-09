@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import numpy as np
 
-from opencosmo.index.mask import into_array
+from opencosmo.index import into_array
 
 if TYPE_CHECKING:
     import opencosmo as oc

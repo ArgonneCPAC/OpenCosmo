@@ -8,9 +8,15 @@ from weakref import ref
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.index import ChunkedIndex, SimpleIndex, from_size
-from opencosmo.index.get import get_data
-from opencosmo.index.take import take
+from opencosmo.index import (
+    ChunkedIndex,
+    SimpleIndex,
+    from_size,
+    get_data,
+    get_length,
+    into_array,
+    take,
+)
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
 
@@ -72,12 +78,12 @@ class Hdf5Handler:
         return Hdf5Handler(self.__group, new_index, self.__metadata_group)
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
-        if len(sorted) != len(self.__index):
+        if get_length(sorted) != get_length(self.__index):
             raise ValueError("Sorted index has the wrong length!")
-        new_indices = other.get_data(sorted)
+        new_indices = get_data(other, sorted)
 
-        new_raw_index = self.__index.into_array()[new_indices]
-        new_index = SimpleIndex(np.sort(new_raw_index))
+        new_raw_index = into_array(self.__index)[new_indices]
+        new_index = np.sort(new_raw_index)
 
         return Hdf5Handler(self.__group, new_index, self.__metadata_group)
 

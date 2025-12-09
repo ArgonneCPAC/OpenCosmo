@@ -1,14 +1,28 @@
+from __future__ import annotations
+
 from functools import singledispatch
+from typing import TYPE_CHECKING
 
 import numba as nb
 import numpy as np
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 from opencosmo.index.unary import get_length
 
 
-@singledispatch
-def mask(index: NDArray[np.int_], boolean_mask: NDArray[bool]):
+def mask(index, boolean_mask):
+    match index:
+        case np.ndarray():
+            return __mask_simple(index, boolean_mask)
+        case (np.ndarray(), np.ndarray()):
+            return __mask_chunked(index, boolean_mask)
+        case _:
+            raise TypeError(f"Unknown index type {type(index)}")
+
+
+def __mask_simple(index: NDArray[np.int_], boolean_mask: NDArray[np.bool_]):
     if (lm := len(boolean_mask)) > len(index):
         raise ValueError(
             "Boolean mask must be less than or equal to the length of the index itself"
@@ -17,8 +31,7 @@ def mask(index: NDArray[np.int_], boolean_mask: NDArray[bool]):
     return index[:lm][boolean_mask]
 
 
-@mask.register
-def _(index: tuple, boolean_mask: NDArray[bool]):
+def __mask_chunked(index: tuple, boolean_mask: NDArray[np.bool_]):
     array = into_array(index)
     return array[boolean_mask]
 

@@ -5,9 +5,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
-from opencosmo.index import SimpleIndex
-from opencosmo.index.build import empty
-from opencosmo.index.get import get_data
+from opencosmo.index import SimpleIndex, empty, get_data
 from opencosmo.io.updaters import apply_updaters
 
 if TYPE_CHECKING:

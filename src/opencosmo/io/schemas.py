@@ -9,8 +9,7 @@ import hdf5plugin  # type: ignore
 import numpy as np
 
 import opencosmo.io.writers as iow
-from opencosmo.index import ChunkedIndex
-from opencosmo.index.unary import get_length
+from opencosmo.index import ChunkedIndex, concatenate, get_length
 
 if TYPE_CHECKING:
     from mpi4py import MPI
@@ -386,7 +385,7 @@ class ColumnSchema:
             if self.source.shape[1:] != other.source.shape[1:]:
                 raise ValueError("Tried to combine columns with incompatible shapes")
 
-        new_index = self.index.concatenate(*[o.index for o in others])
+        new_index = concatenate(self.index, *[o.index for o in others])
         return ColumnSchema(self.name, new_index, self.source, self.attrs)
 
     def add_child(self, *args, **kwargs):

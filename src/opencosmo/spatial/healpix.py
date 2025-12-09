@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from opencosmo.index import SimpleIndex
-from opencosmo.index.mask import into_array
+from opencosmo.index import into_array
 from opencosmo.spatial.region import HealPixRegion
 
 if TYPE_CHECKING:
+    from opencosmo.index import SimpleIndex
     from opencosmo.spatial.protocols import Region
 
 

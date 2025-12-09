@@ -19,9 +19,7 @@ from astropy.table import QTable  # type: ignore
 from opencosmo.column.column import EvaluatedColumn
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import ChunkedIndex, SimpleIndex
-from opencosmo.index.mask import into_array, mask
-from opencosmo.index.project import project
+from opencosmo.index import ChunkedIndex, SimpleIndex, into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 

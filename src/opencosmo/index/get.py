@@ -6,7 +6,7 @@ import astropy.units as u
 import h5py
 import numpy as np
 
-from opencosmo.index.unary import get_length
+from .unary import get_length
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

@@ -61,26 +61,3 @@ def __get_chunked_range(starts: NDArray[np.int_], sizes: NDArray[np.int_]):
         if end > max:
             max = end
     return (min, max)
-
-
-@singledispatch
-def into_mask(index: SimpleIndex):
-    max = index.max()
-    output = np.ones(max + 1, dtype=bool)
-    output[index] = False
-    return output
-
-
-@into_mask.register
-def _(index: tuple):
-    max = np.max(index[0] + index[1])
-    storage = np.ones(max + 1, dtype=bool)
-
-
-@nb.njit
-def __make_chunked_mask(
-    starts: NDArray[np.int_], sizes: NDArray[np.int_], storage: NDArray[bool]
-):
-    for i in range(len(starts)):
-        storage[starts[i], starts[i] + sizes[i]] = True
-    return storage

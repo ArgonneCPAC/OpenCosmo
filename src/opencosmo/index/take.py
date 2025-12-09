@@ -9,22 +9,22 @@ from numpy.typing import ArrayLike
 SimpleIndex = np.ndarray
 ChunkedIndex = tuple[np.ndarray, np.ndarray]
 if TYPE_CHECKING:
-    from opencosmo.index.protocols import DataIndex
+    from opencosmo.index import DataIndex
 
 
-def take(from_: DataIndex, by: DataIndex):
+def take(from_, by):
     match (from_, by):
         case (np.ndarray(), np.ndarray()):
-            return take_simple_from_simple(from_, by)
+            return __take_simple_from_simple(from_, by)
         case (np.ndarray(), (np.ndarray(), np.ndarray())):
-            return take_chunked_from_simple(from_, by)
+            return __take_chunked_from_simple(from_, by)
         case ((np.ndarray(), np.ndarray()), np.ndarray()):
-            return take_simple_from_chunked(from_, by)
+            return __take_simple_from_chunked(from_, by)
         case ((np.ndarray(), np.ndarray()), (np.ndarray(), np.ndarray())):
-            return take_chunked_from_chunked(from_, by)
+            return __take_chunked_from_chunked(from_, by)
 
 
-def take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex):
+def __take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex):
     cumulative = np.insert(np.cumsum(from_[1]), 0, 0)[:-1]
 
     indices_into_chunks = np.argmax(by[:, np.newaxis] < cumulative, axis=1) - 1
@@ -32,11 +32,11 @@ def take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex):
     return output
 
 
-def take_simple_from_simple(from_: np.ndarray, by: np.ndarray):
+def __take_simple_from_simple(from_: np.ndarray, by: np.ndarray):
     return from_[by]
 
 
-def take_chunked_from_simple(from_: SimpleIndex, by: ChunkedIndex):
+def __take_chunked_from_simple(from_: SimpleIndex, by: ChunkedIndex):
     output = np.zeros(by[1].sum(), dtype=int)
     output = __cfs_helper(from_, *by, output)
     return output
@@ -127,7 +127,7 @@ def resolve_spanning_numba(
     return out_pos
 
 
-def take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
+def __take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
     if len(from_[0]) == 0 and from_[0][0] == 0:
         return by
 
