@@ -213,7 +213,10 @@ class Dataset:
         # Also the point is that there's MORE data than just the table
         return self.get_data("astropy")
 
-    def get_metadata(self, columns: list[str] = []):
+    def get_metadata(self, columns: str | list[str] = []):
+        if isinstance(columns, str):
+            columns = [columns]
+
         return self.__state.get_metadata(columns)
 
     def get_data(
