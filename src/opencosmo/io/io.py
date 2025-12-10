@@ -141,9 +141,18 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
 
 
 def make_all_targets(files: list[h5py.File]):
-    targets: list[OpenTarget] = reduce(
-        lambda targets, file: targets + make_file_targets(file), files, []
-    )
+    bad_files = []
+    targets = []
+    for file in files:
+        try:
+            targets += make_file_targets(file)
+        except ValueError:
+            bad_files.append(file.filename)
+    if bad_files:
+        raise ValueError(
+            f"Some files were not able to be opened. They may not be OpenCosmo files: {bad_files}"
+        )
+
     return targets
 
 
@@ -228,9 +237,9 @@ def open(
         file_list = list(files)
     file_list.sort()
     handles = [h5py.File(f) for f in file_list]
-    file_types = list(map(get_file_type, handles))
     targets = make_all_targets(handles)
     targets = evaluate_load_conditions(targets, open_kwargs)
+    file_types = list(map(get_file_type, handles))
     if len(targets) > 1:
         collection_type = collection.get_collection_type(targets, file_types)
         return collection_type.open(targets, **open_kwargs)

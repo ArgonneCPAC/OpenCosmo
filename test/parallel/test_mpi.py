@@ -217,6 +217,29 @@ def test_filter_zerolength(input_path, tmp_path):
 
 @pytest.mark.timeout(20)
 @pytest.mark.parallel(nprocs=4)
+def test_filter_all_zerolength(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "filtered.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+
+    ds = oc.open(input_path)
+    ds = ds.filter(oc.col("sod_halo_mass") > 1e20)
+
+    with pytest.raises(ValueError, match="No ranks have any data"):
+        oc.write(temporary_path, ds)
+
+
+def test_structure_zerolength(all_paths, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "filtered.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    collection = oc.open(*all_paths).filter(oc.col("sod_halo_mass") > 1e20)
+    with pytest.raises(ValueError, match="No ranks have any data"):
+        oc.write(temporary_path, collection)
+
+
+@pytest.mark.timeout(20)
+@pytest.mark.parallel(nprocs=4)
 def test_link_read(all_paths):
     collection = oc.open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
@@ -603,7 +626,6 @@ def test_simcollection_write_one_missing(multi_path, tmp_path):
             all_halo_tags[simkey] = np.append(all_halo_tags[simkey], tags)
 
     oc.write(temporary_path, data)
-    print("hello")
     written_data = oc.open(temporary_path)
     assert isinstance(written_data, oc.SimulationCollection)
     assert len(written_data.keys()) == 2

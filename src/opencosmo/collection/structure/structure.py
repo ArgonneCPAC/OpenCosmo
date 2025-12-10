@@ -1260,7 +1260,6 @@ class StructureCollection:
     def make_schema(self) -> StructCollectionSchema:
         schema = StructCollectionSchema()
         source_name = self.__source.dtype
-        print("ASDF")
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
 
         source_schema = self.__source.make_schema()

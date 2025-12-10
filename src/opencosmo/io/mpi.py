@@ -71,6 +71,9 @@ def write_parallel(file: Path, file_schema: FileSchema):
         raise ValueError("One or more ranks recieved invalid schemas!")
 
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
+    if len(has_data) == 0:
+        raise ValueError("No ranks have any data to write!")
+
     group = comm.Get_group()
     new_group = group.Incl(has_data)
     new_comm = comm.Create(new_group)
@@ -183,8 +186,6 @@ def validate_headers(
     all_headers: Iterable[OpenCosmoHeader] = comm.allgather(header)
     all_headers = filter(lambda h: h is not None, all_headers)
     all_headers = list(map(lambda h: h.with_parameters(header_updates), all_headers))
-    print(header_updates)
-    print(all_headers)
     regions = set([h.file.region for h in all_headers])
     if len(regions) > 1:
         all_headers = [h.with_region(None) for h in all_headers]

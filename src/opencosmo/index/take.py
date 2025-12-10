@@ -136,6 +136,11 @@ def __take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
     out_size = np.empty(max_out, dtype=np.int64)
     out_owner = np.empty(max_out, dtype=np.int64)
 
+    from_start = from_[0].astype(np.float64, copy=False)
+    from_size = from_[1].astype(np.float64, copy=False)
+    by_start = by[0].astype(np.float64, copy=False)
+    by_size = by[1].astype(np.float64, copy=False)
+
     n = resolve_spanning_numba(
         from_[0], from_[1], by[0], by[1], out_start, out_size, out_owner
     )
