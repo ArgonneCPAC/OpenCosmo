@@ -121,7 +121,7 @@ class HealpixMap(dict):
         """
         The healoix pixels that are included in this map
         """
-        return next(iter(self.values())).get_metadata("pixel")["pixel"]
+        return next(iter(self.values())).get_metadata(["pixel"])["pixel"]
 
     @property
     def nside_lr(self):

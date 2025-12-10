@@ -1,0 +1,1 @@
+Fix a bug that could cause segfaults (in numba-accelerated code) when running take operations

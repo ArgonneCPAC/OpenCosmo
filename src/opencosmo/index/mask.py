@@ -38,7 +38,7 @@ def __mask_chunked(index: tuple, boolean_mask: NDArray[np.bool_]):
 
 def into_array(index: np.ndarray | tuple):
     if get_length(index) == 0:
-        return np.array([], dtype=int)
+        return np.array([], dtype=np.int64)
 
     match index:
         case np.ndarray():
@@ -52,6 +52,8 @@ def __chunked_into_array(starts: NDArray[np.int_], sizes: NDArray[np.int_]):
     output = np.zeros(np.sum(sizes), dtype=np.int64)
     rs = 0
     for i in range(len(starts)):
-        output[rs : rs + sizes[i]] = np.arange(starts[i], starts[i] + sizes[i])
+        output[rs : rs + sizes[i]] = np.arange(
+            starts[i], starts[i] + sizes[i], dtype=np.int64
+        )
         rs += sizes[i]
     return output
