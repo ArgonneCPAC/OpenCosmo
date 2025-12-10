@@ -11,20 +11,20 @@ if TYPE_CHECKING:
 
 
 def from_size(size: int):
-    return (np.atleast_1d(0), np.atleast_1d(size))
+    return (np.array([0], dtype=np.int64), np.array([size], dtype=np.int64))
 
 
 def single_chunk(start: int, size: int):
-    return (np.atleast_1d(start), np.atleast_1d(size))
+    return (np.array([start], dtype=np.int64), np.array([size], np.int64))
 
 
 def empty():
-    return (np.array([], dtype=int), np.array([], dtype=int))
+    return (np.array([], dtype=np.int64), np.array([], dtype=np.int64))
 
 
 def from_range(start: int, end: int):
     size = end - start
-    return (np.atleast_1d(start), np.atleast_1d(size))
+    return (np.array([start], dtype=np.int64), np.array([size], np.int64))
 
 
 def concatenate(*indices: DataIndex):
