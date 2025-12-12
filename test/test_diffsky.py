@@ -16,6 +16,11 @@ def core_path_475(diffsky_path):
     return diffsky_path / "lj_475.hdf5"
 
 
+@pytest.fixture
+def invalid_data_path(diffsky_path):
+    return diffsky_path / "random_data.hdf5"
+
+
 def test_comoving_to_physical(core_path_487):
     cores = oc.open(core_path_487, synth_cores=True).select(["redshift_true", "x"])
     data_physical = cores.with_units("physical").select(["redshift_true", "x"]).data
@@ -133,3 +138,8 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 
     total_mag = -2.5 * np.log10(total_mag)
     assert np.all(data["lsst_total"] == total_mag)
+
+
+def test_open_bad_data(core_path_475, core_path_487, invalid_data_path):
+    with pytest.raises(ValueError, match=str(invalid_data_path)):
+        oc.open(core_path_475, core_path_487, invalid_data_path)

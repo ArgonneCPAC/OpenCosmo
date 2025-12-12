@@ -1,0 +1,1 @@
+Writing in an MPI context will now fail with an error if no rank has data to write

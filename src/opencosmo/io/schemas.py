@@ -319,8 +319,7 @@ class DatasetSchema:
         if len(self.columns) == 0:
             raise ValueError("Datasets must have at least one column")
 
-        for group, columns in self.columns.items():
-            sizes = set(len(col) for col in columns.values())
+        sizes = set(len(col) for col in self.columns["data"].values())
 
         if len(sizes) == 1 and sizes.pop() == 0:
             raise ZeroLengthError()
