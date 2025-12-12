@@ -97,7 +97,9 @@ class OpenCosmoHeader:
 
         cosmology = table.get("cosmology")
         convention = object.__getattribute__(self, "unit_convention")
-        scale_factor = cosmology.scale_factor(self.__file_pars.redshift)
+        scale_factor = None
+        if self.__file_pars.redshift is not None:
+            scale_factor = cosmology.scale_factor(self.__file_pars.redshift)
         for name, model in table.items():
             if isinstance(model, BaseModel):
                 table[name] = apply_units(

@@ -8,8 +8,15 @@ from weakref import ref
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.index import ChunkedIndex, SimpleIndex
-from opencosmo.index.take import take
+from opencosmo.index import (
+    ChunkedIndex,
+    SimpleIndex,
+    from_size,
+    get_data,
+    get_length,
+    into_array,
+    take,
+)
 from opencosmo.io.schemas import DatasetSchema
 from opencosmo.mpi import get_comm_world
 
@@ -32,10 +39,12 @@ class Hdf5Handler:
         group: h5py.Group,
         index: DataIndex,
         metadata_group: Optional[h5py.Group],
+        in_memory: bool = False,
     ):
         self.__index = index
         self.__group = group
         self.__metadata_group = metadata_group
+        self.__in_memory = group.file.driver == "core"
 
     @classmethod
     def from_group(
@@ -51,13 +60,17 @@ class Hdf5Handler:
             raise ValueError("Not all columns are the same length!")
 
         if index is None:
-            index = ChunkedIndex.from_size(lengths.pop())
+            index = from_size(lengths.pop())
 
         colnames = group.keys()
         if metadata_group is not None:
             colnames = chain(colnames, metadata_group.keys())
 
         return Hdf5Handler(group, index, metadata_group)
+
+    @property
+    def in_memory(self) -> bool:
+        return self.__in_memory
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
@@ -66,18 +79,16 @@ class Hdf5Handler:
         if sorted is not None:
             return self.__take_sorted(other, sorted)
 
-        from time import time
-
         new_index = take(self.__index, other)
         return Hdf5Handler(self.__group, new_index, self.__metadata_group)
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
-        if len(sorted) != len(self.__index):
+        if get_length(sorted) != get_length(self.__index):
             raise ValueError("Sorted index has the wrong length!")
-        new_indices = other.get_data(sorted)
+        new_indices = get_data(other, sorted)
 
-        new_raw_index = self.__index.into_array()[new_indices]
-        new_index = SimpleIndex(np.sort(new_raw_index))
+        new_raw_index = into_array(self.__index)[new_indices]
+        new_index = np.sort(new_raw_index)
 
         return Hdf5Handler(self.__group, new_index, self.__metadata_group)
 
@@ -153,7 +164,7 @@ class Hdf5Handler:
         data = {}
 
         for colname in columns:
-            data[colname] = self.__index.get_data(self.__group[colname])
+            data[colname] = get_data(self.__group[colname], self.__index)
 
         # Ensure order is preserved
         return {name: data[name] for name in columns}
@@ -166,7 +177,7 @@ class Hdf5Handler:
 
         data = {}
         for colname in columns:
-            data[colname] = self.__index.get_data(self.__metadata_group[colname])
+            data[colname] = get_data(self.__metadata_group[colname], self.__index)
 
         return data
 

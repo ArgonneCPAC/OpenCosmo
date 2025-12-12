@@ -1,0 +1,1 @@
+Add the ability to create datasets entirely in memory, which is used at present to support downgrading healpix maps.

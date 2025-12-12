@@ -12,6 +12,7 @@ import opencosmo as oc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index.unary import get_length
 from opencosmo.io.schemas import StructCollectionSchema
 
 from .handler import LinkHandler
@@ -151,7 +152,7 @@ class StructureCollection:
         return self.__source.columns
 
     @property
-    def redshift(self) -> float | tuple[float, float]:
+    def redshift(self) -> float | tuple[float, float] | None:
         """
         For snapshots, return the redshift or redshift range
         this dataset was drawn from.
@@ -1142,10 +1143,11 @@ class StructureCollection:
                 links = self.__handler.parse(row)
                 output = {}
                 for name, index in links.items():
+                    ilength = get_length(index)
                     output[name] = datasets[name].take_range(
-                        rs[name], rs[name] + len(index)
+                        rs[name], rs[name] + ilength
                     )
-                    rs[name] += len(index)
+                    rs[name] += ilength
 
                 if not self.__hide_source:
                     output.update({self.__source.dtype: row})

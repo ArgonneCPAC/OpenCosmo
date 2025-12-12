@@ -13,7 +13,7 @@ from opencosmo.dataset import state as dss
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import read_header
-from opencosmo.index import ChunkedIndex
+from opencosmo.index.build import empty, from_range
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
@@ -29,11 +29,12 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import ChunkedIndex
 
     from .protocols import Writeable
 
-mpiio: Optional[ModuleType]
-partition: Optional[Callable]
+    mpiio: Optional[ModuleType]
+    partition: Optional[Callable]
 
 if get_comm_world() is not None:
     from opencosmo.dataset.mpi import partition
@@ -42,24 +43,24 @@ else:
     mpiio = None
     partition = None
 
-"""
-This module defines the main user-facing io functions: open and write
+    """
+    This module defines the main user-facing io functions: open and write
 
-open can take any number of file paths, and will always construct a single object 
-(either a dataset or a collection).
+    open can take any number of file paths, and will always construct a single object 
+    (either a dataset or a collection).
 
-write takes exactly one path and exactly one opencosmo dataset or collection
+    write takes exactly one path and exactly one opencosmo dataset or collection
 
-open works in the following way:
+    open works in the following way:
 
-1. Read headers and get dataset names and types for all files passed
-2. If there is only a single dataset, simply open it as such
-3. If there are multiple datasets, user the headers to determine
-   if the dataset are compatible (i.e. capabale of existing together in
-   a collection)
-4. Open all datasets individually
-5. Call the merge functionality for the appropriate collection.
-"""
+    1. Read headers and get dataset names and types for all files passed
+    2. If there is only a single dataset, simply open it as such
+    3. If there are multiple datasets, user the headers to determine
+       if the dataset are compatible (i.e. capabale of existing together in
+       a collection)
+    4. Open all datasets individually
+    5. Call the merge functionality for the appropriate collection.
+    """
 
 
 class FILE_TYPE(Enum):
@@ -72,6 +73,7 @@ class FILE_TYPE(Enum):
     STRUCTURE_COLLECTION = 6
     SIMULATION_COLLECTION = 7
     SYNTHETIC_CATALOG = 8
+    HEALPIX_MAP = 9
 
 
 class COLLECTION_TYPE(Enum):
@@ -105,6 +107,8 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
             return FILE_TYPE.GALAXY_PARTICLES
         elif dtype == "diffsky_fits":
             return FILE_TYPE.SYNTHETIC_CATALOG
+        elif dtype == "healpix_map":
+            return FILE_TYPE.HEALPIX_MAP
         else:
             raise ValueError(f"Unknown file type {dtype}")
 
@@ -137,9 +141,18 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
 
 
 def make_all_targets(files: list[h5py.File]):
-    targets: list[OpenTarget] = reduce(
-        lambda targets, file: targets + make_file_targets(file), files, []
-    )
+    bad_files = []
+    targets = []
+    for file in files:
+        try:
+            targets += make_file_targets(file)
+        except ValueError:
+            bad_files.append(file.filename)
+    if bad_files:
+        raise ValueError(
+            f"Some files were not able to be opened. They may not be OpenCosmo files: {bad_files}"
+        )
+
     return targets
 
 
@@ -224,9 +237,9 @@ def open(
         file_list = list(files)
     file_list.sort()
     handles = [h5py.File(f) for f in file_list]
-    file_types = list(map(get_file_type, handles))
     targets = make_all_targets(handles)
     targets = evaluate_load_conditions(targets, open_kwargs)
+    file_types = list(map(get_file_type, handles))
     if len(targets) > 1:
         collection_type = collection.get_collection_type(targets, file_types)
         return collection_type.open(targets, **open_kwargs)
@@ -271,17 +284,27 @@ def open_single_dataset(
 
     if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
-        idx_data = handle["index"]
-
-        part = partition(comm, len(handler), idx_data, tree)
-        if part is None:
-            index = ChunkedIndex.empty()
-        else:
-            index = part.idx
-            sim_region = part.region if part.region is not None else sim_region
+        try:
+            idx_data = handle["index"]
+            part = partition(comm, len(handler), idx_data, tree)
+            if part is None:
+                index = empty()
+            else:
+                index = part.idx
+                sim_region = part.region if part.region is not None else sim_region
+        except KeyError:
+            n_ranks = comm.Get_size()
+            n_per = len(handler) // n_ranks
+            chunk_boundaries = [i * n_per for i in range(n_ranks + 1)]
+            chunk_boundaries[-1] = len(handler)
+            rank = comm.Get_rank()
+            index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
 
     if metadata_group is not None:
         metadata_group = handle[metadata_group]
+
+    elif "metadata" in handle.keys():
+        metadata_group = handle["metadata"]
 
     state = dss.DatasetState.from_group(
         handle["data"],
@@ -297,8 +320,16 @@ def open_single_dataset(
         state,
         tree=tree,
     )
-
-    if header.file.is_lightcone and not bypass_lightcone:
+    if header.file.data_type == "healpix_map":
+        return collection.HealpixMap(
+            {"data": dataset},
+            header.healpix_map["nside"],
+            header.healpix_map["nside_lr"],
+            header.healpix_map["ordering"],
+            header.healpix_map["full_sky"],
+            header.healpix_map["z_range"],
+        )
+    elif header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset

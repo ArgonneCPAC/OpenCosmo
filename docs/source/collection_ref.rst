@@ -21,3 +21,10 @@ Collections within a single file can always be loaded with :py:func:`opencosmo.o
    :exclude-members: open,read,close,write
    :undoc-members:
    :member-order: bysource
+
+.. autoclass:: opencosmo.HealpixMap
+   :members:
+   :exclude-members: open,read,close,write
+   :undoc-members:
+   :member-order: bysource
+

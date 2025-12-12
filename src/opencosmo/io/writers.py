@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
-from opencosmo.index import ChunkedIndex, SimpleIndex
+from opencosmo.index import SimpleIndex, empty, get_data
 from opencosmo.io.updaters import apply_updaters
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ and that all the datasets have the correct size, datatype, etc.
 """
 
 
-def get_data(
+def get_column_data(
     input_ds: h5py.Dataset | np.ndarray,
     index: DataIndex,
     dtype,
@@ -39,7 +39,7 @@ def get_data(
 ):
     data = np.array([])
     if len(index) > 0 and input_ds is not None:
-        data = index.get_data(input_ds)
+        data = get_data(input_ds, index)
         if updater is not None:
             data = updater(data)
 
@@ -58,7 +58,13 @@ def write_index(
     Helper function to take elements from one h5py.Dataset using an index
     and put it in a different one.
     """
-    data = get_data(input_ds, index, output_ds.dtype, updater)
+    data = np.array([])
+    if len(index) > 0 and input_ds is not None:
+        data = get_data(input_ds, index)
+        if updater is not None:
+            data = updater(data)
+
+        data = data.astype(input_ds.dtype)
 
     if input_ds is not None:
         output_ds[offset : offset + len(data)] = data
@@ -179,7 +185,8 @@ class EmptyColumnWriter:
     ):
         ds = group[self.name]
 
-        write_index(None, ds, SimpleIndex.empty(), updater=updater)
+        write_index(None, ds, empty(), updater=updater)
+        ds.file.flush()
 
 
 class ColumnWriter:
@@ -204,7 +211,7 @@ class ColumnWriter:
         self.updater = updater
 
     def get_data(self):
-        data = get_data(self.source, self.index, self.source.dtype, self.updater)
+        data = get_column_data(self.source, self.index, self.source.dtype, self.updater)
         return data
 
     def write(
@@ -214,3 +221,4 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, self.updater)
+        ds.file.flush()

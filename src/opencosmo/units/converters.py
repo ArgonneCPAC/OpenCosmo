@@ -25,8 +25,8 @@ def get_unit_transitions(
     is_comoving: bool,
 ):
     match base_convention:
-        case (UnitConvention.PHYSICAL, UnitConvention.UNITLESS):
-            return {}, {}
+        case UnitConvention.PHYSICAL | UnitConvention.UNITLESS:
+            return {}, {}, {}
         case UnitConvention.SCALEFREE:
             return get_scalefree_transitions(unit, cosmology, is_comoving)
         case UnitConvention.COMOVING:
@@ -123,7 +123,10 @@ def get_unit_distance_power(unit: u.Unit) -> Optional[float]:
 
 
 def add_littleh(value: u.Quantity, cosmology: Cosmology, new_unit: u.Unit, **kwargs):
-    return value.to(new_unit, cu.with_H0(cosmology.H0))
+    return value.to(
+        new_unit,
+        cu.with_H0(cosmology.H0),  # pyrefly: ignore[missing-attribute]
+    )
 
 
 def physical_to_comoving(
@@ -142,7 +145,10 @@ def remove_littleh(value: u.Quantity, cosmology: Cosmology, **kwargs) -> u.Quant
     """
     new_unit = get_unit_without_h(value.unit)
     if new_unit != value.unit:
-        return value.to(new_unit, cu.with_H0(cosmology.H0))
+        return value.to(
+            new_unit,
+            cu.with_H0(cosmology.H0),  # pyrefly: ignore[missing-attribute]
+        )
     return value
 
 
@@ -167,12 +173,12 @@ def get_scale_factor(dataset: "DatasetState", cosmology, redshift):
     columns = set(dataset.columns)
     for column in KNOWN_SCALEFACTOR_COLUMNS:
         if column in columns:
-            col = dataset.select(column).get_data("numpy")[column]
+            col = dataset.select(column).get_data()[column]
             return col
 
     for column in KNOWN_REDSHIFT_COLUMNS:
         if column in columns:
-            col = dataset.select(column).get_data("numpy")[column]
+            col = dataset.select(column).get_data()[column]
             return 1 / (1 + col)
 
     return cosmology.scale_factor(redshift)

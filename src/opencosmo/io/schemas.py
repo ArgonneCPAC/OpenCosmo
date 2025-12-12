@@ -10,9 +10,10 @@ import hdf5plugin  # type: ignore
 import healpy as hp
 import numpy as np
 
+import numpy as np
+
 import opencosmo.io.writers as iow
-from opencosmo.index import ChunkedIndex
-from opencosmo.spatial.check import find_coordinates_2d
+from opencosmo.index import ChunkedIndex, concatenate, get_length
 
 if TYPE_CHECKING:
     from mpi4py import MPI
@@ -204,10 +205,8 @@ class StructCollectionSchema:
     contain several datasets from the same simulation.
     """
 
-    def __init__(self):
-        self.children: dict[str, DatasetSchema | StructCollectionSchema] = defaultdict(
-            dict
-        )
+    def __init__(self) -> None:
+        self.children: dict[str, DatasetSchema | StructCollectionSchema] = {}
 
     def verify(self):
         if len(self.children) < 2:
@@ -325,11 +324,9 @@ class DatasetSchema:
         if len(self.columns) == 0:
             raise ValueError("Datasets must have at least one column")
 
-        column_lengths = set()
-        for group, columns in self.columns.items():
-            sizes = set(len(col) for col in columns.values())
+        sizes = set(len(col) for col in self.columns["data"].values())
 
-        if len(sizes) == 1 and column_lengths.pop() == 0:
+        if len(sizes) == 1 and sizes.pop() == 0:
             raise ZeroLengthError()
 
         for group in self.columns.values():
@@ -452,11 +449,11 @@ class ColumnSchema:
         self.offset = 0
         self.output_order = output_order
         if total_length is None:
-            total_length = len(index)
+            total_length = get_length(index)
         self.total_length = total_length
 
     def __len__(self):
-        return len(self.index)
+        return get_length(self.index)
 
     def concatenate(self, *others: "ColumnSchema"):
         for other in others:
@@ -465,7 +462,7 @@ class ColumnSchema:
             if self.source.shape[1:] != other.source.shape[1:]:
                 raise ValueError("Tried to combine columns with incompatible shapes")
 
-        new_index = self.index.concatenate(*[o.index for o in others])
+        new_index = concatenate(self.index, *[o.index for o in others])
         return ColumnSchema(self.name, new_index, self.source, self.attrs)
 
     def add_child(self, *args, **kwargs):

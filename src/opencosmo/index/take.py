@@ -6,44 +6,40 @@ import numba as nb  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
 
-from . import ChunkedIndex, SimpleIndex
-
+SimpleIndex = np.ndarray
+ChunkedIndex = tuple[np.ndarray, np.ndarray]
 if TYPE_CHECKING:
-    from opencosmo.index.protocols import DataIndex
+    from opencosmo.index import DataIndex
 
 
-def take(from_: DataIndex, by: DataIndex):
+def take(from_, by):
     match (from_, by):
-        case (SimpleIndex(), SimpleIndex()):
-            return take_simple_from_simple(from_, by)
-        case (SimpleIndex(), ChunkedIndex()):
-            return take_chunked_from_simple(from_, by)
-        case (ChunkedIndex(), SimpleIndex()):
-            return take_simple_from_chunked(from_, by)
-        case (ChunkedIndex(), ChunkedIndex()):
-            return take_chunked_from_chunked(from_, by)
+        case (np.ndarray(), np.ndarray()):
+            return __take_simple_from_simple(from_, by)
+        case (np.ndarray(), (np.ndarray(), np.ndarray())):
+            return __take_chunked_from_simple(from_, by)
+        case ((np.ndarray(), np.ndarray()), np.ndarray()):
+            return __take_simple_from_chunked(from_, by)
+        case ((np.ndarray(), np.ndarray()), (np.ndarray(), np.ndarray())):
+            return __take_chunked_from_chunked(from_, by)
 
 
-def take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex):
-    cumulative = np.insert(np.cumsum(from_.sizes), 0, 0)[:-1]
-    arr = by.into_array()
+def __take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex):
+    cumulative = np.insert(np.cumsum(from_[1]), 0, 0)[:-1]
 
-    indices_into_chunks = np.argmax(arr[:, np.newaxis] < cumulative, axis=1) - 1
-    output = arr - cumulative[indices_into_chunks] + from_.starts[indices_into_chunks]
-    return SimpleIndex(output)
-
-
-def take_simple_from_simple(from_: SimpleIndex, by: SimpleIndex):
-    return SimpleIndex(from_.into_array()[by.into_array()])
+    indices_into_chunks = np.argmax(by[:, np.newaxis] < cumulative, axis=1) - 1
+    output = by - cumulative[indices_into_chunks] + from_[0][indices_into_chunks]
+    return output
 
 
-def take_chunked_from_simple(from_: SimpleIndex, by: ChunkedIndex):
-    from_arr = from_.into_array()
-    starts = by.starts
-    sizes = by.sizes
-    output = np.zeros(sizes.sum(), dtype=int)
-    output = __cfs_helper(from_arr, starts, sizes, output)
-    return SimpleIndex(output)
+def __take_simple_from_simple(from_: np.ndarray, by: np.ndarray):
+    return from_[by]
+
+
+def __take_chunked_from_simple(from_: SimpleIndex, by: ChunkedIndex):
+    output = np.zeros(by[1].sum(), dtype=int)
+    output = __cfs_helper(from_, *by, output)
+    return output
 
 
 @nb.njit
@@ -131,18 +127,23 @@ def resolve_spanning_numba(
     return out_pos
 
 
-def take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
-    if from_.is_single_chunk() and from_.range()[0] == 0:
+def __take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
+    if len(from_[0]) == 0 and from_[0][0] == 0:
         return by
 
-    max_out = len(by.sizes) * len(from_.sizes)
+    max_out = len(by[1]) * len(from_[1])
     out_start = np.empty(max_out, dtype=np.int64)
     out_size = np.empty(max_out, dtype=np.int64)
     out_owner = np.empty(max_out, dtype=np.int64)
 
+    from_start = from_[0].astype(np.float64, copy=False)
+    from_size = from_[1].astype(np.float64, copy=False)
+    by_start = by[0].astype(np.float64, copy=False)
+    by_size = by[1].astype(np.float64, copy=False)
+
     n = resolve_spanning_numba(
-        from_.starts, from_.sizes, by.starts, by.sizes, out_start, out_size, out_owner
+        from_[0], from_[1], by[0], by[1], out_start, out_size, out_owner
     )
     out_start = np.resize(out_start, (n,))
     out_size = np.resize(out_size, (n,))
-    return ChunkedIndex(out_start, out_size)
+    return out_start, out_size

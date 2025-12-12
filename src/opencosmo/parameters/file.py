@@ -28,15 +28,15 @@ class FileType(Enum):
     halo_profiles = "halo_profiles"
     halo_particles = "halo_particles"
     diffsky_fits = "diffsky_fits"
-
+    healpix_map = "healpix_map"
 
 class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True, frozen=True)
     origin: str = "HACC"
     data_type: FileType
     is_lightcone: bool
-    redshift: float
-    step: int
+    redshift: Optional[float] = None
+    step: Optional[int] = None
     region: Optional[sm.RegionModel] = None
     unit_convention: UnitConvention = UnitConvention.SCALEFREE
 

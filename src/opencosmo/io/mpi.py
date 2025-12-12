@@ -9,7 +9,7 @@ import h5py
 import numpy as np
 from mpi4py import MPI
 
-from opencosmo.index import ChunkedIndex
+from opencosmo.index import from_size, get_length
 from opencosmo.mpi import get_comm_world
 
 from .schemas import (
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
 
     from .protocols import DataSchema
+
 
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
@@ -81,6 +82,9 @@ def write_parallel(file: Path, file_schema: FileSchema):
         raise ValueError("One or more ranks recieved invalid schemas!")
 
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
+    if len(has_data) == 0:
+        raise ValueError("No ranks have any data to write!")
+
     group = comm.Get_group()
     new_group = group.Incl(has_data)
     new_comm = comm.Create(new_group)
@@ -220,13 +224,13 @@ def combine_dataset_schemas(
 
     for groupname in all_group_names:
         group_column_names = get_all_child_names(children.get(groupname, {}), comm)
-        if groupname in ["data", "data_linked"]:
-            new_schema.columns[groupname] = combine_data_group(
-                columns[groupname], group_column_names, comm
-            )
-        elif groupname == "index":
+        if groupname == "index":
             new_schema.columns[groupname] = combine_spatial_index_schema(
                 columns[groupname], comm
+            )
+        else:
+            new_schema.columns[groupname] = combine_data_group(
+                columns[groupname], group_column_names, comm
             )
     return new_schema
 
@@ -303,7 +307,7 @@ def combine_spatial_index_level_schemas(
 
     if not schemas:
         source = np.zeros(level_len, dtype=np.int32)
-        index = ChunkedIndex.from_size(len(source))
+        index = from_size(len(source))
         start = ColumnSchema(
             f"level_{level}/start", index, source, {}, total_length=level_len
         )
@@ -342,18 +346,30 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
 
     for child_name in all_child_names:
         child = children.get(child_name)
-        z_range = get_z_range(child, comm)
-
-        new_dataset_schema = combine_dataset_schemas(
-            children.get(child_name), comm, {"lightcone/z_range": z_range}
-        )
+        if child is None:
+            continue
+        if child.header is None:
+            continue
+        if child.header.file.data_type == "healpix_map":
+            new_dataset_schema = combine_dataset_schemas(
+                children.get(child_name),
+                comm,
+            )
+        else:
+            z_range = get_z_range(child, comm)
+            new_dataset_schema = combine_dataset_schemas(
+                children.get(child_name), comm, {"lightcone/z_range": z_range}
+            )
         new_schema.add_child(new_dataset_schema, child_name)
     return new_schema
 
 
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
     if ds is not None and ds.header is not None:
-        z_ranges = comm.allgather(ds.header.lightcone["z_range"])
+        if ds.header.file.data_type == "healpix_map":
+            z_ranges = comm.allgather(ds.header.healpix_map["z_range"])
+        else:
+            z_ranges = comm.allgather(ds.header.lightcone["z_range"])
     else:
         z_ranges = comm.allgather(None)
     z_ranges = list(filter(lambda dz: dz is not None, z_ranges))
@@ -441,7 +457,7 @@ def combine_column_schemas(
     if schema is None:
         length = 0
     else:
-        length = len(schema.index)
+        length = get_length(schema.index)
 
     shape, name, attrs, dtype = verify_column_schemas(schema, comm)
 

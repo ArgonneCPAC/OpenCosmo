@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from opencosmo.parameters.file import FileParameters
 
 
+# TODO: think I need to alter this
 def get_dtype_parameters(file_parameters: FileParameters) -> dict[str, type[BaseModel]]:
     if file_parameters.origin == "HACC":
         known_dtype_params = hacc.DATATYPE_PARAMETERS

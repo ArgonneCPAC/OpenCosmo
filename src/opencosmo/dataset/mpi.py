@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 from warnings import warn
 
 from opencosmo.index import ChunkedIndex
+from opencosmo.index.build import single_chunk
 from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
@@ -38,13 +39,13 @@ def partition(
     if rank == nranks - 1:
         start = rank * (length // nranks)
         size = length - start
-        index = ChunkedIndex.single_chunk(start, size)
+        index = single_chunk(start, size)
 
     else:
         start = rank * (length // nranks)
         end = (rank + 1) * (length // nranks)
         size = end - start
 
-        index = ChunkedIndex.single_chunk(start, size)
+        index = single_chunk(start, size)
 
     return TreePartition(index, None, None)

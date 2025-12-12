@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 import astropy.units as u  # type: ignore
+import healpy as hp
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 
@@ -18,6 +19,7 @@ ALLOWED_COORDINATES_3D = {
         "sod": "sod_halo_com_",
     }
 }
+
 
 
 def check_containment(
@@ -41,9 +43,24 @@ def get_theta_phi_coordinates(dataset: "Dataset"):
     return SkyCoord(ra, dec, unit=u.rad)
 
 
+def get_theta_phi_coordinates_pixel(dataset: "Dataset"):
+
+    pixel_values = dataset.get_metadata(['pixel'])['pixel']
+    theta, phi = hp.pix2ang(
+        dataset.header.healpix_map["nside"], pixel_values, lonlat=False, nest=True
+    )
+    ra = phi
+    dec = np.pi / 2 - theta
+    return SkyCoord(ra, dec, unit=u.rad)
+
+
+
+
 def find_coordinates_2d(dataset: "Dataset"):
     columns = set(dataset.columns)
-    if len(columns.intersection(set(["theta", "phi"]))) == 2:
+    if dataset.header.file.data_type == "healpix_map":
+        return get_theta_phi_coordinates_pixel(dataset)
+    elif len(columns.intersection(set(["theta", "phi"]))) == 2:
         return get_theta_phi_coordinates(dataset)
     elif len(columns.intersection(set(["ra", "dec"]))) == 2:
         data = dataset.select(["ra", "dec"]).data
