@@ -155,7 +155,7 @@ class SimCollectionSchema:
 
 
 class LightconeSchema:
-    def __init__(self):
+    def __init__(self) -> None:
         self.children: dict[str, DatasetSchema | StackedLightconeDatasetSchema] = {}
 
     def verify(self):

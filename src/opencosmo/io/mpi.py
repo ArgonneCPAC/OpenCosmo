@@ -350,19 +350,22 @@ def get_lightcone_child_types(children: dict, comm: MPI.Comm, debug=False):
             case None:
                 child_types = comm.allgather(None)
             case DatasetSchema():
-                if child.header.file.data_type == "healpix_map":
+                if (
+                    child.header is not None
+                    and child.header.file.data_type == "healpix_map"
+                ):
                     child_types = comm.allgather(LightconeCombineType.HEALPIX_MAP)
                 else:
                     child_types = comm.allgather(LightconeCombineType.LIGHTCONE)
             case StackedLightconeDatasetSchema():
                 child_types = comm.allgather(LightconeCombineType.STACKED_LIGHTCONE)
 
-        child_types = set(filter(lambda c: c is not None, child_types))
-        if len(child_types) > 1:
+        found_child_types = set(filter(lambda c: c is not None, child_types))
+        if len(found_child_types) > 1:
             raise ValueError(
                 f"Got multiple different types for child {child} on different ranks!"
             )
-        output[child_name] = child_types.pop()
+        output[child_name] = found_child_types.pop()
     return output
 
 
@@ -378,20 +381,25 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     for child_name, child_type in all_child_types.items():
         match child_type:
             case LightconeCombineType.LIGHTCONE:
+                child = children.get(child_name)
+                assert child is None or isinstance(child, DatasetSchema)
+
                 z_range = get_z_range(child, comm)
                 new_child_schema = combine_dataset_schemas(
-                    children.get(child_name), comm, {"lightcone/z_range": z_range}
+                    child, comm, {"lightcone/z_range": z_range}
                 )
                 pass
             case LightconeCombineType.HEALPIX_MAP:
+                child = children.get(child_name)
+                assert child is None or isinstance(child, DatasetSchema)
                 new_child_schema = combine_dataset_schemas(
-                    children.get(child_name),
+                    child,
                     comm,
                 )
             case LightconeCombineType.STACKED_LIGHTCONE:
-                new_child_schema = combine_stacked_lightcone_dataset_schema(
-                    children.get(child_name), comm
-                )
+                child = children.get(child_name)
+                assert child is None or isinstance(child, StackedLightconeDatasetSchema)
+                new_child_schema = combine_stacked_lightcone_dataset_schema(child, comm)
             case _:
                 raise TypeError(f"Invalid lightcone subtype {child_type}")
         new_schema.add_child(new_child_schema, child_name)
@@ -399,7 +407,7 @@ def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
 
 
 def combine_stacked_lightcone_dataset_schema(
-    schema: StackedLightconeDatasetSchema, comm
+    schema: StackedLightconeDatasetSchema | None, comm
 ):
     if schema is None:
         all_lengths = comm.allgather(0)

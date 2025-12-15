@@ -45,6 +45,7 @@ def get_single_redshift_range(dataset: Dataset):
         return redshift_range
     step_zs = dataset.header.simulation["step_zs"]
     step = dataset.header.file.step
+    assert step is not None
     min_redshift = step_zs[step]
     max_redshift = step_zs[step - 1]
     return (min_redshift, max_redshift)
@@ -106,6 +107,8 @@ def order_by_redshift_range(datasets: dict[str, Dataset]):
 
 def get_all_dataset_names(ordered_datasets: dict[str, Dataset]):
     comm = get_comm_world()
+    if comm is None:
+        return list(ordered_datasets.keys())
 
     dataset_names = set(ordered_datasets.keys())
     all_dataset_names: Iterable[str]
@@ -122,6 +125,7 @@ def combine_adjacent_datasets_mpi(
     all_dataset_names = get_all_dataset_names(ordered_datasets)
     comm = get_comm_world()
     MPI = get_mpi()
+    assert comm is not None and MPI is not None
     rs = 0
     output: dict[str, list[Dataset]] = OrderedDict()
     for name in all_dataset_names:
