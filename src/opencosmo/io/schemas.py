@@ -283,6 +283,10 @@ class DatasetSchema:
     def children(self):
         return self.columns
 
+    def len(self):
+        col = next(iter(self.columns["data"].values()))
+        return len(col)
+
     @classmethod
     def make_schema(
         cls,

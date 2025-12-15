@@ -216,6 +216,7 @@ class Lightcone(dict):
             raise ValueError("Not all lightcone datasets have the same columns!")
         header = next(iter(self.values())).header
         self.__header = header.with_parameter("lightcone/z_range", z_range)
+
         if hidden is None:
             hidden = set()
 
@@ -516,17 +517,14 @@ class Lightcone(dict):
         output_datasets = combine_adjacent_datasets(datasets)
 
         for name, datasets in output_datasets.items():
-            if len(datasets) == 1:
-                ds_schema = datasets[0].make_schema()
-                ds_schema.header = ds_schema.header.with_parameter(
-                    "lightcone/z_range", get_single_redshift_range(datasets[0])
-                )
-                schema.add_child(ds_schema, name)
-                continue
-            z_range = get_redshift_range(datasets)
+            (ds_min, ds_max) = get_redshift_range(datasets)
+
             stacked_schema = StackedLightconeDatasetSchema(
                 datasets,
-                self.header.with_parameter("lightcone/z_range", z_range),
+                self.header.with_parameter(
+                    "lightcone/z_range",
+                    (max(ds_min, self.z_range[0]), min(ds_max, self.z_range[1])),
+                ),
                 sum((len(ds) for ds in datasets)),
                 0,
             )
