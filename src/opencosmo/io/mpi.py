@@ -19,6 +19,7 @@ from .schemas import (
     FileSchema,
     LightconeSchema,
     SimCollectionSchema,
+    StackedLightconeDatasetSchema,
     StructCollectionSchema,
     ZeroLengthError,
 )
@@ -335,33 +336,88 @@ def combine_spatial_index_level_schemas(
     return new_schemas
 
 
+class LightconeCombineType(Enum):
+    LIGHTCONE = 1
+    STACKED_LIGHTCONE = 2
+    HEALPIX_MAP = 3
+
+
+def get_lightcone_child_types(children: dict, comm: MPI.Comm, debug=False):
+    all_child_names = get_all_child_names(children, comm)
+    output = {}
+    for child_name in all_child_names:
+        match child := children.get(child_name):
+            case None:
+                child_types = comm.allgather(None)
+            case DatasetSchema():
+                if child.header.file.data_type == "healpix_map":
+                    child_types = comm.allgather(LightconeCombineType.HEALPIX_MAP)
+                else:
+                    child_types = comm.allgather(LightconeCombineType.LIGHTCONE)
+            case StackedLightconeDatasetSchema():
+                child_types = comm.allgather(LightconeCombineType.STACKED_LIGHTCONE)
+
+        child_types = set(filter(lambda c: c is not None, child_types))
+        if len(child_types) > 1:
+            raise ValueError(
+                f"Got multiple different types for child {child} on different ranks!"
+            )
+        output[child_name] = child_types.pop()
+    return output
+
+
 def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     if schema is None:
         children = {}
     else:
         children = schema.children
 
-    all_child_names = get_all_child_names(children, comm, debug=True)
+    all_child_types = get_lightcone_child_types(children, comm)
     new_schema = LightconeSchema()
 
-    for child_name in all_child_names:
-        child = children.get(child_name)
-        if child is None:
-            continue
-        if child.header is None:
-            continue
-        if child.header.file.data_type == "healpix_map":
-            new_dataset_schema = combine_dataset_schemas(
-                children.get(child_name),
-                comm,
-            )
-        else:
-            z_range = get_z_range(child, comm)
-            new_dataset_schema = combine_dataset_schemas(
-                children.get(child_name), comm, {"lightcone/z_range": z_range}
-            )
-        new_schema.add_child(new_dataset_schema, child_name)
+    for child_name, child_type in all_child_types.items():
+        match child_type:
+            case LightconeCombineType.LIGHTCONE:
+                z_range = get_z_range(child, comm)
+                new_child_schema = combine_dataset_schemas(
+                    children.get(child_name), comm, {"lightcone/z_range": z_range}
+                )
+                pass
+            case LightconeCombineType.HEALPIX_MAP:
+                new_child_schema = combine_dataset_schemas(
+                    children.get(child_name),
+                    comm,
+                )
+            case LightconeCombineType.STACKED_LIGHTCONE:
+                new_child_schema = combine_stacked_lightcone_dataset_schema(
+                    children.get(child_name), comm
+                )
+            case _:
+                raise TypeError(f"Invalid lightcone subtype {child_type}")
+        new_schema.add_child(new_child_schema, child_name)
     return new_schema
+
+
+def combine_stacked_lightcone_dataset_schema(
+    schema: StackedLightconeDatasetSchema, comm
+):
+    if schema is None:
+        all_lengths = comm.allgather(0)
+    else:
+        all_lengths = comm.allgather(schema.total_length)
+
+    bounds = np.cumsum(all_lengths)
+
+    if (rank := comm.Get_rank()) == 0:
+        offset = 0
+    else:
+        offset = bounds[rank - 1]
+
+    if schema is not None:
+        schema.offset = offset
+        schema.total_length = np.sum(all_lengths)
+        schema.comm = comm
+    return schema
 
 
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):

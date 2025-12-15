@@ -168,3 +168,24 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     original_early_index.sort()
     written_early_index.sort()
     parallel_assert(np.all(original_early_index == written_early_index))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lightcone_stacking(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    comm = MPI.COMM_WORLD
+    tmp_path = comm.bcast(tmp_path)
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    ds = ds.take(30_000, at="random")
+    for dataset in ds.values():
+        assert dataset.header.lightcone["z_range"] != ds.z_range
+
+    fof_tags = ds.select("fof_halo_tag").get_data()
+    output_path = tmp_path / "data.hdf5"
+    oc.write(output_path, ds)
+    ds_new = oc.open(output_path)
+    fof_tags_new = ds_new.select("fof_halo_tag").get_data()
+    assert len(ds_new.keys()) == 1
+    assert len(ds_new) == len(ds)
+    assert np.all(np.unique(fof_tags) == np.unique(fof_tags_new))
+    assert ds_new.z_range == ds.z_range
+    assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range

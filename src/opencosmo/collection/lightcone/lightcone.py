@@ -15,6 +15,7 @@ from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schemas import LightconeSchema, StackedLightconeDatasetSchema
+from opencosmo.mpi import get_comm_world, get_mpi
 
 if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
@@ -103,15 +104,54 @@ def order_by_redshift_range(datasets: dict[str, Dataset]):
     return output
 
 
-def combine_adjacent_datasets(ordered_datasets: dict[str, Dataset]):
+def get_all_dataset_names(ordered_datasets: dict[str, Dataset]):
+    comm = get_comm_world()
+
+    dataset_names = set(ordered_datasets.keys())
+    all_dataset_names: Iterable[str]
+    all_dataset_names = dataset_names.union(*comm.allgather(dataset_names))
+    all_dataset_names = list(all_dataset_names)
+    all_dataset_names.sort()
+    return all_dataset_names
+
+
+def combine_adjacent_datasets_mpi(
+    ordered_datasets: dict[str, Dataset], min_dataset_size
+):
     MIN_DATASET_SIZE = 100_000
+    all_dataset_names = get_all_dataset_names(ordered_datasets)
+    comm = get_comm_world()
+    MPI = get_mpi()
+    rs = 0
+    output: dict[str, list[Dataset]] = OrderedDict()
+    for name in all_dataset_names:
+        if rs == 0:
+            current_key = name
+            output[current_key] = []
+
+        if name not in ordered_datasets:
+            rs += comm.allreduce(0, MPI.SUM)
+        else:
+            rs += comm.allreduce(len(ordered_datasets[name]), MPI.SUM)
+            output[current_key].append(ordered_datasets[name])
+
+        if rs > MIN_DATASET_SIZE:
+            rs = 0
+    return output
+
+
+def combine_adjacent_datasets(
+    ordered_datasets: dict[str, Dataset], min_dataset_size=100_000
+):
+    if get_mpi() is not None:
+        return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
     rs = 0
     current: list[Dataset] = []
     current_key = next(iter(ordered_datasets.keys()))
     output: dict[str, list[Dataset]] = OrderedDict({current_key: []})
 
     for key, ds in ordered_datasets.items():
-        if rs < MIN_DATASET_SIZE:
+        if rs < min_dataset_size:
             rs += len(ds)
             output[current_key].append(ds)
             continue
@@ -481,7 +521,10 @@ class Lightcone(dict):
                 continue
             z_range = get_redshift_range(datasets)
             stacked_schema = StackedLightconeDatasetSchema(
-                datasets, self.header.with_parameter("lightcone/z_range", z_range)
+                datasets,
+                self.header.with_parameter("lightcone/z_range", z_range),
+                sum((len(ds) for ds in datasets)),
+                0,
             )
             schema.add_child(stacked_schema, name)
 

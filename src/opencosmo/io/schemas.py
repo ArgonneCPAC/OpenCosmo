@@ -10,10 +10,9 @@ import hdf5plugin  # type: ignore
 import healpy as hp
 import numpy as np
 
-import numpy as np
-
 import opencosmo.io.writers as iow
 from opencosmo.index import ChunkedIndex, concatenate, get_length
+from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
     from mpi4py import MPI
@@ -368,9 +367,19 @@ def get_stacked_order(datasets: Iterable[oc.Dataset], max_index_depth: int):
 
 
 class StackedLightconeDatasetSchema:
-    def __init__(self, datasets: list[oc.Dataset], header: OpenCosmoHeader):
+    def __init__(
+        self,
+        datasets: list[oc.Dataset],
+        header: OpenCosmoHeader,
+        total_length: int,
+        offset: int,
+        comm: Optional[MPI.Comm] = None,
+    ):
         self.children = [ds.make_schema(with_header=True) for ds in datasets]
         self.header = header
+        self.total_length = total_length
+        self.offset = offset
+        self.comm = comm
         max_depth = -1
         for child in self.children:
             if "index" not in child.children:
@@ -407,7 +416,6 @@ class StackedLightconeDatasetSchema:
         )
 
     def allocate(self, group: h5py.File | h5py.Group):
-        total_length = np.sum([len(o) for o in self.__order])
         reference_dataset = self.children[0]
 
         for groupname, columns in reference_dataset.children.items():
@@ -415,7 +423,7 @@ class StackedLightconeDatasetSchema:
             for colname, column in columns.items():
                 new_column = copy(column)
                 if "data" in groupname:
-                    new_column.total_length = total_length
+                    new_column.total_length = self.total_length
                 new_column.allocate(data_group)
 
         if self.header is not None:
@@ -423,7 +431,7 @@ class StackedLightconeDatasetSchema:
 
     def into_writer(self, comm: Optional["MPI.Comm"] = None):
         children = [child.into_writer() for child in self.children]
-        return iow.StackedDatasetWriter(children, self.__order)
+        return iow.StackedDatasetWriter(children, self.__order, self.offset, self.comm)
 
 
 class ColumnSchema:

@@ -413,7 +413,7 @@ class DatasetState:
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
-            columns=new_column_names,
+            columns=existing_columns.union(new_column_names),
             unit_handler=new_unit_handler,
         )
 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from functools import partial
 from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
-from opencosmo.index import SimpleIndex, empty, get_data
-from opencosmo.io.updaters import apply_updaters
+from opencosmo.index import SimpleIndex, empty, from_size, get_data
+from opencosmo.io.updaters import apply_updaters, sum_updater
 
 if TYPE_CHECKING:
     import h5py
@@ -113,15 +114,26 @@ class CollectionWriter:
 
 
 class StackedDatasetWriter:
-    def __init__(self, children: list[DatasetWriter], order: list[np.ndarray]):
+    def __init__(
+        self,
+        children: list[DatasetWriter],
+        order: list[np.ndarray],
+        offset,
+        comm: Optional[MPI.Comm] = None,
+    ):
         self.children = children
         self.__order = np.concatenate(order)
+        self.__offset = offset
+        self.comm = comm
 
     def write(self, file):
         reference_child = self.children[0]
         reference_columns = reference_child.columns
         for key, columns in reference_columns.items():
-            for colname, column in columns.items():
+            colnames = list(columns.keys())
+            colnames.sort()
+            for colname in colnames:
+                column = columns[colname]
                 if "index" in key:
                     data = np.array(
                         [
@@ -130,6 +142,8 @@ class StackedDatasetWriter:
                         ]
                     )
                     data = np.sum(data, axis=0)
+                    updater = partial(sum_updater, comm=self.comm)
+                    offset = 0
 
                 else:
                     data = np.concatenate(
@@ -139,9 +153,16 @@ class StackedDatasetWriter:
                         ]
                     )
                     data = data[self.__order]
+                    updater = None
+                    offset = self.__offset
                 new_writer = ColumnWriter(
-                    column.name, ChunkedIndex.from_size(len(data)), data
+                    column.name,
+                    from_size(len(data)),
+                    data,
+                    offset=offset,
+                    updater=updater,
                 )
+
                 new_writer.write(file[key])
 
 
@@ -221,4 +242,3 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, self.updater)
-        ds.file.flush()
