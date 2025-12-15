@@ -362,7 +362,7 @@ def get_stacked_order(datasets: Iterable[oc.Dataset], max_index_depth: int):
     coordinates = list(map(find_coordinates_2d, datasets))
     pixels = np.concatenate(
         [
-            hp.ang2pix(nside, coords.ra.value, coords.dec.value, lonlat=True)
+            hp.ang2pix(nside, coords.ra.value, coords.dec.value, lonlat=True, nest=True)
             for coords in coordinates
         ]
     )

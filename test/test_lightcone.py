@@ -110,8 +110,8 @@ def test_healpix_write(haloproperties_600_path, tmp_path):
 
     radius2 = 2 * u.deg
     region2 = oc.make_cone(center, radius2)
-    new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
+    new_ds = new_ds.bound(region2)
 
     assert set(ds.data["fof_halo_tag"]) == set(new_ds.data["fof_halo_tag"])
 

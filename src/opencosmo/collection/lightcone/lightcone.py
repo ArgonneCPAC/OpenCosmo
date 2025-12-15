@@ -147,7 +147,7 @@ def combine_adjacent_datasets_mpi(
 def combine_adjacent_datasets(
     ordered_datasets: dict[str, Dataset], min_dataset_size=100_000
 ):
-    if get_mpi() is not None:
+    if get_comm_world() is not None:
         return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
     rs = 0
     current: list[Dataset] = []

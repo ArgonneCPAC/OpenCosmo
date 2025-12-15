@@ -21,7 +21,6 @@ ALLOWED_COORDINATES_3D = {
 }
 
 
-
 def check_containment(
     ds: "Dataset",
     region: "Region",
@@ -44,16 +43,13 @@ def get_theta_phi_coordinates(dataset: "Dataset"):
 
 
 def get_theta_phi_coordinates_pixel(dataset: "Dataset"):
-
-    pixel_values = dataset.get_metadata(['pixel'])['pixel']
+    pixel_values = dataset.get_metadata(["pixel"])["pixel"]
     theta, phi = hp.pix2ang(
         dataset.header.healpix_map["nside"], pixel_values, lonlat=False, nest=True
     )
     ra = phi
     dec = np.pi / 2 - theta
     return SkyCoord(ra, dec, unit=u.rad)
-
-
 
 
 def find_coordinates_2d(dataset: "Dataset"):
