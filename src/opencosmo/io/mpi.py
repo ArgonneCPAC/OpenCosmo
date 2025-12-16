@@ -19,6 +19,7 @@ from .schemas import (
     FileSchema,
     LightconeSchema,
     SimCollectionSchema,
+    StackedLightconeDatasetSchema,
     StructCollectionSchema,
     ZeroLengthError,
 )
@@ -37,12 +38,23 @@ from several ranks into a single schema that can be allocated by rank 0. Each
 rank will then write its own data to the specific section of the file 
 it is responsible for.
 
-As with schemas and writers, everything is very hierarcical here. A function
-does some consistency checks, then calls a function that combines its children.
+When writing data with MPI, there are basically 3 things we have to verify in order to 
+determine if everything is valid.
 
-Ranks with different schemas are supported. For example, one rank may have data for one
-dataset in a collection but not another. So long as the top-level structure is the same,
-things will be handled.
+1. Is the top-level file structure the same for all ranks (e.g. lightcone? dataset?).
+2. Do all columns that are going to be written to by two or more ranks have the same data type and compatible shapes?
+3. Is metadata consistent across ranks? If not, are there rules in place to combine/update the fields?
+
+If all three of these checks pass, it is guaranteed we can create a schema that can accomodate the data being written.
+
+File schemas are simply collections of columns and metadata. Columns contain:
+
+1. A reference to the underying data that will be written (either an h5py dataset or a numpy array)
+2. An index which tells us which elements in 1 we are going to actually write
+3. Possibly an output index, which tells us where in the output we are going to actually write to.
+3. Possibly a function to update those values before writing. For example, a spatial index should be summed across ranks rather than concatenated.
+
+In order to avoid MPI deadlocks, we always sort columns in alphabetical order before performing operations on the file.
 """
 
 
@@ -324,33 +336,96 @@ def combine_spatial_index_level_schemas(
     return new_schemas
 
 
+class LightconeCombineType(Enum):
+    LIGHTCONE = 1
+    STACKED_LIGHTCONE = 2
+    HEALPIX_MAP = 3
+
+
+def get_lightcone_child_types(children: dict, comm: MPI.Comm, debug=False):
+    all_child_names = get_all_child_names(children, comm)
+    output = {}
+    for child_name in all_child_names:
+        match child := children.get(child_name):
+            case None:
+                child_types = comm.allgather(None)
+            case DatasetSchema():
+                if (
+                    child.header is not None
+                    and child.header.file.data_type == "healpix_map"
+                ):
+                    child_types = comm.allgather(LightconeCombineType.HEALPIX_MAP)
+                else:
+                    child_types = comm.allgather(LightconeCombineType.LIGHTCONE)
+            case StackedLightconeDatasetSchema():
+                child_types = comm.allgather(LightconeCombineType.STACKED_LIGHTCONE)
+
+        output[child_name] = child_types
+    return output
+
+
 def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
     if schema is None:
         children = {}
     else:
         children = schema.children
 
-    all_child_names = get_all_child_names(children, comm, debug=True)
+    all_child_types = get_lightcone_child_types(children, comm)
     new_schema = LightconeSchema()
 
-    for child_name in all_child_names:
-        child = children.get(child_name)
-        if child is None:
-            continue
-        if child.header is None:
-            continue
-        if child.header.file.data_type == "healpix_map":
-            new_dataset_schema = combine_dataset_schemas(
-                children.get(child_name),
-                comm,
+    for child_name, child_types in all_child_types.items():
+        valid_child_types = set(filter(lambda ct: ct is not None, child_types))
+        if len(valid_child_types) > 1:
+            raise ValueError(
+                f"Recieved more than one child type when combining a lightcone: {valid_child_types}"
             )
-        else:
-            z_range = get_z_range(child, comm)
-            new_dataset_schema = combine_dataset_schemas(
-                children.get(child_name), comm, {"lightcone/z_range": z_range}
-            )
-        new_schema.add_child(new_dataset_schema, child_name)
+
+        match ct := valid_child_types.pop():
+            case LightconeCombineType.LIGHTCONE:
+                child = children.get(child_name)
+                assert child is None or isinstance(child, DatasetSchema)
+
+                z_range = get_z_range(child, comm)
+                new_child_schema = combine_dataset_schemas(
+                    child, comm, {"lightcone/z_range": z_range}
+                )
+            case LightconeCombineType.HEALPIX_MAP:
+                child = children.get(child_name)
+                assert child is None or isinstance(child, DatasetSchema)
+                new_child_schema = combine_dataset_schemas(
+                    child,
+                    comm,
+                )
+            case LightconeCombineType.STACKED_LIGHTCONE:
+                child = children.get(child_name)
+                assert child is None or isinstance(child, StackedLightconeDatasetSchema)
+                new_child_schema = combine_stacked_lightcone_dataset_schema(child, comm)
+            case _:
+                raise TypeError(f"Invalid lightcone subtype {ct}")
+        new_schema.add_child(new_child_schema, child_name)
     return new_schema
+
+
+def combine_stacked_lightcone_dataset_schema(
+    schema: StackedLightconeDatasetSchema | None, comm
+):
+    if schema is None:
+        all_lengths = comm.allgather(0)
+    else:
+        all_lengths = comm.allgather(schema.total_length)
+
+    bounds = np.cumsum(all_lengths)
+
+    if (rank := comm.Get_rank()) == 0:
+        offset = 0
+    else:
+        offset = bounds[rank - 1]
+
+    if schema is not None:
+        schema.offset = offset
+        schema.total_length = np.sum(all_lengths)
+        schema.comm = comm
+    return schema
 
 
 def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):

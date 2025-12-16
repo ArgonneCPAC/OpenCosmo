@@ -110,8 +110,8 @@ def test_healpix_write(haloproperties_600_path, tmp_path):
 
     radius2 = 2 * u.deg
     region2 = oc.make_cone(center, radius2)
-    new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
+    new_ds = new_ds.bound(region2)
 
     assert set(ds.data["fof_halo_tag"]) == set(new_ds.data["fof_halo_tag"])
 
@@ -485,15 +485,38 @@ def test_write_single_lightcone(haloproperties_600_path, tmp_path):
     assert len(ds) == len(ds_written)
 
 
-def test_insert_to_sroted(haloproperties_600_path, haloproperties_601_path, tmp_path):
+def test_insert_to_sorted(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
-    ds = ds.sort_by("fof_halo_mass")
-    ranking = np.arange(0, len(ds))
-    ds = ds.with_new_columns(ranking=ranking)
+    ds = ds.sort_by("fof_halo_mass").take(10_000, at="end")
+    random_value = np.random.normal(1.0, 0.1, len(ds))
+    ds = ds.with_new_columns(
+        random_value=random_value,
+        random_mass=oc.col("fof_halo_mass") * oc.col("random_value"),
+    )
     output_path = tmp_path / "data.hdf5"
     oc.write(output_path, ds)
     ds = oc.open(output_path).sort_by("fof_halo_mass")
-    assert np.all(ds.select("ranking").get_data("numpy") == ranking)
+    data = ds.select(("random_value", "random_mass", "fof_halo_mass")).get_data()
+    assert np.all(
+        np.isclose(data["random_mass"], data["random_value"] * data["fof_halo_mass"])
+    )
+
+
+def test_lightcone_stacking(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    ds = ds.take(120_000, at="random")
+    for dataset in ds.values():
+        assert dataset.header.lightcone["z_range"] != ds.z_range
+
+    fof_tags = ds.select("fof_halo_tag").get_data()
+    output_path = tmp_path / "data.hdf5"
+    oc.write(output_path, ds)
+    ds_new = oc.open(output_path)
+    fof_tags_new = ds_new.select("fof_halo_tag").get_data()
+    assert len(ds_new.keys()) == 1
+    assert np.all(np.unique(fof_tags) == np.unique(fof_tags_new))
+    assert ds_new.z_range == ds.z_range
+    assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range
 
 
 def test_lightcone_structure_collection_open(structure_600):

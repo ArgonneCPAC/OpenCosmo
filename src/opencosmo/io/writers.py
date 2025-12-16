@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from functools import partial
 from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
-from opencosmo.index import SimpleIndex, empty, get_data
-from opencosmo.io.updaters import apply_updaters
+from opencosmo.index import SimpleIndex, empty, from_size, get_data
+from opencosmo.io.updaters import apply_updaters, sum_updater
 
 if TYPE_CHECKING:
     import h5py
@@ -29,6 +30,22 @@ Schemas are responsible for validating and building the file structure
 as well as allocating space.  As a result, writers ASSUME the correct structure exists, 
 and that all the datasets have the correct size, datatype, etc.
 """
+
+
+def get_column_data(
+    input_ds: h5py.Dataset | np.ndarray,
+    index: DataIndex,
+    dtype,
+    updater: Optional[Callable] = None,
+):
+    data = np.array([])
+    if len(index) > 0 and input_ds is not None:
+        data = get_data(input_ds, index)
+        if updater is not None:
+            data = updater(data)
+
+        data = data.astype(dtype)
+    return data
 
 
 def write_index(
@@ -96,6 +113,59 @@ class CollectionWriter:
             self.children[name].write(file[name])
 
 
+class StackedDatasetWriter:
+    def __init__(
+        self,
+        children: list[DatasetWriter],
+        order: list[np.ndarray],
+        offset,
+        comm: Optional[MPI.Comm] = None,
+    ):
+        self.children = children
+        self.__order = np.concatenate(order)
+        self.__offset = offset
+        self.comm = comm
+
+    def write(self, file):
+        reference_child = self.children[0]
+        reference_columns = reference_child.columns
+        for key, columns in reference_columns.items():
+            colnames = list(columns.keys())
+            colnames.sort()
+            for colname in colnames:
+                column = columns[colname]
+                if "index" in key:
+                    data = np.array(
+                        [
+                            child.columns[key][colname].get_data()
+                            for i, child in enumerate(self.children)
+                        ]
+                    )
+                    data = np.sum(data, axis=0)
+                    updater = partial(sum_updater, comm=self.comm)
+                    offset = 0
+
+                else:
+                    data = np.concatenate(
+                        [
+                            child.columns[key][colname].get_data()
+                            for i, child in enumerate(self.children)
+                        ]
+                    )
+                    data = data[self.__order]
+                    updater = None
+                    offset = self.__offset
+                new_writer = ColumnWriter(
+                    column.name,
+                    from_size(len(data)),
+                    data,
+                    offset=offset,
+                    updater=updater,
+                )
+
+                new_writer.write(file[key])
+
+
 class DatasetWriter:
     """
     Writes datasets to a file or group. Datasets must have at least one column.
@@ -152,6 +222,7 @@ class ColumnWriter:
         index: DataIndex,
         source: h5py.Dataset,
         offset: int = 0,
+        write_index: Optional[np.ndarray] = None,
         updater: Optional[Callable] = None,
     ):
         self.name = name
@@ -159,7 +230,10 @@ class ColumnWriter:
         self.index = index
         self.offset = offset
         self.updater = updater
-        self.data = None
+
+    def get_data(self):
+        data = get_column_data(self.source, self.index, self.source.dtype, self.updater)
+        return data
 
     def write(
         self,
@@ -168,4 +242,3 @@ class ColumnWriter:
         ds = group[self.name]
 
         write_index(self.source, ds, self.index, self.offset, self.updater)
-        ds.file.flush()

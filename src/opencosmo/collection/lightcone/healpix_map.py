@@ -369,7 +369,7 @@ class HealpixMap(dict):
         """
         return self.get_data("healsparse")
 
-    def with_resolution(self, nside):
+    def with_resolution(self, nside) -> HealpixMap:
         """
         Return a copy of the map with a new nside resolution.
 

@@ -229,6 +229,7 @@ def test_filter_all_zerolength(input_path, tmp_path):
         oc.write(temporary_path, ds)
 
 
+@pytest.mark.parallel(nprocs=4)
 def test_structure_zerolength(all_paths, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = tmp_path / "filtered.hdf5"
