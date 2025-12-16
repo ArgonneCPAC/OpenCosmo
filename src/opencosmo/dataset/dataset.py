@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import reduce
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -469,7 +470,9 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        required_columns = set(m.column_name for m in masks)
+        required_columns: set[str] = reduce(
+            lambda acc, r: acc | r.requires, masks, set()
+        )
         data = self.select(required_columns).get_data()
         bool_mask = np.ones(len(data), dtype=bool)
         for mask in masks:

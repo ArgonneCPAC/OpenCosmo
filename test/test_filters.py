@@ -138,3 +138,43 @@ def test_filter_invalid_column(input_path):
     ds = oc.open(input_path)
     with pytest.raises(ValueError):
         ds = ds.filter(col("invalid_column") > 0)
+
+
+def test_or_filter(input_path):
+    ds = oc.open(input_path)
+    high_mass = oc.col("fof_halo_mass") > 1e14
+    low_mass = oc.col("fof_halo_mass") < 1e12
+
+    ds = ds.filter(high_mass | low_mass)
+    data = ds.select("fof_halo_mass").get_data("numpy")
+    assert len(data) > 0
+    assert np.all((data > 1e14) | (data < 1e12))
+    assert np.any(data > 1e14)
+    assert np.any(data < 1e12)
+
+
+def test_and_filter(input_path):
+    ds = oc.open(input_path)
+    high_mass = oc.col("fof_halo_mass") > 1e14
+    low_c = oc.col("sod_halo_cdelta") < 5
+
+    ds = ds.filter(high_mass & low_c)
+    data = ds.select(("fof_halo_mass", "sod_halo_cdelta")).get_data("numpy")
+    assert len(data) > 0
+    assert np.all((data["fof_halo_mass"] > 1e14) & (data["sod_halo_cdelta"] < 5))
+
+
+def test_filter_tree(input_path):
+    ds = oc.open(input_path)
+    high_mass = oc.col("fof_halo_mass") > 1e14
+    low_mass = oc.col("fof_halo_mass") < 1e12
+    low_c = oc.col("sod_halo_cdelta") < 5
+    mass_cuts = high_mass | low_mass
+
+    ds = ds.filter(mass_cuts & low_c)
+    data = ds.select(("fof_halo_mass", "sod_halo_cdelta")).get_data("numpy")
+    assert len(data) > 0
+    assert np.all((data["fof_halo_mass"] > 1e14) | (data["fof_halo_mass"] < 1e12))
+    assert np.all(data["sod_halo_cdelta"] < 5)
+    assert np.any(data["fof_halo_mass"] > 1e14)
+    assert np.any(data["fof_halo_mass"] < 1e12)
