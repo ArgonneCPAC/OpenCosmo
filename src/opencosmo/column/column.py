@@ -4,7 +4,16 @@ import operator as op
 from copy import copy
 from functools import cache, cached_property, partial, partialmethod
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional, Protocol, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Optional,
+    Protocol,
+    Self,
+    Union,
+)
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -565,6 +574,10 @@ class ColumnMask:
         self.value = value
         self.operator = operator
 
+    @property
+    def requires(self):
+        return {self.column_name}
+
     def apply(self, column: u.Quantity | np.ndarray) -> np.ndarray:
         """
         mask the dataset based on the mask.
@@ -583,3 +596,39 @@ class ColumnMask:
             return self.operator(column.value, self.value)
 
         return self.operator(column, self.value)  # type: ignore
+
+    def __and__(self, other: Self | CompoundColumnMask):
+        return CompoundColumnMask(self, other, lambda l, r: l & r)
+
+    def __or__(self, other: Self | CompoundColumnMask):
+        return CompoundColumnMask(self, other, lambda l, r: l | r)
+
+
+class CompoundColumnMask:
+    def __init__(
+        self,
+        left: ColumnMask | Self,
+        right: ColumnMask | Self,
+        op: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    ):
+        self.__left = left
+        self.__right = right
+        self.__op = op
+
+    @property
+    def requires(self):
+        columns = set()
+        columns |= self.__left.requires
+        columns |= self.__right.requires
+        return columns
+
+    def __and__(self, other: ColumnMask | Self):
+        return CompoundColumnMask(self, other, lambda l, r: l & r)
+
+    def __or__(self, other: ColumnMask | Self):
+        return CompoundColumnMask(self, other, lambda l, r: l | r)
+
+    def apply(self, data):
+        left_mask = self.__left.apply(data)
+        right_mask = self.__right.apply(data)
+        return self.__op(left_mask, right_mask)
