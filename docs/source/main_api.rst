@@ -80,6 +80,20 @@ You are also free to create multiple derivative datasets from the same original 
    data1 = ds1.data
    data2 = ds2.data
 
+However you may also be interested in including all data that passes *either* filter in a single dataset. You can combine filters with boolean logic using the & and | operators:
+
+.. code-block:: python
+
+   ds = oc.open("haloproperties.hdf5")
+
+   high_mass_cut = oc.col("fof_halo_mass") > 1e14
+   low_mass_cut = oc.col("fof_halo_mass") < 1e12
+   low_concentration_cut = oc.col("sod_halo_cdelta") < 5
+
+   my_filter = (high_mass_cut | low_mass_cut) & low_concentration_cut
+   filtered_ds = ds.filter(my_filter)
+
+
 Because transformations are evaluated lazily, you can have many derivative datasets without incurring a large memory overhead.
 
 
