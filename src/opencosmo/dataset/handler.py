@@ -18,6 +18,7 @@ from opencosmo.index import (
     take,
 )
 from opencosmo.io.schemas import DatasetSchema
+from opencosmo.io.verify import ColumnCombineStrategy, ColumnWriter, Hdf5Source
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
@@ -42,7 +43,7 @@ class Hdf5Handler:
         in_memory: bool = False,
     ):
         self.__index = index
-        self.__group = group
+        self.__data_group = group
         self.__metadata_group = metadata_group
         self.__in_memory = group.file.driver == "core"
 
@@ -74,13 +75,13 @@ class Hdf5Handler:
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
-            return Hdf5Handler(self.__group, other, self.__metadata_group)
+            return Hdf5Handler(self.__data_group, other, self.__metadata_group)
 
         if sorted is not None:
             return self.__take_sorted(other, sorted)
 
         new_index = take(self.__index, other)
-        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
+        return Hdf5Handler(self.__data_group, new_index, self.__metadata_group)
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if get_length(sorted) != get_length(self.__index):
@@ -90,11 +91,11 @@ class Hdf5Handler:
         new_raw_index = into_array(self.__index)[new_indices]
         new_index = np.sort(new_raw_index)
 
-        return Hdf5Handler(self.__group, new_index, self.__metadata_group)
+        return Hdf5Handler(self.__data_group, new_index, self.__metadata_group)
 
     @property
     def data(self):
-        return self.__group
+        return self.__data_group
 
     @property
     def index(self):
@@ -102,7 +103,7 @@ class Hdf5Handler:
 
     @property
     def columns(self):
-        return self.__group.keys()
+        return self.__data_group.keys()
 
     @property
     def metadata_columns(self):
@@ -114,7 +115,7 @@ class Hdf5Handler:
     def descriptions(self):
         return {
             colname: column.attrs.get("description")
-            for colname, column in self.__group.items()
+            for colname, column in self.__data_group.items()
         }
 
     def mask(self, mask):
@@ -122,14 +123,14 @@ class Hdf5Handler:
         return self.take(idx)
 
     def __len__(self) -> int:
-        first_column_name = next(iter(self.__group.keys()))
-        return self.__group[first_column_name].shape[0]
+        first_column_name = next(iter(self.__data_group.keys()))
+        return self.__data_group[first_column_name].shape[0]
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exec_details):
-        self.__group = None
+        self.__data_group = None
         return self.__file.close()
 
     def make_schema(
@@ -137,34 +138,37 @@ class Hdf5Handler:
         columns: Iterable[str],
         header: Optional[OpenCosmoHeader] = None,
     ) -> DatasetSchema:
-        groups = {}
-        columns = set(columns)
-        data_columns = [f"data/{n}" for n in columns]
-        groups["data"] = self.__group
+        column_writers = {}
+        for column_name in columns:
+            column_path = f"data/{column_name}"
+            column_writers[column_path] = ColumnWriter.from_h5_dataset(
+                self.__data_group[column_name],
+                self.__index,
+                attrs=dict(self.__data_group[column_name].attrs),
+            )
 
         if self.metadata_columns:
             assert self.__metadata_group is not None
             group_name = self.__metadata_group.name.split("/")[-1]
-            metadata_columns = [f"{group_name}/{n}" for n in self.metadata_columns]
-            groups[group_name] = self.__metadata_group
-        else:
-            metadata_columns = []
+            for column_name in self.metadata_columns:
+                column_writers[f"{group_name}/{column_name}"] = (
+                    ColumnWriter.from_h5_dataset(
+                        self.__metadata_group[column_name],
+                        self.__index,
+                        attrs=dict(self.__metadata_group[column_name].attrs),
+                    )
+                )
 
-        return DatasetSchema.make_schema(
-            groups,
-            data_columns + metadata_columns,
-            self.__index,
-            header,
-        )
+        return column_writers
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
-        if self.__group is None:
+        if self.__data_group is None:
             raise ValueError("This file has already been closed")
         data = {}
 
         for colname in columns:
-            data[colname] = get_data(self.__group[colname], self.__index)
+            data[colname] = get_data(self.__data_group[colname], self.__index)
 
         # Ensure order is preserved
         return {name: data[name] for name in columns}

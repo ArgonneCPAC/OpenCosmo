@@ -14,6 +14,8 @@ from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.file import FileExistance, file_reader, resolve_path
 from opencosmo.header import read_header
 from opencosmo.index.build import empty, from_range
+from opencosmo.io.allocate import allocate, write_columns, write_metadata
+from opencosmo.io.verify import verify_file
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
@@ -146,8 +148,9 @@ def make_all_targets(files: list[h5py.File]):
     for file in files:
         try:
             targets += make_file_targets(file)
-        except ValueError:
+        except ValueError as ve:
             bad_files.append(file.filename)
+            raise
     if bad_files:
         raise ValueError(
             f"Some files were not able to be opened. They may not be OpenCosmo files: {bad_files}"
@@ -402,16 +405,13 @@ def write(path: Path, dataset: Writeable, overwrite=False) -> None:
 
     path = resolve_path(path, existance_requirement)
 
-    schema = FileSchema()
-    dataset_schema = dataset.make_schema()
-    schema.add_child(dataset_schema, "root")
+    dataset_columns, metadata = dataset.make_schema()
+    verify_file(dataset_columns)
 
     if mpiio is not None:
         return mpiio.write_parallel(path, schema)
 
     file = h5py.File(path, "w")
-    schema.allocate(file)
-
-    writer = schema.into_writer()
-
-    writer.write(file)
+    allocate(file, dataset_columns)
+    write_columns(file, dataset_columns)
+    write_metadata(file, metadata)

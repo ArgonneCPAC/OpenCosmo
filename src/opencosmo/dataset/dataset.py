@@ -763,17 +763,14 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-
-        schema = self.__state.make_schema()
-        if not with_header:
-            schema.header = None
-
+        columns = self.__state.make_schema()
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.raw_index)
-            spat_idx_schema = tree.make_schema()
-            for name, column in spat_idx_schema.items():
-                schema.add_child(column, name)
-        return schema
+            columns |= tree.make_schema()
+
+        metadata = self.header.dump()
+
+        return columns, metadata
 
     def with_units(
         self,

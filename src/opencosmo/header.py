@@ -187,6 +187,25 @@ class OpenCosmoHeader:
             new_header = new_header.with_parameter(key, val)
         return new_header
 
+    def dump(self) -> dict[str, Any]:
+        to_write = chain(
+            [("file", self.__file_pars)],
+            self.__required_origin_parameters.items(),
+            self.__optional_origin_parameters.items(),
+            self.__dtype_parameters.items(),
+        )
+        pars = {}
+        for path, model in to_write:
+            data = model.model_dump(by_alias=True)
+            data = dict(
+                map(
+                    lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
+                )
+            )
+
+            pars[f"header/{path}"] = data
+        return pars
+
     def write(self, file: h5py.File | h5py.Group) -> None:
         write_header_attributes(file, "file", self.__file_pars)
         to_write = chain(

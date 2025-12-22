@@ -22,6 +22,7 @@ from opencosmo.index.build import from_size, single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_length, get_range
 from opencosmo.io import schemas as ios
+from opencosmo.io.verify import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
@@ -311,29 +312,10 @@ class DatasetState:
                 "unit": unit,
                 "description": self.__derived_columns[colname].description,
             }
-            colschema = ios.ColumnSchema(
-                colname, from_size(len(coldata)), coldata, attrs
-            )
-            schema.add_child(colschema, f"data/{colname}")
+            source = NumpySource(coldata)
+            writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT)
 
-        cached_data = self.__cache.get_columns(self.columns)
-
-        for colname, coldata in cached_data.items():
-            try:
-                data = coldata.value
-                unit_str = str(coldata.unit)
-            except AttributeError:
-                data = coldata
-                unit_str = ""
-            if colname in schema.columns["data"]:
-                continue
-
-            attrs = {}
-            attrs["unit"] = unit_str
-            attrs["description"] = self.descriptions.get(colname, "None")
-
-            colschema = ios.ColumnSchema(colname, from_size(len(coldata)), data, attrs)
-            schema.add_child(colschema, f"data/{colname}")
+            schema[f"data/{colname}"] = writer
 
         return schema
 
@@ -413,7 +395,7 @@ class DatasetState:
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
-            columns=existing_columns.union(new_column_names),
+            columns=new_column_names,
             unit_handler=new_unit_handler,
         )
 
