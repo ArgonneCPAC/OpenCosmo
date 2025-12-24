@@ -287,7 +287,7 @@ class DatasetState:
             raw_data_handler=new_raw_handler,
         )
 
-    def make_schema(self):
+    def make_schema(self, name: Optional[str] = None):
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
@@ -322,8 +322,10 @@ class DatasetState:
         children = {"data": data_schema}
 
         if metadata_schema is not None:
-            children[metadata_schema["name"]] = metadata_schema
-        return make_schema("", FileEntry.DATASET, children=children)
+            children[metadata_schema.name] = metadata_schema
+        if name is None:
+            name = ""
+        return make_schema(name, FileEntry.DATASET, children=children)
 
     def with_new_columns(
         self,

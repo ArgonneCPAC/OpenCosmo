@@ -38,26 +38,26 @@ def verify_file(
 
 
 def verify_structure_collection_data(schema: Schema):
-    if "halo_properties" in schema["children"]:
+    if "halo_properties" in schema.children:
         link_holder = "halo_properties"
-    elif "galaxy_properties" in schema["children"]:
+    elif "galaxy_properties" in schema.children:
         link_holder = "galaxy_properties"
     else:
         raise ValueError("No valid link holder found in schema!")
 
-    for child_name, child_schema in schema["children"].items():
+    for child_name, child_schema in schema.children.items():
         if child_name == link_holder:
-            links = list(
-                filter(lambda cn: "data_linked" in cn, child_schema["columns"].keys())
+            has_link = any(
+                map(lambda cn: "data_linked" in cn, child_schema.children.keys())
             )
-            raise AttributeError
+            if not has_link:
+                raise ValueError(
+                    f'Source dataset {child_name} does not have expected "data_linked" group'
+                )
 
-        match child["entry_type"]:
+        match child_schema.type:
             case FileEntry.DATASET:
-                child_columns = {
-                    k: v for k, v in columns.items() if k.startswith(child["path"])
-                }
-                verify_dataset_data(child_columns)
+                verify_dataset_data(child_schema)
             case _:
                 raise NotImplementedError
 

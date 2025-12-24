@@ -13,8 +13,9 @@ from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.unary import get_length
-from opencosmo.io.schema import FileEntry, Schema
+from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.schemas import StructCollectionSchema
+from opencosmo.io.writer import ColumnWriter
 
 from .handler import LinkHandler
 
@@ -1258,7 +1259,7 @@ class StructureCollection:
         else:
             raise AttributeError("This collection does not contain galaxies!")
 
-    def make_schema(self) -> StructCollectionSchema:
+    def make_schema(self, name: Optional[str] = None) -> StructCollectionSchema:
         schema: Schema = {
             "path": "/",
             "entry_type": FileEntry.STRUCTURE_COLLECTION,
@@ -1266,17 +1267,36 @@ class StructureCollection:
             "columns": {},
             "metadata": {},
         }
+        children = {}
         source_name = self.__source.dtype
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
 
         source_schema = self.__source.make_schema()
-        schema["children"][source_name] = source_schema
+        new_data_linked = {}
+        for colname, column in source_schema.children["data_linked"].columns.items():
+            if "idx" in colname:
+                new_data_linked[colname] = ColumnWriter.from_numpy_array(
+                    np.arange(len(column))
+                )
+            elif "start" in colname:
+                size_colname = colname.replace("start", "size")
+                size_data = (
+                    source_schema.children["data_linked"].columns[size_colname].data
+                )
+                new_data = np.insert(np.cumsum(size_data), 0, 0)[:-1]
+                new_data_linked[colname] = ColumnWriter.from_numpy_array(new_data)
+
+        source_schema.children["data_linked"].columns.update(new_data_linked)
+
+        children[source_name] = source_schema
 
         for name, dataset in datasets.items():
             if name == "galaxies":
                 name = "galaxy_properties"
 
-            ds_schema = dataset.make_schema()
-            schema["children"][name] = ds_schema
+            ds_schema = dataset.make_schema(name)
+            children[name] = ds_schema
 
-        return schema
+        if name is None:
+            name = ""
+        return make_schema(name, FileEntry.STRUCTURE_COLLECTION, children=children)

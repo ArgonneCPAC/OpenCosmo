@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 def allocate(group: h5py.File | h5py.Group, schema: Schema):
     for column_name, column_writer in schema.columns.items():
-        group.require_dataset(column_name, len(column_writer), column_writer.dtype)
+        group.require_dataset(column_name, column_writer.shape, column_writer.dtype)
     for child_name, child_schema in schema.children.items():
         child_group = group.require_group(child_name)
         allocate(child_group, child_schema)
@@ -21,6 +21,9 @@ def allocate(group: h5py.File | h5py.Group, schema: Schema):
 def write_columns(group: h5py.File | h5py.Group, schema: Schema):
     for column_path, column_writer in schema.columns.items():
         group[column_path][:] = column_writer.data
+        if "_start" in column_path:
+            print(column_path)
+            print(column_writer.data)
         group[column_path].attrs.update(column_writer.attrs)
     for child_name, child_schema in schema.children.items():
         write_columns(group[child_name], child_schema)

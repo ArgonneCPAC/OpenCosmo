@@ -752,7 +752,7 @@ class Dataset:
         return Dataset(self.__header, new_state, self.__tree)
 
     def make_schema(
-        self, with_header: bool = True, group_name: Optional[str] = None
+        self, with_header: bool = True, name: Optional[str] = None
     ) -> DatasetSchema:
         """
         Prep to write the dataset. This should not be called directly for the user.
@@ -766,7 +766,7 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        schema = self.__state.make_schema()
+        schema = self.__state.make_schema(name)
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.raw_index)
             tree_schema = tree.make_schema()

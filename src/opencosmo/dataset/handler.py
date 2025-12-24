@@ -165,7 +165,9 @@ class Hdf5Handler:
                     self.__index,
                     attrs=dict(self.__metadata_group[column_name].attrs),
                 )
-            metadata_schema = make_schema(data, FileEntry.COLUMNS, column=columns)
+            metadata_schema = make_schema(
+                group_name, FileEntry.COLUMNS, columns=metadata_writers
+            )
         return data_schema, metadata_schema
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
