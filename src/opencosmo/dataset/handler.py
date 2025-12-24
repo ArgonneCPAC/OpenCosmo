@@ -17,8 +17,13 @@ from opencosmo.index import (
     into_array,
     take,
 )
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.schemas import DatasetSchema
-from opencosmo.io.verify import ColumnCombineStrategy, ColumnWriter, Hdf5Source
+from opencosmo.io.writer import (
+    ColumnCombineStrategy,
+    ColumnWriter,
+    Hdf5Source,
+)
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
@@ -140,26 +145,28 @@ class Hdf5Handler:
     ) -> DatasetSchema:
         column_writers = {}
         for column_name in columns:
-            column_path = f"data/{column_name}"
-            column_writers[column_path] = ColumnWriter.from_h5_dataset(
+            column_writers[column_name] = ColumnWriter.from_h5_dataset(
                 self.__data_group[column_name],
                 self.__index,
                 attrs=dict(self.__data_group[column_name].attrs),
             )
 
+        data_schema = make_schema("data", FileEntry.COLUMNS, columns=column_writers)
+
+        metadata_schema = None
+
         if self.metadata_columns:
             assert self.__metadata_group is not None
             group_name = self.__metadata_group.name.split("/")[-1]
+            metadata_writers = {}
             for column_name in self.metadata_columns:
-                column_writers[f"{group_name}/{column_name}"] = (
-                    ColumnWriter.from_h5_dataset(
-                        self.__metadata_group[column_name],
-                        self.__index,
-                        attrs=dict(self.__metadata_group[column_name].attrs),
-                    )
+                metadata_writers[column_name] = ColumnWriter.from_h5_dataset(
+                    self.__metadata_group[column_name],
+                    self.__index,
+                    attrs=dict(self.__metadata_group[column_name].attrs),
                 )
-
-        return column_writers
+            metadata_schema = make_schema(data, FileEntry.COLUMNS, column=columns)
+        return data_schema, metadata_schema
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """

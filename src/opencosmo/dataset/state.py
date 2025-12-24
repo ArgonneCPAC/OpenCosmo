@@ -22,7 +22,8 @@ from opencosmo.index.build import from_size, single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_length, get_range
 from opencosmo.io import schemas as ios
-from opencosmo.io.verify import ColumnCombineStrategy, ColumnWriter, NumpySource
+from opencosmo.io.schema import FileEntry, empty_schema, make_schema
+from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
@@ -290,7 +291,9 @@ class DatasetState:
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
-        schema = self.__raw_data_handler.make_schema(raw_columns, header)
+        data_schema, metadata_schema = self.__raw_data_handler.make_schema(
+            raw_columns, header
+        )
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
@@ -314,10 +317,13 @@ class DatasetState:
             }
             source = NumpySource(coldata)
             writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT)
+            data_schema["children"][colname] = writer
 
-            schema[f"data/{colname}"] = writer
+        children = {"data": data_schema}
 
-        return schema
+        if metadata_schema is not None:
+            children[metadata_schema["name"]] = metadata_schema
+        return make_schema("", FileEntry.DATASET, children=children)
 
     def with_new_columns(
         self,

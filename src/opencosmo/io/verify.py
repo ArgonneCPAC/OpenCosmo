@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, TypedDict
 
 import numpy as np
 
 from opencosmo.index import DataIndex, get_data, get_length
+
+from .schema import FileEntry
 
 if TYPE_CHECKING:
     import h5py
@@ -15,60 +17,79 @@ if TYPE_CHECKING:
 
     from opencosmo.index import DataIndex
 
+    from .schema import Schema
+
 
 """ Columns in a schema are given by their path within the file.
 """
 
 
-class ColumnCombineStrategy(Enum):
-    SUM = "sum"
-    CONCAT = "concat"
+def verify_file(
+    schema: Schema,
+):
+    match schema.type:
+        case FileEntry.DATASET:
+            return verify_dataset_data(schema)
+        case FileEntry.STRUCTURE_COLLECTION:
+            return verify_structure_collection_data(schema)
+
+        case _:
+            raise ValueError("Unknown file structure!")
 
 
-def verify_file(columns: dict[str, ColumnWriter]):
-    if not columns:
-        raise ValueError("Got no column writers to verify!")
-    if any(colname.startswith("data") for colname in columns.keys()):
-        # Dealing with a single, unnested dataset
-        verify_dataset_data(columns)
+def verify_structure_collection_data(schema: Schema):
+    if "halo_properties" in schema["children"]:
+        link_holder = "halo_properties"
+    elif "galaxy_properties" in schema["children"]:
+        link_holder = "galaxy_properties"
+    else:
+        raise ValueError("No valid link holder found in schema!")
+
+    for child_name, child_schema in schema["children"].items():
+        if child_name == link_holder:
+            links = list(
+                filter(lambda cn: "data_linked" in cn, child_schema["columns"].keys())
+            )
+            raise AttributeError
+
+        match child["entry_type"]:
+            case FileEntry.DATASET:
+                child_columns = {
+                    k: v for k, v in columns.items() if k.startswith(child["path"])
+                }
+                verify_dataset_data(child_columns)
+            case _:
+                raise NotImplementedError
 
 
-def verify_dataset_data(schema: dict[str, ColumnWriter]):
+def verify_dataset_data(schema: Schema):
     """
     Verify a given dataset is valid. Requiring:
     1. It has a data group
     2. It has a spatial index group
     3. If it has any metadata groups, they are the same length as the data group
     """
-    data_group_columns = {}
-    index_group_columns = {}
-    metadata_group_columns = {}
     index_root = None
-    for column_path, column_writer in schema.items():
-        if "data" in column_path:
-            data_group_columns[column_path] = column_writer
-        elif "index" in column_path:
-            index_group_columns[column_path] = column_writer
-            if index_root is None:
-                (prefix, index, _) = column_path.partition("index")
-                index_root = prefix + index
+    children = schema.children
 
-        else:
-            metadata_group_columns[column_path] = column_writer
-
-    if not data_group_columns or not index_group_columns:
+    if "data" not in children or "index" not in children:
         raise ValueError("Datasets must have at least a data group and a index group")
 
-    verify_column_group(data_group_columns)
-    verify_column_group(
-        index_group_columns, verify_root=index_root, verify_length_by_group=True
-    )
-    if metadata_group_columns:
-        verify_column_group(metadata_group_columns)
+    metadata_groups = [
+        child
+        for name, child in schema.children.items()
+        if name not in ["data", "index"] and child.type == FileEntry.COLUMNS
+    ]
+
+    verify_column_group(schema.children["data"])
+    for child in schema.children["index"].children.values():
+        verify_column_group(child)
+    for md_child in metadata_groups:
+        verify_column_group(md_child)
 
 
 def verify_column_group(
-    schema: dict[str, ColumnWriter],
+    schema: Schema,
     verify_root: Optional[str] = None,
     verify_length_by_group=False,
 ):
@@ -90,7 +111,7 @@ def verify_column_group(
     group_names = set()
     column_lengths = {}
     column_strategies = set()
-    for column_path, column_writer in schema.items():
+    for column_path, column_writer in schema.columns.items():
         try:
             group_name, column_name = column_path.rsplit("/", 1)
         except ValueError:
@@ -105,7 +126,7 @@ def verify_column_group(
 
     if verify_root is None and len(group_names) != 1:
         raise ValueError(
-            "Attempted to verify a single column group, but got columns in sepearate groups"
+            "Attempted to verify a single column group, but got columns in seperate groups"
         )
 
     elif verify_root is not None and not all(
@@ -138,90 +159,3 @@ def verify_lengths_by_groups(groups: set[str], column_lengths: dict[str, int]):
             raise ValueError(
                 f"Columns in group {group_name} do not have the same length!"
             )
-
-
-class ColumnSource(Protocol):
-    def __len__(self) -> int: ...
-    @property
-    def dtype(self) -> DTypeLike: ...
-    @property
-    def data(self) -> np.ndarray: ...
-
-
-class Hdf5Source:
-    def __init__(self, h5ds: h5py.Dataset, index: DataIndex):
-        self.__source = h5ds
-        self.__index = index
-
-    def __len__(self):
-        return get_length(self.__index)
-
-    @property
-    def dtype(self):
-        return self.__source.dtype
-
-    @property
-    def data(self):
-        return get_data(self.__source, self.__index)
-
-
-class NumpySource:
-    def __init__(self, arr: np.ndarray):
-        self.__source = arr
-
-    def __len__(self):
-        return len(self.__source)
-
-    @property
-    def dtype(self):
-        return self.__source.dtype
-
-    @property
-    def data(self):
-        return self.__source
-
-
-class ColumnWriter:
-    def __init__(
-        self,
-        column_sources: list[ColumnSource],
-        combine_strategy: ColumnCombineStrategy,
-        attrs: dict[str, Any] = {},
-    ):
-        self.__sources = column_sources
-        self.__combine_strategy = combine_strategy
-        self.__attrs = attrs
-        dtypes = set(map(lambda source: source.dtype, self.__sources))
-        if len(dtypes) > 1:
-            raise ValueError("A single column can not have multiple data types!")
-        self.__dtype = dtypes.pop()
-
-    @classmethod
-    def from_h5_dataset(
-        cls,
-        dataset: h5py.Dataset,
-        index: DataIndex,
-        strategy: ColumnCombineStrategy = ColumnCombineStrategy.CONCAT,
-        attrs: dict[str, Any] = {},
-    ):
-        source = Hdf5Source(dataset, index)
-        return ColumnWriter([source], strategy, attrs)
-
-    def __len__(self):
-        return sum(len(source) for source in self.__sources)
-
-    @property
-    def combine_strategy(self) -> ColumnCombineStrategy:
-        return self.__combine_strategy
-
-    @property
-    def dtype(self) -> DTypeLike:
-        return self.__dtype
-
-    @property
-    def attrs(self) -> dict[str, Any]:
-        return self.__attrs
-
-    @property
-    def data(self) -> np.ndarray:
-        return np.concatenate([source.data for source in self.__sources])

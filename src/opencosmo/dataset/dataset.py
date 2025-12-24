@@ -21,6 +21,7 @@ from opencosmo.column.column import EvaluatedColumn
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.index import ChunkedIndex, SimpleIndex, into_array, mask, project
+from opencosmo.io.verify import FileEntry
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -750,7 +751,9 @@ class Dataset:
         new_state = self.__state.with_new_columns(descriptions, **new_columns)
         return Dataset(self.__header, new_state, self.__tree)
 
-    def make_schema(self, with_header: bool = True) -> DatasetSchema:
+    def make_schema(
+        self, with_header: bool = True, group_name: Optional[str] = None
+    ) -> DatasetSchema:
         """
         Prep to write the dataset. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.
@@ -763,14 +766,16 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        columns = self.__state.make_schema()
+        schema = self.__state.make_schema()
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.raw_index)
-            columns |= tree.make_schema()
+            tree_schema = tree.make_schema()
+            schema.children["index"] = tree_schema
 
         metadata = self.header.dump()
+        schema.children["header"] = metadata
 
-        return columns, metadata
+        return schema
 
     def with_units(
         self,

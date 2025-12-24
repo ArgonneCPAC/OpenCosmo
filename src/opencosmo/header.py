@@ -10,6 +10,7 @@ import h5py
 from pydantic import BaseModel, ValidationError
 
 from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.parameters import (
     FileParameters,
     dtype,
@@ -203,8 +204,8 @@ class OpenCosmoHeader:
                 )
             )
 
-            pars[f"header/{path}"] = data
-        return pars
+            pars[path] = data
+        return make_schema("header", FileEntry.METADATA, attributes=pars)
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         write_header_attributes(file, "file", self.__file_pars)

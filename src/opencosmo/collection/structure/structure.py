@@ -13,6 +13,7 @@ from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.unary import get_length
+from opencosmo.io.schema import FileEntry, Schema
 from opencosmo.io.schemas import StructCollectionSchema
 
 from .handler import LinkHandler
@@ -1258,16 +1259,24 @@ class StructureCollection:
             raise AttributeError("This collection does not contain galaxies!")
 
     def make_schema(self) -> StructCollectionSchema:
-        schema = StructCollectionSchema()
+        schema: Schema = {
+            "path": "/",
+            "entry_type": FileEntry.STRUCTURE_COLLECTION,
+            "children": {},
+            "columns": {},
+            "metadata": {},
+        }
         source_name = self.__source.dtype
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
 
         source_schema = self.__source.make_schema()
-        schema.add_child(source_schema, source_name)
+        schema["children"][source_name] = source_schema
+
         for name, dataset in datasets.items():
-            ds_schema = dataset.make_schema()
             if name == "galaxies":
                 name = "galaxy_properties"
-            schema.add_child(ds_schema, name)
+
+            ds_schema = dataset.make_schema()
+            schema["children"][name] = ds_schema
 
         return schema
