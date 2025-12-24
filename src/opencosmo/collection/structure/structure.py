@@ -1286,9 +1286,15 @@ class StructureCollection:
         for name, dataset in datasets.items():
             if name == "galaxies":
                 name = "galaxy_properties"
-
-            ds_schema = dataset.make_schema(name)
-            children[name] = ds_schema
+            ds_schema = dataset.make_schema()
+            if not isinstance(dataset, StructureCollection):
+                children[name] = ds_schema
+                continue
+            for grandchild_name, grandchild in ds_schema.children.items():
+                if "properties" in grandchild_name:
+                    children[grandchild_name] = grandchild
+                else:
+                    children[f"{name}_{grandchild_name}"] = grandchild
 
         if name is None:
             name = ""

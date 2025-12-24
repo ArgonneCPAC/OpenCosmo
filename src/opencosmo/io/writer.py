@@ -104,6 +104,8 @@ class ColumnWriter:
     def data(self) -> np.ndarray:
         match self.combine_strategy:
             case ColumnCombineStrategy.CONCAT:
+                from time import time
+
                 data = np.concatenate([source.data for source in self.__sources])
             case ColumnCombineStrategy.SUM:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
@@ -130,7 +132,10 @@ class Hdf5Source:
 
     @property
     def data(self):
-        return get_data(self.__source, self.__index)
+        from time import time
+
+        data = get_data(self.__source, self.__index)
+        return data
 
 
 class NumpySource:

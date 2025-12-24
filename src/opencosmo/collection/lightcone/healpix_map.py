@@ -255,7 +255,9 @@ class HealpixMap(dict):
     @property
     def region(self) -> Region:
         """
-        The region this map covers.
+        The region this dataset is contained in. If no spatial
+        queries have been performed, this will be the full sky for
+        lightcone maps.
 
         Returns
         -------

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Self
 from opencosmo.collection import structure as sc
 from opencosmo.dataset import Dataset
 from opencosmo.io import io
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.schemas import SimCollectionSchema
 
 if TYPE_CHECKING:
@@ -80,12 +81,11 @@ class SimulationCollection(dict):
         return cls(datasets)
 
     def make_schema(self) -> DataSchema:
-        schema = SimCollectionSchema()
-        for name, dataset in self.items():
-            ds_schema = dataset.make_schema()
-            schema.add_child(ds_schema, name)
+        children = {}
 
-        return schema
+        for name, dataset in self.items():
+            children[name] = dataset.make_schema()
+        return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
 
     def __map(
         self,

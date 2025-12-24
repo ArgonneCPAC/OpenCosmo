@@ -34,6 +34,9 @@ def verify_file(
             return verify_structure_collection_data(schema)
         case FileEntry.LIGHTCONE:
             verify_lightcone_collection_schema(schema)
+        case FileEntry.SIMULATION_COLLECTION:
+            for name, ds_schema in schema.children.items():
+                verify_dataset_data(ds_schema)
         case _:
             raise ValueError("Unknown file structure!")
 
@@ -68,8 +71,10 @@ def verify_structure_collection_data(schema: Schema):
         match child_schema.type:
             case FileEntry.DATASET:
                 verify_dataset_data(child_schema)
+            case FileEntry.STRUCTURE_COLLECTION:
+                verify_structure_collection_data(child_schema)
             case _:
-                raise NotImplementedError
+                raise ValueError(f"Got an unknown child for structure collection!")
 
 
 def verify_dataset_data(schema: Schema):

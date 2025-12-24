@@ -413,5 +413,5 @@ def write(path: Path, dataset: Writeable, overwrite=False) -> None:
 
     file = h5py.File(path, "w")
     allocate(file, schema)
-    write_columns(file, schema)
     write_metadata(file, schema)
+    write_columns(file, schema)

@@ -49,6 +49,8 @@ def get_data_chunked(
 
     """
 
+    from time import time
+
     unit = None
     if isinstance(data, u.Quantity):
         unit = data.unit
@@ -56,6 +58,7 @@ def get_data_chunked(
     shape = (np.sum(sizes),) + data.shape[1:]
     storage = np.zeros(shape, dtype=data.dtype)
     running_index = 0
+
     for i, (start, size) in enumerate(zip(starts, sizes)):
         source_slice = np.s_[start : start + size]
         dest_slice = np.s_[running_index : running_index + size]
