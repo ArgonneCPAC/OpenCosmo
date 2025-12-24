@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from enum import Enum
+from functools import reduce
 from typing import Any, Callable, Optional, Protocol
 
 import h5py
@@ -60,6 +63,12 @@ class ColumnWriter:
         source = Hdf5Source(dataset, index)
         return ColumnWriter([source], strategy, attrs)
 
+    def concat(self, others: list[ColumnWriter]):
+        new_sources = reduce(
+            lambda acc, other: acc + other.__sources, others, self.__sources
+        )
+        return ColumnWriter(new_sources, self.combine_strategy, self.__attrs)
+
     def set_transformation(self, transformation: Callable[[np.ndarray], np.ndarray]):
         if self.__transformation is not None:
             raise ValueError(
@@ -68,7 +77,11 @@ class ColumnWriter:
         self.__transformation = transformation
 
     def __len__(self):
-        return sum(len(source) for source in self.__sources)
+        match self.combine_strategy:
+            case ColumnCombineStrategy.CONCAT:
+                return sum(len(source) for source in self.__sources)
+            case ColumnCombineStrategy.SUM:
+                return len(self.__sources[0])
 
     @property
     def shape(self):
@@ -89,7 +102,11 @@ class ColumnWriter:
 
     @property
     def data(self) -> np.ndarray:
-        data = np.concatenate([source.data for source in self.__sources])
+        match self.combine_strategy:
+            case ColumnCombineStrategy.CONCAT:
+                data = np.concatenate([source.data for source in self.__sources])
+            case ColumnCombineStrategy.SUM:
+                data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
         if self.__transformation is not None:
             data = self.__transformation(data)
         return data

@@ -771,7 +771,6 @@ class Dataset:
             tree = self.__tree.apply_index(self.__state.raw_index)
             tree_schema = tree.make_schema()
             schema.children["index"] = tree_schema
-
         metadata = self.header.dump()
         schema.children["header"] = metadata
 

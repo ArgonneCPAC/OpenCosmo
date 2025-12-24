@@ -300,6 +300,13 @@ class DatasetState:
             .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
             .get_data(ignore_sort=True)
         )
+        cached_data = self.__cache.get_columns(self.columns)
+        for name, data in cached_data.items():
+            if name in derived_data or name in raw_columns:
+                continue
+            writer = ColumnWriter.from_numpy_array(data)
+            data_schema.columns[name] = writer
+
         column_units = {
             name: self.__unit_handler.base_units[name] for name in raw_columns
         }
@@ -316,8 +323,8 @@ class DatasetState:
                 "description": self.__derived_columns[colname].description,
             }
             source = NumpySource(coldata)
-            writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT)
-            data_schema["children"][colname] = writer
+            writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT, attrs=attrs)
+            data_schema.columns[colname] = writer
 
         children = {"data": data_schema}
 
@@ -336,7 +343,6 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        from time import time
 
         derived_update: dict[str, DerivedColumn] = {}
         existing_columns = set(self.columns)
@@ -370,7 +376,7 @@ class DatasetState:
         new_unit_handler = self.__unit_handler
         new_cache = self.__cache
         new_derived = copy(self.__derived_columns)
-        new_column_names: set[str] = set()
+        new_column_names: set[str] = set(self.columns)
         if new_in_memory_columns:
             new_unit_handler = validate_in_memory_columns(
                 new_in_memory_columns, self.__unit_handler, len(self)
@@ -399,7 +405,8 @@ class DatasetState:
                     new_column_names.add(colname)
             new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
-            new_column_names = set(self.columns).union(new_column_names)
+            new_column_names |= set(self.columns)
+
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,

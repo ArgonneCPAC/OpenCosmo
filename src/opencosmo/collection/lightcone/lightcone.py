@@ -14,7 +14,8 @@ from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
-from opencosmo.io.schemas import LightconeSchema, StackedLightconeDatasetSchema
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.stack import stack_datasets_in_schema
 from opencosmo.mpi import get_comm_world, get_mpi
 
 if TYPE_CHECKING:
@@ -512,25 +513,23 @@ class Lightcone(dict):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
     def make_schema(self) -> LightconeSchema:
-        schema = LightconeSchema()
         datasets = order_by_redshift_range(self)
         output_datasets = combine_adjacent_datasets(datasets)
+        children = {}
 
         for name, datasets in output_datasets.items():
+            new_dataset_schema = stack_datasets_in_schema(datasets, name)
             (ds_min, ds_max) = get_redshift_range(datasets)
+            header_schema = self.header.with_parameter(
+                "lightcone/z_range",
+                (max(ds_min, self.z_range[0]), min(ds_max, self.z_range[1])),
+            ).dump()
+            new_dataset_schema.children["header"] = header_schema
+            children[name] = new_dataset_schema
 
-            stacked_schema = StackedLightconeDatasetSchema(
-                datasets,
-                self.header.with_parameter(
-                    "lightcone/z_range",
-                    (max(ds_min, self.z_range[0]), min(ds_max, self.z_range[1])),
-                ),
-                sum((len(ds) for ds in datasets)),
-                0,
-            )
-            schema.add_child(stacked_schema, name)
-
-        return schema
+        if len(children) == 1:
+            return next(iter(children.values()))
+        return make_schema("", FileEntry.LIGHTCONE, children=children)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """

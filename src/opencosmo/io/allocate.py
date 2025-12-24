@@ -21,9 +21,6 @@ def allocate(group: h5py.File | h5py.Group, schema: Schema):
 def write_columns(group: h5py.File | h5py.Group, schema: Schema):
     for column_path, column_writer in schema.columns.items():
         group[column_path][:] = column_writer.data
-        if "_start" in column_path:
-            print(column_path)
-            print(column_writer.data)
         group[column_path].attrs.update(column_writer.attrs)
     for child_name, child_schema in schema.children.items():
         write_columns(group[child_name], child_schema)

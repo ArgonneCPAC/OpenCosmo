@@ -32,9 +32,19 @@ def verify_file(
             return verify_dataset_data(schema)
         case FileEntry.STRUCTURE_COLLECTION:
             return verify_structure_collection_data(schema)
-
+        case FileEntry.LIGHTCONE:
+            verify_lightcone_collection_schema(schema)
         case _:
             raise ValueError("Unknown file structure!")
+
+
+def verify_lightcone_collection_schema(schema: Schema):
+    if len(schema.children) < 1:
+        raise ValueError("Expect at least one lightcone child!")
+    elif "data" in schema.children:
+        return verify_dataset_data(schema.children["data"])
+    for key, child_schema in schema.children.items():
+        verify_dataset_data(child_schema)
 
 
 def verify_structure_collection_data(schema: Schema):
