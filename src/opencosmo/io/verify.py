@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 """
 
 
+class ZeroLengthError(Exception):
+    pass
+
+
 def verify_file(
     schema: Schema,
 ):

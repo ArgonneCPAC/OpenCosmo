@@ -16,6 +16,7 @@ class FileEntry(Enum):
     HEALPIX_MAP = "healpix_map"
     COLUMNS = "columns"
     METADATA = "metadata"
+    EMPTY = "empty"
 
 
 class Schema(NamedTuple):

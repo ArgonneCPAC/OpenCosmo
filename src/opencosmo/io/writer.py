@@ -112,7 +112,7 @@ class ColumnWriter:
                 data = np.concatenate([source.data for source in self.__sources])
             case ColumnCombineStrategy.SUM:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
-        if self.__transformation is not None:
+        if hasattr(self, "__transformation"):
             data = self.__transformation(data)
         return data
 

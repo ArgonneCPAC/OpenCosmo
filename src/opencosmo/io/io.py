@@ -406,11 +406,11 @@ def write(path: Path, dataset: Writeable, overwrite=False) -> None:
     path = resolve_path(path, existance_requirement)
 
     schema = dataset.make_schema()
-    verify_file(schema)
 
     if mpiio is not None:
         return mpiio.write_parallel(path, schema)
 
+    verify_file(schema)
     file = h5py.File(path, "w")
     allocate(file, schema)
     write_metadata(file, schema)
