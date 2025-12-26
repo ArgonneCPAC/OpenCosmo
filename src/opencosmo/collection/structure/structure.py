@@ -13,8 +13,7 @@ from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.unary import get_length
-from opencosmo.io.schema import FileEntry, Schema, make_schema
-from opencosmo.io.schemas import StructCollectionSchema
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import ColumnWriter
 
 from .handler import LinkHandler
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import DerivedColumn
     from opencosmo.index import DataIndex
     from opencosmo.io import io
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
@@ -1259,7 +1259,7 @@ class StructureCollection:
         else:
             raise AttributeError("This collection does not contain galaxies!")
 
-    def make_schema(self, name: Optional[str] = None) -> StructCollectionSchema:
+    def make_schema(self, name: Optional[str] = None) -> Schema:
         children = {}
         source_name = self.__source.dtype
         datasets = self.__handler.resort(self.__source, self.__get_datasets())

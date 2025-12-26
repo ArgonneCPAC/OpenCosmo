@@ -17,7 +17,6 @@ from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex, into_array
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.schemas import LightconeSchema
 from opencosmo.spatial.region import ConeRegion, HealPixRegion
 
 if TYPE_CHECKING:
@@ -30,6 +29,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
 
@@ -521,7 +521,7 @@ class HealpixMap(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self) -> LightconeSchema:
+    def make_schema(self) -> Schema:
         children = {}
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()

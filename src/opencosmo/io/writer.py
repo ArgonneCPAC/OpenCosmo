@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import reduce
-from typing import Any, Callable, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol
 
-import h5py
 import numpy as np
-from numpy.typing import DTypeLike
 
-from opencosmo.index import DataIndex, get_data, get_length
+from opencosmo.index import get_data, get_length
+
+if TYPE_CHECKING:
+    import h5py
+    from numpy.typing import DTypeLike
+
+    from opencosmo.index import DataIndex
 
 
 class ColumnCombineStrategy(Enum):
@@ -40,7 +44,6 @@ class ColumnWriter:
         if len(dtypes) > 1:
             raise ValueError("A single column can not have multiple data types!")
         self.__dtype = dtypes.pop()
-        self.__transformation = None
 
     @classmethod
     def from_numpy_array(
@@ -70,7 +73,7 @@ class ColumnWriter:
         return ColumnWriter(new_sources, self.combine_strategy, self.__attrs)
 
     def set_transformation(self, transformation: Callable[[np.ndarray], np.ndarray]):
-        if self.__transformation is not None:
+        if hasattr(self, "transformation"):
             raise ValueError(
                 "A transformation can only be set on a column writer a single time!"
             )

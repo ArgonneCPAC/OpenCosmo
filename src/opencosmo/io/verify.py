@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol, TypedDict
+from typing import TYPE_CHECKING, Optional, Protocol, TypedDict
 
 import numpy as np
 
@@ -133,7 +133,7 @@ def verify_column_group(
         try:
             group_name, column_name = column_path.rsplit("/", 1)
         except ValueError:
-            group_name = None
+            group_name = ""
             column_name = column_path
         group_names.add(group_name)
         column_names.add(column_name)

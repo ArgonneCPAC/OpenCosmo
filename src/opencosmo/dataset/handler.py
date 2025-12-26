@@ -18,7 +18,6 @@ from opencosmo.index import (
     take,
 )
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.schemas import DatasetSchema
 from opencosmo.io.writer import (
     ColumnCombineStrategy,
     ColumnWriter,
@@ -33,6 +32,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
 
 
 class Hdf5Handler:
@@ -142,7 +142,7 @@ class Hdf5Handler:
         self,
         columns: Iterable[str],
         header: Optional[OpenCosmoHeader] = None,
-    ) -> DatasetSchema:
+    ) -> tuple[Schema, Optional[Schema]]:
         column_writers = {}
         for column_name in columns:
             column_writers[column_name] = ColumnWriter.from_h5_dataset(

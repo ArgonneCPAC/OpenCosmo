@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from opencosmo.io.schema import Schema
-
 if TYPE_CHECKING:
     import h5py
 
-    from opencosmo.io.verify import ColumnWriter
+    from opencosmo.io.schema import Schema
+    from opencosmo.io.writer import ColumnWriter
 
 
 def allocate(group: h5py.File | h5py.Group, schema: Schema):

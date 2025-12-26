@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset import Dataset
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
 
@@ -512,7 +513,7 @@ class Lightcone(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self) -> LightconeSchema:
+    def make_schema(self) -> Schema:
         datasets = order_by_redshift_range(self)
         output_datasets = combine_adjacent_datasets(datasets)
         children = {}

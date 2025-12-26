@@ -328,7 +328,7 @@ class DatasetState:
 
             attrs = {
                 "unit": unit,
-                "description": self.__derived_columns[colname].description,
+                "description": str(self.__derived_columns[colname].description),
             }
             source = NumpySource(coldata)
             writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT, attrs=attrs)

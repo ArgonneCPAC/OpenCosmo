@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.protocols import DataSchema
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
@@ -80,7 +80,7 @@ class SimulationCollection(dict):
             return next(iter(datasets.values()))
         return cls(datasets)
 
-    def make_schema(self) -> DataSchema:
+    def make_schema(self) -> Schema:
         children = {}
 
         for name, dataset in self.items():
