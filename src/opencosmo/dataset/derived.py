@@ -161,13 +161,8 @@ def build_derived_columns(
 
     raw_data = hdf5_handler.get_data(columns_to_fetch)
     data = cached_data | unit_handler.apply_units(raw_data, unit_kwargs)
-    derived_columns = {
-        key: dc
-        for key, dc in all_derived_columns.items()
-        if key in dependency_graph.nodes()
-    }
 
-    dependency_graph = replace_multi_producers(dependency_graph, derived_columns)
+    dependency_graph = replace_multi_producers(dependency_graph, all_derived_columns)
     new_derived: dict[str, np.ndarray] = {}
 
     for colidx in rx.topological_sort(dependency_graph):

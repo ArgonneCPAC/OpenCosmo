@@ -168,7 +168,7 @@ def make_file_targets(file: h5py.File):
         return [OpenTarget(file, header)]
     if header is None and "data" in file.keys():
         raise ValueError(
-            "This file appears to be missing a header. "
+            f"The file at {file.file.filename} appears to be missing a header. "
             "Are you sure it is an OpenCosmo file?"
         )
     if header is None:

@@ -12,6 +12,7 @@ class FileEntry(Enum):
     STRUCTURE_COLLECTION = "structure_collection"
     SIMULATION_COLLECTION = "simulation_collection"
     LIGHTCONE = "lightcone"
+    LIGHCONE_MAP = "lightcone_map"
     HEALPIX_MAP = "healpix_map"
     COLUMNS = "columns"
     METADATA = "metadata"

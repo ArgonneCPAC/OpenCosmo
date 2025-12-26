@@ -16,6 +16,7 @@ from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import SimpleIndex, into_array
 from opencosmo.io.io import open_single_dataset
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.schemas import LightconeSchema
 from opencosmo.spatial.region import ConeRegion, HealPixRegion
 
@@ -521,12 +522,21 @@ class HealpixMap(dict):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
     def make_schema(self) -> LightconeSchema:
-        schema = LightconeSchema()  # NOTE: so far we're keeping the lightcone schema
+        children = {}
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
-            ds_schema.header = ds_schema.header
-            schema.add_child(ds_schema, name)
-        return schema
+            children[name] = ds_schema
+        if len(children) == 1:
+            ds_schema = next(iter(children.values()))
+            return make_schema(
+                "/",
+                FileEntry.HEALPIX_MAP,
+                ds_schema.children,
+                ds_schema.columns,
+                ds_schema.attributes,
+            )
+
+        return make_schema("/", FileEntry.HEALPIX_MAP, children=children)
 
     def bound(self, region: Region, inclusive: bool = False):
         """

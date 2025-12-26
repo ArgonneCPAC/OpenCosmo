@@ -37,6 +37,8 @@ def verify_file(
         case FileEntry.SIMULATION_COLLECTION:
             for name, ds_schema in schema.children.items():
                 verify_dataset_data(ds_schema)
+        case FileEntry.HEALPIX_MAP:
+            verify_dataset_data(schema, has_index=False)
         case _:
             raise ValueError("Unknown file structure!")
 
@@ -45,7 +47,7 @@ def verify_lightcone_collection_schema(schema: Schema):
     if len(schema.children) < 1:
         raise ValueError("Expect at least one lightcone child!")
     elif "data" in schema.children:
-        return verify_dataset_data(schema.children["data"])
+        return verify_dataset_data(schema)
     for key, child_schema in schema.children.items():
         verify_dataset_data(child_schema)
 
@@ -77,7 +79,7 @@ def verify_structure_collection_data(schema: Schema):
                 raise ValueError(f"Got an unknown child for structure collection!")
 
 
-def verify_dataset_data(schema: Schema):
+def verify_dataset_data(schema: Schema, has_index=True):
     """
     Verify a given dataset is valid. Requiring:
     1. It has a data group
@@ -87,7 +89,7 @@ def verify_dataset_data(schema: Schema):
     index_root = None
     children = schema.children
 
-    if "data" not in children or "index" not in children:
+    if "data" not in children or ("index" not in children and has_index):
         raise ValueError("Datasets must have at least a data group and a index group")
 
     metadata_groups = [
@@ -97,8 +99,9 @@ def verify_dataset_data(schema: Schema):
     ]
 
     verify_column_group(schema.children["data"])
-    for child in schema.children["index"].children.values():
-        verify_column_group(child)
+    if has_index:
+        for child in schema.children["index"].children.values():
+            verify_column_group(child)
     for md_child in metadata_groups:
         verify_column_group(md_child)
 

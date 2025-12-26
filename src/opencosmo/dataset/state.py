@@ -301,10 +301,18 @@ class DatasetState:
             .get_data(ignore_sort=True)
         )
         cached_data = self.__cache.get_columns(self.columns)
-        for name, data in cached_data.items():
+        for name, coldata in cached_data.items():
             if name in derived_data or name in raw_columns:
                 continue
-            writer = ColumnWriter.from_numpy_array(data)
+            try:
+                data = coldata.value
+                unit_str = str(coldata.unit)
+            except AttributeError:
+                data = coldata
+                unit_str = ""
+            attrs = {"unit": unit_str}
+            attrs["description"] = self.descriptions.get(name, "None")
+            writer = ColumnWriter.from_numpy_array(data, attrs=attrs)
             data_schema.columns[name] = writer
 
         column_units = {
