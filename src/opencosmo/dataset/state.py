@@ -21,7 +21,6 @@ from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.index.build import from_size, single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_length, get_range
-from opencosmo.io import schemas as ios
 from opencosmo.io.schema import FileEntry, empty_schema, make_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention

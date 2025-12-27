@@ -6,7 +6,6 @@ from opencosmo.collection import structure as sc
 from opencosmo.dataset import Dataset
 from opencosmo.io import io
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.schemas import SimCollectionSchema
 
 if TYPE_CHECKING:
     import astropy.units as u

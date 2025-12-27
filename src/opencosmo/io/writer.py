@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from numpy.typing import DTypeLike
 
     from opencosmo.index import DataIndex
+    from opencosmo.mpi import MPI
 
 
 class ColumnCombineStrategy(Enum):
@@ -72,7 +73,9 @@ class ColumnWriter:
         )
         return ColumnWriter(new_sources, self.combine_strategy, self.__attrs)
 
-    def set_transformation(self, transformation: Callable[[np.ndarray], np.ndarray]):
+    def set_transformation(
+        self, transformation: Callable[[np.ndarray, Optional[MPI.Comm]], np.ndarray]
+    ):
         if hasattr(self, "transformation"):
             raise ValueError(
                 "A transformation can only be set on a column writer a single time!"
@@ -105,15 +108,18 @@ class ColumnWriter:
 
     @property
     def data(self) -> np.ndarray:
+        return self.get_data()
+
+    def get_data(self, comm: Optional[MPI.Comm] = None):
         match self.combine_strategy:
             case ColumnCombineStrategy.CONCAT:
-                from time import time
-
                 data = np.concatenate([source.data for source in self.__sources])
             case ColumnCombineStrategy.SUM:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
-        if hasattr(self, "__transformation"):
-            data = self.__transformation(data)
+        try:
+            data = self.__transformation(data, comm)
+        except AttributeError:
+            return data
         return data
 
 

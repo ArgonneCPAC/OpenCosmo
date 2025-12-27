@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.io import io
     from opencosmo.io.schema import Schema
+    from opencosmo.mpi import MPI
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
@@ -46,6 +47,26 @@ def filter_source_by_dataset(
     tags = masked_dataset.select(linked_column).data
     new_source = source.filter(oc.col(linked_column).isin(tags))
     return new_source
+
+
+def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+    if comm is None:
+        return np.arange(len(data))
+    lengths = comm.allgather(len(data))
+    offsets = np.insert(np.cumsum(lengths), 0, 0)
+    offset = offsets[comm.Get_rank()]
+    result = np.arange(offset, offset + len(data))
+    return result
+
+
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.comm]):
+    psum = np.insert(np.cumsum(size), 0, 0)[:-1]
+    if comm is None:
+        return psum
+    lengths = comm.allgather(np.sum(size))
+    offsets = np.insert(np.cumsum(lengths), 0, 0)
+    offset = offsets[comm.Get_rank()]
+    return psum + offset
 
 
 class StructureCollection:
@@ -1265,21 +1286,16 @@ class StructureCollection:
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
 
         source_schema = self.__source.make_schema()
-        new_data_linked = {}
         for colname, column in source_schema.children["data_linked"].columns.items():
             if "idx" in colname:
-                new_data_linked[colname] = ColumnWriter.from_numpy_array(
-                    np.arange(len(column))
-                )
+                column.set_transformation(do_idx_update)
             elif "start" in colname:
                 size_colname = colname.replace("start", "size")
                 size_data = (
                     source_schema.children["data_linked"].columns[size_colname].data
                 )
-                new_data = np.insert(np.cumsum(size_data), 0, 0)[:-1]
-                new_data_linked[colname] = ColumnWriter.from_numpy_array(new_data)
-
-        source_schema.children["data_linked"].columns.update(new_data_linked)
+                updater = partial(do_start_update, size=size_data)
+                column.set_transformation(updater)
 
         children[source_name] = source_schema
 

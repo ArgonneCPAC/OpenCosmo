@@ -102,7 +102,7 @@ def verify_dataset_data(schema: Schema, has_index=True):
         if name not in ["data", "index"] and child.type == FileEntry.COLUMNS
     ]
 
-    verify_column_group(schema.children["data"])
+    verify_column_group(schema.children["data"], require_data=True)
     if has_index:
         for child in schema.children["index"].children.values():
             verify_column_group(child)
@@ -110,11 +110,7 @@ def verify_dataset_data(schema: Schema, has_index=True):
         verify_column_group(md_child)
 
 
-def verify_column_group(
-    schema: Schema,
-    verify_root: Optional[str] = None,
-    verify_length_by_group=False,
-):
+def verify_column_group(schema: Schema, require_data: bool = False):
     """
     Verify that a given data group is valid. This requires that:
     1. All column writers have the same length
@@ -146,22 +142,12 @@ def verify_column_group(
 
     all_column_lengths = set(column_lengths.values())
 
-    if verify_root is None and len(group_names) != 1:
-        raise ValueError(
-            "Attempted to verify a single column group, but got columns in seperate groups"
-        )
-
-    elif verify_root is not None and not all(
-        gn.startswith(verify_root) for gn in group_names
-    ):
-        raise ValueError(f"Columns in this group should be relative to {verify_root}")
-
-    if len(all_column_lengths) != 1 and not verify_length_by_group:
+    if len(all_column_lengths) != 1:
         raise ValueError(
             "Columns within a single group should always have the same length!"
         )
-    elif verify_length_by_group:
-        verify_lengths_by_groups(group_names, column_lengths)
+    elif require_data and all_column_lengths.pop() == 0:
+        raise ZeroLengthError
 
     if len(column_strategies) != 1:
         raise ValueError(

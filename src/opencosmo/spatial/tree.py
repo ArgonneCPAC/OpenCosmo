@@ -15,9 +15,6 @@ except ImportError:
 
 from opencosmo.index import from_size, get_data, n_in_range
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.schemas import (
-    ColumnSchema,
-)
 from opencosmo.io.writer import (
     ColumnCombineStrategy,
     ColumnWriter,

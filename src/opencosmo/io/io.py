@@ -24,8 +24,6 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.get import get_unit_applicators_hdf5
 from opencosmo.units.handler import make_unit_handler
 
-from .schemas import FileSchema
-
 if TYPE_CHECKING:
     from pathlib import Path
     from types import ModuleType
@@ -410,7 +408,6 @@ def write(path: Path, dataset: Writeable, overwrite=False) -> None:
     if mpiio is not None:
         return mpiio.write_parallel(path, schema)
 
-    verify_file(schema)
     file = h5py.File(path, "w")
     allocate(file, schema)
     write_metadata(file, schema)

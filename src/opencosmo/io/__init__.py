@@ -1,3 +1,5 @@
+import hdf5plugin
+
 from .io import open, write
 
 
