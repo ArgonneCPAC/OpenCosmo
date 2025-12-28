@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import singledispatch
 from typing import TYPE_CHECKING
 
 import numba as nb

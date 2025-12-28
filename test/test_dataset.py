@@ -1,5 +1,4 @@
 import os
-from time import sleep
 
 import astropy.units as u
 import numpy as np
@@ -434,7 +433,6 @@ def test_cache(input_path):
 
 
 def test_cache_select(input_path):
-    from weakref import ref
 
     dataset = oc.open(input_path)
     data = dataset.get_data()

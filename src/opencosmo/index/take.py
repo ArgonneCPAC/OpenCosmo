@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 
 import numba as nb  # type: ignore
 import numpy as np
-from numpy.typing import ArrayLike
 
 SimpleIndex = np.ndarray
 ChunkedIndex = tuple[np.ndarray, np.ndarray]
-if TYPE_CHECKING:
-    from opencosmo.index import DataIndex
 
 
 def take(from_, by):

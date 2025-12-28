@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from functools import reduce
-from inspect import signature
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -17,11 +16,9 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import QTable  # type: ignore
 
-from opencosmo.column.column import EvaluatedColumn
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import ChunkedIndex, SimpleIndex, into_array, mask, project
-from opencosmo.io.verify import FileEntry
+from opencosmo.index import into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -30,7 +27,6 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
-    from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex

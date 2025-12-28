@@ -3,13 +3,10 @@ from __future__ import annotations
 from functools import cached_property
 from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
-from weakref import ref
 
 import numpy as np
 
-from opencosmo.column.cache import ColumnCache
 from opencosmo.index import (
-    ChunkedIndex,
     SimpleIndex,
     from_size,
     get_data,
@@ -19,17 +16,12 @@ from opencosmo.index import (
 )
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import (
-    ColumnCombineStrategy,
     ColumnWriter,
-    Hdf5Source,
 )
-from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
     import h5py
 
-    from opencosmo.column.column import DerivedColumn
-    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema

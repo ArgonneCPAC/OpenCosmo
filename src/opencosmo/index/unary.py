@@ -1,4 +1,3 @@
-from functools import singledispatch
 
 import numba as nb
 import numpy as np

@@ -6,13 +6,12 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
 import numpy as np
-from astropy.table import Column, vstack  # type: ignore
+from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.stack import stack_datasets_in_schema

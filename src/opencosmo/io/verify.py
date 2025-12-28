@@ -1,22 +1,10 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from enum import Enum
-from typing import TYPE_CHECKING, Optional, Protocol, TypedDict
-
-import numpy as np
-
-from opencosmo.index import DataIndex, get_data, get_length
+from typing import TYPE_CHECKING
 
 from .schema import FileEntry
 
 if TYPE_CHECKING:
-    import h5py
-    import numpy as np
-    from numpy.typing import DTypeLike
-
-    from opencosmo.index import DataIndex
-
     from .schema import Schema
 
 
@@ -80,7 +68,7 @@ def verify_structure_collection_data(schema: Schema):
             case FileEntry.STRUCTURE_COLLECTION:
                 verify_structure_collection_data(child_schema)
             case _:
-                raise ValueError(f"Got an unknown child for structure collection!")
+                raise ValueError("Got an unknown child for structure collection!")
 
 
 def verify_dataset_data(schema: Schema, has_index=True):
@@ -90,7 +78,6 @@ def verify_dataset_data(schema: Schema, has_index=True):
     2. It has a spatial index group
     3. If it has any metadata groups, they are the same length as the data group
     """
-    index_root = None
     children = schema.children
 
     if "data" not in children or ("index" not in children and has_index):

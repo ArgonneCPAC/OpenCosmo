@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
 import astropy.units as u
 import numpy as np
-from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
 from opencosmo.column.column import DerivedColumn, EvaluatedColumn
@@ -18,10 +16,10 @@ from opencosmo.dataset.derived import (
 )
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
-from opencosmo.index.build import from_size, single_chunk
+from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_length, get_range
-from opencosmo.io.schema import FileEntry, empty_schema, make_schema
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
@@ -566,7 +564,7 @@ class DatasetState:
 
         if row_range[1] > len(self) or row_range[0] < 0:
             raise ValueError(
-                f"Row indices must be between 0 and the length of this dataset!"
+                "Row indices must be between 0 and the length of this dataset!"
             )
         sorted = self.get_sorted_index()
         new_handler = self.__raw_data_handler.take(rows, sorted)

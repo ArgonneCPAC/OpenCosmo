@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING
 
 import astropy.units as u
 import numpy as np

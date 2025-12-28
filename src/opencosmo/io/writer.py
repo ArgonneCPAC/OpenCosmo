@@ -141,7 +141,6 @@ class Hdf5Source:
 
     @property
     def data(self):
-        from time import time
 
         data = get_data(self.__source, self.__index)
         return data

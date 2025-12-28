@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from inspect import signature
-from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable
 
 import astropy.units as u

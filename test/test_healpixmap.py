@@ -4,8 +4,6 @@ import healsparse as hsp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
-from astropy.cosmology import units as cu
-from numpy import random
 
 import opencosmo as oc
 from opencosmo.spatial.healpix import HealPixRegion

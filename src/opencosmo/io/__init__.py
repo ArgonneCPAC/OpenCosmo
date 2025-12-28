@@ -1,4 +1,4 @@
-import hdf5plugin
+import hdf5plugin  # noqa: F401
 
 from .io import open, write
 

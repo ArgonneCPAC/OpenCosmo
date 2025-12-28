@@ -11,10 +11,8 @@ import numpy as np
 import opencosmo as oc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
-from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.unary import get_length
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import ColumnWriter
 
 from .handler import LinkHandler
 

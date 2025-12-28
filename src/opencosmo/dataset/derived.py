@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from functools import reduce
-from itertools import chain, product
-from typing import TYPE_CHECKING, Iterable, Mapping, Optional
+from itertools import product
+from typing import TYPE_CHECKING, Mapping, Optional
 
 import rustworkx as rx
 

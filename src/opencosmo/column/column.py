@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator as op
 from copy import copy
-from functools import cache, cached_property, partial, partialmethod
+from functools import cached_property, partial, partialmethod
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -25,7 +25,6 @@ from opencosmo.column.evaluate import (
     evaluate_rows,
     evaluate_vectorized,
 )
-from opencosmo.index import ChunkedIndex
 from opencosmo.units import UnitsError
 
 if TYPE_CHECKING:

@@ -1,7 +1,6 @@
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.index import SimpleIndex
 
 
 def test_cache_take():

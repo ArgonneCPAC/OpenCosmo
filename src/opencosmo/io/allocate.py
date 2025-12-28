@@ -6,7 +6,6 @@ if TYPE_CHECKING:
     import h5py
 
     from opencosmo.io.schema import Schema
-    from opencosmo.io.writer import ColumnWriter
 
 
 def allocate(group: h5py.File | h5py.Group, schema: Schema):

@@ -1,8 +1,6 @@
-import os
 
 import astropy.units as u
 import healpy as hp
-import healsparse as hsp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord

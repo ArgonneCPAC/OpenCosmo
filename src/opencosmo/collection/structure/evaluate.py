@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from inspect import Parameter, signature
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
 
 import numpy as np
 from astropy.units import Quantity  # type: ignore
 
 from opencosmo import dataset as ds
-from opencosmo.dataset.evaluate import visit_dataset
 from opencosmo.evaluate import (
     insert_data,
     make_output_from_first_values,
@@ -15,7 +14,6 @@ from opencosmo.evaluate import (
 )
 
 if TYPE_CHECKING:
-    from numpy.typing import DTypeLike
 
     from opencosmo import StructureCollection
 
@@ -207,7 +205,7 @@ def __make_chunked_output(
         first_values = {name: first_values}
     if any(len(fv) != expected_length for fv in first_values.values()):
         raise ValueError(
-            f"If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
+            "If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
         )
     return {name: [fv] for name, fv in first_values.items()}
 

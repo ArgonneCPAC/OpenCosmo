@@ -1,6 +1,6 @@
 # ruff: noqa: TC001 TC003
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from pydantic import (
     BaseModel,

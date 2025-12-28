@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from copy import copy
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import numpy as np
 from mpi4py import MPI
 
-from opencosmo.index import from_size, get_length
-from opencosmo.io.allocate import write_metadata
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import ZeroLengthError, verify_file
 from opencosmo.io.writer import ColumnCombineStrategy
@@ -19,11 +15,9 @@ from opencosmo.mpi import get_comm_world
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.schema import Schema
     from opencosmo.io.writer import ColumnWriter
 
-    from .protocols import DataSchema
 
 
 """
@@ -213,7 +207,7 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
 def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
     all_metadata = comm.allgather(metadata)
     if not all(md == all_metadata[0] for md in all_metadata[1:]):
-        raise ValueError(f"Not all ranks recieved the same metadata!")
+        raise ValueError("Not all ranks recieved the same metadata!")
 
 
 def __write(schema: Schema, group: h5py.File | h5py.Group, comm: MPI.Comm):

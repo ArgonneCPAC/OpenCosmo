@@ -14,7 +14,6 @@ import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.index import SimpleIndex, into_array
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.spatial.region import ConeRegion, HealPixRegion
@@ -22,7 +21,6 @@ from opencosmo.spatial.region import ConeRegion, HealPixRegion
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
-    from astropy.table import Table
 
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
@@ -333,7 +331,7 @@ class HealpixMap(dict):
         if output == "healpix":
             if self.__len__() != hp.nside2npix(self.nside):
                 raise ValueError(
-                    f"healpix type chosen but length of dataset doesn't match nside value"
+                    "healpix type chosen but length of dataset doesn't match nside value"
                 )
 
         if len(table.colnames) == 1:

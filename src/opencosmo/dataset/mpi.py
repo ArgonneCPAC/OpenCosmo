@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 from warnings import warn
 
-from opencosmo.index import ChunkedIndex
 from opencosmo.index.build import single_chunk
 from opencosmo.spatial.protocols import TreePartition
 

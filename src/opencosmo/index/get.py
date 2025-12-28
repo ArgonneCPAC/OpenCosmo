@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -49,7 +49,6 @@ def get_data_chunked(
 
     """
 
-    from time import time
 
     unit = None
     if isinstance(data, u.Quantity):
