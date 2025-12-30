@@ -179,11 +179,11 @@ def test_visit_single(halo_paths):
     from time import time
 
     def offset(halo_properties, dm_particles):
-        start = time()
+        time()
         dx = np.mean(dm_particles["x"]) - halo_properties["fof_halo_center_x"]
         dy = np.mean(dm_particles["y"]) - halo_properties["fof_halo_center_y"]
         dz = np.mean(dm_particles["z"]) - halo_properties["fof_halo_center_z"]
-        end = time()
+        time()
         res = np.linalg.norm([dx.value, dy.value, dz.value])
         return res
 
@@ -260,7 +260,7 @@ def test_visit_with_return_none(halo_paths):
         return None
 
     with pytest.raises(ValueError):
-        result = collection.evaluate(offset, **spec, insert=True)
+        collection.evaluate(offset, **spec, insert=True)
 
 
 def test_visit_multiple_with_numpy(halo_paths):
@@ -405,7 +405,7 @@ def test_data_gets_all_particles(halo_paths):
         10, at="random"
     )
 
-    halo_tags = collection["dm_particles"].select("fof_halo_tag").get_data()
+    collection["dm_particles"].select("fof_halo_tag").get_data()
     for i, halo in enumerate(collection.halos()):
         for name, particle_species in halo.items():
             if "particle" not in name:

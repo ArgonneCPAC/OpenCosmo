@@ -112,6 +112,7 @@ def test_lc_collection_write_single(
     data = ds.select("redshift").data
     parallel_assert(data.min() >= 0.040 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)
+    print(ds.z_range)
     parallel_assert(ds.z_range == (0.04, 0.0405))
 
 
@@ -122,12 +123,25 @@ def test_lc_collection_write(
     path = MPI.COMM_WORLD.bcast(tmp_path)
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     ds = ds.with_redshift_range(0.039, 0.0405)
+
+    original_tags = ds.select("fof_halo_tag").get_data()
+
     original_length = len(ds)
     oc.write(path / "lightcone.hdf5", ds)
     ds = oc.open(path / "lightcone.hdf5")
-    data = ds.select("redshift").data
-    parallel_assert(data.min() >= 0.039 and data.max() <= 0.0405)
-    parallel_assert(len(data) == original_length)
+    redshift_data = ds.select("redshift").data
+    total_original_length = np.sum(MPI.COMM_WORLD.allgather(original_length))
+    total_final_length = np.sum(MPI.COMM_WORLD.allgather(len(ds)))
+
+    final_tags = ds.select("fof_halo_tag").get_data()
+
+    all_original_tags = np.concatenate(MPI.COMM_WORLD.allgather(original_tags))
+    all_final_tags = np.concatenate(MPI.COMM_WORLD.allgather(final_tags))
+
+    parallel_assert(np.all(np.sort(all_original_tags) == np.sort(all_final_tags)))
+
+    parallel_assert(redshift_data.min() >= 0.039 and redshift_data.max() <= 0.0405)
+    parallel_assert(total_original_length == total_final_length)
     parallel_assert(ds.z_range == (0.039, 0.0405))
 
 
@@ -161,6 +175,7 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     written_data = ds.select("early_index").get_data("numpy")
 
     written_data_length = comm.allgather(len(written_data))
+    print(written_data_length, original_data_length)
     parallel_assert(sum(original_data_length) == sum(written_data_length))
 
     original_early_index = np.concatenate(comm.allgather(original_data))

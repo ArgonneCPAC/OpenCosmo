@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from functools import reduce
-from itertools import chain, product
-from typing import TYPE_CHECKING, Iterable, Mapping, Optional
+from itertools import product
+from typing import TYPE_CHECKING, Mapping, Optional
 
 import rustworkx as rx
 
@@ -161,6 +161,7 @@ def build_derived_columns(
 
     raw_data = hdf5_handler.get_data(columns_to_fetch)
     data = cached_data | unit_handler.apply_units(raw_data, unit_kwargs)
+
     dependency_graph = replace_multi_producers(dependency_graph, all_derived_columns)
     new_derived: dict[str, np.ndarray] = {}
 
@@ -182,5 +183,7 @@ def build_derived_columns(
             data[colname] = output
             new_derived[colname] = output
 
-    cache.add_data(new_derived)
+    if new_derived:
+        cache.add_data(new_derived)
+
     return data | new_derived

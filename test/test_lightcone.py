@@ -493,6 +493,10 @@ def test_insert_to_sorted(haloproperties_600_path, haloproperties_601_path, tmp_
         random_value=random_value,
         random_mass=oc.col("fof_halo_mass") * oc.col("random_value"),
     )
+    data = ds.select(("random_value", "random_mass", "fof_halo_mass")).get_data()
+    assert np.all(
+        np.isclose(data["random_mass"], data["random_value"] * data["fof_halo_mass"])
+    )
     output_path = tmp_path / "data.hdf5"
     oc.write(output_path, ds)
     ds = oc.open(output_path).sort_by("fof_halo_mass")

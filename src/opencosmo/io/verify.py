@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from .schema import FileEntry
+
+if TYPE_CHECKING:
+    from .schema import Schema
+
+
+""" Columns in a schema are given by their path within the file.
+"""
+
+
+class ZeroLengthError(Exception):
+    pass
+
+
+def verify_file(
+    schema: Schema,
+):
+    match schema.type:
+        case FileEntry.DATASET:
+            return verify_dataset_data(schema)
+        case FileEntry.STRUCTURE_COLLECTION:
+            return verify_structure_collection_data(schema)
+        case FileEntry.LIGHTCONE:
+            verify_lightcone_collection_schema(schema)
+        case FileEntry.SIMULATION_COLLECTION:
+            for name, ds_schema in schema.children.items():
+                verify_dataset_data(ds_schema)
+        case FileEntry.HEALPIX_MAP:
+            verify_dataset_data(schema, has_index=False)
+        case _:
+            raise ValueError("Unknown file structure!")
+
+
+def verify_lightcone_collection_schema(schema: Schema):
+    if len(schema.children) < 1:
+        raise ValueError("Expect at least one lightcone child!")
+    elif "data" in schema.children:
+        return verify_dataset_data(schema)
+    for key, child_schema in schema.children.items():
+        verify_dataset_data(child_schema)
+
+
+def verify_structure_collection_data(schema: Schema):
+    if "halo_properties" in schema.children:
+        link_holder = "halo_properties"
+    elif "galaxy_properties" in schema.children:
+        link_holder = "galaxy_properties"
+    else:
+        raise ValueError("No valid link holder found in schema!")
+
+    for child_name, child_schema in schema.children.items():
+        if child_name == link_holder:
+            has_link = any(
+                map(lambda cn: "data_linked" in cn, child_schema.children.keys())
+            )
+            if not has_link:
+                raise ValueError(
+                    f'Source dataset {child_name} does not have expected "data_linked" group'
+                )
+
+        match child_schema.type:
+            case FileEntry.DATASET:
+                verify_dataset_data(child_schema)
+            case FileEntry.STRUCTURE_COLLECTION:
+                verify_structure_collection_data(child_schema)
+            case _:
+                raise ValueError("Got an unknown child for structure collection!")
+
+
+def verify_dataset_data(schema: Schema, has_index=True):
+    """
+    Verify a given dataset is valid. Requiring:
+    1. It has a data group
+    2. It has a spatial index group
+    3. If it has any metadata groups, they are the same length as the data group
+    """
+    children = schema.children
+
+    if "data" not in children or ("index" not in children and has_index):
+        raise ValueError("Datasets must have at least a data group and a index group")
+
+    metadata_groups = [
+        child
+        for name, child in schema.children.items()
+        if name not in ["data", "index"] and child.type == FileEntry.COLUMNS
+    ]
+
+    verify_column_group(schema.children["data"], require_data=True)
+    if has_index:
+        for child in schema.children["index"].children.values():
+            verify_column_group(child)
+    for md_child in metadata_groups:
+        verify_column_group(md_child)
+
+
+def verify_column_group(schema: Schema, require_data: bool = False):
+    """
+    Verify that a given data group is valid. This requires that:
+    1. All column writers have the same length
+    2. All columns have the same combine strategy
+    3. All columns are in the same group
+
+    By default, requires that all columns are in the same group. If "verify_root"
+    is set, verifies that all columns are in "verify_root", but does not require
+    they are in the same group.
+
+    If verify_length_by_group is set, length verification is done on a per-group basis
+    rather than for all columns together. This only has an effect when verify_root
+    is set.
+    """
+    column_names = set()
+    group_names = set()
+    column_lengths = {}
+    column_strategies = set()
+    for column_path, column_writer in schema.columns.items():
+        try:
+            group_name, column_name = column_path.rsplit("/", 1)
+        except ValueError:
+            group_name = ""
+            column_name = column_path
+        group_names.add(group_name)
+        column_names.add(column_name)
+        column_lengths[column_path] = len(column_writer)
+        column_strategies.add(column_writer.combine_strategy)
+
+    all_column_lengths = set(column_lengths.values())
+
+    if len(all_column_lengths) != 1:
+        raise ValueError(
+            "Columns within a single group should always have the same length!"
+        )
+    elif require_data and all_column_lengths.pop() == 0:
+        raise ZeroLengthError
+
+    if len(column_strategies) != 1:
+        raise ValueError(
+            "Columns within a single group should always have the same combine strategy!"
+        )
+
+    return (group_names.pop(), column_lengths, column_strategies.pop())
+
+
+def verify_lengths_by_groups(groups: set[str], column_lengths: dict[str, int]):
+    for group_name in groups:
+        columns_in_group = filter(
+            lambda kv: kv[0].startswith(group_name), column_lengths.items()
+        )
+        lengths = set(map(lambda kv: kv[1], columns_in_group))
+        if len(lengths) != 1:
+            raise ValueError(
+                f"Columns in group {group_name} do not have the same length!"
+            )

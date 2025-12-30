@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import numba as nb  # type: ignore
 import numpy as np
-from numpy.typing import ArrayLike
 
 SimpleIndex = np.ndarray
 ChunkedIndex = tuple[np.ndarray, np.ndarray]
-if TYPE_CHECKING:
-    from opencosmo.index import DataIndex
 
 
 def take(from_, by):
@@ -135,11 +130,6 @@ def __take_chunked_from_chunked(from_: ChunkedIndex, by: ChunkedIndex):
     out_start = np.empty(max_out, dtype=np.int64)
     out_size = np.empty(max_out, dtype=np.int64)
     out_owner = np.empty(max_out, dtype=np.int64)
-
-    from_start = from_[0].astype(np.float64, copy=False)
-    from_size = from_[1].astype(np.float64, copy=False)
-    by_start = by[0].astype(np.float64, copy=False)
-    by_size = by[1].astype(np.float64, copy=False)
 
     n = resolve_spanning_numba(
         from_[0], from_[1], by[0], by[1], out_start, out_size, out_owner

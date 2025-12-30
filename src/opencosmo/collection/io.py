@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Type
 import opencosmo as oc
 from opencosmo.collection.simulation import SimulationCollection
 from opencosmo.collection.structure.io import validate_linked_groups
-from opencosmo.io.io import FILE_TYPE
+from opencosmo.io.file import FILE_TYPE
 
 if TYPE_CHECKING:
     from pathlib import Path

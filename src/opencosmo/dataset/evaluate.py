@@ -4,16 +4,13 @@ from inspect import Parameter, signature
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 
-from astropy.table import Column, QTable  # type: ignore
 from astropy.units import Quantity
 
-from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
+from opencosmo.column.column import EvaluatedColumn
 from opencosmo.column.evaluate import do_first_evaluation
-from opencosmo.dataset.formats import convert_data
 from opencosmo.evaluate import (
     insert_data,
     make_output_from_first_values,
-    prepare_kwargs,
 )
 
 if TYPE_CHECKING:

@@ -95,7 +95,7 @@ max-doc-length = 90
 [tool.ruff.lint]
 future-annotations = true
 preview = true
-select = ["TC"]
+extend-select = ["TC"]
 
 [tool.towncrier.fragment.improvement]
 name = "Improvements"

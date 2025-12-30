@@ -43,7 +43,7 @@ def check_length(cache: ColumnCache, data: dict[str, np.ndarray]):
         raise ValueError(
             "When adding data to the cache, all columns must be the same length"
         )
-    elif (l := len(cache)) > 0 and l != lengths.pop():
+    elif (length := len(cache)) > 0 and length != lengths.pop():
         raise ValueError(
             "When adding data to the cache, the columns must be the same length as the columns currently in the cache"
         )
@@ -208,7 +208,6 @@ class ColumnCache:
     ):
         check_length(self, data)
         new_cached_data = self.__cached_data | data
-        new_descriptions = self.__descriptions | descriptions
         new_cache = ColumnCache(
             new_cached_data,
             self.__registered_column_groups,
@@ -245,7 +244,6 @@ class ColumnCache:
     def request(self, column_names: Iterable[str], index: Optional[DataIndex]):
         column_names = set(column_names)
         columns_in_cache = column_names.intersection(self.__cached_data.keys())
-        missing_columns = column_names - columns_in_cache
 
         data = {name: self.__cached_data[name] for name in columns_in_cache}
         if index is not None:

@@ -174,7 +174,9 @@ def test_filter_write(input_path, tmp_path):
 
     ds = oc.open(temporary_path)
     written_data = ds.data
-    for column in ds.columns:
+    columns = ds.columns
+    columns.sort()
+    for column in columns:
         parallel_assert(np.all(data[column] == written_data[column]))
 
     parallel_assert(all(data == written_data))
@@ -627,6 +629,7 @@ def test_simcollection_write_one_missing(multi_path, tmp_path):
             all_halo_tags[simkey] = np.append(all_halo_tags[simkey], tags)
 
     oc.write(temporary_path, data)
+    print("done writing")
     written_data = oc.open(temporary_path)
     assert isinstance(written_data, oc.SimulationCollection)
     assert len(written_data.keys()) == 2

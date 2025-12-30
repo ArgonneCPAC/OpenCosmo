@@ -38,9 +38,6 @@ def __project_simple_on_chunked(source: ChunkedIndex, other: SimpleIndex):
 def __project_chunked_on_chunked(source: ChunkedIndex, other: ChunkedIndex):
     source_ends = source[0] + source[1]
     other_ends = other[0] + other[1]
-    out_of_range = (other_ends[:, np.newaxis] < source[0]) | (
-        other[0][:, np.newaxis] > source_ends
-    )
 
     clipped_starts = np.clip(other[0][:, np.newaxis], a_min=source[0], a_max=None)
     clipped_ends = np.clip(other_ends[:, np.newaxis], a_min=None, a_max=source_ends)

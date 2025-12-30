@@ -1,25 +1,19 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
-from deprecated import deprecated
 
 from opencosmo import io
 from opencosmo.collection import lightcone as lc
 from opencosmo.collection.structure import structure as sc
-from opencosmo.dataset.handler import Hdf5Handler
-from opencosmo.index import SimpleIndex
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import h5py
 
     from opencosmo import dataset as d
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.index import DataIndex
 
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles", "galaxy_properties"],
@@ -39,26 +33,6 @@ def remove_empty(dataset):
     if not mask.all():
         dataset = dataset.take_rows(np.where(mask)[0])
     return dataset
-
-
-@deprecated(
-    version="0.8",
-    reason="oc.open_linked_files is deprecated and will be removed in version 1.0. "
-    "Please use oc.open instead",
-)
-def open_linked_files(*files: Path, **load_kwargs: bool):
-    """
-    **WARNING: THIS METHOD IS DEPCREATED AND WILL BE REMOVED IN A FUTURE
-    VERSION. PLEASE USE** :py:meth:`opencosmo.open`
-
-    Open a collection of files that are linked together, such as a
-    properties file and a particle file.
-
-    """
-    if len(files) == 1 and isinstance(files[0], list):
-        return open_linked_files(*files[0])
-
-    return io.io.open(*files, **load_kwargs)
 
 
 def validate_linked_groups(groups: dict[str, h5py.Group]):
@@ -200,10 +174,8 @@ def __sort_by_step(link_sources: dict[str, list[io.io.OpenTarget]], link_targets
                     "Recived multiple source datasets of a single type, but not all are lightcone datasets!"
                 )
             if source.header.file.step is None:
-                raise ValueError(
-                    "No step in source!"
-                )
-   
+                raise ValueError("No step in source!")
+
             sources_by_step[source.header.file.step][source_name] = source
     for target_type, targets_ in link_targets.items():
         for target_name, targets in targets_.items():

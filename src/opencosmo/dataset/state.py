@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from itertools import cycle
 from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
 import astropy.units as u
 import numpy as np
-from astropy.table import QTable
 
 from opencosmo.column.cache import ColumnCache
 from opencosmo.column.column import DerivedColumn, EvaluatedColumn
@@ -18,10 +16,11 @@ from opencosmo.dataset.derived import (
 )
 from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
-from opencosmo.index.build import from_size, single_chunk
+from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_length, get_range
-from opencosmo.io import schemas as ios
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
@@ -212,8 +211,6 @@ class DatasetState:
 
         # keep ordering
 
-        data_columns = set(data.keys())
-
         if metadata_columns:
             data.update(self.__raw_data_handler.get_metadata(metadata_columns))
 
@@ -285,20 +282,33 @@ class DatasetState:
             raw_data_handler=new_raw_handler,
         )
 
-    def make_schema(self):
+    def make_schema(self, name: Optional[str] = None):
         header = self.__header.with_region(self.__region)
         raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
 
-        schema = self.__raw_data_handler.make_schema(raw_columns, header)
+        data_schema, metadata_schema = self.__raw_data_handler.make_schema(
+            raw_columns, header
+        )
         derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
         derived_data = (
             self.select(derived_names)
             .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
             .get_data(ignore_sort=True)
         )
-        column_units = {
-            name: self.__unit_handler.base_units[name] for name in raw_columns
-        }
+        cached_data = self.__cache.get_columns(self.columns)
+        for name, coldata in cached_data.items():
+            if name in derived_data or name in raw_columns:
+                continue
+            try:
+                data = coldata.value
+                unit_str = str(coldata.unit)
+            except AttributeError:
+                data = coldata
+                unit_str = ""
+            attrs = {"unit": unit_str}
+            attrs["description"] = self.descriptions.get(name, "None")
+            writer = ColumnWriter.from_numpy_array(data, attrs=attrs)
+            data_schema.columns[name] = writer
 
         for colname in derived_names:
             coldata = derived_data[colname]
@@ -309,33 +319,19 @@ class DatasetState:
 
             attrs = {
                 "unit": unit,
-                "description": self.__derived_columns[colname].description,
+                "description": str(self.__derived_columns[colname].description),
             }
-            colschema = ios.ColumnSchema(
-                colname, from_size(len(coldata)), coldata, attrs
-            )
-            schema.add_child(colschema, f"data/{colname}")
+            source = NumpySource(coldata)
+            writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT, attrs=attrs)
+            data_schema.columns[colname] = writer
 
-        cached_data = self.__cache.get_columns(self.columns)
+        children = {"data": data_schema}
 
-        for colname, coldata in cached_data.items():
-            try:
-                data = coldata.value
-                unit_str = str(coldata.unit)
-            except AttributeError:
-                data = coldata
-                unit_str = ""
-            if colname in schema.columns["data"]:
-                continue
-
-            attrs = {}
-            attrs["unit"] = unit_str
-            attrs["description"] = self.descriptions.get(colname, "None")
-
-            colschema = ios.ColumnSchema(colname, from_size(len(coldata)), data, attrs)
-            schema.add_child(colschema, f"data/{colname}")
-
-        return schema
+        if metadata_schema is not None:
+            children[metadata_schema.name] = metadata_schema
+        if name is None:
+            name = ""
+        return make_schema(name, FileEntry.DATASET, children=children)
 
     def with_new_columns(
         self,
@@ -346,9 +342,7 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        from time import time
 
-        derived_update: dict[str, DerivedColumn] = {}
         existing_columns = set(self.columns)
 
         if inter := existing_columns.intersection(new_columns.keys()):
@@ -380,7 +374,7 @@ class DatasetState:
         new_unit_handler = self.__unit_handler
         new_cache = self.__cache
         new_derived = copy(self.__derived_columns)
-        new_column_names: set[str] = set()
+        new_column_names: set[str] = set(self.columns)
         if new_in_memory_columns:
             new_unit_handler = validate_in_memory_columns(
                 new_in_memory_columns, self.__unit_handler, len(self)
@@ -409,11 +403,12 @@ class DatasetState:
                     new_column_names.add(colname)
             new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
-            new_column_names = set(self.columns).union(new_column_names)
+            new_column_names |= set(self.columns)
+
         return self.__rebuild(
             cache=new_cache,
             derived_columns=new_derived,
-            columns=existing_columns.union(new_column_names),
+            columns=new_column_names,
             unit_handler=new_unit_handler,
         )
 
@@ -562,7 +557,7 @@ class DatasetState:
 
         if row_range[1] > len(self) or row_range[0] < 0:
             raise ValueError(
-                f"Row indices must be between 0 and the length of this dataset!"
+                "Row indices must be between 0 and the length of this dataset!"
             )
         sorted = self.get_sorted_index()
         new_handler = self.__raw_data_handler.take(rows, sorted)

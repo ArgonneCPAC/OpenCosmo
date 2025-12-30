@@ -10,6 +10,7 @@ import h5py
 from pydantic import BaseModel, ValidationError
 
 from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.parameters import (
     FileParameters,
     dtype,
@@ -22,6 +23,8 @@ from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from opencosmo.io.schema import Schema
 
 
 class OpenCosmoHeader:
@@ -186,6 +189,25 @@ class OpenCosmoHeader:
         for key, val in updates.items():
             new_header = new_header.with_parameter(key, val)
         return new_header
+
+    def dump(self) -> Schema:
+        to_write = chain(
+            [("file", self.__file_pars)],
+            self.__required_origin_parameters.items(),
+            self.__optional_origin_parameters.items(),
+            self.__dtype_parameters.items(),
+        )
+        pars = {}
+        for path, model in to_write:
+            data = model.model_dump(by_alias=True)
+            data = dict(
+                map(
+                    lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
+                )
+            )
+
+            pars[path] = data
+        return make_schema("header", FileEntry.METADATA, attributes=pars)
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         write_header_attributes(file, "file", self.__file_pars)

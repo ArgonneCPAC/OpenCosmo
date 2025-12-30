@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from functools import reduce
-from inspect import signature
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -17,10 +16,9 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import QTable  # type: ignore
 
-from opencosmo.column.column import EvaluatedColumn
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import ChunkedIndex, SimpleIndex, into_array, mask, project
+from opencosmo.index import into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -29,11 +27,10 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
-    from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.io.schemas import DatasetSchema
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
     from opencosmo.spatial.tree import Tree
@@ -475,8 +472,8 @@ class Dataset:
         )
         data = self.select(required_columns).get_data()
         bool_mask = np.ones(len(data), dtype=bool)
-        for mask in masks:
-            bool_mask &= mask.apply(data)
+        for m in masks:
+            bool_mask &= m.apply(data)
 
         new_state = self.__state.with_mask(bool_mask)
         return Dataset(self.__header, new_state, self.__tree)
@@ -750,7 +747,9 @@ class Dataset:
         new_state = self.__state.with_new_columns(descriptions, **new_columns)
         return Dataset(self.__header, new_state, self.__tree)
 
-    def make_schema(self, with_header: bool = True) -> DatasetSchema:
+    def make_schema(
+        self, with_header: bool = True, name: Optional[str] = None
+    ) -> Schema:
         """
         Prep to write the dataset. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.
@@ -763,16 +762,14 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-
-        schema = self.__state.make_schema()
-        if not with_header:
-            schema.header = None
-
+        schema = self.__state.make_schema(name)
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.raw_index)
-            spat_idx_schema = tree.make_schema()
-            for name, column in spat_idx_schema.items():
-                schema.add_child(column, name)
+            tree_schema = tree.make_schema()
+            schema.children["index"] = tree_schema
+        metadata = self.header.dump()
+        schema.children["header"] = metadata
+
         return schema
 
     def with_units(
