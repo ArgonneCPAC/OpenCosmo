@@ -434,14 +434,18 @@ def test_cache(input_path):
 
 def test_cache_select(input_path):
     dataset = oc.open(input_path)
-    dataset.get_data()
+    _ = dataset.get_data()
     cache = dataset._Dataset__state._DatasetState__cache
     assert set(dataset.columns) == cache.columns
     columns = np.random.choice(dataset.columns, 5, replace=False)
-    dataset.select(columns)
+    dataset2 = dataset.select(columns)
 
     del dataset
-    assert cache.columns == set(columns)
+    from gc import collect
+
+    collect()  # force a collection
+
+    assert cache.columns == set(dataset2.columns)
 
 
 def test_cache_filter(input_path):

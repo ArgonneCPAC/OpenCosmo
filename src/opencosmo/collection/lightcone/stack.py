@@ -54,7 +54,10 @@ def stack_lightcone_datasets_in_schema(
     datasets: list[ds.Dataset], name: str, redshift_range: tuple[float, float]
 ):
     if len(datasets) == 1 and get_comm_world() is None:
-        return datasets[0].make_schema(name=name)
+        schema = datasets[0].make_schema(name=name)
+        header = sync_headers(datasets, redshift_range)
+        schema.children["header"] = header
+        return schema
 
     schemas = [ds.make_schema(name=name) for ds in datasets]
     index_names = list(schemas[0].children["index"].children.keys())
