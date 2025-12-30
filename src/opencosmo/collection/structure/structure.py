@@ -445,8 +445,6 @@ class StructureCollection:
 
         else:
             # case one/3
-            kwarg_names = set(evaluate_kwargs.keys())
-            other_kwarg_names = kwarg_names.difference(self.keys())
 
             output = evaluate.visit_structure_collection_eagerly(
                 func,
@@ -1144,13 +1142,10 @@ class StructureCollection:
             warn("Tried to iterate over a collection with no structures in it!")
             return
 
-        link_handler = None
-        data_columns = set(self.__source.columns)
         metadata_columns: list[str] = reduce(
             lambda acc, key: acc + self.__handler.columns[key], data_types, []
         )
         datasets = self.__get_datasets()
-        rename_galaxies = "galaxies" in self.keys()
         rs = {name: 0 for name in self.__datasets.keys()}
 
         columns_to_collect: dict[str, dict[str, list[np.ndarray]]] = defaultdict(dict)

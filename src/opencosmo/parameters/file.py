@@ -30,6 +30,7 @@ class FileType(Enum):
     diffsky_fits = "diffsky_fits"
     healpix_map = "healpix_map"
 
+
 class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True, frozen=True)
     origin: str = "HACC"

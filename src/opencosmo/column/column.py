@@ -597,10 +597,10 @@ class ColumnMask:
         return self.operator(column, self.value)  # type: ignore
 
     def __and__(self, other: Self | CompoundColumnMask):
-        return CompoundColumnMask(self, other, lambda l, r: l & r)
+        return CompoundColumnMask(self, other, lambda left, right: left & right)
 
     def __or__(self, other: Self | CompoundColumnMask):
-        return CompoundColumnMask(self, other, lambda l, r: l | r)
+        return CompoundColumnMask(self, other, lambda left, right: left | right)
 
 
 class CompoundColumnMask:
@@ -622,10 +622,10 @@ class CompoundColumnMask:
         return columns
 
     def __and__(self, other: ColumnMask | Self):
-        return CompoundColumnMask(self, other, lambda l, r: l & r)
+        return CompoundColumnMask(self, other, lambda left, right: left & right)
 
     def __or__(self, other: ColumnMask | Self):
-        return CompoundColumnMask(self, other, lambda l, r: l | r)
+        return CompoundColumnMask(self, other, lambda left, right: left | right)
 
     def apply(self, data):
         left_mask = self.__left.apply(data)

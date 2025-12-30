@@ -67,7 +67,7 @@ class ColumnWriter:
         source = Hdf5Source(dataset, index)
         return ColumnWriter([source], strategy, attrs)
 
-    def concat(self, others: list[ColumnWriter]):
+    def combine(self, others: list[ColumnWriter]):
         new_sources = reduce(
             lambda acc, other: acc + other.__sources, others, self.__sources
         )
@@ -117,7 +117,7 @@ class ColumnWriter:
             case ColumnCombineStrategy.SUM:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
         try:
-            data = self.__transformation(data, comm)
+            data = self.__transformation(data, comm=comm)
         except AttributeError:
             return data
         return data
@@ -141,7 +141,6 @@ class Hdf5Source:
 
     @property
     def data(self):
-
         data = get_data(self.__source, self.__index)
         return data
 

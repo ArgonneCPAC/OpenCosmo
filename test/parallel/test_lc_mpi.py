@@ -112,6 +112,7 @@ def test_lc_collection_write_single(
     data = ds.select("redshift").data
     parallel_assert(data.min() >= 0.040 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)
+    print(ds.z_range)
     parallel_assert(ds.z_range == (0.04, 0.0405))
 
 
@@ -174,6 +175,7 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     written_data = ds.select("early_index").get_data("numpy")
 
     written_data_length = comm.allgather(len(written_data))
+    print(written_data_length, original_data_length)
     parallel_assert(sum(original_data_length) == sum(written_data_length))
 
     original_early_index = np.concatenate(comm.allgather(original_data))

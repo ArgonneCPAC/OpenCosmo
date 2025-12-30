@@ -433,7 +433,6 @@ def test_cache(input_path):
 
 
 def test_cache_select(input_path):
-
     dataset = oc.open(input_path)
     data = dataset.get_data()
     cache = dataset._Dataset__state._DatasetState__cache

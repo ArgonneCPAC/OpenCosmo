@@ -12,7 +12,11 @@ from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.file import FileExistance, resolve_path
 from opencosmo.index.build import empty, from_range
 from opencosmo.io.allocate import allocate, write_columns, write_metadata
-from opencosmo.io.file import evaluate_load_conditions, get_file_type, make_all_targets
+from opencosmo.io.file import (
+    evaluate_load_conditions,
+    get_file_type,
+    make_all_targets,
+)
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
@@ -24,6 +28,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from opencosmo.index import ChunkedIndex
+    from opencosmo.io.file import OpenTarget
 
     from .protocols import Writeable
 

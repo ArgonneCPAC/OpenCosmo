@@ -14,7 +14,6 @@ from opencosmo.evaluate import (
 )
 
 if TYPE_CHECKING:
-
     from opencosmo import StructureCollection
 
 

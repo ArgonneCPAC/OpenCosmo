@@ -9,12 +9,12 @@ import numpy as np
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.stack import stack_datasets_in_schema
 from opencosmo.mpi import get_comm_world, get_mpi
 
 if TYPE_CHECKING:
@@ -151,7 +151,6 @@ def combine_adjacent_datasets(
     if get_comm_world() is not None:
         return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
     rs = 0
-    current: list[Dataset] = []
     current_key = next(iter(ordered_datasets.keys()))
     output: dict[str, list[Dataset]] = OrderedDict({current_key: []})
 
@@ -518,13 +517,16 @@ class Lightcone(dict):
         children = {}
 
         for name, datasets in output_datasets.items():
-            new_dataset_schema = stack_datasets_in_schema(datasets, name)
-            (ds_min, ds_max) = get_redshift_range(datasets)
-            header_schema = self.header.with_parameter(
-                "lightcone/z_range",
-                (max(ds_min, self.z_range[0]), min(ds_max, self.z_range[1])),
-            ).dump()
-            new_dataset_schema.children["header"] = header_schema
+            header_zrange = get_redshift_range(datasets)
+            my_zrange = self.z_range
+            zrange = (
+                max(header_zrange[0], my_zrange[0]),
+                min(header_zrange[1], my_zrange[1]),
+            )
+
+            new_dataset_schema = stack_lightcone_datasets_in_schema(
+                datasets, name, zrange
+            )
             children[name] = new_dataset_schema
 
         if len(children) == 1:
@@ -806,7 +808,6 @@ class Lightcone(dict):
                 "Number of rows to take must be less than number of rows in dataset"
             )
         if at == "random":
-            rs = 0
             indices = np.random.choice(len(self), n, replace=False)
             indices = np.sort(indices)
             return self.__take_rows(indices)

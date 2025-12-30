@@ -211,8 +211,6 @@ class DatasetState:
 
         # keep ordering
 
-        data_columns = set(data.keys())
-
         if metadata_columns:
             data.update(self.__raw_data_handler.get_metadata(metadata_columns))
 
@@ -312,10 +310,6 @@ class DatasetState:
             writer = ColumnWriter.from_numpy_array(data, attrs=attrs)
             data_schema.columns[name] = writer
 
-        column_units = {
-            name: self.__unit_handler.base_units[name] for name in raw_columns
-        }
-
         for colname in derived_names:
             coldata = derived_data[colname]
             unit = ""
@@ -349,7 +343,6 @@ class DatasetState:
         has been created based on the values in another column.
         """
 
-        derived_update: dict[str, DerivedColumn] = {}
         existing_columns = set(self.columns)
 
         if inter := existing_columns.intersection(new_columns.keys()):

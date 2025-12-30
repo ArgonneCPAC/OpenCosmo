@@ -472,8 +472,8 @@ class Dataset:
         )
         data = self.select(required_columns).get_data()
         bool_mask = np.ones(len(data), dtype=bool)
-        for mask in masks:
-            bool_mask &= mask.apply(data)
+        for m in masks:
+            bool_mask &= m.apply(data)
 
         new_state = self.__state.with_mask(bool_mask)
         return Dataset(self.__header, new_state, self.__tree)

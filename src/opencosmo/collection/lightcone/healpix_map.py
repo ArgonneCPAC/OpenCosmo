@@ -840,7 +840,6 @@ class HealpixMap(dict):
                 "Number of rows to take must be less than number of rows in dataset"
             )
         if at == "random":
-            rs = 0
             indices = np.random.choice(len(self), n, replace=False)
             indices = np.sort(indices)
             return self.__take_rows(indices)

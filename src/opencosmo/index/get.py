@@ -49,7 +49,6 @@ def get_data_chunked(
 
     """
 
-
     unit = None
     if isinstance(data, u.Quantity):
         unit = data.unit

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from opencosmo.io.writer import ColumnWriter
 
 
-
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
 from several ranks into a single schema that can be allocated by rank 0. Each 
@@ -87,7 +86,6 @@ def write_parallel(file: Path, file_schema: Schema):
     new_comm = comm.Create(new_group)
     if new_comm == MPI.COMM_NULL:
         return cleanup_mpi(comm, new_comm, new_group)
-    rank = new_comm.Get_rank()
 
     verify_schemas(file_schema, new_comm)
     try:
