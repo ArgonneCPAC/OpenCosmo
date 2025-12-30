@@ -187,7 +187,7 @@ def test_visit_with_return_none(input_path):
         return None
 
     with pytest.raises(ValueError):
-        result = ds.evaluate(fof_px, vectorize=True, insert=True)
+        ds.evaluate(fof_px, vectorize=True, insert=True)
 
 
 def test_visit_multiple_with_kwargs_numpy(input_path):
@@ -292,7 +292,7 @@ def test_visit_with_sort(input_path, tmp_path):
 
     ds = ds.evaluate(fof_px, vectorize=True, insert=True)
     oc.write(tmp_path / "data.hdf5", ds)
-    ds_new = oc.open(tmp_path / "data.hdf5")
+    oc.open(tmp_path / "data.hdf5")
 
     data = ds.select(("fof_halo_mass", "fof_halo_com_vx", "fof_px")).get_data("numpy")
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
@@ -421,12 +421,12 @@ def test_cache(input_path):
     dataset = oc.open(input_path)
 
     start1 = time()
-    data = dataset.get_data()
+    dataset.get_data()
     end1 = time()
     dt1 = end1 - start1
 
     start2 = time()
-    data2 = dataset.get_data()
+    dataset.get_data()
     end2 = time()
     dt2 = end2 - start2
     assert (dt2 / dt1) < 0.2
@@ -434,11 +434,11 @@ def test_cache(input_path):
 
 def test_cache_select(input_path):
     dataset = oc.open(input_path)
-    data = dataset.get_data()
+    dataset.get_data()
     cache = dataset._Dataset__state._DatasetState__cache
     assert set(dataset.columns) == cache.columns
     columns = np.random.choice(dataset.columns, 5, replace=False)
-    dataset2 = dataset.select(columns)
+    dataset.select(columns)
 
     del dataset
     assert cache.columns == set(columns)
@@ -476,7 +476,7 @@ def test_cache_column_conversion(input_path):
 
 def test_cache_change_units(input_path):
     dataset = oc.open(input_path)
-    data = dataset.get_data()
+    dataset.get_data()
     dataset2 = dataset.with_units("scalefree")
 
     cache = dataset2._Dataset__state._DatasetState__cache
@@ -489,7 +489,7 @@ def test_cache_change_units(input_path):
 def test_cache_conversion_propogation(input_path):
     dataset = oc.open(input_path)
     dataset2 = dataset.with_units(conversions={u.Mpc: u.lyr}, fof_halo_center_x=u.km)
-    data2 = dataset2.get_data()
+    dataset2.get_data()
 
     cache = dataset._Dataset__state._DatasetState__cache
     cache2 = dataset2._Dataset__state._DatasetState__cache

@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.io.schemas import DatasetSchema
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
     from opencosmo.spatial.tree import Tree
@@ -749,7 +749,7 @@ class Dataset:
 
     def make_schema(
         self, with_header: bool = True, name: Optional[str] = None
-    ) -> DatasetSchema:
+    ) -> Schema:
         """
         Prep to write the dataset. This should not be called directly for the user.
         The opencosmo.write file writer automatically handles the file context.

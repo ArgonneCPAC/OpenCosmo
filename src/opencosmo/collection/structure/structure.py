@@ -57,7 +57,7 @@ def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
     return result
 
 
-def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.comm]):
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
     psum = np.insert(np.cumsum(size), 0, 0)[:-1]
     if comm is None:
         return psum

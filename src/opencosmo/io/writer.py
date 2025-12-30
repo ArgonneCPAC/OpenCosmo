@@ -117,7 +117,7 @@ class ColumnWriter:
             case ColumnCombineStrategy.SUM:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
         try:
-            data = self.__transformation(data, comm=comm)
+            data = self.__transformation(data, comm=comm)  # type: ignore
         except AttributeError:
             return data
         return data

@@ -24,6 +24,8 @@ from opencosmo.units import UnitConvention
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from opencosmo.io.schema import Schema
+
 
 class OpenCosmoHeader:
     """
@@ -188,7 +190,7 @@ class OpenCosmoHeader:
             new_header = new_header.with_parameter(key, val)
         return new_header
 
-    def dump(self) -> dict[str, Any]:
+    def dump(self) -> Schema:
         to_write = chain(
             [("file", self.__file_pars)],
             self.__required_origin_parameters.items(),
