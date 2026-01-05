@@ -527,7 +527,6 @@ class Lightcone(dict):
             new_dataset_schema = stack_lightcone_datasets_in_schema(
                 datasets, name, zrange
             )
-            print(new_dataset_schema.attributes)
             children[name] = new_dataset_schema
 
         if len(children) == 1:

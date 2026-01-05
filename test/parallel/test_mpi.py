@@ -176,6 +176,7 @@ def test_filter_write(input_path, tmp_path):
     written_data = ds.data
     columns = ds.columns
     columns.sort()
+
     for column in columns:
         parallel_assert(np.all(data[column] == written_data[column]))
 

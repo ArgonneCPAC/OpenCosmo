@@ -170,7 +170,6 @@ class Hdf5Handler:
 
         for colname in columns:
             data[colname] = get_data(self.__data_group[colname], self.__index)
-
         # Ensure order is preserved
         return {name: data[name] for name in columns}
 
