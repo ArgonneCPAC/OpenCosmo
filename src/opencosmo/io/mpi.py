@@ -192,8 +192,10 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
             raise ValueError(
                 f"Column {colname} did not have consistent shapes across ranks!"
             )
-        dtypes = set([cm[2] for cm in colmeta if cm is not None])
-        if len(dtypes) > 1:
+        dtype_kinds = set([cm[2].kind for cm in colmeta if cm is not None])
+        if len(dtype_kinds) > 1:
+            # We allow type promotion, though there are very few cases where
+            # It would be necessary.
             raise ValueError(
                 f"Column {colname} did not have consistent dtypes across ranks!"
             )
@@ -234,8 +236,14 @@ def get_column_allocation_metadata(column: Optional[ColumnWriter], comm: MPI.Com
         total_length = sum(m[0][0] for m in all_meta)
     else:
         total_length = reference_meta[0][0]
+
+    # Note, we have already verified that all data types have the same
+    # kind, so we simply need to pick the highest-precision one.
+    all_dtypes = [m[1] for m in all_meta]
+    all_dtypes.sort(key=lambda dt: dt.itemsize, reverse=True)
+
     shape = (total_length,) + reference_meta[0][1:]
-    return shape, all_meta[0][1], all_meta[0][2]
+    return shape, all_dtypes[0], all_meta[0][2]
 
 
 def get_column_offset(column: Optional[ColumnWriter], comm: MPI.Comm):

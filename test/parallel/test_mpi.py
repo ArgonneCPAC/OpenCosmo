@@ -502,6 +502,27 @@ def test_add_column(input_path):
 
 @pytest.mark.timeout(20)
 @pytest.mark.parallel(nprocs=4)
+def test_add_column_with_dtype_promotion(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    COMM = MPI.COMM_WORLD
+    ds = oc.open(input_path)
+    data = np.random.uniform(0, 100, len(ds))
+    if COMM.Get_rank() in [0, 2]:
+        data = data.astype(np.float32)
+    else:
+        data = data.astype(np.float64)
+    ds = ds.with_new_columns(random_data=data)
+    oc.write(temporary_path, ds)
+    ds = oc.open(temporary_path)
+    written_data = ds.select("random_data").get_data()
+    parallel_assert(written_data.dtype == np.float64)
+    parallel_assert(np.all(written_data == data))
+
+
+@pytest.mark.timeout(20)
+@pytest.mark.parallel(nprocs=4)
 def test_add_column_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = tmp_path / "test.hdf5"
