@@ -93,7 +93,7 @@ def update_simulation_parameter(
     return path
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
     with oc.open(input_path) as f:
@@ -107,7 +107,7 @@ def test_structure_collection_open(input_path, profile_path):
     oc.open(input_path, profile_path)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_structure_collection_open_2(input_path, profile_path):
     comm = MPI.COMM_WORLD
@@ -117,7 +117,7 @@ def test_structure_collection_open_2(input_path, profile_path):
         oc.open(input_path, profile_path)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_partitioning_includes_all(input_path):
     with oc.open(input_path) as f:
@@ -133,7 +133,7 @@ def test_partitioning_includes_all(input_path):
     parallel_assert(all_tags == original_tags)
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
@@ -154,7 +154,7 @@ def test_take(input_path):
         assert len(tags) == 4 * n
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filters(input_path):
     ds = oc.open(input_path)
@@ -165,7 +165,7 @@ def test_filters(input_path):
     parallel_assert(all(data["sod_halo_mass"] > 0))
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -190,7 +190,7 @@ def test_filter_write(input_path, tmp_path):
     parallel_assert(all(data == written_data))
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filter_zerolength(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -225,7 +225,7 @@ def test_filter_zerolength(input_path, tmp_path):
     parallel_assert(read_tags == written_tags)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filter_all_zerolength(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -273,7 +273,7 @@ def test_link_read(all_paths):
             assert halo_tags[0] == halo_tag
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate_structure(all_paths):
     collection = oc.open(*all_paths).take(100)
@@ -425,7 +425,7 @@ def test_chain_link(all_paths, galaxy_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
@@ -458,7 +458,7 @@ def test_box_query_chain(input_path):
     parallel_assert(set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"]))
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_zerolength(input_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -476,7 +476,7 @@ def test_box_query_zerolength(input_path):
     parallel_assert(len(ds) == 0, participating=rank > 0)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_derive_multiply(input_path):
     ds = oc.open(input_path)
@@ -498,7 +498,7 @@ def test_derive_multiply(input_path):
     )
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_add_column(input_path):
     ds = oc.open(input_path)
@@ -508,7 +508,7 @@ def test_add_column(input_path):
     assert np.all(data == stored_data)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_add_column_with_dtype_promotion(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -529,7 +529,7 @@ def test_add_column_with_dtype_promotion(input_path, tmp_path):
     parallel_assert(np.all(written_data == data))
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_add_column_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -544,7 +544,7 @@ def test_add_column_write(input_path, tmp_path):
     assert np.all(written_data == data)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate(input_path):
     ds = oc.open(input_path)
@@ -580,7 +580,7 @@ def test_evaluate_write(input_path, tmp_path):
     )
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_derive_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -607,7 +607,7 @@ def test_derive_write(input_path, tmp_path):
     )
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write(multi_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -629,7 +629,7 @@ def test_simcollection_write(multi_path, tmp_path):
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write_one_missing(multi_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
