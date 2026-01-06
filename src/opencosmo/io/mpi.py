@@ -87,12 +87,13 @@ def write_parallel(file: Path, file_schema: Schema):
         return cleanup_mpi(comm, new_comm, new_group)
 
     verify_schemas(file_schema, new_comm)
+    offsets = __get_all_offsets(file_schema, new_comm, "")
     try:
         with h5py.File(file, "w", driver="mpio", comm=new_comm) as f:
-            __write(file_schema, f, new_comm)
+            __write_parallel(file_schema, f, offsets, new_comm)
 
     except ValueError:  # parallell hdf5 not available
-        __write_serial(file_schema, file, new_comm)
+        __write_serial(file_schema, file, offsets, new_comm)
     cleanup_mpi(comm, new_comm, new_group)
 
 
@@ -103,10 +104,12 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     group_write.Free()
 
 
-def get_all_keys(data: dict, comm: MPI.Comm, debug=False):
+def get_all_keys(data: dict, comm: MPI.Comm):
     """
     Return all keys in the dictionary across all ranks, sorted
-    alphabetically.
+    alphabetically. When defining the file structure, we have to iterate
+    through the schemas in the same order across all ranks, including
+    when one rank doesn't have a given child.
     """
     data_names = set(data.keys())
     all_data_names: Iterable[str]
@@ -207,30 +210,34 @@ def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
         raise ValueError("Not all ranks recieved the same metadata!")
 
 
-def __write(schema: Schema, group: h5py.File | h5py.Group, comm: MPI.Comm):
-    __write_columns(schema, group, comm)
-    __write_metadata(schema, group, comm)
+def __write_parallel(
+    schema: Schema, group: h5py.File | h5py.Group, offsets: dict, comm: MPI.Comm
+):
+    """
+    We have parallel hdf5, and can write in parallel.
+    """
+    __allocate(schema, group, comm)
+    __write_columns(schema, group, offsets, comm)
     all_child_names = get_all_keys(schema.children, comm)
     for cn in all_child_names:
         child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
-        new_group = group.require_group(cn)
-        __write(child_schema, new_group, comm)
+        new_group = group[cn]
+        __write_parallel(child_schema, new_group, offsets, comm)
 
 
-def __write_serial(schema: Schema, file_path: Path, comm: MPI.Comm):
+def __write_serial(schema: Schema, file_path: Path, offsets: dict, comm: MPI.Comm):
     """
-    Write data from an MPI process when parallel hdf5 is not available.
+    We do NOT have parallel hdf5, so we have to write one rank at a time.
     """
     if comm.Get_rank() == 0:
         file = h5py.File(file_path, "w")
     else:
         file = None
 
-    __allocate_serial(schema, file, comm)
+    __allocate(schema, file, comm)
     if comm.Get_rank() == 0:
         file.close()
 
-    offsets = __get_all_offsets(schema, comm, "")
     schema = __replace_writers_with_updates(schema, comm)
 
     for i in range(comm.Get_size()):
@@ -301,9 +308,7 @@ def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
     return output
 
 
-def __allocate_serial(
-    schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm
-):
+def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm):
     all_column_names = get_all_keys(schema.columns, comm)
     for column_name in all_column_names:
         column_writer = schema.columns.get(column_name)
@@ -318,7 +323,7 @@ def __allocate_serial(
             new_group = None
 
         child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
-        __allocate_serial(child_schema, new_group, comm)
+        __allocate(child_schema, new_group, comm)
 
 
 def get_column_allocation_metadata(column: Optional[ColumnWriter], comm: MPI.Comm):
@@ -388,17 +393,24 @@ def __allocate_column(
     return None
 
 
-def __write_columns(schema: Schema, group: h5py.File | h5py.Group, comm: MPI.Comm):
+def __write_columns(
+    schema: Schema,
+    group: h5py.File | h5py.Group,
+    offsets: dict,
+    comm: MPI.Comm,
+):
     all_column_names = get_all_keys(schema.columns, comm)
     for cn in all_column_names:
         writer = schema.columns.get(cn)
-        ds = __allocate_column(cn, writer, group, comm)
+        ds = group[cn]
+        offset = offsets[ds.name]
         assert ds is not None
-        __write_column(writer, ds, comm)
+        __write_column(writer, ds, offset, comm)
 
 
-def __write_column(writer: Optional[ColumnWriter], ds: h5py.Dataset, comm: MPI.Comm):
-    offset = get_column_offset(writer, comm)
+def __write_column(
+    writer: Optional[ColumnWriter], ds: h5py.Dataset, offset: int, comm: MPI.Comm
+):
     strategy = None if writer is None else writer.combine_strategy
     strategies = list(filter(lambda s: s is not None, comm.allgather(strategy)))
 

@@ -81,6 +81,8 @@ filename = "docs/source/changelog.rst"
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+log_cli = true
+log_cli_level = "INFO"
 
 [tool.pyrefly]
 project-includes = [

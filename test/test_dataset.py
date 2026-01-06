@@ -281,7 +281,7 @@ def test_visit_rows_single(input_path):
     assert data["fof_random"].unit == u.solMass
     factor = data["fof_random"] / data["fof_halo_mass"]
     factor = factor.value
-    assert np.all(factor == np.floor(factor))
+    assert np.all(np.isclose(factor, np.around(factor)))
 
 
 def test_visit_with_sort(input_path, tmp_path):

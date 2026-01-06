@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 from functools import reduce
+from logging import getLogger
 from typing import TYPE_CHECKING
 
 import astropy.units as u
@@ -14,6 +15,13 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+
+logger = getLogger()
+if h5py.get_config().mpi:
+    logger.info("Running with parallel hdf5")
+else:
+    logger.info("Running without parallel hdf5")
+
 
 if TYPE_CHECKING:
     from pathlib import Path
