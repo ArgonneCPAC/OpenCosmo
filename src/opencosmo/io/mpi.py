@@ -88,12 +88,19 @@ def write_parallel(file: Path, file_schema: Schema):
 
     verify_schemas(file_schema, new_comm)
     offsets = __get_all_offsets(file_schema, new_comm, "")
+    schema = __replace_writers_with_updates(file_schema, new_comm)
+    if new_comm.Get_rank() == 0:
+        with h5py.File(file, "w") as f:
+            __allocate(schema, f, new_comm)
+    else:
+        __allocate(schema, None, new_comm)
+
     try:
         with h5py.File(file, "w", driver="mpio", comm=new_comm) as f:
-            __write_parallel(file_schema, f, offsets, new_comm)
+            __write_parallel(schema, f, offsets, new_comm)
 
     except ValueError:  # parallell hdf5 not available
-        __write_serial(file_schema, file, offsets, new_comm)
+        __write_serial(schema, file, offsets, new_comm)
     cleanup_mpi(comm, new_comm, new_group)
 
 
@@ -104,7 +111,7 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     group_write.Free()
 
 
-def get_all_keys(data: dict, comm: MPI.Comm):
+def get_all_keys(data: dict, comm: Optional[MPI.Comm]):
     """
     Return all keys in the dictionary across all ranks, sorted
     alphabetically. When defining the file structure, we have to iterate
@@ -112,6 +119,9 @@ def get_all_keys(data: dict, comm: MPI.Comm):
     when one rank doesn't have a given child.
     """
     data_names = set(data.keys())
+    if comm is None:
+        return sorted(list(data_names))
+
     all_data_names: Iterable[str]
     all_data_names = data_names.union(*comm.allgather(data_names))
     all_data_names = list(all_data_names)
@@ -211,12 +221,15 @@ def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
 
 
 def __write_parallel(
-    schema: Schema, group: h5py.File | h5py.Group, offsets: dict, comm: MPI.Comm
+    schema: Schema,
+    group: h5py.File | h5py.Group,
+    offsets: dict,
+    comm: Optional[MPI.Comm],
 ):
     """
-    We have parallel hdf5, and can write in parallel.
+    Used with both the parallel and serial version, though the later passes through
+    __write_serial.
     """
-    __allocate(schema, group, comm)
     __write_columns(schema, group, offsets, comm)
     all_child_names = get_all_keys(schema.children, comm)
     for cn in all_child_names:
@@ -229,26 +242,21 @@ def __write_serial(schema: Schema, file_path: Path, offsets: dict, comm: MPI.Com
     """
     We do NOT have parallel hdf5, so we have to write one rank at a time.
     """
-    if comm.Get_rank() == 0:
-        file = h5py.File(file_path, "w")
-    else:
-        file = None
-
-    __allocate(schema, file, comm)
-    if comm.Get_rank() == 0:
-        file.close()
-
-    schema = __replace_writers_with_updates(schema, comm)
-
     for i in range(comm.Get_size()):
         if i == comm.Get_rank():
             with h5py.File(file_path, "a") as f:
-                __write_columns_individual_ranks(schema, f, offsets)
+                __write_parallel(schema, f, offsets, None)
 
         comm.Barrier()
 
 
 def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
+    """
+    For columns that require updates, compute the update and replace. The most common form
+    of updated is "start/size" indexes, since "start" must be updated consistently across
+    ranks.
+
+    """
     colnames = get_all_keys(schema.columns, comm)
     for cn in colnames:
         colwriter = schema.columns.get(cn)
@@ -274,23 +282,10 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
     return schema
 
 
-def __write_columns_individual_ranks(
-    schema: Schema, group: h5py.File | h5py.Group, offsets
-):
-    for colname, colwriter in schema.columns.items():
-        ds = group[colname]
-        offset = offsets[ds.name]
-        data = colwriter.get_data()
-        if colwriter.combine_strategy == ColumnCombineStrategy.SUM:
-            existing_data = ds[offset : offset + len(data)]
-            data += existing_data
-        ds[offset : offset + len(data)] = data
-
-    for cn, child in schema.children.items():
-        __write_columns_individual_ranks(child, group[cn], offsets)
-
-
 def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
+    """
+    Get the rank-wise offset for every column.
+    """
     output = {}
     all_column_names = get_all_keys(schema.columns, comm)
     for colname in all_column_names:
@@ -308,7 +303,12 @@ def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
     return output
 
 
-def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm):
+def __allocate(
+    schema: Schema, group: Optional[h5py.File | h5py.Group], comm: Optional[MPI.Comm]
+):
+    """
+    Allocate the file.
+    """
     all_column_names = get_all_keys(schema.columns, comm)
     for column_name in all_column_names:
         column_writer = schema.columns.get(column_name)
@@ -323,15 +323,18 @@ def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MP
             new_group = None
 
         child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
+
         __allocate(child_schema, new_group, comm)
 
 
 def get_column_allocation_metadata(column: Optional[ColumnWriter], comm: MPI.Comm):
     """
-    This does NOT do any verification. It assumes you have already done that.
+    Determine how to allocate the column. The most important thing this does is
+    determine the overal shape. Keep in mind we have already done verification
+    at this point to make sure everything is consistent.
     """
     strategy = None if column is None else column.combine_strategy
-    strategies = list(filter(lambda s: s is not None, comm.allgather(strategy)))
+    strategies = list(filter(lambda strat: strat is not None, comm.allgather(strategy)))
     strategy = strategies[0]
 
     meta = None if column is None else (column.shape, column.dtype, column.attrs)
@@ -353,6 +356,9 @@ def get_column_allocation_metadata(column: Optional[ColumnWriter], comm: MPI.Com
 
 
 def get_column_offset(column: Optional[ColumnWriter], comm: MPI.Comm):
+    """
+    Determine the offset for a given column on this rank.
+    """
     if column is None or column.combine_strategy == ColumnCombineStrategy.SUM:
         length = 0
     else:
@@ -365,6 +371,9 @@ def get_column_offset(column: Optional[ColumnWriter], comm: MPI.Comm):
 def __write_metadata(
     schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm
 ):
+    """
+    Write metadata-only groups.
+    """
     if schema.type == FileEntry.EMPTY:
         attrs = comm.allgather(None)
     else:
@@ -383,8 +392,9 @@ def __allocate_column(
     comm: MPI.Comm,
 ) -> Optional[h5py.Dataset]:
     """
-    called when writing data in mpi without parallel hdf5
+    Allocate a single column
     """
+
     shape, dtype, attrs = get_column_allocation_metadata(column_writer, comm)
     if group is not None:
         ds = group.create_dataset(name, shape=shape, dtype=dtype)
@@ -397,7 +407,7 @@ def __write_columns(
     schema: Schema,
     group: h5py.File | h5py.Group,
     offsets: dict,
-    comm: MPI.Comm,
+    comm: Optional[MPI.Comm],
 ):
     all_column_names = get_all_keys(schema.columns, comm)
     for cn in all_column_names:
@@ -409,24 +419,32 @@ def __write_columns(
 
 
 def __write_column(
-    writer: Optional[ColumnWriter], ds: h5py.Dataset, offset: int, comm: MPI.Comm
+    writer: Optional[ColumnWriter],
+    ds: h5py.Dataset,
+    offset: int,
+    comm: Optional[MPI.Comm],
 ):
     strategy = None if writer is None else writer.combine_strategy
-    strategies = list(filter(lambda s: s is not None, comm.allgather(strategy)))
 
-    match strategies[0]:
+    match strategy:
         case ColumnCombineStrategy.CONCAT:
             if writer is not None:
                 data = writer.get_data(comm)
+
                 ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
         case ColumnCombineStrategy.SUM:
             if writer is None:
                 data = np.zeros(ds.shape, ds.dtype)
             else:
                 data = writer.get_data(comm)
-            data_to_write = comm.reduce(data)
-            if comm.Get_rank() == 0:
-                ds[:] = data_to_write
+            if comm is not None:
+                data_to_write = comm.reduce(data)
+                if comm.Get_rank() == 0:
+                    ds[:] = data_to_write
+            else:
+                data += ds[:]
+                ds[:] = data
 
-    comm.Barrier()
+    if comm is not None:
+        comm.Barrier()
     ds.file.flush()

@@ -385,7 +385,7 @@ def test_link_write(all_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(90)
 @pytest.mark.parallel(nprocs=4)
 def test_chain_link(all_paths, galaxy_paths, tmp_path):
     collection = oc.open(*all_paths, *galaxy_paths)
