@@ -45,6 +45,7 @@ class ColumnWriter:
         if len(dtypes) > 1:
             raise ValueError("A single column can not have multiple data types!")
         self.__dtype = dtypes.pop()
+        self.__transformation: Optional[Callable] = None
 
     @classmethod
     def from_numpy_array(
@@ -76,7 +77,7 @@ class ColumnWriter:
     def set_transformation(
         self, transformation: Callable[[np.ndarray, Optional[MPI.Comm]], np.ndarray]
     ):
-        if hasattr(self, "transformation"):
+        if self.__transformation is not None:
             raise ValueError(
                 "A transformation can only be set on a column writer a single time!"
             )
@@ -88,6 +89,10 @@ class ColumnWriter:
                 return sum(len(source) for source in self.__sources)
             case ColumnCombineStrategy.SUM:
                 return len(self.__sources[0])
+
+    @property
+    def has_transformation(self):
+        return self.__transformation is not None
 
     @property
     def shape(self):
@@ -116,10 +121,8 @@ class ColumnWriter:
                 data = np.concatenate([source.data for source in self.__sources])
             case ColumnCombineStrategy.SUM:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
-        try:
+        if self.__transformation is not None:
             data = self.__transformation(data, comm=comm)  # type: ignore
-        except AttributeError:
-            return data
         return data
 
 

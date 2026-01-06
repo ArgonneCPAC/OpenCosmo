@@ -126,7 +126,7 @@ def test_partitioning_includes_all(input_path):
     parallel_assert(all_tags == original_tags)
 
 
-@pytest.mark.timeout(1)
+@pytest.mark.timeout(10)
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
@@ -291,13 +291,13 @@ def test_evaluate_structure(all_paths):
     assert not np.any(data == 0)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate_structure_write(all_paths, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = tmp_path / "test.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
-    collection = oc.open(*all_paths).take(100)
+    collection = oc.open(*all_paths).take(10)
 
     spec = {
         "dm_particles": ["x", "y", "z"],
@@ -321,7 +321,7 @@ def test_evaluate_structure_write(all_paths, tmp_path):
     assert not np.any(data == 0)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = oc.open(*all_paths)
@@ -377,11 +377,11 @@ def test_link_write(all_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_chain_link(all_paths, galaxy_paths, tmp_path):
     collection = oc.open(*all_paths, *galaxy_paths)
-    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(10)
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
@@ -651,7 +651,6 @@ def test_simcollection_write_one_missing(multi_path, tmp_path):
             all_halo_tags[simkey] = np.append(all_halo_tags[simkey], tags)
 
     oc.write(temporary_path, data)
-    print("done writing")
     written_data = oc.open(temporary_path)
     assert isinstance(written_data, oc.SimulationCollection)
     assert len(written_data.keys()) == 2

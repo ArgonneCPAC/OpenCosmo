@@ -9,14 +9,13 @@ from mpi4py import MPI
 
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import ZeroLengthError, verify_file
-from opencosmo.io.writer import ColumnCombineStrategy
+from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from opencosmo.io.schema import Schema
-    from opencosmo.io.writer import ColumnWriter
 
 
 """
@@ -232,6 +231,7 @@ def __write_serial(schema: Schema, file_path: Path, comm: MPI.Comm):
         file.close()
 
     offsets = __get_all_offsets(schema, comm, "")
+    schema = __replace_writers_with_updates(schema, comm)
 
     for i in range(comm.Get_size()):
         if i == comm.Get_rank():
@@ -239,6 +239,32 @@ def __write_serial(schema: Schema, file_path: Path, comm: MPI.Comm):
                 __write_columns_individual_ranks(schema, f, offsets)
 
         comm.Barrier()
+
+
+def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
+    colnames = get_all_keys(schema.columns, comm)
+    for cn in colnames:
+        colwriter = schema.columns.get(cn)
+        has_update = comm.allgather(
+            colwriter is not None and colwriter.has_transformation
+        )
+        if any(has_update) and not all(has_update):
+            raise ValueError("Update was not consistent across ranks!")
+        elif not any(has_update):
+            continue
+        assert colwriter is not None
+        data = colwriter.get_data(comm)
+        new_writer = ColumnWriter.from_numpy_array(
+            data, colwriter.combine_strategy, colwriter.attrs
+        )
+        schema.columns[cn] = new_writer
+
+    child_names = get_all_keys(schema.children, comm)
+    for cn in child_names:
+        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
+        new_child_schema = __replace_writers_with_updates(child_schema, comm)
+        schema.children[cn] = new_child_schema
+    return schema
 
 
 def __write_columns_individual_ranks(
