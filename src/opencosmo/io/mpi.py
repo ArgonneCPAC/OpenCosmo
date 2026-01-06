@@ -96,7 +96,7 @@ def write_parallel(file: Path, file_schema: Schema):
         __allocate(schema, None, new_comm)
 
     try:
-        with h5py.File(file, "w", driver="mpio", comm=new_comm) as f:
+        with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
             __write_parallel(schema, f, offsets, new_comm)
 
     except ValueError:  # parallell hdf5 not available
@@ -303,9 +303,7 @@ def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
     return output
 
 
-def __allocate(
-    schema: Schema, group: Optional[h5py.File | h5py.Group], comm: Optional[MPI.Comm]
-):
+def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm):
     """
     Allocate the file.
     """
@@ -425,6 +423,11 @@ def __write_column(
     comm: Optional[MPI.Comm],
 ):
     strategy = None if writer is None else writer.combine_strategy
+    if comm is not None:
+        strategies = list(
+            filter(lambda strat: strat is not None, comm.allgather(strategy))
+        )
+        strategy = strategies[0]
 
     match strategy:
         case ColumnCombineStrategy.CONCAT:

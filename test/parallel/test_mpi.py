@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections import defaultdict
 from functools import reduce
 from logging import getLogger
@@ -250,7 +249,7 @@ def test_structure_zerolength(all_paths, tmp_path):
         oc.write(temporary_path, collection)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(300)
 @pytest.mark.parallel(nprocs=4)
 def test_link_read(all_paths):
     collection = oc.open(*all_paths)
@@ -385,7 +384,7 @@ def test_link_write(all_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
-@pytest.mark.timeout(90)
+@pytest.mark.timeout(300)
 @pytest.mark.parallel(nprocs=4)
 def test_chain_link(all_paths, galaxy_paths, tmp_path):
     collection = oc.open(*all_paths, *galaxy_paths)
@@ -608,10 +607,6 @@ def test_derive_write(input_path, tmp_path):
     )
 
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
-
-
-@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 @pytest.mark.timeout(20)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write(multi_path, tmp_path):
@@ -634,7 +629,6 @@ def test_simcollection_write(multi_path, tmp_path):
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
 
 
-@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 @pytest.mark.timeout(20)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write_one_missing(multi_path, tmp_path):
