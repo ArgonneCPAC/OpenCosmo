@@ -14,21 +14,20 @@ import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.index import SimpleIndex, into_array
 from opencosmo.io.io import open_single_dataset
-from opencosmo.io.schemas import LightconeSchema
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.spatial.region import ConeRegion, HealPixRegion
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
-    from astropy.table import Table
 
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
 
@@ -255,7 +254,9 @@ class HealpixMap(dict):
     @property
     def region(self) -> Region:
         """
-        The region this map covers.
+        The region this dataset is contained in. If no spatial
+        queries have been performed, this will be the full sky for
+        lightcone maps.
 
         Returns
         -------
@@ -330,7 +331,7 @@ class HealpixMap(dict):
         if output == "healpix":
             if self.__len__() != hp.nside2npix(self.nside):
                 raise ValueError(
-                    f"healpix type chosen but length of dataset doesn't match nside value"
+                    "healpix type chosen but length of dataset doesn't match nside value"
                 )
 
         if len(table.colnames) == 1:
@@ -518,13 +519,22 @@ class HealpixMap(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self) -> LightconeSchema:
-        schema = LightconeSchema()  # NOTE: so far we're keeping the lightcone schema
+    def make_schema(self) -> Schema:
+        children = {}
         for name, dataset in self.items():
             ds_schema = dataset.make_schema()
-            ds_schema.header = ds_schema.header
-            schema.add_child(ds_schema, name)
-        return schema
+            children[name] = ds_schema
+        if len(children) == 1:
+            ds_schema = next(iter(children.values()))
+            return make_schema(
+                "/",
+                FileEntry.HEALPIX_MAP,
+                ds_schema.children,
+                ds_schema.columns,
+                ds_schema.attributes,
+            )
+
+        return make_schema("/", FileEntry.HEALPIX_MAP, children=children)
 
     def bound(self, region: Region, inclusive: bool = False):
         """
@@ -567,7 +577,7 @@ class HealpixMap(dict):
             vec,
             region.radius.to(u.radian).value,
             inclusive=inclusive,
-            nest=self.__ordering,
+            nest=self.__ordering == "NESTED",
         )
         new_datasets = {}
         for name, dataset in self.items():
@@ -830,7 +840,6 @@ class HealpixMap(dict):
                 "Number of rows to take must be less than number of rows in dataset"
             )
         if at == "random":
-            rs = 0
             indices = np.random.choice(len(self), n, replace=False)
             indices = np.sort(indices)
             return self.__take_rows(indices)

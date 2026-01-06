@@ -14,8 +14,11 @@ except ImportError:
 
 
 from opencosmo.index import from_size, get_data, n_in_range
-from opencosmo.io.schemas import (
-    ColumnSchema,
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import (
+    ColumnCombineStrategy,
+    ColumnWriter,
+    Hdf5Source,
 )
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.octree import OctTreeIndex
@@ -224,18 +227,19 @@ class Tree:
         return Tree(self.__index, result)
 
     def make_schema(self):
-        columns = {}
+        level_schemas = {}
+
         for level in range(self.__max_level + 1):
             source = self.__data[f"level_{level}"]
             index = from_size(len(source["start"]))
-            start = ColumnSchema(
-                f"level_{level}/start", index, source["start"], source["start"].attrs
+            start_source = Hdf5Source(source["start"], index)
+            size_source = Hdf5Source(source["size"], index)
+            start_writer = ColumnWriter([start_source], ColumnCombineStrategy.SUM)
+            size_writer = ColumnWriter([size_source], ColumnCombineStrategy.SUM)
+            columns = {"size": size_writer, "start": start_writer}
+            level_schema = make_schema(
+                f"level_{level}", FileEntry.COLUMNS, columns=columns
             )
-            size = ColumnSchema(
-                f"level_{level}/size", index, source["size"], source["size"].attrs
-            )
+            level_schemas[f"level_{level}"] = level_schema
 
-            columns[f"index/level_{level}/start"] = start
-            columns[f"index/level_{level}/size"] = size
-
-        return columns
+        return make_schema("index", FileEntry.COLUMNS, children=level_schemas)

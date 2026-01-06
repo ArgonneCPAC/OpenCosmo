@@ -11,9 +11,8 @@ import numpy as np
 import opencosmo as oc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
-from opencosmo.index import ChunkedIndex, SimpleIndex
 from opencosmo.index.unary import get_length
-from opencosmo.io.schemas import StructCollectionSchema
+from opencosmo.io.schema import FileEntry, make_schema
 
 from .handler import LinkHandler
 
@@ -24,6 +23,8 @@ if TYPE_CHECKING:
     from opencosmo.column.column import DerivedColumn
     from opencosmo.index import DataIndex
     from opencosmo.io import io
+    from opencosmo.io.schema import Schema
+    from opencosmo.mpi import MPI
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
@@ -44,6 +45,26 @@ def filter_source_by_dataset(
     tags = masked_dataset.select(linked_column).data
     new_source = source.filter(oc.col(linked_column).isin(tags))
     return new_source
+
+
+def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+    if comm is None:
+        return np.arange(len(data))
+    lengths = comm.allgather(len(data))
+    offsets = np.insert(np.cumsum(lengths), 0, 0)
+    offset = offsets[comm.Get_rank()]
+    result = np.arange(offset, offset + len(data))
+    return result
+
+
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
+    psum = np.insert(np.cumsum(size), 0, 0)[:-1]
+    if comm is None:
+        return psum
+    lengths = comm.allgather(np.sum(size))
+    offsets = np.insert(np.cumsum(lengths), 0, 0)
+    offset = offsets[comm.Get_rank()]
+    return psum + offset
 
 
 class StructureCollection:
@@ -424,8 +445,6 @@ class StructureCollection:
 
         else:
             # case one/3
-            kwarg_names = set(evaluate_kwargs.keys())
-            other_kwarg_names = kwarg_names.difference(self.keys())
 
             output = evaluate.visit_structure_collection_eagerly(
                 func,
@@ -1123,13 +1142,10 @@ class StructureCollection:
             warn("Tried to iterate over a collection with no structures in it!")
             return
 
-        link_handler = None
-        data_columns = set(self.__source.columns)
         metadata_columns: list[str] = reduce(
             lambda acc, key: acc + self.__handler.columns[key], data_types, []
         )
         datasets = self.__get_datasets()
-        rename_galaxies = "galaxies" in self.keys()
         rs = {name: 0 for name in self.__datasets.keys()}
 
         columns_to_collect: dict[str, dict[str, list[np.ndarray]]] = defaultdict(dict)
@@ -1257,17 +1273,38 @@ class StructureCollection:
         else:
             raise AttributeError("This collection does not contain galaxies!")
 
-    def make_schema(self) -> StructCollectionSchema:
-        schema = StructCollectionSchema()
+    def make_schema(self, name: Optional[str] = None) -> Schema:
+        children = {}
         source_name = self.__source.dtype
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
 
         source_schema = self.__source.make_schema()
-        schema.add_child(source_schema, source_name)
+        for colname, column in source_schema.children["data_linked"].columns.items():
+            if "idx" in colname:
+                column.set_transformation(do_idx_update)
+            elif "start" in colname:
+                size_colname = colname.replace("start", "size")
+                size_data = (
+                    source_schema.children["data_linked"].columns[size_colname].data
+                )
+                updater = partial(do_start_update, size=size_data)
+                column.set_transformation(updater)
+
+        children[source_name] = source_schema
+
         for name, dataset in datasets.items():
-            ds_schema = dataset.make_schema()
             if name == "galaxies":
                 name = "galaxy_properties"
-            schema.add_child(ds_schema, name)
+            ds_schema = dataset.make_schema()
+            if not isinstance(dataset, StructureCollection):
+                children[name] = ds_schema
+                continue
+            for grandchild_name, grandchild in ds_schema.children.items():
+                if "properties" in grandchild_name:
+                    children[grandchild_name] = grandchild
+                else:
+                    children[f"{name}_{grandchild_name}"] = grandchild
 
-        return schema
+        if name is None:
+            name = ""
+        return make_schema(name, FileEntry.STRUCTURE_COLLECTION, children=children)

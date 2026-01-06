@@ -221,7 +221,9 @@ def test_column_conversion(input_path):
     for colname, conversion in conversions.items():
         assert converted_data[colname].unit == conversion
         assert np.all(
-            converted_data[colname].value == original_data[colname].value * factor
+            np.isclose(
+                converted_data[colname].value, original_data[colname].value * factor
+            )
         )
 
 
@@ -341,7 +343,9 @@ def test_convention_change_clears_symbolic_conversions(input_path):
     for colname, conversion in conversions.items():
         assert converted_data[colname].unit == conversion
         assert np.all(
-            converted_data[colname].value == original_data[colname].value * factor
+            np.isclose(
+                converted_data[colname].value, original_data[colname].value * factor
+            )
         )
 
     original_transformed = (

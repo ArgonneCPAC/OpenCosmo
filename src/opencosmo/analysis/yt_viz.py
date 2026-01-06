@@ -14,7 +14,7 @@ from opencosmo.analysis import create_yt_dataset
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
-    from yt.visualization.plot_window import NormalPlot, PlotWindow
+    from yt.visualization.plot_window import NormalPlot
 
 # ruff: noqa: E501
 

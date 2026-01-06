@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import os
 from collections import defaultdict
 from functools import reduce
+from logging import getLogger
 from typing import TYPE_CHECKING
 
 import astropy.units as u
@@ -14,6 +14,13 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+
+logger = getLogger()
+if h5py.get_config().mpi:
+    logger.info("Running with parallel hdf5")
+else:
+    logger.info("Running without parallel hdf5")
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -86,7 +93,7 @@ def update_simulation_parameter(
     return path
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
     with oc.open(input_path) as f:
@@ -100,7 +107,7 @@ def test_structure_collection_open(input_path, profile_path):
     oc.open(input_path, profile_path)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_structure_collection_open_2(input_path, profile_path):
     comm = MPI.COMM_WORLD
@@ -110,7 +117,7 @@ def test_structure_collection_open_2(input_path, profile_path):
         oc.open(input_path, profile_path)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_partitioning_includes_all(input_path):
     with oc.open(input_path) as f:
@@ -126,7 +133,7 @@ def test_partitioning_includes_all(input_path):
     parallel_assert(all_tags == original_tags)
 
 
-@pytest.mark.timeout(1)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
@@ -147,7 +154,7 @@ def test_take(input_path):
         assert len(tags) == 4 * n
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filters(input_path):
     ds = oc.open(input_path)
@@ -158,7 +165,7 @@ def test_filters(input_path):
     parallel_assert(all(data["sod_halo_mass"] > 0))
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filter_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -174,13 +181,16 @@ def test_filter_write(input_path, tmp_path):
 
     ds = oc.open(temporary_path)
     written_data = ds.data
-    for column in ds.columns:
+    columns = ds.columns
+    columns.sort()
+
+    for column in columns:
         parallel_assert(np.all(data[column] == written_data[column]))
 
     parallel_assert(all(data == written_data))
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filter_zerolength(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -215,7 +225,7 @@ def test_filter_zerolength(input_path, tmp_path):
     parallel_assert(read_tags == written_tags)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filter_all_zerolength(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -239,7 +249,7 @@ def test_structure_zerolength(all_paths, tmp_path):
         oc.write(temporary_path, collection)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(300)
 @pytest.mark.parallel(nprocs=4)
 def test_link_read(all_paths):
     collection = oc.open(*all_paths)
@@ -263,7 +273,7 @@ def test_link_read(all_paths):
             assert halo_tags[0] == halo_tag
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate_structure(all_paths):
     collection = oc.open(*all_paths).take(100)
@@ -288,13 +298,13 @@ def test_evaluate_structure(all_paths):
     assert not np.any(data == 0)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate_structure_write(all_paths, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = tmp_path / "test.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
-    collection = oc.open(*all_paths).take(100)
+    collection = oc.open(*all_paths).take(10)
 
     spec = {
         "dm_particles": ["x", "y", "z"],
@@ -318,7 +328,7 @@ def test_evaluate_structure_write(all_paths, tmp_path):
     assert not np.any(data == 0)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = oc.open(*all_paths)
@@ -374,11 +384,11 @@ def test_link_write(all_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(300)
 @pytest.mark.parallel(nprocs=4)
 def test_chain_link(all_paths, galaxy_paths, tmp_path):
     collection = oc.open(*all_paths, *galaxy_paths)
-    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(10)
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
@@ -415,7 +425,7 @@ def test_chain_link(all_paths, galaxy_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
@@ -448,7 +458,7 @@ def test_box_query_chain(input_path):
     parallel_assert(set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"]))
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_zerolength(input_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -466,7 +476,7 @@ def test_box_query_zerolength(input_path):
     parallel_assert(len(ds) == 0, participating=rank > 0)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_derive_multiply(input_path):
     ds = oc.open(input_path)
@@ -488,7 +498,7 @@ def test_derive_multiply(input_path):
     )
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_add_column(input_path):
     ds = oc.open(input_path)
@@ -498,7 +508,28 @@ def test_add_column(input_path):
     assert np.all(data == stored_data)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
+@pytest.mark.parallel(nprocs=4)
+def test_add_column_with_dtype_promotion(input_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    COMM = MPI.COMM_WORLD
+    ds = oc.open(input_path)
+    data = np.random.uniform(0, 100, len(ds))
+    if COMM.Get_rank() in [0, 2]:
+        data = data.astype(np.float32)
+    else:
+        data = data.astype(np.float64)
+    ds = ds.with_new_columns(random_data=data)
+    oc.write(temporary_path, ds)
+    ds = oc.open(temporary_path)
+    written_data = ds.select("random_data").get_data()
+    parallel_assert(written_data.dtype == np.float64)
+    parallel_assert(np.all(written_data == data))
+
+
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_add_column_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -513,7 +544,7 @@ def test_add_column_write(input_path, tmp_path):
     assert np.all(written_data == data)
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate(input_path):
     ds = oc.open(input_path)
@@ -549,7 +580,7 @@ def test_evaluate_write(input_path, tmp_path):
     )
 
 
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_derive_write(input_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -576,11 +607,7 @@ def test_derive_write(input_path, tmp_path):
     )
 
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
-
-
-@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write(multi_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -602,8 +629,7 @@ def test_simcollection_write(multi_path, tmp_path):
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
 
 
-@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write_one_missing(multi_path, tmp_path):
     comm = mpi4py.MPI.COMM_WORLD

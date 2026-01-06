@@ -4,8 +4,6 @@ import healsparse as hsp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
-from astropy.cosmology import units as cu
-from numpy import random
 
 import opencosmo as oc
 from opencosmo.spatial.healpix import HealPixRegion
@@ -64,7 +62,7 @@ def test_healpix_downgrade(healpix_map_path):
     downgraded_nside = downgraded_ds.nside
     downgraded_npix = hp.nside2npix(downgraded_nside)
 
-    factor = original_npix // downgraded_npix
+    original_npix // downgraded_npix
 
     original_data = ds.get_data("healpix")
     downgraded_data = downgraded_ds.get_data("healpix")
@@ -73,7 +71,7 @@ def test_healpix_downgrade(healpix_map_path):
 
     center = (0 * u.deg, 0 * u.deg)
     radius = 1 * u.deg
-    center_coord = SkyCoord(*center)
+    SkyCoord(*center)
     region = oc.make_cone(center, radius)
     data_region_original = ds.bound(region).get_data("healsparse")
     data_region_downgraded = downgraded_ds.bound(region).get_data("healsparse")
@@ -110,7 +108,7 @@ def test_healpix_downgrade_doesnt_cache(healpix_map_path):
     """
 
     ds = oc.open(healpix_map_path)
-    data = ds.get_data()
+    ds.get_data()
     output = ds.with_resolution(128)
 
     # First dataset backed by actual file, data should be cached
@@ -119,7 +117,7 @@ def test_healpix_downgrade_doesnt_cache(healpix_map_path):
     assert len(cache.columns) > 1
 
     # New dataset entirely in-memory, so no cache
-    downgraded_data = output.get_data()
+    output.get_data()
     downgraded_dataset = next(iter(output.values()))
     cache = downgraded_dataset._Dataset__state._DatasetState__cache
     assert len(cache.columns) == 0
@@ -235,7 +233,6 @@ def test_healpix_write_fail(healpix_map_path, tmp_path):
 
 def test_healpix_collection_drop(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    columns = ds.columns
     to_drop = set(["tsz"])
 
     ds = ds.drop(to_drop)
@@ -271,12 +268,11 @@ def test_healpix_collection_range(healpix_map_path):
 
 
 def test_open_single_map(healpix_map_path):
-    c = oc.open(healpix_map_path)
+    oc.open(healpix_map_path)
 
 
 def test_healpix_collection_select(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    columns = ds.columns
     to_select = set(["tsz", "ksz"])
     ds = ds.select(to_select)
     columns_found = set(ds.columns)
@@ -285,7 +281,6 @@ def test_healpix_collection_select(healpix_map_path):
 
 def test_healpix_collection_select_healsparse(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    columns = ds.columns
     to_select = set(["tsz", "ksz"])
     ds = ds.select(to_select)
     data = ds.get_data("healsparse")
@@ -296,7 +291,6 @@ def test_healpix_collection_select_healsparse(healpix_map_path):
 
 def test_healpix_collection_select_healpix(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    columns = ds.columns
     to_select = set(["tsz", "ksz"])
     ds = ds.select(to_select)
     data = ds.get_data("healpix")

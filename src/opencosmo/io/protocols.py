@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any, Optional, Protocol
 if TYPE_CHECKING:
     import h5py
 
+    from opencosmo.io.schema import Schema
+
 try:
     from mpi4py import MPI
 except ImportError:
@@ -48,4 +50,4 @@ class Writeable(Protocol):
     In order to be writeable, an object must define a single method.
     """
 
-    def make_schema(self) -> DataSchema: ...
+    def make_schema(self) -> Schema: ...

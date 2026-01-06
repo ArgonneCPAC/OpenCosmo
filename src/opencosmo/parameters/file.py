@@ -1,6 +1,6 @@
 # ruff: noqa: TC001 TC003
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from pydantic import (
     BaseModel,
@@ -29,6 +29,7 @@ class FileType(Enum):
     halo_particles = "halo_particles"
     diffsky_fits = "diffsky_fits"
     healpix_map = "healpix_map"
+
 
 class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True, frozen=True)

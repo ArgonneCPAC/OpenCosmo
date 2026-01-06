@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator as op
 from copy import copy
-from functools import cache, cached_property, partial, partialmethod
+from functools import cached_property, partial, partialmethod
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -25,7 +25,6 @@ from opencosmo.column.evaluate import (
     evaluate_rows,
     evaluate_vectorized,
 )
-from opencosmo.index import ChunkedIndex
 from opencosmo.units import UnitsError
 
 if TYPE_CHECKING:
@@ -598,10 +597,10 @@ class ColumnMask:
         return self.operator(column, self.value)  # type: ignore
 
     def __and__(self, other: Self | CompoundColumnMask):
-        return CompoundColumnMask(self, other, lambda l, r: l & r)
+        return CompoundColumnMask(self, other, lambda left, right: left & right)
 
     def __or__(self, other: Self | CompoundColumnMask):
-        return CompoundColumnMask(self, other, lambda l, r: l | r)
+        return CompoundColumnMask(self, other, lambda left, right: left | right)
 
 
 class CompoundColumnMask:
@@ -623,10 +622,10 @@ class CompoundColumnMask:
         return columns
 
     def __and__(self, other: ColumnMask | Self):
-        return CompoundColumnMask(self, other, lambda l, r: l & r)
+        return CompoundColumnMask(self, other, lambda left, right: left & right)
 
     def __or__(self, other: ColumnMask | Self):
-        return CompoundColumnMask(self, other, lambda l, r: l | r)
+        return CompoundColumnMask(self, other, lambda left, right: left | right)
 
     def apply(self, data):
         left_mask = self.__left.apply(data)

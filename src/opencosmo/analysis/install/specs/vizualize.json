@@ -9,8 +9,7 @@
 			"depends_on": ["yt", "numpy"]
 		},
 		"numpy" : {
-			"prefer_source": "conda-forge",
-			"version": "1.26.4"
+			"prefer_source": "conda-forge"
 		}
 
 	}

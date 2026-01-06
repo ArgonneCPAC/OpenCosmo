@@ -1,0 +1,1 @@
+:py:meth:`opencosmo.write` now works in MPI contexts even if parallel-hdf5 is not installed.

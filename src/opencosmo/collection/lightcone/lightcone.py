@@ -6,15 +6,15 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
 
 import numpy as np
-from astropy.table import Column, vstack  # type: ignore
+from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.index import SimpleIndex
 from opencosmo.io.io import open_single_dataset
-from opencosmo.io.schemas import LightconeSchema, StackedLightconeDatasetSchema
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
 
 if TYPE_CHECKING:
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset import Dataset
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
 
@@ -150,7 +151,6 @@ def combine_adjacent_datasets(
     if get_comm_world() is not None:
         return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
     rs = 0
-    current: list[Dataset] = []
     current_key = next(iter(ordered_datasets.keys()))
     output: dict[str, list[Dataset]] = OrderedDict({current_key: []})
 
@@ -511,26 +511,27 @@ class Lightcone(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self) -> LightconeSchema:
-        schema = LightconeSchema()
+    def make_schema(self) -> Schema:
         datasets = order_by_redshift_range(self)
         output_datasets = combine_adjacent_datasets(datasets)
+        children = {}
 
         for name, datasets in output_datasets.items():
-            (ds_min, ds_max) = get_redshift_range(datasets)
-
-            stacked_schema = StackedLightconeDatasetSchema(
-                datasets,
-                self.header.with_parameter(
-                    "lightcone/z_range",
-                    (max(ds_min, self.z_range[0]), min(ds_max, self.z_range[1])),
-                ),
-                sum((len(ds) for ds in datasets)),
-                0,
+            header_zrange = get_redshift_range(datasets)
+            my_zrange = self.z_range
+            zrange = (
+                max(header_zrange[0], my_zrange[0]),
+                min(header_zrange[1], my_zrange[1]),
             )
-            schema.add_child(stacked_schema, name)
 
-        return schema
+            new_dataset_schema = stack_lightcone_datasets_in_schema(
+                datasets, name, zrange
+            )
+            children[name] = new_dataset_schema
+
+        if len(children) == 1:
+            return next(iter(children.values()))
+        return make_schema("", FileEntry.LIGHTCONE, children=children)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -807,7 +808,6 @@ class Lightcone(dict):
                 "Number of rows to take must be less than number of rows in dataset"
             )
         if at == "random":
-            rs = 0
             indices = np.random.choice(len(self), n, replace=False)
             indices = np.sort(indices)
             return self.__take_rows(indices)

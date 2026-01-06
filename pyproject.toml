@@ -12,13 +12,13 @@ requires-python = ">=3.11,<3.14"
 
 dependencies = [
   "h5py>=3.12.1,<4.0.0",
-  "astropy>=7.1.0,<8.0.0",
+  "astropy>=7.2.0,<8.0.0",
   "pydantic>=2.10.6,<3.0.0",
   "hdf5plugin>=5.0.0,<6.0.0",
   "healpy>=1.18.1,<2.0.0",
   "healsparse==1.11.1",
   "deprecated>=1.2.18,<2.0.0",
-  "numpy>=1.26",
+  "numpy>=2.0,<2.4",
   "click (>=8.2.1,<9.0.0)",
   "numba>=0.62.1",
   "rustworkx>=0.17.1",
@@ -33,7 +33,6 @@ dev = [
   "towncrier (>=24.8.0,<25.0.0)",
   "pip>=25.1.1",
   "pytest>=8.3.4,<9.0.0",
-  "numpy==1.26.4",
   "pytest-timeout>=2.4.0",
 ]
 docs = [
@@ -82,6 +81,8 @@ filename = "docs/source/changelog.rst"
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+log_cli = true
+log_cli_level = "INFO"
 
 [tool.pyrefly]
 project-includes = [
@@ -95,7 +96,7 @@ max-doc-length = 90
 [tool.ruff.lint]
 future-annotations = true
 preview = true
-select = ["TC"]
+extend-select = ["TC"]
 
 [tool.towncrier.fragment.improvement]
 name = "Improvements"

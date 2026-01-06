@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Self
 from opencosmo.collection import structure as sc
 from opencosmo.dataset import Dataset
 from opencosmo.io import io
-from opencosmo.io.schemas import SimCollectionSchema
+from opencosmo.io.schema import FileEntry, make_schema
 
 if TYPE_CHECKING:
     import astropy.units as u
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.protocols import DataSchema
+    from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
@@ -79,13 +79,12 @@ class SimulationCollection(dict):
             return next(iter(datasets.values()))
         return cls(datasets)
 
-    def make_schema(self) -> DataSchema:
-        schema = SimCollectionSchema()
-        for name, dataset in self.items():
-            ds_schema = dataset.make_schema()
-            schema.add_child(ds_schema, name)
+    def make_schema(self) -> Schema:
+        children = {}
 
-        return schema
+        for name, dataset in self.items():
+            children[name] = dataset.make_schema()
+        return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
 
     def __map(
         self,

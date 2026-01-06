@@ -1,9 +1,8 @@
 from .collection import (
-    Lightcone,
     HealpixMap,
+    Lightcone,
     SimulationCollection,
     StructureCollection,
-    open_linked_files,
 )
 from .column import col
 from .dataset import Dataset
@@ -19,7 +18,6 @@ __all__ = [
     "SimulationCollection",
     "Lightcone",
     "HealpixMap",
-    "open_linked_files",
     "make_box",
     "make_cone",
 ]
