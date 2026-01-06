@@ -72,7 +72,7 @@ jobs:
         run: |
           uv run pytest --ignore=test/parallel
 
-run-mpi-tests:
+  run-mpi-tests:
     name: Run tests
     runs-on: ${{ matrix.os }}
     needs: [get-test-data]
