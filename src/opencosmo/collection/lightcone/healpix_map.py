@@ -577,7 +577,7 @@ class HealpixMap(dict):
             vec,
             region.radius.to(u.radian).value,
             inclusive=inclusive,
-            nest=self.__ordering,
+            nest=self.__ordering == "NESTED",
         )
         new_datasets = {}
         for name, dataset in self.items():
