@@ -1,5 +1,3 @@
-import os
-
 import astropy.units as u
 import numpy as np
 import pytest
@@ -155,10 +153,6 @@ def test_diffsky_filter(core_path_487, core_path_475):
     assert np.all(original_data == filtered_data)
 
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
-
-
-@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 @pytest.mark.parallel(nprocs=4)
 def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     comm = MPI.COMM_WORLD
