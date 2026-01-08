@@ -431,6 +431,18 @@ def test_visit_dataset_in_structure_collection(halo_paths):
         assert np.all(particle_id == np.arange(len(particle_id)))
 
 
+def test_visit_source(halo_paths):
+    collection = oc.open(*halo_paths).take(20)
+
+    def eval_fn(fof_halo_mass, fof_halo_tag):
+        return 5
+
+    collection = collection.evaluate(eval_fn, dataset="halo_properties")
+    assert np.all(
+        collection["halo_properties"].select("eval_fn").get_data(output="numpy") == 5
+    )
+
+
 def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
     collection = oc.open(*halo_paths)
 
@@ -543,6 +555,17 @@ def test_data_linking_with_unit_conversion(halo_paths):
         dm_particle_locations = halo["dm_particles"].select(["x", "y", "z"]).get_data()
         for column in dm_particle_locations.itercols():
             assert column.unit == u.lyr
+
+
+def test_unit_conversion_get_dataset(halo_paths):
+    collection = oc.open(*halo_paths)
+    collection = collection.with_units("unitless")
+    data = collection["halo_properties"].get_data()
+    for column in data.columns:
+        assert data[column].unit is None
+    data = collection["agn_particles"].get_data()
+    for column in data.columns:
+        assert data[column].unit is None
 
 
 def test_data_linking_with_complex_unit_conversion(halo_paths):
