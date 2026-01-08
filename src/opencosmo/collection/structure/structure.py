@@ -381,6 +381,10 @@ class StructureCollection:
 
         # The second of these can (and has) been made lazy. The 1st and 3rd are eager, for now.
         # If the user sets insert=False, everything is eager.
+        if dataset is not None and dataset == self.__source.dtype:
+            return self.evaluate_on_dataset(
+                func, dataset=dataset, format=format, insert=insert, **evaluate_kwargs
+            )
 
         if format not in ["astropy", "numpy"]:
             raise ValueError(f"Invalid format requested for data: {format}")
@@ -874,7 +878,7 @@ class StructureCollection:
             raise ValueError(f"Unknown datasets in conversions: {unknown}")
 
         if self.__source.dtype in conversion_keys or (
-            not conversion_keys and convention is None
+            not conversion_keys and convention is not None
         ):
             new_source = self.__source.with_units(
                 convention, **dataset_conversions.get(self.__source.dtype, {})
