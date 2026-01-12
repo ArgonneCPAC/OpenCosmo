@@ -15,6 +15,7 @@ from opencosmo.dataset import Dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.io.io import open_single_dataset
+from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
 
@@ -106,54 +107,51 @@ def order_by_redshift_range(datasets: dict[str, Dataset]):
     return output
 
 
-def get_all_dataset_names(ordered_datasets: dict[str, Dataset]):
-    comm = get_comm_world()
-    if comm is None:
-        return list(ordered_datasets.keys())
-
-    dataset_names = set(ordered_datasets.keys())
-    all_dataset_names: Iterable[str]
-    all_dataset_names = dataset_names.union(*comm.allgather(dataset_names))
-    all_dataset_names = list(all_dataset_names)
-    all_dataset_names.sort()
-    return all_dataset_names
-
-
 def combine_adjacent_datasets_mpi(
-    ordered_datasets: dict[str, Dataset], min_dataset_size
+    ordered_datasets: dict[str, dict[str, Dataset]],
+    min_dataset_size,
 ):
     MIN_DATASET_SIZE = 100_000
-    all_dataset_names = get_all_dataset_names(ordered_datasets)
     comm = get_comm_world()
     MPI = get_mpi()
+    all_dataset_steps = get_all_keys(ordered_datasets, comm)
     assert comm is not None and MPI is not None
     rs = 0
-    output: dict[str, list[Dataset]] = OrderedDict()
-    for name in all_dataset_names:
+    output_datasets: dict[str, list[Dataset]] = OrderedDict()
+    for step in all_dataset_steps:
         if rs == 0:
-            current_key = name
-            output[current_key] = []
+            current_key = step
+            output_datasets[current_key] = []
 
-        if name not in ordered_datasets:
+        if step not in ordered_datasets:
             rs += comm.allreduce(0, MPI.SUM)
         else:
-            rs += comm.allreduce(len(ordered_datasets[name]), MPI.SUM)
-            output[current_key].append(ordered_datasets[name])
+            length = sum(len(ds) for ds in ordered_datasets[step].values())
+            rs += comm.allreduce(length)
+            output_datasets[current_key].append(ordered_datasets[step])
 
         if rs > MIN_DATASET_SIZE:
             rs = 0
+    output = OrderedDict()
+    for step, datasets in output_datasets.items():
+        step_output = defaultdict(list)
+        for ds_group in datasets:
+            for ds_type, ds in ds_group.items():
+                step_output[ds_type].append(ds)
+        output[step] = step_output
+
     return output
 
 
 def combine_adjacent_datasets(
-    ordered_datasets: dict[str, Dataset] | dict[str, dict], min_dataset_size=100_000
+    ordered_datasets: dict[str, Dataset] | dict[str, dict[str, Dataset]],
+    min_dataset_size=100_000,
 ):
-    if get_comm_world() is not None:
-        return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
-
     is_single = isinstance(next(iter(ordered_datasets.values())), Dataset)
     if is_single:
-        ordered_datasets = {key: {"data": ds} for key, ds in ordered_datasets.values()}
+        ordered_datasets = {key: {"data": ds} for key, ds in ordered_datasets.items()}
+    if get_comm_world() is not None:
+        return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
 
     running_sum = 0
 
@@ -420,8 +418,12 @@ class Lightcone(dict):
         """
         verify_format(output)
 
-        data = [ds.get_data(unpack=unpack) for ds in self.values() if len(ds) > 0]
-        table = vstack(data, join_type="exact")
+        data = [ds.get_data(unpack=unpack) for ds in self.values()]
+        data_with_length = [d for d in data if len(d) > 0]
+        if len(data_with_length) == 0:
+            return data[0]
+
+        table = vstack(data_with_length, join_type="exact")
 
         if self.__ordered_by is not None:
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])

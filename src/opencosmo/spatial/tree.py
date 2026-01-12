@@ -134,6 +134,7 @@ def partition_index(n_partitions: int, counts: h5py.Group):
     for level in range(lowest_level, highest_level + 1):
         level_counts = counts[f"level_{level}"]["size"][:]
         full_region_indices = np.where(level_counts > 0)[0]
+        print(full_region_indices)
         n_full = len(full_region_indices)
         if n_full < n_partitions:
             continue

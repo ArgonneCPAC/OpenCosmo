@@ -145,7 +145,9 @@ def test_lc_collection_write(
 
 @pytest.mark.parallel(nprocs=4)
 def test_diffsky_filter(core_path_487, core_path_475):
-    ds = oc.open(core_path_487, core_path_475)
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    print(len(ds))
+    assert False
     original_data = ds.select("logmp0").data
     ds = ds.filter(oc.col("logmp0") > 11)
     filtered_data = ds.select("logmp0").data
