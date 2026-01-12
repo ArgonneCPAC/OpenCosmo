@@ -907,7 +907,7 @@ wheels = [
 
 [[package]]
 name = "opencosmo"
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
@@ -969,7 +969,7 @@ requires-dist = [
     { name = "healpy", specifier = ">=1.18.1,<2.0.0" },
     { name = "healsparse", specifier = "==1.11.1" },
     { name = "numba", specifier = ">=0.62.1" },
-    { name = "numpy", specifier = ">=2.0" },
+    { name = "numpy", specifier = ">=2.0,<2.4" },
     { name = "pyarrow", marker = "extra == 'io'", specifier = ">=21.0.0" },
     { name = "pydantic", specifier = ">=2.10.6,<3.0.0" },
     { name = "rustworkx", specifier = ">=0.17.1" },
