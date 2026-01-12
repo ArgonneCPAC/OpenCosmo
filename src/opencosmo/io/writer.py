@@ -72,6 +72,7 @@ class ColumnWriter:
         new_sources = reduce(
             lambda acc, other: acc + other.__sources, others, self.__sources
         )
+        new_sources = list(filter(lambda s: len(s) > 0, new_sources))
         return ColumnWriter(new_sources, self.combine_strategy, self.__attrs)
 
     def set_transformation(

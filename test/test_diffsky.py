@@ -78,14 +78,45 @@ def test_repr(core_path_475, core_path_487):
 
 
 def test_open_write_with_synthetics(core_path_475, core_path_487, tmp_path):
+    n = 10_000
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
-    print(len(ds))
-    ds = ds.filter(oc.col("lsst_g") < 20).take(10_000)
-    print(len(ds))
-    oc.write(tmp_path / "test.hdf5", ds)
-    ds = oc.open(tmp_path / "test.hdf5")
+    ds = ds.filter(oc.col("lsst_g") < 20).take(n).with_new_columns(galid=np.arange(n))
+    original_data = ds.get_data()
+    assert len(original_data) == n
+    assert len(ds) == n
 
-    assert False
+    oc.write(tmp_path / "test.hdf5", ds)
+
+    ds = oc.open(tmp_path / "test.hdf5")
+    assert len(ds) < n
+    ds = oc.open(tmp_path / "test.hdf5", synth_cores=True)
+    assert len(ds) == n
+
+    written_data = ds.get_data()
+
+    written_data.sort("galid")
+    columns_to_check = np.random.choice(ds.columns, size=20, replace=False)
+    for column in columns_to_check:
+        assert np.all(original_data[column] == written_data[column])
+
+
+def test_open_write_with_multiple_synthetics(core_path_475, core_path_487, tmp_path):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    original_length = len(ds)
+
+    oc.write(tmp_path / "test.hdf5", ds, _min_size=10_000)
+
+    ds = oc.open(tmp_path / "test.hdf5")
+    assert set(ds.keys()) == {475, 487}
+    assert all(isinstance(dataset, oc.Dataset) for dataset in ds.values())
+
+    assert len(ds) < original_length
+
+    ds = oc.open(tmp_path / "test.hdf5", synth_cores=True)
+    assert len(ds) == original_length
+    for lightcone in ds.values():
+        assert isinstance(lightcone, oc.Lightcone)
+        assert set(lightcone.keys()) == {"cores", "synth_cores"}
 
 
 def test_add_logarithmic_units(core_path_487):

@@ -96,7 +96,15 @@ class DatasetState:
         metadata_group: Optional[h5py.Group] = None,
         in_memory: bool = False,
     ):
-        handler = Hdf5Handler.from_group(group, index, metadata_group)
+        data_group = group["data"]
+        if "load" in group.keys():
+            load_conditions = dict(group["load/if"].attrs)
+        else:
+            load_conditions = None
+
+        handler = Hdf5Handler.from_group(
+            data_group, index, metadata_group, load_conditions
+        )
         unit_handler = make_unit_handler(handler.data, header, unit_convention)
 
         columns = set(handler.columns)
@@ -331,7 +339,14 @@ class DatasetState:
             children[metadata_schema.name] = metadata_schema
         if name is None:
             name = ""
-        return make_schema(name, FileEntry.DATASET, children=children)
+
+        attributes = {}
+        if (load_conditions := self.__raw_data_handler.load_conditions) is not None:
+            attributes["load/if"] = load_conditions
+
+        return make_schema(
+            name, FileEntry.DATASET, children=children, attributes=attributes
+        )
 
     def with_new_columns(
         self,

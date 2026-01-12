@@ -390,7 +390,7 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_data(self, output="astropy"):
+    def get_data(self, output="astropy", unpack: bool = False):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -420,7 +420,7 @@ class Lightcone(dict):
         """
         verify_format(output)
 
-        data = [ds.get_data(unpack=False) for ds in self.values() if len(ds) > 0]
+        data = [ds.get_data(unpack=unpack) for ds in self.values() if len(ds) > 0]
         table = vstack(data, join_type="exact")
 
         if self.__ordered_by is not None:
@@ -454,8 +454,10 @@ class Lightcone(dict):
         datasets = defaultdict(dict)
 
         for target in targets:
+            group_name = target.group.name.split("/")[-1]
+            group_name = group_name.lstrip(f"{target.header.file.step}_")
             ds = open_single_dataset(target, bypass_lightcone=True)
-            datasets[target.header.file.step][target.group.name.split("/")[-1]] = ds
+            datasets[target.header.file.step][group_name] = ds
 
         output = {}
         for key, ds_group in datasets.items():
@@ -536,12 +538,14 @@ class Lightcone(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self, name: str = "") -> Schema:
+    def make_schema(self, name: str = "", _min_size=100_000) -> Schema:
         datasets = order_by_redshift_range(self)
         for key in datasets:
             if isinstance(datasets[key], Lightcone):
                 datasets[key] = dict(datasets[key])
-        output_datasets = combine_adjacent_datasets(datasets)
+        output_datasets = combine_adjacent_datasets(
+            datasets, min_dataset_size=_min_size
+        )
         children = {}
 
         for step, datasets in output_datasets.items():
@@ -553,10 +557,11 @@ class Lightcone(dict):
                 min(header_zrange[1], my_zrange[1]),
             )
 
-            new_dataset_schema = stack_lightcone_datasets_in_schema(
-                datasets, step, zrange
-            )
-            children[step] = new_dataset_schema
+            child_schemas = stack_lightcone_datasets_in_schema(datasets, step, zrange)
+            child_schemas = {
+                f"{step}_{name}": schema for name, schema in child_schemas.items()
+            }
+            children.update(child_schemas)
 
         if len(children) == 1:
             return next(iter(children.values()))
@@ -955,11 +960,13 @@ class Lightcone(dict):
         ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
         partitions = np.searchsorted(rows, ds_ends)
         splits = np.split(rows, partitions)
-        output = {**self}
         rs = 0
+        output = {}
         for split, (name, dataset) in zip(splits, self.items()):
             if len(split) > 0:
                 output[name] = dataset.take_rows(split - rs)
+            else:
+                output[name] = dataset.take(0)  # compatability reasons
             rs += len(dataset)
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 

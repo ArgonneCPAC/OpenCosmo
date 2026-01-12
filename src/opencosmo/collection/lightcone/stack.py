@@ -7,7 +7,6 @@ import healpy as hp
 import numpy as np
 
 from opencosmo import dataset as ds
-from opencosmo.dataset.multi import MultiDataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
@@ -19,6 +18,16 @@ if TYPE_CHECKING:
 
 def update_order(data: np.ndarray, comm: Optional[MPI.Comm], order: np.ndarray):
     return data[order]
+
+
+def sync_metadata(dataset_schemas: list[Schema]):
+    additional_metadata = [schema.attributes for schema in dataset_schemas]
+    if not any(additional_metadata):
+        return {}
+    if not all(am == additional_metadata[0] for am in additional_metadata[1:]):
+        raise ValueError("Datasets don't have the same metadata!")
+
+    return additional_metadata[0]
 
 
 def sync_headers(datasets: list[ds.Dataset], redshift_range):
@@ -51,24 +60,6 @@ def sync_headers(datasets: list[ds.Dataset], redshift_range):
     return header_schema
 
 
-def stack_multi_datasets_in_schema(
-    datasets: list[MultiDataset],
-    name: str,
-    redshift_range: tuple[float, float],
-    min: int = 100_000,
-    max: int = 250_000,
-):
-    children = {}
-    for dataset_type in datasets[0].keys():
-        all_datasets_of_type = [
-            dataset_group[dataset_type] for dataset_group in datasets
-        ]
-        children[dataset_type] = stack_lightcone_datasets_in_schema(
-            all_datasets_of_type, name, redshift_range
-        )
-    return make_schema("", FileEntry.LIGHTCONE, children=children)
-
-
 def stack_lightcone_datasets_in_schema(
     datasets: dict[str, list[ds.Dataset]],
     name: str,
@@ -85,6 +76,9 @@ def stack_lightcone_datasets_in_schema(
 
     schema_children = {}
     for ds_group, ds_list in datasets.items():
+        ds_list = list(filter(lambda ds: len(ds) > 0, ds_list))
+        if len(ds_list) == 0:
+            continue
         schemas = [ds.make_schema(name=name) for ds in ds_list]
         index_names = list(schemas[0].children["index"].children.keys())
         index_names.sort()
@@ -105,21 +99,23 @@ def stack_lightcone_datasets_in_schema(
             [schema.children["index"] for schema in schemas]
         )
         header_schema = sync_headers(ds_list, redshift_range)
+        additional_metadata = sync_metadata(schemas)
 
         children = {
             "data": new_data_group,
             "index": new_index_group,
             "header": header_schema,
         }
+
         schema_name = ds_group if len(datasets) > 1 else name
         schema_children[schema_name] = make_schema(
-            schema_name, FileEntry.LIGHTCONE, children=children
+            schema_name,
+            FileEntry.LIGHTCONE,
+            children=children,
+            attributes=additional_metadata,
         )
 
-    if len(schema_children) == 1:
-        return next(iter(schema_children.items()))
-
-    return make_schema(name, FileEntry.LIGHTCONE, children=schema_children)
+    return schema_children
 
 
 def stack_index_groups(schemas: list[Schema]):

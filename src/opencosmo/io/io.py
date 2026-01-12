@@ -207,7 +207,7 @@ def open_single_dataset(
         metadata_group = handle["metadata"]
 
     state = dss.DatasetState.from_group(
-        handle["data"],
+        handle,
         header,
         UnitConvention.COMOVING,
         sim_region,
@@ -235,7 +235,7 @@ def open_single_dataset(
     return dataset
 
 
-def write(path: Path, dataset: Writeable, overwrite=False) -> None:
+def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> None:
     """
     Write a dataset or collection to the file at the sepecified path.
 
@@ -263,7 +263,7 @@ def write(path: Path, dataset: Writeable, overwrite=False) -> None:
 
     path = resolve_path(path, existance_requirement)
 
-    schema = dataset.make_schema()
+    schema = dataset.make_schema(**schema_kwargs)
 
     if mpiio is not None:
         return mpiio.write_parallel(path, schema)
