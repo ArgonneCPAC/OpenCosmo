@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from functools import cached_property, reduce
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
@@ -11,6 +11,7 @@ from astropy.table import vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import DerivedColumn
+from opencosmo.dataset import Dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.io.io import open_single_dataset
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
     from astropy.table import Table
 
     from opencosmo.column.column import ColumnMask
-    from opencosmo.dataset import Dataset
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
     from opencosmo.io.schema import Schema
@@ -146,22 +146,37 @@ def combine_adjacent_datasets_mpi(
 
 
 def combine_adjacent_datasets(
-    ordered_datasets: dict[str, Dataset], min_dataset_size=100_000
+    ordered_datasets: dict[str, Dataset] | dict[str, dict], min_dataset_size=100_000
 ):
     if get_comm_world() is not None:
         return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
-    rs = 0
-    current_key = next(iter(ordered_datasets.keys()))
-    output: dict[str, list[Dataset]] = OrderedDict({current_key: []})
 
-    for key, ds in ordered_datasets.items():
-        if rs < min_dataset_size:
-            rs += len(ds)
-            output[current_key].append(ds)
+    is_single = isinstance(next(iter(ordered_datasets.values())), Dataset)
+    if is_single:
+        ordered_datasets = {key: {"data": ds} for key, ds in ordered_datasets.values()}
+
+    running_sum = 0
+
+    current_key = next(iter(ordered_datasets.keys()))
+    output_datasets: dict[str, list[Dataset]] = OrderedDict({current_key: []})
+
+    for key, datasets in ordered_datasets.items():
+        if running_sum < min_dataset_size:
+            running_sum += sum(len(ds) for ds in datasets.values())
+            output_datasets[current_key].append(datasets)
             continue
         current_key = key
-        output[current_key] = [ds]
-        rs = len(ds)
+        output_datasets[current_key] = [datasets]
+        running_sum = sum(len(ds) for ds in datasets.values())
+
+    # We have list of dicts, go to dict of lists
+    output = OrderedDict()
+    for step, datasets in output_datasets.items():
+        step_output = defaultdict(list)
+        for ds_group in datasets:
+            for ds_type, ds in ds_group.items():
+                step_output[ds_type].append(ds)
+        output[step] = step_output
 
     return output
 
@@ -192,6 +207,12 @@ class Lightcone(dict):
     hides these details, providing an API that is identical to the standard
     Dataset API. Additionally, the lightcone contains some convinience functions
     for standard operations.
+
+    Lightcones can be nested. In this case, the top level will split the datasets
+    up by step, while the second level will split the datasets up by type. This nested
+    scheme (at present) is used for Diffsky catalogs, which may contain both cores
+    and synthetic cores that need to be adddressed (and more importantly, written)
+    seperately from one another.
     """
 
     def __init__(
@@ -430,21 +451,25 @@ class Lightcone(dict):
 
     @classmethod
     def open(cls, targets: list[OpenTarget], **kwargs):
-        datasets: dict[str, Dataset] = {}
+        datasets = defaultdict(dict)
 
         for target in targets:
-            ds = open_single_dataset(target)
-            if not isinstance(ds, Lightcone) or len(ds.keys()) != 1:
-                raise ValueError(
-                    "Lightcones can only contain datasets (not collections)"
-                )
-            if target.group.name != "/":
-                key = target.group.name.split("/")[-1]
-            else:
-                key = f"{target.header.file.step}_{target.header.file.data_type}"
-            datasets[key] = next(iter(ds.values()))
+            ds = open_single_dataset(target, bypass_lightcone=True)
+            datasets[target.header.file.step][target.group.name.split("/")[-1]] = ds
 
-        return cls(datasets)
+        output = {}
+        for key, ds_group in datasets.items():
+            if len(ds_group) == 1:
+                output[key] = next(iter(ds_group.values()))
+            else:
+                output[key] = Lightcone(ds_group)
+
+        if not all(type(ds) is oc.Dataset for ds in output.values()) and not all(
+            type(ds) is Lightcone for ds in output.values()
+        ):
+            raise ValueError()
+
+        return cls(output)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
@@ -511,13 +536,17 @@ class Lightcone(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self) -> Schema:
+    def make_schema(self, name: str = "") -> Schema:
         datasets = order_by_redshift_range(self)
+        for key in datasets:
+            if isinstance(datasets[key], Lightcone):
+                datasets[key] = dict(datasets[key])
         output_datasets = combine_adjacent_datasets(datasets)
         children = {}
 
-        for name, datasets in output_datasets.items():
-            header_zrange = get_redshift_range(datasets)
+        for step, datasets in output_datasets.items():
+            all_datasets = list(chain(*tuple(lst for lst in datasets.values())))
+            header_zrange = get_redshift_range(all_datasets)
             my_zrange = self.z_range
             zrange = (
                 max(header_zrange[0], my_zrange[0]),
@@ -525,13 +554,13 @@ class Lightcone(dict):
             )
 
             new_dataset_schema = stack_lightcone_datasets_in_schema(
-                datasets, name, zrange
+                datasets, step, zrange
             )
-            children[name] = new_dataset_schema
+            children[step] = new_dataset_schema
 
         if len(children) == 1:
             return next(iter(children.values()))
-        return make_schema("", FileEntry.LIGHTCONE, children=children)
+        return make_schema(name, FileEntry.LIGHTCONE, children=children)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """

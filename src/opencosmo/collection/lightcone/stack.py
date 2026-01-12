@@ -7,6 +7,7 @@ import healpy as hp
 import numpy as np
 
 from opencosmo import dataset as ds
+from opencosmo.dataset.multi import MultiDataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
@@ -50,41 +51,75 @@ def sync_headers(datasets: list[ds.Dataset], redshift_range):
     return header_schema
 
 
-def stack_lightcone_datasets_in_schema(
-    datasets: list[ds.Dataset], name: str, redshift_range: tuple[float, float]
+def stack_multi_datasets_in_schema(
+    datasets: list[MultiDataset],
+    name: str,
+    redshift_range: tuple[float, float],
+    min: int = 100_000,
+    max: int = 250_000,
 ):
-    if len(datasets) == 1 and get_comm_world() is None:
-        schema = datasets[0].make_schema(name=name)
-        header = sync_headers(datasets, redshift_range)
+    children = {}
+    for dataset_type in datasets[0].keys():
+        all_datasets_of_type = [
+            dataset_group[dataset_type] for dataset_group in datasets
+        ]
+        children[dataset_type] = stack_lightcone_datasets_in_schema(
+            all_datasets_of_type, name, redshift_range
+        )
+    return make_schema("", FileEntry.LIGHTCONE, children=children)
+
+
+def stack_lightcone_datasets_in_schema(
+    datasets: dict[str, list[ds.Dataset]],
+    name: str,
+    redshift_range: tuple[float, float],
+):
+    n_datasets = sum(len(lst) for lst in datasets.values())
+    if n_datasets == 1 and get_comm_world() is None:
+        dataset_list = next(iter(datasets.values()))
+
+        schema = dataset_list[0].make_schema(name=name)
+        header = sync_headers(dataset_list, redshift_range)
         schema.children["header"] = header
         return schema
 
-    schemas = [ds.make_schema(name=name) for ds in datasets]
-    index_names = list(schemas[0].children["index"].children.keys())
-    index_names.sort()
-    max_level = int(index_names[-1][-1])
+    schema_children = {}
+    for ds_group, ds_list in datasets.items():
+        schemas = [ds.make_schema(name=name) for ds in ds_list]
+        index_names = list(schemas[0].children["index"].children.keys())
+        index_names.sort()
+        max_level = int(index_names[-1][-1])
 
-    assert all(isinstance(dataset, ds.Dataset) for dataset in datasets)
-    new_data_group = stack_data_groups([schema.children["data"] for schema in schemas])
+        assert all(isinstance(dataset, ds.Dataset) for dataset in ds_list)
+        new_data_group = stack_data_groups(
+            [schema.children["data"] for schema in schemas]
+        )
 
-    order = get_stacked_lightcone_order(datasets, max_level)
-    updater = partial(update_order, order=order)
+        order = get_stacked_lightcone_order(ds_list, max_level)
+        updater = partial(update_order, order=order)
 
-    for column in new_data_group.columns.values():
-        column.set_transformation(updater)
+        for column in new_data_group.columns.values():
+            column.set_transformation(updater)
 
-    new_index_group = stack_index_groups(
-        [schema.children["index"] for schema in schemas]
-    )
-    header_schema = sync_headers(datasets, redshift_range)
+        new_index_group = stack_index_groups(
+            [schema.children["index"] for schema in schemas]
+        )
+        header_schema = sync_headers(ds_list, redshift_range)
 
-    children = {
-        "data": new_data_group,
-        "index": new_index_group,
-        "header": header_schema,
-    }
+        children = {
+            "data": new_data_group,
+            "index": new_index_group,
+            "header": header_schema,
+        }
+        schema_name = ds_group if len(datasets) > 1 else name
+        schema_children[schema_name] = make_schema(
+            schema_name, FileEntry.LIGHTCONE, children=children
+        )
 
-    return make_schema(name, FileEntry.DATASET, children=children)
+    if len(schema_children) == 1:
+        return next(iter(schema_children.items()))
+
+    return make_schema(name, FileEntry.LIGHTCONE, children=schema_children)
 
 
 def stack_index_groups(schemas: list[Schema]):

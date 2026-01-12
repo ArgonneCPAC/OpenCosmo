@@ -77,6 +77,17 @@ def test_repr(core_path_475, core_path_487):
     assert str(ds)
 
 
+def test_open_write_with_synthetics(core_path_475, core_path_487, tmp_path):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    print(len(ds))
+    ds = ds.filter(oc.col("lsst_g") < 20).take(10_000)
+    print(len(ds))
+    oc.write(tmp_path / "test.hdf5", ds)
+    ds = oc.open(tmp_path / "test.hdf5")
+
+    assert False
+
+
 def test_add_logarithmic_units(core_path_487):
     ds = oc.open(core_path_487, synth_cores=True)
     log_sfr = oc.col("logsm_obs") + oc.col("logssfr_obs")

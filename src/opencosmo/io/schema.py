@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 class FileEntry(Enum):
     DATASET = "dataset"
+    MULTI_DATASET = "multi_dataset"
     STRUCTURE_COLLECTION = "structure_collection"
     SIMULATION_COLLECTION = "simulation_collection"
     LIGHTCONE = "lightcone"
