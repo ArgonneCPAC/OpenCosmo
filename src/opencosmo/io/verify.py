@@ -30,7 +30,11 @@ def verify_file(
             verify_lightcone_collection_schema(schema)
         case FileEntry.SIMULATION_COLLECTION:
             for name, ds_schema in schema.children.items():
-                verify_dataset_data(ds_schema)
+                match ds_schema.type:
+                    case FileEntry.DATASET:
+                        verify_dataset_data(ds_schema)
+                    case FileEntry.STRUCTURE_COLLECTION:
+                        verify_structure_collection_data(ds_schema)
         case FileEntry.HEALPIX_MAP:
             verify_dataset_data(schema, has_index=False)
         case _:
