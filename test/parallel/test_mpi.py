@@ -67,6 +67,13 @@ def galaxy_paths_2(snapshot_path: Path):
 
 
 @pytest.fixture
+def galaxy_halo_path(snapshot_path: Path):
+    files = ["haloproperties.hdf5", "galaxyproperties.hdf5"]
+    hdf_files = [snapshot_path / file for file in files]
+    return list(hdf_files)
+
+
+@pytest.fixture
 def all_paths(snapshot_path: Path):
     files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
 
@@ -152,6 +159,12 @@ def test_take(input_path):
             tags.update(tag_list)
 
         assert len(tags) == 4 * n
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.parallel(nprocs=4)
+def test_open_galaxy_halo(galaxy_halo_path):
+    _ = oc.open(*galaxy_halo_path)
 
 
 @pytest.mark.timeout(60)
