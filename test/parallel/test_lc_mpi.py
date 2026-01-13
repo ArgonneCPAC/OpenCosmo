@@ -157,7 +157,7 @@ def test_diffsky_filter(core_path_487, core_path_475):
 def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     comm = MPI.COMM_WORLD
     tmp_path = comm.bcast(tmp_path) / "output.hdf5"
-    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = oc.open(core_path_487, core_path_475, synth_cores=False)
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1

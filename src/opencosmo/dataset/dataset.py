@@ -467,6 +467,8 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
+        if not masks:
+            return self
         required_columns: set[str] = reduce(
             lambda acc, r: acc | r.requires, masks, set()
         )

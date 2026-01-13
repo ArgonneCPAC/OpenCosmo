@@ -441,9 +441,8 @@ def __write_column(
             else:
                 data = writer.get_data(comm)
             if comm is not None:
-                data_to_write = comm.reduce(data)
-                if comm.Get_rank() == 0:
-                    ds[:] = data_to_write
+                data_to_write = comm.allreduce(data)
+                ds[:] = data_to_write
             else:
                 data += ds[:]
                 ds[:] = data
