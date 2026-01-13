@@ -53,6 +53,22 @@ def malformed_header_path(input_path, tmp_path):
 
 
 @pytest.fixture
+def scidac_000_paths(snapshot_path):
+    return [
+        snapshot_path / "scidac_000" / "haloproperties.hdf5",
+        snapshot_path / "scidac_000" / "galaxyproperties.hdf5",
+    ]
+
+
+@pytest.fixture
+def scidac_001_paths(snapshot_path):
+    return [
+        snapshot_path / "scidac_001" / "haloproperties.hdf5",
+        snapshot_path / "scidac_001" / "galaxyproperties.hdf5",
+    ]
+
+
+@pytest.fixture
 def galaxy_paths(snapshot_path: Path):
     files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
     hdf_files = [snapshot_path / file for file in files]
@@ -62,6 +78,13 @@ def galaxy_paths(snapshot_path: Path):
 @pytest.fixture
 def galaxy_paths_2(snapshot_path: Path):
     files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
+    hdf_files = [snapshot_path / file for file in files]
+    return list(hdf_files)
+
+
+@pytest.fixture
+def galaxy_halo_path(snapshot_path: Path):
+    files = ["haloproperties.hdf5", "galaxyproperties.hdf5"]
     hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
@@ -152,6 +175,16 @@ def test_take(input_path):
             tags.update(tag_list)
 
         assert len(tags) == 4 * n
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.parallel(nprocs=4)
+def test_open_galaxy_halo(galaxy_halo_path, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "output.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    ds = oc.open(*galaxy_halo_path).take(25)
+    oc.write(temporary_path, ds)
 
 
 @pytest.mark.timeout(60)
@@ -605,6 +638,31 @@ def test_derive_write(input_path, tmp_path):
             )
         )
     )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_simcollection_structure_write(scidac_000_paths, scidac_001_paths, tmp_path):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = tmp_path / "output.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    sc0 = oc.open(*scidac_000_paths)
+    sc1 = oc.open(*scidac_001_paths)
+    collection = oc.SimulationCollection({"scidac_000": sc0, "scidac_001": sc1})
+    oc.write(temporary_path, collection)
+
+    collection_written = oc.open(temporary_path)
+    import shutil
+
+    shutil.copy(temporary_path, "output.hdf5")
+    for ds_name, ds in collection_written.items():
+        assert np.all(
+            ds["halo_properties"].get_data()
+            == collection[ds_name]["halo_properties"].get_data()
+        )
+        assert np.all(
+            ds["galaxy_properties"].get_data()
+            == collection[ds_name]["galaxy_properties"].get_data()
+        )
 
 
 @pytest.mark.timeout(60)

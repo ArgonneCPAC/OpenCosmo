@@ -38,6 +38,7 @@ html_title = "OpenCosmo Documentation"
 autodoc_typehints = "description"
 autodoc_pydantic_model_show_validator_summary = False
 autodoc_pydantic_field_list_validators = False
+autodoc_use_legacy_class_based = True
 
 autosectionlabel_maxdepth = 3
 

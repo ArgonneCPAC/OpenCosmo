@@ -1,0 +1,1 @@
+Submitting a filter without actually passing filters will now return the original dataset rather than an empty dataset.

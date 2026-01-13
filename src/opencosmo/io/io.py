@@ -124,8 +124,20 @@ def open(
     else:
         file_list = list(files)
     file_list.sort()
-    handles = [h5py.File(f) for f in file_list]
-    targets = make_all_targets(handles)
+
+    try:
+        handles = [h5py.File(f) for f in file_list]
+    except TypeError:  # we have hdf5 groups
+        handles = file_list
+
+    try:
+        targets = make_all_targets(handles)
+    except KeyError:
+        if len(handles) != 1:
+            raise
+        datasets = {name: oc.open(group) for name, group in handles[0].items()}
+        return oc.SimulationCollection(datasets)
+
     targets = evaluate_load_conditions(targets, open_kwargs)
     file_types = list(map(get_file_type, handles))
     if len(targets) > 1:

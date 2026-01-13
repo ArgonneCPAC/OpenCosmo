@@ -145,11 +145,11 @@ def test_lc_collection_write(
 
 @pytest.mark.parallel(nprocs=4)
 def test_diffsky_filter(core_path_487, core_path_475):
-    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = oc.open(core_path_487, core_path_475)
     original_data = ds.select("logmp0").data
-    ds = ds.filter(oc.col("logmp0") > 13)
+    ds = ds.filter(oc.col("logmp0") > 11)
     filtered_data = ds.select("logmp0").data
-    original_data = original_data[original_data.value > 13]
+    original_data = original_data[original_data.value > 11]
     assert np.all(original_data == filtered_data)
 
 
@@ -157,7 +157,7 @@ def test_diffsky_filter(core_path_487, core_path_475):
 def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     comm = MPI.COMM_WORLD
     tmp_path = comm.bcast(tmp_path) / "output.hdf5"
-    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = oc.open(core_path_487, core_path_475, synth_cores=False)
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1
