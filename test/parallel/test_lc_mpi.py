@@ -110,7 +110,6 @@ def test_lc_collection_write_single(
     data = ds.select("redshift").data
     parallel_assert(data.min() >= 0.040 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)
-    print(ds.z_range)
     parallel_assert(ds.z_range == (0.04, 0.0405))
 
 
@@ -146,13 +145,26 @@ def test_lc_collection_write(
 @pytest.mark.parallel(nprocs=4)
 def test_diffsky_filter(core_path_487, core_path_475):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
-    print(len(ds))
-    assert False
     original_data = ds.select("logmp0").data
     ds = ds.filter(oc.col("logmp0") > 11)
     filtered_data = ds.select("logmp0").data
     original_data = original_data[original_data.value > 11]
+
     assert np.all(original_data == filtered_data)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_diffsky_stack_with_synths(core_path_487, core_path_475, tmp_path):
+    comm = MPI.COMM_WORLD
+    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = ds.filter(oc.col("logmp0") > 12)
+    print(ds.keys())
+    oc.write(tmp_path, ds)
+    ds = oc.open(tmp_path, synth_cores=True)
+    print(ds.keys())
+    print(ds["data"])
+    assert False
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -167,11 +179,10 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     original_data_length = comm.allgather(len(original_data))
 
     oc.write(tmp_path, ds)
-    ds = oc.open(tmp_path)
+    ds = oc.open(tmp_path, synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")
 
     written_data_length = comm.allgather(len(written_data))
-    print(written_data_length, original_data_length)
     parallel_assert(sum(original_data_length) == sum(written_data_length))
 
     original_early_index = np.concatenate(comm.allgather(original_data))

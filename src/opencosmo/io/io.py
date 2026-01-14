@@ -186,7 +186,6 @@ def open_single_dataset(
         assert partition is not None
         try:
             idx_data = handle["index"]
-            print(handle)
             part = partition(comm, len(handler), idx_data, tree)
             if part is None:
                 index = empty()
