@@ -120,6 +120,9 @@ def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth:
     datasets = list(datasets)
     nside = 2**max_index_depth
     coordinates = list(map(find_coordinates_2d, datasets))
+    coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
+    
+
     pixels = np.concatenate(
         [
             hp.ang2pix(nside, coords.ra.value, coords.dec.value, lonlat=True, nest=True)

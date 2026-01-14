@@ -35,7 +35,7 @@ def check_containment(
 
 
 def get_theta_phi_coordinates(dataset: "Dataset"):
-    coord_values = dataset.select(["theta", "phi"]).data
+    coord_values = dataset.select(["theta", "phi"]).get_data(unpack=False)
     ra = coord_values["phi"]
     dec = np.pi / 2 - coord_values["theta"]
 
@@ -43,7 +43,7 @@ def get_theta_phi_coordinates(dataset: "Dataset"):
 
 
 def get_theta_phi_coordinates_pixel(dataset: "Dataset"):
-    pixel_values = dataset.get_metadata(["pixel"])["pixel"]
+    pixel_values = np.atleast_1d(dataset.get_metadata(["pixel"])["pixel"])
     theta, phi = hp.pix2ang(
         dataset.header.healpix_map["nside"], pixel_values, lonlat=False, nest=True
     )
@@ -59,7 +59,7 @@ def find_coordinates_2d(dataset: "Dataset"):
     elif len(columns.intersection(set(["theta", "phi"]))) == 2:
         return get_theta_phi_coordinates(dataset)
     elif len(columns.intersection(set(["ra", "dec"]))) == 2:
-        data = dataset.select(["ra", "dec"]).data
+        data = dataset.select(["ra", "dec"]).get_data(unpack=False)
         return SkyCoord(data["ra"], data["dec"])
     raise ValueError("Dataset does not contain coordinates")
 
