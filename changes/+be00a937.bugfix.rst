@@ -1,0 +1,1 @@
+Fix a bug that could cause lightcone stacking to fail with large numbers of datasets
