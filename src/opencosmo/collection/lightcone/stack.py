@@ -87,7 +87,7 @@ def stack_lightcone_datasets_in_schema(
         schema = dataset_list[0].make_schema(name=name)
         header = sync_headers(dataset_list, redshift_range)
         schema.children["header"] = header
-        return schema
+        return {"data": schema}
 
     schema_children = {}
     for ds_group, ds_list in datasets.items():

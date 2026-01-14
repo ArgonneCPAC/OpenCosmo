@@ -523,6 +523,20 @@ def test_lightcone_stacking(haloproperties_600_path, haloproperties_601_path, tm
     assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range
 
 
+def test_lightcone_stacking_nostack(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+
+    fof_tags = ds.select("fof_halo_tag").get_data()
+    output_path = tmp_path / "data.hdf5"
+    oc.write(output_path, ds, _min_size=100)
+    ds_new = oc.open(output_path)
+    fof_tags_new = ds_new.select("fof_halo_tag").get_data()
+    assert np.all(np.unique(fof_tags) == np.unique(fof_tags_new))
+    assert ds_new.z_range == ds.z_range
+
+
 def test_lightcone_structure_collection_open(structure_600):
     c = oc.open(*structure_600)
     assert isinstance(c, oc.StructureCollection)
