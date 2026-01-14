@@ -159,12 +159,8 @@ def test_diffsky_stack_with_synths(core_path_487, core_path_475, tmp_path):
     tmp_path = comm.bcast(tmp_path) / "output.hdf5"
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     ds = ds.filter(oc.col("logmp0") > 12)
-    print(ds.keys())
     oc.write(tmp_path, ds)
     ds = oc.open(tmp_path, synth_cores=True)
-    print(ds.keys())
-    print(ds["data"])
-    assert False
 
 
 @pytest.mark.parallel(nprocs=4)

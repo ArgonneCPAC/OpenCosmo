@@ -17,7 +17,22 @@ if TYPE_CHECKING:
 
 
 def update_order(data: np.ndarray, comm: Optional[MPI.Comm], order: np.ndarray):
+    if comm is not None:
+        return update_global_order_mpi(data, comm, order)
+
     return data[order]
+
+
+def update_global_order_mpi(data, comm, order):
+    needs_global_reordering = comm.allgather(np.any((order < 0) | (order > len(order))))
+    if not np.any(needs_global_reordering):
+        return data[order]
+
+    ends = comm.allgather(len(order))
+    starts = np.insert(ends, 0, 0)
+    global_order = order + starts[comm.Get_rank()]
+    all_data = comm.allgather(data)
+    return np.concat(all_data)[global_order]
 
 
 def sync_metadata(dataset_schemas: list[Schema]):
@@ -147,12 +162,29 @@ def stack_data_groups(schemas: list[Schema]):
     return new_schema
 
 
+def get_order_mpi(pixels, comm):
+    pixel_order = np.argsort(pixels)
+    pixel_ranges = comm.allgather((pixels[pixel_order[0]], pixels[pixel_order[-1]]))
+
+    for i in range(len(pixel_ranges) - 1):
+        if pixel_ranges[i][1] > pixel_ranges[i + 1][0]:
+            break
+    else:
+        return pixel_order
+
+    all_pixels = np.concat(comm.allgather(pixels))
+    new_order = np.argsort(all_pixels)
+    bounds = np.cumsum(comm.allgather(len(pixels)))
+    bounds = np.insert(bounds, 0, 0)
+    rank = comm.Get_rank()
+    return new_order[bounds[rank] : bounds[rank + 1]] - bounds[rank]
+
+
 def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth: int):
     datasets = list(datasets)
     nside = 2**max_index_depth
     coordinates = list(map(find_coordinates_2d, datasets))
     coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
-    
 
     pixels = np.concatenate(
         [
@@ -160,4 +192,8 @@ def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth:
             for coords in coordinates
         ]
     )
+
+    if (comm := get_comm_world()) is not None:
+        return get_order_mpi(pixels, comm)
+
     return np.argsort(pixels)
