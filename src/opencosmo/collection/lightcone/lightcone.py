@@ -3,7 +3,17 @@ from __future__ import annotations
 from collections import OrderedDict, defaultdict
 from functools import cached_property, reduce
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Mapping,
+    Optional,
+    Self,
+    Sequence,
+)
 
 import numpy as np
 from astropy.table import vstack  # type: ignore
@@ -33,7 +43,7 @@ if TYPE_CHECKING:
     from opencosmo.spatial import Region
 
 
-def get_redshift_range(datasets: list[Dataset]):
+def get_redshift_range(datasets: Sequence[Dataset | Lightcone]):
     redshift_ranges = list(map(get_single_redshift_range, datasets))
     min_z = min(rr[0] for rr in redshift_ranges)
     max_z = max(rr[1] for rr in redshift_ranges)
@@ -41,7 +51,9 @@ def get_redshift_range(datasets: list[Dataset]):
     return (min_z, max_z)
 
 
-def get_single_redshift_range(dataset: Dataset):
+def get_single_redshift_range(dataset: Dataset | Lightcone):
+    if isinstance(dataset, Lightcone):
+        return dataset.z_range
     redshift_range = dataset.header.lightcone["z_range"]
     if redshift_range is not None:
         return redshift_range
@@ -117,7 +129,7 @@ def combine_adjacent_datasets_mpi(
     all_dataset_steps = get_all_keys(ordered_datasets, comm)
     assert comm is not None and MPI is not None
     rs = 0
-    output_datasets: dict[str, list[Dataset]] = OrderedDict()
+    output_datasets: dict[str, list[dict[str, Dataset]]] = OrderedDict()
     for step in all_dataset_steps:
         if rs == 0:
             current_key = step
@@ -132,6 +144,7 @@ def combine_adjacent_datasets_mpi(
 
         if rs > MIN_DATASET_SIZE:
             rs = 0
+
     output = OrderedDict()
     for step, datasets in output_datasets.items():
         step_output = defaultdict(list)
@@ -148,30 +161,38 @@ def combine_adjacent_datasets(
     min_dataset_size=100_000,
 ):
     is_single = isinstance(next(iter(ordered_datasets.values())), Dataset)
+    datasets: dict[str, dict[str, Dataset]]
     if is_single:
-        ordered_datasets = {key: {"data": ds} for key, ds in ordered_datasets.items()}
+        assert all(isinstance(ds, Dataset) for ds in ordered_datasets.values())
+        datasets = {key: {"data": ds} for key, ds in ordered_datasets.items()}  # type: ignore
+    else:
+        assert all(isinstance(ds, dict) for ds in ordered_datasets.values())
+        datasets = ordered_datasets  # type: ignore
+
     if get_comm_world() is not None:
-        return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
+        return combine_adjacent_datasets_mpi(datasets, min_dataset_size)
 
     running_sum = 0
 
     current_key = next(iter(ordered_datasets.keys()))
-    output_datasets: dict[str, list[Dataset]] = OrderedDict({current_key: []})
+    output_datasets: dict[str, list[dict[str, Dataset]]] = OrderedDict(
+        {current_key: []}
+    )
 
-    for key, datasets in ordered_datasets.items():
+    for key, step_datasets in datasets.items():
         if running_sum < min_dataset_size:
-            running_sum += sum(len(ds) for ds in datasets.values())
-            output_datasets[current_key].append(datasets)
+            running_sum += sum(len(ds) for ds in step_datasets.values())
+            output_datasets[current_key].append(step_datasets)
             continue
         current_key = key
-        output_datasets[current_key] = [datasets]
-        running_sum = sum(len(ds) for ds in datasets.values())
+        output_datasets[current_key] = [step_datasets]
+        running_sum = sum(len(ds) for ds in step_datasets.values())
 
     # We have list of dicts, go to dict of lists
     output = OrderedDict()
-    for step, datasets in output_datasets.items():
+    for step, step_datasets_ in output_datasets.items():
         step_output = defaultdict(list)
-        for ds_group in datasets:
+        for ds_group in step_datasets_:
             for ds_type, ds in ds_group.items():
                 step_output[ds_type].append(ds)
         output[step] = step_output
@@ -215,12 +236,15 @@ class Lightcone(dict):
 
     def __init__(
         self,
-        datasets: dict[str, Dataset],
+        datasets: Mapping[Any, Dataset | Lightcone],
         z_range: Optional[tuple[float, float]] = None,
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
     ):
-        datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
+        datasets = {
+            k: with_redshift_column(ds) if isinstance(ds, Dataset) else ds
+            for k, ds in datasets.items()
+        }
         self.update(datasets)
         z_range = (
             z_range
@@ -453,15 +477,17 @@ class Lightcone(dict):
 
     @classmethod
     def open(cls, targets: list[OpenTarget], **kwargs):
-        datasets = defaultdict(dict)
+        datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
 
         for target in targets:
             group_name = target.group.name.split("/")[-1]
             group_name = group_name.lstrip(f"{target.header.file.step}_")
             ds = open_single_dataset(target, bypass_lightcone=True)
-            datasets[target.header.file.step][group_name] = ds
+            step = target.header.file.step
+            assert step is not None
+            datasets[step][group_name] = ds
 
-        output = {}
+        output: dict[int, Dataset | Lightcone] = {}
         for key, ds_group in datasets.items():
             if len(ds_group) == 1:
                 output[key] = next(iter(ds_group.values()))
