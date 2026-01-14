@@ -174,6 +174,7 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     original_data = ds.select("early_index").get_data("numpy")
     original_data_length = comm.allgather(len(original_data))
 
+    ds = ds.with_new_columns(gal_id=np.arange(len(ds)))
     oc.write(tmp_path, ds)
     ds = oc.open(tmp_path, synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")

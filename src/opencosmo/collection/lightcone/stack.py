@@ -28,7 +28,7 @@ def update_global_order_mpi(data, comm, order):
     if not np.any(needs_global_reordering):
         return data[order]
 
-    ends = comm.allgather(len(order))
+    ends = np.cumsum(comm.allgather(len(order)))
     starts = np.insert(ends, 0, 0)
     global_order = order + starts[comm.Get_rank()]
     all_data = comm.allgather(data)
