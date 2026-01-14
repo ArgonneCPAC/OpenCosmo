@@ -5,12 +5,11 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import numpy as np
-from mpi4py import MPI
 
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import ZeroLengthError, verify_file
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
-from opencosmo.mpi import get_comm_world
+from opencosmo.mpi import MPI, get_comm_world
 
 if TYPE_CHECKING:
     from pathlib import Path
