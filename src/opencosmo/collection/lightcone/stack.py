@@ -7,6 +7,7 @@ import healpy as hp
 import numpy as np
 
 from opencosmo import dataset as ds
+from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
@@ -46,6 +47,12 @@ def sync_metadata(dataset_schemas: list[Schema]):
 
 
 def sync_headers(datasets: list[ds.Dataset], redshift_range):
+    if not datasets and (comm := get_comm_world()) is not None:
+        comm.allgather(0)
+        comm.allgather(-1)
+        comm.allgather((1000, -1))
+        return
+
     steps = (
         dataset.header.file.step
         for dataset in datasets
@@ -77,8 +84,8 @@ def sync_headers(datasets: list[ds.Dataset], redshift_range):
 
 def stack_lightcone_datasets_in_schema(
     datasets: dict[str, list[ds.Dataset]],
-    name: str,
-    redshift_range: tuple[float, float],
+    name: Optional[str],
+    redshift_range: Optional[tuple[float, float]],
 ):
     n_datasets = sum(len(lst) for lst in datasets.values())
     if n_datasets == 1 and get_comm_world() is None:
@@ -90,9 +97,13 @@ def stack_lightcone_datasets_in_schema(
         return {"data": schema}
 
     schema_children = {}
-    for ds_group, ds_list in datasets.items():
+    ds_groups = get_all_keys(datasets, get_comm_world())
+    for ds_group in ds_groups:
+        ds_list = datasets.get(ds_group, [])
         ds_list = list(filter(lambda ds: len(ds) > 0, ds_list))
         if len(ds_list) == 0:
+            get_stacked_lightcone_order([], -1)
+            sync_headers(ds_list, None)
             continue
         schemas = [ds.make_schema(name=name) for ds in ds_list]
         index_names = list(schemas[0].children["index"].children.keys())
@@ -123,6 +134,7 @@ def stack_lightcone_datasets_in_schema(
         }
 
         schema_name = ds_group if len(datasets) > 1 else name
+        assert schema_name is not None
         schema_children[schema_name] = make_schema(
             schema_name,
             FileEntry.LIGHTCONE,
@@ -164,8 +176,13 @@ def stack_data_groups(schemas: list[Schema]):
 
 def get_order_mpi(pixels, comm):
     pixel_order = np.argsort(pixels)
-    pixel_ranges = comm.allgather((pixels[pixel_order[0]], pixels[pixel_order[-1]]))
+    if len(pixels) > 0:
+        pixel_ranges = comm.allgather((pixels[pixel_order[0]], pixels[pixel_order[-1]]))
 
+    else:
+        pixel_ranges = comm.allgather(None)
+
+    pixel_ranges = [pr for pr in pixel_ranges if pr is not None]
     for i in range(len(pixel_ranges) - 1):
         if pixel_ranges[i][1] > pixel_ranges[i + 1][0]:
             break
@@ -186,12 +203,18 @@ def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth:
     coordinates = list(map(find_coordinates_2d, datasets))
     coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
 
-    pixels = np.concatenate(
-        [
-            hp.ang2pix(nside, coords.ra.value, coords.dec.value, lonlat=True, nest=True)
-            for coords in coordinates
-        ]
-    )
+    if datasets:
+        pixels = np.concatenate(
+            [
+                hp.ang2pix(
+                    nside, coords.ra.value, coords.dec.value, lonlat=True, nest=True
+                )
+                for coords in coordinates
+            ]
+        )
+
+    else:
+        pixels = np.array([])
 
     if (comm := get_comm_world()) is not None:
         return get_order_mpi(pixels, comm)

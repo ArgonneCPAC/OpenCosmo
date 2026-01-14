@@ -577,6 +577,10 @@ class Lightcone(dict):
         children = {}
 
         for step, datasets in output_datasets.items():
+            if len(datasets) == 0:
+                stack_lightcone_datasets_in_schema(datasets, None, None)
+                continue
+
             all_datasets = list(chain(*tuple(lst for lst in datasets.values())))
             header_zrange = get_redshift_range(all_datasets)
             my_zrange = self.z_range
@@ -591,8 +595,6 @@ class Lightcone(dict):
             }
             children.update(child_schemas)
 
-        if len(children) == 1:
-            return next(iter(children.values()))
         return make_schema(name, FileEntry.LIGHTCONE, children=children)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
