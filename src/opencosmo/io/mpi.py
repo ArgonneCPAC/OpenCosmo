@@ -259,7 +259,21 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
     colnames = get_all_keys(schema.columns, comm)
     for cn in colnames:
         colwriter = schema.columns.get(cn)
-        has_update = comm.allgather(
+
+        participating = comm.allgather(colwriter is not None)
+        if all(participating):
+            new_comm = comm
+        else:
+            participating_ranks = [
+                i for i in range(len(participating)) if participating[i]
+            ]
+            group = comm.Get_group()
+            new_group = group.Incl(participating_ranks)
+            new_comm = comm.Create(new_group)
+        if colwriter is None:
+            continue
+
+        has_update = new_comm.allgather(
             colwriter is not None and colwriter.has_transformation
         )
         if any(has_update) and not all(has_update):
@@ -267,7 +281,7 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
         elif not any(has_update):
             continue
         assert colwriter is not None
-        data = colwriter.get_data(comm)
+        data = colwriter.get_data(new_comm)
         new_writer = ColumnWriter.from_numpy_array(
             data, colwriter.combine_strategy, colwriter.attrs
         )
