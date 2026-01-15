@@ -5,12 +5,11 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import numpy as np
-from mpi4py import MPI
 
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import ZeroLengthError, verify_file
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
-from opencosmo.mpi import get_comm_world
+from opencosmo.mpi import MPI, get_comm_world
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -88,18 +87,18 @@ def write_parallel(file: Path, file_schema: Schema):
 
     verify_schemas(file_schema, new_comm)
     offsets = __get_all_offsets(file_schema, new_comm, "")
-    schema = __replace_writers_with_updates(file_schema, new_comm)
     if new_comm.Get_rank() == 0:
         with h5py.File(file, "w") as f:
-            __allocate(schema, f, new_comm)
+            __allocate(file_schema, f, new_comm)
     else:
-        __allocate(schema, None, new_comm)
+        __allocate(file_schema, None, new_comm)
 
     try:
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
-            __write_parallel(schema, f, offsets, new_comm)
+            __write_parallel(file_schema, f, offsets, new_comm)
 
     except ValueError:  # parallell hdf5 not available
+        schema = __replace_writers_with_updates(file_schema, new_comm)
         __write_serial(schema, file, offsets, new_comm)
     cleanup_mpi(comm, new_comm, new_group)
 
@@ -260,7 +259,21 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
     colnames = get_all_keys(schema.columns, comm)
     for cn in colnames:
         colwriter = schema.columns.get(cn)
-        has_update = comm.allgather(
+
+        participating = comm.allgather(colwriter is not None)
+        if all(participating):
+            new_comm = comm
+        else:
+            participating_ranks = [
+                i for i in range(len(participating)) if participating[i]
+            ]
+            group = comm.Get_group()
+            new_group = group.Incl(participating_ranks)
+            new_comm = comm.Create(new_group)
+        if colwriter is None:
+            continue
+
+        has_update = new_comm.allgather(
             colwriter is not None and colwriter.has_transformation
         )
         if any(has_update) and not all(has_update):
@@ -268,7 +281,7 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
         elif not any(has_update):
             continue
         assert colwriter is not None
-        data = colwriter.get_data(comm)
+        data = colwriter.get_data(new_comm)
         new_writer = ColumnWriter.from_numpy_array(
             data, colwriter.combine_strategy, colwriter.attrs
         )
@@ -429,17 +442,25 @@ def __write_column(
         )
         strategy = strategies[0]
 
+    if comm is not None:
+        participating = comm.allgather(writer is not None)
+        participating_ranks = [i for i in range(len(participating)) if participating[i]]
+        group = comm.Get_group()
+        new_group = group.Incl(participating_ranks)
+        new_comm = comm.Create(new_group)
+    else:
+        new_comm = None
+
     match strategy:
         case ColumnCombineStrategy.CONCAT:
             if writer is not None:
-                data = writer.get_data(comm)
-
+                data = writer.get_data(new_comm)
                 ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
         case ColumnCombineStrategy.SUM:
             if writer is None:
                 data = np.zeros(ds.shape, ds.dtype)
             else:
-                data = writer.get_data(comm)
+                data = writer.get_data(new_comm)
             if comm is not None:
                 data_to_write = comm.allreduce(data)
                 ds[:] = data_to_write

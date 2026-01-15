@@ -52,7 +52,7 @@ def build_dataset_from_data(
         metadata_group = data[metadata_key]
 
     new_state = DatasetState.from_group(
-        data["data"],
+        data,
         header,
         header.file.unit_convention,
         region,

@@ -1,3 +1,6 @@
+import os
+import shutil
+
 import astropy.units as u
 import numpy as np
 import pytest
@@ -19,6 +22,37 @@ def core_path_475(diffsky_path):
 @pytest.fixture
 def invalid_data_path(diffsky_path):
     return diffsky_path / "random_data.hdf5"
+
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.fixture
+def per_test_dir(
+    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
+):
+    """
+    Creates a unique directory for each test and deletes it after the test finishes.
+
+    Uses tmp_path_factory so you can control base temp location via pytest's
+    tempdir handling, and also so it can be used from broader-scoped fixtures
+    if needed.
+    """
+    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
+    nodeid = (
+        request.node.nodeid.replace("/", "_")
+        .replace("::", "__")
+        .replace("[", "_")
+        .replace("]", "_")
+    )
+    path = tmp_path_factory.mktemp(nodeid)
+
+    try:
+        yield path  # type: ignore
+    finally:
+        # Close out storage pressure immediately after each test
+        if IN_GITHUB_ACTIONS:
+            shutil.rmtree(path, ignore_errors=True)
 
 
 def test_comoving_to_physical(core_path_487):
@@ -43,21 +77,21 @@ def test_comoving_to_unitless(core_path_487):
 
 
 def test_filter_take(core_path_475, core_path_487):
-    ds = oc.open(core_path_475, core_path_487)
-    ds = ds.filter(oc.col("logsm_obs") < 13, oc.col("logsm_obs") > 10)
+    ds = oc.open(core_path_475, core_path_487, synth_cores=True)
+    ds = ds.filter(oc.col("logsm_obs") < 12, oc.col("logsm_obs") > 10)
     ds = ds.select("logsm_obs")
-    assert ds.data.max().value < 13 and ds.data.min().value > 10
+    assert ds.data.max().value < 12 and ds.data.min().value > 10
     ds = ds.take(10)
-    assert ds.data.max().value < 13 and ds.data.min().value > 10
+    assert ds.data.max().value < 12 and ds.data.min().value > 10
 
 
-def test_open_multiple_write(core_path_487, core_path_475, tmp_path):
+def test_open_multiple_write(core_path_487, core_path_475, per_test_dir):
     ds = oc.open(core_path_487, core_path_475)
     original_length = len(ds)
     original_redshift_range = ds.z_range
-    output = tmp_path / "synth_gals.hdf5"
+    output = per_test_dir / "synth_gals.hdf5"
     oc.write(output, ds)
-    ds = oc.open(output)
+    ds = oc.open(output, synth_cores=True)
     assert len(ds) == original_length
     assert ds.z_range == original_redshift_range
 
@@ -75,6 +109,50 @@ def test_repr(core_path_475, core_path_487):
     ds = ds.with_redshift_range(0, 0.1)
     ds = ds.select(["ra", "dec"])
     assert str(ds)
+
+
+def test_open_write_with_synthetics(core_path_475, core_path_487, per_test_dir):
+    n = 10_000
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = ds.filter(oc.col("lsst_g") < 20).take(n).with_new_columns(galid=np.arange(n))
+    original_data = ds.get_data()
+    assert len(original_data) == n
+    assert len(ds) == n
+
+    oc.write(per_test_dir / "test.hdf5", ds)
+
+    ds = oc.open(per_test_dir / "test.hdf5")
+    assert len(ds) < n
+    ds = oc.open(per_test_dir / "test.hdf5", synth_cores=True)
+    assert len(ds) == n
+
+    written_data = ds.get_data()
+
+    written_data.sort("galid")
+    columns_to_check = np.random.choice(ds.columns, size=20, replace=False)
+    for column in columns_to_check:
+        assert np.all(original_data[column] == written_data[column])
+
+
+def test_open_write_with_multiple_synthetics(
+    core_path_475, core_path_487, per_test_dir
+):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    original_length = len(ds)
+
+    oc.write(per_test_dir / "test.hdf5", ds, _min_size=10_000)
+
+    ds = oc.open(per_test_dir / "test.hdf5")
+    assert set(ds.keys()) == {475, 487}
+    assert all(isinstance(dataset, oc.Dataset) for dataset in ds.values())
+
+    assert len(ds) < original_length
+
+    ds = oc.open(per_test_dir / "test.hdf5", synth_cores=True)
+    assert len(ds) == original_length
+    for lightcone in ds.values():
+        assert isinstance(lightcone, oc.Lightcone)
+        assert set(lightcone.keys()) == {"cores", "synth_cores"}
 
 
 def test_add_logarithmic_units(core_path_487):

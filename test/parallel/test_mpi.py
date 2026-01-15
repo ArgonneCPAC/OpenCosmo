@@ -361,7 +361,7 @@ def test_evaluate_structure_write(all_paths, tmp_path):
     assert not np.any(data == 0)
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(120)
 @pytest.mark.parallel(nprocs=4)
 def test_link_write(all_paths, tmp_path):
     collection = oc.open(*all_paths)

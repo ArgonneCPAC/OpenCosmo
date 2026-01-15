@@ -110,7 +110,6 @@ def test_lc_collection_write_single(
     data = ds.select("redshift").data
     parallel_assert(data.min() >= 0.040 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)
-    print(ds.z_range)
     parallel_assert(ds.z_range == (0.04, 0.0405))
 
 
@@ -145,12 +144,23 @@ def test_lc_collection_write(
 
 @pytest.mark.parallel(nprocs=4)
 def test_diffsky_filter(core_path_487, core_path_475):
-    ds = oc.open(core_path_487, core_path_475)
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     original_data = ds.select("logmp0").data
     ds = ds.filter(oc.col("logmp0") > 11)
     filtered_data = ds.select("logmp0").data
     original_data = original_data[original_data.value > 11]
+
     assert np.all(original_data == filtered_data)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_diffsky_stack_with_synths(core_path_487, core_path_475, tmp_path):
+    comm = MPI.COMM_WORLD
+    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = ds.filter(oc.col("logmp0") > 12)
+    oc.write(tmp_path, ds)
+    ds = oc.open(tmp_path, synth_cores=True)
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -164,12 +174,12 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     original_data = ds.select("early_index").get_data("numpy")
     original_data_length = comm.allgather(len(original_data))
 
+    ds = ds.with_new_columns(gal_id=np.arange(len(ds)))
     oc.write(tmp_path, ds)
-    ds = oc.open(tmp_path)
+    ds = oc.open(tmp_path, synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")
 
     written_data_length = comm.allgather(len(written_data))
-    print(written_data_length, original_data_length)
     parallel_assert(sum(original_data_length) == sum(written_data_length))
 
     original_early_index = np.concatenate(comm.allgather(original_data))
@@ -177,6 +187,76 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     original_early_index.sort()
     written_early_index.sort()
     parallel_assert(np.all(original_early_index == written_early_index))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_write_diffsky_some_missing_no_stack(core_path_487, core_path_475, tmp_path):
+    comm = MPI.COMM_WORLD
+    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
+    ds = oc.open(core_path_475, core_path_487, synth_cores=True)
+    if comm.Get_rank() == 0:
+        ds.pop(475)
+        assert len(ds.keys()) == 1
+
+    all_lengths = comm.allgather(len(ds))
+    all_ends = np.insert(np.cumsum(all_lengths), 0, 0)
+    rank = comm.Get_rank()
+    ds = ds.with_new_columns(gal_id=np.arange(all_ends[rank], all_ends[rank + 1]))
+
+    columns_to_check = comm.bcast(np.random.choice(ds.columns, 10))
+    columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+    original_data = ds.select(columns_to_check).get_data("numpy")
+
+    oc.write(tmp_path, ds, _min_size=10)
+    ds = oc.open(tmp_path, synth_cores=True)
+
+    written_data = ds.select(columns_to_check).get_data("numpy")
+
+    original_galid = np.concat(comm.allgather(original_data.pop("gal_id")))
+    written_galid = np.concat(comm.allgather(written_data.pop("gal_id")))
+    original_order = np.argsort(original_galid)
+    written_order = np.argsort(written_galid)
+    columns_to_check.sort()
+
+    for column_name in columns_to_check[1:]:
+        if column_name == "gal_id":
+            continue
+        column_name = str(column_name)
+        column_data_original = np.concat(comm.allgather(original_data.pop(column_name)))
+        column_data_written = np.concat(comm.allgather(written_data.pop(column_name)))
+        parallel_assert(
+            np.all(
+                column_data_original[original_order]
+                == column_data_written[written_order]
+            )
+        )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_write_some_missing_no_stack(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    comm = MPI.COMM_WORLD
+    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
+    ds = oc.open(haloproperties_601_path, haloproperties_600_path)
+    if comm.Get_rank() == 0:
+        ds.pop(601)
+        assert len(ds.keys()) == 1
+
+    original_halo_tags = ds.select("fof_halo_tag").get_data()
+
+    original_data_length = comm.allgather(len(ds))
+    oc.write(tmp_path, ds, _min_size=10)
+    ds = oc.open(tmp_path, synth_cores=True)
+
+    written_data_length = comm.allgather(len(ds))
+    written_halo_tags = ds.select("fof_halo_tag").get_data()
+    assert sum(original_data_length) == sum(written_data_length)
+
+    original_halo_tags = np.concat(comm.allgather(original_halo_tags))
+    written_halo_tags = np.concat(comm.allgather(written_halo_tags))
+
+    assert len(np.setdiff1d(original_halo_tags, written_halo_tags)) == 0
 
 
 @pytest.mark.parallel(nprocs=4)

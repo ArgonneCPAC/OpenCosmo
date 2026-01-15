@@ -1,9 +1,19 @@
 from __future__ import annotations
 
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from functools import cached_property, reduce
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Mapping,
+    Optional,
+    Self,
+    Sequence,
+)
 
 import numpy as np
 from astropy.table import vstack  # type: ignore
@@ -11,9 +21,11 @@ from astropy.table import vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import DerivedColumn
+from opencosmo.dataset import Dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.io.io import open_single_dataset
+from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
 
@@ -24,7 +36,6 @@ if TYPE_CHECKING:
     from astropy.table import Table
 
     from opencosmo.column.column import ColumnMask
-    from opencosmo.dataset import Dataset
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
     from opencosmo.io.schema import Schema
@@ -32,7 +43,7 @@ if TYPE_CHECKING:
     from opencosmo.spatial import Region
 
 
-def get_redshift_range(datasets: list[Dataset]):
+def get_redshift_range(datasets: Sequence[Dataset | Lightcone]):
     redshift_ranges = list(map(get_single_redshift_range, datasets))
     min_z = min(rr[0] for rr in redshift_ranges)
     max_z = max(rr[1] for rr in redshift_ranges)
@@ -40,7 +51,9 @@ def get_redshift_range(datasets: list[Dataset]):
     return (min_z, max_z)
 
 
-def get_single_redshift_range(dataset: Dataset):
+def get_single_redshift_range(dataset: Dataset | Lightcone):
+    if isinstance(dataset, Lightcone):
+        return dataset.z_range
     redshift_range = dataset.header.lightcone["z_range"]
     if redshift_range is not None:
         return redshift_range
@@ -106,62 +119,83 @@ def order_by_redshift_range(datasets: dict[str, Dataset]):
     return output
 
 
-def get_all_dataset_names(ordered_datasets: dict[str, Dataset]):
-    comm = get_comm_world()
-    if comm is None:
-        return list(ordered_datasets.keys())
-
-    dataset_names = set(ordered_datasets.keys())
-    all_dataset_names: Iterable[str]
-    all_dataset_names = dataset_names.union(*comm.allgather(dataset_names))
-    all_dataset_names = list(all_dataset_names)
-    all_dataset_names.sort()
-    return all_dataset_names
-
-
 def combine_adjacent_datasets_mpi(
-    ordered_datasets: dict[str, Dataset], min_dataset_size
+    ordered_datasets: dict[str, dict[str, Dataset]],
+    min_dataset_size,
 ):
     MIN_DATASET_SIZE = 100_000
-    all_dataset_names = get_all_dataset_names(ordered_datasets)
     comm = get_comm_world()
     MPI = get_mpi()
+    all_dataset_steps = get_all_keys(ordered_datasets, comm)
     assert comm is not None and MPI is not None
     rs = 0
-    output: dict[str, list[Dataset]] = OrderedDict()
-    for name in all_dataset_names:
+    output_datasets: dict[str, list[dict[str, Dataset]]] = OrderedDict()
+    for step in all_dataset_steps:
         if rs == 0:
-            current_key = name
-            output[current_key] = []
+            current_key = step
+            output_datasets[current_key] = []
 
-        if name not in ordered_datasets:
+        if step not in ordered_datasets:
             rs += comm.allreduce(0, MPI.SUM)
         else:
-            rs += comm.allreduce(len(ordered_datasets[name]), MPI.SUM)
-            output[current_key].append(ordered_datasets[name])
+            length = sum(len(ds) for ds in ordered_datasets[step].values())
+            rs += comm.allreduce(length)
+            output_datasets[current_key].append(ordered_datasets[step])
 
         if rs > MIN_DATASET_SIZE:
             rs = 0
+
+    output = OrderedDict()
+    for step, datasets in output_datasets.items():
+        step_output = defaultdict(list)
+        for ds_group in datasets:
+            for ds_type, ds in ds_group.items():
+                step_output[ds_type].append(ds)
+        output[step] = step_output
+
     return output
 
 
 def combine_adjacent_datasets(
-    ordered_datasets: dict[str, Dataset], min_dataset_size=100_000
+    ordered_datasets: dict[str, Dataset] | dict[str, dict[str, Dataset]],
+    min_dataset_size=100_000,
 ):
-    if get_comm_world() is not None:
-        return combine_adjacent_datasets_mpi(ordered_datasets, min_dataset_size)
-    rs = 0
-    current_key = next(iter(ordered_datasets.keys()))
-    output: dict[str, list[Dataset]] = OrderedDict({current_key: []})
+    is_single = isinstance(next(iter(ordered_datasets.values())), Dataset)
+    datasets: dict[str, dict[str, Dataset]]
+    if is_single:
+        assert all(isinstance(ds, Dataset) for ds in ordered_datasets.values())
+        datasets = {key: {"data": ds} for key, ds in ordered_datasets.items()}  # type: ignore
+    else:
+        assert all(isinstance(ds, dict) for ds in ordered_datasets.values())
+        datasets = ordered_datasets  # type: ignore
 
-    for key, ds in ordered_datasets.items():
-        if rs < min_dataset_size:
-            rs += len(ds)
-            output[current_key].append(ds)
+    if get_comm_world() is not None:
+        return combine_adjacent_datasets_mpi(datasets, min_dataset_size)
+
+    running_sum = 0
+
+    current_key = next(iter(ordered_datasets.keys()))
+    output_datasets: dict[str, list[dict[str, Dataset]]] = OrderedDict(
+        {current_key: []}
+    )
+
+    for key, step_datasets in datasets.items():
+        if running_sum < min_dataset_size:
+            running_sum += sum(len(ds) for ds in step_datasets.values())
+            output_datasets[current_key].append(step_datasets)
             continue
         current_key = key
-        output[current_key] = [ds]
-        rs = len(ds)
+        output_datasets[current_key] = [step_datasets]
+        running_sum = sum(len(ds) for ds in step_datasets.values())
+
+    # We have list of dicts, go to dict of lists
+    output = OrderedDict()
+    for step, step_datasets_ in output_datasets.items():
+        step_output = defaultdict(list)
+        for ds_group in step_datasets_:
+            for ds_type, ds in ds_group.items():
+                step_output[ds_type].append(ds)
+        output[step] = step_output
 
     return output
 
@@ -192,16 +226,25 @@ class Lightcone(dict):
     hides these details, providing an API that is identical to the standard
     Dataset API. Additionally, the lightcone contains some convinience functions
     for standard operations.
+
+    Lightcones can be nested. In this case, the top level will split the datasets
+    up by step, while the second level will split the datasets up by type. This nested
+    scheme (at present) is used for Diffsky catalogs, which may contain both cores
+    and synthetic cores that need to be adddressed (and more importantly, written)
+    seperately from one another.
     """
 
     def __init__(
         self,
-        datasets: dict[str, Dataset],
+        datasets: Mapping[Any, Dataset | Lightcone],
         z_range: Optional[tuple[float, float]] = None,
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
     ):
-        datasets = {k: with_redshift_column(ds) for k, ds in datasets.items()}
+        datasets = {
+            k: with_redshift_column(ds) if isinstance(ds, Dataset) else ds
+            for k, ds in datasets.items()
+        }
         self.update(datasets)
         z_range = (
             z_range
@@ -369,7 +412,7 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_data(self, output="astropy"):
+    def get_data(self, output="astropy", unpack: bool = False):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -399,8 +442,12 @@ class Lightcone(dict):
         """
         verify_format(output)
 
-        data = [ds.get_data(unpack=False) for ds in self.values() if len(ds) > 0]
-        table = vstack(data, join_type="exact")
+        data = [ds.get_data(unpack=unpack) for ds in self.values()]
+        data_with_length = [d for d in data if len(d) > 0]
+        if len(data_with_length) == 0:
+            return data[0]
+
+        table = vstack(data_with_length, join_type="exact")
 
         if self.__ordered_by is not None:
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
@@ -430,21 +477,29 @@ class Lightcone(dict):
 
     @classmethod
     def open(cls, targets: list[OpenTarget], **kwargs):
-        datasets: dict[str, Dataset] = {}
+        datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
 
         for target in targets:
-            ds = open_single_dataset(target)
-            if not isinstance(ds, Lightcone) or len(ds.keys()) != 1:
-                raise ValueError(
-                    "Lightcones can only contain datasets (not collections)"
-                )
-            if target.group.name != "/":
-                key = target.group.name.split("/")[-1]
-            else:
-                key = f"{target.header.file.step}_{target.header.file.data_type}"
-            datasets[key] = next(iter(ds.values()))
+            group_name = target.group.name.split("/")[-1]
+            group_name = group_name.lstrip(f"{target.header.file.step}_")
+            ds = open_single_dataset(target, bypass_lightcone=True)
+            step = target.header.file.step
+            assert step is not None
+            datasets[step][group_name] = ds
 
-        return cls(datasets)
+        output: dict[int, Dataset | Lightcone] = {}
+        for key, ds_group in datasets.items():
+            if len(ds_group) == 1:
+                output[key] = next(iter(ds_group.values()))
+            else:
+                output[key] = Lightcone(ds_group)
+
+        if not all(type(ds) is oc.Dataset for ds in output.values()) and not all(
+            type(ds) is Lightcone for ds in output.values()
+        ):
+            raise ValueError()
+
+        return cls(output)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
@@ -511,27 +566,36 @@ class Lightcone(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self) -> Schema:
+    def make_schema(self, name: str = "", _min_size=100_000) -> Schema:
         datasets = order_by_redshift_range(self)
-        output_datasets = combine_adjacent_datasets(datasets)
+        for key in datasets:
+            if isinstance(datasets[key], Lightcone):
+                datasets[key] = dict(datasets[key])
+        output_datasets = combine_adjacent_datasets(
+            datasets, min_dataset_size=_min_size
+        )
         children = {}
 
-        for name, datasets in output_datasets.items():
-            header_zrange = get_redshift_range(datasets)
+        for step, datasets in output_datasets.items():
+            if len(datasets) == 0:
+                stack_lightcone_datasets_in_schema(datasets, None, None)
+                continue
+
+            all_datasets = list(chain(*tuple(lst for lst in datasets.values())))
+            header_zrange = get_redshift_range(all_datasets)
             my_zrange = self.z_range
             zrange = (
                 max(header_zrange[0], my_zrange[0]),
                 min(header_zrange[1], my_zrange[1]),
             )
 
-            new_dataset_schema = stack_lightcone_datasets_in_schema(
-                datasets, name, zrange
-            )
-            children[name] = new_dataset_schema
+            child_schemas = stack_lightcone_datasets_in_schema(datasets, step, zrange)
+            child_schemas = {
+                f"{step}_{name}": schema for name, schema in child_schemas.items()
+            }
+            children.update(child_schemas)
 
-        if len(children) == 1:
-            return next(iter(children.values()))
-        return make_schema("", FileEntry.LIGHTCONE, children=children)
+        return make_schema(name, FileEntry.LIGHTCONE, children=children)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -926,11 +990,13 @@ class Lightcone(dict):
         ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
         partitions = np.searchsorted(rows, ds_ends)
         splits = np.split(rows, partitions)
-        output = {**self}
         rs = 0
+        output = {}
         for split, (name, dataset) in zip(splits, self.items()):
             if len(split) > 0:
                 output[name] = dataset.take_rows(split - rs)
+            else:
+                output[name] = dataset.take(0)  # compatability reasons
             rs += len(dataset)
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 

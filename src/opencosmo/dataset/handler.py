@@ -37,12 +37,13 @@ class Hdf5Handler:
         group: h5py.Group,
         index: DataIndex,
         metadata_group: Optional[h5py.Group],
-        in_memory: bool = False,
+        load_conditions: Optional[dict[str, bool]] = None,
     ):
         self.__index = index
         self.__data_group = group
         self.__metadata_group = metadata_group
         self.__in_memory = group.file.driver == "core"
+        self.__load_conditions = load_conditions
 
     @classmethod
     def from_group(
@@ -50,6 +51,7 @@ class Hdf5Handler:
         group: h5py.Group,
         index: Optional[DataIndex] = None,
         metadata_group: Optional[h5py.Group] = None,
+        load_conditions: Optional[dict[str, bool]] = None,
     ):
         if not group.name.endswith("data"):
             raise ValueError("Expected a data group")
@@ -64,21 +66,29 @@ class Hdf5Handler:
         if metadata_group is not None:
             colnames = chain(colnames, metadata_group.keys())
 
-        return Hdf5Handler(group, index, metadata_group)
+        return Hdf5Handler(group, index, metadata_group, load_conditions)
 
     @property
     def in_memory(self) -> bool:
         return self.__in_memory
 
+    @property
+    def load_conditions(self) -> Optional[dict[str, bool]]:
+        return self.__load_conditions
+
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
-            return Hdf5Handler(self.__data_group, other, self.__metadata_group)
+            return Hdf5Handler(
+                self.__data_group, other, self.__metadata_group, self.__load_conditions
+            )
 
         if sorted is not None:
             return self.__take_sorted(other, sorted)
 
         new_index = take(self.__index, other)
-        return Hdf5Handler(self.__data_group, new_index, self.__metadata_group)
+        return Hdf5Handler(
+            self.__data_group, new_index, self.__metadata_group, self.__load_conditions
+        )
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if get_length(sorted) != get_length(self.__index):
@@ -88,7 +98,9 @@ class Hdf5Handler:
         new_raw_index = into_array(self.__index)[new_indices]
         new_index = np.sort(new_raw_index)
 
-        return Hdf5Handler(self.__data_group, new_index, self.__metadata_group)
+        return Hdf5Handler(
+            self.__data_group, new_index, self.__metadata_group, self.__load_conditions
+        )
 
     @property
     def data(self):
