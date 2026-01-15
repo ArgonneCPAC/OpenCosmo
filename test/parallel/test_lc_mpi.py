@@ -1,3 +1,6 @@
+import os
+import shutil
+
 import astropy.units as u
 import numpy as np
 import pytest
@@ -7,6 +10,39 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.fixture
+def per_test_dir(
+    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
+):
+    """
+    Creates a unique directory for each test and deletes it after the test finishes.
+
+    Uses tmp_path_factory so you can control base temp location via pytest's
+    tempdir handling, and also so it can be used from broader-scoped fixtures
+    if needed.
+    """
+    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
+    nodeid = (
+        request.node.nodeid.replace("/", "_")
+        .replace("::", "__")
+        .replace("[", "_")
+        .replace("]", "_")
+    )
+
+    path = tmp_path_factory.mktemp(nodeid)
+    comm = MPI.COMM_WORLD
+    path_to_return = comm.bcast(path)
+
+    try:
+        yield path_to_return
+    finally:
+        # Close out storage pressure immediately after each test
+        if IN_GITHUB_ACTIONS:
+            shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture
@@ -76,9 +112,8 @@ def test_healpix_index_chain_failure(haloproperties_600_path):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
-def test_healpix_write(haloproperties_600_path, tmp_path):
+def test_healpix_write(haloproperties_600_path, per_test_dir):
     ds = oc.open(haloproperties_600_path)
-    path = MPI.COMM_WORLD.bcast(tmp_path)
 
     pixel = np.random.choice(ds.region.pixels)
     center = pix2ang(ds.region.nside, pixel, True, True)
@@ -86,8 +121,8 @@ def test_healpix_write(haloproperties_600_path, tmp_path):
     region = oc.make_cone(center, 2 * u.deg)
     ds = ds.bound(region)
 
-    oc.write(path / "lightcone_test.hdf5", ds)
-    new_ds = oc.open(path / "lightcone_test.hdf5")
+    oc.write(per_test_dir / "lightcone_test.hdf5", ds)
+    new_ds = oc.open(per_test_dir / "lightcone_test.hdf5")
 
     radius2 = 2 * u.deg
     region2 = oc.make_cone(center, radius2)
@@ -99,14 +134,13 @@ def test_healpix_write(haloproperties_600_path, tmp_path):
 
 @pytest.mark.parallel(nprocs=4)
 def test_lc_collection_write_single(
-    haloproperties_600_path, haloproperties_601_path, tmp_path
+    haloproperties_600_path, haloproperties_601_path, per_test_dir
 ):
-    path = MPI.COMM_WORLD.bcast(tmp_path)
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     ds = ds.with_redshift_range(0.040, 0.0405)
     original_length = len(ds)
-    oc.write(path / "lightcone.hdf5", ds)
-    ds = oc.open(path / "lightcone.hdf5")
+    oc.write(per_test_dir / "lightcone.hdf5", ds)
+    ds = oc.open(per_test_dir / "lightcone.hdf5")
     data = ds.select("redshift").data
     parallel_assert(data.min() >= 0.040 and data.max() <= 0.0405)
     parallel_assert(len(data) == original_length)
@@ -115,17 +149,16 @@ def test_lc_collection_write_single(
 
 @pytest.mark.parallel(nprocs=4)
 def test_lc_collection_write(
-    haloproperties_600_path, haloproperties_601_path, tmp_path
+    haloproperties_600_path, haloproperties_601_path, per_test_dir
 ):
-    path = MPI.COMM_WORLD.bcast(tmp_path)
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     ds = ds.with_redshift_range(0.039, 0.0405)
 
     original_tags = ds.select("fof_halo_tag").get_data()
 
     original_length = len(ds)
-    oc.write(path / "lightcone.hdf5", ds)
-    ds = oc.open(path / "lightcone.hdf5")
+    oc.write(per_test_dir / "lightcone.hdf5", ds)
+    ds = oc.open(per_test_dir / "lightcone.hdf5")
     redshift_data = ds.select("redshift").data
     total_original_length = np.sum(MPI.COMM_WORLD.allgather(original_length))
     total_final_length = np.sum(MPI.COMM_WORLD.allgather(len(ds)))
@@ -154,19 +187,16 @@ def test_diffsky_filter(core_path_487, core_path_475):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_diffsky_stack_with_synths(core_path_487, core_path_475, tmp_path):
-    comm = MPI.COMM_WORLD
-    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
+def test_diffsky_stack_with_synths(core_path_487, core_path_475, per_test_dir):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     ds = ds.filter(oc.col("logmp0") > 12)
-    oc.write(tmp_path, ds)
-    ds = oc.open(tmp_path, synth_cores=True)
+    oc.write(per_test_dir / "diffsky.hdf5", ds)
+    ds = oc.open(per_test_dir / "diffsky.hdf5", synth_cores=True)
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_write_some_missing(core_path_487, core_path_475, tmp_path):
+def test_write_some_missing(core_path_487, core_path_475, per_test_dir):
     comm = MPI.COMM_WORLD
-    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
     ds = oc.open(core_path_487, core_path_475, synth_cores=False)
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
@@ -175,8 +205,8 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
     original_data_length = comm.allgather(len(original_data))
 
     ds = ds.with_new_columns(gal_id=np.arange(len(ds)))
-    oc.write(tmp_path, ds)
-    ds = oc.open(tmp_path, synth_cores=True)
+    oc.write(per_test_dir / "lightcone.hdf5", ds)
+    ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")
 
     written_data_length = comm.allgather(len(written_data))
@@ -190,9 +220,10 @@ def test_write_some_missing(core_path_487, core_path_475, tmp_path):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_write_diffsky_some_missing_no_stack(core_path_487, core_path_475, tmp_path):
+def test_write_diffsky_some_missing_no_stack(
+    core_path_487, core_path_475, per_test_dir
+):
     comm = MPI.COMM_WORLD
-    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
     ds = oc.open(core_path_475, core_path_487, synth_cores=True)
     if comm.Get_rank() == 0:
         ds.pop(475)
@@ -208,12 +239,10 @@ def test_write_diffsky_some_missing_no_stack(core_path_487, core_path_475, tmp_p
 
     original_data = ds.select(columns_to_check).get_data("numpy")
 
-    oc.write(tmp_path, ds, _min_size=10)
-    ds = oc.open(tmp_path, synth_cores=True)
+    oc.write(per_test_dir / "lightcone.hdf5", ds, _min_size=10)
+    ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
 
     written_data = ds.select(columns_to_check).get_data("numpy")
-    print(columns_to_check)
-    print(original_data.keys())
 
     original_galid = np.concat(comm.allgather(original_data.pop("gal_id")))
     written_galid = np.concat(comm.allgather(written_data.pop("gal_id")))
@@ -237,10 +266,9 @@ def test_write_diffsky_some_missing_no_stack(core_path_487, core_path_475, tmp_p
 
 @pytest.mark.parallel(nprocs=4)
 def test_write_some_missing_no_stack(
-    haloproperties_600_path, haloproperties_601_path, tmp_path
+    haloproperties_600_path, haloproperties_601_path, per_test_dir
 ):
     comm = MPI.COMM_WORLD
-    tmp_path = comm.bcast(tmp_path) / "output.hdf5"
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     if comm.Get_rank() == 0:
         ds.pop(601)
@@ -249,8 +277,8 @@ def test_write_some_missing_no_stack(
     original_halo_tags = ds.select("fof_halo_tag").get_data()
 
     original_data_length = comm.allgather(len(ds))
-    oc.write(tmp_path, ds, _min_size=10)
-    ds = oc.open(tmp_path, synth_cores=True)
+    oc.write(per_test_dir / "lightcone.hdf5", ds, _min_size=10)
+    ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
 
     written_data_length = comm.allgather(len(ds))
     written_halo_tags = ds.select("fof_halo_tag").get_data()
@@ -263,16 +291,16 @@ def test_write_some_missing_no_stack(
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_lightcone_stacking(haloproperties_600_path, haloproperties_601_path, tmp_path):
-    comm = MPI.COMM_WORLD
-    tmp_path = comm.bcast(tmp_path)
+def test_lightcone_stacking(
+    haloproperties_600_path, haloproperties_601_path, per_test_dir
+):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds = ds.take(30_000, at="random")
     for dataset in ds.values():
         assert dataset.header.lightcone["z_range"] != ds.z_range
 
     fof_tags = ds.select("fof_halo_tag").get_data()
-    output_path = tmp_path / "data.hdf5"
+    output_path = per_test_dir / "data.hdf5"
     oc.write(output_path, ds)
     ds_new = oc.open(output_path)
     fof_tags_new = ds_new.select("fof_halo_tag").get_data()
