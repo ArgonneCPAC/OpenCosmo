@@ -1,1 +1,1 @@
-Fix a bug that presented adding together columns with logarithmic units
+Fix a bug that prevented adding together columns with logarithmic units
