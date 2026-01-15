@@ -203,14 +203,17 @@ def test_write_diffsky_some_missing_no_stack(core_path_487, core_path_475, tmp_p
     rank = comm.Get_rank()
     ds = ds.with_new_columns(gal_id=np.arange(all_ends[rank], all_ends[rank + 1]))
 
-    columns_to_check = comm.bcast(np.random.choice(ds.columns, 10))
+    columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
     columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+
     original_data = ds.select(columns_to_check).get_data("numpy")
 
     oc.write(tmp_path, ds, _min_size=10)
     ds = oc.open(tmp_path, synth_cores=True)
 
     written_data = ds.select(columns_to_check).get_data("numpy")
+    print(columns_to_check)
+    print(original_data.keys())
 
     original_galid = np.concat(comm.allgather(original_data.pop("gal_id")))
     written_galid = np.concat(comm.allgather(written_data.pop("gal_id")))
@@ -218,7 +221,7 @@ def test_write_diffsky_some_missing_no_stack(core_path_487, core_path_475, tmp_p
     written_order = np.argsort(written_galid)
     columns_to_check.sort()
 
-    for column_name in columns_to_check[1:]:
+    for column_name in columns_to_check:
         if column_name == "gal_id":
             continue
         column_name = str(column_name)
