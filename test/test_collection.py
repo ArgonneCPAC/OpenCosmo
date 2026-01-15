@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import random
+import shutil
 from collections import defaultdict
 from shutil import copy
 from typing import TYPE_CHECKING
@@ -15,6 +17,38 @@ from opencosmo import StructureCollection
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.fixture
+def per_test_dir(
+    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
+):
+    """
+    Creates a unique directory for each test and deletes it after the test finishes.
+
+    Uses tmp_path_factory so you can control base temp location via pytest's
+    tempdir handling, and also so it can be used from broader-scoped fixtures
+    if needed.
+    """
+    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
+    nodeid = (
+        request.node.nodeid.replace("/", "_")
+        .replace("::", "__")
+        .replace("[", "_")
+        .replace("]", "_")
+    )
+    path = tmp_path_factory.mktemp(nodeid)
+
+    try:
+        yield path  # type: ignore
+    finally:
+        # Close out storage pressure immediately after each test
+        if IN_GITHUB_ACTIONS:
+            shutil.rmtree(path, ignore_errors=True)
+        pass
 
 
 @pytest.fixture
@@ -121,14 +155,14 @@ def test_conditional_load(conditional_path):
     assert isinstance(ds, oc.SimulationCollection)
 
 
-def test_multi_filter_write(multi_path, tmp_path):
+def test_multi_filter_write(multi_path, per_test_dir):
     collection = oc.open(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
     for ds in collection.values():
         assert all(ds.data["sod_halo_mass"] > 0)
-    oc.write(tmp_path / "filtered.hdf5", collection)
+    oc.write(per_test_dir / "filtered.hdf5", collection)
 
-    collection = oc.open(tmp_path / "filtered.hdf5")
+    collection = oc.open(per_test_dir / "filtered.hdf5")
     for ds in collection.values():
         assert all(ds.select("sod_halo_mass").data > 0)
 
@@ -791,7 +825,7 @@ def test_halo_linking_with_empties(halo_paths):
     assert found_particles and found_profiles
 
 
-def test_link_write(halo_paths, tmp_path):
+def test_link_write(halo_paths, per_test_dir):
     collection = oc.open(*halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(
         10, at="random"
@@ -806,8 +840,8 @@ def test_link_write(halo_paths, tmp_path):
 
     read_output = defaultdict(list)
 
-    oc.write(tmp_path / "linked.hdf5", collection)
-    written_data = oc.open(tmp_path / "linked.hdf5")
+    oc.write(per_test_dir / "linked.hdf5", collection)
+    written_data = oc.open(per_test_dir / "linked.hdf5")
     n = 0
     for halo in written_data.objects():
         halo_tags = set()
@@ -1010,7 +1044,7 @@ def test_chain_link(galaxy_paths, halo_paths):
             assert gal_tags.pop() == gal_tag
 
 
-def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
+def test_chain_link_write(galaxy_paths, halo_paths, per_test_dir):
     ds = oc.open(*galaxy_paths, *halo_paths)
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14).take(10)
     expected_types = {}
@@ -1020,8 +1054,8 @@ def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
         types = set(halo.keys())
         expected_types[halo_tag] = types
 
-    oc.write(tmp_path / "linked.hdf5", ds)
-    ds = oc.open(tmp_path / "linked.hdf5")
+    oc.write(per_test_dir / "linked.hdf5", ds)
+    ds = oc.open(per_test_dir / "linked.hdf5")
 
     for halo in ds.objects():
         properties = halo.pop("halo_properties")
@@ -1045,13 +1079,13 @@ def test_chain_link_write(galaxy_paths, halo_paths, tmp_path):
             assert gal_tags.pop() == gal_tag
 
 
-def test_data_link_sort_write(halo_paths, tmp_path):
+def test_data_link_sort_write(halo_paths, per_test_dir):
     collection = oc.open(halo_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**14).sort_by(
         "fof_halo_mass"
     )
-    oc.write(tmp_path / "temp.hdf5", collection)
-    new_collection = oc.open(tmp_path / "temp.hdf5").take(10)
+    oc.write(per_test_dir / "temp.hdf5", collection)
+    new_collection = oc.open(per_test_dir / "temp.hdf5").take(10)
     assert np.all(
         collection["halo_properties"].select("sod_halo_mass").get_data("numpy") > 10**14
     )
