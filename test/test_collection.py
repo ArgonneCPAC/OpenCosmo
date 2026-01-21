@@ -488,7 +488,6 @@ def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
         sod_halo_com_y,
         sod_halo_com_z,
         sod_halo_radius,
-        is_vectorized,
     ):
         dx = fof_halo_center_x - sod_halo_com_x
         dy = fof_halo_center_x - sod_halo_com_x
@@ -501,15 +500,11 @@ def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
         dataset="halo_properties",
         vectorize=True,
         insert=True,
-        is_vectorized=True,
     )
-    print(collection_vec["halo_properties"].select("offset").get_data())
-    assert False
     collection_loop = collection.evaluate_on_dataset(
         offset,
         dataset="halo_properties",
         insert=True,
-        is_vectorized=False,
     )
 
     offset_vec = collection_vec["halo_properties"].select("offset").get_data("numpy")
