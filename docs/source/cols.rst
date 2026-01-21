@@ -105,7 +105,7 @@ You can also always add multiple derived columns in a single call:
    
    ds = ds.with_new_columns(fof_halo_ke = fof_halo_ke, fof_halo_p = fof_halo_p)
 
-:py:meth:`opencosmo.Dataset.with_new_columns` checks to ensure that the columns you are using already exist in the dataset. But it does not check that the mathematical operation you are attempting to perform is valid until the data is actually requested. For example:
+:py:meth:`opencosmo.Dataset.with_new_columns` checks to ensure that the columns you are using already exist in the dataset and that the units of the various columns match. For example
 
 .. code-block:: python
 
@@ -114,21 +114,30 @@ You can also always add multiple derived columns in a single call:
    fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
    
    ds = ds.with_new_columns(fof_halo_ke = fof_halo_ke)
-   ds = ds.with_units("physical")
-
-The code above will run without errors. But as soon as the actual data is requested:
-
-.. code-block:: python
-
-   data = ds.data
 
 you will get an error. 
 
 .. code-block:: text
 
-        ValueError: To add and subtract columns, units must be the same!
+        opencosmo.units.UnitError: To add and subtract columns, units must be the same!
 
-This behavior will be updated in a future version of the library to throw the error at the :code:`with_new_columns` call.
+Built-In Column Combinations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+OpenCosmo provides a number of built-in column combinations that may be useful for a wide variety of analysis. For example, to calculate the total velocity of a halo from its velocity components:
+
+.. code-block:: python
+
+        import opencosmo as oc
+        from opencosmo.columns import norm_cols
+        
+        dataset = oc.open("haloproperties.hdf5")
+        total_halo_velocity = norm_cols("fof_halo_com_vx", "fof_halo_com_vy", "fof_halo_com_vz")
+        
+        dataset = dataset.with_new_columns(fof_halo_com_velocity = total_halo_velocity)
+        
+You can find a list of available column combinations in the :ref:`column API reference <Provided Column Combinations>`
+
 
 Adding Columns Manually
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -137,7 +146,7 @@ The :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` method acce
 
 .. code-block:: python
 
-        random_time = np.random.randint(0, 1000, size = len(ds)) * u.s
+        random_data = np.random.randint(0, 1000, size = len(ds)) * u.s
         dataset  = dataset.with_new_columns(random_time = random_data)
 
 

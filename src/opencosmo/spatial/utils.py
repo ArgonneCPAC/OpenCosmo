@@ -1,5 +1,11 @@
-import h5py
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
+
+if TYPE_CHECKING:
+    import h5py
 
 
 def combine_upwards(

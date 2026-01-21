@@ -1,3 +1,76 @@
+Opencosmo 1.0.0 (2026-01-21)
+===============================
+
+Bugfixes
+--------
+
+- Fix a bug that caused structure collections to not open correctly if the individual datasets were lightcone datasets. (#103)
+- Fix a bug that prevented adding together columns with logarithmic units (#142)
+- Attempting to sort by a column that is not in the dataset now errors correctly.
+- Correctly update order across ranks when stacking lightcones.
+- Fix a bug that could cause :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` to fail if the :code:`dataset` argument is set to halo_properties or galaxy_properties.
+- Fix a bug that could cause created columns to be evaluated twice instead of correctly being cached.
+- Fix a bug that could cause filtering to fail on very short datasets.
+- Fix a bug that could cause lightcone stacking to fail with large numbers of datasets
+- Fix a bug that could cause segfaults (in numba-accelerated code) when running take operations
+- Fix a bug that could cause unit conversions on structure collections to not propogate to a halo_properties or galaxy_properties dataset.
+- Fix a bug that could cause user-created columns to be ordered incorrectly if they were inserted into a sorted dataset or lighcone.
+- Fix a bug that could cause writes to fail for a large SimulationCollection
+- Fix a bug that could cause writing to segfault when working in MPI
+- Submitting a filter without actually passing filters will now return the original dataset rather than an empty dataset.
+
+
+New Features
+------------
+
+- :code:`with_units` can now be used to provide unit conversions, in addition to changing conventions (#43)
+- Descriptions of columns can now be accessed with :py:class:`Dataset.descriptions <opencosmo.Dataset.descriptions>` (#122)
+- :code:`with_new_columns` now accepts a :code:`descriptions` argument for providing column descriptions
+- :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` now performs evaluation on individual structures when `dataset` argument is passed.
+- :py:meth:`opencosmo.write` now works in MPI contexts even if parallel-hdf5 is not installed.
+- Add :py:meth:`StructureCollection.evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`, which performs evaluate on a single dataset in the structure collection without chunking.
+- Add a number of common column combinations that can be used to add columns to a dataset with
+  :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns`. See the :ref:`column API reference <Provided Column Combinations>` for details
+- Added additional supported outpt formats "pandas", "polars" and "arrow"
+- Added support for working with maps stored with a Healpix decomposition with new the :py:class:`opencosmo.HealpixMap` class.
+- Column filters can now be combined with boolean operators & (and) and | (or).
+- Columns created with :py:meth:`opencosmo.col` now support :code:`.log10()`, :code:`.exp10()` and :code:`.sqrt()`
+- Columns that are read from disk are now cached, ensuring that requesting data second time is always fast.
+- When writing lightcones, datasets from adjacent redshift slices will now be stacked into a single dataset if their combined length is small enough.
+
+
+Improvements
+------------
+
+- :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>` and :py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>` now follow the same semantics as :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` for passing columns from multiple datasets in a single function call.
+- :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>`, :py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>`, and :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` now support specifying columns in nested collections.
+- Add the ability to create datasets entirely in memory, which is used at present to support downgrading healpix maps.
+- Evaluations in individual dataset are now performed lazily unless :code:`insert = False`
+- Opening multiple files will now fail with a clear error message if one or more of the files is not opencosmo-formatted.
+- Reads from hdf5 now use :code:`read_direct`, which improves read performance especially with large datasets.
+- Rewrite DataIndex to be fully functional, and accelerate with Numba.
+- The logic behind :py:meth:`oc.write <opencosmo.write>` has been completely rewritten to be more functional, reliable, and easy to extend. This change does not affect how the function is used, and does not make any changes to the data format.
+- Writing in an MPI context will now fail with an error if no rank has data to write
+- :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>` is now performed lazily when :code:`insert = True`.
+
+
+Miscellaneous
+-------------
+
+- Column management has been reworked and centralized
+- Move all annotation-only imports behind a :code:`TYPE_CHECKING` block and add :code:`from __future__ import annotations` to most files. This significantly improves initial import time.
+- Unit handling has been fully rewritten, making it much more flexible for backend work.
+
+
+Deprecations and Removals
+-------------------------
+
+- Functions passed into :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>` must now always explicitly list columns as arguments"
+- opencosmo.read (deprecated since 0.7) has been removed.
+- opencosmo.open_linked_files (deprecated sinced 0.8) has been removed
+- opencosmo.Dataset.collect has been removed
+
+
 opencosmo 0.9.6 (2025-10-20)
 ============================
 

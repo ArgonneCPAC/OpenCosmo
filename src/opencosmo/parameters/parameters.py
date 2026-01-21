@@ -1,8 +1,13 @@
-from typing import Type, Union, get_origin
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Type, Union, get_origin
 
 import h5py
 import numpy as np
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
 
 
 def read_header_attributes(

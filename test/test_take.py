@@ -50,7 +50,9 @@ def test_take_chain(input_path):
     ds = ds.take(10, at="end")
     short_data = ds.data
     long_data = long_data[40:50]
-    assert all(short_data == long_data)
+
+    for column in short_data.columns:
+        assert np.all(short_data[column] == long_data[column])
 
 
 def test_take_too_many(input_path):

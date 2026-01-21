@@ -1,8 +1,41 @@
-from typing import Callable, ClassVar
+import inspect
+from typing import Callable, ClassVar, Type
 
+from astropy import cosmology
 from pydantic import BaseModel, Field, computed_field
 
-from opencosmo.cosmology import make_cosmology
+
+def make_cosmology(parameters: "CosmologyParameters") -> cosmology.Cosmology:
+    cosmology_type = get_cosmology_type(parameters)
+    expected_arguments = inspect.signature(cosmology_type).parameters.keys()
+    input_paremeters = {}
+    for argname in expected_arguments:
+        try:
+            input_paremeters[argname] = getattr(parameters, argname)
+        except AttributeError:
+            continue
+    return cosmology_type(**input_paremeters)
+
+
+def get_cosmology_type(parameters: "CosmologyParameters") -> Type[cosmology.Cosmology]:
+    is_flat = (parameters.Om0 + parameters.Ode0) == 1.0
+    if parameters.w0 == -1 and parameters.wa == 0:
+        if is_flat:
+            return cosmology.FlatLambdaCDM
+        else:
+            return cosmology.LambdaCDM
+    if parameters.w0 != -1 and parameters.wa == 0:
+        if is_flat:
+            return cosmology.FlatwCDM
+        else:
+            return cosmology.wCDM
+    if parameters.wa != 0:
+        if is_flat:
+            return cosmology.Flatw0waCDM
+        else:
+            return cosmology.w0waCDM
+
+    raise ValueError("Could not determine cosmology type.")
 
 
 class CosmologyParameters(BaseModel, frozen=True):

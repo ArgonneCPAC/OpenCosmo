@@ -1,10 +1,13 @@
-from typing import Iterable, Protocol, Self, Union
+from __future__ import annotations
 
-from opencosmo.dataset import Dataset
-from opencosmo.dataset.column import ColumnMask
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.io.io import OpenTarget
-from opencosmo.io.protocols import DataSchema
+from typing import TYPE_CHECKING, Iterable, Protocol, Self, Union
+
+if TYPE_CHECKING:
+    from opencosmo.column.column import ColumnMask
+    from opencosmo.dataset import Dataset
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.schema import Schema
 
 
 class Collection(Protocol):
@@ -31,7 +34,7 @@ class Collection(Protocol):
         cls, targets: list[OpenTarget], **kwargs
     ) -> Union["Collection", Dataset]: ...
 
-    def make_schema(self) -> DataSchema: ...
+    def make_schema(self) -> Schema: ...
     @property
     def dtype(self) -> str | dict[str, str]: ...
 

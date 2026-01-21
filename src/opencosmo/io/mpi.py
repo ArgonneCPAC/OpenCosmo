@@ -1,41 +1,45 @@
-from copy import copy
+from __future__ import annotations
+
 from enum import Enum
-from pathlib import Path
-from typing import Iterable, Mapping, Optional, Type, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import h5py
 import numpy as np
-from mpi4py import MPI
 
-from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import ChunkedIndex
-from opencosmo.mpi import get_comm_world
+from opencosmo.io.schema import FileEntry, Schema, make_schema
+from opencosmo.io.verify import ZeroLengthError, verify_file
+from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
+from opencosmo.mpi import MPI, get_comm_world
 
-from .protocols import DataSchema
-from .schemas import (
-    ColumnSchema,
-    DatasetSchema,
-    EmptyColumnSchema,
-    FileSchema,
-    IdxLinkSchema,
-    LightconeSchema,
-    LinkSchema,
-    SimCollectionSchema,
-    SpatialIndexLevelSchema,
-    SpatialIndexSchema,
-    StartSizeLinkSchema,
-    StructCollectionSchema,
-    ZeroLengthError,
-)
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from opencosmo.io.schema import Schema
+
 
 """
 When working with MPI, datasets are chunked across ranks. Here we combine the schemas
 from several ranks into a single schema that can be allocated by rank 0. Each 
-rank will then write it's own data to the specific section of the file 
+rank will then write its own data to the specific section of the file 
 it is responsible for.
 
-As with schemas and writers, everything is very hierarcical here. A function
-does some consistency checks, then calls a function that combines its children.
+When writing data with MPI, there are basically 3 things we have to verify in order to 
+determine if everything is valid.
+
+1. Is the top-level file structure the same for all ranks (e.g. lightcone? dataset?).
+2. Do all columns that are going to be written to by two or more ranks have the same data type and compatible shapes?
+3. Is metadata consistent across ranks? If not, are there rules in place to combine/update the fields?
+
+If all three of these checks pass, it is guaranteed we can create a schema that can accomodate the data being written.
+
+File schemas are simply collections of columns and metadata. Columns contain:
+
+1. A reference to the underying data that will be written (either an h5py dataset or a numpy array)
+2. An index which tells us which elements in 1 we are going to actually write
+3. Possibly an output index, which tells us where in the output we are going to actually write to.
+3. Possibly a function to update those values before writing. For example, a spatial index should be summed across ranks rather than concatenated.
+
+In order to avoid MPI deadlocks, we always sort columns in alphabetical order before performing operations on the file.
 """
 
 
@@ -45,7 +49,15 @@ class CombineState(Enum):
     INVALID = 3
 
 
-def write_parallel(file: Path, file_schema: FileSchema):
+def write_parallel(file: Path, file_schema: Schema):
+    """
+    Main entry point for writing data in parallel. Proceeds
+    in three steps:
+
+    1. Verify the file schemas are valid separately
+    2. Recursively verify the schemas can be made consistent across ranks
+    3. Recursively write the data.
+    """
     comm = get_comm_world()
     if comm is None:
         raise ValueError("Got a null comm!")
@@ -54,45 +66,40 @@ def write_parallel(file: Path, file_schema: FileSchema):
         raise ValueError("Different ranks recieved a different path to output to!")
 
     try:
-        file_schema.verify()
+        verify_file(file_schema)  # Initial verification
         results = comm.allgather(CombineState.VALID)
     except ValueError:
         results = comm.allgather(CombineState.INVALID)
     except ZeroLengthError:
         results = comm.allgather(CombineState.ZERO_LENGTH)
-    if not all(results):
+    if any(rs == CombineState.INVALID for rs in results):
         raise ValueError("One or more ranks recieved invalid schemas!")
 
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
+    if len(has_data) == 0:
+        raise ValueError("No ranks have any data to write!")
+
     group = comm.Get_group()
     new_group = group.Incl(has_data)
     new_comm = comm.Create(new_group)
     if new_comm == MPI.COMM_NULL:
         return cleanup_mpi(comm, new_comm, new_group)
-    rank = new_comm.Get_rank()
 
-    new_schema = combine_file_schemas(file_schema, new_comm)
-    if rank == 0:
+    verify_schemas(file_schema, new_comm)
+    offsets = __get_all_offsets(file_schema, new_comm, "")
+    if new_comm.Get_rank() == 0:
         with h5py.File(file, "w") as f:
-            new_schema.allocate(f)
-
-    writer = new_schema.into_writer(new_comm)
+            __allocate(file_schema, f, new_comm)
+    else:
+        __allocate(file_schema, None, new_comm)
 
     try:
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
-            writer.write(f)
+            __write_parallel(file_schema, f, offsets, new_comm)
 
     except ValueError:  # parallell hdf5 not available
-        raise NotImplementedError(
-            "MPI writes without paralell hdf5 are not yet supported"
-        )
-        nranks = new_comm.Get_size()
-        rank = new_comm.Get_rank()
-        for i in range(nranks):
-            if i == rank:
-                with h5py.File(file, "a") as f:
-                    writer.write(f)
-            new_comm.Barrier()
+        schema = __replace_writers_with_updates(file_schema, new_comm)
+        __write_serial(schema, file, offsets, new_comm)
     cleanup_mpi(comm, new_comm, new_group)
 
 
@@ -103,391 +110,364 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     group_write.Free()
 
 
-def get_all_child_names(schema: DataSchema | None, comm: MPI.Comm):
-    if schema is None:
-        child_names = set()
-    elif hasattr(schema, "children") and isinstance(schema.children, dict):
-        child_names = set(schema.children.keys())
-    else:
-        child_names = set()
-    all_child_names: Iterable[str]
-    all_child_names = child_names.union(*comm.allgather(child_names))
-    all_child_names = list(all_child_names)
-    all_child_names.sort()
-    return all_child_names
+def get_all_keys(data: dict, comm: Optional[MPI.Comm]):
+    """
+    Return all keys in the dictionary across all ranks, sorted
+    alphabetically. When defining the file structure, we have to iterate
+    through the schemas in the same order across all ranks, including
+    when one rank doesn't have a given child.
+    """
+    data_names = set(data.keys())
+    if comm is None:
+        return sorted(list(data_names))
+
+    all_data_names: Iterable[str]
+    all_data_names = data_names.union(*comm.allgather(data_names))
+    all_data_names = list(all_data_names)
+    all_data_names.sort()
+    return all_data_names
 
 
-def verify_structure(schemas: Mapping[str, DataSchema], comm: MPI.Comm):
-    verify_names(schemas, comm)
-    verify_types(schemas, comm)
+def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
+    """
+    By this stage, we know that all the ranks that are participating have a valid
+    file schema. We now need to verify that they can be made consistent across ranks.
 
+    This is done recursively. For each schema, we verify its columns and its attributes.
+    Then we proceed to its children. Ranks that do not have data for a given child
+    are simply excluded from the verification process.
 
-def verify_names(schemas: Mapping[str, DataSchema], comm: MPI.Comm):
-    names = set(schemas.keys())
-    all_names = comm.allgather(names)
-    if not all(ns == all_names[0] for ns in all_names[1:]):
+    """
+
+    if comm.Get_size() == 1:  # this shouldn't happen, but include anyway
+        return
+
+    file_types = set(comm.allgather(schema.type))
+    if len(file_types) > 1:
         raise ValueError(
-            "Tried to combine a collection of schemas with different names!"
+            "Unable to combine file schemas, as they do not have the same type!"
         )
 
-
-def verify_types(schemas: Mapping[str, DataSchema], comm: MPI.Comm):
-    types = list(str(type(c)) for c in schemas.values())
-    types.sort()
-    all_types = comm.allgather(types)
-    if not all(ts == all_types[0] for ts in all_types[1:]):
-        raise ValueError(
-            "Tried to combine a collection of schemas with different types!"
-        )
-
-
-def combine_file_schemas(schema: FileSchema, comm: MPI.Comm) -> FileSchema:
-    if comm.Get_size() == 1:
-        return schema
-
-    all_child_names = get_all_child_names(schema, comm)
-    new_schema = FileSchema()
+    verify_columns(schema.columns, comm)
+    verify_attributes(schema.attributes, comm)
+    all_child_names = get_all_keys(schema.children if schema is not None else {}, comm)
 
     for child_name in all_child_names:
-        child = schema.children.get(child_name)
-        new_child = combine_file_child(child, comm)
-        new_schema.add_child(new_child, child_name)
-
-    return new_schema
-
-
-S = TypeVar("S", DatasetSchema, SimCollectionSchema, StructCollectionSchema)
-
-
-def combine_file_child(schema: S | None, comm: MPI.Comm) -> S:
-    match schema:
-        case DatasetSchema():
-            return cast(S, combine_dataset_schemas(schema, comm))
-        case SimCollectionSchema():
-            return cast(S, combine_simcollection_schema(schema, comm))
-        case StructCollectionSchema():
-            return cast(S, combine_structcollection_schema(schema, comm))
-        case LightconeSchema():
-            return cast(S, combine_lightcone_schema(schema, comm))
-        case _:
-            raise ValueError(f"Invalid file child of type {type(schema)}")
+        has_child = comm.allgather(child_name in schema.children)
+        if all(has_child):
+            new_comm = comm
+        else:
+            ranks_to_include = [i for i in range(len(has_child)) if has_child[i]]
+            group = comm.Get_group()
+            new_group = group.Incl(ranks_to_include)
+            new_comm = comm.Create(new_group)
+        if child_name in schema.children:
+            verify_schemas(schema.children[child_name], new_comm)
 
 
-def validate_headers(
-    header: OpenCosmoHeader | None, comm: MPI.Comm, header_updates: dict = {}
-):
-    all_headers: Iterable[OpenCosmoHeader] = comm.allgather(header)
-    all_headers = filter(lambda h: h is not None, all_headers)
-    all_headers = list(map(lambda h: h.with_parameters(header_updates), all_headers))
-    regions = set([h.file.region for h in all_headers])
-    if len(regions) > 1:
-        all_headers = [h.with_region(None) for h in all_headers]
+def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
+    """
+    Verify a group of columns in a schema. Note, the single-threaded verification
+    process already ensures that all columns in the data group have the same
+    length in any given rank, which guarantees this will also be the case when
+    we combine columns across ranks. All we have to check here is:
 
-    if any(h != all_headers[0] for h in all_headers[1:]):
-        raise ValueError("Not all datasets have the same header!")
-    return all_headers[0]
+    1. Are the shapes consistent
+    2. Are the data types consistent
+    3. Are the column attributes consistent
 
-
-def combine_dataset_schemas(
-    schema: DatasetSchema | None,
-    comm: MPI.Comm,
-    header_updates: dict = {},
-) -> DatasetSchema:
-    if schema is not None:
-        header = validate_headers(schema.header, comm, header_updates)
-        columns = schema.columns
-    else:
-        header = validate_headers(None, comm, header_updates)
-        columns = {}
-
-    new_schema = DatasetSchema(header=header)
-    all_column_names = get_all_child_names(schema, comm)
-
+    """
+    all_column_names = get_all_keys(columns, comm)
     for colname in all_column_names:
-        column = columns.get(colname)
-        assert not isinstance(column, EmptyColumnSchema)
-        new_column_schema = combine_column_schemas(column, comm)
-        new_schema.columns[colname] = new_column_schema
-
-    new_links = combine_links(schema.links if schema is not None else {}, comm)
-    for name, link in new_links.items():
-        new_schema.add_child(link, name)
-
-    new_spatial_idx_schema = combine_spatial_index_schema(
-        schema.spatial_index if schema is not None else None, comm
-    )
-    if new_spatial_idx_schema is not None:
-        new_schema.add_child(new_spatial_idx_schema, "index")
-
-    return new_schema
-
-
-def combine_spatial_index_schema(
-    schema: Optional[SpatialIndexSchema], comm: MPI.Comm = MPI.COMM_WORLD
-):
-    has_schema = schema is not None
-    all_has_schema = comm.allgather(has_schema)
-
-    if not any(all_has_schema):
-        return None
-
-    n_levels = max(schema.levels) if schema is not None else -1
-    all_max_levels = set(comm.allgather(n_levels))
-    if -1 in all_max_levels:
-        all_max_levels.remove(-1)
-
-    if len(set(all_max_levels)) != 1:
-        raise ValueError("Schemas for all ranks must have the same number of levels!")
-
-    max_level = all_max_levels.pop()
-    level_schemas = schema.levels if schema is not None else {}
-    new_schema = SpatialIndexSchema()
-    for level in range(max_level + 1):
-        level_schema = level_schemas.get(level)
-        new_level_schema = combine_spatial_index_level_schemas(level_schema, comm)
-        new_schema.add_child(new_level_schema, level)
-
-    return new_schema
-
-
-def combine_spatial_index_level_schemas(
-    schema: SpatialIndexLevelSchema | None, comm: MPI.Comm
-):
-    if schema is None:
-        start_len = 0
-        size_len = 0
-    else:
-        start_len = len(schema.start)
-        size_len = len(schema.size)
-
-    all_start_lens = set(filter(lambda s: s is not None, comm.allgather(start_len)))
-    all_size_lens = set(filter(lambda s: s is not None, comm.allgather(size_len)))
-    if 0 in all_start_lens:
-        all_start_lens.remove(0)
-        all_size_lens.remove(0)
-
-    if all_start_lens != all_size_lens or len(all_start_lens) != 1:
-        raise ValueError("Invalid starts and sizes")
-
-    level_len = all_start_lens.pop()
-
-    if schema is None:
-        source = np.zeros(level_len, dtype=np.int32)
-        index = ChunkedIndex.from_size(len(source))
-        start = ColumnSchema("start", index, source, {}, total_length=level_len)
-        size = ColumnSchema("size", index, source, {}, total_length=level_len)
-        new_schema = SpatialIndexLevelSchema(start, size)
-    else:
-        start = ColumnSchema(
-            "start",
-            schema.start.index,
-            schema.start.source,
-            {},
-            total_length=level_len,
-        )
-        size = ColumnSchema(
-            "size",
-            schema.size.index,
-            schema.size.source,
-            {},
-            total_length=level_len,
-        )
-        new_schema = SpatialIndexLevelSchema(start, size)
-
-    return new_schema
-
-
-def combine_links(
-    links: dict[str, LinkSchema], comm: MPI.Comm
-) -> Mapping[str, LinkSchema]:
-    link_names = set(links.keys())
-
-    all_link_names: Iterable[str]
-
-    all_link_types: Iterable[Type]
-    all_link_names = link_names.union(*comm.allgather(link_names))
-    all_link_names = list(all_link_names)
-    all_link_names.sort()
-    new_links: dict[str, LinkSchema] = {}
-    for link_name in all_link_names:
-        link = links.get(link_name)
-        all_link_types = comm.allgather(type(link))
-        all_link_types = set(filter(lambda t: t is not type(None), all_link_types))
-        if len(all_link_types) != 1:
-            raise ValueError("Incompatible Links!")
-
-        link_type = all_link_types.pop()
-
-        if link_type is StartSizeLinkSchema:
-            assert not isinstance(link, (IdxLinkSchema, EmptyColumnSchema))
-            new_links[link_name] = combine_start_size_link_schema(link, comm, link_name)
+        if colname not in columns:
+            # Simply ignore a rank that doesn't have this column
+            colmeta = comm.allgather(None)
         else:
-            assert not isinstance(link, (StartSizeLinkSchema, EmptyColumnSchema))
-            new_links[link_name] = combine_idx_link_schema(link, comm)
-
-    return new_links
-
-
-def combine_idx_link_schema(
-    schema: IdxLinkSchema | None, comm: MPI.Comm
-) -> IdxLinkSchema:
-    column = schema.column if schema is not None else None
-    assert not isinstance(column, EmptyColumnSchema)
-    column_schema = combine_column_schemas(column, comm)
-    new_schema = IdxLinkSchema(column_schema)
-    return new_schema
-
-
-def combine_start_size_link_schema(
-    schema: StartSizeLinkSchema | None, comm: MPI.Comm, name: str
-) -> StartSizeLinkSchema:
-    start = schema.start if schema is not None else None
-    size = schema.size if schema is not None else None
-    assert not isinstance(start, EmptyColumnSchema) and not isinstance(
-        size, EmptyColumnSchema
-    )
-
-    start_column_schema = combine_column_schemas(start, comm)
-    size_column_schema = combine_column_schemas(size, comm)
-
-    if schema is None:
-        new_schema = StartSizeLinkSchema(name, start_column_schema, size_column_schema)
-    else:
-        new_schema = copy(schema)
-        new_schema.start = start_column_schema
-        new_schema.size = size_column_schema
-    return new_schema
-
-
-def combine_lightcone_schema(schema: LightconeSchema | None, comm: MPI.Comm):
-    all_child_names = get_all_child_names(schema, comm)
-    new_schema = LightconeSchema()
-    if schema is None:
-        children = {}
-    else:
-        children = schema.children
-
-    for child_name in all_child_names:
-        child = children.get(child_name)
-        z_range = get_z_range(child, comm)
-
-        new_dataset_schema = combine_dataset_schemas(
-            children.get(child_name), comm, {"lightcone/z_range": z_range}
-        )
-        new_schema.add_child(new_dataset_schema, child_name)
-    return new_schema
-
-
-def get_z_range(ds: DatasetSchema | None, comm: MPI.Comm):
-    if ds is not None and ds.header is not None:
-        z_ranges = comm.allgather(ds.header.lightcone["z_range"])
-    else:
-        z_ranges = comm.allgather(None)
-    z_ranges = list(filter(lambda dz: dz is not None, z_ranges))
-    dzs: Iterable[float] = map(lambda dz: dz[1] - dz[0], z_ranges)
-    dzs = list(dzs)
-    max_idx = np.argmax(dzs)
-    return list(z_ranges)[max_idx]
-
-
-def combine_simcollection_schema(
-    schema: SimCollectionSchema, comm: MPI.Comm
-) -> SimCollectionSchema:
-    child_names = get_all_child_names(schema, comm)
-
-    new_schema = SimCollectionSchema()
-    new_child: DatasetSchema | StructCollectionSchema
-
-    for child_name in child_names:
-        child = schema.children[child_name]
-        match child:
-            case StructCollectionSchema():
-                new_child = combine_structcollection_schema(child, comm)
-            case DatasetSchema():
-                new_child = combine_dataset_schemas(child, comm)
-        new_schema.add_child(new_child, child_name)
-    return new_schema
-
-
-def combine_structcollection_schema(
-    schema: StructCollectionSchema, comm: MPI.Comm
-) -> StructCollectionSchema:
-    child_names: Iterable[str] = set(schema.children.keys())
-    all_child_names = comm.allgather(child_names)
-    if not all(cns == all_child_names[0] for cns in all_child_names[1:]):
-        raise ValueError(
-            "Tried to combine ismulation collections with different children!"
-        )
-
-    child_types = set(str(type(c)) for c in schema.children.values())
-    all_child_types = comm.allgather(child_types)
-    if not all(cts == all_child_types[0] for cts in all_child_types[1:]):
-        raise ValueError(
-            "Tried to combine ismulation collections with different children!"
-        )
-
-    new_schema = StructCollectionSchema()
-    child_names = list(child_names)
-    child_names.sort()
-    new_child: DatasetSchema | StructCollectionSchema
-
-    for i, name in enumerate(child_names):
-        cn = comm.bcast(name)
-        child = schema.children[cn]
-        if isinstance(child, DatasetSchema):
-            new_child = combine_dataset_schemas(child, comm)
-        elif isinstance(child, StructCollectionSchema):
-            new_child = combine_structcollection_schema(child, comm)
-        else:
-            raise ValueError(
-                "Found a child of a structure collection that was not a Dataset!"
+            column = columns[colname]
+            data_to_send = (
+                column.combine_strategy,
+                column.shape,
+                column.dtype,
+                column.attrs,
             )
-        new_schema.add_child(new_child, cn)
+            colmeta = comm.allgather(data_to_send)
 
-    return new_schema
+        combine_strategies = set([cm[0] for cm in colmeta if cm is not None])
+        if len(combine_strategies) > 1:
+            raise ValueError("Combine strategy must be the same accross ranks!")
+
+        shapes = set([cm[1][1:] for cm in colmeta if cm is not None])
+        if len(shapes) > 1:
+            raise ValueError(
+                f"Column {colname} did not have consistent shapes across ranks!"
+            )
+        dtype_kinds = set([cm[2].kind for cm in colmeta if cm is not None])
+        if len(dtype_kinds) > 1:
+            # We allow type promotion, though there are very few cases where
+            # It would be necessary.
+            raise ValueError(
+                f"Column {colname} did not have consistent dtypes across ranks!"
+            )
+        attrs = [cm[3] for cm in colmeta if cm is not None]
+        if any(attr_set != attrs[0] for attr_set in attrs[1:]):
+            raise ValueError("Metadata was not consistent across ranks!")
 
 
-def verify_column_schemas(schema: ColumnSchema | None, comm: MPI.Comm):
-    if schema is None:
-        data = comm.allgather(None)
-    else:
-        data = comm.allgather(
-            (schema.source.shape, schema.name, dict(schema.attrs), schema.source.dtype)
+def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
+    all_metadata = comm.allgather(metadata)
+    if not all(md == all_metadata[0] for md in all_metadata[1:]):
+        raise ValueError("Not all ranks recieved the same metadata!")
+
+
+def __write_parallel(
+    schema: Schema,
+    group: h5py.File | h5py.Group,
+    offsets: dict,
+    comm: Optional[MPI.Comm],
+):
+    """
+    Used with both the parallel and serial version, though the later passes through
+    __write_serial.
+    """
+    __write_columns(schema, group, offsets, comm)
+    all_child_names = get_all_keys(schema.children, comm)
+    for cn in all_child_names:
+        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
+        new_group = group[cn]
+        __write_parallel(child_schema, new_group, offsets, comm)
+
+
+def __write_serial(schema: Schema, file_path: Path, offsets: dict, comm: MPI.Comm):
+    """
+    We do NOT have parallel hdf5, so we have to write one rank at a time.
+    """
+    for i in range(comm.Get_size()):
+        if i == comm.Get_rank():
+            with h5py.File(file_path, "a") as f:
+                __write_parallel(schema, f, offsets, None)
+
+        comm.Barrier()
+
+
+def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
+    """
+    For columns that require updates, compute the update and replace. The most common form
+    of updated is "start/size" indexes, since "start" must be updated consistently across
+    ranks.
+
+    """
+    colnames = get_all_keys(schema.columns, comm)
+    for cn in colnames:
+        colwriter = schema.columns.get(cn)
+
+        participating = comm.allgather(colwriter is not None)
+        if all(participating):
+            new_comm = comm
+        else:
+            participating_ranks = [
+                i for i in range(len(participating)) if participating[i]
+            ]
+            group = comm.Get_group()
+            new_group = group.Incl(participating_ranks)
+            new_comm = comm.Create(new_group)
+        if colwriter is None:
+            continue
+
+        has_update = new_comm.allgather(
+            colwriter is not None and colwriter.has_transformation
         )
+        if any(has_update) and not all(has_update):
+            raise ValueError("Update was not consistent across ranks!")
+        elif not any(has_update):
+            continue
+        assert colwriter is not None
+        data = colwriter.get_data(new_comm)
+        new_writer = ColumnWriter.from_numpy_array(
+            data, colwriter.combine_strategy, colwriter.attrs
+        )
+        schema.columns[cn] = new_writer
 
-    data = list(filter(lambda elem: elem is not None, data))
-    if any(d[1:] != data[0][1:] for d in data[1:]):
-        raise ValueError("Tried to write incompatible columns to the same output!")
-    return data[0]
+    child_names = get_all_keys(schema.children, comm)
+    for cn in child_names:
+        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
+        new_child_schema = __replace_writers_with_updates(child_schema, comm)
+        schema.children[cn] = new_child_schema
+    return schema
 
 
-def combine_column_schemas(
-    schema: ColumnSchema | None, comm: MPI.Comm
-) -> ColumnSchema | EmptyColumnSchema:
-    rank = comm.Get_rank()
-    if schema is None:
+def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
+    """
+    Get the rank-wise offset for every column.
+    """
+    output = {}
+    all_column_names = get_all_keys(schema.columns, comm)
+    for colname in all_column_names:
+        writer = schema.columns.get(colname)
+        offset = get_column_offset(writer, comm)
+        key = "/".join([name, colname])
+        output[key] = offset
+
+    all_child_names = get_all_keys(schema.children, comm)
+    for cn in all_child_names:
+        key = "/".join([name, cn])
+        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
+        child_offsets = __get_all_offsets(child_schema, comm, key)
+        output.update(child_offsets)
+    return output
+
+
+def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm):
+    """
+    Allocate the file.
+    """
+    all_column_names = get_all_keys(schema.columns, comm)
+    for column_name in all_column_names:
+        column_writer = schema.columns.get(column_name)
+        __allocate_column(column_name, column_writer, group, comm)
+    __write_metadata(schema, group, comm)
+
+    all_child_names = get_all_keys(schema.children, comm)
+    for cn in all_child_names:
+        if group is not None:
+            new_group = group.require_group(cn)
+        else:
+            new_group = None
+
+        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
+
+        __allocate(child_schema, new_group, comm)
+
+
+def get_column_allocation_metadata(column: Optional[ColumnWriter], comm: MPI.Comm):
+    """
+    Determine how to allocate the column. The most important thing this does is
+    determine the overal shape. Keep in mind we have already done verification
+    at this point to make sure everything is consistent.
+    """
+    strategy = None if column is None else column.combine_strategy
+    strategies = list(filter(lambda strat: strat is not None, comm.allgather(strategy)))
+    strategy = strategies[0]
+
+    meta = None if column is None else (column.shape, column.dtype, column.attrs)
+    all_meta = list(filter(lambda cm: cm is not None, comm.allgather(meta)))
+    reference_meta = all_meta[0]
+
+    if strategy == ColumnCombineStrategy.CONCAT:
+        total_length = sum(m[0][0] for m in all_meta)
+    else:
+        total_length = reference_meta[0][0]
+
+    # Note, we have already verified that all data types have the same
+    # kind, so we simply need to pick the highest-precision one.
+    all_dtypes = [m[1] for m in all_meta]
+    all_dtypes.sort(key=lambda dt: dt.itemsize, reverse=True)
+
+    shape = (total_length,) + reference_meta[0][1:]
+    return shape, all_dtypes[0], all_meta[0][2]
+
+
+def get_column_offset(column: Optional[ColumnWriter], comm: MPI.Comm):
+    """
+    Determine the offset for a given column on this rank.
+    """
+    if column is None or column.combine_strategy == ColumnCombineStrategy.SUM:
         length = 0
     else:
-        length = len(schema.index)
+        length = len(column)
+    all_lengths = comm.allgather(length)
+    offsets = np.insert(np.cumsum(all_lengths), 0, 0)
+    return offsets[comm.Get_rank()]
 
-    shape, name, attrs, dtype = verify_column_schemas(schema, comm)
 
-    lengths = comm.allgather(length)
-    total_length = np.sum(lengths)
-    rank_offsets = np.insert(np.cumsum(lengths), 0, 0)[:-1]
-    rank_offset = rank_offsets[rank]
-
-    new_schema: ColumnSchema | EmptyColumnSchema
-    if schema is None:
-        new_schema = EmptyColumnSchema(name, attrs, dtype, (total_length,) + shape[1:])
+def __write_metadata(
+    schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm
+):
+    """
+    Write metadata-only groups.
+    """
+    if schema.type == FileEntry.EMPTY:
+        attrs = comm.allgather(None)
     else:
-        new_schema = ColumnSchema(
-            schema.name,
-            schema.index,
-            schema.source,
-            schema.attrs,
-            total_length=total_length,
+        attrs = comm.allgather(schema.attributes)
+    attrs_to_write = list(filter(lambda at: at is not None, attrs))[0]
+    if group is not None:
+        for path, metadata in attrs_to_write.items():
+            metadata_group = group.require_group(path)
+            metadata_group.attrs.update(metadata)
+
+
+def __allocate_column(
+    name: str,
+    column_writer: Optional[ColumnWriter],
+    group: Optional[h5py.Group | h5py.File],
+    comm: MPI.Comm,
+) -> Optional[h5py.Dataset]:
+    """
+    Allocate a single column
+    """
+
+    shape, dtype, attrs = get_column_allocation_metadata(column_writer, comm)
+    if group is not None:
+        ds = group.create_dataset(name, shape=shape, dtype=dtype)
+        ds.attrs.update(attrs)
+        return ds
+    return None
+
+
+def __write_columns(
+    schema: Schema,
+    group: h5py.File | h5py.Group,
+    offsets: dict,
+    comm: Optional[MPI.Comm],
+):
+    all_column_names = get_all_keys(schema.columns, comm)
+    for cn in all_column_names:
+        writer = schema.columns.get(cn)
+        ds = group[cn]
+        offset = offsets[ds.name]
+        assert ds is not None
+        __write_column(writer, ds, offset, comm)
+
+
+def __write_column(
+    writer: Optional[ColumnWriter],
+    ds: h5py.Dataset,
+    offset: int,
+    comm: Optional[MPI.Comm],
+):
+    strategy = None if writer is None else writer.combine_strategy
+    if comm is not None:
+        strategies = list(
+            filter(lambda strat: strat is not None, comm.allgather(strategy))
         )
-        if length != 0:
-            new_schema.set_offset(rank_offset)
-    return new_schema
+        strategy = strategies[0]
+
+    if comm is not None:
+        participating = comm.allgather(writer is not None)
+        participating_ranks = [i for i in range(len(participating)) if participating[i]]
+        group = comm.Get_group()
+        new_group = group.Incl(participating_ranks)
+        new_comm = comm.Create(new_group)
+    else:
+        new_comm = None
+
+    match strategy:
+        case ColumnCombineStrategy.CONCAT:
+            if writer is not None:
+                data = writer.get_data(new_comm)
+                ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
+        case ColumnCombineStrategy.SUM:
+            if writer is None:
+                data = np.zeros(ds.shape, ds.dtype)
+            else:
+                data = writer.get_data(new_comm)
+            if comm is not None:
+                data_to_write = comm.allreduce(data)
+                ds[:] = data_to_write
+            else:
+                data += ds[:]
+                ds[:] = data
+
+    if comm is not None:
+        comm.Barrier()
+    ds.file.flush()

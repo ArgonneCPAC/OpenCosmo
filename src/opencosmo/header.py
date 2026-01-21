@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 from copy import copy
 from functools import cache
 from itertools import chain
-from pathlib import Path
 from types import UnionType
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
 from pydantic import BaseModel, ValidationError
 
 from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.parameters import (
     FileParameters,
     dtype,
@@ -17,6 +19,12 @@ from opencosmo.parameters import (
     write_header_attributes,
 )
 from opencosmo.parameters.units import apply_units
+from opencosmo.units import UnitConvention
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from opencosmo.io.schema import Schema
 
 
 class OpenCosmoHeader:
@@ -34,7 +42,7 @@ class OpenCosmoHeader:
         required_origin_parameters: dict[str, BaseModel],
         optional_origin_parameters: dict[str, BaseModel],
         dtype_parameters: dict[str, BaseModel],
-        unit_convention: str = "scalefree",
+        unit_convention: UnitConvention = UnitConvention.SCALEFREE,
     ):
         self.__file_pars = file_pars
         self.__required_origin_parameters = required_origin_parameters
@@ -63,7 +71,8 @@ class OpenCosmoHeader:
         s = frozenset((key, hash(model)) for key, model in iter_)
         return hash(s)
 
-    def with_units(self, convention):
+    def with_units(self, convention: UnitConvention | str):
+        convention = UnitConvention(convention)
         if convention == self.unit_convention:
             return self
         return OpenCosmoHeader(
@@ -91,9 +100,17 @@ class OpenCosmoHeader:
 
         cosmology = table.get("cosmology")
         convention = object.__getattribute__(self, "unit_convention")
+        scale_factor = None
+        if self.__file_pars.redshift is not None:
+            scale_factor = cosmology.scale_factor(self.__file_pars.redshift)
         for name, model in table.items():
             if isinstance(model, BaseModel):
-                table[name] = apply_units(model, cosmology, convention)
+                table[name] = apply_units(
+                    model,
+                    cosmology,
+                    convention,
+                    unit_kwargs={"scale_factor": scale_factor},
+                )
 
         return table
 
@@ -173,6 +190,25 @@ class OpenCosmoHeader:
             new_header = new_header.with_parameter(key, val)
         return new_header
 
+    def dump(self) -> Schema:
+        to_write = chain(
+            [("file", self.__file_pars)],
+            self.__required_origin_parameters.items(),
+            self.__optional_origin_parameters.items(),
+            self.__dtype_parameters.items(),
+        )
+        pars = {}
+        for path, model in to_write:
+            data = model.model_dump(by_alias=True)
+            data = dict(
+                map(
+                    lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
+                )
+            )
+
+            pars[path] = data
+        return make_schema("header", FileEntry.METADATA, attributes=pars)
+
     def write(self, file: h5py.File | h5py.Group) -> None:
         write_header_attributes(file, "file", self.__file_pars)
         to_write = chain(
@@ -219,7 +255,8 @@ def write_header(
 @broadcast_read
 @file_reader
 def read_header(
-    file: h5py.File | h5py.Group, unit_convention: str = "comoving"
+    file: h5py.File | h5py.Group,
+    unit_convention: UnitConvention = UnitConvention.COMOVING,
 ) -> OpenCosmoHeader:
     """
     Read the header of an OpenCosmo file

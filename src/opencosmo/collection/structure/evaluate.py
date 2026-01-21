@@ -1,38 +1,94 @@
+from __future__ import annotations
+
 from inspect import Parameter, signature
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
 
 import numpy as np
 from astropy.units import Quantity  # type: ignore
-from numpy.typing import DTypeLike
 
 from opencosmo import dataset as ds
-from opencosmo.evaluate import insert, make_output_from_first_values, prepare_kwargs
+from opencosmo.evaluate import (
+    insert_data,
+    make_output_from_first_values,
+    prepare_kwargs,
+)
 
 if TYPE_CHECKING:
     from opencosmo import StructureCollection
 
 
-def visit_structure_collection(
+def verify_evaluate_on_collection(
     function: Callable,
-    spec: Mapping[str, Optional[list[str]]],
-    collection: "StructureCollection",
-    format: str = "astropy",
-    dtype: Optional[DTypeLike] = None,
-    evaluator_kwargs: dict[str, Any] = {},
+    collection: StructureCollection,
+    evaluate_kwargs: dict[str, Any],
+    dataset: Optional[str],
 ):
-    spec = dict(spec)
-    __verify(function, spec, collection, evaluator_kwargs.keys())
+    # Case 1/3
+    function_signature = signature(function)
+    function_arg_names = set(function_signature.parameters.keys())
+    datasets_in_collection = set(collection.keys())
+    if not (
+        requested_datasets := function_arg_names.intersection(datasets_in_collection)
+    ):
+        raise ValueError(
+            "Your function should take the names of some of the datasets in this collection as arguments!"
+        )
+    elif dataset is not None and dataset not in requested_datasets:
+        raise ValueError(
+            "If you pass an argument to 'dataset', your function must take in at least one column from that dataset"
+        )
+
+    required_parameters = {
+        name
+        for name, par in function_signature.parameters.items()
+        if par.default == Parameter.empty
+    }
+    if missing := required_parameters.difference(datasets_in_collection).difference(
+        evaluate_kwargs.keys()
+    ):
+        raise ValueError(
+            f"Your function has required arguments {missing}, but you didn't provide them!"
+        )
+
+    spec = {name: evaluate_kwargs.pop(name, None) for name in requested_datasets}
+    return spec, evaluate_kwargs
+
+
+def visit_structure_collection_eagerly(
+    function: Callable,
+    collection: StructureCollection,
+    format: str = "astropy",
+    dataset: Optional[str] = None,
+    evaluate_kwargs: dict[str, Any] = {},
+    insert: bool = True,
+):
+    spec, kwargs = verify_evaluate_on_collection(
+        function, collection, evaluate_kwargs, dataset
+    )
+
     to_visit = __prepare_collection(spec, collection)
-    kwargs, iterable_kwargs = prepare_kwargs(len(collection), evaluator_kwargs)
-    if dtype is None:
-        dtype = np.float64
 
-    storage = __make_output(function, to_visit, format, kwargs, iterable_kwargs)
+    if dataset is None:
+        return evaluate_into_properties(function, to_visit, format, kwargs, insert)
+    else:
+        return evaluate_into_dataset(
+            function, to_visit, format, kwargs, dataset, insert
+        )
 
-    if isinstance(to_visit, ds.Dataset):
-        raise NotImplementedError()
 
-    for i, structure in enumerate(to_visit.objects()):
+def evaluate_into_properties(
+    function: Callable,
+    collection: StructureCollection,
+    format: str,
+    kwargs: dict[str, Any],
+    insert: bool,
+):
+    kwargs, iterable_kwargs = prepare_kwargs(len(collection), kwargs)
+
+    storage = __make_output(
+        function, collection, format, kwargs, iterable_kwargs, insert
+    )
+    for i, structure in enumerate(collection.objects()):
         if i == 0:
             continue
         iterable_kwarg_values = {name: arr[i] for name, arr in iterable_kwargs.items()}
@@ -40,9 +96,39 @@ def visit_structure_collection(
 
         output = function(**input_structure, **kwargs, **iterable_kwarg_values)
         if storage is not None:
-            insert(storage, i, output)
+            insert_data(storage, i, output)
 
     return storage
+
+
+def evaluate_into_dataset(
+    function: Callable,
+    collection: StructureCollection,
+    format: str,
+    kwargs: dict[str, Any],
+    dataset: str,
+    insert: bool,
+):
+    kwargs, iterable_kwargs = prepare_kwargs(len(collection[dataset]), kwargs)
+    storage = __make_chunked_output(
+        function, collection, dataset, format, kwargs, iterable_kwargs
+    )
+
+    for i, structure in enumerate(collection.objects()):
+        if i == 0:
+            continue
+        iterable_kwarg_values = {name: arr[i] for name, arr in iterable_kwargs.items()}
+        input_structure = __make_input(structure, format)
+
+        output = function(**input_structure, **kwargs, **iterable_kwarg_values)
+        if storage is not None:
+            for name, output_arr in output:
+                storage[name].append(output_arr)
+
+    if storage is None:
+        return
+    output_data = {name: np.concatenate(data) for name, data in storage.items()}
+    return output_data
 
 
 def __make_input(structure: dict, format: str = "astropy"):
@@ -62,10 +148,11 @@ def __make_input(structure: dict, format: str = "astropy"):
 
 def __make_output(
     function: Callable,
-    collection: "StructureCollection",
+    collection: StructureCollection,
     format: str = "astropy",
     kwargs: dict[str, Any] = {},
     iterable_kwargs: dict[str, Sequence] = {},
+    insert: bool = True,
 ) -> dict | None:
     first_structure = next(collection.take(1, at="start").objects())
     first_input = __make_input(first_structure, format)
@@ -74,7 +161,11 @@ def __make_output(
         **kwargs,
         **{name: arr[0] for name, arr in iterable_kwargs.items()},
     )
-    if first_values is None:
+    if first_values is None and insert:
+        raise ValueError(
+            "You asked to insert these values, but your function returns None!"
+        )
+    elif first_values is None:
         return None
     if not isinstance(first_values, dict):
         name = function.__name__
@@ -83,66 +174,45 @@ def __make_output(
     return make_output_from_first_values(first_values, n_rows)
 
 
-def __prepare_collection(
-    spec: dict[str, Optional[list[str]]], collection: "StructureCollection"
-):
-    if len(spec.keys()) == 1:
-        ds_name = next(iter(spec.keys()))
-        dataset = collection[ds_name]
-        if isinstance(dataset, ds.Dataset):
-            columns = spec[ds_name]
-            if columns is not None:
-                return dataset.select(columns)
-            return dataset
-        else:
-            raise NotImplementedError
-    else:
-        collection = collection.with_datasets(list(spec.keys()))
-    for ds_name, columns in spec.items():
-        if columns is None:
-            continue
-        collection = collection.select(columns, dataset=ds_name)
-    return collection
-
-
-def __verify(
+def __make_chunked_output(
     function: Callable,
-    spec: dict[str, Optional[list[str]]],
-    collection: "StructureCollection",
-    kwarg_keys: Iterable[str],
-):
-    datasets_in_collection = set(collection.keys())
-    kwarg_keys = set(kwarg_keys)
-    fn_signature = signature(function)
-    parameters = fn_signature.parameters
+    collection: StructureCollection,
+    dataset: str,
+    format: str = "astropy",
+    kwargs: dict[str, Any] = {},
+    iterable_kwargs: dict[str, Sequence] = {},
+    insert: bool = True,
+) -> dict | None:
+    first_structure = collection.take(1, at="start").objects()
+    expected_length = len(first_structure[dataset])
+    first_structure_data = next(iter(first_structure.objects()))
 
-    for name, param in parameters.items():
-        if name not in spec and name not in kwarg_keys and param == Parameter.empty:
-            spec.update({name: None})
-
-    datasets_in_spec = set(spec.keys())
-
-    if not datasets_in_spec.issubset(datasets_in_collection):
+    first_input = __make_input(first_structure_data, format)
+    first_values = function(
+        **first_input,
+        **kwargs,
+        **{name: arr[0] for name, arr in iterable_kwargs.items()},
+    )
+    if first_values is None and insert:
         raise ValueError(
-            "This collection is missing datasets "
-            f"{datasets_in_spec - datasets_in_collection} requested for this visitor"
+            "You asked to insert these values, but your function returns None!"
         )
-    for ds_name, columns_in_spec in spec.items():
-        if columns_in_spec is None:
-            continue
-        dataset = collection[ds_name]
-        if not isinstance(dataset, ds.Dataset):
-            raise NotImplementedError
-        columns_to_check = set(columns_in_spec)
-        columns_in_dataset = set(dataset.columns)
-        if not columns_to_check.issubset(columns_in_dataset):
-            raise ValueError(
-                "Dataset {ds_name} is missing columns "
-                f"{columns_to_check - columns_in_dataset} requested for this visitor"
-            )
-
-    if not datasets_in_spec.issubset(parameters.keys()):
+    elif first_values is None:
+        return None
+    if not isinstance(first_values, dict):
+        name = function.__name__
+        first_values = {name: first_values}
+    if any(len(fv) != expected_length for fv in first_values.values()):
         raise ValueError(
-            "Visitor function must use the names of the datasets it requests as its "
-            "argument names"
+            "If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
         )
+    return {name: [fv] for name, fv in first_values.items()}
+
+
+def __prepare_collection(
+    spec: dict[str, Optional[list[str]]], collection: StructureCollection
+) -> StructureCollection:
+    collection = collection.with_datasets(list(spec.keys()))
+    selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}
+    collection = collection.select(**selections)
+    return collection

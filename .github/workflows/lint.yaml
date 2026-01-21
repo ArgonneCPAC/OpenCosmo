@@ -25,7 +25,10 @@ jobs:
         run: cat pyproject.toml
 
       - name: Install dependencies
-        run: uv sync --group mpi
+        run: uv sync --group mpi --group test
+
+      - name: install analysis dependencies
+        run: uv run opencosmo install haloviz --dev
 
       - name: Run ruff linter
         run: uv run ruff check .

@@ -1,17 +1,17 @@
-from typing import Optional, Type
+from __future__ import annotations
 
-from astropy.cosmology import Cosmology
+from typing import TYPE_CHECKING, Any, Type
+
 from astropy.units.typing import UnitLike
-from pydantic import BaseModel
 
-import opencosmo.transformations as t
-from opencosmo.transformations.protocols import ColumnTransformation, TransformationType
-from opencosmo.transformations.units import (
-    apply_unit,
-    get_unit_transition_transformations,
-)
+from opencosmo.units import UnitConvention
+from opencosmo.units.get import get_unit_applicators_dict
 
-ModelUnitAnnotation = tuple[str, dict[str, UnitLike]]
+if TYPE_CHECKING:
+    from astropy.cosmology import Cosmology
+    from pydantic import BaseModel
+
+ModelUnitAnnotation = tuple[UnitConvention, dict[str, UnitLike], bool]
 
 __KNOWN_UNITFUL_MODELS__: dict[Type[BaseModel], ModelUnitAnnotation] = {}
 
@@ -23,7 +23,8 @@ def register_units(
     model: Type[BaseModel],
     field_name: str,
     unit: UnitLike,
-    convention: str = "scalefree",
+    convention: UnitConvention = UnitConvention.SCALEFREE,
+    is_comoving: bool = True,
 ):
     model_spec = __KNOWN_UNITFUL_MODELS__.get(model)
     registered_fields: dict[str, UnitLike]
@@ -39,42 +40,31 @@ def register_units(
         raise ValueError(f"Field {field_name} was already registered with units!")
 
     registered_fields[field_name] = unit
-    __KNOWN_UNITFUL_MODELS__[model] = (convention, registered_fields)
+    __KNOWN_UNITFUL_MODELS__[model] = (convention, registered_fields, is_comoving)
 
 
 def __get_unit_transformations(
-    model: BaseModel, cosmology, convention: str = "scalefree"
-) -> t.TransformationDict:
-    transformations: t.TransformationDict = {}
+    model: BaseModel, cosmology, convention: UnitConvention = UnitConvention.SCALEFREE
+) -> dict:
     if (us := __KNOWN_UNITFUL_MODELS__.get(type(model))) is None:
         return {}
-
-    base_convention, known_units = us
-
-    column_transformations: list[ColumnTransformation] = []
-    for name, unit in known_units.items():
-        column_transformations.append(apply_unit(name, unit))
-
-    transformations[TransformationType.COLUMN] = column_transformations
-
-    transformations = get_unit_transition_transformations(
-        base_convention, convention, transformations, cosmology
+    base_convention, known_units, is_comoving = us
+    applicators = get_unit_applicators_dict(
+        known_units, base_convention, cosmology, is_comoving
     )
-    return transformations
+    return applicators
 
 
 def apply_units(
-    model: BaseModel, cosmology: Optional[Cosmology], convention: str = "scalefree"
+    model: BaseModel,
+    cosmology: Cosmology,
+    convention: UnitConvention = UnitConvention.SCALEFREE,
+    unit_kwargs: dict[str, Any] = {},
 ):
-    transformations = __get_unit_transformations(model, cosmology, convention)
+    applicators = __get_unit_transformations(model, cosmology, convention)
     parameters = model.model_dump()
-    column_transformations = transformations.get(TransformationType.COLUMN, [])
-    all_column_transformations = transformations.get(TransformationType.ALL_COLUMNS, [])
-    for trans in column_transformations:
-        assert hasattr(trans, "column_name")
-        value = trans(parameters[trans.column_name])
-
-        for trans_ in all_column_transformations:
-            value = trans_(value)
-        parameters[trans.column_name] = value
+    for name, applicator in applicators.items():
+        parameters[name] = applicator.apply(
+            parameters[name], convention, unit_kwargs=unit_kwargs
+        )
     return parameters

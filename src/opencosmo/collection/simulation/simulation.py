@@ -1,18 +1,23 @@
-from typing import Callable, Iterable, Mapping, Optional, Self
+from __future__ import annotations
 
-import h5py
-from astropy.cosmology import Cosmology  # type: ignore
+from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Self
 
 from opencosmo.collection import structure as sc
-from opencosmo.collection.protocols import Collection
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.column import ColumnMask
-from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import io
-from opencosmo.io.protocols import DataSchema
-from opencosmo.io.schemas import SimCollectionSchema
-from opencosmo.parameters import HaccSimulationParameters
-from opencosmo.spatial.protocols import Region
+from opencosmo.io.schema import FileEntry, make_schema
+
+if TYPE_CHECKING:
+    import astropy.units as u
+    import h5py
+    from astropy.cosmology import Cosmology
+
+    from opencosmo.collection.protocols import Collection
+    from opencosmo.column.column import ColumnMask
+    from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.schema import Schema
+    from opencosmo.parameters import HaccSimulationParameters
+    from opencosmo.spatial.protocols import Region
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
@@ -74,13 +79,12 @@ class SimulationCollection(dict):
             return next(iter(datasets.values()))
         return cls(datasets)
 
-    def make_schema(self) -> DataSchema:
-        schema = SimCollectionSchema()
-        for name, dataset in self.items():
-            ds_schema = dataset.make_schema()
-            schema.add_child(ds_schema, name)
+    def make_schema(self) -> Schema:
+        children = {}
 
-        return schema
+        for name, dataset in self.items():
+            children[name] = dataset.make_schema()
+        return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
 
     def __map(
         self,
@@ -186,8 +190,8 @@ class SimulationCollection(dict):
 
         Returns
         -------
-        dataset: opencosmo.Dataset
-            The portion of the dataset inside the selected region
+        dataset: opencosmo.SimulationCollection
+            The portion of each dataset inside the selected region
 
         """
         return self.__map("bound", region, select_by)
@@ -229,6 +233,11 @@ class SimulationCollection(dict):
         kwargs:
             The keyword arguments to pass to the select method.
             This is usually a dictionary of column names to select.
+
+        Returns
+        -------
+        SimulationCollection
+            A new collection with only the specified columns
 
         """
         return self.__map("select", *args, **kwargs)
@@ -275,8 +284,37 @@ class SimulationCollection(dict):
             )
         return self.__map("take", n, at)
 
+    def take_range(self, start: int, end: int):
+        """
+        Take a range of rows from all datasets or collections in this collection.
+        This method will fail if :code:`start` < 0, or any of the datasets are not at least
+        :code:`end` long.
+
+        Parameters
+        ----------
+        n: int
+            The number of rows to take
+        at: str, default = "random"
+            The method to use to take rows. Must be one of "start", "end", "random".
+
+        Returns
+        -------
+        SimulationCollection
+            The new simulation collection with only the specified rows.
+
+        """
+        if start < 0 or any(len(ds) < end for ds in self.values()):
+            raise ValueError(
+                "The range must be between zero and the length of the shortest dataset"
+            )
+        return self.__map("take_range", start, end)
+
     def with_new_columns(
-        self, *args, datasets: Optional[str | Iterable[str]] = None, **kwargs
+        self,
+        *args,
+        datasets: Optional[str | Iterable[str]] = None,
+        descriptions: str | dict[str, str] = {},
+        **kwargs,
     ):
         """
         Update the datasets within this collection with a set of new columns.
@@ -294,6 +332,11 @@ class SimulationCollection(dict):
         datasets: str | list[str], optional
             The datasets to add the columns to.
 
+        descriptions : str | dict[str, str], optional
+            A description for the new columns. These descriptions will be accessible through
+            :py:attr:`SimulationCollection(datasets).descriptions <opencosmo.SimulationCollection.descriptions>`.
+            If a dictionary, should have keys matching the column names.
+
         ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
             The new columns
         """
@@ -305,10 +348,14 @@ class SimulationCollection(dict):
 
             output = {name: ds for name, ds in self.items()}
             for ds_name in datasets:
-                output[ds_name] = output[ds_name].with_new_columns(*args, **kwargs)
+                output[ds_name] = output[ds_name].with_new_columns(
+                    *args, descriptions=descriptions, **kwargs
+                )
             return SimulationCollection(output)
 
-        return self.__map("with_new_columns", *args, **kwargs)
+        return self.__map(
+            "with_new_columns", *args, descriptions=descriptions, **kwargs
+        )
 
     def evaluate(
         self,
@@ -338,13 +385,19 @@ class SimulationCollection(dict):
             The datasets to evaluate on. If not provided, will be evaluated on all datasets
         format: str, default = "astropy"
             The format of the data that is provided to your function. If "astropy", will be a dictionary of
-            astropy quantities. If "numpy", will be a dictionary of numpy arrays.
+            astropy quantities. If "numpy", will be a dictionary of numpy arrays. Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
         vectorize: bool, default = False
             Whether to vectorize the computation. See :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.Evaluate>`
             and/or :py:meth:`Dataset.evaluate <opencosmo.Dataset.Evaluate>` for more details.
         insert: bool, default = True
             Whether or not to insert the results as columns in the datasets. If false, the results will
             be returned directly. If true, this method will return a new Simulation Collection.
+
+        Returns
+        -------
+        results: SimulationCollection | dict[str, np.ndarray] | dict[str, astropy.units.Quantity]
+            The results of the computation, or a new simulation collection with the results inserted.
         """
         if datasets is None:
             datasets = list(self.keys())
@@ -389,10 +442,16 @@ class SimulationCollection(dict):
         """
         return self.__map("sort_by", column=column, invert=invert)
 
-    def with_units(self, convention: str) -> Self:
+    def with_units(
+        self,
+        convention: Optional[str] = None,
+        conversions: dict[u.Unit, u.Unit] = {},
+        **columns: u.Unit,
+    ) -> Self:
         """
-        Transform all datasets or collections to use the given unit convention. This
-        method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
+        Transform all datasets or collections to use the given unit convention, convert
+        all columns with a given unit into a different unit, and/or convert specific column(s)
+        to a compatible unit. This method behaves exactly like :meth:`opencosmo.Dataset.with_units`.
 
         Parameters
         ----------
@@ -400,5 +459,19 @@ class SimulationCollection(dict):
             The unit convention to use. One of "unitless",
             "scalefree", "comoving", or "physical".
 
+        conversions: dict[astropy.units.Unit, astropy.units.Unit]
+            Conversions that apply to all columns in the collection with the
+            unit given by the key.
+
+        **column_conversions: astropy.units.Unit
+            Custom unit conversions for any column with a specific
+            name in the datasets in this collection.
+
+        Returns
+        -------
+        collection
+            A new simulation collection with the requested unit conventions and conversions.
+
+
         """
-        return self.__map("with_units", convention)
+        return self.__map("with_units", convention, conversions=conversions, **columns)

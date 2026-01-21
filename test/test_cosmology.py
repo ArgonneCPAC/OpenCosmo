@@ -1,10 +1,15 @@
-from pathlib import Path
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import astropy.cosmology as ac
 import h5py
 import pytest
 
 from opencosmo.cosmology import read_cosmology
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

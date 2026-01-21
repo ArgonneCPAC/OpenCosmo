@@ -1,12 +1,16 @@
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
 from warnings import warn
 
-import h5py
-from mpi4py import MPI
-
-from opencosmo.index import ChunkedIndex
+from opencosmo.index.build import single_chunk
 from opencosmo.spatial.protocols import TreePartition
-from opencosmo.spatial.tree import Tree
+
+if TYPE_CHECKING:
+    import h5py
+    from mpi4py import MPI
+
+    from opencosmo.spatial.tree import Tree
 
 
 def partition(
@@ -34,13 +38,13 @@ def partition(
     if rank == nranks - 1:
         start = rank * (length // nranks)
         size = length - start
-        index = ChunkedIndex.single_chunk(start, size)
+        index = single_chunk(start, size)
 
     else:
         start = rank * (length // nranks)
         end = (rank + 1) * (length // nranks)
         size = end - start
 
-        index = ChunkedIndex.single_chunk(start, size)
+        index = single_chunk(start, size)
 
     return TreePartition(index, None, None)

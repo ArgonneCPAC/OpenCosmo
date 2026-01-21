@@ -1,15 +1,17 @@
 from .collection import (
+    HealpixMap,
     Lightcone,
     SimulationCollection,
     StructureCollection,
-    open_linked_files,
 )
-from .dataset import Dataset, col
-from .io import open, read, write
+from .column import col
+from .dataset import Dataset
+from .io import open, write
 from .spatial import make_box, make_cone
 
+__version__ = "1.0.0"
+
 __all__ = [
-    "read",
     "write",
     "col",
     "open",
@@ -17,7 +19,8 @@ __all__ = [
     "StructureCollection",
     "SimulationCollection",
     "Lightcone",
-    "open_linked_files",
+    "HealpixMap",
     "make_box",
     "make_cone",
+    "__version__",
 ]

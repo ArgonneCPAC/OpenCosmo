@@ -48,6 +48,3 @@ def __load_spec(path: Path) -> tuple[str, dict]:
         raise ValueError
 
     return data["name"], data
-
-
-__all__ = ["specs"]

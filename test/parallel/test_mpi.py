@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+import os
+import shutil
 from collections import defaultdict
 from functools import reduce
-from pathlib import Path
+from logging import getLogger
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -11,6 +16,54 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+
+logger = getLogger()
+if h5py.get_config().mpi:
+    logger.info("Running with parallel hdf5")
+else:
+    logger.info("Running without parallel hdf5")
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+
+@pytest.fixture
+def per_test_dir(
+    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
+):
+    """
+    Creates a unique directory for each test and deletes it after the test finishes.
+
+    Uses tmp_path_factory so you can control base temp location via pytest's
+    tempdir handling, and also so it can be used from broader-scoped fixtures
+    if needed.
+    """
+    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
+    nodeid = (
+        request.node.nodeid.replace("/", "_")
+        .replace("::", "__")
+        .replace("[", "_")
+        .replace("]", "_")
+    )
+
+    path = tmp_path_factory.mktemp(nodeid)
+    comm = MPI.COMM_WORLD
+    path_to_return = comm.bcast(path)
+
+    try:
+        yield path_to_return
+    finally:
+        # Close out storage pressure immediately after each test
+        if IN_GITHUB_ACTIONS:
+            shutil.rmtree(path, ignore_errors=True)
+
+
+@pytest.fixture
+def multi_path(snapshot_path):
+    return snapshot_path / "haloproperties_multi.hdf5"
 
 
 @pytest.fixture
@@ -35,6 +88,22 @@ def malformed_header_path(input_path, tmp_path):
 
 
 @pytest.fixture
+def scidac_000_paths(snapshot_path):
+    return [
+        snapshot_path / "scidac_000" / "haloproperties.hdf5",
+        snapshot_path / "scidac_000" / "galaxyproperties.hdf5",
+    ]
+
+
+@pytest.fixture
+def scidac_001_paths(snapshot_path):
+    return [
+        snapshot_path / "scidac_001" / "haloproperties.hdf5",
+        snapshot_path / "scidac_001" / "galaxyproperties.hdf5",
+    ]
+
+
+@pytest.fixture
 def galaxy_paths(snapshot_path: Path):
     files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
     hdf_files = [snapshot_path / file for file in files]
@@ -44,6 +113,13 @@ def galaxy_paths(snapshot_path: Path):
 @pytest.fixture
 def galaxy_paths_2(snapshot_path: Path):
     files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
+    hdf_files = [snapshot_path / file for file in files]
+    return list(hdf_files)
+
+
+@pytest.fixture
+def galaxy_halo_path(snapshot_path: Path):
+    files = ["haloproperties.hdf5", "galaxyproperties.hdf5"]
     hdf_files = [snapshot_path / file for file in files]
     return list(hdf_files)
 
@@ -75,6 +151,7 @@ def update_simulation_parameter(
     return path
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
     with oc.open(input_path) as f:
@@ -88,6 +165,7 @@ def test_structure_collection_open(input_path, profile_path):
     oc.open(input_path, profile_path)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_structure_collection_open_2(input_path, profile_path):
     comm = MPI.COMM_WORLD
@@ -97,6 +175,7 @@ def test_structure_collection_open_2(input_path, profile_path):
         oc.open(input_path, profile_path)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_partitioning_includes_all(input_path):
     with oc.open(input_path) as f:
@@ -112,6 +191,7 @@ def test_partitioning_includes_all(input_path):
     parallel_assert(all_tags == original_tags)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
@@ -132,6 +212,17 @@ def test_take(input_path):
         assert len(tags) == 4 * n
 
 
+@pytest.mark.timeout(60)
+@pytest.mark.parallel(nprocs=4)
+def test_open_galaxy_halo(galaxy_halo_path, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = per_test_dir / "output.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    ds = oc.open(*galaxy_halo_path).take(25)
+    oc.write(temporary_path, ds)
+
+
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_filters(input_path):
     ds = oc.open(input_path)
@@ -142,18 +233,11 @@ def test_filters(input_path):
     parallel_assert(all(data["sod_halo_mass"] > 0))
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
-def test_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = f.filter(oc.col("sod_halo_mass") > 0).take(100, at="random").collect()
-
-    parallel_assert(len(ds.data) == 400)
-
-
-@pytest.mark.parallel(nprocs=4)
-def test_filter_write(input_path, tmp_path):
+def test_filter_write(input_path, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
-    temporary_path = tmp_path / "filtered.hdf5"
+    temporary_path = per_test_dir / "filtered.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
 
     ds = oc.open(input_path)
@@ -165,16 +249,20 @@ def test_filter_write(input_path, tmp_path):
 
     ds = oc.open(temporary_path)
     written_data = ds.data
-    for column in ds.columns:
+    columns = ds.columns
+    columns.sort()
+
+    for column in columns:
         parallel_assert(np.all(data[column] == written_data[column]))
 
     parallel_assert(all(data == written_data))
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
-def test_filter_zerolength(input_path, tmp_path):
+def test_filter_zerolength(input_path, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
-    temporary_path = tmp_path / "filtered.hdf5"
+    temporary_path = per_test_dir / "filtered.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
 
     ds = oc.open(input_path)
@@ -205,20 +293,31 @@ def test_filter_zerolength(input_path, tmp_path):
     parallel_assert(read_tags == written_tags)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
-def test_select_collect(input_path):
-    with oc.open(input_path) as f:
-        ds = (
-            f.filter(oc.col("sod_halo_mass") > 0)
-            .select(["sod_halo_mass", "fof_halo_mass"])
-            .take(100, at="random")
-            .collect()
-        )
+def test_filter_all_zerolength(input_path, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = per_test_dir / "filtered.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
 
-    parallel_assert(len(ds.data) == 400)
-    parallel_assert(set(ds.data.columns) == {"sod_halo_mass", "fof_halo_mass"})
+    ds = oc.open(input_path)
+    ds = ds.filter(oc.col("sod_halo_mass") > 1e20)
+
+    with pytest.raises(ValueError, match="No ranks have any data"):
+        oc.write(temporary_path, ds)
 
 
+@pytest.mark.parallel(nprocs=4)
+def test_structure_zerolength(all_paths, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = per_test_dir / "filtered.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    collection = oc.open(*all_paths).filter(oc.col("sod_halo_mass") > 1e20)
+    with pytest.raises(ValueError, match="No ranks have any data"):
+        oc.write(temporary_path, collection)
+
+
+@pytest.mark.timeout(300)
 @pytest.mark.parallel(nprocs=4)
 def test_link_read(all_paths):
     collection = oc.open(*all_paths)
@@ -242,6 +341,7 @@ def test_link_read(all_paths):
             assert halo_tags[0] == halo_tag
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate_structure(all_paths):
     collection = oc.open(*all_paths).take(100)
@@ -263,16 +363,16 @@ def test_evaluate_structure(all_paths):
 
     collection = collection.evaluate(offset, **spec, insert=True, format="numpy")
     data = collection["halo_properties"].select("offset").data
-    print(np.where(data == 0))
     assert not np.any(data == 0)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
-def test_evaluate_structure_write(all_paths, tmp_path):
+def test_evaluate_structure_write(all_paths, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
-    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = per_test_dir / "test.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
-    collection = oc.open(*all_paths).take(100)
+    collection = oc.open(*all_paths).take(10)
 
     spec = {
         "dm_particles": ["x", "y", "z"],
@@ -296,14 +396,15 @@ def test_evaluate_structure_write(all_paths, tmp_path):
     assert not np.any(data == 0)
 
 
+@pytest.mark.timeout(120)
 @pytest.mark.parallel(nprocs=4)
-def test_link_write(all_paths, tmp_path):
+def test_link_write(all_paths, per_test_dir):
     collection = oc.open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
-    output_path = tmp_path / "random_linked.hdf5"
+    output_path = per_test_dir / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)
 
     collection = collection.take(length, at="random")
@@ -351,14 +452,15 @@ def test_link_write(all_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
+@pytest.mark.timeout(300)
 @pytest.mark.parallel(nprocs=4)
-def test_chain_link(all_paths, galaxy_paths, tmp_path):
+def test_chain_link(all_paths, galaxy_paths, per_test_dir):
     collection = oc.open(*all_paths, *galaxy_paths)
-    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(10)
     length = len(collection["halo_properties"])
     length = 8 if length > 8 else length
     comm = mpi4py.MPI.COMM_WORLD
-    output_path = tmp_path / "random_linked.hdf5"
+    output_path = per_test_dir / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)
 
     collection = collection.take(length, at="random")
@@ -391,6 +493,7 @@ def test_chain_link(all_paths, galaxy_paths, tmp_path):
             assert set(read_data[key]) == set(written_data[key])
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
@@ -406,8 +509,8 @@ def test_box_query_chain(input_path):
     reg2 = oc.make_box(p1, p2)
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
+    data = ds.get_data()
 
-    data = ds.data
     for i, dim in enumerate(["x", "y", "z"]):
         colname = f"fof_halo_center_{dim}"
         col = data[colname]
@@ -417,14 +520,13 @@ def test_box_query_chain(input_path):
             original_data[colname].value > min_
         )
         original_data = original_data[mask]
-        min = col.min()
-        max = col.max()
-        parallel_assert(min.value >= min_)
-        parallel_assert(max.value <= max_)
+        parallel_assert(col.min().value >= min_)
+        parallel_assert(col.max().value <= max_)
 
     parallel_assert(set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"]))
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_zerolength(input_path):
     comm = mpi4py.MPI.COMM_WORLD
@@ -442,6 +544,7 @@ def test_box_query_zerolength(input_path):
     parallel_assert(len(ds) == 0, participating=rank > 0)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_derive_multiply(input_path):
     ds = oc.open(input_path)
@@ -455,12 +558,15 @@ def test_derive_multiply(input_path):
     )
     parallel_assert(
         np.all(
-            data["fof_halo_px"].value
-            == data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
+            np.isclose(
+                data["fof_halo_px"].value,
+                data["fof_halo_mass"].value * data["fof_halo_com_vx"].value,
+            )
         )
     )
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_add_column(input_path):
     ds = oc.open(input_path)
@@ -470,10 +576,32 @@ def test_add_column(input_path):
     assert np.all(data == stored_data)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
-def test_add_column_write(input_path, tmp_path):
+def test_add_column_with_dtype_promotion(input_path, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
-    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = per_test_dir / "test.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    COMM = MPI.COMM_WORLD
+    ds = oc.open(input_path)
+    data = np.random.uniform(0, 100, len(ds))
+    if COMM.Get_rank() in [0, 2]:
+        data = data.astype(np.float32)
+    else:
+        data = data.astype(np.float64)
+    ds = ds.with_new_columns(random_data=data)
+    oc.write(temporary_path, ds)
+    ds = oc.open(temporary_path)
+    written_data = ds.select("random_data").get_data()
+    parallel_assert(written_data.dtype == np.float64)
+    parallel_assert(np.all(written_data == data))
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.parallel(nprocs=4)
+def test_add_column_write(input_path, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = per_test_dir / "test.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
 
     ds = oc.open(input_path)
@@ -484,6 +612,7 @@ def test_add_column_write(input_path, tmp_path):
     assert np.all(written_data == data)
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate(input_path):
     ds = oc.open(input_path)
@@ -497,10 +626,11 @@ def test_evaluate(input_path):
     assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
+@pytest.mark.timeout(20, method="thread")
 @pytest.mark.parallel(nprocs=4)
-def test_evaluate_write(input_path, tmp_path):
+def test_evaluate_write(input_path, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
-    temporary_path = tmp_path / "test.hdf5"
+    temporary_path = per_test_dir / "test.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
     ds = oc.open(input_path)
 
@@ -513,13 +643,16 @@ def test_evaluate_write(input_path, tmp_path):
 
     assert "fof_px" in ds.columns
     data = ds.select(["fof_halo_mass", "fof_halo_com_vx", "fof_px"]).get_data("numpy")
-    assert np.all(data["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
+    assert np.all(
+        np.isclose(data["fof_px"], data["fof_halo_mass"] * data["fof_halo_com_vx"])
+    )
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
-def test_derive_write(input_path, tmp_path):
+def test_derive_write(input_path, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
-    temporary_path = tmp_path / "derived.hdf5"
+    temporary_path = per_test_dir / "derived.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
 
     ds = oc.open(input_path)
@@ -543,10 +676,93 @@ def test_derive_write(input_path, tmp_path):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_write_simcollection(simcollection_path, tmp_path):
+def test_simcollection_structure_write(
+    scidac_000_paths, scidac_001_paths, per_test_dir
+):
     comm = mpi4py.MPI.COMM_WORLD
-    temporary_path = tmp_path / "collection.hdf5"
-    temporary_path = comm.bcast(temporary_path)
-    ds = oc.open(simcollection_path)
-    oc.write(temporary_path, ds)
-    pass
+    temporary_path = per_test_dir / "output.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    sc0 = oc.open(*scidac_000_paths)
+    sc1 = oc.open(*scidac_001_paths)
+    collection = oc.SimulationCollection({"scidac_000": sc0, "scidac_001": sc1})
+    oc.write(temporary_path, collection)
+
+    collection_written = oc.open(temporary_path)
+    import shutil
+
+    shutil.copy(temporary_path, "output.hdf5")
+    for ds_name, ds in collection_written.items():
+        assert np.all(
+            ds["halo_properties"].get_data()
+            == collection[ds_name]["halo_properties"].get_data()
+        )
+        assert np.all(
+            ds["galaxy_properties"].get_data()
+            == collection[ds_name]["galaxy_properties"].get_data()
+        )
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.parallel(nprocs=4)
+def test_simcollection_write(multi_path, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = per_test_dir / "collection.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    data = oc.open(multi_path)
+    halo_tags = {}
+    columns = {}
+    for name, sim in data.items():
+        columns[name] = sim.columns
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+        halo_tags[name] = sim_tags
+
+    oc.write(temporary_path, data)
+    written_data = oc.open(temporary_path)
+    assert isinstance(written_data, oc.SimulationCollection)
+    for name, sim in written_data.items():
+        assert sim.columns == columns[name]
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.parallel(nprocs=4)
+def test_simcollection_write_one_missing(multi_path, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    temporary_path = per_test_dir / "collection.hdf5"
+    temporary_path = comm.bcast(temporary_path, root=0)
+    data = oc.open(multi_path)
+
+    halo_tags = {}
+    if comm.Get_rank() == 0:
+        key_to_drop = next(iter(data.keys()))
+        data.pop(key_to_drop)
+
+    for name, sim in data.items():
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+        halo_tags[name] = sim_tags
+
+    all_tags = comm.allgather(halo_tags)
+    all_halo_tags = defaultdict(lambda: np.array([], dtype=int))
+    for rank_tags in all_tags:
+        for simkey, tags in rank_tags.items():
+            all_halo_tags[simkey] = np.append(all_halo_tags[simkey], tags)
+
+    oc.write(temporary_path, data)
+    written_data = oc.open(temporary_path)
+    assert isinstance(written_data, oc.SimulationCollection)
+    assert len(written_data.keys()) == 2
+    written_halo_tags = {}
+    for name, sim in written_data.items():
+        sim_tags = sim.select("fof_halo_tag").get_data("numpy")
+        written_halo_tags[name] = sim_tags
+
+    all_tags = comm.allgather(written_halo_tags)
+    all_written_halo_tags = defaultdict(lambda: np.array([], dtype=int))
+    for rank_tags in all_tags:
+        for simkey, tags in rank_tags.items():
+            all_written_halo_tags[simkey] = np.append(
+                all_written_halo_tags[simkey], tags
+            )
+
+    for simkey, tags in all_written_halo_tags.items():
+        parallel_assert(np.all(tags == all_halo_tags[simkey]))

@@ -1,50 +1,31 @@
-from typing import Iterable
+from __future__ import annotations
 
-import astropy.units as u  # type: ignore
+from typing import TYPE_CHECKING, Optional
+
+import astropy.units as u
 import numpy as np
-from numpy.typing import NDArray
 
-from opencosmo.index import DataIndex
+if TYPE_CHECKING:
+    from opencosmo.units.handler import UnitHandler
 
 
-class InMemoryColumnHandler:
-    def __init__(
-        self,
-        columns: dict[str, NDArray | u.Quantity],
-        index: DataIndex,
-    ):
-        self.__index = index
-        self.__columns = columns
+def resort(columns: dict[str, np.ndarray], sorted_index: Optional[np.ndarray]):
+    if sorted_index is None or not columns:
+        return columns
+    reverse_sort = np.argsort(sorted_index)
+    return {name: data[reverse_sort] for name, data in columns.items()}
 
-    @classmethod
-    def empty(cls, index: DataIndex):
-        return InMemoryColumnHandler({}, index)
 
-    def with_columns(self, columns: Iterable[str]):
-        new_columns = {
-            key: self.__columns[key] for key in columns if key in self.__columns
-        }
-        return InMemoryColumnHandler(new_columns, self.__index)
+def validate_in_memory_columns(
+    columns: dict[str, np.ndarray], unit_handler: UnitHandler, ds_length: int
+):
+    new_units = {}
+    for colname, column in columns.items():
+        if len(column) != ds_length:
+            raise ValueError(f"Column {colname} is not the same length as the dataset!")
+        if isinstance(column, u.Quantity):
+            new_units[colname] = column.unit
+        else:
+            new_units[colname] = None
 
-    def keys(self):
-        return self.__columns.keys()
-
-    def with_new_column(self, name: str, column: np.ndarray | u.Quantity):
-        if len(column) != len(self.__index):
-            raise ValueError("Tried to add an in-memory column with the wrong length!")
-        new_columns = {**self.__columns, name: column}
-        return InMemoryColumnHandler(new_columns, self.__index)
-
-    def project(self, index: DataIndex):
-        if len(self.__columns) == 0:
-            return InMemoryColumnHandler.empty(index)
-        index_into_columns = self.__index.projection(index)
-
-        new_columns = {
-            name: index_into_columns.get_data(col)
-            for name, col in self.__columns.items()
-        }
-        return InMemoryColumnHandler(new_columns, index)
-
-    def columns(self):
-        yield from self.__columns.items()
+    return unit_handler.with_static_columns(**new_units)

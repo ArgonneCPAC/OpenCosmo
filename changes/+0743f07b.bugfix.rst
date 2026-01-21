@@ -1,1 +1,0 @@
-Fix a bug that could cause writes to fail for a large SimulationCollection

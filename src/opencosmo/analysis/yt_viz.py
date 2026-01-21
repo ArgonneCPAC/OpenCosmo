@@ -1,21 +1,27 @@
-from typing import Any, Dict, Optional, Tuple
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import numpy as np
 import yt  # type: ignore
 from matplotlib.colors import LogNorm  # type: ignore
-from matplotlib.figure import Figure  # type: ignore
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar  # type: ignore
 from unyt import unyt_quantity  # type: ignore
 from yt.visualization.base_plot_types import get_multi_plot  # type: ignore
-from yt.visualization.plot_window import NormalPlot, PlotWindow  # type: ignore
 
 import opencosmo as oc
 from opencosmo.analysis import create_yt_dataset
 
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+    from yt.visualization.plot_window import NormalPlot
+
 # ruff: noqa: E501
 
 
-def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
+def ParticleProjectionPlot(
+    *args, **kwargs
+) -> yt.AxisAlignedProjectionPlot | yt.OffAxisProjectionPlot:
     """
     Wrapper for `yt.ParticleProjectionPlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.ParticleProjectionPlot>`_.
 
@@ -33,7 +39,8 @@ def ParticleProjectionPlot(*args, **kwargs) -> NormalPlot:
     yt.visualization.plot_window.ParticleProjectionPlot
         A ParticleProjectionPlot object containing the particle projection plot.
     """
-    return yt.ParticleProjectionPlot(*args, **kwargs)
+    # mypy gets this wrong. ParticleProjectionPlot is basically a factory class
+    return yt.ParticleProjectionPlot(*args, **kwargs)  # type: ignore
 
 
 def ProjectionPlot(*args, **kwargs) -> NormalPlot:
@@ -58,7 +65,7 @@ def ProjectionPlot(*args, **kwargs) -> NormalPlot:
     return yt.ProjectionPlot(*args, **kwargs)
 
 
-def SlicePlot(*args, **kwargs) -> PlotWindow:
+def SlicePlot(*args, **kwargs) -> NormalPlot:
     """
     Wrapper for `yt.SlicePlot <https://yt-project.org/doc/reference/api/yt.visualization.plot_window.html#yt.visualization.plot_window.SlicePlot>`_.
 
@@ -80,7 +87,7 @@ def SlicePlot(*args, **kwargs) -> PlotWindow:
     return yt.SlicePlot(*args, **kwargs)
 
 
-def ProfilePlot(*args, **kwargs) -> PlotWindow:
+def ProfilePlot(*args, **kwargs) -> yt.ProfilePlot:
     """
     Wrapper for `yt.ProfilePlot <https://yt-project.org/doc/reference/api/yt.visualization.particle_plots.html#yt.visualization.particle_plots.ParticleProjectionPlot>`_.
 
@@ -102,7 +109,7 @@ def ProfilePlot(*args, **kwargs) -> PlotWindow:
     return yt.ProfilePlot(*args, **kwargs)
 
 
-def PhasePlot(*args, **kwargs) -> PlotWindow:
+def PhasePlot(*args, **kwargs) -> yt.PhasePlot:
     """
     Wrapper for `yt.PhasePlot <https://yt-project.org/doc/reference/api/yt.visualization.profile_plotter.html#yt.visualization.profile_plotter.PhasePlot>`_.
 

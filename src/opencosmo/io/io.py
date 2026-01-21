@@ -1,33 +1,39 @@
 from __future__ import annotations
 
 from enum import Enum
-from functools import reduce
-from pathlib import Path
-from types import ModuleType
-from typing import Callable, Iterable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 import h5py
-from deprecated import deprecated  # type: ignore
 
 import opencosmo as oc
 from opencosmo import collection
 from opencosmo.dataset import state as dss
-from opencosmo.dataset.handler import DatasetHandler
-from opencosmo.dataset.im import InMemoryColumnHandler
-from opencosmo.file import FileExistance, file_reader, resolve_path
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.index import ChunkedIndex
+from opencosmo.dataset.handler import Hdf5Handler
+from opencosmo.file import FileExistance, resolve_path
+from opencosmo.index.build import empty, from_range
+from opencosmo.io.file import (
+    evaluate_load_conditions,
+    get_file_type,
+    make_all_targets,
+)
+from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion
-from opencosmo.spatial.tree import open_tree, read_tree
-from opencosmo.transformations import units as u
+from opencosmo.spatial.tree import open_tree
+from opencosmo.units import UnitConvention
 
-from .protocols import Writeable
-from .schemas import FileSchema
+if TYPE_CHECKING:
+    from pathlib import Path
+    from types import ModuleType
 
-mpiio: Optional[ModuleType]
-partition: Optional[Callable]
+    from opencosmo.index import ChunkedIndex
+    from opencosmo.io.file import OpenTarget
+
+    from .protocols import Writeable
+
+    mpiio: Optional[ModuleType]
+    partition: Optional[Callable]
 
 if get_comm_world() is not None:
     from opencosmo.dataset.mpi import partition
@@ -36,129 +42,30 @@ else:
     mpiio = None
     partition = None
 
-"""
-This module defines the main user-facing io functions: open and write
+    """
+    This module defines the main user-facing io functions: open and write
 
-open can take any number of file paths, and will always construct a single object 
-(either a dataset or a collection).
+    open can take any number of file paths, and will always construct a single object 
+    (either a dataset or a collection).
 
-write takes exactly one path and exactly one opencosmo dataset or collection
+    write takes exactly one path and exactly one opencosmo dataset or collection
 
-open works in the following way:
+    open works in the following way:
 
-1. Read headers and get dataset names and types for all files passed
-2. If there is only a single dataset, simply open it as such
-3. If there are multiple datasets, user the headers to determine
-   if the dataset are compatible (i.e. capabale of existing together in
-   a collection)
-4. Open all datasets individually
-5. Call the merge functionality for the appropriate collection.
-"""
-
-
-class FILE_TYPE(Enum):
-    HALO_PROPERTIES = 0
-    HALO_PARTICLES = 1
-    GALAXY_PROPERTIES = 2
-    GALAXY_PARTICLES = 3
-    SOD_BINS = 4
-    LIGHTCONE = 5
-    STRUCTURE_COLLECTION = 6
-    SIMULATION_COLLECTION = 7
-    SYNTHETIC_CATALOG = 8
+    1. Read headers and get dataset names and types for all files passed
+    2. If there is only a single dataset, simply open it as such
+    3. If there are multiple datasets, user the headers to determine
+       if the dataset are compatible (i.e. capabale of existing together in
+       a collection)
+    4. Open all datasets individually
+    5. Call the merge functionality for the appropriate collection.
+    """
 
 
 class COLLECTION_TYPE(Enum):
     LIGHTCONE = 0
     STRUCTURE_COLLECTION = 1
     SIMULATION_COLLECTION = 2
-
-
-class OpenTarget:
-    def __init__(self, group: h5py.Group | h5py.File, header: OpenCosmoHeader):
-        self.group = group
-        self.header = header
-
-    @property
-    def data_type(self):
-        return self.header.file.data_type
-
-
-def get_file_type(file: h5py.File) -> FILE_TYPE:
-    if "header" in file.keys():
-        dtype = file["header"]["file"].attrs["data_type"]
-        if dtype == "halo_particles":
-            return FILE_TYPE.HALO_PARTICLES
-        elif dtype == "halo_profiles":
-            return FILE_TYPE.SOD_BINS
-        elif dtype == "halo_properties":
-            return FILE_TYPE.HALO_PROPERTIES
-        elif dtype == "galaxy_properties":
-            return FILE_TYPE.GALAXY_PROPERTIES
-        elif dtype == "galaxy_particles":
-            return FILE_TYPE.GALAXY_PARTICLES
-        elif dtype == "diffsky_fits":
-            return FILE_TYPE.SYNTHETIC_CATALOG
-        else:
-            raise ValueError(f"Unknown file type {dtype}")
-
-    if not all("header" in group.keys() for group in file.values()):
-        for subgroup in file.values():
-            if not all("header" in g.keys() for g in subgroup.values()):
-                raise ValueError(
-                    "Unknown file type. "
-                    "It appears to have multiple datasets, but organized incorrectly"
-                )
-    if all(group["header"]["file"].attrs["is_lightcone"] for group in file.values()):
-        return FILE_TYPE.LIGHTCONE
-    elif (
-        len(set(group["header"]["file"].attrs["data_type"] for group in file.values()))
-        == 1
-    ):
-        return FILE_TYPE.SIMULATION_COLLECTION
-
-    elif all("data" not in group.keys() for group in file.values()):
-        for group in file.values():
-            sub_groups = {
-                g["header"]["file"].attrs["data_type"]: g for g in group.values()
-            }
-            collection.structure.io.validate_linked_groups(sub_groups)
-        return FILE_TYPE.SIMULATION_COLLECTION
-    else:
-        group = {name: group for name, group in file.items()}
-        collection.structure.io.validate_linked_groups(group)
-        return FILE_TYPE.STRUCTURE_COLLECTION
-
-
-def make_all_targets(files: list[h5py.File]):
-    targets: list[OpenTarget] = reduce(
-        lambda targets, file: targets + make_file_targets(file), files, []
-    )
-    return targets
-
-
-def make_file_targets(file: h5py.File):
-    try:
-        header = read_header(file, unit_convention="comoving")
-    except KeyError:
-        header = None
-    if header is not None and "data" in file.keys():
-        return [OpenTarget(file, header)]
-    if header is None and "data" in file.keys():
-        raise ValueError(
-            "This file appears to be missing a header. "
-            "Are you sure it is an OpenCosmo file?"
-        )
-    if header is None:
-        headers = {name: read_header(group) for name, group in file.items()}
-    else:
-        headers = {name: header for name in file.keys() if name != "header"}
-
-    output = []
-    for name, header in headers.items():
-        target = OpenTarget(file[name], header)
-        output.append(target)
-    return output
 
 
 def open(
@@ -217,10 +124,22 @@ def open(
     else:
         file_list = list(files)
     file_list.sort()
-    handles = [h5py.File(f) for f in file_list]
-    file_types = list(map(get_file_type, handles))
-    targets = make_all_targets(handles)
+
+    try:
+        handles = [h5py.File(f) for f in file_list]
+    except TypeError:  # we have hdf5 groups
+        handles = file_list
+
+    try:
+        targets = make_all_targets(handles)
+    except KeyError:
+        if len(handles) != 1:
+            raise
+        datasets = {name: oc.open(group) for name, group in handles[0].items()}
+        return oc.SimulationCollection(datasets)
+
     targets = evaluate_load_conditions(targets, open_kwargs)
+    file_types = list(map(get_file_type, handles))
     if len(targets) > 1:
         collection_type = collection.get_collection_type(targets, file_types)
         return collection_type.open(targets, **open_kwargs)
@@ -231,7 +150,12 @@ def open(
     # For now the only way to open multiple files is with a StructureCollection
 
 
-def open_single_dataset(target: OpenTarget):
+def open_single_dataset(
+    target: OpenTarget,
+    metadata_group: Optional[str] = None,
+    bypass_lightcone: bool = False,
+    bypass_mpi: bool = False,
+):
     header = target.header
     handle = target.group
 
@@ -255,174 +179,63 @@ def open_single_dataset(target: OpenTarget):
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))
         sim_region = oc.make_box(p1, p2)
 
-    index: ChunkedIndex
-    handler = DatasetHandler(handle)
+    index: Optional[ChunkedIndex] = None
+    handler = Hdf5Handler.from_group(handle["data"])
 
-    if (comm := get_comm_world()) is not None:
+    if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
-        idx_data = handle["index"]
+        try:
+            idx_data = handle["index"]
+            part = partition(comm, len(handler), idx_data, tree)
+            if part is None:
+                index = empty()
+            else:
+                index = part.idx
+                sim_region = part.region if part.region is not None else sim_region
+        except KeyError:
+            n_ranks = comm.Get_size()
+            n_per = len(handler) // n_ranks
+            chunk_boundaries = [i * n_per for i in range(n_ranks + 1)]
+            chunk_boundaries[-1] = len(handler)
+            rank = comm.Get_rank()
+            index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
 
-        part = partition(comm, len(handler), idx_data, tree)
-        if part is None:
-            index = ChunkedIndex.empty()
-        else:
-            index = part.idx
-            sim_region = part.region if part.region is not None else sim_region
-    else:
-        index = ChunkedIndex.from_size(len(handler))
+    if metadata_group is not None:
+        metadata_group = handle[metadata_group]
 
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        handle, header
-    )
-    state = dss.DatasetState(
-        base_unit_transformations,
-        builders,
-        index,
-        u.UnitConvention.COMOVING,
-        sim_region,
+    elif "metadata" in handle.keys():
+        metadata_group = handle["metadata"]
+
+    state = dss.DatasetState.from_group(
+        handle,
         header,
-        InMemoryColumnHandler.empty(index),
+        UnitConvention.COMOVING,
+        sim_region,
+        index,
+        metadata_group,
     )
 
     dataset = oc.Dataset(
-        handler,
         header,
         state,
         tree=tree,
     )
-
-    if header.file.is_lightcone:
+    if header.file.data_type == "healpix_map":
+        return collection.HealpixMap(
+            {"data": dataset},
+            header.healpix_map["nside"],
+            header.healpix_map["nside_lr"],
+            header.healpix_map["ordering"],
+            header.healpix_map["full_sky"],
+            header.healpix_map["z_range"],
+        )
+    elif header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset
 
 
-pass
-
-
-def get_file_handles(*files: str | Path | h5py.File | h5py.Group):
-    handles = []
-    for file in files:
-        if not isinstance(file, h5py.File) and not isinstance(file, h5py.Group):
-            path = resolve_path(file, FileExistance.MUST_EXIST)
-            file_handle = h5py.File(path, "r")
-            handles.append(file_handle)
-            continue
-        handles.append(file)
-    return handles
-
-
-def evaluate_load_conditions(targets: list[OpenTarget], open_kwargs: dict[str, bool]):
-    """
-    Datasets can define conditional loading via an addition group called "load/if".
-    the "if" group can define parameters which must either be true or false for the
-    given group to be loaded. These parameters can then be provided by the user to the
-    "open" function. Parameters not specified by the user default to False.
-
-    Note that some open kwargs may be used in other places in the opening process,
-    and will just be ignored here.
-    """
-    if len(targets) == 1:
-        return targets
-    output = []
-    for target in targets:
-        try:
-            ifgroup = target.group["load/if"]
-        except KeyError:
-            output.append(target)
-            continue
-        load = True
-        for key, condition in ifgroup.attrs.items():
-            load = load and (open_kwargs.get(key, False) == condition)
-        if load:
-            output.append(target)
-    return output
-
-
-@deprecated(
-    version="0.7",
-    reason="oc.read is deprecated and will be removed in version 1.0. "
-    "Please use oc.open instead",
-)
-@file_reader
-def read(
-    file: h5py.File, datasets: Optional[str | Iterable[str]] = None
-) -> oc.Dataset | collection.Collection:
-    """
-    **WARNING: THIS METHOD IS DEPRECATED AND WILL BE REMOVED IN A FUTURE
-    VERSION. USE** :py:meth:`opencosmo.open`
-
-
-    Read a dataset from a file into memory.
-
-    You should use this function if the data are small enough that having
-    a copy of it (or a few copies of it) in memory is not a problem. For
-    larger datasets, use :py:func:`opencosmo.open`.
-
-    Note that some dataset types cannot be read, due to complexities with
-    how the data is handled. Using :py:func:`opencosmo.open` is recommended
-    for most use cases.
-
-    Parameters
-    ----------
-    file : str or pathlib.Path
-        The path to the file to read.
-    datasets : str or list[str], optional
-        If the file has multiple datasets, the name of the dataset(s) to read.
-        All other datasets will be ignored. If not provided, will read all
-        datasets
-
-    Returns
-    -------
-    dataset : oc.Dataset or oc.Collection
-        The dataset or collection read from the file.
-
-    """
-
-    if "data" not in file:
-        raise ValueError(
-            "oc.read can not be used to read files with multiple datasets. Use oc.open"
-        )
-    else:
-        group = file
-
-    if datasets is not None and not isinstance(datasets, str):
-        raise ValueError("Asked for multiple datasets, but file has only one")
-    header = read_header(file)
-    try:
-        tree = read_tree(file, header.simulation.box_size)
-    except ValueError:
-        tree = None
-    p1 = (0, 0, 0)
-    p2 = tuple(header.simulation.box_size for _ in range(3))
-    sim_box = oc.make_box(p1, p2)
-
-    path = file.filename
-    file = h5py.File(path, driver="core")
-
-    handler = DatasetHandler(file, group_name=datasets)
-    index = ChunkedIndex.from_size(len(handler))
-    builders, base_unit_transformations = u.get_default_unit_transformations(
-        group, header
-    )
-    state = dss.DatasetState(
-        base_unit_transformations,
-        builders,
-        index,
-        u.UnitConvention.COMOVING,
-        sim_box,
-        header,
-        InMemoryColumnHandler.empty(index),
-    )
-
-    ds = oc.Dataset(handler, header, state, tree)
-
-    if header.file.is_lightcone:
-        return collection.Lightcone({"data": ds})
-    return ds
-
-
-def write(path: Path, dataset: Writeable, overwrite=False) -> None:
+def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> None:
     """
     Write a dataset or collection to the file at the sepecified path.
 
@@ -450,16 +263,12 @@ def write(path: Path, dataset: Writeable, overwrite=False) -> None:
 
     path = resolve_path(path, existance_requirement)
 
-    schema = FileSchema()
-    dataset_schema = dataset.make_schema()
-    schema.add_child(dataset_schema, "root")
+    schema = dataset.make_schema(**schema_kwargs)
 
     if mpiio is not None:
         return mpiio.write_parallel(path, schema)
 
     file = h5py.File(path, "w")
-    schema.allocate(file)
-
-    writer = schema.into_writer()
-
-    writer.write(file)
+    allocate(file, schema)
+    write_metadata(file, schema)
+    write_columns(file, schema)

@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Optional
 
 import astropy.units as u  # type: ignore
+import healpy as hp
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
 
-from opencosmo.parameters import FileParameters
-
 if TYPE_CHECKING:
     from opencosmo.dataset.dataset import Dataset
+    from opencosmo.parameters import FileParameters
     from opencosmo.spatial.protocols import Region
 
 ALLOWED_COORDINATES_3D = {
@@ -33,26 +35,36 @@ def check_containment(
 
 
 def get_theta_phi_coordinates(dataset: "Dataset"):
-    coord_values = dataset.select(["theta", "phi"]).data
+    coord_values = dataset.select(["theta", "phi"]).get_data(unpack=False)
     ra = coord_values["phi"]
     dec = np.pi / 2 - coord_values["theta"]
 
     return SkyCoord(ra, dec, unit=u.rad)
 
 
+def get_theta_phi_coordinates_pixel(dataset: "Dataset"):
+    pixel_values = np.atleast_1d(dataset.get_metadata(["pixel"])["pixel"])
+    theta, phi = hp.pix2ang(
+        dataset.header.healpix_map["nside"], pixel_values, lonlat=False, nest=True
+    )
+    ra = phi
+    dec = np.pi / 2 - theta
+    return SkyCoord(ra, dec, unit=u.rad)
+
+
 def find_coordinates_2d(dataset: "Dataset"):
     columns = set(dataset.columns)
-    if len(columns.intersection(set(["theta", "phi"]))) == 2:
+    if dataset.header.file.data_type == "healpix_map":
+        return get_theta_phi_coordinates_pixel(dataset)
+    elif len(columns.intersection(set(["theta", "phi"]))) == 2:
         return get_theta_phi_coordinates(dataset)
     elif len(columns.intersection(set(["ra", "dec"]))) == 2:
-        data = dataset.select(["ra", "dec"]).data
+        data = dataset.select(["ra", "dec"]).get_data(unpack=False)
         return SkyCoord(data["ra"], data["dec"])
     raise ValueError("Dataset does not contain coordinates")
 
 
-def __check_containment_3d(
-    ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
-):
+def find_coordinates_3d(ds: "Dataset", dtype: str, select_by: Optional[str] = None):
     try:
         allowed_coordinates = ALLOWED_COORDINATES_3D[dtype]
     except KeyError:
@@ -69,11 +81,17 @@ def __check_containment_3d(
             "Unable to find the correct coordinate columns in this dataset! "
             f"Found {cols} but expected {expected_cols}"
         )
+    return expected_cols
 
-    ds = ds.select(expected_cols)
+
+def __check_containment_3d(
+    ds: "Dataset", region: "Region", dtype: str, select_by: Optional[str] = None
+):
+    columns = find_coordinates_3d(ds, dtype, select_by)
+    ds = ds.select(columns)
     data = ds.data
 
-    data = np.vstack(tuple(data[col].data for col in expected_cols))
+    data = np.vstack(tuple(data[col].data for col in columns))
     return region.contains(data)
 
 

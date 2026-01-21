@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 import opencosmo as oc
@@ -58,7 +59,7 @@ def test_after_take_filter(halo_properties_path, tmp_path):
 
     write(tmp_path / "haloproperties.hdf5", ds)
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
-    assert all(filtered_data == new_ds.data)
+    assert np.all(filtered_data == new_ds.data)
 
 
 def test_after_take(halo_properties_path, tmp_path):
