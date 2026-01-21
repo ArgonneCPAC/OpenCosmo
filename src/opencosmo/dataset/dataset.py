@@ -438,6 +438,7 @@ class Dataset:
             output = visit_dataset(func, strategy, format, evaluate_kwargs, self)
             return output
 
+        print(strategy)
         evaluated_column = verify_for_lazy_evaluation(
             func, strategy, format, evaluate_kwargs, self
         )

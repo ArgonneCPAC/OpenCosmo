@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 from astropy.units import Quantity
 
 from opencosmo.column.column import EvaluatedColumn
-from opencosmo.column.evaluate import do_first_evaluation
+from opencosmo.column.evaluate import EvaluateStrategy, do_first_evaluation
 from opencosmo.evaluate import (
     insert_data,
     make_output_from_first_values,
@@ -32,7 +32,12 @@ def visit_dataset(
     dataset: Dataset,
 ):
     column = verify_for_lazy_evaluation(
-        function, strategy, format, evaluator_kwargs, dataset
+        function,
+        strategy,
+        format,
+        evaluator_kwargs,
+        dataset,
+        skip_evaluation_check=True,
     )
 
     data = dataset.select(column.requires).get_data(output=format)
@@ -54,6 +59,7 @@ def verify_for_lazy_evaluation(
     evaluator_kwargs: dict[str, Any],
     dataset: Dataset,
     allow_none=False,
+    skip_evaluation_check=False,
 ) -> EvaluatedColumn:
     """
     Verify the function behaves correctly and determine the names of its output columns.
@@ -71,13 +77,17 @@ def verify_for_lazy_evaluation(
             f"Function expects columns {diff} which are not in the dataset"
         )
     dataset = dataset.select(required_columns)
-    first_values, eval_strategy = do_first_evaluation(
-        func, strategy, format, evaluator_kwargs, dataset
-    )
-    if first_values is None and not allow_none:
-        raise ValueError(
-            "Cannot insert values from an evaluate function that returns None!"
+    if skip_evaluation_check:
+        first_values = None
+        eval_strategy = EvaluateStrategy(strategy)
+    else:
+        first_values, eval_strategy = do_first_evaluation(
+            func, strategy, format, evaluator_kwargs, dataset
         )
+        if first_values is None and not allow_none:
+            raise ValueError(
+                "Cannot insert values from an evaluate function that returns None!"
+            )
 
     if isinstance(first_values, dict):
         produces = set(first_values.keys())
