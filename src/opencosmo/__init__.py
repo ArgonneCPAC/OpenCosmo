@@ -9,6 +9,8 @@ from .dataset import Dataset
 from .io import open, write
 from .spatial import make_box, make_cone
 
+__version__ = "1.0.0"
+
 __all__ = [
     "write",
     "col",
@@ -20,4 +22,5 @@ __all__ = [
     "HealpixMap",
     "make_box",
     "make_cone",
+    "__version__",
 ]

@@ -472,7 +472,7 @@ class Dataset:
         required_columns: set[str] = reduce(
             lambda acc, r: acc | r.requires, masks, set()
         )
-        data = self.select(required_columns).get_data()
+        data = self.select(required_columns).get_data(unpack=False)
         bool_mask = np.ones(len(data), dtype=bool)
         for m in masks:
             bool_mask &= m.apply(data)
