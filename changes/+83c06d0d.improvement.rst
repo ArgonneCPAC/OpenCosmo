@@ -1,1 +1,0 @@
-:py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>` and :py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>` now follow the same semantics as :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate` for passing columns from multiple datasets in a single function call.

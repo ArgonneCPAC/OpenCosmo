@@ -1,1 +1,0 @@
-Attempting to sort by a column that is not in the dataset now errors correctly.

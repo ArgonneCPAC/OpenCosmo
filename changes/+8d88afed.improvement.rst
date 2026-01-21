@@ -1,1 +1,0 @@
-The logic behind :py:meth`oc.write <opencosmo.write>` has been completely rewritten to be more functional, reliable, and easy to extend. This change does not affect how the function is used, and does not make any changes to the data format.

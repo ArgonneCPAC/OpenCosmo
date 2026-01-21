@@ -1,1 +1,0 @@
-Fix a bug that could cause unit conversions on structure collections to not propogate to a halo_properties or galaxy_properties dataset.

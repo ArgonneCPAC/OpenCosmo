@@ -1,1 +1,0 @@
-:py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>`,:py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>`, and :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` now support specifying columns in nested collections.

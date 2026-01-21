@@ -1,1 +1,0 @@
-Columns created with :py:meth:`opencosmo.col` now support :code:`.log10()`, :code:`.exp10()` and :code:`.sqrt()`

@@ -1,1 +1,0 @@
-:code:`with_units` can now be used to provide unit conversions, in addition to changing conventions

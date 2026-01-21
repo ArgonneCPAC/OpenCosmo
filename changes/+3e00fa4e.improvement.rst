@@ -1,1 +1,0 @@
-`Dataset.evaluate <opencosmo.Dataset.evaluate>` is now performed lazily when `insert = True`.

@@ -1,1 +1,0 @@
-Fix a bug that could cause :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` to fail if the :code:`dataset` argument is set to halo_properties or galaxy_properties.

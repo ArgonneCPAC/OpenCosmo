@@ -1,2 +1,0 @@
-Add a number of common column combinations that can be used to add columns to a dataset with
-:py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns`. See the :ref:`column API reference <Provided Column Combinations>` for details

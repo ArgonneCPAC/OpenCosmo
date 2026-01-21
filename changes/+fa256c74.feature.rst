@@ -1,1 +1,0 @@
-:code:`with_new_columns` now accepts a :code:`descriptions` argument for providing column descriptions

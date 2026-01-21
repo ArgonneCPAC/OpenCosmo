@@ -1,1 +1,0 @@
-Fix a bug that could cause writing to segfault when working in MPI

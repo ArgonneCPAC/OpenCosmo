@@ -1,1 +1,0 @@
-Fix a bug that could cause created columns to be evaluated twice instead of correctly being cached.
