@@ -1,14 +1,16 @@
 [project]
 name = "opencosmo"
-version = "1.0.0rc3"
+version = "1.0.0"
 description = "OpenCosmo Python Toolkit"
 authors = [
   { name = "Patrick Wells", email = "pwells@anl.gov" },
-  { name = "Will Hicks", email = "whicks@anl.gov"}
+  { name = "Will Hicks", email = "whicks@anl.gov"},
+  { name = "Patricia Larsen", email = "prlarsen@anl.gov" },
+  { name = "Michael Buehlmann", email = "mbuehlmann@anl.gov" }
 
 ]
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 
 dependencies = [
   "h5py>=3.12.1,<4.0.0",
