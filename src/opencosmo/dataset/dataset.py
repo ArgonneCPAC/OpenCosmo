@@ -369,6 +369,7 @@ class Dataset:
         vectorize=False,
         insert=True,
         format="astropy",
+        batch_size: int = -1,
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
         """
@@ -402,7 +403,7 @@ class Dataset:
             The function to evaluate on the rows in the dataset.
 
         vectorize: bool, default = False
-            Whether to provide the values as full columns (True) or one row at a time (False)
+            Whether to provide the values as full columns (True) or one row at a time (False). Ignored if :code:`batch_size` is set.
 
         insert: bool, default = True
             If true, the data will be inserted as a column in this dataset. The new column will have the same name
@@ -411,6 +412,10 @@ class Dataset:
         format: str, default = astropy
             Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
             this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
+
+        batch_size: int, default = -1
+            If set, feed data to the function in batches of the specified size. Default is -1, which disables batching. If
+            set to another value, the :code:`vectorize` flag is ignored.
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
@@ -431,15 +436,36 @@ class Dataset:
             raise ValueError(
                 "Keyword arguments cannot have the same name as columns in your dataset!"
             )
-        strategy = evaluate_kwargs.pop(
-            "strategy", "row_wise" if not vectorize else "vectorize"
+
+        match (vectorize, batch_size):
+            case (True, -1):
+                default_strategy = "vectorize"
+            case (False, -1):
+                default_strategy = "row_wise"
+            case (_, _):
+                default_strategy = "vectorize"
+
+        strategy = evaluate_kwargs.pop("strategy", default_strategy)
+        # Structure collections pass the "chunked" strategy to datasets, which causes the dataset
+        # To be evaluated on a structure-by-structure basis. This supersedes all other options.
+        if strategy == "chunked":
+            batch_size = -1
+
+        evaluated_column = verify_for_lazy_evaluation(
+            func,
+            strategy,
+            format,
+            evaluate_kwargs,
+            self,
+            batch_size,
+            skip_evaluation_check=not insert,
         )
         if not insert:
-            output = visit_dataset(func, strategy, format, evaluate_kwargs, self)
+            output = visit_dataset(evaluated_column, self, batch_size)
             return output
 
         evaluated_column = verify_for_lazy_evaluation(
-            func, strategy, format, evaluate_kwargs, self
+            func, strategy, format, evaluate_kwargs, self, batch_size
         )
         return self.with_new_columns(
             descriptions={}, **{func.__name__: evaluated_column}

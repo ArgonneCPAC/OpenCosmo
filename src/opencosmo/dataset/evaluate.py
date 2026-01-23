@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from inspect import Parameter, signature
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 
+import numpy as np
 from astropy.units import Quantity
 
 from opencosmo.column.column import EvaluatedColumn
@@ -14,8 +16,6 @@ from opencosmo.evaluate import (
 )
 
 if TYPE_CHECKING:
-    import numpy as np
-
     from opencosmo import Dataset
 
 """
@@ -25,21 +25,12 @@ we are using here is known as a "visitor."
 
 
 def visit_dataset(
-    function: Callable,
-    strategy: str,
-    format: str,
-    evaluator_kwargs: dict[str, Any],
+    column: EvaluatedColumn,
     dataset: Dataset,
+    batch_size: int,
 ):
-    column = verify_for_lazy_evaluation(
-        function,
-        strategy,
-        format,
-        evaluator_kwargs,
-        dataset,
-        skip_evaluation_check=True,
-    )
-
+    if column.batch_size > 0:
+        return visit_dataset_batched(column, dataset)
     data = dataset.select(column.requires).get_data(output=format)
     try:
         data = dict(data)
@@ -52,12 +43,42 @@ def visit_dataset(
     return output
 
 
+def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
+    ranges = np.arange(0, len(dataset), column.batch_size)
+    if ranges[-1] != len(dataset):
+        ranges = np.append(ranges, len(dataset))
+
+    output = defaultdict(list)
+
+    for start, end in np.lib.stride_tricks.sliding_window_view(ranges, 2):
+        batch_data = (
+            dataset.select(column.requires)
+            .take_range(start, end)
+            .get_data(output=column.format)
+        )
+        try:
+            batch_data = dict(batch_data)
+        except TypeError:
+            batch_data = {column.requires.pop(): batch_data}
+        batch_output = column.evaluate(batch_data)
+        if batch_output is not None and not isinstance(batch_output, dict):
+            batch_output = {column.produces.pop(): batch_output}
+
+        for name, column_batch in batch_output.items():
+            output[name].append(column_batch)
+    full_output = {name: np.concat(out) for name, out in output.items()}
+    if len(output) == 1:
+        return next(iter(full_output.values()))
+    return full_output
+
+
 def verify_for_lazy_evaluation(
     func: Callable,
     strategy: str,
     format: str,
     evaluator_kwargs: dict[str, Any],
     dataset: Dataset,
+    batch_size: int,
     allow_none=False,
     skip_evaluation_check=False,
 ) -> EvaluatedColumn:
@@ -94,7 +115,13 @@ def verify_for_lazy_evaluation(
     else:
         produces = {func.__name__}
     column = EvaluatedColumn(
-        func, required_columns, produces, format, eval_strategy, **evaluator_kwargs
+        func,
+        required_columns,
+        produces,
+        format,
+        eval_strategy,
+        batch_size,
+        **evaluator_kwargs,
     )
     return column
 
