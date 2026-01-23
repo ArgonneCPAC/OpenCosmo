@@ -496,10 +496,15 @@ def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
         return dr / sod_halo_radius
 
     collection_vec = collection.evaluate_on_dataset(
-        offset, dataset="halo_properties", vectorize=True, insert=True
+        offset,
+        dataset="halo_properties",
+        vectorize=True,
+        insert=True,
     )
     collection_loop = collection.evaluate_on_dataset(
-        offset, dataset="halo_properties", insert=True
+        offset,
+        dataset="halo_properties",
+        insert=True,
     )
 
     offset_vec = collection_vec["halo_properties"].select("offset").get_data("numpy")

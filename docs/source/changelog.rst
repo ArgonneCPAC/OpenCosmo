@@ -1,4 +1,13 @@
-Opencosmo 1.0.0 (2026-01-21)
+opencosmo 1.0.1 (2026-01-21)
+===============================
+
+Improvements
+------------
+
+- Disable unneeded verification step for eagerly-evaluate columns in :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`.
+
+
+opencosmo 1.0.0 (2026-01-21)
 ===============================
 
 Bugfixes
