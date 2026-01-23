@@ -464,9 +464,6 @@ class Dataset:
             output = visit_dataset(evaluated_column, self, batch_size)
             return output
 
-        evaluated_column = verify_for_lazy_evaluation(
-            func, strategy, format, evaluate_kwargs, self, batch_size
-        )
         return self.with_new_columns(
             descriptions={}, **{func.__name__: evaluated_column}
         )

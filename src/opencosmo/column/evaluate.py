@@ -69,6 +69,7 @@ def evaluate_chunks(
     chunk_splits = np.cumsum(index[1])
     storage = {}
     input_data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
+    print(len(chunk_splits))
     for i in range(len(chunk_splits)):
         chunk_input_data = {name: split[i] for name, split in input_data.items()}
         output = func(**chunk_input_data, **kwargs_)
