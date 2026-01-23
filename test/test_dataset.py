@@ -197,9 +197,7 @@ def test_visit_batched(input_path):
         counter=counter,
         format="numpy",
     )
-    assert (
-        counter.count == len(ds) // batch_size + 2
-    )  # 1 for endpoint, 1 for verification step
+    assert counter.count == len(ds) // batch_size + 1  # +1 for endpoint
     halo_mass = ds.select("fof_halo_mass").get_data("numpy")
     split_points = np.append(np.arange(batch_size, len(ds), batch_size), len(ds))
     split_halo_masses = np.array_split(halo_mass, split_points)
@@ -297,6 +295,9 @@ def test_visit_vectorize_multiple_noinsert(input_path):
     ds = oc.open(input_path)
 
     def fof_px(fof_halo_mass, fof_halo_com_vx):
+        assert len(fof_halo_mass) == len(
+            ds
+        )  # checks that we skip the verification step
         return fof_halo_mass * fof_halo_com_vx
 
     result = ds.evaluate(fof_px, vectorize=True, insert=False)

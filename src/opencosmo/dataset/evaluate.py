@@ -31,7 +31,7 @@ def visit_dataset(
 ):
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
-    data = dataset.select(column.requires).get_data(output=format)
+    data = dataset.select(column.requires).get_data(output=column.format)
     try:
         data = dict(data)
     except TypeError:

@@ -524,7 +524,7 @@ class EvaluatedColumn:
 
     def evaluate(self, data: dict[str, np.ndarray], index: Optional[DataIndex] = None):
         data = {name: data[name] for name in self.__requires}
-        if self.batch_size != 0:
+        if self.batch_size > 0:
             length = len(next(iter(data.values())))
             strategy = EvaluateStrategy.CHUNKED
             starts = np.arange(0, length, self.batch_size)

@@ -107,7 +107,6 @@ def do_first_evaluation(
     format: str,
     kwargs: dict[str, Any],
     dataset: Dataset,
-    batch_size: int,
 ):
     eval_strategy = EvaluateStrategy(strategy)
     match eval_strategy:
