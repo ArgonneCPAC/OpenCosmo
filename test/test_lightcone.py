@@ -396,6 +396,86 @@ def test_lc_collection_evaluate_noinsert(
     assert np.all(result["offset"] > 0)
 
 
+class Counter:
+    def __init__(self):
+        self.__counts = []
+
+    def append_count(self, count: int):
+        self.__counts.append(count)
+
+    def get_max_count(self):
+        return max(self.__counts)
+
+    @property
+    def counts(self):
+        return self.__counts
+
+
+def test_lc_collection_batched(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    batch_size = 1000
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        counter: Counter,
+    ):
+        counter.append_count(len(fof_halo_center_x))
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    counter = Counter()
+    offset = ds.evaluate(
+        offset, vectorize=True, insert=False, batch_size=batch_size, counter=counter
+    )["offset"]
+
+    assert max(counter.counts) <= batch_size
+    assert len(counter.counts) >= len(ds) // batch_size
+    assert np.all(offset > 0)
+    assert len(offset) == len(ds)
+
+
+def test_lc_collection_batched_lazy(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    batch_size = 1000
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        counter: Counter,
+    ):
+        counter.append_count(len(fof_halo_center_x))
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    counter = Counter()
+    ds = ds.evaluate(
+        offset, vectorize=True, insert=True, batch_size=batch_size, counter=counter
+    )
+
+    offset = ds.select("offset").get_data()
+    assert max(counter.counts) <= batch_size
+    assert len(counter.counts) >= len(ds) // batch_size
+    assert np.all(offset > 0)
+    assert len(offset) == len(ds)
+
+
 def test_lc_collection_evaluate_mapped_kwarg(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):

@@ -67,8 +67,6 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
         for name, column_batch in batch_output.items():
             output[name].append(column_batch)
     full_output = {name: np.concat(out) for name, out in output.items()}
-    if len(output) == 1:
-        return next(iter(full_output.values()))
     return full_output
 
 

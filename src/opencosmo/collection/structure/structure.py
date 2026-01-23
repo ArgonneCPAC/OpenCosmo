@@ -472,6 +472,7 @@ class StructureCollection:
         vectorize: bool = False,
         format: str = "astropy",
         insert: bool = True,
+        batch_size: int = -1,
         **evaluate_kwargs: Any,
     ):
         """
