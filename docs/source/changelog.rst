@@ -1,3 +1,13 @@
+Opencosmo 1.0.0rc1 (2026-01-28)
+===============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause a bad error message when a dependnecy cycle is detected in derived columns.
+- Fix a bug that could cause derived column instantiation to fail if other derived columns with specific properties were not included in the selection.
+
+
 opencosmo 1.0.1 (2026-01-21)
 ===============================
 
