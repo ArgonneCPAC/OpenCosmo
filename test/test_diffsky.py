@@ -111,6 +111,22 @@ def test_repr(core_path_475, core_path_487):
     assert str(ds)
 
 
+def test_derive_from_redshift(core_path_475, core_path_487):
+    ds = oc.open(core_path_487, core_path_475)
+
+    def age_at_z(redshift_true, cosmology):
+        return {"t_obs": np.array(1 / redshift_true)}
+
+    def age_at_z_2(redshift_true, t_obs, cosmology):
+        return {"t_obs_2": np.array(1 / redshift_true)}
+
+    ds = ds.evaluate(age_at_z, cosmology=ds.cosmology, insert=True, vectorize=True)
+    result = ds.evaluate(
+        age_at_z_2, cosmology=ds.cosmology, insert=False, vectorize=True
+    )
+    assert len(result) == len(ds)
+
+
 def test_open_write_with_synthetics(core_path_475, core_path_487, per_test_dir):
     n = 10_000
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)

@@ -37,8 +37,8 @@ def build_dependency_graph(
         new_map = dependency_graph.add_nodes_from(to_add)
         nodemap.update({name: idx for (name, idx) in zip(to_add, new_map)})
 
-        requires_idx = (nodemap[r] for r in requires)
-        produces_idx = (nodemap[r] for r in produces)
+        requires_idx = tuple(nodemap[r] for r in requires)
+        produces_idx = tuple(nodemap[r] for r in produces)
 
         dependency_graph.add_edges_from_no_data(product(requires_idx, produces_idx))
 
@@ -48,7 +48,11 @@ def build_dependency_graph(
             names_to_keep,
             {nodemap[name] for name in names_to_keep},
         )
+        names_to_keep = {dependency_graph[n] for n in nodes_to_keep}
         dependency_graph = dependency_graph.subgraph(list(nodes_to_keep))
+        derived_columns = {
+            name: dc for name, dc in derived_columns.items() if name in names_to_keep
+        }
 
     return dependency_graph
 
@@ -56,13 +60,22 @@ def build_dependency_graph(
 def replace_multi_producers(
     graph: rx.PyDiGraph, derived_columns: Mapping[str, ConstructedColumn]
 ):
+    """
+    Some derived columns actually produce multiple outputs. At this stage, the dependency
+    graph is working solely with actual column names, meaning if any of those columns is
+    produced by one of these "multi-produces" they will not be in the derived_columns
+    dictionary and therefore cannot be instantiated. This function replaces such
+    columns with the name of the derived_column that produces them.
+    """
+
     node_map = {name: i for i, name in enumerate(graph.nodes())}
     missing = set(derived_columns.keys()).difference(node_map.keys())
     if not missing:
         return graph
     for missing_column in missing:
         missing_column_produces = derived_columns[missing_column].produces
-        assert missing_column_produces is not None
+        if missing_column_produces is None:
+            continue
         outputs = [
             node_map[name] for name in missing_column_produces if name in node_map
         ]
@@ -96,8 +109,25 @@ def validate_derived_columns(
         raise ValueError(f"Tried to derive columns from unknown columns: {missing}")
 
     dependency_graph = replace_multi_producers(dependency_graph, derived_columns)
+    validate_dependency_graph(
+        dependency_graph, known_raw_columns, set(derived_columns.keys())
+    )
 
     return validate_derived_units(dependency_graph, derived_columns, units)
+
+
+def validate_dependency_graph(
+    dependency_graph: rx.PyDiGraph,
+    known_raw_columns: set[str],
+    derived_columns: set[str],
+):
+    expected = set(dependency_graph.nodes())
+    known = known_raw_columns.union(derived_columns)
+    print(expected)
+    print(derived_columns)
+    missing = expected.difference(known)
+    print(missing)
+    assert len(missing) == 0
 
 
 def validate_derived_units(
