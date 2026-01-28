@@ -124,7 +124,7 @@ def test_derive_from_redshift(core_path_475, core_path_487):
     result = ds.evaluate(
         age_at_z_2, cosmology=ds.cosmology, insert=False, vectorize=True
     )
-    assert len(result) == len(ds)
+    assert len(result["t_obs_2"]) == len(ds)
 
 
 def test_open_write_with_synthetics(core_path_475, core_path_487, per_test_dir):

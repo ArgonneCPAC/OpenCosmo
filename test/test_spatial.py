@@ -64,7 +64,6 @@ def test_box_query(halo_properties_path):
 
 def test_box_query_physical(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("physical")
-    print(ds.simulation["box_size"])
 
     p1 = tuple(random.uniform(30, 40) for _ in range(3))
     p2 = tuple(random.uniform(50, 60) for _ in range(3))

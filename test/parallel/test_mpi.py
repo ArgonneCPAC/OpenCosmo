@@ -333,7 +333,6 @@ def test_link_read(all_paths):
             if len(data) == 0:
                 continue
             if species == "halo_profiles":
-                print(isinstance(data, dict))
                 assert np.all(data["fof_halo_bin_tag"] == halo_tag)
                 continue
             halo_tags = np.unique(ds.data["fof_halo_tag"])

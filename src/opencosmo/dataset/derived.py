@@ -126,10 +126,7 @@ def validate_dependency_graph(
 ):
     expected = set(dependency_graph.nodes())
     known = known_raw_columns.union(derived_columns)
-    print(expected)
-    print(derived_columns)
     missing = expected.difference(known)
-    print(missing)
     assert len(missing) == 0
 
 
