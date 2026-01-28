@@ -93,7 +93,10 @@ def validate_derived_columns(
     """
     dependency_graph = build_dependency_graph(derived_columns)
     if cycle := rx.digraph_find_cycle(dependency_graph):
-        names = [dependency_graph[i] for i in cycle]
+        all_nodes: set[int] = reduce(
+            lambda known, edge: known.union(edge), cycle, set()
+        )
+        names = [dependency_graph[i] for i in all_nodes]
         raise ValueError(
             f"Found derived columns that depend on each other! Columns: {names}"
         )
