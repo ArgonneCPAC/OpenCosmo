@@ -1,3 +1,12 @@
+Opencosmo 1.0.3 (2026-01-30)
+===============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause MPI writes to fail because dynamically-created communicators were not cleaned up correctly.
+
+
 opencosmo 1.0.2 (2026-01-28)
 ===============================
 
