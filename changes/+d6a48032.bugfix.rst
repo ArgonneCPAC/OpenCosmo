@@ -1,0 +1,1 @@
+Fix a bug that could cause MPI writes to fail because dynamically-created communicators were not cleaned up correctly.
