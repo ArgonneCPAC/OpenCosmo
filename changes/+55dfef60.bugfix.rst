@@ -1,0 +1,1 @@
+Fix a bug that could cause a non-intuitive error to be raised when trying to open a file that is not opencosmo-formatted.

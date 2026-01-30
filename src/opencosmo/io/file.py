@@ -114,7 +114,12 @@ def make_file_targets(file: h5py.File):
             "Are you sure it is an OpenCosmo file?"
         )
     if header is None:
-        headers = {name: read_header(group) for name, group in file.items()}
+        try:
+            headers = {name: read_header(group) for name, group in file.items()}
+        except (AttributeError, KeyError):
+            raise ValueError(
+                f"The file at {file.file.filename} does not appear to be an opencosmo file!"
+            )
     else:
         headers = {name: header for name in file.keys() if name != "header"}
 
