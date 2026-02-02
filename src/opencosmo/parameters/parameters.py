@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Type, Union, get_origin
+from typing import TYPE_CHECKING, Any, Type, Union, get_origin
 
 import h5py
 import numpy as np
@@ -17,10 +17,17 @@ def read_header_attributes(
     **kwargs,
 ):
     header = file["header"]
+    header_group = header[header_path]
     try:
-        header_data = header[header_path].attrs
+        header_data = dict(header_group.attrs)
     except KeyError:
         return parameter_model()  # Defaults are possible
+
+    for key, value in header_group.items():
+        if not isinstance(value, h5py.Dataset):
+            continue
+        header_data[key] = value[:]
+
     try:
         parameters = parameter_model(**header_data, **kwargs)
     except ValidationError as e:
@@ -33,14 +40,31 @@ def read_header_attributes(
     return parameters
 
 
+def should_dump_to_hdf5_dataset(obj: Any):
+    if isinstance(obj, np.ndarray):
+        return True
+    if isinstance(obj, list) and isinstance(obj[0], (int, float)):
+        return True
+    return False
+
+
 def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseModel):
     group = file.require_group(f"header/{header_path}")
     pars = parameters.model_dump(by_alias=True)
+    array_pars = {
+        key: val for key, val in pars.items() if should_dump_to_hdf5_dataset(val)
+    }
+
     for key, value in pars.items():
+        if key in array_pars:
+            continue
         if value is None:
             group.attrs[key] = ""
         else:
             group.attrs[key] = value
+
+    for par_name, data in array_pars.items():
+        group.create_dataset(name=par_name, data=data)
 
     return None
 
