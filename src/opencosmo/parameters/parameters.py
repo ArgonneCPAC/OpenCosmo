@@ -17,13 +17,13 @@ def read_header_attributes(
     **kwargs,
 ):
     header = file["header"]
-    header_group = header[header_path]
     try:
+        header_group = header[header_path]
         header_data = dict(header_group.attrs)
     except KeyError:
         return parameter_model()  # Defaults are possible
 
-    for key, value in header_group.items():
+    for key, value in header_group.values():
         if not isinstance(value, h5py.Dataset):
             continue
         header_data[key] = value[:]
