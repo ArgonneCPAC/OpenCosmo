@@ -53,8 +53,8 @@ If your function requires more arguments than just column names, you can pass th
 
 Note that we also do not set :code:`insert = True` in the call to :py:meth:`evaluate <opencosmo.Dataset.evaluate>`. Instead, the method will simply return the resutlts to us. Additionally, our function returns a single value rather than a dictionary. As a result, the name of the column will be the same as the name of the function.
 
-Vectorizing Computations
-^^^^^^^^^^^^^^^^^^^^^^^^
+Vectorizing or Batching Computations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Although the above example will work it involves performing the computation one row at a time, which is very inefficient. We can speed this up in two ways. First, we can generate all the random values ahead of time, rather than making a call to the random number generator at each iteration:
         
@@ -89,6 +89,25 @@ However this is still not very efficient. This entire computation can be vectori
                 return mass_perturbation
         
         result = ds.evaluate(perturbed_mass, dm = dm_vals, vectorize = True)
+
+
+In some cases you may want to operate on may rows at once, but it would not be feasible to operate on the entire dataset at once. In these cases, you can use the :code:`batch_size` argument to specify the size of batches to be passed to your function. Results will still be collected into a single column as usual.
+
+.. code-block:: python
+
+        import opencosmo as oc
+        from scipy.stats import norm
+
+        ds = oc.open("haloproperties.hdf5")
+        dm_vals = lambda: norm.rvs(1, 0.25, len(ds))
+
+        def perturbed_mass(sod_halo_cdelta, sod_halo_mass, dm):
+                mass_perturbation = sod_halo_mass * dm / sod_halo_cdelta
+                return mass_perturbation
+        
+        result = ds.evaluate(perturbed_mass, dm = dm_vals, batch_size = 100_000)
+
+Setting :code:`batch_size` causes :code:`vectorize` to be ignored. Data will be passed into your function in batches which are *at most* this size. In certain cases they may also be smaller, but they will never be larger.
 
 Evaluating on Structure Collections
 -----------------------------------
@@ -195,7 +214,7 @@ The coordinates of the star particles will be provided to the function on a stru
 Note that for now, we only support this type of workflow if the function only depends on data from the dataset it will be insrted into. We expect this to change in the future.
 
 
-You may also want to do an evaluation on an individual dataset that without worrying about chunking by structure. Suppose you have a structure collection, and as part of a longer, more-complex analysis you want compute the perturbed mass we saw in the :ref:`previous example <Vectorizing Computations>`. You can accomplish this by instead using :py:meth:`evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`
+You may also want to do an evaluation on an individual dataset that without worrying about chunking by structure. Suppose you have a structure collection, and as part of a longer, more-complex analysis you want compute the perturbed mass we saw in the :ref:`previous example <Vectorizing or Batching Computations>`. You can accomplish this by instead using :py:meth:`evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`
 
 .. code-block:: python
 

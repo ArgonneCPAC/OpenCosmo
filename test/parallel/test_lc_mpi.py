@@ -33,15 +33,19 @@ def per_test_dir(
         .replace("]", "_")
     )
 
-    path = tmp_path_factory.mktemp(nodeid)
     comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    if rank == 0:
+        path = tmp_path_factory.mktemp(nodeid)
+    else:
+        path = None
     path_to_return = comm.bcast(path)
 
     try:
         yield path_to_return
     finally:
         # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS:
+        if IN_GITHUB_ACTIONS and rank == 0:
             shutil.rmtree(path, ignore_errors=True)
 
 
@@ -173,6 +177,88 @@ def test_lc_collection_write(
     parallel_assert(redshift_data.min() >= 0.039 and redshift_data.max() <= 0.0405)
     parallel_assert(total_original_length == total_final_length)
     parallel_assert(ds.z_range == (0.039, 0.0405))
+
+
+class Counter:
+    def __init__(self):
+        self.__counts = []
+
+    def append_count(self, count: int):
+        self.__counts.append(count)
+
+    def get_max_count(self):
+        return max(self.__counts)
+
+    @property
+    def counts(self):
+        return self.__counts
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_collection_batched(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    batch_size = 1000
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        counter: Counter,
+    ):
+        counter.append_count(len(fof_halo_center_x))
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    counter = Counter()
+    offset = ds.evaluate(
+        offset, vectorize=True, insert=False, batch_size=batch_size, counter=counter
+    )["offset"]
+
+    assert max(counter.counts) <= batch_size
+    assert len(counter.counts) >= len(ds) // batch_size
+    assert np.all(offset > 0)
+    assert len(offset) == len(ds)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_collection_batched_lazy(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    batch_size = 1000
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        counter: Counter,
+    ):
+        counter.append_count(len(fof_halo_center_x))
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    counter = Counter()
+    ds = ds.evaluate(
+        offset, vectorize=True, insert=True, batch_size=batch_size, counter=counter
+    )
+
+    offset = ds.select("offset").get_data()
+    assert max(counter.counts) <= batch_size
+    assert len(counter.counts) >= len(ds) // batch_size
+    assert np.all(offset > 0)
+    assert len(offset) == len(ds)
 
 
 @pytest.mark.parallel(nprocs=4)

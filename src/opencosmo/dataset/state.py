@@ -416,9 +416,8 @@ class DatasetState:
                     new_column_names |= prod
                 else:
                     new_column_names.add(colname)
-            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
-            new_column_names |= set(self.columns)
+            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
         return self.__rebuild(
             cache=new_cache,

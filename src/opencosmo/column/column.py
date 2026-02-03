@@ -455,6 +455,7 @@ class EvaluatedColumn:
         produces: set[str],
         format: str,
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
+        batch_size: int = -1,
         description: Optional[str] = None,
         **kwargs: Any,
     ):
@@ -464,6 +465,7 @@ class EvaluatedColumn:
         self.__produces = produces
         self.__format = format
         self.__strategy = strategy
+        self.__batch_size = batch_size
         self.description = description
 
     @property
@@ -477,6 +479,18 @@ class EvaluatedColumn:
     @property
     def signature(self):
         return signature(self.__func)
+
+    @property
+    def strategy(self):
+        return self.__strategy
+
+    @property
+    def batch_size(self):
+        return self.__batch_size
+
+    @property
+    def format(self):
+        return self.__format
 
     @property
     def kwarg_names(self):
@@ -508,9 +522,19 @@ class EvaluatedColumn:
             for name, result in results.items()
         }
 
-    def evaluate(self, data: dict[str, np.ndarray], index: DataIndex):
+    def evaluate(self, data: dict[str, np.ndarray], index: Optional[DataIndex] = None):
         data = {name: data[name] for name in self.__requires}
-        match self.__strategy:
+        if self.batch_size > 0:
+            length = len(next(iter(data.values())))
+            strategy = EvaluateStrategy.CHUNKED
+            starts = np.arange(0, length, self.batch_size)
+            sizes = np.full_like(starts, self.batch_size)
+            sizes[-1] = length - starts[-1]
+            index = (starts, sizes)
+        else:
+            strategy = self.__strategy
+
+        match strategy:
             case EvaluateStrategy.VECTORIZE:
                 return evaluate_vectorized(data, self.__func, self.__kwargs)
             case EvaluateStrategy.ROW_WISE:
