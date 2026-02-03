@@ -724,6 +724,74 @@ def test_simcollection_write(multi_path, per_test_dir):
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
 
 
+class Counter:
+    def __init__(self):
+        self.__count = 0
+
+    def increment(self):
+        self.__count += 1
+
+    @property
+    def count(self):
+        return self.__count
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_visit_batched_lazy(input_path):
+    ds = oc.open(input_path)
+    batch_size = 1_000
+
+    def fof_total(fof_halo_mass, counter):
+        counter.increment()
+        return np.cumsum(fof_halo_mass)
+
+    counter = Counter()
+    ds = ds.evaluate(
+        fof_total,
+        insert=True,
+        batch_size=batch_size,
+        counter=counter,
+        format="numpy",
+    )
+    data = ds.select(("fof_halo_mass", "fof_total")).get_data("numpy")
+    parallel_assert(
+        counter.count == len(ds) // batch_size + 3
+    )  # 1 for endpoint, 1 for verification step, one for unit evaluation
+    split_points = np.append(np.arange(batch_size, len(ds), batch_size), len(ds))
+    split_halo_masses = np.array_split(data["fof_halo_mass"], split_points)
+    split_fof_total = np.array_split(data["fof_total"], split_points)
+
+    for fof_total_split, halo_mass_split in zip(split_fof_total, split_halo_masses):
+        assert np.all(fof_total_split == np.cumsum(halo_mass_split))
+
+
+@pytest.mark.parallel
+def test_visit_batched_astropy(input_path):
+    ds = oc.open(input_path)
+    batch_size = 1_000
+
+    def fof_total(fof_halo_mass, counter):
+        counter.increment()
+        return np.cumsum(fof_halo_mass)
+
+    counter = Counter()
+    fof_total = ds.evaluate(
+        fof_total,
+        vectorize=True,
+        insert=False,
+        batch_size=batch_size,
+        counter=counter,
+        format="astropy",
+    )["fof_total"]
+    parallel_assert(counter.count == len(ds) // batch_size + 1)  # +1 for endpoint
+    halo_mass = ds.select("fof_halo_mass").get_data("astropy")
+    split_points = np.append(np.arange(batch_size, len(ds), batch_size), len(ds))
+    split_halo_masses = np.array_split(halo_mass, split_points)
+    split_fof_total = np.array_split(fof_total, split_points)
+    for fof_total_split, halo_mass_split in zip(split_fof_total, split_halo_masses):
+        assert np.all(fof_total_split == np.cumsum(halo_mass_split))
+
+
 @pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_simcollection_write_one_missing(multi_path, per_test_dir):
