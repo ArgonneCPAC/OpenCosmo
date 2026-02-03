@@ -34,7 +34,7 @@ def from_model(model: BaseModel):
         case BoxRegionModel():
             return make_box(model.p1, model.p2)
         case HealPixRegionModel():
-            return HealPixRegion(np.array(model.pixels), model.nside)
+            return HealPixRegion(np.array(list(model.pixels)), model.nside)
         case _:
             raise ValueError(f"Invalid region model type {type(model)}")
 

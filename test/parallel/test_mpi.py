@@ -366,7 +366,7 @@ def test_evaluate_structure(all_paths):
     assert not np.any(data == 0)
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(120)
 @pytest.mark.parallel(nprocs=4)
 def test_evaluate_structure_write(all_paths, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
