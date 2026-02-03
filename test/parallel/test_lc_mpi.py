@@ -33,8 +33,11 @@ def per_test_dir(
         .replace("]", "_")
     )
 
-    path = tmp_path_factory.mktemp(nodeid)
     comm = MPI.COMM_WORLD
+    if comm.Get_rank() == 0:
+        path = tmp_path_factory.mktemp(nodeid)
+    else:
+        path = None
     path_to_return = comm.bcast(path)
 
     try:
