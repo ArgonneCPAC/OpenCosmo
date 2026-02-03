@@ -34,7 +34,8 @@ def per_test_dir(
     )
 
     comm = MPI.COMM_WORLD
-    if comm.Get_rank() == 0:
+    rank = comm.Get_rank()
+    if rank == 0:
         path = tmp_path_factory.mktemp(nodeid)
     else:
         path = None
@@ -44,7 +45,7 @@ def per_test_dir(
         yield path_to_return
     finally:
         # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS:
+        if IN_GITHUB_ACTIONS and rank == 0:
             shutil.rmtree(path, ignore_errors=True)
 
 
