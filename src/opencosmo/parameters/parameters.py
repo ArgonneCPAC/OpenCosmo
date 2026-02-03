@@ -23,7 +23,7 @@ def read_header_attributes(
     except KeyError:
         return parameter_model()  # Defaults are possible
 
-    for key, value in header_group.values():
+    for key, value in header_group.items():
         if not isinstance(value, h5py.Dataset):
             continue
         header_data[key] = value[:]
