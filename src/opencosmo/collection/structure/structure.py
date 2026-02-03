@@ -507,7 +507,6 @@ class StructureCollection:
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False). Ignored if :code:`batch_size` is set.
 
-
         format: str, default = astropy
             Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
             this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`

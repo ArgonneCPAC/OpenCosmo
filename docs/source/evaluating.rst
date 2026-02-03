@@ -214,7 +214,7 @@ The coordinates of the star particles will be provided to the function on a stru
 Note that for now, we only support this type of workflow if the function only depends on data from the dataset it will be insrted into. We expect this to change in the future.
 
 
-You may also want to do an evaluation on an individual dataset that without worrying about chunking by structure. Suppose you have a structure collection, and as part of a longer, more-complex analysis you want compute the perturbed mass we saw in the :ref:`previous example <Vectorizing Computations>`. You can accomplish this by instead using :py:meth:`evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`
+You may also want to do an evaluation on an individual dataset that without worrying about chunking by structure. Suppose you have a structure collection, and as part of a longer, more-complex analysis you want compute the perturbed mass we saw in the :ref:`previous example <Vectorizing or Batching Computations>`. You can accomplish this by instead using :py:meth:`evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`
 
 .. code-block:: python
 
