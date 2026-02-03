@@ -4,11 +4,13 @@ from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
+import numpy as np
 import pytest
 from astropy.cosmology import FlatLambdaCDM
 from astropy.cosmology import units as cu
 
 from opencosmo.header import read_header, write_header
+from opencosmo.spatial.region import HealPixRegion
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -57,11 +59,22 @@ def test_read_header(header_resource_path):
 
 
 def test_write_header(header_resource_path, tmp_path):
+    path = tmp_path / "header.hdf5"
     header = read_header(header_resource_path)
-    write_header(tmp_path / "header.hdf5", header)
-    header = read_header(header_resource_path)
+    write_header(path, header)
+    header = read_header(path)
 
     assert isinstance(header.cosmology, FlatLambdaCDM)
+
+
+def test_write_header_with_large_array(header_resource_path, tmp_path):
+    region_model = HealPixRegion(np.arange(0, 2**14), 2**15)
+    path = tmp_path / "header.hdf5"
+
+    header = read_header(header_resource_path)
+    header = header.with_region(region_model)
+    write_header(path, header)
+    header = read_header(path)
 
 
 def test_malformed_header(malformed_header_path):
