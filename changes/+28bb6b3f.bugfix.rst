@@ -1,1 +1,0 @@
-Fix a bug that that could cause data used for verification of evaluated columns to carry units even if the evaluated column requested data without units

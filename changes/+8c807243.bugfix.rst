@@ -1,1 +1,0 @@
-Dictionary kwargs with the same name as the datasets in a lightcone are now correctly mapped
