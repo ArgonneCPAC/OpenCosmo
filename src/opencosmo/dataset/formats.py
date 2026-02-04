@@ -4,7 +4,7 @@ from importlib import import_module
 
 import astropy.units as u
 import numpy as np
-from astropy.table import QTable
+from astropy.table import Column, QTable
 
 
 def verify_format(output_format: str):
@@ -67,7 +67,10 @@ def __convert_to_numpy(
 ) -> dict[str, np.ndarray] | np.ndarray:
     converted_data = dict(
         map(
-            lambda kv: (kv[0], kv[1].value if isinstance(kv[1], u.Quantity) else kv[1]),
+            lambda kv: (
+                kv[0],
+                kv[1].value if isinstance(kv[1], (u.Quantity, Column)) else kv[1],
+            ),
             data.items(),
         )
     )
