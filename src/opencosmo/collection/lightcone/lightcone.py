@@ -706,14 +706,21 @@ class Lightcone(dict):
         dataset : Lightcone
             The new lightcone dataset with the evaluated column(s)
         """
+
         kwargs, iterable_kwargs = prepare_kwargs(len(self), evaluate_kwargs)
-        iterable_kwargs_by_dataset = {}
+        mapped_kwargs = {}
         indices = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))[
             :-1
         ]
         for name, arr in iterable_kwargs.items():
             splits = np.array_split(arr, indices)
-            iterable_kwargs_by_dataset[name] = dict(zip(self.keys(), splits))
+            mapped_kwargs[name] = dict(zip(self.keys(), splits))
+        kwargs_names = list(kwargs.keys())
+        for name in kwargs_names:
+            if isinstance(kwargs[name], dict) and set(kwargs[name].keys()) == set(
+                self.keys()
+            ):
+                mapped_kwargs[name] = kwargs.pop(name)
 
         result = self.__map(
             "evaluate",
@@ -721,7 +728,7 @@ class Lightcone(dict):
             format=format,
             vectorize=vectorize,
             insert=insert,
-            mapped_arguments=iterable_kwargs_by_dataset,
+            mapped_arguments=mapped_kwargs,
             construct=insert,
             **kwargs,
         )

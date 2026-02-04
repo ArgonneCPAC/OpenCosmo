@@ -372,6 +372,31 @@ def test_lc_collection_evaluate(
     assert np.all(offset_vec == offset_iter)
 
 
+def test_lc_collection_mapped_kwargs(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds.keys()}
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        mapped_kwarg,
+    ):
+        return np.full_like(fof_halo_com_x, mapped_kwarg)
+
+    result = ds.evaluate(
+        offset, vectorize=True, insert=True, format="numpy", mapped_kwarg=mapped_kwargs
+    )
+    for name, ds in result.items():
+        assert np.all(
+            result[name].select("offset").get_data("numpy") == mapped_kwargs[name]
+        )
+
+
 def test_lc_collection_evaluate_noinsert(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
