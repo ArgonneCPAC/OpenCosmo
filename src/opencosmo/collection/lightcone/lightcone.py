@@ -551,14 +551,20 @@ class Lightcone(dict):
         """
         output = {}
         hidden = hidden if hidden is not None else self.__hidden
+        zero_length_output = {}
         for ds_name, dataset in self.items():
             dataset_mapped_arguments = {
                 arg_name: args[ds_name] for arg_name, args in mapped_arguments.items()
             }
-            output[ds_name] = getattr(dataset, method)(
+            new_ds = getattr(dataset, method)(
                 *args, **kwargs, **dataset_mapped_arguments
             )
+            if len(new_ds) == 0:
+                zero_length_output[ds_name] = new_ds
+            output[ds_name] = new_ds
 
+        if not output:
+            output = zero_length_output
         if construct:
             return Lightcone(output, self.z_range, hidden, self.__ordered_by)
         return output
@@ -1002,8 +1008,6 @@ class Lightcone(dict):
         for split, (name, dataset) in zip(splits, self.items()):
             if len(split) > 0:
                 output[name] = dataset.take_rows(split - rs)
-            else:
-                output[name] = dataset.take(0)  # compatability reasons
             rs += len(dataset)
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 
