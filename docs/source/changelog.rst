@@ -1,3 +1,14 @@
+Opencosmo 1.0.4 (2026-02-04)
+===============================
+
+Bugfixes
+--------
+
+- Dictionary kwargs with the same name as the datasets in a lightcone are now correctly mapped
+- Fix a bug that could prevent unitless columns to be converted to numpy arrays when `format = "numpy"` is set
+- Fix a bug that that could cause data used for verification of evaluated columns to carry units even if the evaluated column requested data without units
+
+
 Opencosmo 1.0.3 (2026-01-30)
 ===============================
 

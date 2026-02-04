@@ -1,1 +1,0 @@
-Fix a bug that could prevent unitless columns to be converted to numpy arrays when `format = "numpy"` is set
