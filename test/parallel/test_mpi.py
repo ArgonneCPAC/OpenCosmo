@@ -834,3 +834,34 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
 
     for simkey, tags in all_written_halo_tags.items():
         parallel_assert(np.all(tags == all_halo_tags[simkey]))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce(input_path):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    import opencosmo as oc
+    from opencosmo.analysis import reduce
+
+    ds = oc.open(input_path)
+
+    def halo_mass_function(fof_halo_mass, log_bins, box_size):
+        hist, _ = np.histogram(fof_halo_mass, log_bins)
+        return hist / np.diff(np.log(log_bins)) / box_size**3
+
+    bins = np.logspace(11, 15, 100)
+    box_size = ds.header.simulation["box_size"]
+    histogram = reduce(
+        ds,
+        halo_mass_function,
+        format="numpy",
+        vectorize=True,
+        log_bins=bins,
+        box_size=box_size.value,
+    )
+    if histogram is not None:
+        midpoints = 0.5 * (bins[1:] + bins[:-1])
+        plt.plot(midpoints, histogram["halo_mass_function"])
+        plt.loglog()
+        plt.show()
