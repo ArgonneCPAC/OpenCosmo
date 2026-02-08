@@ -21,7 +21,7 @@ def empty_string_to_none(value: str) -> Optional[str]:
     return value
 
 
-class FileType(Enum):
+class DatasetType(Enum):
     galaxy_properties = "galaxy_properties"
     galaxy_particles = "galaxy_particles"
     halo_properties = "halo_properties"
@@ -34,7 +34,7 @@ class FileType(Enum):
 class FileParameters(BaseModel):
     model_config = ConfigDict(use_enum_values=True, frozen=True)
     origin: str = "HACC"
-    data_type: FileType
+    data_type: DatasetType
     is_lightcone: bool
     redshift: Optional[float] = None
     step: Optional[int] = None
