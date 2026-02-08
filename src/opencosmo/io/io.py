@@ -18,6 +18,7 @@ from opencosmo.io.file import (
     get_file_type,
     make_all_targets,
 )
+from opencosmo.io.group import make_file_targets
 from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
@@ -132,6 +133,7 @@ def open(
     except TypeError:  # we have hdf5 groups
         handles = file_list
 
+    make_file_targets(handles)
     try:
         targets = make_all_targets(handles)
     except KeyError:
