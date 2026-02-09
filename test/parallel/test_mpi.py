@@ -137,6 +137,11 @@ def simcollection_path(snapshot_path):
     return snapshot_path / "haloproperties_multi.hdf5"
 
 
+@pytest.fixture
+def mass_fn_path(analysis_path):
+    return analysis_path / "mass_fn.npy"
+
+
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
 ):
@@ -837,8 +842,7 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_reduce(input_path):
-    import matplotlib.pyplot as plt
+def test_reduce(input_path, mass_fn_path):
     import numpy as np
 
     import opencosmo as oc
@@ -847,10 +851,44 @@ def test_reduce(input_path):
     ds = oc.open(input_path)
 
     def halo_mass_function(fof_halo_mass, log_bins, box_size):
-        hist, _ = np.histogram(fof_halo_mass, log_bins)
-        return hist / np.diff(np.log(log_bins)) / box_size**3
+        log_mass = np.log10(fof_halo_mass)
+        hist, _ = np.histogram(log_mass, log_bins)
+        return hist / np.diff(log_bins) / box_size**3
 
-    bins = np.logspace(11, 15, 100)
+    bins = np.linspace(10.5, 15)
+    box_size = ds.header.simulation["box_size"]
+    histogram = reduce(
+        ds,
+        halo_mass_function,
+        format="numpy",
+        vectorize=True,
+        log_bins=bins,
+        box_size=box_size.value,
+        all=True,
+    )
+    _, expected_histogram = np.load(mass_fn_path)
+
+    parallel_assert(np.allclose(histogram["halo_mass_function"], expected_histogram))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce_no_all(input_path, mass_fn_path):
+    import numpy as np
+
+    import opencosmo as oc
+    from opencosmo.analysis import reduce
+    from opencosmo.mpi import get_comm_world
+
+    comm = get_comm_world()
+
+    ds = oc.open(input_path)
+
+    def halo_mass_function(fof_halo_mass, log_bins, box_size):
+        log_mass = np.log10(fof_halo_mass)
+        hist, _ = np.histogram(log_mass, log_bins)
+        return hist / np.diff(log_bins) / box_size**3
+
+    bins = np.linspace(10.5, 15)
     box_size = ds.header.simulation["box_size"]
     histogram = reduce(
         ds,
@@ -860,8 +898,9 @@ def test_reduce(input_path):
         log_bins=bins,
         box_size=box_size.value,
     )
-    if histogram is not None:
-        midpoints = 0.5 * (bins[1:] + bins[:-1])
-        plt.plot(midpoints, histogram["halo_mass_function"])
-        plt.loglog()
-        plt.show()
+    _, expected_histogram = np.load(mass_fn_path)
+
+    if comm.Get_rank() != 0:
+        assert histogram is None
+    else:
+        assert np.allclose(histogram["halo_mass_function"], expected_histogram)
