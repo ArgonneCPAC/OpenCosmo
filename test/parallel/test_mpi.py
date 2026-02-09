@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 from collections import defaultdict
-from functools import reduce
+from functools import reduce as ftr
 from logging import getLogger
 from typing import TYPE_CHECKING
 
@@ -16,6 +16,8 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+from opencosmo.analysis import reduce
+from opencosmo.mpi import get_comm_world
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -137,6 +139,16 @@ def simcollection_path(snapshot_path):
     return snapshot_path / "haloproperties_multi.hdf5"
 
 
+@pytest.fixture
+def mass_fn_path(analysis_path):
+    return analysis_path / "mass_fn.npy"
+
+
+@pytest.fixture
+def stacked_profile_path(analysis_path):
+    return analysis_path / "stacked_profile.npy"
+
+
 def update_simulation_parameter(
     base_cosmology_path: Path, parameters: dict[str, float], tmp_path: Path, name: str
 ):
@@ -183,7 +195,7 @@ def test_partitioning_includes_all(input_path):
 
     comm = mpi4py.MPI.COMM_WORLD
     all_tags = comm.allgather(tags)
-    all_tags = reduce(lambda left, right: left.union(set(right)), all_tags, set())
+    all_tags = ftr(lambda left, right: left.union(set(right)), all_tags, set())
 
     file = h5py.File(input_path)
     original_tags = set(file["data"]["fof_halo_tag"][:])
@@ -285,10 +297,8 @@ def test_filter_zerolength(input_path, per_test_dir):
 
     written_tags = comm.allgather(written_data["fof_halo_tag"])
 
-    read_tags = reduce(lambda left, right: left.union(set(right)), read_tags, set())
-    written_tags = reduce(
-        lambda left, right: left.union(set(right)), written_tags, set()
-    )
+    read_tags = ftr(lambda left, right: left.union(set(right)), read_tags, set())
+    written_tags = ftr(lambda left, right: left.union(set(right)), written_tags, set())
 
     parallel_assert(read_tags == written_tags)
 
@@ -834,3 +844,103 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
 
     for simkey, tags in all_written_halo_tags.items():
         parallel_assert(np.all(tags == all_halo_tags[simkey]))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce(input_path, mass_fn_path):
+    ds = oc.open(input_path)
+
+    def halo_mass_function(fof_halo_mass, log_bins, box_size):
+        log_mass = np.log10(fof_halo_mass)
+        hist, _ = np.histogram(log_mass, log_bins)
+        return hist / np.diff(log_bins) / box_size**3
+
+    bins = np.linspace(10.5, 15)
+    box_size = ds.header.simulation["box_size"]
+    histogram = reduce(
+        ds,
+        halo_mass_function,
+        format="numpy",
+        vectorize=True,
+        log_bins=bins,
+        box_size=box_size.value,
+        all=True,
+    )
+    _, expected_histogram = np.load(mass_fn_path)
+
+    parallel_assert(np.allclose(histogram["halo_mass_function"], expected_histogram))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce_no_all(input_path, mass_fn_path):
+    comm = get_comm_world()
+
+    ds = oc.open(input_path)
+
+    def halo_mass_function(fof_halo_mass, log_bins, box_size):
+        log_mass = np.log10(fof_halo_mass)
+        hist, _ = np.histogram(log_mass, log_bins)
+        return hist / np.diff(log_bins) / box_size**3
+
+    bins = np.linspace(10.5, 15)
+    box_size = ds.header.simulation["box_size"]
+    histogram = reduce(
+        ds,
+        halo_mass_function,
+        format="numpy",
+        vectorize=True,
+        log_bins=bins,
+        box_size=box_size.value,
+    )
+    _, expected_histogram = np.load(mass_fn_path)
+
+    if comm.Get_rank() != 0:
+        assert histogram is None
+    else:
+        assert np.allclose(histogram["halo_mass_function"], expected_histogram)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce_average(input_path, profile_path, stacked_profile_path):
+    ds = oc.open(input_path, profile_path)
+
+    def stacked_dm_profile(
+        sod_halo_bin_count,
+        sod_halo_bin_cdm_fraction,
+        sod_halo_bin_radius,
+        halo_mass,
+        halo_radius,
+    ):
+        # Note: not exactly correct, but for some reason this data doesn't have a
+        # sod_halo_bin_mass column
+        mass_per_particle = halo_mass / np.sum(sod_halo_bin_count, axis=1)
+        sod_halo_bin_radius = np.hstack(
+            (np.zeros(len(sod_halo_bin_radius))[:, np.newaxis], sod_halo_bin_radius)
+        )
+        bin_mass = (
+            mass_per_particle[:, np.newaxis]
+            * sod_halo_bin_count
+            * sod_halo_bin_cdm_fraction
+        )
+        radius = sod_halo_bin_radius / halo_radius[:, np.newaxis]
+        return {
+            "profile": np.mean(bin_mass / np.diff(sod_halo_bin_radius), axis=0),
+            "radius": np.mean(radius, axis=0),
+        }
+
+    result = reduce(
+        ds["halo_profiles"],
+        stacked_dm_profile,
+        vectorize=True,
+        operation="avg",
+        format="numpy",
+        halo_mass=ds["halo_properties"].select("sod_halo_mass").get_data("numpy"),
+        halo_radius=ds["halo_properties"].select("sod_halo_radius").get_data("numpy"),
+    )
+    if get_comm_world().Get_rank() == 0:
+        expected_centers, expected_profile = np.load(stacked_profile_path)
+
+        bin_centers = 0.5 * (result["radius"][1:] + result["radius"][:-1])
+        profile = result["profile"]
+        assert np.all(bin_centers == expected_centers)
+        assert np.all(expected_profile == profile)

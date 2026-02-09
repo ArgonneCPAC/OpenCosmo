@@ -1,6 +1,8 @@
 Analysis
 ========
 
+.. autofunction:: opencosmo.analysis.reduce
+
 .. autofunction:: opencosmo.analysis.create_yt_dataset
 
 .. autofunction:: opencosmo.analysis.visualize_halo
