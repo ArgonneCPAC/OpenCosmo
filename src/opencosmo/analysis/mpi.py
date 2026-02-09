@@ -25,7 +25,8 @@ def reduce(
 
     Under the hood, this function uses :py:meth:`evaluate <opencosmo.Dataset.evaluate>` to perform the
     computation. Besides the specific arguments mentioned below, you should pass in the arguments
-    that you would if you were calling :code:`evaluate` directly (including :code:`vectorize` if relevant)
+    that you would if you were calling :code:`evaluate` directly (including :code:`vectorize`, which you will
+    probably want to set to :code:`True`)
 
 
     For example, to compute a halo mass function across a large simulation:
@@ -47,7 +48,7 @@ def reduce(
         bins = np.linspace(10, 15)
         box_size = ds.header.simulation["box_size"].value
 
-        results = reduce(ds, halo_mass_function, log_bins = bins, box_size = box_size)
+        results = reduce(ds, halo_mass_function, log_bins = bins, box_size = box_size, vectorize = True)
         if histogram is not None:
             plt.plot(bins, histogram["halo_mass_function"])
             plt.savefig("hmf.png")
