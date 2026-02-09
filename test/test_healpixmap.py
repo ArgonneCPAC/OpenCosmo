@@ -66,7 +66,6 @@ def test_healpix_downgrade(healpix_map_path):
 
     original_data = ds.get_data("healpix")
     downgraded_data = downgraded_ds.get_data("healpix")
-    print(original_data)
 
     downgraded_data_2 = original_data["tsz"].reshape((-1, 4)).sum(axis=1) / 4
 

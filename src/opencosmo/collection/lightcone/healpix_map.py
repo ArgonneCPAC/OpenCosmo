@@ -17,7 +17,8 @@ from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import into_array
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.spatial.region import ConeRegion, HealPixRegion
+from opencosmo.mpi import get_comm_world
+from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealPixRegion
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
@@ -77,7 +78,7 @@ class HealpixMap(dict):
         z_range: tuple[float, float],
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
-        region: Optional[HealPixRegion] = None,
+        region: Optional[HealPixRegion | FullSkyRegion] = None,
     ):
         if (
             not full_sky
@@ -112,9 +113,11 @@ class HealpixMap(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
+        self.__region: Region
         if region is None:
-            region = next(iter(self.values())).region
-        self.__region = region
+            self.__region = FullSkyRegion()
+        else:
+            self.__region = region
 
     @property
     def nside(self):
@@ -125,7 +128,7 @@ class HealpixMap(dict):
         -------
         dtype: int
         """
-        return self.__header.healpix_map["nside"]
+        return self.__nside
 
     @property
     def pixels(self):
@@ -133,6 +136,7 @@ class HealpixMap(dict):
         The healpix pixels that are included in this map
         """
         if self.full_sky:
+            # Ensures this works with MPI partitioning
             return into_array(next(iter(self.values())).index)
         if self.__region is not None:
             return self.__region.pixels
@@ -173,7 +177,7 @@ class HealpixMap(dict):
         -------
         dtype: bool
         """
-        return self.__header.healpix_map["full_sky"]
+        return self.__full_sky
 
     def __repr__(self):
         """
@@ -466,15 +470,21 @@ class HealpixMap(dict):
             },
         )
 
+        is_full_sky = self.full_sky and get_comm_world() is None
+        region = None
+        if len(new_pixels) != out_npix:
+            region = HealPixRegion(new_pixels, nside_out, self.__ordering)
+
         return HealpixMap(
             {"data": new_dataset},
             nside_out,
             self.nside_lr,
             self.ordering,
-            self.full_sky,
+            is_full_sky,
             self.z_range,
             self.__hidden,
             self.__ordered_by,
+            region,
         )
 
     @classmethod
