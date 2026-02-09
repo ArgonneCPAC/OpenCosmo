@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 class ColumnCombineStrategy(Enum):
     SUM = "sum"
     CONCAT = "concat"
+    EXACT = "exact"
 
 
 class ColumnSource(Protocol):
@@ -38,6 +39,10 @@ class ColumnWriter:
         combine_strategy: ColumnCombineStrategy,
         attrs: dict[str, Any] = {},
     ):
+        if combine_strategy == ColumnCombineStrategy.EXACT and len(column_sources) != 1:
+            raise ValueError(
+                "Columns with a combine strategy of EXACT can only have one source"
+            )
         self.__sources = column_sources
         self.__combine_strategy = combine_strategy
         self.__attrs = attrs
@@ -88,7 +93,7 @@ class ColumnWriter:
         match self.combine_strategy:
             case ColumnCombineStrategy.CONCAT:
                 return sum(len(source) for source in self.__sources)
-            case ColumnCombineStrategy.SUM:
+            case ColumnCombineStrategy.SUM | ColumnCombineStrategy.EXACT:
                 return len(self.__sources[0])
 
     @property
@@ -118,10 +123,11 @@ class ColumnWriter:
 
     def get_data(self, comm: Optional[MPI.Comm] = None):
         match self.combine_strategy:
-            case ColumnCombineStrategy.CONCAT:
+            case ColumnCombineStrategy.CONCAT | ColumnCombineStrategy.EXACT:
                 data = np.concatenate([source.data for source in self.__sources])
             case ColumnCombineStrategy.SUM:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
+
         if self.__transformation is not None:
             data = self.__transformation(data, comm=comm)  # type: ignore
         return data

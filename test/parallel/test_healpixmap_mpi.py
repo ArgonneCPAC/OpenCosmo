@@ -31,14 +31,14 @@ def structure_maps(map_path, all_files):
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_index(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    raw_data = next(iter(ds.values())).get_metadata(["pixel"])
+    pixels = ds.pixels
 
     pixel = np.random.choice(ds.pixels)
     center = pix2ang(ds.nside, pixel, True, True)
     radius = 2 * u.deg
     center_coord = SkyCoord(*center, unit=("deg", "deg"))
 
-    theta, phi = hp.pix2ang(ds.nside, raw_data["pixel"], nest=True)
+    theta, phi = hp.pix2ang(ds.nside, pixels, nest=True)
     raw_data_coords = SkyCoord(phi, np.pi / 2 - theta, unit="rad")
 
     raw_data_seps = center_coord.separation(raw_data_coords)
@@ -116,6 +116,17 @@ def test_healpix_write(healpix_map_path, tmp_path):
     )
 
     parallel_assert(set(all_valid_pixels) == set(written_valid_pixels))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_partition(healpix_map_path):
+    ds = oc.open(healpix_map_path)
+    nside = ds.nside
+    npix = hp.nside2npix(nside)
+    rank = MPI.COMM_WORLD.Get_rank()
+    pix_boundaries = [i * npix / 4 for i in range(5)]
+    expected_pixels = np.arange(pix_boundaries[rank], pix_boundaries[rank + 1])
+    assert np.all(expected_pixels == ds.pixels)
 
 
 @pytest.mark.parallel(nprocs=4)

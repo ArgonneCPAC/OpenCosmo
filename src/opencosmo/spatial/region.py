@@ -160,9 +160,10 @@ def _(self, other: ConeRegion):
 
 
 class HealPixRegion:
-    def __init__(self, idxs: NDArray[np.int_], nside: int):
+    def __init__(self, idxs: NDArray[np.int_], nside: int, ordering: str = "nested"):
         self.__idxs = idxs
         self.__nside = nside
+        self.__ordering = ordering
 
     def into_base_convention(self, *args, **kwargs):
         return self
@@ -177,6 +178,10 @@ class HealPixRegion:
     @property
     def nside(self):
         return self.__nside
+
+    @property
+    def ordering(self):
+        return self.__ordering
 
     def contains(self, other: Any):
         return False
@@ -207,6 +212,9 @@ class FullSkyRegion:
 
     def intersects(self, other: Any):
         return True
+
+    def into_base_convention(self, *args, **kwargs):
+        return self
 
     @singledispatchmethod
     def _intersects(self, other: Any):

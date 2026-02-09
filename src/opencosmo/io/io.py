@@ -228,6 +228,7 @@ def open_single_dataset(
             header.healpix_map["ordering"],
             header.healpix_map["full_sky"],
             header.healpix_map["z_range"],
+            region=sim_region,
         )
     elif header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
