@@ -113,9 +113,8 @@ class HealpixMap(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
-        self.__region: Region
         if region is None:
-            self.__region = FullSkyRegion()
+            self.__region: Region = FullSkyRegion()
         else:
             self.__region = region
 
