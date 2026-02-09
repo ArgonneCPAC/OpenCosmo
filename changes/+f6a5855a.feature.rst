@@ -1,0 +1,1 @@
+Add a new :meth:`reduce <opencosmo.analysis.reduce>` function, which allows results from multiple processes to be combined into a single result by summing, multiplying, or averaging.
