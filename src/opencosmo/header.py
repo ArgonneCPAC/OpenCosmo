@@ -212,7 +212,7 @@ class OpenCosmoHeader:
             for key in keys:
                 if isinstance(data[key], list):
                     arr_pars[f"{path}/{key}"] = ColumnWriter.from_numpy_array(
-                        np.array(data[key]), ColumnCombineStrategy.EXACT
+                        np.array(data[key]), ColumnCombineStrategy.CONCAT
                     )
                     _ = data.pop(key)
             pars[path] = data

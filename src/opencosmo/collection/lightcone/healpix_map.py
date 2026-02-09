@@ -570,7 +570,13 @@ class HealpixMap(dict):
 
         else:
             schema = make_schema("/", FileEntry.HEALPIX_MAP, children=children)
-        if isinstance(self.region, HealPixRegion):
+
+        comm_world = get_comm_world()
+        is_full_sky = comm_world is not None and comm_world.allreduce(
+            len(self.pixels)
+        ) == hp.nside2npix(self.nside)
+
+        if not is_full_sky:
             new_header = self.header.with_region(self.region).with_parameter(
                 "map_params/full_sky", False
             )
