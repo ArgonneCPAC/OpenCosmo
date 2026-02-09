@@ -78,7 +78,7 @@ class HealpixMap(dict):
         z_range: tuple[float, float],
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
-        region: Optional[HealPixRegion | FullSkyRegion] = None,
+        region: Optional[Region] = None,
     ):
         if (
             not full_sky
@@ -546,6 +546,7 @@ class HealpixMap(dict):
                 self.z_range,
                 self.__hidden,
                 self.__ordered_by,
+                self.__region,
             )
         return output
 
@@ -780,7 +781,13 @@ class HealpixMap(dict):
         ds = next(iter(self.values()))
         init_index = ds.index
         ds = ds.filter(*masks)
-        is_saved = np.where(np.isin(ds.index, init_index))
+
+        init_index_arr = into_array(init_index)
+        final_index_arr = into_array(ds.index)
+
+        is_saved = np.where(
+            np.isin(init_index_arr, final_index_arr, assume_unique=True)
+        )
         new_pixels = self.pixels[is_saved]
         output = {next(iter(self.keys())): ds}
         return HealpixMap(
