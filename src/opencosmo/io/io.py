@@ -4,6 +4,8 @@ from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional
 
 import h5py
+import healpy as hp
+import numpy as np
 
 import opencosmo as oc
 from opencosmo import collection
@@ -187,13 +189,15 @@ def open_single_dataset(
         assert partition is not None
         try:
             idx_data = handle["index"]
-            min_level = tree.max_level if header.file.is_lightcone else None
-            part = partition(comm, len(handler), idx_data, tree, min_level)
+            part = partition(comm, len(handler), idx_data, tree)
             if part is None:
                 index = empty()
             else:
                 index = part.idx
                 sim_region = part.region if part.region is not None else sim_region
+            if header.file.is_lightcone:
+                sim_region = __expand_lightcone_region(sim_region, tree)
+
         except KeyError:
             n_ranks = comm.Get_size()
             n_per = len(handler) // n_ranks
@@ -236,6 +240,17 @@ def open_single_dataset(
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset
+
+
+def __expand_lightcone_region(region, tree):
+    pixels = region.pixels
+    npix_ratio = hp.nside2npix(2**tree.max_level) // hp.nside2npix(region.nside)
+    pixels = pixels[:, None] * npix_ratio + np.arange(npix_ratio)
+    pixels = pixels.flatten()
+
+    full_pixels = tree.get_full_index(tree.max_level)
+    full_pixels = np.intersect1d(pixels, full_pixels)
+    return HealpixRegion(full_pixels, 2**tree.max_level)
 
 
 def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> None:
