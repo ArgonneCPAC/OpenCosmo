@@ -19,7 +19,7 @@ from opencosmo.io.file import (
 from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
-from opencosmo.spatial.region import FullSkyRegion
+from opencosmo.spatial.region import HealPixRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 
@@ -173,7 +173,8 @@ def open_single_dataset(
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
     elif header.file.is_lightcone:
-        sim_region = FullSkyRegion()
+        pixels = tree.get_full_index(tree.max_level)
+        sim_region = HealPixRegion(pixels, nside=2**tree.max_level)
     else:
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))
@@ -184,9 +185,10 @@ def open_single_dataset(
 
     if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
+        min_level = tree.max_level if header.file.is_lightcone else None
         try:
             idx_data = handle["index"]
-            part = partition(comm, len(handler), idx_data, tree)
+            part = partition(comm, len(handler), idx_data, tree, min_level)
             if part is None:
                 index = empty()
             else:

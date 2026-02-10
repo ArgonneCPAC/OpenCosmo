@@ -165,6 +165,13 @@ class HealPixRegion:
         self.__nside = nside
         self.__ordering = ordering
 
+    def __repr__(self):
+        res = (
+            f"Healpix Region (nside = {self.nside}, ordering = {self.ordering})\n"
+            f"{len(self.pixels)} pixels in range: {self.pixels.min()} -> {self.pixels.max()}"
+        )
+        return res
+
     def into_base_convention(self, *args, **kwargs):
         return self
 
