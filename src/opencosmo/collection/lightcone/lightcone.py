@@ -386,7 +386,10 @@ class Lightcone(dict):
         region: opencosmo.spatial.Region
 
         """
-        return next(iter(self.values())).region
+        regions = [v.region for v in self.values()]
+        if len(regions) == 1:
+            return regions[0]
+        return regions[0].combine(*regions[1:])
 
     @property
     def simulation(self) -> HaccSimulationParameters:

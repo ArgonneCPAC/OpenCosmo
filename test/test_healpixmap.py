@@ -6,7 +6,7 @@ import pytest
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
-from opencosmo.spatial.healpix import HealPixRegion
+from opencosmo.spatial.healpix import HealpixRegion
 
 
 @pytest.fixture
@@ -188,7 +188,7 @@ def test_healpix_collection_bound(healpix_map_path):
     coordinates = SkyCoord(ra, dec, unit="radian")
     seps = center_coord.separation(coordinates)
     seps = seps.to(u.degree)
-    assert isinstance(ds_region, HealPixRegion)
+    assert isinstance(ds_region, HealpixRegion)
     assert all(seps < radius)
     assert len(data["tsz"].valid_pixels) == n_raw
 

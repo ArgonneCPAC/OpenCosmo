@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import singledispatchmethod
+from functools import reduce, singledispatchmethod
 from typing import TYPE_CHECKING, Any, Iterable, TypeVar
 
 import astropy.units as u  # type: ignore
@@ -11,7 +11,7 @@ from healpy import ang2vec, query_disc  # type: ignore
 from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
-    HealPixRegionModel,
+    HealpixRegionModel,
 )
 
 if TYPE_CHECKING:
@@ -159,17 +159,37 @@ def _(self, other: ConeRegion):
     return dtheta < (self.radius + other.radius)
 
 
-class HealPixRegion:
+class HealpixRegion:
     def __init__(self, idxs: NDArray[np.int_], nside: int, ordering: str = "nested"):
         self.__idxs = idxs
         self.__nside = nside
         self.__ordering = ordering
 
+    def __repr__(self):
+        res = (
+            f"Healpix Region (nside = {self.nside}, ordering = {self.ordering})\n"
+            f"{len(self.pixels)} pixels in range: {self.pixels.min()} -> {self.pixels.max()}"
+        )
+        return res
+
     def into_base_convention(self, *args, **kwargs):
         return self
 
     def into_model(self):
-        return HealPixRegionModel(pixels=self.__idxs, nside=self.nside)
+        return HealpixRegionModel(pixels=self.__idxs, nside=self.nside)
+
+    def combine(self, *others: HealpixRegion) -> HealpixRegion:
+        if any(o.nside != self.nside for o in others):
+            raise ValueError("Cannot combine healpix regions with different nsides!")
+        if any(o.ordering != self.ordering for o in others):
+            raise ValueError("Cannot combine healpix regions with different orderings!")
+
+        output = reduce(
+            lambda left, right: np.union1d(left, right),
+            (o.pixels for o in others),
+            self.pixels,
+        )
+        return HealpixRegion(output, self.nside, self.ordering)
 
     @property
     def pixels(self):
@@ -199,8 +219,8 @@ class HealPixRegion:
         return np.any(np.isin(self.__idxs, intersections))
 
 
-@HealPixRegion._intersects.register  # type: ignore
-def _(self, other: HealPixRegion):
+@HealpixRegion._intersects.register  # type: ignore
+def _(self, other: HealpixRegion):
     self_pixels = self.pixels
     other_pixels = other.pixels
     return np.any(np.isin(self_pixels, other_pixels))

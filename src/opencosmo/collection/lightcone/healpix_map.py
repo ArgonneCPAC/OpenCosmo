@@ -18,7 +18,7 @@ from opencosmo.index import into_array
 from opencosmo.io.io import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
-from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealPixRegion
+from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
@@ -82,7 +82,7 @@ class HealpixMap(dict):
     ):
         if (
             not full_sky
-            and not isinstance(region, HealPixRegion)
+            and not isinstance(region, HealpixRegion)
             and any(
                 "pixel" not in dataset.meta_columns for dataset in datasets.values()
             )
@@ -472,7 +472,7 @@ class HealpixMap(dict):
         is_full_sky = self.full_sky and get_comm_world() is None
         region = None
         if len(new_pixels) != out_npix:
-            region = HealPixRegion(new_pixels, nside_out, self.__ordering)
+            region = HealpixRegion(new_pixels, nside_out, self.__ordering)
 
         return HealpixMap(
             {"data": new_dataset},
@@ -645,7 +645,7 @@ class HealpixMap(dict):
             self.z_range,
             self.__hidden,
             self.__ordered_by,
-            region=HealPixRegion(current_pixels[rows_to_take], self.nside),
+            region=HealpixRegion(current_pixels[rows_to_take], self.nside),
         )
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
@@ -805,7 +805,7 @@ class HealpixMap(dict):
             self.z_range,
             self.__hidden,
             self.__ordered_by,
-            region=HealPixRegion(new_pixels, self.nside),
+            region=HealpixRegion(new_pixels, self.nside),
         )
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
@@ -964,7 +964,7 @@ class HealpixMap(dict):
             self.z_range,
             self.__hidden,
             self.__ordered_by,
-            region=HealPixRegion(pixels, self.nside),
+            region=HealpixRegion(pixels, self.nside),
         )
 
     def take_rows(self, rows: np.ndarray):
@@ -1032,7 +1032,7 @@ class HealpixMap(dict):
             self.z_range,
             self.__hidden,
             self.__ordered_by,
-            HealPixRegion(self.pixels[rows], self.nside),
+            HealpixRegion(self.pixels[rows], self.nside),
         )
 
     def with_new_columns(

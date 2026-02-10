@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import count
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 from uuid import uuid1
 
 import h5py
@@ -126,12 +126,11 @@ def pack_masked_ranges(
     return output_starts, output_sizes
 
 
-def partition_index(n_partitions: int, counts: h5py.Group):
+def partition_index(n_partitions: int, counts: h5py.Group, min_level: int):
     levels = [int(key.split("_")[1]) for key in counts.keys()]
-    lowest_level = min(levels)
     highest_level = max(levels)
     split_level = -1
-    for level in range(lowest_level, highest_level + 1):
+    for level in range(min_level, highest_level + 1):
         level_counts = counts[f"level_{level}"]["size"][:]
         full_region_indices = np.where(level_counts > 0)[0]
         n_full = len(full_region_indices)
@@ -168,8 +167,20 @@ class Tree:
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
 
+    @property
+    def max_level(self):
+        return self.__max_level
+
+    def get_full_index(self, level: int):
+        if level > self.max_level:
+            raise ValueError(
+                "Requested level is greater than the max level of this tree!"
+            )
+        sizes = self.__data[f"level_{level}"]["size"][:]
+        return np.where(sizes > 0)[0]
+
     def partition(
-        self, n_partitions: int, counts: h5py.Group
+        self, n_partitions: int, counts: h5py.Group, min_level: Optional[int] = None
     ) -> Sequence[TreePartition]:
         """
         Partition into n trees, where each tree contains an equally sized
@@ -177,7 +188,11 @@ class Tree:
 
         This function is used primarily in an MPI context.
         """
-        partition_indices, split_level = partition_index(n_partitions, counts)
+        if min_level is None:
+            min_level = 0
+        partition_indices, split_level = partition_index(
+            n_partitions, counts, min_level
+        )
         partitions = []
         start = self.__data[f"level_{split_level}"]["start"]
         size = self.__data[f"level_{split_level}"]["size"]

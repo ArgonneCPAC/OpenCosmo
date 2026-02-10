@@ -13,7 +13,7 @@ class ConeRegionModel(BaseModel):
     radius: float
 
 
-class HealPixRegionModel(BaseModel):
+class HealpixRegionModel(BaseModel):
     model_config = ConfigDict(frozen=True)
     pixels: frozenset[int]
     nside: int
@@ -23,4 +23,4 @@ class HealPixRegionModel(BaseModel):
         return list(value)
 
 
-RegionModel = BoxRegionModel | ConeRegionModel | HealPixRegionModel
+RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel
