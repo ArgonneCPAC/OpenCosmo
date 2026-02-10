@@ -36,6 +36,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: [get-test-data]
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ['3.11', '3.12', '3.13']
@@ -77,6 +78,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: [get-test-data]
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ['3.11', '3.12', '3.13']
