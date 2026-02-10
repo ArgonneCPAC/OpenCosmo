@@ -554,14 +554,20 @@ class Lightcone(dict):
         """
         output = {}
         hidden = hidden if hidden is not None else self.__hidden
+        zero_length_output = {}
         for ds_name, dataset in self.items():
             dataset_mapped_arguments = {
                 arg_name: args[ds_name] for arg_name, args in mapped_arguments.items()
             }
-            output[ds_name] = getattr(dataset, method)(
+            new_ds = getattr(dataset, method)(
                 *args, **kwargs, **dataset_mapped_arguments
             )
+            if len(new_ds) == 0:
+                zero_length_output[ds_name] = new_ds
+            output[ds_name] = new_ds
 
+        if not output:
+            output = zero_length_output
         if construct:
             return Lightcone(output, self.z_range, hidden, self.__ordered_by)
         return output
@@ -715,14 +721,21 @@ class Lightcone(dict):
         dataset : Lightcone
             The new lightcone dataset with the evaluated column(s)
         """
+
         kwargs, iterable_kwargs = prepare_kwargs(len(self), evaluate_kwargs)
-        iterable_kwargs_by_dataset = {}
+        mapped_kwargs = {}
         indices = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))[
             :-1
         ]
         for name, arr in iterable_kwargs.items():
             splits = np.array_split(arr, indices)
-            iterable_kwargs_by_dataset[name] = dict(zip(self.keys(), splits))
+            mapped_kwargs[name] = dict(zip(self.keys(), splits))
+        kwargs_names = list(kwargs.keys())
+        for name in kwargs_names:
+            if isinstance(kwargs[name], dict) and set(kwargs[name].keys()) == set(
+                self.keys()
+            ):
+                mapped_kwargs[name] = kwargs.pop(name)
 
         result = self.__map(
             "evaluate",
@@ -730,8 +743,8 @@ class Lightcone(dict):
             format=format,
             vectorize=vectorize,
             insert=insert,
+            mapped_arguments=mapped_kwargs,
             batch_size=batch_size,
-            mapped_arguments=iterable_kwargs_by_dataset,
             construct=insert,
             **kwargs,
         )
@@ -1005,8 +1018,6 @@ class Lightcone(dict):
         for split, (name, dataset) in zip(splits, self.items()):
             if len(split) > 0:
                 output[name] = dataset.take_rows(split - rs)
-            else:
-                output[name] = dataset.take(0)  # compatability reasons
             rs += len(dataset)
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 

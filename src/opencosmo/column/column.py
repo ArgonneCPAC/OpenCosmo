@@ -508,10 +508,11 @@ class EvaluatedColumn:
                     name: np.random.randint(20, 40, 2) for name in self.__requires
                 }
 
-        test_data = {
-            name: td * units[name] if units.get(name) is not None else td
-            for name, td in test_data.items()
-        }
+        if self.__format == "astropy":
+            test_data = {
+                name: td * units[name] if units.get(name) is not None else td
+                for name, td in test_data.items()
+            }
 
         results = self.__func(**test_data, **self.__kwargs)
         if not isinstance(results, dict):
@@ -524,6 +525,12 @@ class EvaluatedColumn:
 
     def evaluate(self, data: dict[str, np.ndarray], index: Optional[DataIndex] = None):
         data = {name: data[name] for name in self.__requires}
+        if self.__format != "astropy":
+            data = {
+                name: val.value if isinstance(val, u.Quantity) else val
+                for name, val in data.items()
+            }
+
         if self.batch_size > 0:
             length = len(next(iter(data.values())))
             strategy = EvaluateStrategy.CHUNKED

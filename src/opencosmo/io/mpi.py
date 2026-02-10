@@ -468,6 +468,10 @@ def __write_column(
                 data += ds[:]
                 ds[:] = data
 
+    if new_comm is not None:
+        assert new_group is not None
+        new_comm.Free()
+        new_group.Free()
     if comm is not None:
         comm.Barrier()
     ds.file.flush()

@@ -1,3 +1,33 @@
+Opencosmo 1.0.4 (2026-02-04)
+===============================
+
+Bugfixes
+--------
+
+- Dictionary kwargs with the same name as the datasets in a lightcone are now correctly mapped
+- Fix a bug that could prevent unitless columns to be converted to numpy arrays when `format = "numpy"` is set
+- Fix a bug that that could cause data used for verification of evaluated columns to carry units even if the evaluated column requested data without units
+
+
+Opencosmo 1.0.3 (2026-01-30)
+===============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause MPI writes to fail because dynamically-created communicators were not cleaned up correctly.
+
+
+opencosmo 1.0.2 (2026-01-28)
+===============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause a bad error message when a dependnecy cycle is detected in derived columns.
+- Fix a bug that could cause derived column instantiation to fail if other derived columns with specific properties were not included in the selection.
+
+
 opencosmo 1.0.1 (2026-01-21)
 ===============================
 
