@@ -7,6 +7,10 @@ except (ImportError, RuntimeError):
     MPI = None  # type: ignore
 
 
+def has_mpi() -> bool:
+    return get_comm_world() is not None
+
+
 @cache
 def get_comm_world() -> Optional["MPI.Comm"]:
     if MPI is None or MPI.COMM_WORLD.Get_size() == 1:

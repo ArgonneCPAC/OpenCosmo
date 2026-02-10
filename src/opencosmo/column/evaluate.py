@@ -101,7 +101,11 @@ def evaluate_vectorized(data, func, kwargs):
 
 
 def do_first_evaluation(
-    func: Callable, strategy: str, format: str, kwargs: dict[str, Any], dataset: Dataset
+    func: Callable,
+    strategy: str,
+    format: str,
+    kwargs: dict[str, Any],
+    dataset: Dataset,
 ):
     eval_strategy = EvaluateStrategy(strategy)
     match eval_strategy:

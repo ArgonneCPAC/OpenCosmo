@@ -14,7 +14,11 @@ if TYPE_CHECKING:
 
 
 def partition(
-    comm: MPI.Comm, length: int, counts: h5py.Group, tree: Optional[Tree]
+    comm: MPI.Comm,
+    length: int,
+    counts: h5py.Group,
+    tree: Optional[Tree],
+    min_level: Optional[int] = None,
 ) -> Optional[TreePartition]:
     """
     When opening with MPI, each rank recieves an equally-sized chunk of the
@@ -22,7 +26,7 @@ def partition(
     between ranks.
     """
     if tree is not None:
-        partitions = tree.partition(comm.Get_size(), counts)
+        partitions = tree.partition(comm.Get_size(), counts, min_level)
         try:
             part = partitions[comm.Get_rank()]
         except IndexError:

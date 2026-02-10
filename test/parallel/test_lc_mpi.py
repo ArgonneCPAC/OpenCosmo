@@ -10,6 +10,7 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+from opencosmo.mpi import get_comm_world
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -33,15 +34,19 @@ def per_test_dir(
         .replace("]", "_")
     )
 
-    path = tmp_path_factory.mktemp(nodeid)
     comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    if rank == 0:
+        path = tmp_path_factory.mktemp(nodeid)
+    else:
+        path = None
     path_to_return = comm.bcast(path)
 
     try:
         yield path_to_return
     finally:
         # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS:
+        if IN_GITHUB_ACTIONS and rank == 0:
             shutil.rmtree(path, ignore_errors=True)
 
 
@@ -136,14 +141,17 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
 def test_lc_collection_write_single(
     haloproperties_600_path, haloproperties_601_path, per_test_dir
 ):
+    comm = get_comm_world()
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     ds = ds.with_redshift_range(0.040, 0.0405)
-    original_length = len(ds)
+    original_length = comm.allreduce(len(ds))
     oc.write(per_test_dir / "lightcone.hdf5", ds)
     ds = oc.open(per_test_dir / "lightcone.hdf5")
     data = ds.select("redshift").data
+    new_length = comm.allreduce(len(data))
+
     parallel_assert(data.min() >= 0.040 and data.max() <= 0.0405)
-    parallel_assert(len(data) == original_length)
+    parallel_assert(original_length == new_length)
     parallel_assert(ds.z_range == (0.04, 0.0405))
 
 
@@ -173,6 +181,88 @@ def test_lc_collection_write(
     parallel_assert(redshift_data.min() >= 0.039 and redshift_data.max() <= 0.0405)
     parallel_assert(total_original_length == total_final_length)
     parallel_assert(ds.z_range == (0.039, 0.0405))
+
+
+class Counter:
+    def __init__(self):
+        self.__counts = []
+
+    def append_count(self, count: int):
+        self.__counts.append(count)
+
+    def get_max_count(self):
+        return max(self.__counts)
+
+    @property
+    def counts(self):
+        return self.__counts
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_collection_batched(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    batch_size = 1000
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        counter: Counter,
+    ):
+        counter.append_count(len(fof_halo_center_x))
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    counter = Counter()
+    offset = ds.evaluate(
+        offset, vectorize=True, insert=False, batch_size=batch_size, counter=counter
+    )["offset"]
+
+    assert max(counter.counts) <= batch_size
+    assert len(counter.counts) >= len(ds) // batch_size
+    assert np.all(offset > 0)
+    assert len(offset) == len(ds)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_collection_batched_lazy(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    batch_size = 1000
+
+    def offset(
+        fof_halo_com_x,
+        fof_halo_com_y,
+        fof_halo_com_z,
+        fof_halo_center_x,
+        fof_halo_center_y,
+        fof_halo_center_z,
+        counter: Counter,
+    ):
+        counter.append_count(len(fof_halo_center_x))
+        dx = fof_halo_com_x - fof_halo_center_x
+        dy = fof_halo_com_y - fof_halo_center_y
+        dz = fof_halo_com_z - fof_halo_center_z
+        return np.sqrt(dx**2 + dy**2 + dz**2)
+
+    counter = Counter()
+    ds = ds.evaluate(
+        offset, vectorize=True, insert=True, batch_size=batch_size, counter=counter
+    )
+
+    offset = ds.select("offset").get_data()
+    assert max(counter.counts) <= batch_size
+    assert len(counter.counts) >= len(ds) // batch_size
+    assert np.all(offset > 0)
+    assert len(offset) == len(ds)
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -294,6 +384,7 @@ def test_write_some_missing_no_stack(
 def test_lightcone_stacking(
     haloproperties_600_path, haloproperties_601_path, per_test_dir
 ):
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds = ds.take(30_000, at="random")
     for dataset in ds.values():
@@ -304,8 +395,13 @@ def test_lightcone_stacking(
     oc.write(output_path, ds)
     ds_new = oc.open(output_path)
     fof_tags_new = ds_new.select("fof_halo_tag").get_data()
+    original_length = comm.allreduce(len(ds))
+    new_length = comm.allreduce(len(ds_new))
+    all_fof_tags = np.concat(comm.allgather(fof_tags))
+    all_fof_tags_new = np.concat(comm.allgather(fof_tags_new))
+
     assert len(ds_new.keys()) == 1
-    assert len(ds_new) == len(ds)
-    assert np.all(np.unique(fof_tags) == np.unique(fof_tags_new))
+    assert original_length == new_length
+    assert np.all(np.isin(all_fof_tags, all_fof_tags_new))
     assert ds_new.z_range == ds.z_range
     assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range

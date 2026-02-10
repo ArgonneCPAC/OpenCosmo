@@ -9,12 +9,12 @@ from astropy.coordinates import SkyCoord  # type: ignore
 from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
-    HealPixRegionModel,
+    HealpixRegionModel,
 )
 from opencosmo.spatial.region import (
     BoxRegion,
     ConeRegion,
-    HealPixRegion,
+    HealpixRegion,
 )
 
 if TYPE_CHECKING:
@@ -33,8 +33,8 @@ def from_model(model: BaseModel):
             return make_cone(model.center, model.radius)
         case BoxRegionModel():
             return make_box(model.p1, model.p2)
-        case HealPixRegionModel():
-            return HealPixRegion(np.array(model.pixels), model.nside)
+        case HealpixRegionModel():
+            return HealpixRegion(np.array(list(model.pixels)), model.nside)
         case _:
             raise ValueError(f"Invalid region model type {type(model)}")
 

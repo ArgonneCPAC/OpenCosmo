@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from opencosmo.index import into_array
-from opencosmo.spatial.region import HealPixRegion
+from opencosmo.spatial.region import HealpixRegion
 
 if TYPE_CHECKING:
     from opencosmo.index import SimpleIndex
@@ -20,7 +20,7 @@ class HealPixIndex:
 
     def get_partition_region(self, index: SimpleIndex, level: int) -> Region:
         idxs = into_array(index)
-        return HealPixRegion(idxs, 2**level)
+        return HealpixRegion(idxs, 2**level)
 
     def query(
         self, region: Region, level: int = 1

@@ -6,7 +6,7 @@ import pytest
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
-from opencosmo.spatial.healpix import HealPixRegion
+from opencosmo.spatial.healpix import HealpixRegion
 
 
 @pytest.fixture
@@ -26,13 +26,13 @@ def structure_maps(map_path, all_files):
 
 def test_healpix_index(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    raw_data = next(iter(ds.values())).get_metadata(["pixel"])
+    pixels = ds.pixels
 
     center = (45 * u.deg, -45 * u.deg)
     radius = 2 * u.deg
     center_coord = SkyCoord(*center)
 
-    theta, phi = hp.pix2ang(ds.nside, raw_data["pixel"], nest=True)
+    theta, phi = hp.pix2ang(ds.nside, pixels, nest=True)
     raw_data_coords = SkyCoord(phi, np.pi / 2 - theta, unit="rad")
 
     raw_data_seps = center_coord.separation(raw_data_coords)
@@ -139,7 +139,7 @@ def test_healpix_index_chain_failure(healpix_map_path):
 
 def test_healpix_index_chain(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    raw_data = next(iter(ds.values())).get_metadata(["pixel"])
+    pixels = ds.pixels
 
     center = (45 * u.deg, -45 * u.deg)
     center_coord = SkyCoord(*center)
@@ -151,7 +151,7 @@ def test_healpix_index_chain(healpix_map_path):
     ds = ds.bound(region1)
     ds = ds.bound(region2)
 
-    theta, phi = hp.pix2ang(ds.nside, raw_data["pixel"], nest=True)
+    theta, phi = hp.pix2ang(ds.nside, pixels, nest=True)
     ra = phi
     dec = np.pi / 2 - theta
     raw_data_coords = SkyCoord(ra, dec, unit="radian")
@@ -164,13 +164,13 @@ def test_healpix_index_chain(healpix_map_path):
 
 def test_healpix_collection_bound(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    raw_data = next(iter(ds.values())).get_metadata(["pixel"])
+    pixels = ds.pixels
 
     center = (45 * u.deg, -45 * u.deg)
     radius = 2 * u.deg
     center_coord = SkyCoord(*center)
 
-    theta, phi = hp.pix2ang(ds.nside, raw_data["pixel"], nest=True)
+    theta, phi = hp.pix2ang(ds.nside, pixels, nest=True)
     ra = phi
     dec = np.pi / 2 - theta
     raw_data_coords = SkyCoord(ra, dec, unit="radian")
@@ -188,7 +188,7 @@ def test_healpix_collection_bound(healpix_map_path):
     coordinates = SkyCoord(ra, dec, unit="radian")
     seps = center_coord.separation(coordinates)
     seps = seps.to(u.degree)
-    assert isinstance(ds_region, HealPixRegion)
+    assert isinstance(ds_region, HealpixRegion)
     assert all(seps < radius)
     assert len(data["tsz"].valid_pixels) == n_raw
 
@@ -211,6 +211,15 @@ def test_healpix_write(healpix_map_path, tmp_path):
     ds = ds.bound(region2)
 
     assert set(ds.data["tsz"].valid_pixels) == set(new_ds.data["tsz"].valid_pixels)
+
+
+def test_healpix_write_after_take_range(healpix_map_path, tmp_path):
+    ds = oc.open(healpix_map_path)
+    ds = ds.take_range(len(ds) // 4, len(ds) // 2)
+
+    oc.write(tmp_path / "map_test.hdf5", ds)
+    ds_written = oc.open(tmp_path / "map_test.hdf5")
+    assert np.all(ds.pixels == ds_written.pixels)
 
 
 def test_healpix_write_fail(healpix_map_path, tmp_path):

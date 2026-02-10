@@ -4,6 +4,8 @@ from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional
 
 import h5py
+import healpy as hp
+import numpy as np
 
 import opencosmo as oc
 from opencosmo import collection
@@ -19,7 +21,7 @@ from opencosmo.io.file import (
 from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
-from opencosmo.spatial.region import FullSkyRegion
+from opencosmo.spatial.region import HealpixRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 
@@ -172,8 +174,9 @@ def open_single_dataset(
 
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
-    elif header.file.is_lightcone:
-        sim_region = FullSkyRegion()
+    elif header.file.is_lightcone and tree is not None:
+        pixels = tree.get_full_index(tree.max_level)
+        sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
     else:
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))
@@ -192,6 +195,9 @@ def open_single_dataset(
             else:
                 index = part.idx
                 sim_region = part.region if part.region is not None else sim_region
+            if header.file.is_lightcone:
+                sim_region = __expand_lightcone_region(sim_region, tree)
+
         except KeyError:
             n_ranks = comm.Get_size()
             n_per = len(handler) // n_ranks
@@ -228,11 +234,23 @@ def open_single_dataset(
             header.healpix_map["ordering"],
             header.healpix_map["full_sky"],
             header.healpix_map["z_range"],
+            region=sim_region,
         )
     elif header.file.is_lightcone and not bypass_lightcone:
         return collection.Lightcone({"data": dataset}, header.lightcone["z_range"])
 
     return dataset
+
+
+def __expand_lightcone_region(region, tree):
+    pixels = region.pixels
+    npix_ratio = hp.nside2npix(2**tree.max_level) // hp.nside2npix(region.nside)
+    pixels = pixels[:, None] * npix_ratio + np.arange(npix_ratio)
+    pixels = pixels.flatten()
+
+    full_pixels = tree.get_full_index(tree.max_level)
+    full_pixels = np.intersect1d(pixels, full_pixels)
+    return HealpixRegion(full_pixels, 2**tree.max_level)
 
 
 def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> None:

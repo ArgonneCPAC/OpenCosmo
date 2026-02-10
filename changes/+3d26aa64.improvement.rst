@@ -1,0 +1,1 @@
+Healpix maps no longer need to store their pixel numbers in a file when they cover the full sky.

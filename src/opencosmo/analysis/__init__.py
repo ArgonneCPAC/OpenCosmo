@@ -1,5 +1,8 @@
 # ruff: noqa
 from importlib import import_module
+from .mpi import reduce
+
+__all__ = ["reduce"]
 
 known_yt_tools = [
     "create_yt_dataset",

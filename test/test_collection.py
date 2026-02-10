@@ -1120,6 +1120,44 @@ def test_add_structure_collection_with_descriptions(halo_paths):
     )
 
 
+class Counter:
+    def __init__(self):
+        self.__count = 0
+
+    def increment(self):
+        self.__count += 1
+
+    @property
+    def count(self):
+        return self.__count
+
+
+def test_visit_batched(halo_paths):
+    ds = oc.open(halo_paths)
+    batch_size = 1000
+
+    def fof_total(fof_halo_mass, counter):
+        counter.increment()
+        return np.cumsum(fof_halo_mass)
+
+    counter = Counter()
+    fof_total = ds.evaluate_on_dataset(
+        fof_total,
+        vectorize=True,
+        insert=False,
+        batch_size=batch_size,
+        counter=counter,
+        format="numpy",
+    )["fof_total"]
+    assert counter.count == len(ds) // batch_size + 1  # +1 for endpoint
+    halo_mass = ds["halo_properties"].select("fof_halo_mass").get_data("numpy")
+    split_points = np.append(np.arange(batch_size, len(ds), batch_size), len(ds))
+    split_halo_masses = np.array_split(halo_mass, split_points)
+    split_fof_total = np.array_split(fof_total, split_points)
+    for fof_total_split, halo_mass_split in zip(split_fof_total, split_halo_masses):
+        assert np.all(fof_total_split == np.cumsum(halo_mass_split))
+
+
 def test_data_cached_after_objects(halo_paths):
     ds = oc.open(*halo_paths)
     ds = ds.with_new_columns(

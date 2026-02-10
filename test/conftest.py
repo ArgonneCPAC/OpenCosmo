@@ -2,9 +2,11 @@ from pathlib import Path
 
 import pytest
 
+
 @pytest.fixture(scope="session")
 def map_path():
     return Path("test_data") / "healpix_map"
+
 
 @pytest.fixture(scope="session")
 def lightcone_path():
@@ -19,3 +21,8 @@ def snapshot_path():
 @pytest.fixture(scope="session")
 def diffsky_path():
     return Path("test_data") / "diffsky"
+
+
+@pytest.fixture(scope="session")
+def analysis_path():
+    return Path("test_data") / "analysis"

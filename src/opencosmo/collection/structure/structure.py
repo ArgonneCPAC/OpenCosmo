@@ -472,6 +472,7 @@ class StructureCollection:
         vectorize: bool = False,
         format: str = "astropy",
         insert: bool = True,
+        batch_size: int = -1,
         **evaluate_kwargs: Any,
     ):
         """
@@ -493,6 +494,35 @@ class StructureCollection:
 
         *does* produces a new dataset with the given new column, but this dataset will not be a part of the
         original collection.
+
+        Parameters
+        ----------
+
+        func: Callable
+            The function to evaluate on the rows in the dataset.
+
+        dataset: Optional[str] = None,
+            The dataset to perform the evaluation on. If None, defaults to the halo_properties or galaxy_properties dataset.
+
+        vectorize: bool, default = False
+            Whether to provide the values as full columns (True) or one row at a time (False). Ignored if :code:`batch_size` is set.
+
+        format: str, default = astropy
+            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
+            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
+
+        insert: bool, default = True
+            If true, the data will be inserted as a column in this dataset. The new column will have the same name
+            as the function. Otherwise the data will be returned directly.
+
+        batch_size: int, default = -1
+            If set, feed data to the function in batches of the specified size. Default is -1, which disables batching. If
+            set to another value, the :code:`vectorize` flag is ignored.
+
+        **evaluate_kwargs: any,
+            Any additional arguments that are required for your function to run. These will be passed directly
+            to the function as keyword arguments. If a kwarg is an array of values with the same length as the dataset,
+            it will be treated as an additional column.
 
 
         """

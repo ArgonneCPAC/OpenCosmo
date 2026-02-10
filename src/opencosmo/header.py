@@ -7,10 +7,12 @@ from types import UnionType
 from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
+import numpy as np
 from pydantic import BaseModel, ValidationError
 
 from opencosmo.file import broadcast_read, file_reader, file_writer
 from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.parameters import (
     FileParameters,
     dtype,
@@ -198,6 +200,7 @@ class OpenCosmoHeader:
             self.__dtype_parameters.items(),
         )
         pars = {}
+        arr_pars = {}
         for path, model in to_write:
             data = model.model_dump(by_alias=True)
             data = dict(
@@ -205,9 +208,17 @@ class OpenCosmoHeader:
                     lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
                 )
             )
-
+            keys = list(data.keys())
+            for key in keys:
+                if isinstance(data[key], list):
+                    arr_pars[f"{path}/{key}"] = ColumnWriter.from_numpy_array(
+                        np.array(data[key]), ColumnCombineStrategy.CONCAT
+                    )
+                    _ = data.pop(key)
             pars[path] = data
-        return make_schema("header", FileEntry.METADATA, attributes=pars)
+        return make_schema(
+            "header", FileEntry.METADATA, attributes=pars, columns=arr_pars
+        )
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         write_header_attributes(file, "file", self.__file_pars)

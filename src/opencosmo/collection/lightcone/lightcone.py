@@ -386,7 +386,10 @@ class Lightcone(dict):
         region: opencosmo.spatial.Region
 
         """
-        return next(iter(self.values())).region
+        regions = [v.region for v in self.values()]
+        if len(regions) == 1:
+            return regions[0]
+        return regions[0].combine(*regions[1:])
 
     @property
     def simulation(self) -> HaccSimulationParameters:
@@ -665,9 +668,10 @@ class Lightcone(dict):
     def evaluate(
         self,
         func: Callable,
-        format: str = "astropy",
         vectorize=False,
         insert=True,
+        format: str = "astropy",
+        batch_size: int = -1,
         **evaluate_kwargs,
     ):
         """
@@ -689,7 +693,12 @@ class Lightcone(dict):
         If vectorize is set to True, the full columns will be pased to the dataset. Otherwise,
         rows will be passed to the function one at a time.
 
-        This function behaves identically to :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`
+        If a :code:`batch_size` is set, opencosmo will pass data to your function in batches of rows. In a lightcone,
+        batches may be smaller than the given chunk size but will never be larger. Exact batch sizes
+        will depend on the layout of the lightcone. Setting a batch size overrides the :code:`vectorize`
+        flag.
+
+        This function behaves (mostly) identically to :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`
 
         Parameters
         ----------
@@ -735,6 +744,7 @@ class Lightcone(dict):
             vectorize=vectorize,
             insert=insert,
             mapped_arguments=mapped_kwargs,
+            batch_size=batch_size,
             construct=insert,
             **kwargs,
         )
