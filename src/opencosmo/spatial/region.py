@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import singledispatchmethod
+from functools import reduce, singledispatchmethod
 from typing import TYPE_CHECKING, Any, Iterable, TypeVar
 
 import astropy.units as u  # type: ignore
@@ -177,6 +177,19 @@ class HealpixRegion:
 
     def into_model(self):
         return HealpixRegionModel(pixels=self.__idxs, nside=self.nside)
+
+    def combine(self, *others: HealpixRegion) -> HealpixRegion:
+        if any(o.nside != self.nside for o in others):
+            raise ValueError("Cannot combine healpix regions with different nsides!")
+        if any(o.ordering != self.ordering for o in others):
+            raise ValueError("Cannot combine healpix regions with different orderings!")
+
+        output = reduce(
+            lambda left, right: np.union1d(left, right),
+            (o.pixels for o in others),
+            self.pixels,
+        )
+        return HealpixRegion(output, self.nside, self.ordering)
 
     @property
     def pixels(self):

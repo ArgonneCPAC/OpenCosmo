@@ -222,7 +222,7 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     assert isinstance(ds.region, HealpixRegion)
-    assert len(ds.region.pixels) == 448
+    assert len(ds.region.pixels) == 502
 
 
 def test_open_bad_data(core_path_475, core_path_487, invalid_data_path):
