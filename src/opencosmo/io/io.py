@@ -172,7 +172,7 @@ def open_single_dataset(
 
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
-    elif header.file.is_lightcone:
+    elif header.file.is_lightcone and tree is not None:
         pixels = tree.get_full_index(tree.max_level)
         sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
     else:
@@ -185,9 +185,9 @@ def open_single_dataset(
 
     if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
-        min_level = tree.max_level if header.file.is_lightcone else None
         try:
             idx_data = handle["index"]
+            min_level = tree.max_level if header.file.is_lightcone else None
             part = partition(comm, len(handler), idx_data, tree, min_level)
             if part is None:
                 index = empty()
