@@ -11,7 +11,7 @@ from healpy import ang2vec, query_disc  # type: ignore
 from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
-    HealPixRegionModel,
+    HealpixRegionModel,
 )
 
 if TYPE_CHECKING:
@@ -159,7 +159,7 @@ def _(self, other: ConeRegion):
     return dtheta < (self.radius + other.radius)
 
 
-class HealPixRegion:
+class HealpixRegion:
     def __init__(self, idxs: NDArray[np.int_], nside: int, ordering: str = "nested"):
         self.__idxs = idxs
         self.__nside = nside
@@ -176,7 +176,7 @@ class HealPixRegion:
         return self
 
     def into_model(self):
-        return HealPixRegionModel(pixels=self.__idxs, nside=self.nside)
+        return HealpixRegionModel(pixels=self.__idxs, nside=self.nside)
 
     @property
     def pixels(self):
@@ -206,8 +206,8 @@ class HealPixRegion:
         return np.any(np.isin(self.__idxs, intersections))
 
 
-@HealPixRegion._intersects.register  # type: ignore
-def _(self, other: HealPixRegion):
+@HealpixRegion._intersects.register  # type: ignore
+def _(self, other: HealpixRegion):
     self_pixels = self.pixels
     other_pixels = other.pixels
     return np.any(np.isin(self_pixels, other_pixels))

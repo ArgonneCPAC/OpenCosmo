@@ -10,7 +10,7 @@ from mpi4py import MPI
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-from opencosmo.spatial.region import HealPixRegion
+from opencosmo.spatial.region import HealpixRegion
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -276,7 +276,7 @@ def test_diffsky_filter(core_path_487, core_path_475):
 @pytest.mark.parallel(nprocs=4)
 def test_diffsky_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
-    assert isinstance(ds.region, HealPixRegion)
+    assert isinstance(ds.region, HealpixRegion)
     parallel_assert(len(ds.region.pixels) == 112)
 
 

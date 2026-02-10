@@ -19,7 +19,7 @@ from opencosmo.io.file import (
 from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
-from opencosmo.spatial.region import HealPixRegion
+from opencosmo.spatial.region import HealpixRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 
@@ -174,7 +174,7 @@ def open_single_dataset(
         sim_region = from_model(header.file.region)
     elif header.file.is_lightcone:
         pixels = tree.get_full_index(tree.max_level)
-        sim_region = HealPixRegion(pixels, nside=2**tree.max_level)
+        sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
     else:
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))

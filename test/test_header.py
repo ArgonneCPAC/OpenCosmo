@@ -10,7 +10,7 @@ from astropy.cosmology import FlatLambdaCDM
 from astropy.cosmology import units as cu
 
 from opencosmo.header import read_header, write_header
-from opencosmo.spatial.region import HealPixRegion
+from opencosmo.spatial.region import HealpixRegion
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -68,7 +68,7 @@ def test_write_header(header_resource_path, tmp_path):
 
 
 def test_write_header_with_large_array(header_resource_path, tmp_path):
-    region_model = HealPixRegion(np.arange(0, 2**14), 2**15)
+    region_model = HealpixRegion(np.arange(0, 2**14), 2**15)
     path = tmp_path / "header.hdf5"
 
     header = read_header(header_resource_path)

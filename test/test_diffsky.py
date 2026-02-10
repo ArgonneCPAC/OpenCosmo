@@ -7,7 +7,7 @@ import pytest
 
 import opencosmo as oc
 from opencosmo.column import add_mag_cols
-from opencosmo.spatial.region import HealPixRegion
+from opencosmo.spatial.region import HealpixRegion
 
 
 @pytest.fixture
@@ -221,7 +221,7 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 
 def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
-    assert isinstance(ds.region, HealPixRegion)
+    assert isinstance(ds.region, HealpixRegion)
     assert len(ds.region.pixels) == 448
 
 
