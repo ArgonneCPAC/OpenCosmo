@@ -1,1 +1,0 @@
-Healpix Regions now print nicely

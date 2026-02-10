@@ -1,4 +1,24 @@
-Opencosmo 1.0.4 (2026-02-04)
+opencosmo 1.1.0 (2026-02-10)
+===============================
+
+New Features
+------------
+
+- Add a new :meth:`reduce <opencosmo.analysis.reduce>` function, which allows results from multiple processes to be combined into a single result by summing, multiplying, or averaging.
+- Lightcones now correctly carry a :py:class:`HealpixRegion <opencosmo.spatial.HealpixRegion>` with the pixels that
+  contain their data.
+- :meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`, :meth:`Lightcone.evaluate <opencosmo.Lightcone.evaluate>` and :meth:`StructureCollection.evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>` now support a :code:`batch_size` argument, which allows you to specify the number of rows that should computed at once.
+
+
+Improvements
+------------
+
+- Healpix Regions now print nicely
+- Healpix maps no longer need to store their pixel numbers in a file when they cover the full sky.
+- The OpenCosmo Header can now store large arrays.
+
+
+opencosmo 1.0.4 (2026-02-04)
 ===============================
 
 Bugfixes
@@ -9,7 +29,7 @@ Bugfixes
 - Fix a bug that that could cause data used for verification of evaluated columns to carry units even if the evaluated column requested data without units
 
 
-Opencosmo 1.0.3 (2026-01-30)
+opencosmo 1.0.3 (2026-01-30)
 ===============================
 
 Bugfixes

@@ -1,2 +1,0 @@
-Lightcones now correctly carry a :py:class:`HealpixRegion <opencosmo.spatial.region.HealpixRegion>` with the pixels that
-contain their data.
