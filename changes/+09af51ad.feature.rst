@@ -1,1 +1,0 @@
-`Dataset.evaluate <opencosmo.Dataset.evaluate>`, `Lightcone.evaluate <opencosmo.Lightcone.evaluate>` and `StructureCollection.evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>` now support a :code:`batch_size` argument, which allows you to specify the number of rows that should computed at once.

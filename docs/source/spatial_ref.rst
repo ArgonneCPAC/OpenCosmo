@@ -14,3 +14,6 @@ Regions can be used to spatially query datasets and collections. Regions are con
    :members:
    :member-order: bysource
 
+.. autoclass:: opencosmo.spatial.HealpixRegion
+   :members:
+   :member-order: bysource

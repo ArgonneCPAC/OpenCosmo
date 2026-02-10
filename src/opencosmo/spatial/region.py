@@ -193,14 +193,23 @@ class HealpixRegion:
 
     @property
     def pixels(self):
+        """
+        The Healpix pixels contained in this region.
+        """
         return self.__idxs
 
     @property
     def nside(self):
+        """
+        The nside of the map the pixels are drawn from
+        """
         return self.__nside
 
     @property
     def ordering(self):
+        """
+        The pixel ordering
+        """
         return self.__ordering
 
     def contains(self, other: Any):
