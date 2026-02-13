@@ -1,0 +1,3 @@
+Allowing for blank panels in ``halo_projection_array`` visualizations
+Added ``cmap_norm`` and ``cmap_norms`` parameters to ``halo_projection_array``
+Changed the default text label color to ``"lightgray"``
