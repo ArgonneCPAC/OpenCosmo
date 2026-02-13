@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import numpy as np
 import yt  # type: ignore
-from matplotlib.colors import LogNorm  # type: ignore
+from matplotlib.colors import LogNorm, Normalize  # type: ignore
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar  # type: ignore
 from unyt import unyt_quantity  # type: ignore
 from yt.visualization.base_plot_types import get_multi_plot  # type: ignore
@@ -137,7 +137,7 @@ def visualize_halo(
     data: oc.StructureCollection,
     projection_axis: Optional[str] = "z",
     length_scale: Optional[str] = "top left",
-    text_color: Optional[str] = "gray",
+    text_color: Optional[str] = "lightgray",
     width: Optional[float] = None,
 ) -> Figure:
     """
@@ -278,10 +278,11 @@ def halo_projection_array(
     weight_field: Optional[Tuple[str, str]] = None,
     projection_axis: Optional[str] = "z",
     cmap: Optional[str] = "gray",
+    cmap_norm: Optional[Normalize] = LogNorm(), # type: ignore
     zlim: Optional[Tuple[float, float]] = None,
     params: Optional[Dict[str, Any]] = None,
     length_scale: Optional[str] = None,
-    text_color: Optional[str] = "gray",
+    text_color: Optional[str] = "lightgray",
     width: Optional[float] = None,
 ) -> Figure:
     """
@@ -304,7 +305,8 @@ def halo_projection_array(
     halo_ids : int or 2D array of int
         Unique ID of the halo(s) to be visualized. The shape of `halo_ids` sets the layout
         of the figure (e.g., if `halo_ids` is a 2x3 array, the outputted figure will be a 2x3
-        array of projections). If `int`, a single panel is output while preserving formatting.
+        array of projections). To leave a panel in the outputted figure blank, set the corresponding 
+        entry into the `halo_ids` array to `None`. If `int`, a single panel is output while preserving formatting.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection dataset containing both halo properties and particle data
         (e.g., output of ``opencosmo.open([haloproperties, sodbighaloparticles])``).
@@ -320,6 +322,8 @@ def halo_projection_array(
     cmap : str
         Matplotlib colormap to use for all panels. Overridden if ``params["cmaps"]`` is provided.
         See https://matplotlib.org/stable/gallery/color/colormap_reference.html for named colormaps.
+    cmap_norm : Normalize
+        Normalization for matplotlib colormap (e.g. for setting ``norm=matplotlib.colors.SymLogNorm()``).
     zlim : tuple of float, optional
         Colorbar limits for `field`. Overridden if ``params["zlims"]`` is provided.
     length_scale : str or None, optional
@@ -348,6 +352,7 @@ def halo_projection_array(
             - ``"zlims"``: 2D array of colorbar limits (log-scaled)
             - ``"labels"``: 2D array of panel labels (or None)
             - ``"cmaps"``: 2D array of Matplotlib colormaps for each panel
+            - ``"cmap_norms"``: 2D array of colormap normalization method (e.g. matplotlib.colors.LogNorm()) 
             - ``"widths"``: 2D array of widths in units of R200
     text_color : str, optional
         Set the color of all text annotations. Default is "gray"
@@ -395,6 +400,7 @@ def halo_projection_array(
         "projection_axes": (np.full(fig_shape, projection_axis)),
         "labels": (np.full(fig_shape, None)),
         "cmaps": (np.full(fig_shape, cmap)),
+        "cmap_norms": (np.full(fig_shape, cmap_norm)),
         "widths": (np.full(fig_shape, width)),
     }
 
@@ -407,6 +413,7 @@ def halo_projection_array(
     zlims = params.get("zlims", default_params["zlims"])
     labels = params.get("labels", default_params["labels"])
     cmaps = params.get("cmaps", default_params["cmaps"])
+    cmap_norms = params.get("cmap_norms", default_params["cmap_norms"])
     widths = params.get("widths", default_params["widths"])
 
     nrow, ncol = fig_shape
@@ -423,11 +430,21 @@ def halo_projection_array(
     for i in range(nrow):
         for j in range(ncol):
             halo_id = halo_ids[i][j]
+            ax = axes[i][j]
+
+            if halo_id is None:
+                ax.set_facecolor("black")
+                continue
 
             # retrieve halo particle info if new halo
             if (i == 0 and j == 0) or halo_id != halo_id_previous:
                 # retrieve properties of halo
-                data_id = data.filter(oc.col("unique_tag") == halo_id)
+                if len(data) > 1:
+                    data_id = data.filter(oc.col("unique_tag") == halo_id)
+                else:
+                    if data["halo_properties"].data["unique_tag"] != halo_id:
+                        raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
+                    data_id = data
                 halo_data = next(iter(data_id.objects()))
 
                 # load particles into yt
@@ -438,7 +455,7 @@ def halo_projection_array(
             Rh = unyt_quantity.from_astropy(halo_properties["sod_halo_radius"])
 
             field, weight_field, zlim, width = (
-                tuple(fields[i][j]),
+                fields[i][j],
                 weight_fields[i][j],
                 zlims[i][j],
                 widths[i][j],
@@ -467,18 +484,18 @@ def halo_projection_array(
             # and re-plot on each panel with imshow
             frb = proj.frb
 
-            ax = axes[i][j]
-
             if zlim is not None:
                 zmin, zmax = zlim
             else:
                 zmin, zmax = None, None
 
+            norm = cmap_norms[i][j]
+
             ax.imshow(
-                frb[field],
+                frb[field].d,
                 origin="lower",
                 cmap=cmaps[i][j],
-                norm=LogNorm(vmin=zmin, vmax=zmax),
+                norm=norm,
             )
             ax.set_facecolor("black")
 
