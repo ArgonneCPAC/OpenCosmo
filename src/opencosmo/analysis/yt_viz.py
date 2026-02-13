@@ -278,7 +278,7 @@ def halo_projection_array(
     weight_field: Optional[Tuple[str, str]] = None,
     projection_axis: Optional[str] = "z",
     cmap: Optional[str] = "gray",
-    cmap_norm: Optional[Normalize] = LogNorm(), # type: ignore
+    cmap_norm: Optional[Normalize] = None, # type: ignore
     zlim: Optional[Tuple[float, float]] = None,
     params: Optional[Dict[str, Any]] = None,
     length_scale: Optional[str] = None,
@@ -324,6 +324,7 @@ def halo_projection_array(
         See https://matplotlib.org/stable/gallery/color/colormap_reference.html for named colormaps.
     cmap_norm : Normalize
         Normalization for matplotlib colormap (e.g. for setting ``norm=matplotlib.colors.SymLogNorm()``).
+        If ``None``, defaults to ``matplotlib.colors.LogNorm(vmin=zlim[0], vmax=zlim[1])``
     zlim : tuple of float, optional
         Colorbar limits for `field`. Overridden if ``params["zlims"]`` is provided.
     length_scale : str or None, optional
@@ -400,7 +401,7 @@ def halo_projection_array(
         "projection_axes": (np.full(fig_shape, projection_axis)),
         "labels": (np.full(fig_shape, None)),
         "cmaps": (np.full(fig_shape, cmap)),
-        "cmap_norms": (np.full(fig_shape, cmap_norm)),
+        "cmap_norms": (np.full(fig_shape, None)),
         "widths": (np.full(fig_shape, width)),
     }
 
@@ -490,6 +491,9 @@ def halo_projection_array(
                 zmin, zmax = None, None
 
             norm = cmap_norms[i][j]
+
+            if norm is None:
+                norm = LogNorm(vmin=zmin, vmax=zmax)
 
             ax.imshow(
                 frb[field].d,
