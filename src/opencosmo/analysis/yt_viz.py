@@ -444,7 +444,7 @@ def halo_projection_array(
                 if len(data) > 1:
                     data_id = data.filter(oc.col("unique_tag") == halo_id)
                 else:
-                    if data["halo_properties"].data["unique_tag"] != halo_id:
+                    if data["halo_properties"].data["unique_tag"] != halo_id: # type: ignore
                         raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
                     data_id = data
                 halo_data = next(iter(data_id.objects()))
