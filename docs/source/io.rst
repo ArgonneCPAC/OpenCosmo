@@ -1,5 +1,5 @@
-Reading and Writing Data in the OpenCosmo Format
-================================================
+Reading and Writing Data 
+========================
 OpenCosmo defines a data format for storing simulation data in hdf5 files. A dataset in this format can be transformed and written by the OpenCosmo library to produce a new file that can be read by others (or yourself at a later date!) using the library.
 
 Options for Reading Data

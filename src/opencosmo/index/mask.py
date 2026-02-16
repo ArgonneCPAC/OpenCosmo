@@ -43,6 +43,9 @@ def into_array(index: np.ndarray | tuple):
         case np.ndarray():
             return index
         case (np.ndarray(), np.ndarray()):
+            if len(index[0]) == 1:
+                return np.arange(index[0][0], index[0][0] + index[1][0])
+
             return __chunked_into_array(*index)
 
 

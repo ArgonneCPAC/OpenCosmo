@@ -76,9 +76,9 @@ int32       float32             float32      ...   float32      int64
     0             58.09235          6.072006 ...    1.5439711     576648
 ```
 
-The `open` function returns a `Dataset` object, which holds the raw data as well as information about the simulation. You can easily access the data and cosmology as Astropy objects:
+The `open` function returns a `Dataset` object, which can retrieve the relevant data from disk with a simple method call. It also holds metadata about the simulation, such as the comsology. You can easily access the data and cosmology as Astropy objects:
 ```python
-dataset.data
+dataset.get_data()
 dataset.cosmology
 ```
 

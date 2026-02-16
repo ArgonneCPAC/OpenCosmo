@@ -27,7 +27,7 @@ Each of these transformations is returns a new dataset or collection with the tr
    ds = ds.select(["fof_halo_mass", "fof_halo_center_x", "fof_halo_center_y", "fof_halo_center_z"])
    ds = ds.take(100, at="random")
    ds = ds.with_units("physical")
-   data = ds.data
+   data = ds.get_data()
 
 In this example, we are we are applying a cut in halo mass using scalefree coordinates, meaning this filter will include all galaxies over 1e13 Msun/h. We then select a subset of the columns and transform them into physical units, removing the factors of h in the final values. See below for more information about unit conventions.
 
@@ -44,7 +44,7 @@ When writing queries like this, it can feel a bit redundant to write :code:`ds =
       .take(100, at="random")
       .with_units("physical")
 
-   data = ds.data
+   data = ds.get_data()
 
 Note that if you're working in a Jupyter notebook, you'll need to use the line continuation character to split the query across multiple lines:
 
@@ -59,7 +59,7 @@ Note that if you're working in a Jupyter notebook, you'll need to use the line c
       .take(100, at="random") \
       .with_units("physical")
 
-   data = ds.data
+   data = ds.get_data()
 
 You are also free to create multiple derivative datasets from the same original dataset:
 
