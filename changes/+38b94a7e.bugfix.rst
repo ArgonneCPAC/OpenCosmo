@@ -1,1 +1,0 @@
-Fix a bug that could cause structure collection evaluations to fail when not evaluating into halo_properties
