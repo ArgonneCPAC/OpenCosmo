@@ -6,7 +6,7 @@ Performance Tips
 Don't Request Data Until You Actually Need It
 ---------------------------------------------
 
-For the most part, :code:`opencosmo` queries are `lazily evaluated <https://en.wikipedia.org/wiki/Lazy_evaluation>`_. This means that :code:`opencosmo` only reads data when it absolutely needs to, such as when a user requests it with :attr:`Dataset.data <opencosmo.Dataset.data>` or writes a dataset to a new file with :meth:`write <opencosmo.write>`.
+For the most part, :code:`opencosmo` queries are `lazily evaluated <https://en.wikipedia.org/wiki/Lazy_evaluation>`_. This means that :code:`opencosmo` only reads data when it absolutely needs to, such as when a user requests it with :meth:`Dataset.get_data <opencosmo.Dataset.get_data>` or writes a dataset to a new file with :meth:`write <opencosmo.write>`.
 
 The main exception to this rule is transformations that filter the dataset based on the value of the columns. If you :meth:`filter <opencosmo.Dataset.filter>` a dataset based on the value of a column, that column will be loaded into memory and your filter will be evaluated immediately. However this only loads the columns necessary to evaluate the filter, so it is usually quite fast. 
 
@@ -28,7 +28,7 @@ If you want to test something out, consider taking a small number of rows using 
 
    ds = oc.open("haloproperties.hdf5").select(["fof_halo_mass", "sod_halo_mass"])
    test_ds = ds.take(10, at="start")
-   print(test_ds.data) # or do other tests
+   print(test_ds.get_data()) # or do other tests
         
    # do additional work with original dataset
 
