@@ -1,1 +1,0 @@
-Regularize some issues in the documentation, provide some additional information in the getting started doc.

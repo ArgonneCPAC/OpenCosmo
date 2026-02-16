@@ -1,1 +1,0 @@
-Retrieving data with the :py:meth:`.data <opencosmo.Dataset.data>` attribute has been marked as deprecated.
