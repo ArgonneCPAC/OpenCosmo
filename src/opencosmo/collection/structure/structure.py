@@ -1093,7 +1093,8 @@ class StructureCollection:
             collection_name = path[0]
             if collection_name not in self.keys():
                 raise ValueError(f"No collection {collection_name} found!")
-            new_collection = self.__datasets[collection_name]
+            datasets = self.__get_datasets()
+            new_collection = datasets[collection_name]
             if not isinstance(new_collection, StructureCollection):
                 raise ValueError(f"{collection_name} is not a collection!")
             new_collection = new_collection.with_new_columns(
@@ -1102,7 +1103,7 @@ class StructureCollection:
             return StructureCollection(
                 self.__source,
                 self.__header,
-                {**self.__datasets, collection_name: new_collection},
+                {**datasets, collection_name: new_collection},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
             )
@@ -1125,7 +1126,8 @@ class StructureCollection:
         new_im_cols = {
             name for name, col in new_columns.items() if isinstance(col, np.ndarray)
         }
-        ds = self.__datasets[dataset]
+        datasets = self.__get_datasets()
+        ds = datasets[dataset]
 
         if not isinstance(ds, oc.Dataset):
             raise ValueError(f"{dataset} is not a dataset!")
@@ -1139,7 +1141,7 @@ class StructureCollection:
         return StructureCollection(
             self.__source,
             self.__header,
-            {**self.__datasets, dataset: new_ds},
+            {**datasets, dataset: new_ds},
             self.__hide_source,
             self.__handler.make_derived(self.__source),
             self.__derived_columns.union(new_derived_columns_),
