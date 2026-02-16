@@ -1,3 +1,18 @@
+opencosmo 1.1.1 (2026-02-16)
+===============================
+
+Documentation
+-------------
+
+- Regularize some issues in the documentation, provide some additional information in the getting started doc.
+
+
+Deprecations and Removals
+-------------------------
+
+- Retrieving data with the :py:meth:`.data <opencosmo.Dataset.data>` attribute has been marked as deprecated.
+
+
 opencosmo 1.1.0 (2026-02-10)
 ===============================
 
