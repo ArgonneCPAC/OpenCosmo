@@ -1,11 +1,13 @@
 Working with MPI
 ================
 
-OpenCosmo can read and write data in an MPI environment. In general the API works exactly the same within an MPI context as it does otherwise, but there are some things to be aware of in the current version of the library (see below). More flexibility in working in an MPI context is planned for future work
+OpenCosmo can read and write data in an MPI environment. In general the API works exactly the same within an MPI context as it does otherwise, but there are some things to be aware of in the current version of the library (see below). More flexibility in working in an MPI context is planned for future work.
+
+In general, scripts that work in a non-MPI context should also work in an MPI context without any modification. The toolkit will automatically handle chunking the dataset across ranks, and coordinating to write data if necessary.
 
 Check if MPI is Active
 ----------------------
-You can check if your script is running with MPI using the
+You can check if your script is running with MPI using the :py:meth:`has_mpi <opencosmo.mpi.has_mpi>` convinience method:
 
 .. code-block:: python
 

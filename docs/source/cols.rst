@@ -14,7 +14,7 @@ Querying your dataset based on the value of a single column is straightforward:
    import opencosmo as oc
    ds = oc.open("haloproperties.hdf5")
    query = oc.col("fof_halo_mass") > 1e14
-   ds = data.filter(query)
+   ds = ds.filter(query)
 
 Because the query is contructed outside the dataset itself, you are free to use it across several datasets at the same time. Because queries create new datasets, you can query the same dataset multiple times easily:
 
@@ -23,8 +23,8 @@ Because the query is contructed outside the dataset itself, you are free to use 
    ds = oc.open("haloproperties.hdf5")
    query_high = oc.col("fof_halo_mass") < 5e13
    query_low = oc.col("fof_halo_mass") > 1e13
-   ds_low = data.filter(query_low)
-   ds_high = data.filter(query_high)
+   ds_low = ds.filter(query_low)
+   ds_high = ds.filter(query_high)
 
 You can also combine multiple queries to create more specific datasets:
 
@@ -53,8 +53,8 @@ The value in the query is always evaluated in the unit conventions of the datase
    ds = oc.open("haloproperties.hdf5")
    query = oc.col("fof_halo_mass") > 1e14
 
-   ds_scalefree = data.with_units("scalefree").filter(query)
-   ds_comoving = data.filter(query)
+   ds_scalefree = ds.with_units("scalefree").filter(query)
+   ds_comoving = ds.filter(query)
 
 
 For more information, see :ref:`Unit Conventions`.

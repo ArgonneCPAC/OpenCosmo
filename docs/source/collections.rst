@@ -44,37 +44,6 @@ Lightcones hold datasets from several different redshift steps, which are stacke
            11 119.049706            49.151897        0.96145815         126.78099 ...      0.12496548 1.5141958             (1049601, 60492121202) 0.040086865
            11  119.60659             43.32933         0.9612831        127.099144 ...       -149.2758  1.519284             (1049601, 60492184203)  0.04027629
 
-Healpix Maps
-------------
-Maps contain pixelized spatial data, integrated over a redshift range, in a single dataset. This may contain one or more different types of data (e.g. x-ray emission or projected density fields) for a given simulation and range. The :py:class:`HealpixMap <opencosmo.HealpixMap>` API is identical to the standard :py:class:`Dataset <opencosmo.Dataset>` API, with a few notable differences. We do not support unit conversions, as we do not assume fine-grained redshift sampling, and instead keep everything in the observed frame. We also provide the data in either Healpix Map format (a numpy array with nested pixelization), or Healsparse format (a sparse implementation which supports partial sky coverage). Some knowledge of Healsparse formats may be useful to work with this data. A simple pixel, value return is demonstrated below. 
- 
-
-.. code-block:: python
-
-   import opencosmo as oc
-   ds = oc.open(healpix_map_path)
-   ds.get_data()
-
-.. code-block:: text
-
-    {'ksz': HealSparseMap: nside_coverage = 64, nside_sparse = 2048, float32, 50331648 valid pixels,
-     'tsz': HealSparseMap: nside_coverage = 64, nside_sparse = 2048, float32, 50331648 valid pixels}
-
-.. code-block:: python
-
-   tsz_map = ds.data['tsz']
-   pix_list = tsz_map.valid_pixels
-   vals = tsz_map.get_values_pix(pix_list)
-
-
-
-
-
-Simulation Collections
-----------------------
-
-SimulationCollections implement an identical API to the :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` it holds. All operations will automatically be mapped over all datasets held by the collection, which will always be of the same type. See the documentation for those classes for more information 
-
 Structure Collections
 ---------------------
 
@@ -157,8 +126,8 @@ For example, calling "filter" on the structure collection will always operate on
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open("my_collection.hdf5")
-   data = data.filter(oc.col("fof_halo_mass") > 1e13)
+   ds = oc.open("my_collection.hdf5")
+   ds = ds.filter(oc.col("fof_halo_mass") > 1e13)
    for halo in data.objects():
       # do work
 
@@ -167,8 +136,8 @@ If your collection contains both a halo properties dataset and a galaxy properti
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open("my_collection.hdf5")
-   data = data.filter(oc.col("gal_mass") > 1e11, dataset="galaxy_properties")
+   ds = oc.open("my_collection.hdf5")
+   ds = ds.filter(oc.col("gal_mass") > 1e11, dataset="galaxy_properties")
 
 However this comes with an important caveat. Filtering based on properties of a galaxy removes any halo that does not contain any a galaxy that meets the threshold. If a halo hosts multiple galaxies and at least one meets the criteria, all galaxies in the halo will be retained. 
 
@@ -191,8 +160,8 @@ Transforming to a different unit convention is identical to :py:meth:`opencosmo.
 .. code-block:: python
 
    import opencosmo as oc
-   data = oc.open("my_collection.hdf5")
-   data = data.with_units("scalefree")
+   ds = oc.open("my_collection.hdf5")
+   ds = ds.with_units("scalefree")
 
 
 **Take Operations Take Structure**
@@ -207,5 +176,37 @@ Calling :py:meth:`opencosmo.StructureCollection.take` will create a new :py:clas
 
    for halo, particles in ds.objects():
       # this loop iterate over 10 halos
+
+
+Healpix Maps
+------------
+Maps contain pixelized spatial data, integrated over a redshift range, in a single dataset. This may contain one or more different types of data (e.g. x-ray emission or projected density fields) for a given simulation and range. The :py:class:`HealpixMap <opencosmo.HealpixMap>` API is identical to the standard :py:class:`Dataset <opencosmo.Dataset>` API, with a few notable differences. We do not support unit conversions, as we do not assume fine-grained redshift sampling, and instead keep everything in the observed frame. We also provide the data in either Healpix Map format (a numpy array with nested pixelization), or Healsparse format (a sparse implementation which supports partial sky coverage). Some knowledge of Healsparse formats may be useful to work with this data. A simple pixel, value return is demonstrated below. 
+ 
+
+.. code-block:: python
+
+   import opencosmo as oc
+   ds = oc.open(healpix_map_path)
+   ds.get_data()
+
+.. code-block:: text
+
+    {'ksz': HealSparseMap: nside_coverage = 64, nside_sparse = 2048, float32, 50331648 valid pixels,
+     'tsz': HealSparseMap: nside_coverage = 64, nside_sparse = 2048, float32, 50331648 valid pixels}
+
+.. code-block:: python
+
+   tsz_map = ds.data['tsz']
+   pix_list = tsz_map.valid_pixels
+   vals = tsz_map.get_values_pix(pix_list)
+
+
+
+
+
+Simulation Collections
+----------------------
+
+SimulationCollections implement an identical API to the :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` it holds. All operations will automatically be mapped over all datasets held by the collection, which will always be of the same type. See the documentation for those classes for more information 
 
 

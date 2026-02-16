@@ -15,6 +15,7 @@ from warnings import warn
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import QTable  # type: ignore
+from deprecated.sphinx import deprecated
 
 from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
@@ -195,6 +196,10 @@ class Dataset:
         return self.__header.simulation
 
     @property
+    @deprecated(
+        version="1.1.0",
+        reason="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
+    )
     def data(self) -> QTable | u.Quantity:
         """
         Return the data in the dataset in astropy format. The value of this
