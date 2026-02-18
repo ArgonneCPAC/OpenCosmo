@@ -49,8 +49,8 @@ def halo_input_path(snapshot_path):
 
 
 @pytest.fixture
-def sod_particle_input_path(snapshot_path):
-    return snapshot_path / "sodbighaloparticles.hdf5"
+def particle_input_path(snapshot_path):
+    return snapshot_path / "haloparticles.hdf5"
 
 
 @pytest.fixture
@@ -72,6 +72,17 @@ pytestmark = pytest.mark.parametrize(
     ],
     indirect=True,
 )
+
+
+def test_h0_units(halo_input_path, particle_input_path, input_path):
+    collection = oc.open(halo_input_path, particle_input_path)
+    ages = collection["star_particles"].select("age").get_data()
+    unitless_age = (
+        collection["star_particles"].with_units("unitless").select("age").get_data()
+    )
+    h0 = collection.cosmology.H0
+    conversion_factor = (1 / h0.to(1 / u.s)).to(u.Gyr)
+    assert np.allclose(unitless_age * conversion_factor, ages)
 
 
 def test_physcal_units(haloproperties_step_path, input_path):
