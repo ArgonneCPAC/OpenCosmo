@@ -483,12 +483,11 @@ class DatasetState:
             columns = [columns]
 
         selections, missing = get_column_selection(self.columns, columns)
-
         if missing:
             raise ValueError(
                 f"Columns are included that are not in this dataset: {missing}"
             )
-        elif not selections:
+        elif not selections and columns:
             raise ValueError("No columns matched the provided wildcards!")
 
         if drop:
