@@ -42,9 +42,9 @@ def test_box_query(halo_properties_path):
     p2 = tuple(random.uniform(50, 60) for _ in range(3))
     reg1 = oc.make_box(p1, p2)
 
-    original_data = ds.data
+    original_data = ds.get_data()
     ds = ds.bound(reg1)
-    data = ds.data
+    data = ds.get_data()
     for i, dim in enumerate(["x", "y", "z"]):
         name = f"fof_halo_center_{dim}"
         original_col = original_data[name]
@@ -69,10 +69,10 @@ def test_box_query_physical(halo_properties_path):
     p2 = tuple(random.uniform(50, 60) for _ in range(3))
     reg1 = oc.make_box(p1, p2)
 
-    original_data = ds.data
+    original_data = ds.get_data()
     ds = ds.bound(reg1)
 
-    data = ds.data
+    data = ds.get_data()
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
         original_col = original_data[f"fof_halo_center_{dim}"]
@@ -97,11 +97,11 @@ def test_box_query_chain(halo_properties_path):
     p21 = (28.5, 37, 46)
     p22 = (33.5, 45, 56)
     reg2 = oc.make_box(p21, p22)
-    original_data = ds.data
+    original_data = ds.get_data()
 
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
-    data = ds.data
+    data = ds.get_data()
 
     for i, dim in enumerate(["x", "y", "z"]):
         colname = f"fof_halo_center_{dim}"
@@ -156,8 +156,8 @@ def test_box_query_chain_with_write(halo_properties_path, tmp_path):
     ds = ds.bound(reg2)
     ds2 = ds2.bound(reg2)
 
-    data = ds.data
-    data2 = ds2.data
+    data = ds.get_data()
+    data2 = ds2.get_data()
 
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]

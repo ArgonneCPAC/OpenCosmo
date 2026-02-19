@@ -89,7 +89,7 @@ def __check_containment_3d(
 ):
     columns = find_coordinates_3d(ds, dtype, select_by)
     ds = ds.select(columns)
-    data = ds.data
+    data = ds.get_data()
 
     data = np.vstack(tuple(data[col].data for col in columns))
     return region.contains(data)

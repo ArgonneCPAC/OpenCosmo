@@ -15,14 +15,14 @@ def input_path(snapshot_path):
 @pytest.fixture
 def max_mass(input_path):
     ds = oc.open(input_path)
-    sod_mass = ds.data["sod_halo_mass"]
+    sod_mass = ds.get_data()["sod_halo_mass"]
     return 0.95 * sod_mass.max()
 
 
 def test_filters(input_path):
     ds = oc.open(input_path)
     ds = ds.filter(col("sod_halo_mass") > 0)
-    data = ds.data
+    data = ds.get_data()
     assert data["sod_halo_mass"].min() > 0
 
 
@@ -30,7 +30,7 @@ def test_multi_filters_single_column(input_path, max_mass):
     ds = oc.open(input_path)
 
     ds = ds.filter(col("sod_halo_mass") > 0, col("sod_halo_mass") < max_mass)
-    data = ds.data
+    data = ds.get_data()
     assert data["sod_halo_mass"].min() > 0
     assert data["sod_halo_mass"].max() < max_mass
 
@@ -44,7 +44,7 @@ def test_multi_filters_multi_columns(input_path, max_mass):
         col("sod_halo_cdelta") > 0,
         col("sod_halo_cdelta") < 20,
     )
-    data = ds.data
+    data = ds.get_data()
     assert data["sod_halo_mass"].min().value > 0
     assert data["sod_halo_mass"].max() < max_mass
     assert data["sod_halo_cdelta"].min() > 0
@@ -55,7 +55,7 @@ def test_chained_filters(input_path, max_mass):
     ds = oc.open(input_path)
     ds = ds.filter(col("sod_halo_mass") > 0).filter(col("sod_halo_mass") < max_mass)
     ds = ds.filter(col("sod_halo_cdelta") > 0).filter(col("sod_halo_cdelta") < 20)
-    data = ds.data
+    data = ds.get_data()
     assert data["sod_halo_mass"].min() > 0
     assert data["sod_halo_mass"].max().value < max_mass.value
     assert data["sod_halo_cdelta"].min() > 0
@@ -65,15 +65,15 @@ def test_chained_filters(input_path, max_mass):
 def test_take_filter(input_path, max_mass):
     ds = oc.open(input_path).take(10000)
     ds = ds.filter(col("sod_halo_mass") > 0, col("sod_halo_mass") < max_mass)
-    assert len(ds.data) < 10000
+    assert len(ds.get_data()) < 10000
 
 
 def test_filter_unit_transformation(input_path, max_mass):
     ds = oc.open(input_path)
     ds = ds.filter(col("sod_halo_mass") > 0, col("sod_halo_mass") < max_mass)
 
-    data = ds.data
-    scalefree_data = ds.with_units("scalefree").data
+    data = ds.get_data()
+    scalefree_data = ds.with_units("scalefree").get_data()
     assert (
         data["sod_halo_mass"].unit == scalefree_data["sod_halo_mass"].unit * cu.littleh
     )
@@ -89,7 +89,7 @@ def test_filter_unit_transformation(input_path, max_mass):
 def test_filter_leaves_original_dataset_unchanged(input_path, max_mass):
     ds = oc.open(input_path)
     ds = ds.filter(col("sod_halo_mass") > 0, col("sod_halo_mass") < max_mass)
-    data = ds.data
+    data = ds.get_data()
     data_len = len(data)
     original_len = len(ds._Dataset__state._DatasetState__raw_data_handler)
     assert data_len < original_len
@@ -97,37 +97,37 @@ def test_filter_leaves_original_dataset_unchanged(input_path, max_mass):
 
 def test_equals_filter(input_path):
     ds = oc.open(input_path)
-    data = ds.data
+    data = ds.get_data()
     sod_mass = data["sod_halo_mass"]
     equals_test_value = np.random.choice(sod_mass)
     ds = ds.filter(col("sod_halo_mass") == equals_test_value)
-    data = ds.data
+    data = ds.get_data()
     assert len(data) > 0
     assert np.all(data["sod_halo_mass"] == equals_test_value * u.Msun)
 
 
 def test_isin_filter(input_path):
     ds = oc.open(input_path)
-    halo_tags = ds.select("fof_halo_tag").take(10, at="random").data
+    halo_tags = ds.select("fof_halo_tag").take(10, at="random").get_data()
     ds = ds.filter(col("fof_halo_tag").isin(halo_tags))
-    assert len(ds.data) == 10
-    assert set(ds.data["fof_halo_tag"]) == set(halo_tags)
+    assert len(ds.get_data()) == 10
+    assert set(ds.get_data()["fof_halo_tag"]) == set(halo_tags)
 
 
 def test_notequals_filter(input_path):
     ds = oc.open(input_path)
-    data = ds.data
+    data = ds.get_data()
     sod_mass = data["sod_halo_mass"]
     notequals_test_value = np.random.choice(sod_mass)
     ds = ds.filter(col("sod_halo_mass") != notequals_test_value)
-    data = ds.data
+    data = ds.get_data()
     assert len(data) > 0
     assert np.all(data["sod_halo_mass"] != notequals_test_value)
 
 
 def test_invalid_filter(input_path):
     ds = oc.open(input_path)
-    data = ds.data
+    data = ds.get_data()
     sod_mass = data["sod_halo_mass"]
     sod_mass_max = sod_mass.max()
     ds = ds.filter(col("sod_halo_mass") > sod_mass_max.value + 1)

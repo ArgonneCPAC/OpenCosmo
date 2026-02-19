@@ -20,7 +20,7 @@ def particle_path(snapshot_path):
 @pytest.fixture
 def max_mass(input_path):
     ds = oc.open(input_path)
-    sod_mass = ds.data["sod_halo_mass"]
+    sod_mass = ds.get_data()["sod_halo_mass"]
     return 0.95 * sod_mass.max()
 
 
@@ -35,7 +35,7 @@ def test_filter_oom(input_path, max_mass):
 
     with oc.open(input_path) as f:
         ds = f.filter(oc.col("sod_halo_mass") > 0, oc.col("sod_halo_mass") < max_mass)
-        data = ds.data
+        data = ds.get_data()
     assert data["sod_halo_mass"].min() > 0
 
 
@@ -55,7 +55,7 @@ def test_filter_to_numpy(input_path, max_mass):
 def test_take_oom(input_path):
     with oc.open(input_path) as f:
         ds = f.take(10)
-        data = ds.data
+        data = ds.get_data()
     assert len(data) == 10
 
 
@@ -159,12 +159,12 @@ def test_drop_wildcard_and_exact(input_path):
 
 def test_drop(input_path):
     with oc.open(input_path) as ds:
-        data = ds.data
+        data = ds.get_data()
         cols = list(data.columns)
         # select 10 columns at random
         dropped_cols = np.random.choice(cols, 10, replace=False)
         selected = ds.drop(dropped_cols)
-        selected_data = selected.data
+        selected_data = selected.get_data()
 
     dropped_cols = set(dropped_cols)
     remaining_cols = set(selected_data.colnames)
@@ -173,12 +173,12 @@ def test_drop(input_path):
 
 def test_drop_single(input_path):
     with oc.open(input_path) as ds:
-        data = ds.data
+        data = ds.get_data()
         cols = list(data.columns)
         # select 10 columns at random
         dropped_col = np.random.choice(cols)
         remaining = ds.drop(dropped_col)
-        remaining_data = remaining.data
+        remaining_data = remaining.get_data()
 
     assert dropped_col not in remaining_data.colnames
 
@@ -392,7 +392,7 @@ def test_visit_vectorize_multiple_noinsert(input_path):
         return fof_halo_mass * fof_halo_com_vx
 
     result = ds.evaluate(fof_px, vectorize=True, insert=False)
-    data = ds.select(("fof_halo_mass", "fof_halo_com_vx")).data
+    data = ds.select(("fof_halo_mass", "fof_halo_com_vx")).get_data()
 
     assert np.all(result["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
@@ -459,12 +459,12 @@ def test_visit_with_sort(input_path, tmp_path):
 
 def test_select_oom(input_path):
     with oc.open(input_path) as ds:
-        data = ds.data
+        data = ds.get_data()
         cols = list(data.columns)
         # select 10 columns at random
         selected_cols = np.random.choice(cols, 10, replace=False)
         selected = ds.select(selected_cols)
-        selected_data = selected.data
+        selected_data = selected.get_data()
 
     for col in selected_cols:
         assert np.all(data[col] == selected_data[col])
@@ -475,13 +475,13 @@ def test_select_single(input_path):
     with oc.open(input_path) as ds:
         for column in ds.columns:
             selected = ds.select(column)
-            selected_data = selected.data
+            selected_data = selected.get_data()
             assert isinstance(selected_data, (u.Quantity, np.ndarray))
 
 
 def test_select_single_numpy(input_path):
     with oc.open(input_path) as ds:
-        data = ds.data
+        data = ds.get_data()
         cols = list(data.columns)
         # select 10 columns at random
         selected_cols = np.random.choice(cols)
@@ -496,7 +496,7 @@ def test_write_after_filter(input_path, tmp_path):
 
         oc.write(tmp_path / "haloproperties.hdf5", ds)
 
-        data = ds.data
+        data = ds.get_data()
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
         filtered_data = new_ds.get_data()
@@ -511,10 +511,10 @@ def test_write_after_derive(input_path, tmp_path):
 
         oc.write(tmp_path / "haloproperties.hdf5", ds)
 
-        data = ds.select("fof_halo_px").data
+        data = ds.select("fof_halo_px").get_data()
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
-        written_data = new_ds.select("fof_halo_px").data
+        written_data = new_ds.select("fof_halo_px").get_data()
         assert np.all(np.isclose(data, written_data))
 
 
@@ -527,10 +527,10 @@ def test_write_after_evaluate(input_path, tmp_path):
 
         oc.write(tmp_path / "haloproperties.hdf5", ds)
 
-        data = ds.select("fof_px").data
+        data = ds.select("fof_px").get_data()
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
-        written_data = new_ds.select("fof_px").data
+        written_data = new_ds.select("fof_px").get_data()
         assert np.all(np.isclose(data, written_data))
 
 

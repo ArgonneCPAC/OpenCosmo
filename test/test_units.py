@@ -22,7 +22,7 @@ def add_column(tmp_path: Path, original_file: Path, column: Column):
     copyfile(original_file, new_path)
     with h5py.File(new_path, "r+") as file:
         data = file["data"]
-        data.create_dataset(column.name, data=column.data)
+        data.create_dataset(column.name, data=column.get_data())
         if column.unit is not None:
             data[column.name].attrs["unit"] = str(column.unit)
     return new_path
@@ -91,9 +91,9 @@ def test_physcal_units(haloproperties_step_path, input_path):
 
     ds_physical = ds.with_units("physical")
 
-    data = ds.data
+    data = ds.get_data()
 
-    data_physical = ds_physical.data
+    data_physical = ds_physical.get_data()
     cols = data.columns
     z = ds.redshift
 
@@ -110,7 +110,7 @@ def test_physcal_units(haloproperties_step_path, input_path):
 
 def test_logarithmic_units(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = data.columns
     for col in cols:
         if "log" in col.lower():
@@ -119,7 +119,7 @@ def test_logarithmic_units(input_path):
 
 def test_parse_velocities(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = data.columns
     velocity_cols = list(
         filter(lambda col: col.upper()[-2:] in ["VX", "VY", "VZ"], cols)
@@ -131,22 +131,24 @@ def test_parse_velocities(input_path):
 def test_comoving_vs_scalefree(input_path):
     comoving = oc.open(input_path).with_units("comoving")
     scalefree = oc.open(input_path).with_units("scalefree")
-    cols = comoving.data.columns
+    cols = comoving.get_data().columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     position_cols = filter(lambda col: "angmom" not in col, position_cols)
     h = comoving.cosmology.h
     for col in position_cols:
-        assert scalefree.data[col].unit == u.Mpc / cu.littleh
-        assert comoving.data[col].unit == u.Mpc
+        assert scalefree.get_data()[col].unit == u.Mpc / cu.littleh
+        assert comoving.get_data()[col].unit == u.Mpc
         assert np.all(
-            np.isclose(comoving.data[col].value, scalefree.data[col].value / h)
+            np.isclose(
+                comoving.get_data()[col].value, scalefree.get_data()[col].value / h
+            )
         )
 
 
 def test_angular_momentum(input_path):
     dataset = oc.open(input_path)
     dataset = dataset.with_units("scalefree")
-    data = dataset.data
+    data = dataset.get_data()
     cols = data.columns
     angmom_cols = filter(lambda col: "angmom" in col, cols)
     angmom_unit = (u.Msun / cu.littleh) * (u.km / u.s) * (u.Mpc / cu.littleh)
@@ -156,7 +158,7 @@ def test_angular_momentum(input_path):
 
 def test_parse_positions(input_path):
     dataset = oc.open(input_path).with_units("scalefree")
-    data = dataset.data
+    data = dataset.get_data()
     cols = data.columns
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     position_cols = filter(lambda col: "angmom" not in col, position_cols)
@@ -166,7 +168,7 @@ def test_parse_positions(input_path):
 
 def test_parse_mass(input_path):
     dataset = oc.open(input_path).with_units("scalefree")
-    data = dataset.data
+    data = dataset.get_data()
     cols = data.columns
     mass_cols = filter(
         lambda col: any(part == "mass" or part[0] == "M" for part in col.split("_")),
@@ -188,29 +190,29 @@ def test_data_update_doesnt_propogate(input_path):
 
 def test_unitless_convention(input_path):
     dataset = oc.open(input_path).with_units("unitless")
-    data = dataset.data
+    data = dataset.get_data()
     cols = data.columns
     assert all(data[col].unit is None for col in cols)
 
 
 def test_unit_conversion(input_path):
     dataset = oc.open(input_path).with_units("unitless")
-    data = dataset.data
+    data = dataset.get_data()
     cols = data.columns
 
     unitful_dataset = dataset.with_units("comoving")
     position_cols = filter(lambda col: col.split("_")[-1] in ["x", "y", "z"], cols)
     position_cols = filter(lambda col: "angmom" not in col, position_cols)
 
-    unitless_data = dataset.data
-    unitful_data = unitful_dataset.data
+    unitless_data = dataset.get_data()
+    unitful_data = unitful_dataset.get_data()
     for col in position_cols:
         assert unitful_data[col].unit == u.Mpc
     for col in cols:
         assert unitless_data[col].unit is None
 
     converted_unitless = unitful_dataset.with_units("unitless")
-    converted_unitless_data = converted_unitless.data
+    converted_unitless_data = converted_unitless.get_data()
     for col in cols:
         assert converted_unitless_data[col].unit is None
 

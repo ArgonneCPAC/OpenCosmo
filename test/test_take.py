@@ -11,9 +11,9 @@ def input_path(snapshot_path):
 
 def test_take_front(input_path):
     ds = oc.open(input_path)
-    data = ds.data
+    data = ds.get_data()
     ds = ds.take(10, at="start")
-    short_data = ds.data
+    short_data = ds.get_data()
 
     assert len(short_data) == 10
     cols = data.columns
@@ -23,9 +23,9 @@ def test_take_front(input_path):
 
 def test_take_back(input_path):
     ds = oc.open(input_path)
-    data = ds.data
+    data = ds.get_data()
     ds = ds.take(10, at="end")
-    short_data = ds.data
+    short_data = ds.get_data()
 
     assert len(short_data) == 10
     cols = data.columns
@@ -35,9 +35,9 @@ def test_take_back(input_path):
 
 def test_take_random(input_path):
     ds = oc.open(input_path)
-    front = ds.take(10).data
-    end = ds.take(10, at="end").data
-    short_data = ds.take(10, at="random").data
+    front = ds.take(10).get_data()
+    end = ds.take(10, at="end").get_data()
+    short_data = ds.take(10, at="random").get_data()
 
     assert not all(short_data == front)
     assert not all(short_data == end)
@@ -45,10 +45,10 @@ def test_take_random(input_path):
 
 def test_take_chain(input_path):
     ds = oc.open(input_path)
-    long_data = ds.data
+    long_data = ds.get_data()
     ds = ds.take(50, at="start")
     ds = ds.take(10, at="end")
-    short_data = ds.data
+    short_data = ds.get_data()
     long_data = long_data[40:50]
 
     for column in short_data.columns:
@@ -57,6 +57,6 @@ def test_take_chain(input_path):
 
 def test_take_too_many(input_path):
     ds = oc.open(input_path)
-    length = len(ds.data)
+    length = len(ds.get_data())
     with pytest.raises(ValueError):
         ds.take(length + 1)
