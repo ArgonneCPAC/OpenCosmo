@@ -113,7 +113,7 @@ def test_multi_filter(multi_path):
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
 
     for ds in collection.values():
-        assert all(ds.data["sod_halo_mass"] > 0)
+        assert all(ds.get_data()["sod_halo_mass"] > 0)
 
 
 def test_link_particles_only(halo_paths):
@@ -159,12 +159,12 @@ def test_multi_filter_write(multi_path, per_test_dir):
     collection = oc.open(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)
     for ds in collection.values():
-        assert all(ds.data["sod_halo_mass"] > 0)
+        assert all(ds.get_data()["sod_halo_mass"] > 0)
     oc.write(per_test_dir / "filtered.hdf5", collection)
 
     collection = oc.open(per_test_dir / "filtered.hdf5")
     for ds in collection.values():
-        assert all(ds.select("sod_halo_mass").data > 0)
+        assert all(ds.select("sod_halo_mass").get_data() > 0)
 
 
 def test_select_nested_structures(halo_paths, galaxy_paths):
@@ -222,7 +222,7 @@ def test_visit_single(halo_paths):
         return res
 
     collection = collection.evaluate(offset, **spec, insert=True)
-    data = collection["halo_properties"].select("offset").data
+    data = collection["halo_properties"].select("offset").get_data()
     assert not np.any(data == 0)
 
 
@@ -563,17 +563,21 @@ def test_data_linking(halo_paths):
             if len(particle_species) == 0:
                 continue
             try:
-                species_halo_tags = set(particle_species.select("fof_halo_tag").data)
+                species_halo_tags = set(
+                    particle_species.select("fof_halo_tag").get_data()
+                )
                 assert len(species_halo_tags) == 1
                 assert species_halo_tags.pop() == halo_properties["fof_halo_tag"]
                 n_particles += 1
             except TypeError:
-                species_halo_tags = set([particle_species.select("fof_halo_tag").data])
+                species_halo_tags = set(
+                    [particle_species.select("fof_halo_tag").get_data()]
+                )
                 halo_tags.update(species_halo_tags)
                 assert species_halo_tags.pop() == halo_properties["fof_halo_tag"]
                 n_particles += 1
             except ValueError:
-                bin_tags = set(particle_species.select("unique_tag").data)
+                bin_tags = set(particle_species.select("unique_tag").get_data())
                 assert len(bin_tags) == 1
                 assert bin_tags.pop() == halo_properties["fof_halo_tag"]
                 n_profiles += 1
@@ -772,11 +776,11 @@ def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
         fof_tag = properties["fof_halo_tag"]
         for p in halo.values():
             try:
-                tags = set(p.select("fof_halo_tag").data)
+                tags = set(p.select("fof_halo_tag").get_data())
                 assert len(tags) == 1
                 assert tags.pop() == fof_tag
             except ValueError:
-                tags = set(p.select("fof_halo_bin_tag").data)
+                tags = set(p.select("fof_halo_bin_tag").get_data())
                 assert len(tags) == 1
                 assert tags.pop() == fof_tag
 
@@ -787,7 +791,7 @@ def test_galaxy_linking(galaxy_paths):
     for galaxy in collection.galaxies():
         properties = galaxy["galaxy_properties"]
         gal_tag = properties["gal_tag"]
-        particle_gal_tags = set(galaxy["star_particles"].select("gal_tag").data)
+        particle_gal_tags = set(galaxy["star_particles"].select("gal_tag").get_data())
         assert len(particle_gal_tags) == 1
         assert particle_gal_tags.pop() == gal_tag
 
@@ -858,9 +862,9 @@ def test_link_write(halo_paths, per_test_dir):
             read_output[properties["fof_halo_tag"]].append(linked_type)
 
             if "particles" not in linked_type:
-                halo_tags.update(linked_dataset.select("fof_halo_bin_tag").data)
+                halo_tags.update(linked_dataset.select("fof_halo_bin_tag").get_data())
             else:
-                species_tags = set(linked_dataset.select("fof_halo_tag").data)
+                species_tags = set(linked_dataset.select("fof_halo_tag").get_data())
                 halo_tags.update(species_tags)
 
         assert len(halo_tags) == 1
@@ -877,7 +881,7 @@ def test_simulation_collection_derive(multi_path):
     )
     for ds in collection.values():
         assert "fof_halo_px" in ds.columns
-        assert "fof_halo_px" in ds.data.columns
+        assert "fof_halo_px" in ds.get_data().columns
 
 
 def test_simulation_collection_units(multi_path):
@@ -1013,7 +1017,7 @@ def test_simulation_collection_bound(multi_path):
     collection = collection.bound(region)
 
     for name, properties in collection.items():
-        data = properties.data
+        data = properties.get_data()
         for i, dim in enumerate(["x", "y", "z"]):
             val = data[f"fof_halo_center_{dim}"].value
             assert np.all(val <= p2[i])
@@ -1034,7 +1038,7 @@ def test_chain_link(galaxy_paths, halo_paths):
         halo_tag = properties["fof_halo_tag"]
         for pds in halo.values():
             try:
-                tags = set(pds.select("fof_halo_tag").data)
+                tags = set(pds.select("fof_halo_tag").get_data())
             except (ValueError, AttributeError, TypeError):
                 continue
 
@@ -1044,7 +1048,7 @@ def test_chain_link(galaxy_paths, halo_paths):
             gal_properties = galaxy["galaxy_properties"]
             gal_tag = gal_properties["gal_tag"]
             assert gal_properties["fof_halo_tag"] == halo_tag
-            gal_tags = set(galaxy["star_particles"].select("gal_tag").data)
+            gal_tags = set(galaxy["star_particles"].select("gal_tag").get_data())
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
 
@@ -1069,7 +1073,7 @@ def test_chain_link_write(galaxy_paths, halo_paths, per_test_dir):
         assert types == expected_types[halo_tag]
         for pds in halo.values():
             try:
-                tags = set(pds.select("fof_halo_tag").data)
+                tags = set(pds.select("fof_halo_tag").get_data())
             except (ValueError, AttributeError, TypeError):
                 continue
 
@@ -1079,7 +1083,7 @@ def test_chain_link_write(galaxy_paths, halo_paths, per_test_dir):
             gal_properties = galaxy["galaxy_properties"]
             gal_tag = gal_properties["gal_tag"]
             assert gal_properties["fof_halo_tag"] == halo_tag
-            gal_tags = set(galaxy["star_particles"].select("gal_tag").data)
+            gal_tags = set(galaxy["star_particles"].select("gal_tag").get_data())
             assert len(gal_tags) == 1
             assert gal_tags.pop() == gal_tag
 

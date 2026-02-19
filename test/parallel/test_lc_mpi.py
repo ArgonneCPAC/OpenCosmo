@@ -74,7 +74,7 @@ def haloproperties_601_path(lightcone_path):
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_index(haloproperties_600_path):
     ds = oc.open(haloproperties_600_path)
-    raw_data = ds.data
+    raw_data = ds.get_data()
 
     pixel = np.random.choice(ds.region.pixels)
     center = pix2ang(ds.region.nside, pixel, True, True)
@@ -89,7 +89,7 @@ def test_healpix_index(haloproperties_600_path):
     n_raw = np.sum(raw_data_seps < radius)
 
     region = oc.make_cone(center, radius)
-    data = ds.bound(region).data
+    data = ds.bound(region).get_data()
     ra = data["phi"]
     dec = np.pi / 2 - data["theta"]
 
@@ -134,7 +134,7 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    assert set(ds.data["fof_halo_tag"]) == set(new_ds.data["fof_halo_tag"])
+    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -147,7 +147,7 @@ def test_lc_collection_write_single(
     original_length = comm.allreduce(len(ds))
     oc.write(per_test_dir / "lightcone.hdf5", ds)
     ds = oc.open(per_test_dir / "lightcone.hdf5")
-    data = ds.select("redshift").data
+    data = ds.select("redshift").get_data()
     new_length = comm.allreduce(len(data))
 
     parallel_assert(data.min() >= 0.040 and data.max() <= 0.0405)
@@ -167,7 +167,7 @@ def test_lc_collection_write(
     original_length = len(ds)
     oc.write(per_test_dir / "lightcone.hdf5", ds)
     ds = oc.open(per_test_dir / "lightcone.hdf5")
-    redshift_data = ds.select("redshift").data
+    redshift_data = ds.select("redshift").get_data()
     total_original_length = np.sum(MPI.COMM_WORLD.allgather(original_length))
     total_final_length = np.sum(MPI.COMM_WORLD.allgather(len(ds)))
 
@@ -268,9 +268,9 @@ def test_lc_collection_batched_lazy(
 @pytest.mark.parallel(nprocs=4)
 def test_diffsky_filter(core_path_487, core_path_475):
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
-    original_data = ds.select("logmp0").data
+    original_data = ds.select("logmp0").get_data()
     ds = ds.filter(oc.col("logmp0") > 11)
-    filtered_data = ds.select("logmp0").data
+    filtered_data = ds.select("logmp0").get_data()
     original_data = original_data[original_data.value > 11]
 
     assert np.all(original_data == filtered_data)

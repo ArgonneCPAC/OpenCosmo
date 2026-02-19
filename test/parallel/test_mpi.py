@@ -167,7 +167,7 @@ def update_simulation_parameter(
 @pytest.mark.parallel(nprocs=4)
 def test_mpi(input_path):
     with oc.open(input_path) as f:
-        data = f.data
+        data = f.get_data()
 
     parallel_assert(len(data) != 0)
 
@@ -191,7 +191,7 @@ def test_structure_collection_open_2(input_path, profile_path):
 @pytest.mark.parallel(nprocs=4)
 def test_partitioning_includes_all(input_path):
     with oc.open(input_path) as f:
-        tags = f.select("fof_halo_tag").data
+        tags = f.select("fof_halo_tag").get_data()
 
     comm = mpi4py.MPI.COMM_WORLD
     all_tags = comm.allgather(tags)
@@ -207,10 +207,10 @@ def test_partitioning_includes_all(input_path):
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
-    data = ds.data
+    data = ds.get_data()
     n = 1000
     ds = ds.take(n, "random")
-    data = ds.data
+    data = ds.get_data()
     ds.close()
     parallel_assert(len(data) == n)
 
@@ -239,7 +239,7 @@ def test_open_galaxy_halo(galaxy_halo_path, per_test_dir):
 def test_filters(input_path):
     ds = oc.open(input_path)
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
-    data = ds.data
+    data = ds.get_data()
     ds.close()
     parallel_assert(len(data) != 0)
     parallel_assert(all(data["sod_halo_mass"] > 0))
@@ -256,11 +256,11 @@ def test_filter_write(input_path, per_test_dir):
     ds = ds.filter(oc.col("sod_halo_mass") > 0)
 
     oc.write(temporary_path, ds)
-    data = ds.data
+    data = ds.get_data()
     ds.close()
 
     ds = oc.open(temporary_path)
-    written_data = ds.data
+    written_data = ds.get_data()
     columns = ds.columns
     columns.sort()
 
@@ -284,11 +284,11 @@ def test_filter_zerolength(input_path, per_test_dir):
         ds = ds.filter(oc.col("sod_halo_mass") > 1e20)
 
     oc.write(temporary_path, ds)
-    data = ds.data
+    data = ds.get_data()
     ds.close()
 
     ds = oc.open(temporary_path)
-    written_data = ds.data
+    written_data = ds.get_data()
 
     if rank == 1:
         read_tags = comm.allgather([])
@@ -339,13 +339,13 @@ def test_link_read(all_paths):
         halo_properties = halo.pop("halo_properties")
         halo_tag = halo_properties["fof_halo_tag"]
         for species, ds in halo.items():
-            data = ds.data
+            data = ds.get_data()
             if len(data) == 0:
                 continue
             if species == "halo_profiles":
                 assert np.all(data["fof_halo_bin_tag"] == halo_tag)
                 continue
-            halo_tags = np.unique(ds.data["fof_halo_tag"])
+            halo_tags = np.unique(ds.get_data()["fof_halo_tag"])
             assert len(halo_tags) == 1
             assert halo_tags[0] == halo_tag
 
@@ -371,7 +371,7 @@ def test_evaluate_structure(all_paths):
         return np.linalg.norm([dx, dy, dz])
 
     collection = collection.evaluate(offset, **spec, insert=True, format="numpy")
-    data = collection["halo_properties"].select("offset").data
+    data = collection["halo_properties"].select("offset").get_data()
     assert not np.any(data == 0)
 
 
@@ -401,7 +401,7 @@ def test_evaluate_structure_write(all_paths, per_test_dir):
     collection = collection.evaluate(offset, **spec, insert=True)
     oc.write(temporary_path, collection)
     collection = oc.open(temporary_path)
-    data = collection["halo_properties"].select("offset").data
+    data = collection["halo_properties"].select("offset").get_data()
     assert not np.any(data == 0)
 
 
@@ -428,7 +428,7 @@ def test_link_write(all_paths, per_test_dir):
             written_data[halo_properties["fof_halo_tag"]].append((key, len(ds)))
             try:
                 tag = halo_properties["fof_halo_tag"]
-                tags = set(ds.select("fof_halo_tag").data)
+                tags = set(ds.select("fof_halo_tag").get_data())
                 parallel_assert(len(tags) == 1 and tags.pop() == tag)
             except ValueError:
                 continue
@@ -443,7 +443,7 @@ def test_link_write(all_paths, per_test_dir):
             read_data[halo_properties["fof_halo_tag"]].append((key, len(ds)))
             try:
                 tag = halo_properties["fof_halo_tag"]
-                tags = set(ds.select("fof_halo_tag").data)
+                tags = set(ds.select("fof_halo_tag").get_data())
                 assert len(tags) == 1 and tags.pop() == tag
             except ValueError:
                 continue
@@ -506,7 +506,7 @@ def test_chain_link(all_paths, galaxy_paths, per_test_dir):
 @pytest.mark.parallel(nprocs=4)
 def test_box_query_chain(input_path):
     ds = oc.open(input_path).with_units("scalefree")
-    original_data = ds.data
+    original_data = ds.get_data()
     bounds = ds.region.bounds
     widths = tuple(b[1] - b[0] for b in bounds)
     p1 = tuple(b[0] + w / 4 for b, w in zip(bounds, widths))
@@ -559,7 +559,7 @@ def test_derive_multiply(input_path):
     ds = oc.open(input_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(fof_halo_px=derived)
-    data = ds.data
+    data = ds.get_data()
     parallel_assert("fof_halo_px" in data.columns)
     parallel_assert(
         data["fof_halo_px"].unit
@@ -581,7 +581,7 @@ def test_add_column(input_path):
     ds = oc.open(input_path)
     data = np.random.randint(0, 100, len(ds)) * u.deg
     ds = ds.with_new_columns(random_data=data)
-    stored_data = ds.select("random_data").data
+    stored_data = ds.select("random_data").get_data()
     assert np.all(data == stored_data)
 
 
@@ -668,8 +668,8 @@ def test_derive_write(input_path, per_test_dir):
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(fof_halo_px=derived)
     oc.write(temporary_path, ds)
-    original_data = ds.data
-    written_data = oc.open(temporary_path).data
+    original_data = ds.get_data()
+    written_data = oc.open(temporary_path).get_data()
 
     parallel_assert("fof_halo_px" in written_data.columns)
     parallel_assert(

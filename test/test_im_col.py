@@ -32,8 +32,8 @@ def test_add_quantity(properties_path):
     random_data = np.random.randint(0, 1000, size=len(ds)) * u.deg
     ds = ds.with_new_columns(test_random=random_data)
     assert "test_random" in ds.columns
-    assert np.all(ds.select("test_random").data == random_data)
-    assert ds.select("test_random").data.unit == u.deg
+    assert np.all(ds.select("test_random").get_data() == random_data)
+    assert ds.select("test_random").get_data().unit == u.deg
 
 
 def test_add_quantity_filter(properties_path):

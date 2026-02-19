@@ -10,6 +10,7 @@ import numpy as np
 
 from opencosmo.column.cache import ColumnCache
 from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.column.select import get_column_selection
 from opencosmo.dataset.derived import (
     build_derived_columns,
     validate_derived_columns,
@@ -468,7 +469,7 @@ class DatasetState:
         """
         return self.__rebuild(region=region)
 
-    def select(self, columns: str | Iterable[str]):
+    def select(self, columns: str | Iterable[str], drop=False):
         """
         Select a subset of columns from the dataset. It is possible for a user to select
         a derived column in the dataset, but not the columns it is derived from.
@@ -481,14 +482,18 @@ class DatasetState:
         if isinstance(columns, str):
             columns = [columns]
 
-        columns = set(columns)
-        missing = columns - self.__columns
+        selections, missing = get_column_selection(self.columns, columns)
         if missing:
             raise ValueError(
-                f"Tried to select columns that are not in this dataset: {missing}"
+                f"Columns are included that are not in this dataset: {missing}"
             )
+        elif not selections and columns:
+            raise ValueError("No columns matched the provided wildcards!")
 
-        return self.__rebuild(columns=columns)
+        if drop:
+            selections = set(self.columns) - selections
+
+        return self.__rebuild(columns=selections)
 
     def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:
