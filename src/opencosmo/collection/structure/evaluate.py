@@ -121,8 +121,11 @@ def evaluate_into_dataset(
         input_structure = __make_input(structure, format)
 
         output = function(**input_structure, **kwargs, **iterable_kwarg_values)
+        if not isinstance(output, dict):
+            output = {function.__name__: output}
+
         if storage is not None:
-            for name, output_arr in output:
+            for name, output_arr in output.items():
                 storage[name].append(output_arr)
 
     if storage is None:
@@ -183,7 +186,7 @@ def __make_chunked_output(
     iterable_kwargs: dict[str, Sequence] = {},
     insert: bool = True,
 ) -> dict | None:
-    first_structure = collection.take(1, at="start").objects()
+    first_structure = collection.take(1, at="start")
     expected_length = len(first_structure[dataset])
     first_structure_data = next(iter(first_structure.objects()))
 

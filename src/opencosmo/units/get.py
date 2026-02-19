@@ -34,7 +34,7 @@ KNOWN_UNITS = {
     "Gyr": u.Gyr,
     "Msun/h / (comoving Mpc/h)^3": (u.Msun / cu.littleh) / (u.Mpc / cu.littleh) ** 3,
     "Msun/h * km/s": (u.Msun / cu.littleh) * (u.km / u.s),
-    "H0^-1": (u.s * (1 * u.Mpc).to(u.km).value).to(u.year) / (100 * cu.littleh),
+    "H0^-1": (u.s * (1 * u.Mpc).to(u.km).value).to(u.Gyr) / (100 * cu.littleh),
     "m_hydrogen": m_p,
     "Msun * (km/s)^2": (u.Msun) * (u.km / u.s) ** 2,
 }
@@ -47,11 +47,13 @@ class UnitApplicator:
         base_convention: UnitConvention,
         converters: dict[UnitConvention, Callable],
         invserse_converters: dict[UnitConvention, Callable],
+        prefactor: Optional[float] = None,
     ):
         self.__units = units
         self.__base_convention = base_convention
         self.__converters = converters
         self.__inv_converters = invserse_converters
+        self.__prefactor = prefactor
 
     @classmethod
     def static(cls, base_unit: u.Unit, base_convention: UnitConvention):
@@ -82,12 +84,16 @@ class UnitApplicator:
             trans, inv_trans, units = get_unit_transitions(
                 base_unit.unit, base_convention, cosmology, is_comoving
             )
+            prefactor = base_unit.value
         else:
             trans, inv_trans, units = get_unit_transitions(
                 base_unit, base_convention, cosmology, is_comoving
             )
+            prefactor = None
 
-        return UnitApplicator(units, base_convention, trans, inv_trans)
+        return UnitApplicator(
+            units, base_convention, trans, inv_trans, prefactor=prefactor
+        )
 
     @property
     def base_unit(self):
@@ -116,6 +122,8 @@ class UnitApplicator:
         if convert_to is not None:
             new_value = new_value.to(convert_to)
 
+        if self.__prefactor is not None:
+            new_value *= self.__prefactor
         return new_value
 
     def can_convert(self, to_: u.Unit, convention: UnitConvention):

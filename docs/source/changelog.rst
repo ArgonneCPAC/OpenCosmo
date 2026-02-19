@@ -1,3 +1,21 @@
+opencosmo 1.1.3 (2026-02-18)
+============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause columns stored in units of 1/H0 to not be correctly converted.
+
+
+opencosmo 1.1.2 (2026-02-16)
+===============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause structure collection evaluations to fail when not evaluating into halo_properties
+
+
 opencosmo 1.1.1 (2026-02-16)
 ===============================
 
