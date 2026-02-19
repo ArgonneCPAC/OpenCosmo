@@ -594,16 +594,12 @@ class Dataset:
             If any of the provided columns are not in the dataset.
 
         """
-        if isinstance(columns, str):
-            columns = [columns]
-
-        current_columns = set(self.__state.columns)
-        dropped_columns = set(columns)
-
-        if missing := dropped_columns.difference(current_columns):
-            raise ValueError(f"Columns {missing} are  not in this dataset")
-
-        return self.select(current_columns - dropped_columns)
+        new_state = self.__state.select(columns, drop=True)
+        return Dataset(
+            self.__header,
+            new_state,
+            self.__tree,
+        )
 
     def sort_by(self, column: str, invert: bool = False) -> Dataset:
         """
