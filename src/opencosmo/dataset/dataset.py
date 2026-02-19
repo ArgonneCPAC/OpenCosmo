@@ -550,7 +550,10 @@ class Dataset:
 
     def select(self, columns: str | Iterable[str]) -> Dataset:
         """
-        Create a new dataset from a subset of columns in this dataset
+        Create a new dataset from a subset of columns in this dataset. This
+        function accepts wildcards. For exampe, "fof*" will select all columns
+        that start with "fof", while "*com*" will select all columns that have
+        "com" somewhere in the middle.
 
         Parameters
         ----------
@@ -576,7 +579,10 @@ class Dataset:
 
     def drop(self, columns: str | Iterable[str]) -> Dataset:
         """
-        Create a new dataset without the provided columns.
+        Create a new dataset without the provided columns. This
+        function accepts wildcards. For exampe, "fof*" will drop all columns
+        that start with "fof", while "*com*" will drop all columns that have
+        "com" somewhere in the middle.
 
         Parameters
         ----------
@@ -586,7 +592,7 @@ class Dataset:
         Returns
         -------
         dataset : Dataset
-            The new dataset without the droppedcolumns
+            The new dataset without the dropped columns
 
         Raises
         ------
