@@ -33,5 +33,5 @@ def get_column_selection(
 def __evaluate_wildcards(select_from: set[str], wildcards: Iterable[str]):
     wildcards = list(map(lambda w: w.replace("*", ".*"), wildcards))
     regex = re.compile("|".join(wildcards))
-    matches = set(filter(lambda n: re.match(regex, n), select_from))
+    matches = set(filter(lambda n: re.fullmatch(regex, n), select_from))
     return matches

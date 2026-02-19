@@ -118,6 +118,45 @@ def test_sort_by_unknown(input_path):
         dataset.sort_by("random_column")
 
 
+def test_select_wildcard(input_path):
+    ds = oc.open(input_path)
+    fof_columns = set(col for col in ds.columns if col.startswith("fof"))
+    ds = ds.select("fof*")
+    assert set(ds.columns) == fof_columns
+
+
+def test_select_multiple_wildcard_one_pattern(input_path):
+    ds = oc.open(input_path)
+    fof_columns = set(col for col in ds.columns if "com" in col)
+    ds = ds.select("*com*")
+    assert set(ds.columns) == fof_columns
+
+
+def test_select_multiple_wildcard(input_path):
+    ds = oc.open(input_path)
+    fof_columns = set(
+        col for col in ds.columns if col.startswith("fof") or col.startswith("sod")
+    )
+    ds = ds.select(("fof*", "sod*"))
+    assert set(ds.columns) == fof_columns
+
+
+def test_select_wildcard_and_exact(input_path):
+    ds = oc.open(input_path)
+    fof_columns = set(col for col in ds.columns if col.startswith("fof"))
+    fof_columns.add("sod_halo_com_x")
+    ds = ds.select(("fof*", "sod_halo_com_x"))
+    assert set(ds.columns) == fof_columns
+
+
+def test_drop_wildcard_and_exact(input_path):
+    ds = oc.open(input_path)
+    fof_columns = set(col for col in ds.columns if col.startswith("fof"))
+    fof_columns.add("sod_halo_com_x")
+    ds = ds.drop(("fof*", "sod_halo_com_x"))
+    assert not set(ds.columns).intersection(fof_columns)
+
+
 def test_drop(input_path):
     with oc.open(input_path) as ds:
         data = ds.data

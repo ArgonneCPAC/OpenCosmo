@@ -469,7 +469,7 @@ class DatasetState:
         """
         return self.__rebuild(region=region)
 
-    def select(self, columns: str | Iterable[str], drop=True):
+    def select(self, columns: str | Iterable[str], drop=False):
         """
         Select a subset of columns from the dataset. It is possible for a user to select
         a derived column in the dataset, but not the columns it is derived from.
