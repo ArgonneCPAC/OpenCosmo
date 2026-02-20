@@ -1,0 +1,1 @@
+The :code:`output` parameter in :py:meth:`Dataset.get_data <opencosmo.dataset.get_data>` has been renamed to :code:`format`. The method will continue to accept :code:`output` as a keyword argument for the time being, but will print a deprecation warning.

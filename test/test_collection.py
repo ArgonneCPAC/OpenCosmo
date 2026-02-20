@@ -1105,6 +1105,25 @@ def test_data_link_sort_write(halo_paths, per_test_dir):
         )
 
 
+def test_visit_profile_with_verification(halo_paths):
+    ds = oc.open(*halo_paths).with_datasets(("halo_properties", "halo_profiles"))
+
+    def test(halo_profiles, halo_properties):
+        r = np.concat([[0.0], halo_profiles["sod_halo_bin_radius"]])
+        r = 0.5 * (r[:-1] + r[1:])
+        return r
+
+    ds = ds.evaluate(
+        test,
+        halo_profiles=["sod_halo_bin_radius", "sod_halo_bin_count"],
+        halo_properties=["sod_halo_mass"],
+        format="numpy",
+        insert=True,
+    )
+
+    assert False
+
+
 def test_add_structure_collection_with_descriptions(halo_paths):
     ds = oc.open(*halo_paths)
     ds = ds.with_new_columns(

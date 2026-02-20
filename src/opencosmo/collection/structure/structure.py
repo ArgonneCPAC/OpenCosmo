@@ -1258,7 +1258,7 @@ class StructureCollection:
         except BaseException:
             raise
 
-    def with_datasets(self, datasets: list[str]):
+    def with_datasets(self, datasets: str | Iterable[str]):
         """
         Create a new collection out of a subset of the datasets in this collection.
         It is also possible to do this when you iterate over the collection with
@@ -1267,11 +1267,11 @@ class StructureCollection:
         the dropped datasets at any point.
         """
 
-        if not isinstance(datasets, list):
-            raise ValueError("Expected a list with at least one entry")
+        if isinstance(datasets, str):
+            datasets = [datasets]
+        requested_datasets = set(datasets)
 
         known_datasets = set(self.keys())
-        requested_datasets = set(datasets)
         if not requested_datasets.issubset(known_datasets):
             raise ValueError(f"Unknown datasets {requested_datasets - known_datasets}")
 
