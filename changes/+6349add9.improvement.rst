@@ -1,0 +1,1 @@
+:py:meth:`StructureCollection.with_datasets <opencosmo.StructureCollection.with_datasets>` now accepts any iterable rather than just lists.

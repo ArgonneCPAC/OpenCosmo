@@ -473,7 +473,7 @@ def test_visit_source(halo_paths):
 
     collection = collection.evaluate(eval_fn, dataset="halo_properties")
     assert np.all(
-        collection["halo_properties"].select("eval_fn").get_data(output="numpy") == 5
+        collection["halo_properties"].select("eval_fn").get_data(format="numpy") == 5
     )
 
 

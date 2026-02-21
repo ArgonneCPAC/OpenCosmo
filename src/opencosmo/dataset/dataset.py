@@ -223,10 +223,7 @@ class Dataset:
         return self.__state.get_metadata(columns)
 
     def get_data(
-        self,
-        output="astropy",
-        unpack=True,
-        metadata_columns=[],
+        self, format="astropy", unpack=True, metadata_columns=[], **kwargs
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -259,7 +256,13 @@ class Dataset:
         data: Any
             The data in this dataset.
         """
-        verify_format(output)
+        if "output" in kwargs:
+            warn(
+                "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
+            )
+            format = kwargs["output"]
+
+        verify_format(format)
 
         if self.__state.convention.value == "physical":
             scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
@@ -278,7 +281,7 @@ class Dataset:
                 for key, value in data.items()
             }
 
-        return convert_data(data, output)
+        return convert_data(data, format)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
