@@ -764,8 +764,8 @@ def test_visit_batched_lazy(input_path):
     )
     data = ds.select(("fof_halo_mass", "fof_total")).get_data("numpy")
     parallel_assert(
-        counter.count == len(ds) // batch_size + 3
-    )  # 1 for endpoint, 1 for verification step, one for unit evaluation
+        counter.count == len(ds) // batch_size + 2
+    )  # 1 for endpoint, 1 for verification step
     split_points = np.append(np.arange(batch_size, len(ds), batch_size), len(ds))
     split_halo_masses = np.array_split(data["fof_halo_mass"], split_points)
     split_fof_total = np.array_split(data["fof_total"], split_points)

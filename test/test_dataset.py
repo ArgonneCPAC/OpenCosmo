@@ -45,7 +45,7 @@ def test_filter_to_numpy(input_path, max_mass):
 
     with oc.open(input_path) as f:
         ds = f.filter(oc.col("sod_halo_mass") > 0, oc.col("sod_halo_mass") < max_mass)
-        data = ds.get_data(output="numpy")
+        data = ds.get_data(format="numpy")
     assert isinstance(data, dict)
     for val in data.values():
         assert isinstance(val, np.ndarray)
