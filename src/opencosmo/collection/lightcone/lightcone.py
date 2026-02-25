@@ -20,8 +20,9 @@ from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
-from opencosmo.column.column import DerivedColumn
+from opencosmo.column.column import DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
+from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.io.io import open_single_dataset
@@ -555,6 +556,7 @@ class Lightcone(dict):
         output = {}
         hidden = hidden if hidden is not None else self.__hidden
         zero_length_output = {}
+
         for ds_name, dataset in self.items():
             dataset_mapped_arguments = {
                 arg_name: args[ds_name] for arg_name, args in mapped_arguments.items()
@@ -739,10 +741,37 @@ class Lightcone(dict):
                 mapped_kwargs[name] = kwargs.pop(name)
 
         if insert:
-            first = next(iter(self.keys()))
-            mapped_kwargs["_verify"] = {
-                key: True if key == first else False for key in self.keys()
+            name, dataset_to_verify = next(iter(self.items()))
+            ds_kwargs = kwargs | {
+                argname: vals[name] for argname, vals in mapped_kwargs.items()
             }
+
+            evaluated_column = build_evaluated_column(
+                dataset_to_verify,
+                func,
+                vectorize,
+                insert,
+                format,
+                batch_size,
+                ds_kwargs,
+            )
+            mapped_evaluated_columns = {
+                func.__name__: {
+                    name: evaluated_column.with_kwargs(
+                        **{
+                            argname: vals[name]
+                            for argname, vals in mapped_kwargs.items()
+                        }
+                    )
+                    for name in self.keys()
+                }
+            }
+            return self.__map(
+                "with_new_columns",
+                mapped_arguments=mapped_evaluated_columns,
+                construct=True,
+            )
+
         result = self.__map(
             "evaluate",
             func=func,
@@ -757,10 +786,7 @@ class Lightcone(dict):
         if next(iter(result.values())) is None:
             return
 
-        if insert:
-            assert isinstance(result, Lightcone)
-            return result
-
+        assert isinstance(result, dict)
         keys = next(iter(result.values())).keys()
         output = {}
         for key in keys:
@@ -1059,7 +1085,7 @@ class Lightcone(dict):
         derived = {}
         raw = {}
         for name, column in columns.items():
-            if isinstance(column, DerivedColumn):
+            if isinstance(column, (DerivedColumn, EvaluatedColumn)):
                 derived[name] = column
             elif len(column) != len(self):
                 raise ValueError(
