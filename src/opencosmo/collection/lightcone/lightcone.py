@@ -665,6 +665,10 @@ class Lightcone(dict):
         region = oc.make_cone(center, radius)
         return self.bound(region)
 
+    def box_search(self, bl, tr):
+        region = oc.make_sky_box(bl, tr)
+        return self.bound(region)
+
     def evaluate(
         self,
         func: Callable,

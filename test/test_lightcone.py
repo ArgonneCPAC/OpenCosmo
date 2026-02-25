@@ -59,6 +59,17 @@ def test_healpix_index(haloproperties_600_path):
     assert len(data) == n_raw
 
 
+def test_healpix_index_box(haloproperties_600_path):
+    ds = oc.open(haloproperties_600_path)
+    raw_data = ds.get_data()
+
+    p1 = SkyCoord(100, -25, unit="deg")
+    p2 = SkyCoord(200, 25, unit="deg")
+    ds = ds.box_search(p1, p2)
+    print(ds)
+    assert False
+
+
 def test_healpix_index_chain_failure(haloproperties_600_path):
     ds = oc.open(haloproperties_600_path)
 

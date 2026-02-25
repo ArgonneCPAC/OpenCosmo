@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Iterable, TypeVar
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
-from healpy import ang2vec, query_disc  # type: ignore
+from healpy import ang2vec, query_disc, query_polygon  # type: ignore
 
 from opencosmo.spatial.models import (
     BoxRegionModel,
@@ -121,17 +121,10 @@ class ConeRegion:
         """
         return self._intersects(other)
 
-    def get_healpix_intersections(self, nside: int):
-        phi = self.center.ra.to(u.radian).value
-        dec = self.center.dec.to(u.radian).value
-        # SkyCoords casts negative RAs to their positive equivalent
-        # declination of north pole is +pi / 2
-        # Theta of north pole is 0
-        theta = np.pi / 2 - dec
-
-        vec = ang2vec(theta, phi)
+    def get_healpix_intersections(self, nside: int, nest: bool = True):
+        vec = ang2vec(self.center.ra.value, self.center.dec.value, lonlat=True)
         radius = self.radius.to(u.rad).value
-        return query_disc(nside, vec, radius, inclusive=True, nest=True)
+        return query_disc(nside, vec, radius, inclusive=True, nest=nest)
 
     @singledispatchmethod
     def _intersects(self, other: Any):
@@ -145,6 +138,39 @@ class ConeRegion:
     def _(self, coords: SkyCoord):  # coords are assumed to be in radians
         seps = self.__center.separation(coords)
         return seps < self.__radius
+
+
+class SkyBoxRegion:
+    def __init__(self, ra: np.ndarray, dec: np.ndarray):
+        self.__vec = ang2vec(ra, dec, lonlat=True)
+        self.__ra = ra
+        self.__dec = dec
+
+    def get_healpix_intersections(self, nside: int, nest: bool = True):
+        return query_polygon(nside, self.__vec, inclusive=True, nest=nest)
+
+    def into_base_convention(self, *args, **kwargs):
+        return self
+
+    def contains(self, other: Any):
+        return self._contains(other)
+
+    @singledispatchmethod
+    def _contains(self, other: Any):
+        pass
+
+    def _contains(self, other: SkyCoord):
+        ra_in_range = (other.ra.value > self.__ra.min()) & (
+            other.ra.value < self.__ra.max()
+        )
+        dec_in_range = (other.dec.value > self.__dec.min()) & (
+            other.dec.value < self.__dec.max()
+        )
+
+        return ra_in_range & dec_in_range
+
+    def intersects(self):
+        raise NotImplementedError
 
 
 @ConeRegion._contains.register  # type: ignore
@@ -220,12 +246,11 @@ class HealpixRegion:
 
     @singledispatchmethod
     def _intersects(self, other: Any):
-        raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
-
-    @_intersects.register
-    def _(self, other: ConeRegion):
-        intersections = other.get_healpix_intersections(self.__nside)
-        return np.any(np.isin(self.__idxs, intersections))
+        try:
+            intersections = other.get_healpix_intersections(self.__nside)
+            return np.any(np.isin(self.__idxs, intersections))
+        except AttributeError:
+            raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
 
 
 @HealpixRegion._intersects.register  # type: ignore
