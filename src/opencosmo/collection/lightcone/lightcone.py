@@ -564,6 +564,7 @@ class Lightcone(dict):
             )
             if len(new_ds) == 0:
                 zero_length_output[ds_name] = new_ds
+                continue
             output[ds_name] = new_ds
 
         if not output:
