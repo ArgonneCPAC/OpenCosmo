@@ -468,6 +468,19 @@ class EvaluatedColumn:
         self.__batch_size = batch_size
         self.description = description
 
+    def with_kwargs(self, **new_kwargs: Any):
+        new_kwargs = self.__kwargs | new_kwargs
+        return EvaluatedColumn(
+            self.__func,
+            self.__requires,
+            self.__produces,
+            self.__format,
+            self.__strategy,
+            self.__batch_size,
+            self.description,
+            **new_kwargs,
+        )
+
     @property
     def requires(self):
         return copy(self.__requires)

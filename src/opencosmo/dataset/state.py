@@ -212,9 +212,9 @@ class DatasetState:
                 self.__cache.add_data(updated_data, push_up=False)
             data |= raw_data | updated_data
 
-        if not set(data.keys()).issuperset(self.columns):
+        if missing := set(self.columns).difference(data.keys()):
             raise RuntimeError(
-                "Some columns are missing from the output! This is likely a bug. Please report it on GitHub"
+                f"Some columns are missing from the output! This is likely a bug. Please report it on GitHub. Missing: {missing}"
             )
 
         # keep ordering

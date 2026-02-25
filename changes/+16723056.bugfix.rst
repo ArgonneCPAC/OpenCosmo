@@ -1,0 +1,1 @@
+Fix a bug that could cause `get_data()` to fail if performed on a zero-length dataset with in-memory columns.
