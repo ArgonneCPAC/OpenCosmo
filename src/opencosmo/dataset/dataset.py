@@ -375,6 +375,7 @@ class Dataset:
         insert=True,
         format="astropy",
         batch_size: int = -1,
+        _verify: bool = True,
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
         """
@@ -463,7 +464,7 @@ class Dataset:
             evaluate_kwargs,
             self,
             batch_size,
-            skip_evaluation_check=not insert,
+            skip_evaluation_check=not (insert and _verify),
         )
         if not insert:
             output = visit_dataset(evaluated_column, self, batch_size)

@@ -738,6 +738,11 @@ class Lightcone(dict):
             ):
                 mapped_kwargs[name] = kwargs.pop(name)
 
+        if insert:
+            first = next(iter(self.keys()))
+            mapped_kwargs["_verify"] = {
+                key: True if key == first else False for key in self.keys()
+            }
         result = self.__map(
             "evaluate",
             func=func,
