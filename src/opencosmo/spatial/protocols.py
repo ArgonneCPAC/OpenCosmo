@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex, SimpleIndex
+    from opencosmo.spatial.models import RegionModel
     from opencosmo.spatial.region import BoxRegion
     from opencosmo.units import UnitConvention
     from opencosmo.units.get import UnitApplicator
@@ -32,6 +33,7 @@ class Region(Protocol):
         from_: "UnitConvention",
         unit_kwargs: dict[str, Any],
     ): ...
+    def into_model(self) -> RegionModel: ...
 
 
 class Region2d(Region):

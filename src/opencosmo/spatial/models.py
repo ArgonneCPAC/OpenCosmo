@@ -7,6 +7,12 @@ class BoxRegionModel(BaseModel):
     p2: tuple[float, float, float]
 
 
+class SkyboxRegionModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    p1: tuple[float, float]
+    p2: tuple[float, float]
+
+
 class ConeRegionModel(BaseModel):
     model_config = ConfigDict(frozen=True)
     center: tuple[float, float]
@@ -23,4 +29,4 @@ class HealpixRegionModel(BaseModel):
         return list(value)
 
 
-RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel
+RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel | SkyboxRegionModel

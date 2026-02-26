@@ -11,7 +11,7 @@ from opencosmo.spatial.models import (
     ConeRegionModel,
     HealpixRegionModel,
 )
-from opencosmo.spatial.region import BoxRegion, ConeRegion, HealpixRegion, SkyBoxRegion
+from opencosmo.spatial.region import BoxRegion, ConeRegion, HealpixRegion, SkyboxRegion
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -114,9 +114,7 @@ def make_cone(center: Point2d | SkyCoord, radius: float | u.Quantity):
     return ConeRegion(coord, radius)
 
 
-def make_sky_box(
-    p1: tuple[float, float] | SkyCoord, p2: tuple[float, float] | SkyCoord
-):
+def make_skybox(p1: tuple[float, float] | SkyCoord, p2: tuple[float, float] | SkyCoord):
     """
     Make a box on the plane of the sky defined by two points. These points can be passed
     as a tuple of values or astropy sky coordinates.
@@ -126,6 +124,4 @@ def make_sky_box(
     if not isinstance(p2, SkyCoord):
         p2 = SkyCoord(*p2, unit="deg")
 
-    ra = np.array([p1.ra.value, p1.ra.value, p2.ra.value, p2.ra.value])
-    dec = np.array([p1.dec.value, p2.dec.value, p2.dec.value, p1.dec.value])
-    return SkyBoxRegion(ra, dec)
+    return SkyboxRegion(p1, p2)

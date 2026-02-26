@@ -7,7 +7,7 @@ from .collection import (
 from .column import col
 from .dataset import Dataset
 from .io import open, write
-from .spatial import make_box, make_cone, make_sky_box
+from .spatial import make_box, make_cone, make_skybox
 
 __version__ = "1.1.3"
 
@@ -22,6 +22,6 @@ __all__ = [
     "HealpixMap",
     "make_box",
     "make_cone",
-    "make_sky_box",
+    "make_skybox",
     "__version__",
 ]

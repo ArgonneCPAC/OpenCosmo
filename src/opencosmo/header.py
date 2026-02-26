@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from opencosmo.io.schema import Schema
+    from opencosmo.spatial.protocols import Region
 
 
 class OpenCosmoHeader:
@@ -151,7 +152,7 @@ class OpenCosmoHeader:
         except KeyError:
             return object.__getattribute__(self, key)
 
-    def with_region(self, region):
+    def with_region(self, region: Region):
         if region is not None:
             region_model = region.into_model()
         else:

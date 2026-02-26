@@ -12,6 +12,7 @@ from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
     HealpixRegionModel,
+    SkyboxRegionModel,
 )
 
 if TYPE_CHECKING:
@@ -140,17 +141,28 @@ class ConeRegion:
         return seps < self.__radius
 
 
-class SkyBoxRegion:
-    def __init__(self, ra: np.ndarray, dec: np.ndarray):
+class SkyboxRegion:
+    def __init__(self, p1: SkyCoord, p2: SkyCoord):
+        ra = np.array(
+            [p1.ra.deg.value, p1.ra.deg.value, p2.ra.deg.value, p2.ra.deg.value]
+        )
+        dec = np.array(
+            [p1.dec.deg.value, p2.dec.deg.value, p2.dec.deg.value, p1.dec.deg.value]
+        )
         self.__vec = ang2vec(ra, dec, lonlat=True)
-        self.__ra = ra
-        self.__dec = dec
+        self.__p1 = p1
+        self.__p2 = p2
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
         return query_polygon(nside, self.__vec, inclusive=True, nest=nest)
 
     def into_base_convention(self, *args, **kwargs):
         return self
+
+    def into_model(self) -> SkyboxRegionModel:
+        p1 = (self.__p1.ra.deg.value, self.__p1.dec.deg.value)
+        p2 = (self.__p2.ra.deg.value, self.__p2.dec.deg.value)
+        return SkyboxRegionModel(p1=p1, p2=p2)
 
     def contains(self, other: Any):
         return self._contains(other)
