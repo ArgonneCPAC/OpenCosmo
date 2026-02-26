@@ -1,3 +1,19 @@
+Opencosmo 1.1.4 (2026-02-25)
+===============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause `get_data()` to fail if performed on a zero-length dataset with in-memory columns.
+- Fix a bug that could cause lightcones to not properly handle constituent datasets that had zero length
+
+
+Improvements
+------------
+
+- Lightcone datasets now bypass verifying derived columns when the test passes on the first dataset
+
+
 opencosmo 1.1.3 (2026-02-18)
 ============================
 

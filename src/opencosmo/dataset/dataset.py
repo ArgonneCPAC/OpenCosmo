@@ -17,7 +17,7 @@ import numpy as np
 from astropy.table import QTable  # type: ignore
 from deprecated.sphinx import deprecated
 
-from opencosmo.dataset.evaluate import verify_for_lazy_evaluation, visit_dataset
+from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.index import into_array, mask, project
 from opencosmo.spatial import check
@@ -378,6 +378,7 @@ class Dataset:
         insert=True,
         format="astropy",
         batch_size: int = -1,
+        _verify: bool = True,
         **evaluate_kwargs,
     ) -> Dataset | np.ndarray:
         """
@@ -435,39 +436,10 @@ class Dataset:
         result : Dataset | dict[str, np.ndarray | astropy.units.Quantity]
             The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
-        if format not in ["astropy", "numpy"]:
-            raise ValueError(
-                f"Evaluate only supports numpy and astropy format, got: {format}"
-            )
-        kwarg_columns = set(evaluate_kwargs.keys()).intersection(self.columns)
-        if kwarg_columns:
-            raise ValueError(
-                "Keyword arguments cannot have the same name as columns in your dataset!"
-            )
-
-        match (vectorize, batch_size):
-            case (True, -1):
-                default_strategy = "vectorize"
-            case (False, -1):
-                default_strategy = "row_wise"
-            case (_, _):
-                default_strategy = "vectorize"
-
-        strategy = evaluate_kwargs.pop("strategy", default_strategy)
-        # Structure collections pass the "chunked" strategy to datasets, which causes the dataset
-        # To be evaluated on a structure-by-structure basis. This supersedes all other options.
-        if strategy == "chunked":
-            batch_size = -1
-
-        evaluated_column = verify_for_lazy_evaluation(
-            func,
-            strategy,
-            format,
-            evaluate_kwargs,
-            self,
-            batch_size,
-            skip_evaluation_check=not insert,
+        evaluated_column = build_evaluated_column(
+            self, func, vectorize, insert, format, batch_size, evaluate_kwargs
         )
+
         if not insert:
             output = visit_dataset(evaluated_column, self, batch_size)
             return output

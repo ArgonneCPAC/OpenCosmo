@@ -270,7 +270,7 @@ class ColumnCache:
         return data | parent.request(column_names, new_index)
 
     def take(self, index: DataIndex):
-        if len(self) == 0:
+        if len(self) == 0 and not self.columns:
             return ColumnCache.empty()
         if get_range(index)[1] > len(self):
             raise ValueError(

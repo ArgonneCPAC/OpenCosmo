@@ -58,7 +58,9 @@ def build_dependency_graph(
 
 
 def replace_multi_producers(
-    graph: rx.PyDiGraph, derived_columns: Mapping[str, ConstructedColumn]
+    graph: rx.PyDiGraph,
+    derived_columns: Mapping[str, ConstructedColumn],
+    columns_to_get: Optional[set[str]] = None,
 ):
     """
     Some derived columns actually produce multiple outputs. At this stage, the dependency
@@ -74,7 +76,9 @@ def replace_multi_producers(
         return graph
     for missing_column in missing:
         missing_column_produces = derived_columns[missing_column].produces
-        if missing_column_produces is None:
+        if missing_column_produces is None or not missing_column_produces.intersection(
+            columns_to_get or missing_column_produces
+        ):
             continue
         outputs = [
             node_map[name] for name in missing_column_produces if name in node_map
@@ -192,7 +196,9 @@ def build_derived_columns(
     raw_data = hdf5_handler.get_data(columns_to_fetch)
     data = cached_data | unit_handler.apply_units(raw_data, unit_kwargs)
 
-    dependency_graph = replace_multi_producers(dependency_graph, all_derived_columns)
+    dependency_graph = replace_multi_producers(
+        dependency_graph, all_derived_columns, derived_columns_to_get
+    )
     new_derived: dict[str, np.ndarray] = {}
 
     for colidx in rx.topological_sort(dependency_graph):
