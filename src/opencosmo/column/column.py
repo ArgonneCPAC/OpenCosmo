@@ -477,6 +477,7 @@ class EvaluatedColumn:
             self.__requires,
             self.__produces,
             self.__format,
+            self.__units,
             self.__strategy,
             self.__batch_size,
             self.description,
