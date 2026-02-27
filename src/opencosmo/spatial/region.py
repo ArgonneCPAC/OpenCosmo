@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from functools import reduce, singledispatchmethod
+from functools import reduce
 from typing import TYPE_CHECKING, Any, Iterable, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from astropy.coordinates import SkyCoord  # type: ignore
 from healpy import ang2vec, query_disc, query_polygon  # type: ignore
 
 from opencosmo.spatial.models import (
@@ -14,8 +13,15 @@ from opencosmo.spatial.models import (
     HealpixRegionModel,
     SkyboxRegionModel,
 )
+from opencosmo.spatial.relations import (
+    contains_2d,
+    contains_3d,
+    intersects_2d,
+    intersects_3d,
+)
 
 if TYPE_CHECKING:
+    from astropy.coordinates import SkyCoord  # type: ignore
     from astropy.cosmology import FLRW
     from numpy.typing import NDArray
 
@@ -67,7 +73,7 @@ class ConeRegion:
 
     def into_model(self) -> ConeRegionModel:
         return ConeRegionModel(
-            center=(self.center.ra.value, self.center.dec.value),
+            center=(self.center.ra.deg, self.center.dec.deg),
             radius=self.__radius.value,
         )
 
@@ -95,15 +101,14 @@ class ConeRegion:
 
     def contains(self, other: Any):
         """
-        Check if this ConeRegion contains another ConeRegion. This region must
-        be fully outside the other for this function to return True. Functionally,
-        this means a region does not contain itself.
+        Check if this ConeRegion contains another ConeRegion or a sky coordinate.
+        A region does not contain itself — the test object must be strictly interior.
 
         Parameters
         ----------
-        other: :py:class:`opencosmo.spatial.ConeRegion`
+        other: ConeRegion | astropy.coordinates.SkyCoord
         """
-        return self._contains(other)
+        return contains_2d(self, other)
 
     def intersects(self, other: Any):
         """
@@ -120,38 +125,37 @@ class ConeRegion:
         intersects: bool
             Whether the two regions intersect
         """
-        return self._intersects(other)
+        return intersects_2d(self, other)
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
         vec = ang2vec(self.center.ra.value, self.center.dec.value, lonlat=True)
         radius = self.radius.to(u.rad).value
         return query_disc(nside, vec, radius, inclusive=True, nest=nest)
 
-    @singledispatchmethod
-    def _intersects(self, other: Any):
-        raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
-
-    @singledispatchmethod
-    def _contains(self, other: Any):
-        raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
-
-    @_contains.register
-    def _(self, coords: SkyCoord):  # coords are assumed to be in radians
-        seps = self.__center.separation(coords)
-        return seps < self.__radius
-
 
 class SkyboxRegion:
     def __init__(self, p1: SkyCoord, p2: SkyCoord):
-        ra = np.array(
-            [p1.ra.deg.value, p1.ra.deg.value, p2.ra.deg.value, p2.ra.deg.value]
-        )
-        dec = np.array(
-            [p1.dec.deg.value, p2.dec.deg.value, p2.dec.deg.value, p1.dec.deg.value]
-        )
-        self.__vec = ang2vec(ra, dec, lonlat=True)
         self.__p1 = p1
         self.__p2 = p2
+        self.__ra_bounds = (
+            min(p1.ra.deg, p2.ra.deg),
+            max(p1.ra.deg, p2.ra.deg),
+        )
+        self.__dec_bounds = (
+            min(p1.dec.deg, p2.dec.deg),
+            max(p1.dec.deg, p2.dec.deg),
+        )
+        ra = np.array([p1.ra.deg, p1.ra.deg, p2.ra.deg, p2.ra.deg])
+        dec = np.array([p1.dec.deg, p2.dec.deg, p2.dec.deg, p1.dec.deg])
+        self.__vec = ang2vec(ra, dec, lonlat=True)
+
+    @property
+    def ra_bounds(self) -> tuple[float, float]:
+        return self.__ra_bounds
+
+    @property
+    def dec_bounds(self) -> tuple[float, float]:
+        return self.__dec_bounds
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
         return query_polygon(nside, self.__vec, inclusive=True, nest=nest)
@@ -160,41 +164,15 @@ class SkyboxRegion:
         return self
 
     def into_model(self) -> SkyboxRegionModel:
-        p1 = (self.__p1.ra.deg.value, self.__p1.dec.deg.value)
-        p2 = (self.__p2.ra.deg.value, self.__p2.dec.deg.value)
+        p1 = (self.__p1.ra.deg, self.__p1.dec.deg)
+        p2 = (self.__p2.ra.deg, self.__p2.dec.deg)
         return SkyboxRegionModel(p1=p1, p2=p2)
 
     def contains(self, other: Any):
-        return self._contains(other)
+        return contains_2d(self, other)
 
-    @singledispatchmethod
-    def _contains(self, other: Any):
-        pass
-
-    def _contains(self, other: SkyCoord):
-        ra_in_range = (other.ra.value > self.__ra.min()) & (
-            other.ra.value < self.__ra.max()
-        )
-        dec_in_range = (other.dec.value > self.__dec.min()) & (
-            other.dec.value < self.__dec.max()
-        )
-
-        return ra_in_range & dec_in_range
-
-    def intersects(self):
-        raise NotImplementedError
-
-
-@ConeRegion._contains.register  # type: ignore
-def _(self, other: ConeRegion):
-    dtheta = self.center.separation(other.center)
-    return self.radius > (dtheta + other.radius)
-
-
-@ConeRegion._intersects.register  # type: ignore
-def _(self, other: ConeRegion):
-    dtheta = self.center.separation(other.center)
-    return dtheta < (self.radius + other.radius)
+    def intersects(self, other: Any):
+        return intersects_2d(self, other)
 
 
 class HealpixRegion:
@@ -251,76 +229,27 @@ class HealpixRegion:
         return self.__ordering
 
     def contains(self, other: Any):
-        return False
+        return contains_2d(self, other)
 
     def intersects(self, other: Any):
-        return self._intersects(other)
-
-    @singledispatchmethod
-    def _intersects(self, other: Any):
-        try:
-            intersections = other.get_healpix_intersections(self.__nside)
-            return np.any(np.isin(self.__idxs, intersections))
-        except AttributeError:
-            raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
-
-
-@HealpixRegion._intersects.register  # type: ignore
-def _(self, other: HealpixRegion):
-    self_pixels = self.pixels
-    other_pixels = other.pixels
-    return np.any(np.isin(self_pixels, other_pixels))
+        return intersects_2d(self, other)
 
 
 class FullSkyRegion:
     def __init__(self):
         pass
 
-    def intersects(self, other: Any):
-        return True
-
     def into_base_convention(self, *args, **kwargs):
         return self
-
-    @singledispatchmethod
-    def _intersects(self, other: Any):
-        raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
-
-    @_intersects.register
-    def _(self, other: ConeRegion):
-        return True
-
-    @_intersects.register
-    def _(self, coords: SkyCoord):
-        return True
-
-    def contains(self, other: Any):
-        return self._contains(other)
-
-    @singledispatchmethod
-    def _contains(self, other: Any):
-        raise ValueError(f"Expected a 2D Sky Region but recieved {type(other)}")
-
-    @_contains.register
-    def _(self, other: ConeRegion):
-        return True
-
-    @_contains.register
-    def _(self, coords: SkyCoord):
-        return True
 
     def into_model(self):
         return None
 
+    def contains(self, other: Any):
+        return contains_2d(self, other)
 
-@FullSkyRegion._contains.register  # type: ignore
-def _(self, other: FullSkyRegion):
-    return False
-
-
-@FullSkyRegion._intersects.register  # type: ignore
-def _(self, other: FullSkyRegion):
-    return False
+    def intersects(self, other: Any):
+        return intersects_2d(self, other)
 
 
 class BoxRegion:
@@ -407,22 +336,7 @@ class BoxRegion:
         ValueError
             If the input not a region or points
         """
-        return self._contains(other)
-
-    @singledispatchmethod
-    def _contains(self, other):
-        raise ValueError(f"Expected a 3D region, got {type(other)}")
-
-    @_contains.register
-    def _(self, coords: np.ndarray):
-        if coords.shape[0] != 3:
-            raise ValueError("Expected a coordinate array!")
-
-        mask = np.ones(coords.shape[1], dtype=bool)
-        for bound, col in zip(self.bounds, coords):
-            mask &= (col > bound[0]) & (col < bound[1])
-
-        return mask
+        return contains_3d(self, other)
 
     def intersects(self, other: Region) -> bool:
         """
@@ -447,18 +361,4 @@ class BoxRegion:
             If the input is not a BoxRegion
 
         """
-        if not isinstance(other, BoxRegion):
-            raise ValueError(f"Expected a 3D region, but got {type(other)}")
-
-        for b1, b2 in zip(self.bounds, other.bounds):
-            if b1[0] > b2[1] or b1[1] < b2[0]:
-                return False
-        return True
-
-
-@BoxRegion._contains.register  # type: ignore
-def _(self, other: BoxRegion):
-    for b1, b2 in zip(self.bounds, other.bounds):
-        if b1[0] > b2[0] or b1[1] < b2[1]:
-            return False
-    return True
+        return intersects_3d(self, other)
