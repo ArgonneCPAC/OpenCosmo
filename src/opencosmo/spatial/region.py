@@ -68,6 +68,14 @@ class ConeRegion:
             (self.__center.ra.deg, self.center.dec, self.radius.to(u.deg).value)
         )
 
+    def __repr__(self):
+        ra = self.__center.ra.deg
+        dec = self.__center.dec.deg
+        radius = self.__radius.to(u.deg).value
+        return (
+            f"Cone Region (center: RA={ra:.4f}°, Dec={dec:.4f}°, radius={radius:.4f}°)"
+        )
+
     def into_base_convention(self, *args, **kwargs):
         return self
 
@@ -148,6 +156,13 @@ class SkyboxRegion:
         ra = np.array([p1.ra.deg, p1.ra.deg, p2.ra.deg, p2.ra.deg])
         dec = np.array([p1.dec.deg, p2.dec.deg, p2.dec.deg, p1.dec.deg])
         self.__vec = ang2vec(ra, dec, lonlat=True)
+
+    def __repr__(self):
+        ra0, ra1 = self.__ra_bounds
+        dec0, dec1 = self.__dec_bounds
+        return (
+            f"Sky Box Region (RA: {ra0:.4f}°–{ra1:.4f}°, Dec: {dec0:.4f}°–{dec1:.4f}°)"
+        )
 
     @property
     def ra_bounds(self) -> tuple[float, float]:
@@ -238,6 +253,9 @@ class HealpixRegion:
 class FullSkyRegion:
     def __init__(self):
         pass
+
+    def __repr__(self):
+        return "Full Sky Region"
 
     def into_base_convention(self, *args, **kwargs):
         return self
