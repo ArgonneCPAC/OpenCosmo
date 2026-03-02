@@ -142,7 +142,7 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
 def test_box_search(haloproperties_600_path):
     """Each rank box-searches its own pixel's neighbourhood and gets the correct rows."""
     ds = oc.open(haloproperties_600_path)
-    raw_data = ds.get_data()
+    raw_data = ds.select(("theta", "phi")).get_data("numpy")
 
     # Each rank picks a pixel it owns and builds a ±1° box around its centre.
     pixel = np.random.choice(ds.region.pixels)
@@ -158,26 +158,29 @@ def test_box_search(haloproperties_600_path):
     p2 = SkyCoord(ra_max * u.deg, dec_max * u.deg)
 
     # Expected count from manual filter of this rank's raw data.
-    raw_ra = np.rad2deg(raw_data["phi"])
-    raw_dec = np.rad2deg(np.pi / 2 - raw_data["theta"])
+    raw_ra = raw_data["phi"]
+    raw_dec = np.pi / 2 - raw_data["theta"]
+    coordinates = SkyCoord(raw_ra, raw_dec, unit="rad")
+
     n_expected = int(
         np.sum(
-            (raw_ra > ra_min)
-            & (raw_ra < ra_max)
-            & (raw_dec > dec_min)
-            & (raw_dec < dec_max)
+            (coordinates.ra > p1.ra)
+            & (coordinates.ra < p2.ra)
+            & (coordinates.dec > p1.dec)
+            & (coordinates.dec < p2.dec)
         )
     )
 
     result = ds.box_search(p1, p2)
-    data = result.get_data()
+    parallel_assert(len(result) == n_expected)
+    data = result.select(("phi", "theta")).get_data("numpy")
 
-    result_ra = np.rad2deg(data["phi"])
-    result_dec = np.rad2deg(np.pi / 2 - data["theta"])
+    result_ra = data["phi"]
+    result_dec = np.pi / 2 - data["theta"]
+    result_coords = SkyCoord(result_ra, result_dec, unit="rad")
 
-    parallel_assert(np.all((result_ra > ra_min) & (result_ra < ra_max)))
-    parallel_assert(np.all((result_dec > dec_min) & (result_dec < dec_max)))
-    parallel_assert(len(data) == n_expected)
+    parallel_assert(np.all((result_coords.ra > p1.ra) & (result_coords.ra < p2.ra)))
+    parallel_assert(np.all((result_coords.dec > p1.dec) & (result_coords.dec < p2.dec)))
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")

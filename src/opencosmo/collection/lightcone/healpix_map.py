@@ -650,7 +650,7 @@ class HealpixMap(dict):
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
-        Perform a search for objects within some angular distance of some
+        Perform a search for pixels within some angular distance of some
         given point on the sky. This is a convinience function around
         :py:meth:`bound <opencosmo.HealpixMap.bound>` and is exactly
         equivalent to
@@ -659,6 +659,9 @@ class HealpixMap(dict):
 
             region = oc.make_cone(center, radius)
             ds = ds.bound(region)
+
+        This search is inclusive, meaning this will include all pixels which overlap
+        with the region by any amount.
 
         Parameters
         ----------
@@ -677,6 +680,40 @@ class HealpixMap(dict):
 
         """
         region = oc.make_cone(center, radius)
+        return self.bound(region)
+
+    def box_search(self, p1: tuple | SkyCoord, p2: tuple | SkyCoord):
+        """
+        Perform a search for objects within some range in RA and Dec.
+        This is a convinience function around
+        :py:meth:`bound <opencosmo.HealpixMap.bound>` and is exactly
+        equivalent to
+
+        .. code-block:: python
+
+            region = oc.make_cone(center, radius)
+            ds = ds.bound(region)
+
+        This search is inclusive, meaning this will include all pixels which overlap
+        with the region by any amount.
+
+        Parameters
+        ----------
+        p1: tuple | SkyCoord
+            One corner of the box. If a tuple and no units are provided
+            assumed to be RA and Dec in degrees.
+
+        p2: tuple | SkyCoord
+            The opposite corner of the box. If a tuple and no units are provided,
+            assumed to be degrees.
+
+        Returns
+        -------
+        new_map: opencosmo.HealpixMap
+            The pixels in these maps that fall within the given region.
+
+        """
+        region = oc.make_box(p1, p2)
         return self.bound(region)
 
     def evaluate(
