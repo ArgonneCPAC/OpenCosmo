@@ -199,15 +199,6 @@ def test_box_search_tuple_args(haloproperties_600_path):
     assert len(result) == n_expected
 
 
-def test_box_search_empty_region(haloproperties_600_path):
-    """box_search in an area with no data returns an empty dataset."""
-    ds = oc.open(haloproperties_600_path)
-    p1 = SkyCoord(43 * u.deg, 43 * u.deg)
-    p2 = SkyCoord(47 * u.deg, 47 * u.deg)
-    result = ds.box_search(p1, p2)
-    assert len(result) == 0
-
-
 def test_box_search_chain(haloproperties_600_path):
     """Chaining two box_search calls applies the intersection of both boxes."""
     ds = oc.open(haloproperties_600_path)
@@ -242,6 +233,45 @@ def test_box_search_chain_failure(haloproperties_600_path):
 
     result = ds.box_search(p1, p2).box_search(p3, p4)
     assert len(result) == 0
+
+
+def test_box_search_write(haloproperties_600_path, tmp_path):
+    """Written box-search result supports a further refinement search on re-open."""
+    ds = oc.open(haloproperties_600_path)
+
+    # Wider outer box to write
+    p1_outer = SkyCoord(42 * u.deg, -48 * u.deg)
+    p2_outer = SkyCoord(48 * u.deg, -42 * u.deg)
+    ds = ds.box_search(p1_outer, p2_outer)
+
+    oc.write(tmp_path / "box_search_test.hdf5", ds)
+    new_ds = oc.open(tmp_path / "box_search_test.hdf5")
+
+    # Apply the same narrower box to both the in-memory and on-disk datasets
+    p1_inner = SkyCoord(_BOX_RA_MIN * u.deg, _BOX_DEC_MIN * u.deg)
+    p2_inner = SkyCoord(_BOX_RA_MAX * u.deg, _BOX_DEC_MAX * u.deg)
+    ds = ds.box_search(p1_inner, p2_inner)
+    new_ds = new_ds.box_search(p1_inner, p2_inner)
+
+    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+
+
+def test_box_search_write_fail(haloproperties_600_path, tmp_path):
+    """A re-opened box-search result returns nothing when queried outside its bounds."""
+    ds = oc.open(haloproperties_600_path)
+
+    p1 = SkyCoord(_BOX_RA_MIN * u.deg, _BOX_DEC_MIN * u.deg)
+    p2 = SkyCoord(_BOX_RA_MAX * u.deg, _BOX_DEC_MAX * u.deg)
+    ds = ds.box_search(p1, p2)
+
+    oc.write(tmp_path / "box_search_test.hdf5", ds)
+    new_ds = oc.open(tmp_path / "box_search_test.hdf5")
+
+    # Box in a completely disjoint region
+    p3 = SkyCoord(43 * u.deg, 43 * u.deg)
+    p4 = SkyCoord(47 * u.deg, 47 * u.deg)
+    new_ds = new_ds.box_search(p3, p4)
+    assert len(new_ds) == 0
 
 
 def test_box_search_collection(haloproperties_600_path, haloproperties_601_path):
