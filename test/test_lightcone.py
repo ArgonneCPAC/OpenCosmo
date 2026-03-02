@@ -1,7 +1,6 @@
 import astropy.units as u
 import numpy as np
 import pytest
-from astropy.coordinates import SkyCoord
 from astropy.cosmology import units as cu
 from numpy import random
 
@@ -31,107 +30,6 @@ def structure_600(lightcone_path, all_files):
 @pytest.fixture
 def structure_601(lightcone_path, all_files):
     return [lightcone_path / "step_601" / f for f in all_files]
-
-
-def test_healpix_index(haloproperties_600_path):
-    ds = oc.open(haloproperties_600_path)
-    raw_data = ds.get_data()
-
-    center = (45 * u.deg, -45 * u.deg)
-    radius = 2 * u.deg
-    center_coord = SkyCoord(*center)
-
-    raw_data_coords = SkyCoord(
-        raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
-    )
-    raw_data_seps = center_coord.separation(raw_data_coords)
-    n_raw = np.sum(raw_data_seps < radius)
-
-    region = oc.make_cone(center, radius)
-    data = ds.bound(region).get_data()
-    ra = data["phi"]
-    dec = np.pi / 2 - data["theta"]
-
-    coordinates = SkyCoord(ra, dec, unit="radian")
-    seps = center_coord.separation(coordinates)
-    seps = seps.to(u.degree)
-    assert all(seps < radius)
-    assert len(data) == n_raw
-
-
-def test_healpix_index_chain_failure(haloproperties_600_path):
-    ds = oc.open(haloproperties_600_path)
-
-    center1 = (45 * u.deg, -45 * u.deg)
-    center2 = (45 * u.deg, 45 * u.deg)
-    radius = 2 * u.deg
-
-    region1 = oc.make_cone(center1, radius)
-    region2 = oc.make_cone(center2, radius)
-    ds = ds.bound(region1)
-    ds = ds.bound(region2)
-    assert len(ds) == 0
-
-
-def test_healpix_index_chain(haloproperties_600_path):
-    ds = oc.open(haloproperties_600_path)
-    raw_data = ds.get_data()
-
-    center = (45 * u.deg, -45 * u.deg)
-    center_coord = SkyCoord(*center)
-    radius1 = 2 * u.deg
-    radius2 = 1 * u.deg
-
-    region1 = oc.make_cone(center, radius1)
-    region2 = oc.make_cone(center, radius2)
-    ds = ds.bound(region1)
-    ds = ds.bound(region2)
-
-    raw_data_coords = SkyCoord(
-        raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
-    )
-    raw_data_seps = center_coord.separation(raw_data_coords)
-    n_raw = np.sum(raw_data_seps < radius2)
-
-    assert n_raw == len(ds)
-
-
-def test_healpix_write(haloproperties_600_path, tmp_path):
-    ds = oc.open(haloproperties_600_path)
-
-    center = (45, -45)
-    radius = 4 * u.deg
-
-    region = oc.make_cone(center, radius)
-    ds = ds.bound(region)
-
-    oc.write(tmp_path / "lightcone_test.hdf5", ds)
-    new_ds = oc.open(tmp_path / "lightcone_test.hdf5")
-
-    radius2 = 2 * u.deg
-    region2 = oc.make_cone(center, radius2)
-    ds = ds.bound(region2)
-    new_ds = new_ds.bound(region2)
-
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
-
-
-def test_healpix_write_fail(haloproperties_600_path, tmp_path):
-    ds = oc.open(haloproperties_600_path)
-
-    center = (45 * u.deg, -45 * u.deg)
-    radius = 2 * u.deg
-
-    region = oc.make_cone(center, radius)
-    ds = ds.bound(region)
-
-    oc.write(tmp_path / "lightcone_test.hdf5", ds)
-    new_ds = oc.open(tmp_path / "lightcone_test.hdf5")
-
-    center2 = (45 * u.deg, 45 * u.deg)
-    region2 = oc.make_cone(center2, radius)
-    new_ds = new_ds.bound(region2)
-    assert len(new_ds) == 0
 
 
 def test_lightcone_physical_units(haloproperties_600_path):
@@ -171,34 +69,6 @@ def test_lc_collection_write(
     assert data.min() >= 0.04 and data.max() <= 0.0405
     assert len(data) == original_length
     assert ds.z_range == (0.04, 0.0405)
-
-
-def test_lc_collection_bound(
-    haloproperties_600_path, haloproperties_601_path, tmp_path
-):
-    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
-    raw_data = ds.get_data()
-
-    center = (45 * u.deg, -45 * u.deg)
-    radius = 2 * u.deg
-    center_coord = SkyCoord(*center)
-
-    raw_data_coords = SkyCoord(
-        raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
-    )
-    raw_data_seps = center_coord.separation(raw_data_coords)
-    n_raw = np.sum(raw_data_seps < radius)
-
-    region = oc.make_cone(center, radius)
-    data = ds.bound(region).get_data()
-    ra = data["phi"]
-    dec = np.pi / 2 - data["theta"]
-
-    coordinates = SkyCoord(ra, dec, unit="radian")
-    seps = center_coord.separation(coordinates)
-    seps = seps.to(u.degree)
-    assert all(seps < radius)
-    assert len(data) == n_raw
 
 
 def test_lc_collection_select(

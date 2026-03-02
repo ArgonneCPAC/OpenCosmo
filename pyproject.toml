@@ -43,7 +43,7 @@ docs = [
   "autodoc-pydantic>=2.2.0,<3.0.0",
 ]
 mpi = [
-  "mpi4py>=3.1.0,<5.0.0"
+  "mpi4py>=3.1.6,<5.0.0"
 ]
 test = [
     "pandas>=2.3.3",

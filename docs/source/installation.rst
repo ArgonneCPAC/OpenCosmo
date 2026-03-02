@@ -39,6 +39,8 @@ If you are interested in the tools in the :doc:`analysis <analysis>` module, the
 Installing with MPI Support
 ---------------------------
 
+**Warning: There is currently a buggy interaction between h5py and mpi4py that will cause installing h5py in parallel mode to fail with version of python <=3.12. For now, you should use python 3.13 if you want to perform parallel writes.**
+
 :code:`opencosmo` can leverage MPI to distribute analysis on a very large dataset across multiple cores or nodes. You simply need to install the :code:`mpi4py` package:
 
 .. code-block:: bash

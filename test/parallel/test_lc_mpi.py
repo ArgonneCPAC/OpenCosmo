@@ -137,6 +137,117 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_box_search(haloproperties_600_path):
+    """Each rank box-searches its own pixel's neighbourhood and gets the correct rows."""
+    ds = oc.open(haloproperties_600_path)
+    raw_data = ds.select(("theta", "phi")).get_data("numpy")
+
+    # Each rank picks a pixel it owns and builds a ±1° box around its centre.
+    pixel = np.random.choice(ds.region.pixels)
+    ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
+    half_width = 1.0  # degrees
+
+    ra_min = ra_center - half_width
+    ra_max = ra_center + half_width
+    dec_min = dec_center - half_width
+    dec_max = dec_center + half_width
+
+    p1 = SkyCoord(ra_min * u.deg, dec_min * u.deg)
+    p2 = SkyCoord(ra_max * u.deg, dec_max * u.deg)
+
+    # Expected count from manual filter of this rank's raw data.
+    raw_ra = raw_data["phi"]
+    raw_dec = np.pi / 2 - raw_data["theta"]
+    coordinates = SkyCoord(raw_ra, raw_dec, unit="rad")
+
+    n_expected = int(
+        np.sum(
+            (coordinates.ra > p1.ra)
+            & (coordinates.ra < p2.ra)
+            & (coordinates.dec > p1.dec)
+            & (coordinates.dec < p2.dec)
+        )
+    )
+
+    result = ds.box_search(p1, p2)
+    parallel_assert(len(result) == n_expected)
+    data = result.select(("phi", "theta")).get_data("numpy")
+
+    result_ra = data["phi"]
+    result_dec = np.pi / 2 - data["theta"]
+    result_coords = SkyCoord(result_ra, result_dec, unit="rad")
+
+    parallel_assert(np.all((result_coords.ra > p1.ra) & (result_coords.ra < p2.ra)))
+    parallel_assert(np.all((result_coords.dec > p1.dec) & (result_coords.dec < p2.dec)))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_box_search_zero_length(haloproperties_600_path):
+    """A fixed box in a small sky region gives data on one rank and zero on the rest."""
+    comm = MPI.COMM_WORLD
+
+    ds = oc.open(haloproperties_600_path)
+
+    # This box is known to contain data (confirmed by serial tests).
+    # Because the HEALPix index is spatially partitioned across ranks, only the
+    # rank that owns those pixels will return results.
+    p1 = SkyCoord(43 * u.deg, -47 * u.deg)
+    p2 = SkyCoord(47 * u.deg, -43 * u.deg)
+
+    result = ds.box_search(p1, p2)
+    lengths = comm.allgather(len(result))
+
+    # Overall the query must find data.
+    parallel_assert(sum(lengths) > 0)
+    # And because the region is small, at least one rank owns no pixels there.
+    parallel_assert(any(n == 0 for n in lengths))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_box_search_chain_failure(haloproperties_600_path):
+    """Chaining two disjoint box searches produces an empty result on all ranks."""
+    ds = oc.open(haloproperties_600_path)
+
+    # First box is in the data region; second is disjoint (Dec flipped to +45°).
+    p1 = SkyCoord(43 * u.deg, -47 * u.deg)
+    p2 = SkyCoord(47 * u.deg, -43 * u.deg)
+    p3 = SkyCoord(43 * u.deg, 43 * u.deg)
+    p4 = SkyCoord(47 * u.deg, 47 * u.deg)
+
+    result = ds.box_search(p1, p2).box_search(p3, p4)
+    parallel_assert(len(result) == 0)
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_box_search_write(haloproperties_600_path, per_test_dir):
+    """Written box-search result supports a narrower refinement search on re-open."""
+    ds = oc.open(haloproperties_600_path)
+
+    # Each rank works with a pixel it owns so the search is guaranteed to find data.
+    pixel = np.random.choice(ds.region.pixels)
+    ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
+
+    # Write with a wider box, refine with a narrower one after re-open.
+    p1_outer = SkyCoord((ra_center - 2.0) * u.deg, (dec_center - 2.0) * u.deg)
+    p2_outer = SkyCoord((ra_center + 2.0) * u.deg, (dec_center + 2.0) * u.deg)
+    ds = ds.box_search(p1_outer, p2_outer)
+
+    oc.write(per_test_dir / "box_search_test.hdf5", ds)
+    new_ds = oc.open(per_test_dir / "box_search_test.hdf5")
+
+    p1_inner = SkyCoord((ra_center - 1.0) * u.deg, (dec_center - 1.0) * u.deg)
+    p2_inner = SkyCoord((ra_center + 1.0) * u.deg, (dec_center + 1.0) * u.deg)
+    ds = ds.box_search(p1_inner, p2_inner)
+    new_ds = new_ds.box_search(p1_inner, p2_inner)
+
+    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+
+
 @pytest.mark.parallel(nprocs=4)
 def test_lc_collection_write_single(
     haloproperties_600_path, haloproperties_601_path, per_test_dir

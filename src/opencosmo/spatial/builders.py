@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
+from warnings import warn
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -11,11 +12,7 @@ from opencosmo.spatial.models import (
     ConeRegionModel,
     HealpixRegionModel,
 )
-from opencosmo.spatial.region import (
-    BoxRegion,
-    ConeRegion,
-    HealpixRegion,
-)
+from opencosmo.spatial.region import BoxRegion, ConeRegion, HealpixRegion, SkyboxRegion
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -116,3 +113,28 @@ def make_cone(center: Point2d | SkyCoord, radius: float | u.Quantity):
     if isinstance(radius, (float, int)):
         radius = radius * u.deg
     return ConeRegion(coord, radius)
+
+
+def make_skybox(p1: tuple[float, float] | SkyCoord, p2: tuple[float, float] | SkyCoord):
+    """
+    Make a box on the plane of the sky defined by two points. These points can be passed
+    as a tuple of values or astropy sky coordinates.
+    """
+    if not isinstance(p1, SkyCoord):
+        try:
+            p1 = SkyCoord(*p1)
+        except u.UnitTypeError:
+            p1 = SkyCoord(*p1, unit="deg")
+    if not isinstance(p2, SkyCoord):
+        try:
+            p2 = SkyCoord(*p2)
+        except u.UnitTypeError:
+            p2 = SkyCoord(*p2, unit="deg")
+
+    if p1.ra.deg == p2.ra.deg or p1.dec.deg == p2.dec.deg:
+        warn(
+            "Either RA or Dec is the same for both corners of the box! "
+            "This may lead to unexpected behavior"
+        )
+
+    return SkyboxRegion(p1, p2)
