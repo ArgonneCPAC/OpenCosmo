@@ -22,12 +22,7 @@ from opencosmo.units import UnitConvention
 from .cosmology import CosmologyParameters
 from .diffsky import DiffskyVersionInfo
 from .units import register_units
-
-
-def empty_string_to_none(v):
-    if isinstance(v, str) and v == "":
-        return None
-    return v
+from .utils import empty_string_to_none
 
 
 class HaccSimulationParameters(BaseModel):
@@ -201,19 +196,6 @@ class ReformatParameters(BaseModel):
         return data
 
 
-class LightconeParams(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    ACCESS_PATH: ClassVar[str] = "lightcone"
-    z_range: Optional[tuple[float, float]] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def empty_string_to_none(cls, data):
-        if isinstance(data, dict):
-            return {k: empty_string_to_none(v) for k, v in data.items()}
-        return data
-
-
 class MapParams(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "healpix_map"
@@ -249,14 +231,14 @@ ORIGIN_PARAMETERS = {
     "optional": {"reformat_hacc/config": ReformatParameters},
 }
 
-DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
+DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
     "halo_properties": {},
     "galaxy_properties": {},
     "halo_particles": {},
     "galaxy_particles": {},
     "halo_profiles": {},
-    "diffsky_fits": {"diffsky_versions": DiffskyVersionInfo},
-    "healpix_map": {"map_params": MapParams},
+    "synthetic_galaxies": {"optional": {"diffsky_versions": DiffskyVersionInfo}},
+    "healpix_map": {"required": {"map_params": MapParams}},
 }
 
 register_units(

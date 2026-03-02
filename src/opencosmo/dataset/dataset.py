@@ -184,16 +184,17 @@ class Dataset:
         return self.__state.region
 
     @property
-    def simulation(self) -> HaccSimulationParameters:
+    def simulation(self) -> Optional[HaccSimulationParameters]:
         """
         The parameters of the simulation this dataset is drawn
-        from.
+        from. May return None if the parameters are not included
+        in the file
 
         Returns
         -------
-        parameters: opencosmo.parameters.hacc.HaccSimulationParameters
+        parameters: Optional[opencosmo.parameters.hacc.HaccSimulationParameters]
         """
-        return self.__header.simulation
+        return getattr(self.__header, "simulation", None)
 
     @property
     @deprecated(
