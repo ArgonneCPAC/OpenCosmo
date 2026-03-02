@@ -665,8 +665,34 @@ class Lightcone(dict):
         region = oc.make_cone(center, radius)
         return self.bound(region)
 
-    def box_search(self, bl, tr):
-        region = oc.make_skybox(bl, tr)
+    def box_search(self, p1: tuple | SkyCoord, p2: tuple | SkyCoord):
+        """
+        Perform a box search in a given RA and Dec range. Of course this is not
+        really a "box" on the surface of a sphere, but it's the closet thing we got.
+        This metbhod is exactly equivalent to
+
+        .. code-block:: python
+
+            region = oc.make_cone(center, radius)
+            ds = ds.bound(region)
+
+        Parameters
+        ----------
+
+        p1: tuple | astropy.coordinates.SkyCoord
+            A point defining one corner of the box. If a tuple with no units, values are assumed to
+            be RA and Dec in degrees.
+        p2: tuple | astropy.coordinates.SkyCoord
+            A point defining the opposite corner of the box. If a tuple with no units, values are assumed to
+            be RA and Dec in degrees.
+
+        Returns
+        -------
+
+        new_lightcone: opencosmo.Lightcone
+            The new dataset, only including data within the specified region.
+        """
+        region = oc.make_skybox(p1, p2)
         return self.bound(region)
 
     def evaluate(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
+from warnings import warn
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -120,8 +121,20 @@ def make_skybox(p1: tuple[float, float] | SkyCoord, p2: tuple[float, float] | Sk
     as a tuple of values or astropy sky coordinates.
     """
     if not isinstance(p1, SkyCoord):
-        p1 = SkyCoord(*p1, unit="deg")
+        try:
+            p1 = SkyCoord(*p1)
+        except u.UnitTypeError:
+            p1 = SkyCoord(*p1, unit="deg")
     if not isinstance(p2, SkyCoord):
-        p2 = SkyCoord(*p2, unit="deg")
+        try:
+            p2 = SkyCoord(*p2)
+        except u.UnitTypeError:
+            p2 = SkyCoord(*p2, unit="deg")
+
+    if p1.ra.deg == p2.ra.deg or p1.dec.deg == p2.dec.deg:
+        warn(
+            "Either RA or Dec is the same for both corners of the box! "
+            "This may lead to unexpected behavior"
+        )
 
     return SkyboxRegion(p1, p2)
