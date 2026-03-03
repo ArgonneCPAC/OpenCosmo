@@ -40,7 +40,7 @@ class FileParameters(BaseModel):
     step: Optional[int] = None
     region: Optional[sm.RegionModel] = None
     unit_convention: UnitConvention = UnitConvention.SCALEFREE
-    require_header_groups: Optional[tuple[str]] = None
+    require_header_groups: Optional[tuple[str, ...]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -62,7 +62,7 @@ class FileParameters(BaseModel):
     def require_diffsky_version(cls, data):
         data_type = data["data_type"]
         if data_type == "diffsky_fits":
-            data["require_header_groups"] = ("diffsky_versions",)
+            data["require_header_groups"] = ("diffsky_versions", "catalog_info")
             data["data_type"] = "synthetic_galaxies"
         return data
 
@@ -85,7 +85,7 @@ class FileParameters(BaseModel):
     @model_serializer(mode="wrap")
     def serialize_model(self, handle):
         dump = handle(self)
-        if dump["region"] is not None:
+        if dump.get("region") is not None:
             region = dump.pop("region")
             region = {f"region_{k}": v for k, v in region.items()}
             dump.update(region)

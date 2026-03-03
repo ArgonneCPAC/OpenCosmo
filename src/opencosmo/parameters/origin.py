@@ -7,4 +7,4 @@ def get_origin_parameters(origin: str):
     if origin == "HACC":
         return hacc.ORIGIN_PARAMETERS
     else:
-        return {"simulation/cosmology": CosmologyParameters}
+        return {"required": {"simulation/cosmology": CosmologyParameters}}

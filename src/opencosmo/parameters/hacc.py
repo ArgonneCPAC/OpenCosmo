@@ -20,7 +20,7 @@ from pydantic import (
 from opencosmo.units import UnitConvention
 
 from .cosmology import CosmologyParameters
-from .diffsky import DiffskyVersionInfo
+from .diffsky import DiffskyCatalogInfo, DiffskyVersionInfo
 from .units import register_units
 from .utils import empty_string_to_none
 
@@ -237,7 +237,12 @@ DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
     "halo_particles": {},
     "galaxy_particles": {},
     "halo_profiles": {},
-    "synthetic_galaxies": {"optional": {"diffsky_versions": DiffskyVersionInfo}},
+    "synthetic_galaxies": {
+        "optional": {
+            "diffsky_versions": DiffskyVersionInfo,
+            "catalog_info": DiffskyCatalogInfo,
+        }
+    },
     "healpix_map": {"required": {"map_params": MapParams}},
 }
 

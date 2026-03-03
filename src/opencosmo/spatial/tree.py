@@ -30,7 +30,9 @@ if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
-def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):
+def open_tree(
+    file: h5py.File | h5py.Group, box_size: Optional[int], is_lightcone: bool = False
+):
     """
     Read a tree from an HDF5 file and the associated
     header. The tree is just a mapping between a spatial
@@ -50,6 +52,8 @@ def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = 
 
     if is_lightcone:
         spatial_index = HealPixIndex()
+    elif box_size is None:
+        raise ValueError("Cannot open a snapshot spatial index without a box size")
     else:
         spatial_index = OctTreeIndex.from_box_size(box_size)
     return Tree(spatial_index, group)

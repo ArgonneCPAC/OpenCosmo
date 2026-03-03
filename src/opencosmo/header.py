@@ -203,7 +203,7 @@ class OpenCosmoHeader:
         pars = {}
         arr_pars = {}
         for path, model in to_write:
-            data = model.model_dump(by_alias=True)
+            data = model.model_dump(by_alias=True, exclude_none=True)
             data = dict(
                 map(
                     lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
