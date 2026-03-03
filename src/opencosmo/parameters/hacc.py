@@ -34,13 +34,14 @@ class HaccSimulationParameters(BaseModel):
     z_end: float = Field(ge=0.0, description="Final redshift of the simulation")
     n_gravity: Optional[int] = Field(
         ge=2,
+        default=None,
         description="Number of gravity-only particles (per dimension). "
         "In hydrodynamic simulations, this parameter will not be set.",
     )
     n_steps: int = Field(ge=1, description="Number of time steps")
     pm_grid: int = Field(ge=2, description="Number of grid points (per dimension)")
     offset_gravity_ini: Optional[float] = Field(
-        description="Lagrangian offset for gravity-only particles"
+        description="Lagrangian offset for gravity-only particles", default=None
     )
 
     @model_validator(mode="before")
