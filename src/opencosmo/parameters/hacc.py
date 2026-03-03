@@ -119,9 +119,9 @@ class CosmoToolsParameters(BaseModel):
     sod_concentration_pmin: int
     sodbighaloparticles_pmin: int
     profiles_nbins: int
-    galaxy_dbscan_neighbors: Optional[int]
-    galaxy_aperture_radius: Optional[int]
-    galaxy_pmin: Optional[int]
+    galaxy_dbscan_neighbors: Optional[int] = None
+    galaxy_aperture_radius: Optional[int] = None
+    galaxy_pmin: Optional[int] = None
 
     @model_validator(mode="before")
     @classmethod
