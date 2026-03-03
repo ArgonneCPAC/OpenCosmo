@@ -359,10 +359,13 @@ class Dataset:
         if not self.__header.file.is_lightcone:
             check_dataset = check_dataset.with_units("scalefree")
 
-        index_mask = check.check_containment(
-            check_dataset, check_region, self.__header.file
-        )
-        new_intersects_index = mask(intersects_index, index_mask)
+        if len(check_dataset) > 0:
+            index_mask = check.check_containment(
+                check_dataset, check_region, self.__header.file
+            )
+            new_intersects_index = mask(intersects_index, index_mask)
+        else:
+            new_intersects_index = np.array([], dtype=np.int64)
 
         new_index = np.concatenate(
             [into_array(contained_index), into_array(new_intersects_index)]
