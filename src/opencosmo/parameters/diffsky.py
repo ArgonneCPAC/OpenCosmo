@@ -22,7 +22,6 @@ class DiffskyCatalogInfo(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "catalog_info"
     README: Optional[str] = None
-    creation_date: datetime
     mock_version_name: str
     zphot_table: Optional[tuple[float]] = None
 
@@ -31,7 +30,3 @@ class DiffskyCatalogInfo(BaseModel):
         if value is not None:
             return list(value)
         return None
-
-    @field_serializer("creation_date")
-    def serialize_date(self, value):
-        return str(value)
