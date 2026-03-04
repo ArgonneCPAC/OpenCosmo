@@ -98,6 +98,51 @@ def __skybox_intersects_skybox(region: SkyboxRegion, other: SkyboxRegion) -> boo
     return ra_overlaps and dec_overlaps
 
 
+def __skybox_contains_cone(region: SkyboxRegion, other: ConeRegion) -> bool:
+    import astropy.units as u
+
+    radius_deg = other.radius.to(u.deg).value
+    ra = other.center.ra.deg
+    dec = other.center.dec.deg
+    ra_contained = (
+        region.ra_bounds[0] <= ra - radius_deg
+        and region.ra_bounds[1] >= ra + radius_deg
+    )
+    dec_contained = (
+        region.dec_bounds[0] <= dec - radius_deg
+        and region.dec_bounds[1] >= dec + radius_deg
+    )
+    return ra_contained and dec_contained
+
+
+def __cone_contains_skybox(region: ConeRegion, other: SkyboxRegion) -> bool:
+    corners = SkyCoord(
+        ra=[
+            other.ra_bounds[0],
+            other.ra_bounds[0],
+            other.ra_bounds[1],
+            other.ra_bounds[1],
+        ],
+        dec=[
+            other.dec_bounds[0],
+            other.dec_bounds[1],
+            other.dec_bounds[0],
+            other.dec_bounds[1],
+        ],
+        unit="deg",
+    )
+    return bool(np.all(__cone_contains_point(region, corners)))
+
+
+def __skybox_intersects_cone(region: SkyboxRegion, other: ConeRegion) -> bool:
+    nearest_ra = np.clip(other.center.ra.deg, region.ra_bounds[0], region.ra_bounds[1])
+    nearest_dec = np.clip(
+        other.center.dec.deg, region.dec_bounds[0], region.dec_bounds[1]
+    )
+    nearest = SkyCoord(ra=nearest_ra, dec=nearest_dec, unit="deg")
+    return bool(other.center.separation(nearest) < other.radius)
+
+
 def __healpix_intersects_healpix(region: HealpixRegion, other: HealpixRegion) -> bool:
     return bool(np.any(np.isin(region.pixels, other.pixels)))
 
@@ -168,6 +213,10 @@ def contains_2d(region, other):
             return __cone_contains_cone(region, other)
         case (ConeRegion(), SkyCoord()):
             return __cone_contains_point(region, other)
+        case (ConeRegion(), SkyboxRegion()):
+            return __cone_contains_skybox(region, other)
+        case (SkyboxRegion(), ConeRegion()):
+            return __skybox_contains_cone(region, other)
         case (SkyboxRegion(), SkyboxRegion()):
             return __skybox_contains_skybox(region, other)
         case (SkyboxRegion(), SkyCoord()):
@@ -198,6 +247,10 @@ def intersects_2d(region, other):
             return True
         case (ConeRegion(), ConeRegion()):
             return __cone_intersects_cone(region, other)
+        case (ConeRegion(), SkyboxRegion()):
+            return __skybox_intersects_cone(other, region)
+        case (SkyboxRegion(), ConeRegion()):
+            return __skybox_intersects_cone(region, other)
         case (HealpixRegion(), HealpixRegion()):
             return __healpix_intersects_healpix(region, other)
         case (HealpixRegion(), _):

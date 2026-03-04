@@ -1,0 +1,1 @@
+Headers are now no longer as strict about what groups are required, assuring non-hacc datasets can be used without modifying the available parameter models.

@@ -215,6 +215,9 @@ def with_redshift_column(dataset: Dataset):
     elif "redshift_true" in dataset.columns:
         z_col = 1 * oc.col("redshift_true")
         return dataset.with_new_columns(redshift=z_col)
+    elif "zp" in dataset.columns:
+        z_col = 1 * oc.col("zp")
+        return dataset.with_new_columns(redshift=z_col)
     raise ValueError(
         "Unable to find a redshift or scale factor column for this lightcone dataset"
     )
@@ -483,12 +486,13 @@ class Lightcone(dict):
     def open(cls, targets: list[OpenTarget], **kwargs):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
 
-        for target in targets:
+        for i, target in enumerate(targets):
             group_name = target.group.name.split("/")[-1]
             group_name = group_name.lstrip(f"{target.header.file.step}_")
             ds = open_single_dataset(target, bypass_lightcone=True)
             step = target.header.file.step
-            assert step is not None
+            if step is None:
+                step = i
             datasets[step][group_name] = ds
 
         output: dict[int, Dataset | Lightcone] = {}

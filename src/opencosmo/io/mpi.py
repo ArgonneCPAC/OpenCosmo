@@ -215,6 +215,7 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
 
 def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
     all_metadata = comm.allgather(metadata)
+
     if not all(md == all_metadata[0] for md in all_metadata[1:]):
         raise ValueError("Not all ranks recieved the same metadata!")
 

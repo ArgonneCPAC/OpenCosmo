@@ -240,11 +240,6 @@ class TestSkyboxContainsPoint:
         assert not result[1]
         assert not result[2]
 
-    def test_skybox_intersects_unsupported_type_raises(self):
-        cone = oc.make_cone((180.0, 0.0), 5.0)
-        with pytest.raises(ValueError):
-            intersects_2d(self.skybox, cone)
-
 
 # ---------------------------------------------------------------------------
 # SkyboxRegion — contains_2d / intersects_2d (skybox vs skybox)

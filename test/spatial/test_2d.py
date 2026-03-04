@@ -3,6 +3,7 @@ import numpy as np
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
+from opencosmo.spatial.relations import contains_2d, intersects_2d
 
 # ---------------------------------------------------------------------------
 # Cone search (bound with ConeRegion)
@@ -296,3 +297,82 @@ def test_box_search_collection(haloproperties_600_path, haloproperties_601_path)
     assert np.all((ra > _BOX_RA_MIN) & (ra < _BOX_RA_MAX))
     assert np.all((dec > _BOX_DEC_MIN) & (dec < _BOX_DEC_MAX))
     assert len(data) == n_expected
+
+
+# ---------------------------------------------------------------------------
+# contains_2d / intersects_2d — ConeRegion vs SkyboxRegion
+# ---------------------------------------------------------------------------
+
+
+class TestConeContainsSkybox:
+    """
+    Big cone: center (180, 0), radius 20 deg.
+    Small skybox inside: RA 175–185, Dec -5–5.
+      Max corner sep ≈ 7.1 deg < 20 → cone contains skybox.
+    Partial skybox: RA 195–205, Dec -5–5.
+      Corner (195, -5) sep ≈ 15.8 deg < 20 (inside); (205, 5) sep ≈ 25.5 deg > 20 (outside)
+      → cone does not contain skybox; nearest skybox point (195, 0) sep = 15 deg < 20 → intersects.
+    Disjoint skybox: RA 210–220, Dec -5–5.
+      Nearest skybox point (210, 0) sep = 30 deg > 20 → neither.
+    """
+
+    def setup_method(self):
+        self.big_cone = oc.make_cone((180.0, 0.0), 20.0)
+        self.small_inside = oc.make_skybox((175.0, -5.0), (185.0, 5.0))
+        self.partial = oc.make_skybox((195.0, -5.0), (205.0, 5.0))
+        self.disjoint = oc.make_skybox((210.0, -5.0), (220.0, 5.0))
+
+    def test_contains_and_intersects(self):
+        assert contains_2d(self.big_cone, self.small_inside)
+        assert intersects_2d(self.big_cone, self.small_inside)
+
+    def test_intersects_not_contains(self):
+        assert not contains_2d(self.big_cone, self.partial)
+        assert intersects_2d(self.big_cone, self.partial)
+
+    def test_neither(self):
+        assert not contains_2d(self.big_cone, self.disjoint)
+        assert not intersects_2d(self.big_cone, self.disjoint)
+
+    def test_containment_not_symmetric(self):
+        assert contains_2d(self.big_cone, self.small_inside)
+        assert not contains_2d(self.small_inside, self.big_cone)
+
+
+class TestSkyboxContainsCone:
+    """
+    Big skybox: RA 170–190, Dec -10–10.
+    Small cone inside: center (180, 0), radius 5 deg.
+      Bounding square [175–185] × [-5–5] fits inside skybox → skybox contains cone.
+    Partial cone: center (188, 0), radius 5 deg.
+      Bounding square right edge 193 > 190 → skybox does not contain cone.
+      Cone center (188, 0) is inside skybox so nearest point sep = 0 < 5 → intersects.
+    Disjoint cone: center (200, 0), radius 5 deg.
+      Nearest skybox point is (190, 0), sep = 10 deg > 5 → neither.
+    """
+
+    def setup_method(self):
+        self.big_skybox = oc.make_skybox((170.0, -10.0), (190.0, 10.0))
+        self.small_inside = oc.make_cone((180.0, 0.0), 5.0)
+        self.partial = oc.make_cone((188.0, 0.0), 5.0)
+        self.disjoint = oc.make_cone((200.0, 0.0), 5.0)
+
+    def test_contains_and_intersects(self):
+        assert contains_2d(self.big_skybox, self.small_inside)
+        assert intersects_2d(self.big_skybox, self.small_inside)
+
+    def test_intersects_not_contains(self):
+        assert not contains_2d(self.big_skybox, self.partial)
+        assert intersects_2d(self.big_skybox, self.partial)
+
+    def test_neither(self):
+        assert not contains_2d(self.big_skybox, self.disjoint)
+        assert not intersects_2d(self.big_skybox, self.disjoint)
+
+    def test_containment_not_symmetric(self):
+        assert contains_2d(self.big_skybox, self.small_inside)
+        assert not contains_2d(self.small_inside, self.big_skybox)
+
+    def test_intersects_is_symmetric(self):
+        assert intersects_2d(self.big_skybox, self.partial)
+        assert intersects_2d(self.partial, self.big_skybox)

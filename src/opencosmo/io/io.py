@@ -162,14 +162,18 @@ def open_single_dataset(
     handle = target.group
 
     assert header is not None
+    try:
+        box_size = header.with_units("scalefree").simulation["box_size"].value
+    except AttributeError:
+        box_size = None
 
     try:
         tree = open_tree(
             handle,
-            header.with_units("scalefree").simulation["box_size"].value,
+            box_size,
             header.file.is_lightcone,
         )
-    except ValueError:
+    except (ValueError, AttributeError):
         tree = None
 
     if header.file.region is not None:

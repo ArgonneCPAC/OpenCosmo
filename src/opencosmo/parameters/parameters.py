@@ -50,7 +50,7 @@ def should_dump_to_hdf5_dataset(obj: Any):
 
 def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseModel):
     group = file.require_group(f"header/{header_path}")
-    pars = parameters.model_dump(by_alias=True)
+    pars = parameters.model_dump(by_alias=True, exclude_none=True)
     array_pars = {
         key: val for key, val in pars.items() if should_dump_to_hdf5_dataset(val)
     }

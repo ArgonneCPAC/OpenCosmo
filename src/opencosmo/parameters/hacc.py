@@ -20,14 +20,9 @@ from pydantic import (
 from opencosmo.units import UnitConvention
 
 from .cosmology import CosmologyParameters
-from .diffsky import DiffskyVersionInfo
+from .diffsky import DiffskyCatalogInfo, DiffskyVersionInfo
 from .units import register_units
-
-
-def empty_string_to_none(v):
-    if isinstance(v, str) and v == "":
-        return None
-    return v
+from .utils import empty_string_to_none
 
 
 class HaccSimulationParameters(BaseModel):
@@ -39,13 +34,14 @@ class HaccSimulationParameters(BaseModel):
     z_end: float = Field(ge=0.0, description="Final redshift of the simulation")
     n_gravity: Optional[int] = Field(
         ge=2,
+        default=None,
         description="Number of gravity-only particles (per dimension). "
         "In hydrodynamic simulations, this parameter will not be set.",
     )
     n_steps: int = Field(ge=1, description="Number of time steps")
     pm_grid: int = Field(ge=2, description="Number of grid points (per dimension)")
     offset_gravity_ini: Optional[float] = Field(
-        description="Lagrangian offset for gravity-only particles"
+        description="Lagrangian offset for gravity-only particles", default=None
     )
 
     @model_validator(mode="before")
@@ -123,9 +119,9 @@ class CosmoToolsParameters(BaseModel):
     sod_concentration_pmin: int
     sodbighaloparticles_pmin: int
     profiles_nbins: int
-    galaxy_dbscan_neighbors: Optional[int]
-    galaxy_aperture_radius: Optional[int]
-    galaxy_pmin: Optional[int]
+    galaxy_dbscan_neighbors: Optional[int] = None
+    galaxy_aperture_radius: Optional[int] = None
+    galaxy_pmin: Optional[int] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -201,19 +197,6 @@ class ReformatParameters(BaseModel):
         return data
 
 
-class LightconeParams(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    ACCESS_PATH: ClassVar[str] = "lightcone"
-    z_range: Optional[tuple[float, float]] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def empty_string_to_none(cls, data):
-        if isinstance(data, dict):
-            return {k: empty_string_to_none(v) for k, v in data.items()}
-        return data
-
-
 class MapParams(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "healpix_map"
@@ -249,14 +232,19 @@ ORIGIN_PARAMETERS = {
     "optional": {"reformat_hacc/config": ReformatParameters},
 }
 
-DATATYPE_PARAMETERS: dict[str, dict[str, type[BaseModel]]] = {
+DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
     "halo_properties": {},
     "galaxy_properties": {},
     "halo_particles": {},
     "galaxy_particles": {},
     "halo_profiles": {},
-    "diffsky_fits": {"diffsky_versions": DiffskyVersionInfo},
-    "healpix_map": {"map_params": MapParams},
+    "synthetic_galaxies": {
+        "optional": {
+            "diffsky_versions": DiffskyVersionInfo,
+            "catalog_info": DiffskyCatalogInfo,
+        }
+    },
+    "healpix_map": {"required": {"map_params": MapParams}},
 }
 
 register_units(

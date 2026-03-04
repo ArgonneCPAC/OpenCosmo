@@ -22,7 +22,7 @@ class FILE_TYPE(Enum):
     LIGHTCONE = 5
     STRUCTURE_COLLECTION = 6
     SIMULATION_COLLECTION = 7
-    SYNTHETIC_CATALOG = 8
+    SYNTHETIC_GALAXY_CATALOG = 8
     HEALPIX_MAP = 9
 
 
@@ -39,8 +39,8 @@ def get_file_type(file: h5py.File) -> FILE_TYPE:
             return FILE_TYPE.GALAXY_PROPERTIES
         elif dtype == "galaxy_particles":
             return FILE_TYPE.GALAXY_PARTICLES
-        elif dtype == "diffsky_fits":
-            return FILE_TYPE.SYNTHETIC_CATALOG
+        elif dtype in ["diffsky_fits", "synthetic_galaxies"]:
+            return FILE_TYPE.SYNTHETIC_GALAXY_CATALOG
         elif dtype == "healpix_map":
             return FILE_TYPE.HEALPIX_MAP
         else:
@@ -91,7 +91,7 @@ def make_all_targets(files: list[h5py.File]):
         try:
             targets += make_file_targets(file)
         except ValueError:
-            bad_files.append(file.filename)
+            bad_files.append(file.file.filename)
             raise
     if bad_files:
         raise ValueError(
