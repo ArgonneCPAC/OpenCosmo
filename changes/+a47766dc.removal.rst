@@ -1,1 +1,1 @@
-hdf5plugin >= 6.0 is now required
+hdf5plugin 5.1 is now explicitly excluded because of user reports of issues with blosc filters. 
