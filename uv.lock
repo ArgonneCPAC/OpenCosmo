@@ -1147,7 +1147,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.2.1,<9.0.0" },
     { name = "deprecated", specifier = ">=1.2.18,<2.0.0" },
     { name = "h5py", specifier = ">=3.12.1,<4.0.0" },
-    { name = "hdf5plugin", specifier = ">=6.0.0" },
+    { name = "hdf5plugin", specifier = ">=5.0.0,!=5.1" },
     { name = "healpy", specifier = ">=1.19.0,<2.0.0" },
     { name = "healsparse", specifier = "==1.11.1" },
     { name = "numba", specifier = ">=0.63.0" },
