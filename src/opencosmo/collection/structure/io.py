@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from functools import reduce
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 
     from opencosmo import dataset as d
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.group import FileTarget
 
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles", "galaxy_properties"],
@@ -73,33 +75,34 @@ def get_linked_datasets(
     return datasets
 
 
-def build_structure_collection(targets: list[io.io.OpenTarget], ignore_empty: bool):
+def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
     link_sources = defaultdict(list)
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
         defaultdict(lambda: defaultdict(list))
     )
-    for target in targets:
-        if target.data_type == "halo_properties":
+    dataset_targets = reduce(lambda acc, t: acc + t["dataset_targets"], targets, [])
+    for target in dataset_targets:
+        if target["header"].file.data_type == "halo_properties":
             link_sources["halo_properties"].append(target)
-        elif target.data_type == "galaxy_properties":
+        elif target["header"].file.data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
-        elif target.data_type.startswith("halo"):
+        elif target["header"].file.data_type.startswith("halo"):
             dataset = io.io.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
-            name = target.group.name.split("/")[-1]
+            name = target["dataset_group"].name.split("/")[-1]
             if not name:
-                name = target.data_type
+                name = target["header"].file.data_type
             elif name.startswith("halo_properties"):
                 name = name[16:]
             link_targets["halo_targets"][name].append(dataset)
-        elif target.data_type.startswith("galaxy"):
+        elif target["header"].file.data_type.startswith("galaxy"):
             dataset = io.io.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
-            name = target.group.name.split("/")[-1]
+            name = target["dataset_group"].name.split("/")[-1]
             if not name:
-                name = target.data_type
+                name = target["header"].file.data_type
             elif name.startswith("galaxy_properties"):
                 name = name[18:]
             link_targets["galaxy_targets"][name].append(dataset)

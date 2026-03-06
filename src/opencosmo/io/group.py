@@ -3,9 +3,8 @@ from typing import TypedDict
 
 import h5py
 
-from opencosmo.collection.lightcone.lightcone import Lightcone
+from opencosmo import collection as occ
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.parameters.file import DatasetType
 
 """
 There are a few file structures we have to be able to support.
@@ -52,13 +51,23 @@ def make_file_targets(files: list[h5py.File]):
         targets.append(__make_file_target(file))
 
     if len(targets) > 1:
-        collection_type = __determine_collection_type(targets)
+        collection_type = __determine_multi_file_collection_type(targets)
+        return collection_type.open(targets)
+    return __determine_single_file_collection_type(targets[0])
 
+
+def __open_single_file(target: FileTarget):
+    match target["file_type"]:
+        case FileType.SIMULATION_COLLECTION:
+            return occ.SimulationCollection
+
+
+def __determine_single_file_collection_type(target: FileTarget):
+    print(target)
     assert False
-    return targets
 
 
-def __determine_collection_type(targets: list[FileTarget]):
+def __determine_multi_file_collection_type(targets: list[FileTarget]):
     properties = []
     particles_or_profiles = []
     lightcones = []
@@ -71,8 +80,7 @@ def __determine_collection_type(targets: list[FileTarget]):
             raise ValueError("Invalid combination of files!")
         if (
             target["file_type"] == FileType.DATASET
-            and target["dataset_targets"][0]["header"].file.data_type
-            == DatasetType.halo_profiles
+            and target["dataset_targets"][0]["header"].file.data_type == "halo_profiles"
         ):
             particles_or_profiles.append(target)
         elif target["file_type"] == FileType.DATASET and target["dataset_targets"][0][
@@ -87,7 +95,8 @@ def __determine_collection_type(targets: list[FileTarget]):
             other_datasets.append(target)
         else:
             raise ValueError("Invalid combination of files!")
-    __get_collection_type_from_categorized_lists(
+
+    return __get_collection_type_from_categorized_lists(
         properties, particles_or_profiles, lightcones, other_datasets
     )
 
@@ -106,9 +115,9 @@ def __get_collection_type_from_categorized_lists(
     )
     match flags:
         case (True, True, False, False):
-            return StructureCollection
+            return occ.StructureCollection
         case (False, False, True, False):
-            return Lightcone
+            return occ.Lightcone
         case (True, False, False, False):
             return __get_multi_dataset_type(properties)
         case (False, False, False, True):
@@ -124,15 +133,18 @@ def __get_multi_dataset_type(file_targets: list[FileTarget]):
     is_lightcone = set(
         ft["dataset_targets"][0]["header"].file.is_lightcone for ft in file_targets
     )
-    if len(dtypes) > 1 or len(is_lightcone) > 1:
+    if dtypes == {"halo_properties", "galaxy_properties"}:  # special case
+        return occ.StructureCollection
+
+    if len(dtypes) == 1 or len(is_lightcone) > 1:
         raise ValueError(
             "When opening multiple files, they must either be several different data types from a single simulation, "
             "a single data type from several simulations, or a single lightcone data type from a single simulation"
         )
     if is_lightcone.pop():
-        return Lightcone
+        return occ.Lightcone
     else:
-        return SimulationCollection
+        return occ.SimulationCollection
 
 
 def __make_file_target(file: h5py.File):
@@ -142,15 +154,15 @@ def __make_file_target(file: h5py.File):
 
 
 def __identify_file_type(targets: list[DatasetTarget]):
-    if len(targets) == 1:
-        return FileType.DATASET
     data_types = set(t["header"].file.data_type for t in targets)
     is_lightcone = [t["header"].file.is_lightcone for t in targets]
+    if all("particle" in dt for dt in data_types):
+        return FileType.PARTICLES
     if len(data_types) == 1 and all(is_lightcone):
         return FileType.LIGHTCONE
+    if len(targets) == 1:
+        return FileType.DATASET
 
-    elif all("particle" in dt for dt in data_types):
-        return FileType.PARTICLES
     parents = set(t["dataset_group"].parent.name for t in targets)
     if len(parents) == 1 and len(data_types) == len(targets):
         return FileType.STRUCTURE_COLLECTION

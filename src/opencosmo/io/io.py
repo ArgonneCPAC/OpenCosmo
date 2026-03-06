@@ -18,7 +18,7 @@ from opencosmo.io.file import (
     get_file_type,
     make_all_targets,
 )
-from opencosmo.io.group import make_file_targets
+from opencosmo.io.group import DatasetTarget, make_file_targets
 from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from opencosmo.index import ChunkedIndex
-    from opencosmo.io.file import OpenTarget
 
     from .protocols import Writeable
 
@@ -133,7 +132,8 @@ def open(
     except TypeError:  # we have hdf5 groups
         handles = file_list
 
-    make_file_targets(handles)
+    return make_file_targets(handles)
+
     try:
         targets = make_all_targets(handles)
     except KeyError:
@@ -155,13 +155,13 @@ def open(
 
 
 def open_single_dataset(
-    target: OpenTarget,
+    target: DatasetTarget,
     metadata_group: Optional[str] = None,
     bypass_lightcone: bool = False,
     bypass_mpi: bool = False,
 ):
-    header = target.header
-    handle = target.group
+    header = target["header"]
+    handle = target["dataset_group"]
 
     assert header is not None
     try:
