@@ -13,6 +13,7 @@ known_yt_tools = [
     "PhasePlot",
     "visualize_halo",
     "halo_projection_array",
+    "animate_halo",
 ]
 
 

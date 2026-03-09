@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import numpy as np
 import yt  # type: ignore
+import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm  # type: ignore
+from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar  # type: ignore
 from unyt import unyt_quantity  # type: ignore
 from yt.visualization.base_plot_types import get_multi_plot  # type: ignore
@@ -136,7 +138,9 @@ def PhasePlot(*args, **kwargs) -> yt.PhasePlot:
 def visualize_halo(
     halo_id: int,
     data: oc.StructureCollection,
+    yt_ds: Optional[Any] = None,
     projection_axis: Optional[str] = "z",
+    north_vector: Optional[list[float]] = None,
     length_scale: Optional[str] = "top left",
     text_color: Optional[str] = "lightgray",
     width: Optional[float] = None,
@@ -251,14 +255,28 @@ def visualize_halo(
         )
 
     halo_ids: list[int] | tuple[list[int], list[int]]
+
+    if yt_ds is not None:
+        yt_dataset_provided = True
+    else:
+        yt_dataset_provided = False
+
     if len(params["fields"]) == 4:
         # if 4 fields, make a 2x2 figure
         halo_ids = ([halo_id, halo_id], [halo_id, halo_id])
+
+        if yt_dataset_provided:
+            yt_ds = ([yt_ds, yt_ds],[yt_ds, yt_ds])
+
         params = {key: (value[:2], value[2:]) for key, value in params.items()}
 
     else:
         # otherwise, do 1xN
         halo_ids = np.shape(params["fields"])[0] * [halo_id]
+
+        if yt_dataset_provided:
+            yt_ds = np.shape(params["fields"])[0] * [yt_ds]
+
         params = {key: [value] for key, value in params.items()}
 
     return halo_projection_array(
@@ -269,15 +287,19 @@ def visualize_halo(
         width=width,
         projection_axis=projection_axis,
         text_color=text_color,
+        north_vector=north_vector,
+        yt_ds=yt_ds,
     )
 
 
 def halo_projection_array(
     halo_ids: int | list[int] | tuple[list[int], list[int]] | np.ndarray,
     data: oc.StructureCollection,
+    yt_ds: Optional[ list[Any] | tuple[list[Any], list[Any]] ] = None,
     field: Optional[Tuple[str, str]] = ("dm", "particle_mass"),
     weight_field: Optional[Tuple[str, str]] = None,
     projection_axis: Optional[str] = "z",
+    north_vector: Optional[list[float]] = None,
     cmap: Optional[str] = "gray",
     cmap_norm: Optional[Normalize] = None,  # type: ignore
     zlim: Optional[Tuple[float, float]] = None,
@@ -317,8 +339,10 @@ def halo_projection_array(
     weight_field : tuple of str, optional
         Field to weight by during projection. Follows yt naming conventions.
         Overridden if ``params["weight_fields"]`` is provided.
-    projection_axis : str, optional
-        Data is projected along this axis (``"x"``, ``"y"``, or ``"z"``).
+    projection_axis : str, int, or 3-element sequence of floats, optional
+        Data is projected along this axis (``"x"``, ``"y"``, or ``"z"``), or, alternatively,
+        (0, 1, or 2). ``projection_axis`` is forwarded to the `normal` parameter of `ParticleProjectionPlot`. 
+        An arbitrary projection axis may be provided as a 3-element sequence of floats.
         Overridden if ``params["projection_axes"]`` is provided
     cmap : str
         Matplotlib colormap to use for all panels. Overridden if ``params["cmaps"]`` is provided.
@@ -391,8 +415,31 @@ def halo_projection_array(
         zlim_ = np.full(fig_shape, None)
     else:
         zlim_ = np.reshape(
-            [zlim for _ in range(np.prod(fig_shape))], (fig_shape[0], fig_shape[1], 2)
+            [zlim for _ in range(np.prod(fig_shape))],
+            (fig_shape[0], fig_shape[1], 2)
         )
+
+    if isinstance(projection_axis, (str, int)):
+        projection_axis_ = np.full(fig_shape, projection_axis)
+
+    elif isinstance(projection_axis, (list, tuple, np.ndarray)):
+        projection_axis_ = np.reshape(
+            [projection_axis for _ in range(np.prod(fig_shape))],
+            (fig_shape[0], fig_shape[1], 3),
+        )
+
+    else:
+        raise RuntimeError(f"`projection_axis` has unsopported type ({type(projection_axis)}).")
+
+
+    if north_vector is None:
+        north_vector_ = np.full(fig_shape, None)
+    else:
+        north_vector_ = np.reshape(
+            [north_vector for _ in range(np.prod(fig_shape))],
+            (fig_shape[0], fig_shape[1], 3)
+        )
+
 
     default_params = {
         "fields": (
@@ -403,7 +450,8 @@ def halo_projection_array(
         ),
         "weight_fields": (weight_field_),
         "zlims": (zlim_),
-        "projection_axes": (np.full(fig_shape, projection_axis)),
+        "projection_axes": (projection_axis_),
+        "north_vectors": (north_vector_),
         "labels": (np.full(fig_shape, None)),
         "cmaps": (np.full(fig_shape, cmap)),
         "cmap_norms": (np.full(fig_shape, None)),
@@ -416,6 +464,7 @@ def halo_projection_array(
     fields = params.get("fields", default_params["fields"])
     weight_fields = params.get("weight_fields", default_params["weight_fields"])
     projection_axes = params.get("projection_axes", default_params["projection_axes"])
+    north_vectors = params.get("north_vectors", default_params["north_vectors"])
     zlims = params.get("zlims", default_params["zlims"])
     labels = params.get("labels", default_params["labels"])
     cmaps = params.get("cmaps", default_params["cmaps"])
@@ -433,6 +482,13 @@ def halo_projection_array(
     halo_ids = np.array(halo_ids)
     halo_id_previous = np.inf
 
+    if yt_ds is not None:
+        yt_dataset_provided = True
+        yt_ds = np.atleast_2d(yt_ds)
+    else:
+        yt_dataset_provided = False
+
+
     for i in range(nrow):
         for j in range(ncol):
             halo_id = halo_ids[i][j]
@@ -442,23 +498,30 @@ def halo_projection_array(
                 ax.set_facecolor("black")
                 continue
 
-            # retrieve halo particle info if new halo
-            if (i == 0 and j == 0) or halo_id != halo_id_previous:
-                # retrieve properties of halo
-                if len(data) > 1:
-                    data_id = data.filter(oc.col("unique_tag") == halo_id)
-                else:
-                    if data["halo_properties"].data["unique_tag"] != halo_id:  # type: ignore
-                        raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
-                    data_id = data
-                halo_data = next(iter(data_id.objects()))
+            if yt_dataset_provided:
+                ds = yt_ds[i][j]
 
-                # load particles into yt
-                ds = create_yt_dataset(halo_data)
+                # sodbighaloparticles holds particle data out to 2*R200
+                Rh = ds.domain_width[0] / 4
 
-            halo_properties = halo_data["halo_properties"]
+            else:
+                # retrieve halo particle info if new halo
+                if (i == 0 and j == 0) or halo_id != halo_id_previous:
+                    # retrieve properties of halo
+                    if len(data) > 1:
+                        data_id = data.filter(oc.col("unique_tag") == halo_id)
+                    else:
+                        if data["halo_properties"].data["unique_tag"] != halo_id: # type: ignore
+                            raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
+                        data_id = data
+                    halo_data = next(iter(data_id.objects()))
 
-            Rh = unyt_quantity.from_astropy(halo_properties["sod_halo_radius"])
+                    # load particles into yt
+                    ds = create_yt_dataset(halo_data)
+
+                halo_properties = halo_data["halo_properties"]
+
+                Rh = unyt_quantity.from_astropy(halo_properties["sod_halo_radius"])
 
             field, weight_field, zlim, width = (
                 tuple(fields[i][j]),
@@ -475,7 +538,11 @@ def halo_projection_array(
             label = labels[i][j]
 
             proj = ParticleProjectionPlot(
-                ds, projection_axes[i][j], field, weight_field=weight_field
+                ds, 
+                projection_axes[i][j],
+                field,
+                weight_field=weight_field,
+                north_vector=north_vectors[i][j],
             )
 
             proj.set_background_color(field, color="black")
@@ -567,3 +634,176 @@ def halo_projection_array(
             halo_id_previous = halo_id
 
     return fig
+
+def fig_to_rgb(fig):
+    """
+    Render a Matplotlib Figure to an (H, W, 3) uint8 RGB array in memory.
+    """
+    fig.canvas.draw()
+    buf = np.asarray(fig.canvas.buffer_rgba())  # (H, W, 4)
+    return buf[..., :3]  # drop alpha channel
+
+def _normalize(v, eps=0):
+    v = np.asarray(v, dtype=float)
+    
+    if eps > 0:
+        # nudge exact on-axis directions off-axis
+        if np.allclose(v, [1, 0, 0]):
+            v = np.array([1.0, eps, 0.0])
+        elif np.allclose(v, [-1, 0, 0]):
+            v = np.array([-1.0, eps, 0.0])
+        elif np.allclose(v, [0, 1, 0]):
+            v = np.array([eps, 1.0, 0.0])
+        elif np.allclose(v, [0, -1, 0]):
+            v = np.array([eps, -1.0, 0.0])
+        elif np.allclose(v, [0, 0, 1]):
+            v = np.array([eps, 0.0, 1.0])
+        elif np.allclose(v, [0, 0, -1]):
+            v = np.array([eps, 0.0, -1.0])
+
+    n = np.linalg.norm(v)
+
+    return v / n
+
+def _rodrigues_rotate(v, axis, angle):
+    """
+    Rotate vector v around 'axis' by 'angle' radians (right-hand rule).
+    """
+    v = np.asarray(v, dtype=float)
+    k = _normalize(axis)
+    c = np.cos(angle)
+    s = np.sin(angle)
+    vrot = v * c + np.cross(k, v) * s + k * np.dot(k, v) * (1 - c)
+    
+    return vrot
+
+def _parse_rotations(rotations: str):
+    rotations = rotations.replace(" ", "")
+    parts = rotations.split("+")
+    factors = []
+    axes = []
+    for part in parts:
+        if "*" in part:
+            if part.count("*") > 1:
+                raise RuntimeError(f'rotation "{part}" not recognized')
+            fac_str, axis = part.split("*")
+            factor = float(fac_str)
+        else:
+            factor = 1.0
+            axis = part
+
+        if axis not in ("x", "y", "z"):
+            raise RuntimeError(f'rotation axis "{axis}" not recognized')
+
+        factors.append(factor)
+        axes.append(axis)
+    return factors, axes
+
+def _get_rotation_vectors(rotations, frames, normal0=(0, 0, 1), north0=(0, 1, 0)):
+    normals = [normal0]
+    norths = [north0]
+
+    factors = []
+    axes = []
+
+    axis_map = {"x": np.array([1.0, 0.0, 0.0]),
+                "y": np.array([0.0, 1.0, 0.0]),
+                "z": np.array([0.0, 0.0, 1.0])}
+
+    rotation_list = rotations.replace(" ", "").split("+")
+    for rotation in rotation_list:
+        if "*" in rotation:
+            if rotation.count("*") > 1:
+                raise RuntimeError(f"rotation \"{rotation}\" not recognized")
+            factor, axis = rotation.split("*")
+            factor = float(factor)
+        else:
+            factor = 1
+            axis = rotation
+
+        factors.append(factor)
+        axes.append(axis)
+
+    # loop through rotations again, and actually apply them
+    for i, rotation in enumerate(rotation_list):
+
+        # determine number of frames for this rotation (round up)
+        frames_i = int(np.ceil( frames * factors[i]/sum(factors) ))
+
+        # angular distance traveled in theta and phi
+        delta_angle_i = factors[i] * 2*np.pi / frames_i
+
+        axis = axes[i]
+         
+        for _ in range(frames_i):
+            normals.append(_normalize(_rodrigues_rotate(normals[-1], axis_map[axis], delta_angle_i), eps=1e-3))
+            norths.append(_normalize(_rodrigues_rotate(norths[-1], axis_map[axis], delta_angle_i), eps=1e-3))
+
+    return normals, norths
+
+
+
+def animate_halo(halo_id, data, rotations="x", frames=30, dpi=100, normal0=(0, 0, 1), north0=(0, 1, 0)):
+    
+    # retrieve properties of halo and load into yt
+    if len(data) > 1:
+        data_id = data.filter(oc.col("unique_tag") == halo_id)
+    else:
+        if data["halo_properties"].data["unique_tag"] != halo_id: # type: ignore
+            raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
+        data_id = data
+    
+    halo_data = next(iter(data_id.objects()))
+
+    # load particles into yt
+    ds = create_yt_dataset(halo_data)
+
+    normals, norths = _get_rotation_vectors(rotations, 
+        frames=frames, 
+        normal0=normal0,
+        north0=north0
+    )
+
+    fig0 = visualize_halo(
+        halo_id,
+        data,
+        projection_axis=normals[0],
+        north_vector=norths[0],
+        yt_ds=ds,
+    )
+
+    frame0 = fig_to_rgb(fig0)
+    plt.close(fig0)
+
+    H, W = frame0.shape[:2]
+
+    # ---- animation "display" figure (single persistent figure) ----
+    fig = plt.figure(figsize=(W / dpi, H / dpi), dpi=dpi)
+    ax = fig.add_axes([0,0,1,1])
+    ax.set_axis_off()
+    ax.set_aspect("auto")
+    fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+    #fig.patch.set_facecolor("black")
+    im = ax.imshow(frame0, interpolation="nearest")
+
+    def update(i):
+        normal = normals[i]
+        north = norths[i]
+
+        f = visualize_halo(
+            halo_id,
+            data,
+            projection_axis=normal,
+            north_vector=north,
+            yt_ds=ds,
+        )
+        frame = fig_to_rgb(f)
+        plt.close(f)  # close each per-frame figure
+
+        im.set_data(frame)
+
+        return (im,)
+
+    anim = FuncAnimation(fig, update, frames=frames, interval=50, blit=True)
+
+    return anim
