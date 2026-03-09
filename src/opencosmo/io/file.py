@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     import h5py
 
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.group import DatasetTarget
 
 
 class FILE_TYPE(Enum):
@@ -125,7 +126,9 @@ def make_file_targets(file: h5py.File):
     return output
 
 
-def evaluate_load_conditions(targets: list[OpenTarget], open_kwargs: dict[str, bool]):
+def evaluate_load_conditions(
+    targets: list[DatasetTarget], open_kwargs: dict[str, bool]
+):
     """
     Datasets can define conditional loading via an addition group called "load/if".
     the "if" group can define parameters which must either be true or false for the
@@ -135,12 +138,10 @@ def evaluate_load_conditions(targets: list[OpenTarget], open_kwargs: dict[str, b
     Note that some open kwargs may be used in other places in the opening process,
     and will just be ignored here.
     """
-    if len(targets) == 1:
-        return targets
     output = []
     for target in targets:
         try:
-            ifgroup = target.group["load/if"]
+            ifgroup = target["dataset_group"]["load/if"]
         except KeyError:
             output.append(target)
             continue
@@ -149,4 +150,5 @@ def evaluate_load_conditions(targets: list[OpenTarget], open_kwargs: dict[str, b
             load = load and (open_kwargs.get(key, False) == condition)
         if load:
             output.append(target)
+
     return output

@@ -132,7 +132,7 @@ def open(
     except TypeError:  # we have hdf5 groups
         handles = file_list
 
-    return make_file_targets(handles)
+    return make_file_targets(handles, open_kwargs)
 
     try:
         targets = make_all_targets(handles)

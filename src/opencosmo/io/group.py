@@ -1,10 +1,18 @@
 from enum import Enum
-from typing import TypedDict
+from typing import Any, Optional, TypedDict
 
 import h5py
 
+import opencosmo as oc
 from opencosmo import collection as occ
+from opencosmo.dataset.handler import Hdf5Handler
+from opencosmo.dataset.state import DatasetState
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.io.file import evaluate_load_conditions
+from opencosmo.mpi import get_comm_world
+from opencosmo.spatial.region import HealpixRegion
+from opencosmo.spatial.tree import open_tree
+from opencosmo.units import UnitConvention
 
 """
 There are a few file structures we have to be able to support.
@@ -41,29 +49,51 @@ class CollectionType(Enum):
 
 
 class FileTarget(TypedDict):
-    file_type: FileType
+    dataset_group_types: dict[str, FileType]
     dataset_targets: list[DatasetTarget]
+    dataset_groups: dict[str, DatasetTarget]
 
 
-def make_file_targets(files: list[h5py.File]):
+def make_file_targets(files: list[h5py.File], open_kwargs: dict[str, Any]):
     targets = []
     for file in files:
-        targets.append(__make_file_target(file))
+        targets.append(__make_file_target(file, open_kwargs))
 
-    if len(targets) > 1:
-        collection_type = __determine_multi_file_collection_type(targets)
-        return collection_type.open(targets)
-    return __determine_single_file_collection_type(targets[0])
+    valid_targets = list(filter(lambda t: t is not None, targets))
+    if not valid_targets:
+        raise ValueError("No valid datasets found!")
+
+    if len(valid_targets) > 1:
+        collection_type = __determine_multi_file_collection_type(valid_targets)
+        return collection_type.open(valid_targets)
+    return __open_single_file(valid_targets[0])
 
 
 def __open_single_file(target: FileTarget):
-    match target["file_type"]:
-        case FileType.SIMULATION_COLLECTION:
-            return occ.SimulationCollection
+    if len(target["dataset_targets"]) == 1:
+        return open_single_dataset(target["dataset_targets"][0])
+    elif target["dataset_targets"]:
+        raise NotImplementedError
+    elif target["dataset_groups"]:
+        datasets = {
+            name: __open_dataset_targets(targets)
+            for name, targets in target["dataset_groups"].items()
+        }
+        if len(datasets) > 1:
+            return occ.SimulationCollection(datasets)
+        else:
+            return next(iter(datasets.values()))
+    else:
+        raise ValueError("Failed")
+
+
+def __open_dataset_targets(targets: list[DatasetTarget]):
+    if len(targets) == 1:
+        return open_single_dataset(targets[0])
+    pass
 
 
 def __determine_single_file_collection_type(target: FileTarget):
-    print(target)
     assert False
 
 
@@ -73,25 +103,30 @@ def __determine_multi_file_collection_type(targets: list[FileTarget]):
     lightcones = []
     other_datasets = []
     for target in targets:
-        if target["file_type"] in [
+        if len(target["dataset_group_types"]) > 1:
+            raise ValueError("Received an invalid combination of files!")
+
+        file_type = next(iter(target["dataset_group_types"].values()))
+
+        if file_type in [
             FileType.STRUCTURE_COLLECTION,
             FileType.SIMULATION_COLLECTION,
         ]:
             raise ValueError("Invalid combination of files!")
         if (
-            target["file_type"] == FileType.DATASET
+            file_type == FileType.DATASET
             and target["dataset_targets"][0]["header"].file.data_type == "halo_profiles"
         ):
             particles_or_profiles.append(target)
-        elif target["file_type"] == FileType.DATASET and target["dataset_targets"][0][
+        elif file_type == FileType.DATASET and target["dataset_targets"][0][
             "header"
         ].file.data_type in ["halo_properties", "galaxy_properties"]:
             properties.append(target)
-        elif target["file_type"] == FileType.PARTICLES:
+        elif file_type == FileType.PARTICLES:
             particles_or_profiles.append(target)
-        elif target["file_type"] == FileType.LIGHTCONE:
+        elif file_type == FileType.LIGHTCONE:
             lightcones.append(target)
-        elif target["file_type"] == FileType.DATASET:
+        elif file_type == FileType.DATASET:
             other_datasets.append(target)
         else:
             raise ValueError("Invalid combination of files!")
@@ -147,63 +182,209 @@ def __get_multi_dataset_type(file_targets: list[FileTarget]):
         return occ.SimulationCollection
 
 
-def __make_file_target(file: h5py.File):
-    dataset_targets = __find_all_datasets(file)
-    file_type = __identify_file_type(dataset_targets)
-    return FileTarget(file_type=file_type, dataset_targets=dataset_targets)
+def __make_file_target(file: h5py.File, open_kwargs) -> Optional[FileTarget]:
+    dataset_targets, group_targets = __find_all_datasets(file, open_kwargs)
+    if not dataset_targets and not group_targets:
+        return None
+    group_types = __identify_group_types(dataset_targets, group_targets)
+    return FileTarget(
+        dataset_group_types=group_types,
+        dataset_targets=dataset_targets,
+        dataset_groups=group_targets,
+    )
 
 
-def __identify_file_type(targets: list[DatasetTarget]):
-    data_types = set(t["header"].file.data_type for t in targets)
-    is_lightcone = [t["header"].file.is_lightcone for t in targets]
+def __identify_group_types(
+    ds_targets: list[DatasetTarget], group_targets: dict[str, list[DatasetTarget]]
+):
+    if group_targets:
+        return {
+            name: __identify_group_types(targets, {})
+            for name, targets in group_targets.items()
+        }
+
+    data_types = set(t["header"].file.data_type for t in ds_targets)
+    is_lightcone = [t["header"].file.is_lightcone for t in ds_targets]
     if all("particle" in dt for dt in data_types):
-        return FileType.PARTICLES
+        return {"/": FileType.PARTICLES}
     if len(data_types) == 1 and all(is_lightcone):
-        return FileType.LIGHTCONE
-    if len(targets) == 1:
-        return FileType.DATASET
+        return {"/": FileType.LIGHTCONE}
+    if len(ds_targets) == 1:
+        return {"/": FileType.DATASET}
 
-    parents = set(t["dataset_group"].parent.name for t in targets)
-    if len(parents) == 1 and len(data_types) == len(targets):
-        return FileType.STRUCTURE_COLLECTION
-    return FileType.SIMULATION_COLLECTION
+    parents = set(t["dataset_group"].parent.name for t in ds_targets)
+    if len(parents) == 1 and len(data_types) == len(ds_targets):
+        return {"/": FileType.STRUCTURE_COLLECTION}
+    return {"/": FileType.SIMULATION_COLLECTION}
 
 
-def __find_all_datasets(file: h5py.File) -> list[DatasetTarget]:
+def __find_all_datasets(
+    file: h5py.File, open_kwargs
+) -> tuple[list[DatasetTarget], dict[str, DatasetTarget]]:
     """
     Search through a file and locate all the datasets. Each dataset is identified
     with a "data" group. The header associated with the file is the closest
-    header at or above.
+    header at the same level or above.
+
+    However datasets that are not at the top level need to be grouped. Currently, we
+    have the following options.
+
+    1. The datasets are are lightcone datasets, all have the same type, and all come from the
+       same simulation. These should be grouped and opened as a lightcone.
+    2. Otherwise, we're talking about a simulation collection.
     """
 
     known_headers = []
     if "header" in file.keys():
         known_headers = ["/"]
-    file.visit(
-        lambda n: known_headers.append(n)
-        if isinstance(file[n], h5py.Group) and "header" in file[n].keys()
-        else None
-    )
-    if not known_headers:
-        raise ValueError(
-            f"Cannot find a header in {file.name}. Are you sure it is an OpenCosmo file?"
-        )
-    known_datasets = []
-    for header_container in known_headers:
-        header = read_header(file[header_container])
-        if "data" in file[header_container].keys():
-            known_datasets.append(
-                DatasetTarget(header=header, dataset_group=file[header_container])
-            )
-        file[header_container].visititems(
-            lambda _, object: known_datasets.append(
-                DatasetTarget(header=header, dataset_group=object)
-            )
-            if isinstance(object, h5py.Group) and "data" in object.keys()
+    else:
+        file.visit(
+            lambda n: known_headers.append(n)
+            if isinstance(file[n], h5py.Group) and "header" in file[n].keys()
             else None
         )
-    if not known_datasets:
+        if not known_headers:
+            raise ValueError(
+                f"Cannot find a header in {file.name}. Are you sure it is an OpenCosmo file?"
+            )
+
+    all_file_headers: list[OpenCosmoHeader] = list(
+        map(lambda header_group: read_header(file[header_group]), known_headers)
+    )
+    if len(all_file_headers) > 1:
+        known_dataset_groups = __get_simulation_collection_dataset_groups(
+            file, known_headers, all_file_headers, open_kwargs
+        )
+        known_datasets = []
+
+    else:
+        known_datasets = __find_datasets_under_group(
+            file[known_headers[0]], all_file_headers[0], open_kwargs
+        )
+        known_dataset_groups = {}
+
+    if not known_datasets and not known_dataset_groups:
         raise ValueError(
             f"File {file.name} contains an OpenCosmo header, but does not seem to be formatted correctly!"
         )
+    return known_datasets, known_dataset_groups
+
+
+def __find_datasets_under_group(group, header, open_kwargs):
+    known_datasets = []
+    if "data" in group.keys():
+        known_datasets.append(DatasetTarget(header=header, dataset_group=group))
+    group.visititems(
+        lambda _, object: known_datasets.append(
+            DatasetTarget(header=header, dataset_group=object)
+        )
+        if isinstance(object, h5py.Group) and "data" in object.keys()
+        else None
+    )
+    known_datasets = evaluate_load_conditions(known_datasets, open_kwargs)
     return known_datasets
+
+
+def __get_simulation_collection_dataset_groups(
+    file, header_groups, headers, open_kwargs
+):
+    dataset_groups = {}
+    for group, header in zip(header_groups, headers):
+        dataset_target = __find_datasets_under_group(file[group], header, open_kwargs)
+        if dataset_target:
+            dataset_groups[group] = dataset_target
+    return dataset_groups
+
+
+def open_single_dataset(
+    target: DatasetTarget,
+    metadata_group: Optional[str] = None,
+    bypass_lightcone: bool = False,
+    bypass_mpi: bool = False,
+):
+    header = target["header"]
+    handle = target["dataset_group"]
+
+    assert header is not None
+    try:
+        box_size = header.with_units("scalefree").simulation["box_size"].value
+    except AttributeError:
+        box_size = None
+
+    try:
+        tree = open_tree(
+            handle,
+            box_size,
+            header.file.is_lightcone,
+        )
+    except (ValueError, AttributeError):
+        tree = None
+
+    if header.file.region is not None:
+        sim_region = from_model(header.file.region)
+    elif header.file.is_lightcone and tree is not None:
+        pixels = tree.get_full_index(tree.max_level)
+        sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
+    else:
+        p1 = (0, 0, 0)
+        p2 = tuple(header.simulation["box_size"].value for _ in range(3))
+        sim_region = oc.make_box(p1, p2)
+
+    index: Optional[ChunkedIndex] = None
+    handler = Hdf5Handler.from_group(handle["data"])
+
+    if not bypass_mpi and (comm := get_comm_world()) is not None:
+        assert partition is not None
+        try:
+            idx_data = handle["index"]
+            part = partition(comm, len(handler), idx_data, tree)
+            if part is None:
+                index = empty()
+            else:
+                index = part.idx
+                sim_region = part.region if part.region is not None else sim_region
+            if header.file.is_lightcone:
+                sim_region = __expand_lightcone_region(sim_region, tree)
+
+        except KeyError:
+            n_ranks = comm.Get_size()
+            n_per = len(handler) // n_ranks
+            chunk_boundaries = [i * n_per for i in range(n_ranks + 1)]
+            chunk_boundaries[-1] = len(handler)
+            rank = comm.Get_rank()
+            index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
+
+    if metadata_group is not None:
+        metadata_group = handle[metadata_group]
+
+    elif "metadata" in handle.keys():
+        metadata_group = handle["metadata"]
+
+    state = DatasetState.from_group(
+        handle,
+        header,
+        UnitConvention.COMOVING,
+        sim_region,
+        index,
+        metadata_group,
+    )
+
+    dataset = oc.Dataset(
+        header,
+        state,
+        tree=tree,
+    )
+    if header.file.data_type == "healpix_map":
+        return occ.HealpixMap(
+            {"data": dataset},
+            header.healpix_map["nside"],
+            header.healpix_map["nside_lr"],
+            header.healpix_map["ordering"],
+            header.healpix_map["full_sky"],
+            header.healpix_map["z_range"],
+            region=sim_region,
+        )
+    elif header.file.is_lightcone and not bypass_lightcone:
+        return occ.Lightcone({"data": dataset}, header.lightcone["z_range"])
+
+    return dataset
