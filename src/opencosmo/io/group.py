@@ -14,7 +14,6 @@ from opencosmo.dataset import state as st
 from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index.build import empty, from_range
-from opencosmo.io.file import evaluate_load_conditions
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import HealpixRegion
@@ -480,3 +479,31 @@ def __expand_lightcone_region(region, tree):
     full_pixels = tree.get_full_index(tree.max_level)
     full_pixels = np.intersect1d(pixels, full_pixels)
     return HealpixRegion(full_pixels, 2**tree.max_level)
+
+
+def evaluate_load_conditions(
+    targets: list[DatasetTarget], open_kwargs: dict[str, bool]
+):
+    """
+    Datasets can define conditional loading via an addition group called "load/if".
+    the "if" group can define parameters which must either be true or false for the
+    given group to be loaded. These parameters can then be provided by the user to the
+    "open" function. Parameters not specified by the user default to False.
+
+    Note that some open kwargs may be used in other places in the opening process,
+    and will just be ignored here.
+    """
+    output = []
+    for target in targets:
+        try:
+            ifgroup = target["dataset_group"]["load/if"]
+        except KeyError:
+            output.append(target)
+            continue
+        load = True
+        for key, condition in ifgroup.attrs.items():
+            load = load and (open_kwargs.get(key, False) == condition)
+        if load:
+            output.append(target)
+
+    return output
