@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.group import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
@@ -487,20 +487,24 @@ class HealpixMap(dict):
         )
 
     @classmethod
-    def open(cls, targets: list[OpenTarget], **kwargs):
+    def open(cls, targets: list[FileTarget], **kwargs):
         datasets: dict[str, Dataset] = {}
 
-        for target in targets:
+        dataset_targets = []
+        for file_target in targets:
+            dataset_targets.extend(file_target["dataset_targets"])
+
+        for target in dataset_targets:
             ds = open_single_dataset(target)
             # TODO: check if we need some equivalent here
             if not isinstance(ds, HealpixMap) or len(ds.keys()) != 1:
                 raise ValueError(
                     "HealpixMap class can only contain datasets (not collections)"
                 )
-            if target.group.name != "/":
-                key = target.group.name.split("/")[-1]
+            if target["dataset_group"].name != "/":
+                key = target["dataset_group"].name.split("/")[-1]
             else:
-                key = f"{target.header.healpix_map.z_range}_{target.header.file.data_type}"
+                key = f"{target['header'].healpix_map.z_range}_{target['header'].file.data_type}"
             datasets[key] = next(iter(ds.values()))
 
         return cls(
@@ -572,7 +576,8 @@ class HealpixMap(dict):
             schema = make_schema("/", FileEntry.HEALPIX_MAP, children=children)
 
         comm_world = get_comm_world()
-        is_full_sky = comm_world is not None and comm_world.allreduce(
+        is_full_sky = comm_world is None and self.full_sky
+        is_full_sky |= comm_world is not None and comm_world.allreduce(
             len(self.pixels)
         ) == hp.nside2npix(self.nside)
 

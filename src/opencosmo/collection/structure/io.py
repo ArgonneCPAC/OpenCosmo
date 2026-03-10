@@ -61,13 +61,15 @@ def get_linked_datasets(
         if "data" not in pointer.keys():
             targets.update(
                 {
-                    k: io.io.OpenTarget(pointer[k], header)
+                    k: io.group.DatasetTarget(dataset_group=pointer[k], header=header)
                     for k in pointer.keys()
                     if k != "header"
                 }
             )
         else:
-            targets.update({dtype: io.io.OpenTarget(pointer, header)})
+            targets.update(
+                {dtype: io.group.DatasetTarget(dataset_group=pointer, header=header)}
+            )
     datasets = {
         dtype: io.io.open_single_dataset(target, bypass_lightcone=True, bypass_mpi=True)
         for dtype, target in targets.items()
@@ -76,17 +78,19 @@ def get_linked_datasets(
 
 
 def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
-    link_sources = defaultdict(list)
+    link_sources: dict[str, list[io.group.DatasetTarget]] = defaultdict(list)
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
         defaultdict(lambda: defaultdict(list))
     )
-    dataset_targets = reduce(lambda acc, t: acc + t["dataset_targets"], targets, [])
+    dataset_targets: list[io.group.DatasetTarget] = reduce(
+        lambda acc, t: acc + t["dataset_targets"], targets, []
+    )
     for target in dataset_targets:
         if target["header"].file.data_type == "halo_properties":
             link_sources["halo_properties"].append(target)
         elif target["header"].file.data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
-        elif target["header"].file.data_type.startswith("halo"):
+        elif str(target["header"].file.data_type).startswith("halo"):
             dataset = io.io.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
@@ -96,7 +100,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             elif name.startswith("halo_properties"):
                 name = name[16:]
             link_targets["halo_targets"][name].append(dataset)
-        elif target["header"].file.data_type.startswith("galaxy"):
+        elif str(target["header"].file.data_type).startswith("galaxy"):
             dataset = io.io.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
@@ -108,7 +112,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             link_targets["galaxy_targets"][name].append(dataset)
         else:
             raise ValueError(
-                f"Unknown data type for structure collection {target.data_type}"
+                f"Unknown data type for structure collection {target['header'].data_type}"
             )
 
     if (
@@ -165,21 +169,21 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
     )
 
 
-def __sort_by_step(link_sources: dict[str, list[io.io.OpenTarget]], link_targets):
-    sources_by_step: dict[int, dict[str, io.io.OpenTarget]] = defaultdict(dict)
+def __sort_by_step(link_sources: dict[str, list[io.group.DatasetTarget]], link_targets):
+    sources_by_step: dict[int, dict[str, io.group.DatasetTarget]] = defaultdict(dict)
     targets_by_step: dict[int, dict[str, dict[str, d.Dataset]]] = defaultdict(
         lambda: defaultdict(dict)
     )
     for source_name, sources in link_sources.items():
         for source in sources:
-            if not source.header.file.is_lightcone:
+            if not source["header"].file.is_lightcone:
                 raise ValueError(
                     "Recived multiple source datasets of a single type, but not all are lightcone datasets!"
                 )
-            if source.header.file.step is None:
+            if source["header"].file.step is None:
                 raise ValueError("No step in source!")
 
-            sources_by_step[source.header.file.step][source_name] = source
+            sources_by_step[source["header"].file.step][source_name] = source
     for target_type, targets_ in link_targets.items():
         for target_name, targets in targets_.items():
             for target in targets:
@@ -195,8 +199,8 @@ def __sort_by_step(link_sources: dict[str, list[io.io.OpenTarget]], link_targets
 
 
 def __build_structure_collection(
-    halo_properties_target: Optional[io.io.OpenTarget],
-    galaxy_properties_target: Optional[io.io.OpenTarget],
+    halo_properties_target: Optional[io.group.DatasetTarget],
+    galaxy_properties_target: Optional[io.group.DatasetTarget],
     link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]],
     ignore_empty: bool,
 ):

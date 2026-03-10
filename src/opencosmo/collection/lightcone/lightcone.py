@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.group import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
@@ -484,14 +484,18 @@ class Lightcone(dict):
         return self.get_data("astropy")
 
     @classmethod
-    def open(cls, targets: list[OpenTarget], **kwargs):
+    def open(cls, targets: list[FileTarget], **kwargs):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
-
-        for i, target in enumerate(targets):
-            group_name = target.group.name.split("/")[-1]
-            group_name = group_name.lstrip(f"{target.header.file.step}_")
-            ds = open_single_dataset(target, bypass_lightcone=True)
-            step = target.header.file.step
+        dataset_targets = []
+        for target in targets:
+            dataset_targets.extend(target["dataset_targets"])
+            for group in target["dataset_groups"].values():
+                dataset_targets += group
+        for i, ds_target in enumerate(dataset_targets):
+            group_name = ds_target["dataset_group"].name.split("/")[-1]
+            group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
+            ds = open_single_dataset(ds_target, bypass_lightcone=True)
+            step = ds_target["header"].file.step
             if step is None:
                 step = i
             datasets[step][group_name] = ds

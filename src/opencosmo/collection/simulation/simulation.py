@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Self
 
 from opencosmo.collection import structure as sc
 from opencosmo.dataset import Dataset
-from opencosmo.io import io
 from opencosmo.io.schema import FileEntry, make_schema
 
 if TYPE_CHECKING:
@@ -16,6 +15,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.group import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
@@ -62,23 +62,8 @@ class SimulationCollection(dict):
         )
 
     @classmethod
-    def open(cls, targets: list[io.OpenTarget], **kwargs) -> Collection | Dataset:
-        targets_by_name = {
-            target.group.name.split("/")[-1]: target for target in targets
-        }
-        if len(targets_by_name) != len(targets):
-            raise ValueError(
-                "Not all datasets in this SimulationCollection have unique names!"
-            )
-
-        datasets = {
-            name: io.open_single_dataset(target)
-            for name, target in targets_by_name.items()
-        }
-
-        if len(datasets) == 1:
-            return next(iter(datasets.values()))
-        return cls(datasets)
+    def open(cls, targets: list[FileTarget], **kwargs) -> Collection | Dataset:
+        raise NotImplementedError()
 
     def make_schema(self) -> Schema:
         children = {}
