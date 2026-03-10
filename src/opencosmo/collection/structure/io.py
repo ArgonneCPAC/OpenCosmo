@@ -71,7 +71,9 @@ def get_linked_datasets(
                 {dtype: io.group.DatasetTarget(dataset_group=pointer, header=header)}
             )
     datasets = {
-        dtype: io.io.open_single_dataset(target, bypass_lightcone=True, bypass_mpi=True)
+        dtype: io.group.open_single_dataset(
+            target, bypass_lightcone=True, bypass_mpi=True
+        )
         for dtype, target in targets.items()
     }
     return datasets
@@ -91,7 +93,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
         elif target["header"].file.data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
         elif str(target["header"].file.data_type).startswith("halo"):
-            dataset = io.io.open_single_dataset(
+            dataset = io.group.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
             name = target["dataset_group"].name.split("/")[-1]
@@ -101,7 +103,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
                 name = name[16:]
             link_targets["halo_targets"][name].append(dataset)
         elif str(target["header"].file.data_type).startswith("galaxy"):
-            dataset = io.io.open_single_dataset(
+            dataset = io.group.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
             name = target["dataset_group"].name.split("/")[-1]
@@ -206,7 +208,7 @@ def __build_structure_collection(
 ):
     if galaxy_properties_target is not None and "galaxy_targets" in link_targets:
         # Galaxy properties and galaxy particles
-        source_dataset = io.io.open_single_dataset(
+        source_dataset = io.group.open_single_dataset(
             galaxy_properties_target,
             metadata_group="data_linked",
             bypass_lightcone=True,
@@ -230,13 +232,13 @@ def __build_structure_collection(
         and "galaxy_targets" not in link_targets
     ):
         # Halo properties and galaxy properties, but no galaxy particles
-        galaxy_properties = io.io.open_single_dataset(
+        galaxy_properties = io.group.open_single_dataset(
             galaxy_properties_target, bypass_lightcone=True, bypass_mpi=True
         )
         link_targets["halo_targets"]["galaxy_properties"] = galaxy_properties
 
     if halo_properties_target is not None and link_targets["halo_targets"]:
-        source_dataset = io.io.open_single_dataset(
+        source_dataset = io.group.open_single_dataset(
             halo_properties_target, metadata_group="data_linked", bypass_lightcone=True
         )
         if ignore_empty:

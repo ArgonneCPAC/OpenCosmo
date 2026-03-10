@@ -15,7 +15,7 @@ from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import into_array
-from opencosmo.io.io import open_single_dataset
+from opencosmo.io.group import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion

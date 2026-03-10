@@ -26,7 +26,7 @@ from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.io.io import open_single_dataset
+from opencosmo.io.group import open_single_dataset
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
