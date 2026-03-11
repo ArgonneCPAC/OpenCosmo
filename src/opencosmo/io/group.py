@@ -370,7 +370,11 @@ def __get_collection_dataset_groups(file, header_groups, headers, open_kwargs):
             dataset_groups[group] = dataset_targets
 
     data_types = set(t["header"].file.data_type for t in all_datasets)
-    if len(data_types) > 1:  # Only possible for a structure collection
+    parent_groups = set([t["dataset_group"].parent for t in all_datasets])
+
+    if (
+        len(data_types) > 1 and len(parent_groups) == 1
+    ):  # Only possible for a structure collection
         return all_datasets, {}
 
     return [], dataset_groups
