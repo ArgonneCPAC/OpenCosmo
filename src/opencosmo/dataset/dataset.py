@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from astropy import units
     from astropy.cosmology import Cosmology
 
-    from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.column.column import Column, ColumnMask, ConstructedColumn
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -727,7 +727,7 @@ class Dataset:
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **new_columns: ConstructedColumn | np.ndarray | units.Quantity,
+        **new_columns: ConstructedColumn | Column | np.ndarray | units.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived

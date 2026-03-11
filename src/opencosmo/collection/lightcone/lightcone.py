@@ -214,10 +214,10 @@ def with_redshift_column(dataset: Dataset):
         z_col = 1 / oc.col("fof_halo_center_a") - 1
         return dataset.with_new_columns(redshift=z_col)
     elif "redshift_true" in dataset.columns:
-        z_col = 1 * oc.col("redshift_true")
+        z_col = oc.col("redshift_true")
         return dataset.with_new_columns(redshift=z_col)
     elif "zp" in dataset.columns:
-        z_col = 1 * oc.col("zp")
+        z_col = oc.col("zp")
         return dataset.with_new_columns(redshift=z_col)
     raise ValueError(
         "Unable to find a redshift or scale factor column for this lightcone dataset"

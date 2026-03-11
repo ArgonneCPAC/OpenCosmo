@@ -155,6 +155,21 @@ class Column:
 
     def __init__(self, column_name: str):
         self.column_name = column_name
+        self.description = None
+
+    @property
+    def requires(self):
+        return set([self.column_name])
+
+    @property
+    def produces(self):
+        return None
+
+    def get_units(self, column_units: dict[str, u.Unit]):
+        return column_units[self.column_name]
+
+    def evaluate(self, data: dict[str, np.ndarray], *args):
+        return data[self.column_name]
 
     # mypy doesn't reason about eq and neq correctly
     def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore

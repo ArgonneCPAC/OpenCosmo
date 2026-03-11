@@ -34,7 +34,14 @@ def structure_601(lightcone_path, all_files):
 
 def test_create_theta_phi_coords(haloproperties_600_path, haloproperties_601_path):
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
-    assert "ra" in ds.columns and "dec" in ds.columns
+    data = ds.select(("ra", "dec", "theta", "phi")).get_data()
+    assert data["ra"].unit == u.deg
+    assert data["dec"].unit == u.deg
+
+    ra = (data["phi"] * u.rad).to(u.deg)
+    dec = ((np.pi / 2 - data["theta"]) * u.rad).to(u.deg)
+    assert np.allclose(data["ra"], ra, rtol=1e-2)
+    assert np.allclose(data["dec"], dec, rtol=1e-2)
 
 
 def test_lightcone_physical_units(haloproperties_600_path):
