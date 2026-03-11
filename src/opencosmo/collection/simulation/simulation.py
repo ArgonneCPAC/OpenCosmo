@@ -10,10 +10,11 @@ from opencosmo.io.schema import FileEntry, make_schema
 if TYPE_CHECKING:
     import astropy.units as u
     import h5py
+    import numpy as np
     from astropy.cosmology import Cosmology
 
     from opencosmo.collection.protocols import Collection
-    from opencosmo.column.column import ColumnMask
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
@@ -314,7 +315,7 @@ class SimulationCollection(dict):
         *args,
         datasets: Optional[str | Iterable[str]] = None,
         descriptions: str | dict[str, str] = {},
-        **kwargs,
+        **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
         Update the datasets within this collection with a set of new columns.
@@ -349,12 +350,16 @@ class SimulationCollection(dict):
             output = {name: ds for name, ds in self.items()}
             for ds_name in datasets:
                 output[ds_name] = output[ds_name].with_new_columns(
-                    *args, descriptions=descriptions, **kwargs
+                    *args, descriptions=descriptions, **new_columns
                 )
             return SimulationCollection(output)
 
         return self.__map(
-            "with_new_columns", *args, descriptions=descriptions, **kwargs
+            "with_new_columns",
+            *args,
+            descriptions=descriptions,
+            datasets=datasets,
+            **new_columns,
         )
 
     def evaluate(

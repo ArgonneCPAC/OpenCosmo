@@ -1,0 +1,1 @@
+Lightcones now automatically create a `ra` and `dec` column if they do not exist but can be derived from the existing columns.

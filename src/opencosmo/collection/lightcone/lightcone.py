@@ -21,7 +21,7 @@ from astropy.table import vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.collection.lightcone.coordinates import make_radec_columns
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
-from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
     from astropy.table import Table
 
-    from opencosmo.column.column import ColumnMask
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
     from opencosmo.io.schema import Schema
@@ -1099,7 +1099,7 @@ class Lightcone(dict):
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **columns: DerivedColumn | np.ndarray | u.Quantity,
+        **columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
@@ -1128,8 +1128,11 @@ class Lightcone(dict):
         derived = {}
         raw = {}
         for name, column in columns.items():
-            if isinstance(column, (DerivedColumn, EvaluatedColumn)):
+            if isinstance(column, (DerivedColumn, EvaluatedColumn, Column)):
                 derived[name] = column
+
+            elif not isinstance(column, np.ndarray):
+                raise ValueError(f"Invalid column type: {type(columns)}")
             elif len(column) != len(self):
                 raise ValueError(
                     f"New column {name} has length {len(column)} but this dataset "
