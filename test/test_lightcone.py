@@ -32,6 +32,11 @@ def structure_601(lightcone_path, all_files):
     return [lightcone_path / "step_601" / f for f in all_files]
 
 
+def test_create_theta_phi_coords(haloproperties_600_path, haloproperties_601_path):
+    ds = oc.open(haloproperties_601_path, haloproperties_600_path)
+    assert "ra" in ds.columns and "dec" in ds.columns
+
+
 def test_lightcone_physical_units(haloproperties_600_path):
     ds_comoving = oc.open(haloproperties_600_path)
     ds_physical = ds_comoving.with_units("physical")

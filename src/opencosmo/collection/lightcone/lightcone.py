@@ -19,6 +19,7 @@ import numpy as np
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection.lightcone.coordinates import make_radec_columns
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
@@ -507,7 +508,15 @@ class Lightcone(dict):
         ):
             raise ValueError()
 
-        return cls(output)
+        result = cls(output)
+        return make_radec_columns(result)
+
+    @classmethod
+    def from_datasets(
+        cls, datasets: dict[str, oc.Dataset], z_range: tuple[float, float]
+    ):
+        result = cls(datasets, z_range)
+        return make_radec_columns(result)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
