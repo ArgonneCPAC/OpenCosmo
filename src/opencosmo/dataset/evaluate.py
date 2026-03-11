@@ -72,7 +72,7 @@ def visit_dataset(
     data = dataset.select(column.requires).get_data(output=column.format)
     try:
         data = dict(data)
-    except TypeError:
+    except (TypeError, ValueError):
         data = {column.requires.pop(): data}
     output = column.evaluate(data, dataset.index)
     if not isinstance(output, dict):

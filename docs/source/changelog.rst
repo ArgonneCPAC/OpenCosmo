@@ -1,3 +1,12 @@
+Opencosmo 1.1.5 (2026-03-11)
+============================
+
+Bugfixes
+--------
+
+- Fix a bug that could cause evaluations to fail when requesting 2d columns
+
+
 Opencosmo 1.1.4 (2026-02-25)
 ===============================
 
