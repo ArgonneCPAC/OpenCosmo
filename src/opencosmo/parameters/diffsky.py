@@ -23,7 +23,7 @@ class DiffskyCatalogInfo(BaseModel):
     ACCESS_PATH: ClassVar[str] = "catalog_info"
     README: Optional[str] = None
     mock_version_name: str
-    zphot_table: Optional[tuple[float]] = None
+    zphot_table: Optional[tuple[float, ...]] = None
 
     @field_serializer("zphot_table")
     def serialize_zphot_table(self, value):
