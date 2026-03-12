@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
@@ -130,7 +131,9 @@ def __open_single_file(target: FileTarget):
             return occ.Lightcone.open([target])
 
         datasets = {
-            name: __open_dataset_targets(targets)
+            name: __open_dataset_targets_for_sim_collection(
+                targets, target["dataset_group_types"][name]
+            )
             for name, targets in target["dataset_groups"].items()
         }
         if len(datasets) > 1:
@@ -141,10 +144,22 @@ def __open_single_file(target: FileTarget):
         raise ValueError("Failed to open file. This is likely a bug.")
 
 
-def __open_dataset_targets(targets: list[DatasetTarget]):
+def __open_dataset_targets_for_sim_collection(
+    targets: list[DatasetTarget], group_type: FileType
+):
     if len(targets) == 1:
         return open_single_dataset(targets[0])
     # Bad naming, will come back to this.
+    file_target = FileTarget(
+        dataset_group_types={"/": group_type},
+        dataset_targets=targets,
+        dataset_groups={},
+    )
+    match group_type:
+        case FileType.STRUCTURE_COLLECTION:
+            return occ.StructureCollection.open([file_target])
+        # Currently the only nested collection we support, may
+        # extend later
     raise ValueError("Invalid combination of files!")
 
 
@@ -369,6 +384,8 @@ def __get_collection_dataset_groups(file, header_groups, headers, open_kwargs):
         if dataset_targets:
             dataset_groups[group] = dataset_targets
 
+    if dataset_groups:
+        dataset_groups = __combine_dataset_groups(dataset_groups)
     data_types = set(t["header"].file.data_type for t in all_datasets)
     parent_groups = set([t["dataset_group"].parent for t in all_datasets])
 
@@ -378,6 +395,20 @@ def __get_collection_dataset_groups(file, header_groups, headers, open_kwargs):
         return all_datasets, {}
 
     return [], dataset_groups
+
+
+def __combine_dataset_groups(groups: dict[str, list[DatasetTarget]]):
+    """
+    The only context in which datasets are nested two layers deep is if we have a simulation
+    collection with a structure collection inside. This function checks for this case and
+    combines those nested datasets into groups.
+    """
+    output_groups = defaultdict(list)
+    for group_name, datasets in groups.items():
+        output_group_name = group_name.split("/")[0]
+        output_groups[output_group_name].extend(datasets)
+
+    return output_groups
 
 
 def open_single_dataset(
