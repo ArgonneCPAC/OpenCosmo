@@ -369,7 +369,6 @@ class DatasetState:
         new_in_memory_descriptions = {}
 
         for colname, column in new_columns.items():
-            print(type(column))
             match column:
                 case DerivedColumn() | EvaluatedColumn() | Column():
                     column.description = descriptions.get(colname, "None")

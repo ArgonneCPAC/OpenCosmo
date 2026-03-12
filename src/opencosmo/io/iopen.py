@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
 
 """
+This file contains all the internal logic for opening a file or files.
+
 There are a few file structures we have to be able to support.
 
 1. header + data groups -> single dataset
@@ -102,17 +104,17 @@ def __make_file_target(
     )
 
 
-def __open_single_file(target: FileTarget):
+def __open_single_file(target: FileTarget) -> oc.Dataset | oc.collection.Collection:
     """
     Opens a single file, which may or may not contain
     several datasets
     """
     if len(target["dataset_targets"]) == 1:
-        # Just one dataset
+        # Just one dataset, easy
         return open_single_dataset(target["dataset_targets"][0])
 
     elif target["dataset_targets"]:
-        # Multiple datasets in a single, grouped together
+        # Multiple datasets, but all grouped together
         if next(iter(target["dataset_group_types"].values())) == FileType.LIGHTCONE:
             # All lightcone datasets of the same type
             return occ.Lightcone.open([target])
@@ -140,8 +142,9 @@ def __open_single_file(target: FileTarget):
             return occ.SimulationCollection(datasets)
         else:
             return next(iter(datasets.values()))
-    else:
-        raise ValueError("Failed to open file. This is likely a bug.")
+    raise ValueError(
+        "Failed to open file. This is likely a bug. Please report it on github"
+    )
 
 
 def __open_dataset_targets_for_sim_collection(
@@ -160,7 +163,10 @@ def __open_dataset_targets_for_sim_collection(
             return occ.StructureCollection.open([file_target])
         # Currently the only nested collection we support, may
         # extend later
-    raise ValueError("Invalid combination of files!")
+    raise ValueError(
+        "File has an invalid structure. It looks like it should be a simulation collection, "
+        "but the individual simulation datasets do not have the expected structure"
+    )
 
 
 def __determine_multi_file_collection_type(targets: list[FileTarget]):

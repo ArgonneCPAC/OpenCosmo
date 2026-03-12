@@ -14,6 +14,7 @@ from typing import (
     Self,
     Sequence,
 )
+from warnings import warn
 
 import numpy as np
 from astropy.table import vstack  # type: ignore
@@ -420,7 +421,7 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_data(self, output="astropy", unpack: bool = False):
+    def get_data(self, format="astropy", unpack: bool = False, **kwargs):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -448,7 +449,12 @@ class Lightcone(dict):
         data: Table | Column | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
-        verify_format(output)
+        if "output" in kwargs:
+            warn(
+                "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
+            )
+            format = kwargs["output"]
+        verify_format(format)
 
         data = [ds.get_data(unpack=unpack) for ds in self.values()]
         data_with_length = [d for d in data if len(d) > 0]
@@ -461,8 +467,8 @@ class Lightcone(dict):
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
 
         table.remove_columns(self.__hidden)
-        if output != "astropy":
-            return convert_data(dict(table), output)
+        if format != "astropy":
+            return convert_data(dict(table), format)
         elif len(table.columns) == 1:
             return next(iter(dict(table).values()))
 

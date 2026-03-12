@@ -54,7 +54,6 @@ def get_theta_phi_coordinates_pixel(dataset: "Dataset"):
 
 def find_coordinates_2d(dataset: "Dataset"):
     columns = set(dataset.columns)
-    print(columns)
     if dataset.header.file.data_type == "healpix_map":
         return get_theta_phi_coordinates_pixel(dataset)
     elif len(columns.intersection(set(["ra", "dec"]))) == 2:

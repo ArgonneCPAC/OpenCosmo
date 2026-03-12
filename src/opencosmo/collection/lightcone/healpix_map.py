@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import cached_property, reduce
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
+from warnings import warn
 
 import astropy.units as u  # type: ignore
 import healpy as hp
@@ -309,7 +310,7 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    def get_data(self, output="healsparse", nside_out: Optional[int] = None):
+    def get_data(self, format="healsparse", nside_out: Optional[int] = None, **kwargs):
         """
         Get the data in this dataset as healsparse map or as healpix maps
         (nest-ordered numpy array). Note that a dataset does not load data from
@@ -335,11 +336,16 @@ class HealpixMap(dict):
             The data in this dataset.
         """
 
-        if output not in {"healsparse", "healpix"}:
-            raise ValueError(f"Unknown output type {output}")
+        if "output" in kwargs:
+            warn(
+                "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
+            )
+            format = kwargs["output"]
+        if format not in {"healsparse", "healpix"}:
+            raise ValueError(f"Unknown format type {format}")
 
         if nside_out is not None:
-            return self.with_resolution(nside_out).get_data(output)
+            return self.with_resolution(nside_out).get_data(format)
 
         data = [ds.get_data(unpack=False) for ds in self.values()]
         pixels = self.pixels
@@ -352,22 +358,22 @@ class HealpixMap(dict):
         table["pixel"] = pixels
         table.sort("pixel", reverse=False)
 
-        if output == "healpix":
+        if format == "healpix":
             if self.__len__() != hp.nside2npix(self.nside):
                 raise ValueError(
-                    "healpix output chosen but length of dataset doesn't match nside value. Use healsparse"
+                    "healpix format chosen but length of dataset doesn't match nside value. Use healsparse"
                 )
 
         if len(table.colnames) == 1:
             table = next(table.itercols())
 
-        if output == "healpix":
+        if format == "healpix":
             if isinstance(table, (u.Quantity, Column)):
                 return table.value
             else:
                 table.remove_columns(self.__hidden)
                 return {name: col.value for name, col in table.items()}
-        elif output == "healsparse":
+        elif format == "healsparse":
             dict_maps = {}
             for name, col in table.items():
                 if name != "pixel":
