@@ -27,7 +27,7 @@ from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
     import h5py
-    from astropy import table, units
+    from astropy import table
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
 
@@ -148,6 +148,11 @@ class DatasetState:
     @property
     def unit_handler(self):
         return self.__unit_handler
+
+    @property
+    def units(self):
+        units = self.__unit_handler.current_units
+        return {name: units[name] for name in self.columns}
 
     @property
     def convention(self):
@@ -352,7 +357,7 @@ class DatasetState:
     def with_new_columns(
         self,
         descriptions: dict[str, str] = {},
-        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
+        **new_columns: DerivedColumn | np.ndarray | u.Quantity,
     ):
         """
         Add a set of derived columns to the dataset. A derived column is a column that

@@ -74,6 +74,23 @@ pytestmark = pytest.mark.parametrize(
 )
 
 
+def test_get_units(halo_input_path, input_path):
+    column_conversions = {"fof_halo_center_x": u.lyr}
+    ds = oc.open(halo_input_path)
+    pre_conversion_units = ds.units
+    ds = ds.with_units(None, {u.solMass: u.kg}, **column_conversions)
+    post_conversion_units = ds.units
+
+    for name, unit in pre_conversion_units.items():
+        if unit == u.solMass:
+            assert post_conversion_units[name] == u.kg
+        elif name in column_conversions:
+            assert unit != post_conversion_units[name]
+            assert post_conversion_units[name] == column_conversions[name]
+        else:
+            assert post_conversion_units[name] == unit
+
+
 def test_h0_units(halo_input_path, particle_input_path, input_path):
     collection = oc.open(halo_input_path, particle_input_path)
     ages = collection["star_particles"].select("age").get_data()
