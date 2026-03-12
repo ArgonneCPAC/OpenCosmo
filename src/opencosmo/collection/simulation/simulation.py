@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.group import FileTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region

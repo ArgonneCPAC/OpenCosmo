@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 import h5py
 
 from opencosmo.file import FileExistance, resolve_path
-from opencosmo.io.group import open_files
+from opencosmo.io.iopen import open_files
 from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 

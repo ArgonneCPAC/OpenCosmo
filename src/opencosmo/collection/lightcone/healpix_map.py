@@ -15,7 +15,7 @@ from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import into_array
-from opencosmo.io.group import open_single_dataset
+from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.group import FileTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region

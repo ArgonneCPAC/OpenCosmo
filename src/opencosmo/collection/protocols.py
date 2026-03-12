@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.group import FileTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
 
 

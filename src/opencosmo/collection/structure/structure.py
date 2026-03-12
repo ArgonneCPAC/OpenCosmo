@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.index import DataIndex
-    from opencosmo.io.group import FileTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
     from opencosmo.parameters import HaccSimulationParameters
