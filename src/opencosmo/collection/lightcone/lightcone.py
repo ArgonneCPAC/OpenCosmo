@@ -14,6 +14,7 @@ from typing import (
     Self,
     Sequence,
 )
+from warnings import warn
 
 import numpy as np
 from astropy.table import vstack  # type: ignore
@@ -26,7 +27,7 @@ from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.io.io import open_single_dataset
+from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
@@ -436,7 +437,7 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_data(self, output="astropy", unpack: bool = False):
+    def get_data(self, format="astropy", unpack: bool = False, **kwargs):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -464,7 +465,12 @@ class Lightcone(dict):
         data: Table | Column | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
-        verify_format(output)
+        if "output" in kwargs:
+            warn(
+                "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
+            )
+            format = kwargs["output"]
+        verify_format(format)
 
         data = [ds.get_data(unpack=unpack) for ds in self.values()]
         data_with_length = [d for d in data if len(d) > 0]
@@ -477,8 +483,8 @@ class Lightcone(dict):
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
 
         table.remove_columns(self.__hidden)
-        if output != "astropy":
-            return convert_data(dict(table), output)
+        if format != "astropy":
+            return convert_data(dict(table), format)
         elif len(table.columns) == 1:
             return next(iter(dict(table).values()))
 
@@ -500,14 +506,18 @@ class Lightcone(dict):
         return self.get_data("astropy")
 
     @classmethod
-    def open(cls, targets: list[OpenTarget], **kwargs):
+    def open(cls, targets: list[FileTarget], **kwargs):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
-
-        for i, target in enumerate(targets):
-            group_name = target.group.name.split("/")[-1]
-            group_name = group_name.lstrip(f"{target.header.file.step}_")
-            ds = open_single_dataset(target, bypass_lightcone=True)
-            step = target.header.file.step
+        dataset_targets = []
+        for target in targets:
+            dataset_targets.extend(target["dataset_targets"])
+            for group in target["dataset_groups"].values():
+                dataset_targets += group
+        for i, ds_target in enumerate(dataset_targets):
+            group_name = ds_target["dataset_group"].name.split("/")[-1]
+            group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
+            ds = open_single_dataset(ds_target, bypass_lightcone=True)
+            step = ds_target["header"].file.step
             if step is None:
                 step = i
             datasets[step][group_name] = ds

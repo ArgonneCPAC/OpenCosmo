@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import cached_property, reduce
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
+from warnings import warn
 
 import astropy.units as u  # type: ignore
 import healpy as hp
@@ -15,7 +16,7 @@ from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import into_array
-from opencosmo.io.io import open_single_dataset
+from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
@@ -309,7 +310,7 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    def get_data(self, output="healsparse", nside_out: Optional[int] = None):
+    def get_data(self, format="healsparse", nside_out: Optional[int] = None, **kwargs):
         """
         Get the data in this dataset as healsparse map or as healpix maps
         (nest-ordered numpy array). Note that a dataset does not load data from
@@ -335,11 +336,16 @@ class HealpixMap(dict):
             The data in this dataset.
         """
 
-        if output not in {"healsparse", "healpix"}:
-            raise ValueError(f"Unknown output type {output}")
+        if "output" in kwargs:
+            warn(
+                "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
+            )
+            format = kwargs["output"]
+        if format not in {"healsparse", "healpix"}:
+            raise ValueError(f"Unknown format type {format}")
 
         if nside_out is not None:
-            return self.with_resolution(nside_out).get_data(output)
+            return self.with_resolution(nside_out).get_data(format)
 
         data = [ds.get_data(unpack=False) for ds in self.values()]
         pixels = self.pixels
@@ -352,22 +358,22 @@ class HealpixMap(dict):
         table["pixel"] = pixels
         table.sort("pixel", reverse=False)
 
-        if output == "healpix":
+        if format == "healpix":
             if self.__len__() != hp.nside2npix(self.nside):
                 raise ValueError(
-                    "healpix output chosen but length of dataset doesn't match nside value. Use healsparse"
+                    "healpix format chosen but length of dataset doesn't match nside value. Use healsparse"
                 )
 
         if len(table.colnames) == 1:
             table = next(table.itercols())
 
-        if output == "healpix":
+        if format == "healpix":
             if isinstance(table, (u.Quantity, Column)):
                 return table.value
             else:
                 table.remove_columns(self.__hidden)
                 return {name: col.value for name, col in table.items()}
-        elif output == "healsparse":
+        elif format == "healsparse":
             dict_maps = {}
             for name, col in table.items():
                 if name != "pixel":
@@ -487,20 +493,24 @@ class HealpixMap(dict):
         )
 
     @classmethod
-    def open(cls, targets: list[OpenTarget], **kwargs):
+    def open(cls, targets: list[FileTarget], **kwargs):
         datasets: dict[str, Dataset] = {}
 
-        for target in targets:
+        dataset_targets = []
+        for file_target in targets:
+            dataset_targets.extend(file_target["dataset_targets"])
+
+        for target in dataset_targets:
             ds = open_single_dataset(target)
             # TODO: check if we need some equivalent here
             if not isinstance(ds, HealpixMap) or len(ds.keys()) != 1:
                 raise ValueError(
                     "HealpixMap class can only contain datasets (not collections)"
                 )
-            if target.group.name != "/":
-                key = target.group.name.split("/")[-1]
+            if target["dataset_group"].name != "/":
+                key = target["dataset_group"].name.split("/")[-1]
             else:
-                key = f"{target.header.healpix_map.z_range}_{target.header.file.data_type}"
+                key = f"{target['header'].healpix_map.z_range}_{target['header'].file.data_type}"
             datasets[key] = next(iter(ds.values()))
 
         return cls(
@@ -572,7 +582,8 @@ class HealpixMap(dict):
             schema = make_schema("/", FileEntry.HEALPIX_MAP, children=children)
 
         comm_world = get_comm_world()
-        is_full_sky = comm_world is not None and comm_world.allreduce(
+        is_full_sky = comm_world is None and self.full_sky
+        is_full_sky |= comm_world is not None and comm_world.allreduce(
             len(self.pixels)
         ) == hp.nside2npix(self.nside)
 

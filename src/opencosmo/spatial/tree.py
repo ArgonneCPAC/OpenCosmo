@@ -161,12 +161,9 @@ class Tree:
         self.__index = index
         self.__data = data
         for i in count():
-            try:
-                _ = self.__data[f"level_{i}"]["start"]
-                _ = self.__data[f"level_{i}"]["size"]
-            except KeyError:
-                self.__max_level = i - 1
-                break
+            if f"level_{i}" in data.keys():
+                continue
+            self.__max_level = i - 1
 
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")

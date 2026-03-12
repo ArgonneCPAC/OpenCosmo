@@ -69,7 +69,7 @@ def visit_dataset(
 ):
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
-    data = dataset.select(column.requires).get_data(output=column.format)
+    data = dataset.select(column.requires).get_data(format=column.format)
     try:
         data = dict(data)
     except (TypeError, ValueError):
@@ -92,7 +92,7 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
         batch_data = (
             dataset.select(column.requires)
             .take_range(start, end)
-            .get_data(output=column.format)
+            .get_data(format=column.format)
         )
         try:
             batch_data = dict(batch_data)

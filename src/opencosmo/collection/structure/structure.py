@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.index import DataIndex
-    from opencosmo.io import io
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
     from opencosmo.parameters import HaccSimulationParameters
@@ -144,7 +144,7 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, targets: list[io.OpenTarget], ignore_empty=True, **kwargs
+        cls, targets: list[FileTarget], ignore_empty=True, **kwargs
     ) -> StructureCollection:
         return sio.build_structure_collection(targets, ignore_empty)
 
