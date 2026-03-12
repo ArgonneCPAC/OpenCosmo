@@ -500,7 +500,9 @@ def open_single_dataset(
             region=sim_region,
         )
     elif header.file.is_lightcone and not bypass_lightcone:
-        return occ.Lightcone({"data": dataset}, header.lightcone["z_range"])
+        return occ.Lightcone.from_datasets(
+            {"data": dataset}, header.lightcone["z_range"]
+        )
 
     return dataset
 
