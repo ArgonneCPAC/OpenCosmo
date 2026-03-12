@@ -24,7 +24,6 @@ from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
-    from astropy import units
     from astropy.cosmology import Cosmology
 
     from opencosmo.column.column import Column, ColumnMask, ConstructedColumn
@@ -133,6 +132,10 @@ class Dataset:
             The column descriptions
         """
         return self.__state.descriptions
+
+    @property
+    def units(self) -> dict[str, Optional[u.Unit]]:
+        return self.__state.units
 
     @property
     def cosmology(self) -> Cosmology:
@@ -491,7 +494,7 @@ class Dataset:
         self,
         include_units: bool = True,
         metadata_columns=[],
-    ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
+    ) -> Generator[Mapping[str, float | u.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
         For performance, it is recommended to first select the columns you need to
@@ -727,7 +730,7 @@ class Dataset:
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **new_columns: ConstructedColumn | Column | np.ndarray | units.Quantity,
+        **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
