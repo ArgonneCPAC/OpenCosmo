@@ -366,8 +366,12 @@ def __find_datasets_under_group(
         known_datasets.append(DatasetTarget(header=header, dataset_group=group))
         known_datasets = evaluate_load_conditions(known_datasets, open_kwargs)
         return known_datasets
-    for group in group.values():
-        known_datasets.extend(__find_datasets_under_group(group, header, open_kwargs))
+    for subgroup in group.values():
+        if subgroup.name.endswith("header"):
+            continue
+        known_datasets.extend(
+            __find_datasets_under_group(subgroup, header, open_kwargs)
+        )
 
     return known_datasets
 
