@@ -4,7 +4,6 @@ from collections import defaultdict
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
-import h5py
 import healpy as hp
 import numpy as np
 
@@ -22,6 +21,8 @@ from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
+    import h5py
+
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
 
@@ -93,7 +94,7 @@ def __make_file_target(
     identify the group types. Datasets with load conditions that are not
     met will be discarded.
     """
-    dataset_targets, group_targets = __find_all_datasets(file, open_kwargs)
+    dataset_targets, group_targets = __find_all_datasets(file["/"], open_kwargs)
     if not dataset_targets and not group_targets:
         return None
     group_types = __identify_group_types(dataset_targets, group_targets)
@@ -303,8 +304,19 @@ def __identify_group_types(
     return {"/": FileType.SIMULATION_COLLECTION}  # Organized into multiple groups
 
 
+def __find_all_headers(group: h5py.Group):
+    header_groups = []
+    if "header" in group.keys():
+        return [group.name]
+
+    for value in group.values():
+        header_groups.extend(__find_all_headers(value))
+
+    return header_groups
+
+
 def __find_all_datasets(
-    file: h5py.File | h5py.Group, open_kwargs
+    group: h5py.Group, open_kwargs
 ) -> tuple[list[DatasetTarget], dict[str, list[DatasetTarget]]]:
     """
     Search through a file and locate all the datasets. Each dataset is identified
@@ -319,37 +331,25 @@ def __find_all_datasets(
     2. Otherwise, we're talking about a simulation collection.
     """
 
-    known_headers = []
-    if "header" in file.keys():
-        known_headers = ["/"]
-    else:
-        file.visit(
-            lambda n: known_headers.append(n)
-            if isinstance(file[n], h5py.Group) and "header" in file[n].keys()
-            else None
-        )
-        if not known_headers:
-            raise ValueError(
-                f"Cannot find a header in {file.filename}. Are you sure it is an OpenCosmo file?"
-            )
+    known_headers = __find_all_headers(group)
 
     all_file_headers: list[OpenCosmoHeader] = list(
-        map(lambda header_group: read_header(file[header_group]), known_headers)
+        map(lambda header_group: read_header(group[header_group]), known_headers)
     )
     if len(all_file_headers) > 1:
         known_datasets, known_dataset_groups = __get_collection_dataset_groups(
-            file, known_headers, all_file_headers, open_kwargs
+            group, known_headers, all_file_headers, open_kwargs
         )
 
     else:
         known_datasets = __find_datasets_under_group(
-            file[known_headers[0]], all_file_headers[0], open_kwargs
+            group[known_headers[0]], all_file_headers[0], open_kwargs
         )
         known_dataset_groups = {}
 
     if not known_datasets and not known_dataset_groups:
         raise ValueError(
-            f"File {file.name} contains an OpenCosmo header, but does not seem to be formatted correctly!"
+            f"File {group.name} contains an OpenCosmo header, but does not seem to be formatted correctly!"
         )
     return known_datasets, known_dataset_groups
 
@@ -364,15 +364,11 @@ def __find_datasets_under_group(
     known_datasets = []
     if "data" in group.keys():
         known_datasets.append(DatasetTarget(header=header, dataset_group=group))
-    else:
-        group.visititems(
-            lambda _, object: known_datasets.append(
-                DatasetTarget(header=header, dataset_group=object)
-            )
-            if isinstance(object, h5py.Group) and "data" in object.keys()
-            else None
-        )
-    known_datasets = evaluate_load_conditions(known_datasets, open_kwargs)
+        known_datasets = evaluate_load_conditions(known_datasets, open_kwargs)
+        return known_datasets
+    for group in group.values():
+        known_datasets.extend(__find_datasets_under_group(group, header, open_kwargs))
+
     return known_datasets
 
 
@@ -411,7 +407,7 @@ def __combine_dataset_groups(groups: dict[str, list[DatasetTarget]]):
     """
     output_groups = defaultdict(list)
     for group_name, datasets in groups.items():
-        output_group_name = group_name.split("/")[0]
+        output_group_name = group_name.split("/")[1]
         output_groups[output_group_name].extend(datasets)
 
     return output_groups
