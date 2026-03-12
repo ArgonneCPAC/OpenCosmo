@@ -220,6 +220,23 @@ def test_lc_collection_add_with_description(
         assert descs[key] == value
 
 
+def test_lc_get_units(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    column_conversions = {"fof_halo_center_x": u.lyr, "ra": u.radian}
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    pre_conversion_units = ds.units
+    ds = ds.with_units(None, {u.solMass: u.kg}, **column_conversions)
+    post_conversion_units = ds.units
+
+    for name, unit in pre_conversion_units.items():
+        if unit == u.solMass:
+            assert post_conversion_units[name] == u.kg
+        elif name in column_conversions:
+            assert unit != post_conversion_units[name]
+            assert post_conversion_units[name] == column_conversions[name]
+        else:
+            assert post_conversion_units[name] == unit
+
+
 def test_lc_collection_filter(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):

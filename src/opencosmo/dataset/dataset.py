@@ -135,6 +135,17 @@ class Dataset:
 
     @property
     def units(self) -> dict[str, Optional[u.Unit]]:
+        """
+        Return the current units of all columns in the dataset. Columns without units will
+        return None.
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column units
+
+        """
         return self.__state.units
 
     @property
