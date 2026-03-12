@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     import astropy
     import astropy.units as u
 
-    from opencosmo.column.column import DerivedColumn
+    from opencosmo.column.column import ConstructedColumn
     from opencosmo.index import DataIndex
     from opencosmo.io import io
     from opencosmo.io.schema import Schema
@@ -1030,7 +1030,7 @@ class StructureCollection:
         self,
         dataset: str,
         descriptions: str | dict[str, str] = {},
-        **new_columns: DerivedColumn,
+        **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
         Add new column(s) to one of the datasets in this collection. This behaves

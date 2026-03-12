@@ -19,8 +19,9 @@ import numpy as np
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection.lightcone.coordinates import make_radec_columns
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
-from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
     from astropy.table import Table
 
-    from opencosmo.column.column import ColumnMask
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.io import OpenTarget
     from opencosmo.io.schema import Schema
@@ -213,10 +214,10 @@ def with_redshift_column(dataset: Dataset):
         z_col = 1 / oc.col("fof_halo_center_a") - 1
         return dataset.with_new_columns(redshift=z_col)
     elif "redshift_true" in dataset.columns:
-        z_col = 1 * oc.col("redshift_true")
+        z_col = oc.col("redshift_true")
         return dataset.with_new_columns(redshift=z_col)
     elif "zp" in dataset.columns:
-        z_col = 1 * oc.col("zp")
+        z_col = oc.col("zp")
         return dataset.with_new_columns(redshift=z_col)
     raise ValueError(
         "Unable to find a redshift or scale factor column for this lightcone dataset"
@@ -507,7 +508,15 @@ class Lightcone(dict):
         ):
             raise ValueError()
 
-        return cls(output)
+        result = cls(output)
+        return make_radec_columns(result)
+
+    @classmethod
+    def from_datasets(
+        cls, datasets: dict[str, oc.Dataset], z_range: tuple[float, float]
+    ):
+        result = cls(datasets, z_range)
+        return make_radec_columns(result)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
@@ -1090,7 +1099,7 @@ class Lightcone(dict):
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **columns: DerivedColumn | np.ndarray | u.Quantity,
+        **columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
@@ -1119,8 +1128,11 @@ class Lightcone(dict):
         derived = {}
         raw = {}
         for name, column in columns.items():
-            if isinstance(column, (DerivedColumn, EvaluatedColumn)):
+            if isinstance(column, (DerivedColumn, EvaluatedColumn, Column)):
                 derived[name] = column
+
+            elif not isinstance(column, np.ndarray):
+                raise ValueError(f"Invalid column type: {type(columns)}")
             elif len(column) != len(self):
                 raise ValueError(
                     f"New column {name} has length {len(column)} but this dataset "

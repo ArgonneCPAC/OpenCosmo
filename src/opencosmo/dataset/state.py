@@ -9,7 +9,7 @@ import astropy.units as u
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.column.select import get_column_selection
 from opencosmo.dataset.derived import (
     build_derived_columns,
@@ -370,7 +370,7 @@ class DatasetState:
 
         for colname, column in new_columns.items():
             match column:
-                case DerivedColumn() | EvaluatedColumn():
+                case DerivedColumn() | EvaluatedColumn() | Column():
                     column.description = descriptions.get(colname, "None")
                     new_derived_columns[colname] = column
                 case np.ndarray():

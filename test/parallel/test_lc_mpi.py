@@ -94,9 +94,13 @@ def test_healpix_index(haloproperties_600_path):
     dec = np.pi / 2 - data["theta"]
 
     coordinates = SkyCoord(ra, dec, unit="radian")
+    coords_builtin = SkyCoord(data["ra"], data["dec"])
+
     seps = center_coord.separation(coordinates)
     seps = seps.to(u.degree)
+    seps_builtin = center_coord.separation(coords_builtin).to(u.deg)
     parallel_assert(all(seps < radius))
+    parallel_assert(all(seps_builtin < radius))
     parallel_assert(len(data) == n_raw)
 
 
