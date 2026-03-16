@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
@@ -35,12 +36,12 @@ class Hdf5Handler:
         self,
         columns: dict[str, h5py.Dataset],
         index: DataIndex,
-        metadata_group: Optional[h5py.Group],
+        metadata_columns: dict[str, h5py.Dataset],
         load_conditions: Optional[dict[str, bool]] = None,
     ):
         self.__index = index
         self.__columns = columns
-        self.__metadata_group = metadata_group
+        self.__metadata_columns = metadata_columns
         self.__in_memory = next(iter(columns.values())).file.driver == "core"
         self.__load_conditions = load_conditions
 
@@ -49,18 +50,29 @@ class Hdf5Handler:
         cls,
         columns: list[h5py.Dataset],
         index: Optional[DataIndex] = None,
-        metadata_group: Optional[h5py.Group] = None,
+        metadata_group: Optional[str] = None,
         load_conditions: Optional[dict[str, bool]] = None,
     ):
-        lengths = set(len(col) for col in columns)
+        data_columns = filter(lambda col: col.name.split("/")[-2] == "data", columns)
+        metadata_columns: Iterable[h5py.Dataset] = []
+        if metadata_group:
+            metadata_columns = filter(
+                lambda col: col.name.split("/")[-2] == metadata_group, columns
+            )
+
+        data_columns_ = {col.name.split("/")[-1]: col for col in data_columns}
+        metadata_columns_ = {col.name.split("/")[-1]: col for col in metadata_columns}
+        lengths = set(
+            len(col)
+            for col in chain(data_columns_.values(), metadata_columns_.values())
+        )
         if len(lengths) > 1:
             raise ValueError("Not all columns are the same length!")
 
         if index is None:
             index = from_size(lengths.pop())
 
-        columns_ = {col.name.split("/")[-1]: col for col in columns}
-        return Hdf5Handler(columns_, index, metadata_group, load_conditions)
+        return Hdf5Handler(data_columns_, index, metadata_columns_, load_conditions)
 
     @property
     def in_memory(self) -> bool:
@@ -73,7 +85,7 @@ class Hdf5Handler:
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
             return Hdf5Handler(
-                self.__columns, other, self.__metadata_group, self.__load_conditions
+                self.__columns, other, self.__metadata_columns, self.__load_conditions
             )
 
         if sorted is not None:
@@ -81,7 +93,7 @@ class Hdf5Handler:
 
         new_index = take(self.__index, other)
         return Hdf5Handler(
-            self.__columns, new_index, self.__metadata_group, self.__load_conditions
+            self.__columns, new_index, self.__metadata_columns, self.__load_conditions
         )
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
@@ -93,7 +105,7 @@ class Hdf5Handler:
         new_index = np.sort(new_raw_index)
 
         return Hdf5Handler(
-            self.__columns, new_index, self.__metadata_group, self.__load_conditions
+            self.__columns, new_index, self.__metadata_columns, self.__load_conditions
         )
 
     @property
@@ -110,9 +122,7 @@ class Hdf5Handler:
 
     @property
     def metadata_columns(self):
-        if self.__metadata_group is None:
-            return []
-        return self.__metadata_group.keys()
+        return self.__metadata_columns.keys()
 
     @cached_property
     def descriptions(self):
@@ -153,14 +163,13 @@ class Hdf5Handler:
         metadata_schema = None
 
         if self.metadata_columns:
-            assert self.__metadata_group is not None
-            group_name = self.__metadata_group.name.split("/")[-1]
+            assert len(self.__metadata_columns) > 0
             metadata_writers = {}
-            for column_name in self.metadata_columns:
+            group_name = next(iter(self.__metadata_columns.values())).parent.name
+            group_name = group_name.split("/")[-1]
+            for column_name, column in self.__metadata_columns.items():
                 metadata_writers[column_name] = ColumnWriter.from_h5_dataset(
-                    self.__metadata_group[column_name],
-                    self.__index,
-                    attrs=dict(self.__metadata_group[column_name].attrs),
+                    column, self.__index, attrs=dict(column.attrs)
                 )
             metadata_schema = make_schema(
                 group_name, FileEntry.COLUMNS, columns=metadata_writers
@@ -179,14 +188,14 @@ class Hdf5Handler:
         return {name: data[name] for name in columns}
 
     def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
-        if self.__metadata_group is None:
+        if len(self.__metadata_columns) == 0:
             return None
         if not columns:
             columns = self.metadata_columns
 
         data = {}
         for colname in columns:
-            data[colname] = get_data(self.__metadata_group[colname], self.__index)
+            data[colname] = get_data(self.__metadata_columns[colname], self.__index)
 
         return data
 

@@ -46,8 +46,7 @@ The later will consist of several datasets, each with the same data type and is_
 class DatasetTarget(TypedDict):
     header: OpenCosmoHeader
     dataset_group: h5py.Group
-    data_columns: list[h5py.Dataset]
-    metadata_columns: Optional[list[h5py.Dataset]]
+    columns: list[h5py.Dataset]
 
 
 class FileType(Enum):
@@ -384,10 +383,12 @@ def __find_datasets_under_group(
         )
     )
     for ds_group_name in known_dataset_groups:
+        ds_group_parent = ds_group_name.split("/")[-2]
         columns = [
             nds_[1]
             for nds_ in filter(
-                lambda nds: nds[0].startswith(f"{ds_group_name}/")
+                lambda nds: ds_group_parent in nds[0]
+                and "header" not in nds[0]
                 and isinstance(nds[1], h5py.Dataset),
                 file_map.items(),
             )
@@ -396,7 +397,7 @@ def __find_datasets_under_group(
         target = DatasetTarget(
             header=header,
             dataset_group=file_map[ds_group_name].parent,
-            data_columns=columns,
+            columns=columns,
         )
         if evaluate_load_conditions(target, open_kwargs):
             known_datasets.append(target)
@@ -455,9 +456,13 @@ def open_single_dataset(
 ):
     header = target["header"]
     ds_group = target["dataset_group"]
-    columns = target["data_columns"]
+    columns = target["columns"]
 
     assert header is not None
+
+    index_columns = {
+        col.name: col for col in columns if col.name.split("/")[-3] == "index"
+    }
     try:
         box_size = header.with_units("scalefree").simulation["box_size"].value
     except AttributeError:
@@ -465,7 +470,7 @@ def open_single_dataset(
 
     try:
         tree = open_tree(
-            ds_group,
+            index_columns,
             box_size,
             header.file.is_lightcone,
         )
@@ -505,12 +510,6 @@ def open_single_dataset(
             chunk_boundaries[-1] = ds_length
             rank = comm.Get_rank()
             index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
-
-    if metadata_group is not None:
-        metadata_group = ds_group[metadata_group]
-
-    elif "metadata" in ds_group.keys():
-        metadata_group = ds_group["metadata"]
 
     state = st.DatasetState.from_target(
         target,

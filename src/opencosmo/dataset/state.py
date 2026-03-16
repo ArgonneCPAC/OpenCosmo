@@ -26,7 +26,6 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
-    import h5py
     from astropy import table, units
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
@@ -34,6 +33,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.spatial.protocols import Region
     from opencosmo.units.handler import UnitHandler
 
@@ -89,11 +89,11 @@ class DatasetState:
     @classmethod
     def from_target(
         cls,
-        target: dict,
+        target: DatasetTarget,
         unit_convention: UnitConvention,
         region: Region,
         index: Optional[DataIndex] = None,
-        metadata_group: Optional[h5py.Group] = None,
+        metadata_group: Optional[str] = None,
         in_memory: bool = False,
     ):
         data_group = target["dataset_group"]
@@ -103,13 +103,13 @@ class DatasetState:
             load_conditions = None
 
         handler = Hdf5Handler.from_columns(
-            target["data_columns"],
+            target["columns"],
             index,
             metadata_group,
             load_conditions,
         )
         unit_handler = make_unit_handler(
-            target["data_columns"], target["header"], unit_convention
+            target["columns"], target["header"], unit_convention
         )
 
         columns = set(handler.columns)

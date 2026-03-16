@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     import h5py
 
     from opencosmo import dataset as d
-    from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
 
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
@@ -50,33 +49,6 @@ def validate_linked_groups(groups: dict[str, h5py.Group]):
             )
     if len(groups) == 1:
         raise ValueError("Structure collections must have more than one dataset")
-
-
-def get_linked_datasets(
-    linked_files_by_type: dict[str, h5py.File | h5py.Group],
-    header: OpenCosmoHeader,
-):
-    targets = {}
-    for dtype, pointer in linked_files_by_type.items():
-        if "data" not in pointer.keys():
-            targets.update(
-                {
-                    k: io.iopen.DatasetTarget(dataset_group=pointer[k], header=header)
-                    for k in pointer.keys()
-                    if k != "header"
-                }
-            )
-        else:
-            targets.update(
-                {dtype: io.iopen.DatasetTarget(dataset_group=pointer, header=header)}
-            )
-    datasets = {
-        dtype: io.iopen.open_single_dataset(
-            target, bypass_lightcone=True, bypass_mpi=True
-        )
-        for dtype, target in targets.items()
-    }
-    return datasets
 
 
 def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
