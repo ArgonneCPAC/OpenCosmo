@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
+from functools import partial
 from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
 import h5py
@@ -71,10 +73,10 @@ def open_files(files: list[h5py.File], open_kwargs: dict[str, Any]):
     """
     Main back-end entry point for opening files.
     """
-    targets = []
-    file_maps = list(map(__make_group_map, files))
-    for fmap in file_maps:
-        targets.append(__make_file_target(fmap, open_kwargs))
+
+    with ThreadPoolExecutor() as exe:
+        func = partial(__make_file_target, open_kwargs=open_kwargs)
+        targets = exe.map(func, files)
 
     valid_targets = [t for t in targets if t is not None]
     if not valid_targets:
@@ -104,7 +106,8 @@ def __make_file_target(
     identify the group types. Datasets with load conditions that are not
     met will be discarded.
     """
-    dataset_targets, group_targets = __find_all_datasets(file, open_kwargs)
+    group_map = __make_group_map(file)
+    dataset_targets, group_targets = __find_all_datasets(group_map, open_kwargs)
     if not dataset_targets and not group_targets:
         return None
     group_types = __identify_group_types(dataset_targets, group_targets)
