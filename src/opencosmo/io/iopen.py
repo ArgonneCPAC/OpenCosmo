@@ -23,6 +23,8 @@ from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
 
@@ -69,14 +71,14 @@ class FileTarget(TypedDict):
     dataset_groups: dict[str, list[DatasetTarget]]
 
 
-def open_files(files: list[h5py.File], open_kwargs: dict[str, Any]):
+def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
     """
     Main back-end entry point for opening files.
     """
 
     with ThreadPoolExecutor() as exe:
         func = partial(__make_file_target, open_kwargs=open_kwargs)
-        targets = exe.map(func, files)
+        targets = exe.map(func, paths)
 
     valid_targets = [t for t in targets if t is not None]
     if not valid_targets:
@@ -98,14 +100,13 @@ def __make_group_map(group: h5py.File | h5py.Group, prefix: str = ""):
     return index
 
 
-def __make_file_target(
-    file: h5py.File, open_kwargs: dict[str, Any]
-) -> Optional[FileTarget]:
+def __make_file_target(path: Path, open_kwargs: dict[str, Any]) -> Optional[FileTarget]:
     """
     Search through the file for any valid datasets or dataset groups. For groups,
     identify the group types. Datasets with load conditions that are not
     met will be discarded.
     """
+    file = h5py.File(path)
     group_map = __make_group_map(file)
     dataset_targets, group_targets = __find_all_datasets(group_map, open_kwargs)
     if not dataset_targets and not group_targets:

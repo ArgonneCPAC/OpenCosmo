@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
 import h5py
@@ -11,7 +12,6 @@ from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from types import ModuleType
 
     import opencosmo as oc
@@ -55,9 +55,7 @@ class COLLECTION_TYPE(Enum):
     SIMULATION_COLLECTION = 2
 
 
-def open(
-    *files: str | Path | h5py.File | h5py.Group, **open_kwargs: bool
-) -> oc.Dataset | collection.Collection:
+def open(*files: str | Path, **open_kwargs: bool) -> oc.Dataset | collection.Collection:
     """
     Open a dataset or data collection from one or more opencosmo files.
 
@@ -111,13 +109,8 @@ def open(
     else:
         file_list = list(files)
     file_list.sort()
-
-    try:
-        handles = [h5py.File(f) for f in file_list]
-    except TypeError:  # we have hdf5 groups
-        handles = file_list
-
-    return open_files(handles, open_kwargs)
+    paths = [Path(fp) for fp in files]
+    return open_files(paths, open_kwargs)
 
     # For now the only way to open multiple files is with a StructureCollection
 
