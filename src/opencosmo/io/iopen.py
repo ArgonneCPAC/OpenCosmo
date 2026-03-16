@@ -15,10 +15,11 @@ from opencosmo import collection as occ
 from opencosmo.dataset import state as st
 from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader, read_header
+from opencosmo.index import into_array
 from opencosmo.index.build import empty, from_range
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
-from opencosmo.spatial.region import HealpixRegion
+from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 
@@ -380,14 +381,22 @@ def __find_datasets_under_group(
     that live at the same level or below that header.
     """
     known_datasets = []
+    if group_name != "/":
+        group_name = f"{group_name}/"
+
     known_dataset_groups = list(
         filter(
-            lambda key: key.startswith(group_name) and key.endswith("/data"),
+            lambda key: key.startswith(f"{group_name}") and key.endswith("/data"),
             file_map.keys(),
         )
     )
     for ds_group_name in known_dataset_groups:
         ds_group_parent = ds_group_name.split("/")[-2]
+        if not ds_group_parent:
+            ds_group_parent = "/"
+        else:
+            ds_group_parent = f"/{ds_group_parent}/"
+
         columns = [
             nds_[1]
             for nds_ in filter(
@@ -483,10 +492,14 @@ def open_single_dataset(
 
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
+
     elif header.file.is_lightcone and tree is not None:
         pixels = tree.get_full_index(tree.max_level)
         sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
-    else:
+    elif header.file.data_type == "healpix_map":
+        assert header.healpix_map["full_sky"]
+        sim_region = FullSkyRegion()
+    elif not header.file.is_lightcone:
         p1 = (0, 0, 0)
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))
         sim_region = oc.make_box(p1, p2)
@@ -529,6 +542,24 @@ def open_single_dataset(
         tree=tree,
     )
     if header.file.data_type == "healpix_map":
+        if (
+            (comm := get_comm_world()) is not None
+        ):  # partitioning has to be done manually since we don't store a spatial index
+            if isinstance(sim_region, FullSkyRegion):
+                sim_region = HealpixRegion(
+                    into_array(dataset.index), nside=header.healpix_map["nside"]
+                )
+            else:
+                assert isinstance(sim_region, HealpixRegion)
+                pixels = sim_region.pixels
+                splits = comm.allgather(len(dataset))
+                splits = np.insert(np.cumsum(splits), 0, 0)
+                rank = comm.Get_rank()
+                sim_region = HealpixRegion(
+                    pixels[splits[rank] : splits[rank + 1]],
+                    nside=header.healpix_map["nside"],
+                )
+
         return occ.HealpixMap(
             {"data": dataset},
             header.healpix_map["nside"],

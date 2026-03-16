@@ -445,6 +445,7 @@ def test_write_diffsky_some_missing_no_stack(
     original_data = ds.select(columns_to_check).get_data("numpy")
 
     oc.write(per_test_dir / "lightcone.hdf5", ds, _min_size=10)
+
     ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
 
     written_data = ds.select(columns_to_check).get_data("numpy")

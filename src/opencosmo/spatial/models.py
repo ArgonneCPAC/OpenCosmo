@@ -1,3 +1,4 @@
+import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
 
 
@@ -26,7 +27,8 @@ class HealpixRegionModel(BaseModel):
 
     @field_serializer("pixels")
     def serialize_pixels(self, value):
-        return list(value)
+        pixels = np.array(list(value))
+        return list(np.sort(pixels))
 
 
 RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel | SkyboxRegionModel

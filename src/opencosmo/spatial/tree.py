@@ -183,6 +183,7 @@ class Tree:
                 "Requested level is greater than the max level of this tree!"
             )
         sizes = self.__columns[f"level_{level}/size"][:]
+
         return np.where(sizes > 0)[0]
 
     def partition(

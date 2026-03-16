@@ -94,6 +94,7 @@ class HealpixMap(dict):
             raise NotImplementedError(
                 "Healpix map is not currently implemented correctly for multiple layers"
             )
+
         self.update(datasets)
         self.__nside = nside
         self.__nside_lr = nside_lr

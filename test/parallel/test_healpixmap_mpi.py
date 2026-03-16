@@ -103,11 +103,6 @@ def test_healpix_write(healpix_map_path, tmp_path):
     oc.write(path / "map_test.hdf5", ds)
     new_ds = oc.open(path / "map_test.hdf5")
 
-    radius2 = 1 * u.deg
-    region2 = oc.make_cone(center, radius2)
-    new_ds = new_ds.bound(region2)
-    ds = ds.bound(region2)
-
     all_valid_pixels = np.concatenate(
         MPI.COMM_WORLD.allgather(ds.get_data()["tsz"].valid_pixels)
     )

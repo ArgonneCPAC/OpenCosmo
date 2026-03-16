@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
+HEADER_WRITE_OVERRIDES = {"region_pixels": ColumnCombineStrategy.CONCAT}
+
 
 class OpenCosmoHeader:
     """
@@ -209,14 +211,18 @@ class OpenCosmoHeader:
                     lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
                 )
             )
+
             keys = list(data.keys())
+
             for key in keys:
                 if isinstance(data[key], list):
                     arr_pars[f"{path}/{key}"] = ColumnWriter.from_numpy_array(
-                        np.array(data[key]), ColumnCombineStrategy.CONCAT
+                        np.array(data[key]),
+                        HEADER_WRITE_OVERRIDES.get(key, ColumnCombineStrategy.EXACT),
                     )
                     _ = data.pop(key)
             pars[path] = data
+
         return make_schema(
             "header", FileEntry.METADATA, attributes=pars, columns=arr_pars
         )

@@ -109,7 +109,7 @@ def open(*files: str | Path, **open_kwargs: bool) -> oc.Dataset | collection.Col
     else:
         file_list = list(files)
     file_list.sort()
-    paths = [Path(fp) for fp in files]
+    paths = [Path(fp) for fp in file_list]
     return open_files(paths, open_kwargs)
 
     # For now the only way to open multiple files is with a StructureCollection

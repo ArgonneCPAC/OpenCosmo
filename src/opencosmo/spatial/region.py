@@ -192,7 +192,7 @@ class SkyboxRegion:
 
 class HealpixRegion:
     def __init__(self, idxs: NDArray[np.int_], nside: int, ordering: str = "nested"):
-        self.__idxs = idxs
+        self.__idxs = np.sort(idxs)
         self.__nside = nside
         self.__ordering = ordering
 
