@@ -160,10 +160,12 @@ class Tree:
     def __init__(self, index: SpatialIndex, data: h5py.File | h5py.Group):
         self.__index = index
         self.__data = data
+        levels = data.keys()
         for i in count():
-            if f"level_{i}" in data.keys():
+            if f"level_{i}" in levels:
                 continue
             self.__max_level = i - 1
+            break
 
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")

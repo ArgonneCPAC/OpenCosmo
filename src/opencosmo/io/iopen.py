@@ -4,6 +4,7 @@ from collections import defaultdict
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
+import h5py
 import healpy as hp
 import numpy as np
 
@@ -21,8 +22,6 @@ from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
-    import h5py
-
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
 
@@ -73,8 +72,9 @@ def open_files(files: list[h5py.File], open_kwargs: dict[str, Any]):
     Main back-end entry point for opening files.
     """
     targets = []
-    for file in files:
-        targets.append(__make_file_target(file, open_kwargs))
+    file_maps = list(map(__make_group_map, files))
+    for fmap in file_maps:
+        targets.append(__make_file_target(fmap, open_kwargs))
 
     valid_targets = [t for t in targets if t is not None]
     if not valid_targets:
@@ -86,6 +86,16 @@ def open_files(files: list[h5py.File], open_kwargs: dict[str, Any]):
     return __open_single_file(valid_targets[0])
 
 
+def __make_group_map(group: h5py.File | h5py.Group, prefix: str = ""):
+    index = {}
+    for key, item in group.items():
+        path = f"{prefix}/{key}"
+        index[path] = item
+        if isinstance(item, h5py.Group):
+            index.update(__make_group_map(item, path))
+    return index
+
+
 def __make_file_target(
     file: h5py.File, open_kwargs: dict[str, Any]
 ) -> Optional[FileTarget]:
@@ -94,7 +104,7 @@ def __make_file_target(
     identify the group types. Datasets with load conditions that are not
     met will be discarded.
     """
-    dataset_targets, group_targets = __find_all_datasets(file["/"], open_kwargs)
+    dataset_targets, group_targets = __find_all_datasets(file, open_kwargs)
     if not dataset_targets and not group_targets:
         return None
     group_types = __identify_group_types(dataset_targets, group_targets)
@@ -304,19 +314,12 @@ def __identify_group_types(
     return {"/": FileType.SIMULATION_COLLECTION}  # Organized into multiple groups
 
 
-def __find_all_headers(group: h5py.Group):
-    header_groups = []
-    if "header" in group.keys():
-        return [group.name]
-
-    for value in group.values():
-        header_groups.extend(__find_all_headers(value))
-
-    return header_groups
+def __find_all_headers(file_map: dict):
+    return list(filter(lambda key: key.endswith("header"), file_map.keys()))
 
 
 def __find_all_datasets(
-    group: h5py.Group, open_kwargs
+    file_map: dict[str, h5py.File | h5py.Group | h5py.Dataset], open_kwargs
 ) -> tuple[list[DatasetTarget], dict[str, list[DatasetTarget]]]:
     """
     Search through a file and locate all the datasets. Each dataset is identified
@@ -331,25 +334,33 @@ def __find_all_datasets(
     2. Otherwise, we're talking about a simulation collection.
     """
 
-    known_headers = __find_all_headers(group)
+    known_headers = __find_all_headers(file_map)
+
+    if not known_headers:
+        raise ValueError(
+            f"The file at {next(iter(file_map.values())).file.filename}, does not appear to be an OpenCosmoFile"
+        )
 
     all_file_headers: list[OpenCosmoHeader] = list(
-        map(lambda header_group: read_header(group[header_group]), known_headers)
+        map(
+            lambda header_group: read_header(file_map[header_group].parent),
+            known_headers,
+        )
     )
     if len(all_file_headers) > 1:
         known_datasets, known_dataset_groups = __get_collection_dataset_groups(
-            group, known_headers, all_file_headers, open_kwargs
+            file_map, known_headers, all_file_headers, open_kwargs
         )
 
     else:
         known_datasets = __find_datasets_under_group(
-            group[known_headers[0]], all_file_headers[0], open_kwargs
+            file_map[known_headers[0]].parent, all_file_headers[0], open_kwargs
         )
         known_dataset_groups = {}
 
     if not known_datasets and not known_dataset_groups:
         raise ValueError(
-            f"File {group.name} contains an OpenCosmo header, but does not seem to be formatted correctly!"
+            f"File {next(iter(file_map.values())).file.filename} contains an OpenCosmo header, but does not seem to be formatted correctly!"
         )
     return known_datasets, known_dataset_groups
 
@@ -376,7 +387,7 @@ def __find_datasets_under_group(
     return known_datasets
 
 
-def __get_collection_dataset_groups(file, header_groups, headers, open_kwargs):
+def __get_collection_dataset_groups(file_map, header_groups, headers, open_kwargs):
     """
     If a file has multiple headers, we may need to keep the datasets under each header
     seperate until we combine them later. It's also possible we are working with a
@@ -385,7 +396,9 @@ def __get_collection_dataset_groups(file, header_groups, headers, open_kwargs):
     dataset_groups = {}
     all_datasets = []
     for group, header in zip(header_groups, headers):
-        dataset_targets = __find_datasets_under_group(file[group], header, open_kwargs)
+        dataset_targets = __find_datasets_under_group(
+            file_map[group].parent, header, open_kwargs
+        )
         all_datasets += dataset_targets
         if dataset_targets:
             dataset_groups[group] = dataset_targets
