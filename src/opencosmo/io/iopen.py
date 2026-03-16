@@ -10,7 +10,6 @@ import numpy as np
 
 import opencosmo as oc
 from opencosmo import collection as occ
-from opencosmo.dataset import handler as hd
 from opencosmo.dataset import state as st
 from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader, read_header
@@ -47,6 +46,8 @@ The later will consist of several datasets, each with the same data type and is_
 class DatasetTarget(TypedDict):
     header: OpenCosmoHeader
     dataset_group: h5py.Group
+    data_columns: list[h5py.Dataset]
+    metadata_columns: Optional[list[h5py.Dataset]]
 
 
 class FileType(Enum):
@@ -354,7 +355,10 @@ def __find_all_datasets(
 
     else:
         known_datasets = __find_datasets_under_group(
-            file_map[known_headers[0]].parent, all_file_headers[0], open_kwargs
+            file_map[known_headers[0]].parent.name,
+            file_map,
+            all_file_headers[0],
+            open_kwargs,
         )
         known_dataset_groups = {}
 
@@ -366,23 +370,36 @@ def __find_all_datasets(
 
 
 def __find_datasets_under_group(
-    group: h5py.Group, header: OpenCosmoHeader, open_kwargs: dict[str, Any]
+    group_name: str, file_map, header: OpenCosmoHeader, open_kwargs: dict[str, Any]
 ):
     """
     Given a header and the group it lives in, find all datasets
     that live at the same level or below that header.
     """
     known_datasets = []
-    if "data" in group.keys():
-        known_datasets.append(DatasetTarget(header=header, dataset_group=group))
-        known_datasets = evaluate_load_conditions(known_datasets, open_kwargs)
-        return known_datasets
-    for subgroup in group.values():
-        if subgroup.name.endswith("header"):
-            continue
-        known_datasets.extend(
-            __find_datasets_under_group(subgroup, header, open_kwargs)
+    known_dataset_groups = list(
+        filter(
+            lambda key: key.startswith(group_name) and key.endswith("/data"),
+            file_map.keys(),
         )
+    )
+    for ds_group_name in known_dataset_groups:
+        columns = [
+            nds_[1]
+            for nds_ in filter(
+                lambda nds: nds[0].startswith(f"{ds_group_name}/")
+                and isinstance(nds[1], h5py.Dataset),
+                file_map.items(),
+            )
+        ]
+
+        target = DatasetTarget(
+            header=header,
+            dataset_group=file_map[ds_group_name].parent,
+            data_columns=columns,
+        )
+        if evaluate_load_conditions(target, open_kwargs):
+            known_datasets.append(target)
 
     return known_datasets
 
@@ -397,7 +414,7 @@ def __get_collection_dataset_groups(file_map, header_groups, headers, open_kwarg
     all_datasets = []
     for group, header in zip(header_groups, headers):
         dataset_targets = __find_datasets_under_group(
-            file_map[group].parent, header, open_kwargs
+            file_map[group].parent.name, file_map, header, open_kwargs
         )
         all_datasets += dataset_targets
         if dataset_targets:
@@ -437,7 +454,8 @@ def open_single_dataset(
     bypass_mpi: bool = False,
 ):
     header = target["header"]
-    handle = target["dataset_group"]
+    ds_group = target["dataset_group"]
+    columns = target["data_columns"]
 
     assert header is not None
     try:
@@ -447,7 +465,7 @@ def open_single_dataset(
 
     try:
         tree = open_tree(
-            handle,
+            ds_group,
             box_size,
             header.file.is_lightcone,
         )
@@ -465,13 +483,13 @@ def open_single_dataset(
         sim_region = oc.make_box(p1, p2)
 
     index: Optional[DataIndex] = None
-    handler = hd.Hdf5Handler.from_group(handle["data"])
+    ds_length = len(next(iter(columns)))
 
     if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
         try:
-            idx_data = handle["index"]
-            part = partition(comm, len(handler), idx_data, tree)
+            idx_data = ds_group["index"]
+            part = partition(comm, ds_length, idx_data, tree)
             if part is None:
                 index = empty()
             else:
@@ -482,21 +500,20 @@ def open_single_dataset(
 
         except KeyError:
             n_ranks = comm.Get_size()
-            n_per = len(handler) // n_ranks
+            n_per = ds_length // n_ranks
             chunk_boundaries = [i * n_per for i in range(n_ranks + 1)]
-            chunk_boundaries[-1] = len(handler)
+            chunk_boundaries[-1] = ds_length
             rank = comm.Get_rank()
             index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
 
     if metadata_group is not None:
-        metadata_group = handle[metadata_group]
+        metadata_group = ds_group[metadata_group]
 
-    elif "metadata" in handle.keys():
-        metadata_group = handle["metadata"]
+    elif "metadata" in ds_group.keys():
+        metadata_group = ds_group["metadata"]
 
-    state = st.DatasetState.from_group(
-        handle,
-        header,
+    state = st.DatasetState.from_target(
+        target,
         UnitConvention.COMOVING,
         sim_region,
         index,
@@ -538,8 +555,8 @@ def __expand_lightcone_region(region, tree):
 
 
 def evaluate_load_conditions(
-    targets: list[DatasetTarget], open_kwargs: dict[str, bool]
-):
+    target: DatasetTarget, open_kwargs: dict[str, bool]
+) -> bool:
     """
     Datasets can define conditional loading via an addition group called "load/if".
     the "if" group can define parameters which must either be true or false for the
@@ -549,17 +566,11 @@ def evaluate_load_conditions(
     Note that some open kwargs may be used in other places in the opening process,
     and will just be ignored here.
     """
-    output = []
-    for target in targets:
-        try:
-            ifgroup = target["dataset_group"]["load/if"]
-        except KeyError:
-            output.append(target)
-            continue
-        load = True
-        for key, condition in ifgroup.attrs.items():
-            load = load and (open_kwargs.get(key, False) == condition)
-        if load:
-            output.append(target)
-
-    return output
+    try:
+        ifgroup = target["dataset_group"]["load/if"]
+    except KeyError:
+        return True
+    load = True
+    for key, condition in ifgroup.attrs.items():
+        load = load and (open_kwargs.get(key, False) == condition)
+    return load

@@ -87,26 +87,30 @@ class DatasetState:
         return None
 
     @classmethod
-    def from_group(
+    def from_target(
         cls,
-        group: h5py.Group,
-        header: OpenCosmoHeader,
+        target: dict,
         unit_convention: UnitConvention,
         region: Region,
         index: Optional[DataIndex] = None,
         metadata_group: Optional[h5py.Group] = None,
         in_memory: bool = False,
     ):
-        data_group = group["data"]
-        if "load" in group.keys():
-            load_conditions = dict(group["load/if"].attrs)
+        data_group = target["dataset_group"]
+        if "load" in data_group.keys():
+            load_conditions = dict(data_group["load/if"].attrs)
         else:
             load_conditions = None
 
-        handler = Hdf5Handler.from_group(
-            data_group, index, metadata_group, load_conditions
+        handler = Hdf5Handler.from_columns(
+            target["data_columns"],
+            index,
+            metadata_group,
+            load_conditions,
         )
-        unit_handler = make_unit_handler(handler.data, header, unit_convention)
+        unit_handler = make_unit_handler(
+            target["data_columns"], target["header"], unit_convention
+        )
 
         columns = set(handler.columns)
         cache = ColumnCache.empty()
@@ -115,7 +119,7 @@ class DatasetState:
             cache,
             {},
             unit_handler,
-            header,
+            target["header"],
             columns,
             region,
             None,

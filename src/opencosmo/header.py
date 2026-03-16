@@ -289,7 +289,6 @@ def read_header(
 
 
     """
-    print(file)
     try:
         file_parameters = read_header_attributes(file, "file", FileParameters)
     except KeyError as e:

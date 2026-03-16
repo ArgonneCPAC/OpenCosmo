@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from functools import cached_property
-from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
@@ -34,39 +33,34 @@ class Hdf5Handler:
 
     def __init__(
         self,
-        group: h5py.Group,
+        columns: dict[str, h5py.Dataset],
         index: DataIndex,
         metadata_group: Optional[h5py.Group],
         load_conditions: Optional[dict[str, bool]] = None,
     ):
         self.__index = index
-        self.__data_group = group
+        self.__columns = columns
         self.__metadata_group = metadata_group
-        self.__in_memory = group.file.driver == "core"
+        self.__in_memory = next(iter(columns.values())).file.driver == "core"
         self.__load_conditions = load_conditions
 
     @classmethod
-    def from_group(
+    def from_columns(
         cls,
-        group: h5py.Group,
+        columns: list[h5py.Dataset],
         index: Optional[DataIndex] = None,
         metadata_group: Optional[h5py.Group] = None,
         load_conditions: Optional[dict[str, bool]] = None,
     ):
-        if not group.name.endswith("data"):
-            raise ValueError("Expected a data group")
-        lengths = set(len(ds) for ds in group.values())
+        lengths = set(len(col) for col in columns)
         if len(lengths) > 1:
             raise ValueError("Not all columns are the same length!")
 
         if index is None:
             index = from_size(lengths.pop())
 
-        colnames = group.keys()
-        if metadata_group is not None:
-            colnames = chain(colnames, metadata_group.keys())
-
-        return Hdf5Handler(group, index, metadata_group, load_conditions)
+        columns_ = {col.name.split("/")[-1]: col for col in columns}
+        return Hdf5Handler(columns_, index, metadata_group, load_conditions)
 
     @property
     def in_memory(self) -> bool:
@@ -79,7 +73,7 @@ class Hdf5Handler:
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:
             return Hdf5Handler(
-                self.__data_group, other, self.__metadata_group, self.__load_conditions
+                self.__columns, other, self.__metadata_group, self.__load_conditions
             )
 
         if sorted is not None:
@@ -87,7 +81,7 @@ class Hdf5Handler:
 
         new_index = take(self.__index, other)
         return Hdf5Handler(
-            self.__data_group, new_index, self.__metadata_group, self.__load_conditions
+            self.__columns, new_index, self.__metadata_group, self.__load_conditions
         )
 
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
@@ -99,20 +93,20 @@ class Hdf5Handler:
         new_index = np.sort(new_raw_index)
 
         return Hdf5Handler(
-            self.__data_group, new_index, self.__metadata_group, self.__load_conditions
+            self.__columns, new_index, self.__metadata_group, self.__load_conditions
         )
 
     @property
     def data(self):
-        return self.__data_group
+        return next(iter(self.__columns.values())).parent
 
     @property
     def index(self):
         return self.__index
 
-    @property
+    @cached_property
     def columns(self):
-        return self.__data_group.keys()
+        return self.__columns.keys()
 
     @property
     def metadata_columns(self):
@@ -124,7 +118,7 @@ class Hdf5Handler:
     def descriptions(self):
         return {
             colname: column.attrs.get("description")
-            for colname, column in self.__data_group.items()
+            for colname, column in self.__columns.items()
         }
 
     def mask(self, mask):
@@ -132,14 +126,13 @@ class Hdf5Handler:
         return self.take(idx)
 
     def __len__(self) -> int:
-        first_column_name = next(iter(self.__data_group.keys()))
-        return self.__data_group[first_column_name].shape[0]
+        return len(next(iter(self.__columns.values())))
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exec_details):
-        self.__data_group = None
+        self.__columns = None
         return self.__file.close()
 
     def make_schema(
@@ -150,9 +143,9 @@ class Hdf5Handler:
         column_writers = {}
         for column_name in columns:
             column_writers[column_name] = ColumnWriter.from_h5_dataset(
-                self.__data_group[column_name],
+                self.__columns[column_name],
                 self.__index,
-                attrs=dict(self.__data_group[column_name].attrs),
+                attrs=dict(self.__columns[column_name].attrs),
             )
 
         data_schema = make_schema("data", FileEntry.COLUMNS, columns=column_writers)
@@ -176,12 +169,12 @@ class Hdf5Handler:
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
-        if self.__data_group is None:
+        if self.__columns is None:
             raise ValueError("This file has already been closed")
         data = {}
 
         for colname in columns:
-            data[colname] = get_data(self.__data_group[colname], self.__index)
+            data[colname] = get_data(self.__columns[colname], self.__index)
         # Ensure order is preserved
         return {name: data[name] for name in columns}
 
