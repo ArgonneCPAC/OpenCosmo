@@ -28,7 +28,7 @@ class HealpixRegionModel(BaseModel):
     @field_serializer("pixels")
     def serialize_pixels(self, value):
         pixels = np.array(list(value))
-        return list(np.sort(pixels))
+        return np.sort(pixels).tolist()
 
 
 RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel | SkyboxRegionModel

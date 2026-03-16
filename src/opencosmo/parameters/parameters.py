@@ -54,6 +54,7 @@ def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseM
     array_pars = {
         key: val for key, val in pars.items() if should_dump_to_hdf5_dataset(val)
     }
+    print(array_pars)
 
     for key, value in pars.items():
         if key in array_pars:
