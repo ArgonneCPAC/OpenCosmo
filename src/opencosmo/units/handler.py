@@ -66,6 +66,16 @@ class UnitHandler:
     def base_units(self):
         return {key: app.base_unit for key, app in self.__applicators.items()}
 
+    @property
+    def current_units(self):
+        return {
+            key: self.__conversions.get(
+                str(app.unit_in_convention(self.__current_convention)),
+                app.unit_in_convention(self.__current_convention),
+            )
+            for key, app in self.__applicators.items()
+        } | self.__column_conversions
+
     @cached_property
     def unitless_columns(self):
         return set(

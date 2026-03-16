@@ -154,6 +154,11 @@ class DatasetState:
         return self.__unit_handler
 
     @property
+    def units(self):
+        units = self.__unit_handler.current_units
+        return {name: units[name] for name in self.columns}
+
+    @property
     def convention(self):
         return self.__unit_handler.current_convention
 

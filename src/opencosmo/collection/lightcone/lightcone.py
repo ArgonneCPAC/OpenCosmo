@@ -357,6 +357,22 @@ class Lightcone(dict):
         )
         return descriptions
 
+    @cached_property
+    def units(self) -> dict[str, Optional[u.Unit]]:
+        """
+        Return the units of the columns in this lightcone. Columns without a unit will
+        return a value of None
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column descriptions
+        """
+        units = next(iter(self.values())).units
+        units = dict(filter(lambda kv: kv[0] not in self.__hidden, units.items()))
+        return units
+
     @property
     def cosmology(self) -> Cosmology:
         """
