@@ -158,9 +158,9 @@ def __healpix_intersects_other(region: HealpixRegion, other) -> bool:
 def __healpix_contains_other(region: HealpixRegion, other) -> bool:
     try:
         intersections = other.get_healpix_intersections(region.nside)
-        return len(np.intersect1d(intersections, region.pixels)) == len(intersections)
     except AttributeError:
         raise ValueError(f"Expected a 2D Sky Region but received {type(other)}")
+    return len(np.intersect1d(intersections, region.pixels)) == len(intersections)
 
 
 # ---------------------------------------------------------------------------

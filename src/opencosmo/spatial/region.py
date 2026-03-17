@@ -243,6 +243,14 @@ class HealpixRegion:
         """
         return self.__ordering
 
+    def get_healpix_intersections(self, nside: int):
+        if nside == self.nside:
+            return self.pixels
+        else:
+            raise ValueError(
+                "Healpix regions can only be compared to each other if they have the same nside"
+            )
+
     def contains(self, other: Any):
         return contains_2d(self, other)
 
