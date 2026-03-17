@@ -391,11 +391,8 @@ def __find_datasets_under_group(
         )
     )
     for ds_group_name in known_dataset_groups:
-        ds_group_parent = ds_group_name.split("/")[-2]
-        if not ds_group_parent:
-            ds_group_parent = "/"
-        else:
-            ds_group_parent = f"/{ds_group_parent}/"
+        ds_group_parent = ds_group_name.rsplit("/", maxsplit=1)[0]
+        ds_group_parent += "/"
 
         columns = [
             nds_[1]

@@ -67,6 +67,7 @@ class Hdf5Handler:
             for col in chain(data_columns_.values(), metadata_columns_.values())
         )
         if len(lengths) > 1:
+            print([c.name for c in columns])
             raise ValueError("Not all columns are the same length!")
 
         if index is None:

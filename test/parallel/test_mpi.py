@@ -690,11 +690,12 @@ def test_simcollection_structure_write(
     temporary_path = comm.bcast(temporary_path, root=0)
     sc0 = oc.open(*scidac_000_paths)
     sc1 = oc.open(*scidac_001_paths)
+
     collection = oc.SimulationCollection({"scidac_000": sc0, "scidac_001": sc1})
+
     oc.write(temporary_path, collection)
 
     collection_written = oc.open(temporary_path)
-    import shutil
 
     shutil.copy(temporary_path, "output.hdf5")
     for ds_name, ds in collection_written.items():

@@ -155,6 +155,14 @@ def __healpix_intersects_other(region: HealpixRegion, other) -> bool:
         raise ValueError(f"Expected a 2D Sky Region but received {type(other)}")
 
 
+def __healpix_contains_other(region: HealpixRegion, other) -> bool:
+    try:
+        intersections = other.get_healpix_intersections(region.nside)
+        return len(np.intersect1d(intersections, region.pixels)) == len(intersections)
+    except AttributeError:
+        raise ValueError(f"Expected a 2D Sky Region but received {type(other)}")
+
+
 # ---------------------------------------------------------------------------
 # Public entrypoints
 # ---------------------------------------------------------------------------
@@ -222,7 +230,7 @@ def contains_2d(region, other):
         case (SkyboxRegion(), SkyCoord()):
             return __skybox_contains_point(region, other)
         case (HealpixRegion(), _):
-            return False
+            return __healpix_contains_other(region, other)
         case _:
             raise ValueError(
                 f"Expected a 2D Sky Region but received {type(region)}, {type(other)}"
