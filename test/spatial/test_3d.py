@@ -124,11 +124,10 @@ def test_write_tree(halo_properties_path, tmp_path):
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
 
     ds = oc.open(tmp_path / "bound_dataset.hdf5").with_units("scalefree")
-    tree_data = ds._Dataset__tree._Tree__data
+    tree_data = ds._Dataset__tree._Tree__columns
     for i in range(3):
-        level = tree_data[f"level_{i}"]
-        starts = level["start"][:]
-        sizes = level["size"][:]
+        starts = tree_data[f"level_{i}/start"][:]
+        sizes = tree_data[f"level_{i}/size"][:]
         assert np.sum(sizes) == len(ds)
         assert np.all(np.insert(np.cumsum(sizes), 0, 0)[:-1] == starts)
 

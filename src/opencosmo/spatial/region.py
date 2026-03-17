@@ -192,7 +192,7 @@ class SkyboxRegion:
 
 class HealpixRegion:
     def __init__(self, idxs: NDArray[np.int_], nside: int, ordering: str = "nested"):
-        self.__idxs = idxs
+        self.__idxs = np.sort(idxs)
         self.__nside = nside
         self.__ordering = ordering
 
@@ -242,6 +242,14 @@ class HealpixRegion:
         The pixel ordering
         """
         return self.__ordering
+
+    def get_healpix_intersections(self, nside: int):
+        if nside == self.nside:
+            return self.pixels
+        else:
+            raise ValueError(
+                "Healpix regions can only be compared to each other if they have the same nside"
+            )
 
     def contains(self, other: Any):
         return contains_2d(self, other)

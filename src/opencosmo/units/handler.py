@@ -17,11 +17,11 @@ if TYPE_CHECKING:
 
 
 def make_unit_handler(
-    group: h5py.Group,
+    columns: list[h5py.Dataset],
     header: "OpenCosmoHeader",
     target_convention: Optional[UnitConvention] = None,
 ):
-    applicators = get_unit_applicators_hdf5(group, header)
+    applicators = get_unit_applicators_hdf5(columns, header)
     if target_convention is None:
         target_convention = header.file.unit_convention
     if not isinstance(target_convention, UnitConvention):

@@ -207,14 +207,11 @@ def test_partitioning_includes_all(input_path):
 @pytest.mark.parallel(nprocs=4)
 def test_take(input_path):
     ds = oc.open(input_path)
-    data = ds.get_data()
     n = 1000
-    ds = ds.take(n, "random")
-    data = ds.get_data()
-    ds.close()
-    parallel_assert(len(data) == n)
+    ds = ds.take(n, "start")
+    halo_tags = ds.select("fof_halo_tag").get_data("numpy")
+    parallel_assert(len(halo_tags) == n)
 
-    halo_tags = data["fof_halo_tag"]
     gathered_tags = mpi4py.MPI.COMM_WORLD.gather(halo_tags, root=0)
     tags = set()
     if mpi4py.MPI.COMM_WORLD.Get_rank() == 0:
@@ -693,11 +690,12 @@ def test_simcollection_structure_write(
     temporary_path = comm.bcast(temporary_path, root=0)
     sc0 = oc.open(*scidac_000_paths)
     sc1 = oc.open(*scidac_001_paths)
+
     collection = oc.SimulationCollection({"scidac_000": sc0, "scidac_001": sc1})
+
     oc.write(temporary_path, collection)
 
     collection_written = oc.open(temporary_path)
-    import shutil
 
     shutil.copy(temporary_path, "output.hdf5")
     for ds_name, ds in collection_written.items():

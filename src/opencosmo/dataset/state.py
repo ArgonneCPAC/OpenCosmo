@@ -26,7 +26,6 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
-    import h5py
     from astropy import table
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
@@ -34,6 +33,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.spatial.protocols import Region
     from opencosmo.units.handler import UnitHandler
 
@@ -87,26 +87,30 @@ class DatasetState:
         return None
 
     @classmethod
-    def from_group(
+    def from_target(
         cls,
-        group: h5py.Group,
-        header: OpenCosmoHeader,
+        target: DatasetTarget,
         unit_convention: UnitConvention,
         region: Region,
         index: Optional[DataIndex] = None,
-        metadata_group: Optional[h5py.Group] = None,
+        metadata_group: Optional[str] = None,
         in_memory: bool = False,
     ):
-        data_group = group["data"]
-        if "load" in group.keys():
-            load_conditions = dict(group["load/if"].attrs)
+        data_group = target["dataset_group"]
+        if "load" in data_group.keys():
+            load_conditions = dict(data_group["load/if"].attrs)
         else:
             load_conditions = None
 
-        handler = Hdf5Handler.from_group(
-            data_group, index, metadata_group, load_conditions
+        handler = Hdf5Handler.from_columns(
+            target["columns"],
+            index,
+            metadata_group,
+            load_conditions,
         )
-        unit_handler = make_unit_handler(handler.data, header, unit_convention)
+        unit_handler = make_unit_handler(
+            target["columns"], target["header"], unit_convention
+        )
 
         columns = set(handler.columns)
         cache = ColumnCache.empty()
@@ -115,7 +119,7 @@ class DatasetState:
             cache,
             {},
             unit_handler,
-            header,
+            target["header"],
             columns,
             region,
             None,

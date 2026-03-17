@@ -159,12 +159,13 @@ class UnitApplicator:
 
 
 def get_unit_applicators_hdf5(
-    group: h5py.Group, header: "OpenCosmoHeader", is_comoving: bool = True
+    columns: list[h5py.Dataset], header: "OpenCosmoHeader", is_comoving: bool = True
 ):
     base_convention = UnitConvention(header.file.unit_convention)
 
     applicators = {}
-    for name, column in group.items():
+    for column in columns:
+        name = column.name.split("/")[-1]
         base_unit = get_raw_units(column)
         applicators[name] = UnitApplicator.from_unit(
             base_unit, base_convention, header.cosmology, is_comoving
