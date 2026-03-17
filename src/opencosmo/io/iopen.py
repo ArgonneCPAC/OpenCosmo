@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, Optional, TypedDict
@@ -77,9 +76,8 @@ def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
     Main back-end entry point for opening files.
     """
 
-    with ThreadPoolExecutor() as exe:
-        func = partial(__make_file_target, open_kwargs=open_kwargs)
-        targets = exe.map(func, paths)
+    func = partial(__make_file_target, open_kwargs=open_kwargs)
+    targets = map(func, paths)
 
     valid_targets = [t for t in targets if t is not None]
     if not valid_targets:
@@ -198,6 +196,7 @@ def __determine_multi_file_collection_type(targets: list[FileTarget]):
     lightcones = []
     other_datasets = []
     # First, split files into their types
+
     for target in targets:
         if len(target["dataset_group_types"]) > 1:
             raise ValueError("Received an invalid combination of files!")
@@ -304,6 +303,7 @@ def __identify_group_types(
 
     data_types = set(str(t["header"].file.data_type) for t in ds_targets)
     is_lightcone = [t["header"].file.is_lightcone for t in ds_targets]
+
     if all("particle" in dt for dt in data_types):  # particles
         return {"/": FileType.PARTICLES}
     if len(data_types) == 1 and all(is_lightcone):  # lightcone
@@ -492,7 +492,6 @@ def open_single_dataset(
 
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
-
     elif header.file.is_lightcone and tree is not None:
         pixels = tree.get_full_index(tree.max_level)
         sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
