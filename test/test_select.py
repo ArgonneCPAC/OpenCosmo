@@ -102,3 +102,16 @@ def test_select_invalid_column(input_path):
     selected_cols = np.append(selected_cols, "invalid_column")
     with pytest.raises(ValueError):
         dataset.select(selected_cols)
+
+
+def test_select_with_derived(input_path):
+    ds = oc.open(input_path)
+    com_columns = set(filter(lambda colname: "com" in colname, ds.columns))
+    gal_px = oc.col("gal_mass") * oc.col("gal_com_vx")
+
+    ds = ds.select("gal_mass", "*com*", gal_px=gal_px)
+
+    data = ds.get_data()
+
+    assert com_columns.issubset(data.columns)
+    assert np.all(data["gal_px"] == data["gal_mass"] * data["gal_com_vx"])

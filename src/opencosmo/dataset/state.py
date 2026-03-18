@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Optional
 from weakref import finalize
 
 import astropy.units as u
@@ -361,7 +361,7 @@ class DatasetState:
     def with_new_columns(
         self,
         descriptions: dict[str, str] = {},
-        **new_columns: DerivedColumn | np.ndarray | u.Quantity,
+        **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
         Add a set of derived columns to the dataset. A derived column is a column that
@@ -478,7 +478,7 @@ class DatasetState:
         """
         return self.__rebuild(region=region)
 
-    def select(self, columns: str | Iterable[str], drop=False):
+    def select(self, columns: set[str], drop=False):
         """
         Select a subset of columns from the dataset. It is possible for a user to select
         a derived column in the dataset, but not the columns it is derived from.
@@ -488,8 +488,6 @@ class DatasetState:
         returned to the user.
 
         """
-        if isinstance(columns, str):
-            columns = [columns]
 
         selections, missing = get_column_selection(self.columns, columns)
         if missing:
