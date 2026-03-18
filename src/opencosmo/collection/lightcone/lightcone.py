@@ -899,63 +899,107 @@ class Lightcone(dict):
         """
         yield from chain.from_iterable(v.rows() for v in self.values())
 
-    def select(self, columns: str | Iterable[str]) -> Self:
+    def select(
+        self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
+    ) -> Self:
         """
-        Create a new dataset from a subset of columns in this dataset.
+
+        Create a new lightcone dataset from a subset of columns in this lightcone dataset.
+        This function accepts wildcards. For exampe, "lsst*" will select all columns
+        that start with "lsst", while "*host*" will select all columns that have
+        "host" somewhere in the middle.
+
+        You can also create new columns as part of this call, as long as they are
+        derived from other columns in the dataset. For example:
+
+        .. code-block:: python
+
+            import opencosmo as oc
+            from opencosmo.column import add_mag_cols
+
+            dataset = oc.open("galaxy_catalog.hdf5")
+            total_mag = add_mag_cols("lsst_g", "lsst_r", "lsst_i", "lsst_z", "lsst_y")
+            # Note, you can also use oc.col to do this manually
+
+
+            dataset = dataset.select("ra", "dec", "*host*", "lsst*", lsst_total = total_mag)
+
+        This new dataset will contain the :code:`ra` and :code:`dec` columns, all the columns
+        with :code:`host` somewhere in the name, all the columns that start with :code:`lsst`
+        and a newly-constructed :code:`lsst_total` column.
+
+
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The column or columns to select.
+
+        **derived_columns : DerivedColumn
+            Additional columns to create as part of the selection.
 
         Returns
         -------
-        dataset : Dataset
-            The new dataset with only the selected columns.
+        dataset : Lightcone
+            The new lightcone with only the selected columns.
 
         Raises
         ------
         ValueError
-            If any of the given columns are not in the dataset.
+            If any of the required columns are not in the dataset.
         """
-        if isinstance(columns, str):
-            columns = [columns]
-        columns = set(columns)
+        all_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            all_columns.update(col_group)
+
         hidden = self.__hidden
+        additional_columns = set()
 
         if "redshift" not in columns:
-            columns.add("redshift")
+            additional_columns.add("redshift")
             hidden = hidden.union({"redshift"})
 
-        if self.__ordered_by is not None and self.__ordered_by[0] not in columns:
-            columns.add(self.__ordered_by[0])
+        if self.__ordered_by is not None and self.__ordered_by[0] not in all_columns:
+            additional_columns.add(self.__ordered_by[0])
             hidden = hidden.union({self.__ordered_by[0]})
 
-        return self.__map("select", columns, hidden=hidden)
+        return self.__map(
+            "select",
+            all_columns,
+            additional_columns,
+            mapped_arguments={},
+            hidden=hidden,
+            construct=True,
+            **derived_columns,
+        )
 
-    def drop(self, columns: str | Iterable[str]) -> Self:
+    def drop(self, *columns: str | Iterable[str]) -> Self:
         """
         Produce a new dataset by dropping columns from this dataset.
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The column or columns to drop.
 
         Returns
         -------
-        dataset : Dataset
-            The new dataset without the dropped columns
+        dataset : Lightcone
+            The new lightcone without the dropped columns
 
         Raises
         ------
         ValueError
             If any of the given columns are not in the dataset.
         """
-        if isinstance(columns, str):
-            columns = [columns]
+        dropped_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            dropped_columns.update(col_group)
 
-        dropped_columns = set(columns)
         current_columns = set(self.columns)
         if missing := dropped_columns.difference(current_columns):
             raise ValueError(

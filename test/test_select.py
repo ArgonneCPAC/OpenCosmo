@@ -25,6 +25,22 @@ def test_select(input_path):
     assert set(selected_cols) == set(selected_data.columns)
 
 
+def test_select_complex(input_path):
+    dataset = oc.open(input_path)
+    data = dataset.get_data()
+    cols = list(data.columns)
+    # select 10 columns at random
+    selected_cols = np.random.choice(cols, 10, replace=False)
+    selected_cols_2 = np.random.choice(cols, 5, replace=False)
+    selected = dataset.select(*selected_cols, selected_cols_2)
+    selected_data = selected.get_data()
+    all_selected_cols = set(selected_cols).union(selected_cols_2)
+
+    for col in all_selected_cols:
+        assert np.all(data[col] == selected_data[col])
+    assert all_selected_cols == set(selected_data.columns)
+
+
 def test_chained_select(input_path):
     dataset = oc.open(input_path)
     data = dataset.get_data()
