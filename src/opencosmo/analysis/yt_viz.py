@@ -369,6 +369,10 @@ def halo_projection_array(
         A Matplotlib Figure object.
     """
 
+    # convert to comoving because astropy's "littleh" units aren't
+    # easily translatable to yt's unit conventions
+    data = data.with_units("comoving")
+
     halo_ids = np.atleast_2d(halo_ids)
 
     # determine shape of figure
