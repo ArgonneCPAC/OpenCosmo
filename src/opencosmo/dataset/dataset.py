@@ -289,7 +289,6 @@ class Dataset:
         data = self.__state.get_data(
             unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
         )  # dict
-        print(data)
         if unpack:
             data = {
                 key: value[0]
@@ -354,8 +353,6 @@ class Dataset:
             return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
-            print(self.__state.region)
-            print(check_region)
             warn(
                 "You're querying with a region that is not fully contained by the "
                 "region this dataset is in. This may result in unexpected behavior"
