@@ -17,6 +17,7 @@ import numpy as np
 from astropy.table import QTable  # type: ignore
 from deprecated.sphinx import deprecated
 
+from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.index import into_array, mask, project
@@ -352,8 +353,6 @@ class Dataset:
             return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
-            print(self.__state.region)
-            print(check_region)
             warn(
                 "You're querying with a region that is not fully contained by the "
                 "region this dataset is in. This may result in unexpected behavior"
@@ -543,17 +542,36 @@ class Dataset:
                 }
             yield output_data
 
-    def select(self, columns: str | Iterable[str]) -> Dataset:
+    def select(
+        self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
+    ) -> Dataset:
         """
         Create a new dataset from a subset of columns in this dataset. This
         function accepts wildcards. For exampe, "fof*" will select all columns
         that start with "fof", while "*com*" will select all columns that have
         "com" somewhere in the middle.
 
+        You can also create new columns as part of this call, as long as they are
+        derived from other columns in the dataset. For example:
+
+        .. code-block:: python
+
+           dataset = oc.open("haloproperties.hdf5")
+           fof_halo_px = oc.col("fof_halo_mass")*oc.col("fof_halo_com_vx")
+
+           dataset = dataset.select("fof_halo_mass", "*com*", fof_halo_px=fof_halo_px)
+
+        This new dataset will contain the :code:`fof_halo_mass` columns, all the columns
+        with :code:`com` in the center (e.g. :code:`fof_halo_com_vx`) and a new
+        :code:`fof_halo_px` column.
+
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The column or columns to select.
+
+        **derived_columns : DerivedColumn
+            Any new derived columns that will be instantiated as part of the select
 
         Returns
         -------
@@ -565,14 +583,25 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        new_state = self.__state.select(columns)
+        all_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            all_columns.update(col_group)
+
+        new_state = self.__state
+        if derived_columns:
+            new_state = new_state.with_new_columns({}, **derived_columns)
+            all_columns.update(derived_columns.keys())
+
+        new_state = new_state.select(all_columns)
         return Dataset(
             self.__header,
             new_state,
             self.__tree,
         )
 
-    def drop(self, columns: str | Iterable[str]) -> Dataset:
+    def drop(self, *columns: str | Iterable[str]) -> Dataset:
         """
         Create a new dataset without the provided columns. This
         function accepts wildcards. For exampe, "fof*" will drop all columns
@@ -581,7 +610,7 @@ class Dataset:
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The columns to drop
 
         Returns
@@ -595,7 +624,14 @@ class Dataset:
             If any of the provided columns are not in the dataset.
 
         """
-        new_state = self.__state.select(columns, drop=True)
+
+        all_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            all_columns.update(col_group)
+
+        new_state = self.__state.select(all_columns, drop=True)
         return Dataset(
             self.__header,
             new_state,

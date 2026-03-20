@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
 
-    from opencosmo.column.column import ColumnMask
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
@@ -870,14 +870,19 @@ class HealpixMap(dict):
         """
         yield from chain.from_iterable(v.rows() for v in self.values())
 
-    def select(self, columns: str | Iterable[str]) -> Self:
+    def select(
+        self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
+    ) -> Self:
         """
-        Create a new map from a subset of columns in this map.
+        Create a new map from a subset of columns in this map. This function
+        behaves the same as :py:meth:`Dataset.select <opencosmo.Dataset.select>`.
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The column or columns to select.
+        **derived_columns: DerivedColumn
+            Any new derived columns that will be instantiated as part of the select
 
         Returns
         -------
@@ -889,16 +894,26 @@ class HealpixMap(dict):
         ValueError
             If any of the given columns are not in the dataset.
         """
+        all_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            all_columns.update(col_group)
 
-        if isinstance(columns, str):
-            columns = [columns]
-        columns = set(columns)
-        hidden = self.__hidden
+        hidden = self.__hidden | set()
 
-        if self.__ordered_by is not None and self.__ordered_by[0] not in columns:
-            columns.add(self.__ordered_by[0])
+        if self.__ordered_by is not None and self.__ordered_by[0] not in all_columns:
+            all_columns.add(self.__ordered_by[0])
+            hidden.add(self.__ordered_by[0])
 
-        return self.__map("select", columns, hidden=hidden)
+        return self.__map(
+            "select",
+            all_columns,
+            hidden=hidden,
+            mapped_arguments={},
+            construct=True,
+            **derived_columns,
+        )
 
     def drop(self, columns: str | Iterable[str]) -> Self:
         """

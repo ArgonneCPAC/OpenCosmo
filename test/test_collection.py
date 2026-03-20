@@ -199,6 +199,59 @@ def test_select_nested_structures(halo_paths, galaxy_paths):
         assert set(halo["galaxies"]["star_particles"].columns) == {"x", "y", "z"}
 
 
+def test_select_nested_structures_with_derived(halo_paths, galaxy_paths):
+    collection = (
+        oc.open(*halo_paths, *galaxy_paths)
+        .filter(oc.col("fof_halo_mass") > 1e14)
+        .take(10)
+    )
+    collection = collection.select(
+        halo_properties={
+            "columns": [
+                "fof_halo_mass",
+                "fof_halo_com_vx",
+                "fof_halo_center_x",
+                "fof_halo_center_y",
+                "fof_halo_center_z",
+            ],
+            "derived_columns": {
+                "fof_halo_px": oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+            },
+        },
+        dm_particles=["x", "y", "z"],
+        galaxies={
+            "galaxy_properties": {
+                "columns": ["gal_mass_bar", "gal_mass_star"],
+                "derived_columns": {
+                    "gal_star_px": oc.col("gal_mass_star") * oc.col("gal_com_vx")
+                },
+            },
+            "star_particles": ["x", "y", "z"],
+        },
+    )
+    for halo in collection.halos():
+        assert set(halo["halo_properties"].keys()) == {
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+            "fof_halo_com_vx",
+            "fof_halo_mass",
+            "fof_halo_px",
+        }
+        assert (
+            halo["halo_properties"]["fof_halo_px"]
+            == halo["halo_properties"]["fof_halo_mass"]
+            * halo["halo_properties"]["fof_halo_com_vx"]
+        )
+        assert set(halo["dm_particles"].columns) == {"x", "y", "z"}
+        assert set(halo["galaxies"]["galaxy_properties"].columns) == {
+            "gal_mass_bar",
+            "gal_mass_star",
+            "gal_star_px",
+        }
+        assert set(halo["galaxies"]["star_particles"].columns) == {"x", "y", "z"}
+
+
 def test_visit_single(halo_paths):
     collection = oc.open(*halo_paths).take(100)
     spec = {
