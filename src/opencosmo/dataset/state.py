@@ -510,7 +510,7 @@ class DatasetState:
 
     def get_sorted_index(self):
         if self.__sort_by is not None:
-            column = self.select(self.__sort_by[0]).get_data(ignore_sort=True)[
+            column = self.select({self.__sort_by[0]}).get_data(ignore_sort=True)[
                 self.__sort_by[0]
             ]
             sorted = np.argsort(column)

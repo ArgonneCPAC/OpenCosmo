@@ -207,9 +207,10 @@ class SimulationCollection(dict):
         """
         Select a set of columns in the datasets in this collection. This method
         calls the underlying method in :class:`opencosmo.Dataset`, or
-        :class:`opencosmo.Collection` depending on the context. As such
+        :class:`opencosmo.StructureCollection` depending on the context. As such
         its behavior and arguments can vary depending on what this collection
-        contains.
+        contains. See the documentation for those objects to determine
+        the expected arguments.
 
         Parameters
         ----------
