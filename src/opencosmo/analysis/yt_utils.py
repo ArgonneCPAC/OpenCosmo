@@ -91,6 +91,11 @@ def create_yt_dataset(
         if array.unit is None:
             return unyt_array(array.data, "dimensionless")
 
+        if "littleh" in str(array.unit):
+            raise RuntimeError("cannot convert factors of littleh to yt convention, "
+                               "try converting the opencosmo dataset to comoving units "
+                               "(e.g. set `ds = ds.with_units(\"comoving\"))`")
+
         return unyt_array.from_astropy(array)
 
     for ptype in data.keys():

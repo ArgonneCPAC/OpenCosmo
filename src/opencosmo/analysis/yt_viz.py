@@ -369,6 +369,10 @@ def halo_projection_array(
         A Matplotlib Figure object.
     """
 
+    # convert to comoving because astropy's "littleh" units aren't
+    # easily translatable to yt's unit conventions
+    data = data.with_units("comoving")
+
     halo_ids = np.atleast_2d(halo_ids)
 
     # determine shape of figure
@@ -457,7 +461,7 @@ def halo_projection_array(
             Rh = unyt_quantity.from_astropy(halo_properties["sod_halo_radius"])
 
             field, weight_field, zlim, width = (
-                fields[i][j],
+                tuple(fields[i][j]),
                 weight_fields[i][j],
                 zlims[i][j],
                 widths[i][j],
