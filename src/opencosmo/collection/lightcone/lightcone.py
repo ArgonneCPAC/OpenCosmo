@@ -482,7 +482,8 @@ class Lightcone(dict):
         if self.__ordered_by is not None:
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
 
-        table.remove_columns(self.__hidden)
+        to_remove = self.__hidden.intersection(table.colnames)
+        table.remove_columns(to_remove)
         if format != "astropy":
             return convert_data(dict(table), format)
         elif len(table.columns) == 1:
@@ -957,7 +958,7 @@ class Lightcone(dict):
         hidden = self.__hidden
         additional_columns = set()
 
-        if "redshift" not in columns:
+        if "redshift" not in all_columns:
             additional_columns.add("redshift")
             hidden = hidden.union({"redshift"})
 

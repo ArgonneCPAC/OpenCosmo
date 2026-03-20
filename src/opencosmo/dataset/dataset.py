@@ -289,6 +289,7 @@ class Dataset:
         data = self.__state.get_data(
             unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
         )  # dict
+        print(data)
         if unpack:
             data = {
                 key: value[0]
