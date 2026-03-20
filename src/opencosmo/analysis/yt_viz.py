@@ -461,7 +461,7 @@ def halo_projection_array(
             Rh = unyt_quantity.from_astropy(halo_properties["sod_halo_radius"])
 
             field, weight_field, zlim, width = (
-                fields[i][j],
+                tuple(fields[i][j]),
                 weight_fields[i][j],
                 zlims[i][j],
                 widths[i][j],
