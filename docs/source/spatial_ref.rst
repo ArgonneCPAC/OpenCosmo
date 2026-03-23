@@ -5,6 +5,7 @@ Regions can be used to spatially query datasets and collections. Regions are con
 
 .. autofunction:: opencosmo.make_box 
 .. autofunction:: opencosmo.make_cone
+.. autofunction:: opencosmo.make_skybox
 
 .. autoclass:: opencosmo.spatial.BoxRegion
    :members:
