@@ -1,10 +1,11 @@
 name: release
 on:
-  push:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
-      - '[0-9]+.[0-9]+.[0-9]+b[0-9]+'
-      - '[0-9]+.[0-9]+.[0-9]+rc[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.2.0, 1.2.0b1, 1.2.0rc1)'
+        required: true
+        type: string
 
 jobs:
   release:
@@ -22,8 +23,8 @@ jobs:
         with:
           version: "0.8.2"
 
-      - name: Extract version from tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      - name: Set version
+        run: echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
 
       - name: Bump version files
         # Uses --new-version so you don't need to specify major/minor/patch.
@@ -38,14 +39,16 @@ jobs:
         # Writes to docs/source/changelog.rst and removes news fragments in changes/
         run: uv run towncrier build --yes --version ${{ env.VERSION }}
 
-      - name: Commit to release branch
+      - name: Commit, tag, and push release branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -B release
           git add --all
           git commit -m "Release ${{ env.VERSION }}"
+          git tag ${{ env.VERSION }}
           git push origin release --force
+          git push origin ${{ env.VERSION }}
 
       - name: Build package
         run: uv build
@@ -56,6 +59,7 @@ jobs:
       - name: Create GitHub release
         uses: ncipollo/release-action@v1
         with:
+          tag: ${{ env.VERSION }}
           bodyFile: release_notes.rst
           artifacts: dist/*
           makeLatest: true
