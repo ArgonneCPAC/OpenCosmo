@@ -1,4 +1,4 @@
-from typing import Any, Sequence
+from typing import Any
 
 import astropy.units as u
 import numpy as np
@@ -46,22 +46,3 @@ def make_output_from_first_values(first_values: dict, n_rows: int):
 
         storage[name][0] = value
     return storage
-
-
-def prepare_kwargs(
-    n_rows: int, evaluator_kwargs: dict[str, Any]
-) -> tuple[dict[str, Any], dict[str, Sequence]]:
-    kwargs = {}
-    array_kwargs = {}
-    for name, kwarg in evaluator_kwargs.items():
-        try:
-            length = len(kwarg)
-            if length == n_rows:
-                array_kwargs[name] = kwarg
-                continue
-            kwargs[name] = kwarg
-
-        except TypeError:
-            kwargs[name] = kwarg
-
-    return kwargs, array_kwargs
