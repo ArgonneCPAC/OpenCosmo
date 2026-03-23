@@ -1,0 +1,1 @@
+Fix a bug that could cause evaluations to fail with small numbers of columns.

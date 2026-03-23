@@ -92,7 +92,7 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
         batch_data = (
             dataset.select(column.requires)
             .take_range(start, end)
-            .get_data(format=column.format)
+            .get_data(format=column.format, unpack=False)
         )
         try:
             batch_data = dict(batch_data)
