@@ -79,6 +79,7 @@ ignore_missing_imports = true
 [tool.towncrier]
 directory = "changes"
 package = "opencosmo"
+name = "opencosmo"
 filename = "docs/source/changelog.rst"
 
 [tool.pytest.ini_options]
@@ -99,6 +100,7 @@ max-doc-length = 90
 future-annotations = true
 preview = true
 extend-select = ["TC"]
+
 
 [tool.towncrier.fragment.improvement]
 name = "Improvements"
