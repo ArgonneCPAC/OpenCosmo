@@ -9,7 +9,7 @@ from .dataset import Dataset
 from .io import open, write
 from .spatial import make_box, make_cone, make_skybox
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 __all__ = [
     "write",
