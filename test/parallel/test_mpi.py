@@ -772,7 +772,7 @@ def test_visit_batched_lazy(input_path):
         assert np.all(fof_total_split == np.cumsum(halo_mass_split))
 
 
-@pytest.mark.parallel
+@pytest.mark.parallel(nprocs=4)
 def test_visit_batched_astropy(input_path):
     ds = oc.open(input_path)
     batch_size = 1_000
