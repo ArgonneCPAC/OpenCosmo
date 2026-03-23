@@ -1,3 +1,0 @@
-- :py:class:`halo_projection_array <opencosmo.analysis.halo_projection_array>` visualizations now support empty panels.
-- Added ``cmap_norm`` and ``cmap_norms`` parameters to :py:class:`halo_projection_array <opencosmo.analysis.halo_projection_array>`
-- Changed the default text label color to `"lightgray"`

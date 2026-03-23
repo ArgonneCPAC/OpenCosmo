@@ -17,6 +17,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT }}
+          ref: 'release'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
