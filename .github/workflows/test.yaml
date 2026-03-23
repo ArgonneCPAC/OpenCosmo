@@ -113,4 +113,4 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          uv run pytest test/parallel
+          mpiexec -n 4 uv run pytest test/parallel
