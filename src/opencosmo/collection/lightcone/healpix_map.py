@@ -14,7 +14,6 @@ from astropy.table import Column, vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
-from opencosmo.evaluate import prepare_kwargs
 from opencosmo.index import into_array
 from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
@@ -777,14 +776,6 @@ class HealpixMap(dict):
         dataset : HealpixMap
             The new lightcone dataset with the evaluated column(s)
         """
-        kwargs, iterable_kwargs = prepare_kwargs(len(self), evaluate_kwargs)
-        iterable_kwargs_by_dataset = {}
-        indices = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))[
-            :-1
-        ]
-        for name, arr in iterable_kwargs.items():
-            splits = np.array_split(arr, indices)
-            iterable_kwargs_by_dataset[name] = dict(zip(self.keys(), splits))
 
         result = self.__map(
             "evaluate",
@@ -792,9 +783,9 @@ class HealpixMap(dict):
             format=format,
             vectorize=vectorize,
             insert=insert,
-            mapped_arguments=iterable_kwargs_by_dataset,
+            mapped_arguments={},
             construct=insert,
-            **kwargs,
+            **evaluate_kwargs,
         )
         if next(iter(result.values())) is None:
             return
