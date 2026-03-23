@@ -1088,7 +1088,7 @@ wheels = [
 
 [[package]]
 name = "opencosmo"
-version = "1.2.2"
+version = "1.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
@@ -1145,7 +1145,7 @@ test-mpi = [
 requires-dist = [
     { name = "astropy", specifier = ">=7.2.0,<8.0.0" },
     { name = "click", specifier = ">=8.2.1,<9.0.0" },
-    { name = "deprecated", specifier = ">=1.2.28,<2.0.0" },
+    { name = "deprecated", specifier = ">=1.2.38,<2.0.0" },
     { name = "h5py", specifier = ">=3.12.1,<4.0.0" },
     { name = "hdf5plugin", specifier = ">=5.0.0,!=5.1" },
     { name = "healpy", specifier = ">=1.19.0,<2.0.0" },
@@ -1167,7 +1167,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "ruff", specifier = ">=0.9.4,<1.0.0" },
     { name = "towncrier", specifier = ">=24.8.0,<25.0.0" },
-    { name = "types-deprecated", specifier = ">=1.2.25.20250304" },
+    { name = "types-deprecated", specifier = ">=1.2.35.20250304" },
 ]
 docs = [
     { name = "autodoc-pydantic", specifier = ">=2.2.0,<3.0.0" },

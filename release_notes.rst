@@ -1,16 +1,10 @@
-opencosmo 1.2.2 (2026-03-23)
+opencosmo 1.2.3 (2026-03-23)
 ============================
 
-Bugfixes
---------
+Deprecations and Removals
+-------------------------
 
-- Fix a bug that could cause evaluations to fail with small numbers of columns.
-
-
-Improvements
-------------
-
-- Bumped numba version to >=0.64 to allow support for numpy == 2.4
+- :py:meth:`evaluate <opencosmo.Dataset.evaluate>` no longer broadcasts array keyword arguments that have the same length as the dataset. You can still use arrays in this way by setting :code:`vectorize = True` or first inserting the array as a new column with :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
 
 
 
