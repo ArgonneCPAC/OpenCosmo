@@ -10,7 +10,6 @@ from opencosmo import dataset as ds
 from opencosmo.evaluate import (
     insert_data,
     make_output_from_first_values,
-    prepare_kwargs,
 )
 
 if TYPE_CHECKING:
@@ -83,18 +82,13 @@ def evaluate_into_properties(
     kwargs: dict[str, Any],
     insert: bool,
 ):
-    kwargs, iterable_kwargs = prepare_kwargs(len(collection), kwargs)
-
-    storage = __make_output(
-        function, collection, format, kwargs, iterable_kwargs, insert
-    )
+    storage = __make_output(function, collection, format, kwargs, {}, insert)
     for i, structure in enumerate(collection.objects()):
         if i == 0:
             continue
-        iterable_kwarg_values = {name: arr[i] for name, arr in iterable_kwargs.items()}
         input_structure = __make_input(structure, format)
 
-        output = function(**input_structure, **kwargs, **iterable_kwarg_values)
+        output = function(**input_structure, **kwargs)
         if storage is not None:
             insert_data(storage, i, output)
 
@@ -109,18 +103,14 @@ def evaluate_into_dataset(
     dataset: str,
     insert: bool,
 ):
-    kwargs, iterable_kwargs = prepare_kwargs(len(collection[dataset]), kwargs)
-    storage = __make_chunked_output(
-        function, collection, dataset, format, kwargs, iterable_kwargs
-    )
+    storage = __make_chunked_output(function, collection, dataset, format, kwargs, {})
 
     for i, structure in enumerate(collection.objects()):
         if i == 0:
             continue
-        iterable_kwarg_values = {name: arr[i] for name, arr in iterable_kwargs.items()}
         input_structure = __make_input(structure, format)
 
-        output = function(**input_structure, **kwargs, **iterable_kwarg_values)
+        output = function(**input_structure, **kwargs)
         if not isinstance(output, dict):
             output = {function.__name__: output}
 

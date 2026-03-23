@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import astropy.units as u
 import numpy as np
 
-from opencosmo.evaluate import insert_data, prepare_kwargs
+from opencosmo.evaluate import insert_data
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
@@ -21,12 +21,10 @@ class EvaluateStrategy(Enum):
 
 def evaluate_rows(data: dict[str, np.ndarray], func: Callable, kwargs: dict[str, Any]):
     data_length = len(next(iter(data.values())))
-    kwargs_, iterable_kwargs = prepare_kwargs(data_length, kwargs)
-    iterable_data = data | iterable_kwargs
     storage = {}
     for i in range(data_length):
-        iterable_inputs = {name: values[i] for name, values in iterable_data.items()}
-        output = func(**iterable_inputs, **kwargs_)
+        iterable_inputs = {name: values[i] for name, values in data.items()}
+        output = func(**iterable_inputs, **kwargs)
         if not isinstance(output, dict):
             output = {func.__name__: output}
         if i == 0:
@@ -63,15 +61,13 @@ def evaluate_chunks(
     index: ChunkedIndex,
 ):
     data_length = len(next(iter(data.values())))
-    kwargs_, iterable_kwargs = prepare_kwargs(data_length, kwargs)
-    input_data = data | iterable_kwargs
 
     chunk_splits = np.cumsum(index[1])
     storage = {}
     input_data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
     for i in range(len(chunk_splits)):
         chunk_input_data = {name: split[i] for name, split in input_data.items()}
-        output = func(**chunk_input_data, **kwargs_)
+        output = func(**chunk_input_data, **kwargs)
         if not isinstance(output, dict):
             output = {func.__name__: output}
         if i == 0:

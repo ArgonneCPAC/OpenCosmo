@@ -26,7 +26,6 @@ from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.evaluate import prepare_kwargs
 from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
@@ -795,24 +794,17 @@ class Lightcone(dict):
             The new lightcone dataset with the evaluated column(s)
         """
 
-        kwargs, iterable_kwargs = prepare_kwargs(len(self), evaluate_kwargs)
         mapped_kwargs = {}
-        indices = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))[
-            :-1
-        ]
-        for name, arr in iterable_kwargs.items():
-            splits = np.array_split(arr, indices)
-            mapped_kwargs[name] = dict(zip(self.keys(), splits))
-        kwargs_names = list(kwargs.keys())
+        kwargs_names = list(evaluate_kwargs.keys())
         for name in kwargs_names:
-            if isinstance(kwargs[name], dict) and set(kwargs[name].keys()) == set(
-                self.keys()
-            ):
-                mapped_kwargs[name] = kwargs.pop(name)
+            if isinstance(evaluate_kwargs[name], dict) and set(
+                evaluate_kwargs[name].keys()
+            ) == set(self.keys()):
+                mapped_kwargs[name] = evaluate_kwargs.pop(name)
 
         if insert:
             name, dataset_to_verify = next(iter(self.items()))
-            ds_kwargs = kwargs | {
+            ds_kwargs = evaluate_kwargs | {
                 argname: vals[name] for argname, vals in mapped_kwargs.items()
             }
 
@@ -851,7 +843,7 @@ class Lightcone(dict):
             mapped_arguments=mapped_kwargs,
             batch_size=batch_size,
             construct=insert,
-            **kwargs,
+            **evaluate_kwargs,
         )
         if next(iter(result.values())) is None:
             return
