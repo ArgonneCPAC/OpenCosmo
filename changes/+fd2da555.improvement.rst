@@ -1,1 +1,0 @@
-The :py:meth:`open <opencosmo.open>` function has been rewritten to be more systematic, and significant internal documentation has been added to provide context around the decision making process.

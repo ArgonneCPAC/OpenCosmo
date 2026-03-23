@@ -1,2 +1,0 @@
-Fix a bug that could cause spatial queries to fail if there were no objects in the parts of the spatial index that
-partially intersect with the query region.
