@@ -1,1 +1,0 @@
-Bumped numba version to >=0.64 to allow support for numpy == 2.4
