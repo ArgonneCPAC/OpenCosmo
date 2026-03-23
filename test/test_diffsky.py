@@ -217,6 +217,25 @@ def test_mag_units(core_path_475, core_path_487):
         assert col.unit == u.ABmag
 
 
+def test_select_with_derived(core_path_475, core_path_487):
+    dataset = oc.open(core_path_475, core_path_487)
+    host_columns = [col for col in dataset.columns if "host" in col]
+    lsst_columns = [col for col in dataset.columns if col.startswith("lsst")]
+    mag_cols = ["lsst_g", "lsst_r", "lsst_i", "lsst_z", "lsst_y"]
+    total_mag = add_mag_cols(*mag_cols)
+    # Note, you can also use oc.col to do this manually
+
+    dataset = dataset.select("ra", "dec", "*host*", "lsst*", lsst_total=total_mag)
+
+    data = dataset.get_data()
+    selected_columns = set(data.columns)
+
+    assert selected_columns.issuperset(host_columns)
+    assert selected_columns.issuperset(lsst_columns)
+    for col in mag_cols:
+        assert np.all(data[col] > data["lsst_total"])
+
+
 def test_add_mag_units(core_path_475, core_path_487):
     ds = oc.open(core_path_487, core_path_475)
     mag_columns = list(filter(lambda c: "lsst_" in c, ds.columns))

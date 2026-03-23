@@ -96,6 +96,20 @@ def test_lc_collection_select(
     assert columns_found == to_select
 
 
+def test_lc_collection_select_complex(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    columns = ds.columns
+    to_select = set(random.choice(columns, 10))
+    to_select_2 = set(random.choice(columns, 5))
+
+    ds = ds.select(*list(to_select), to_select_2)
+    columns_found = set(ds.get_data().columns)
+
+    assert columns_found == to_select.union(to_select_2)
+
+
 def test_lc_collection_select_numpy(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
@@ -108,6 +122,20 @@ def test_lc_collection_select_numpy(
     assert isinstance(data, dict)
     assert all(ts in data.keys() for ts in to_select)
     assert all(isinstance(col, np.ndarray) for col in data.values())
+
+
+def test_lc_collection_drop_complex(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    columns = ds.columns
+    to_drop = set(random.choice(columns, 10))
+    to_drop_2 = set(random.choice(columns, 10))
+
+    ds = ds.drop(*to_drop, list(to_drop_2))
+    columns_found = set(ds.get_data().columns)
+
+    assert not columns_found.intersection(to_drop.union(to_drop_2))
 
 
 def test_lc_collection_drop(haloproperties_600_path, haloproperties_601_path, tmp_path):

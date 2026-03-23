@@ -1,0 +1,1 @@
+:py:meth:`select <opencosmo.Dataset.select>` no longer requires column names to be passed as a list or tuple.
