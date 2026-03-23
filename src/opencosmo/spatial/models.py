@@ -1,3 +1,4 @@
+import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
 
 
@@ -5,6 +6,12 @@ class BoxRegionModel(BaseModel):
     model_config = ConfigDict(frozen=True)
     p1: tuple[float, float, float]
     p2: tuple[float, float, float]
+
+
+class SkyboxRegionModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    p1: tuple[float, float]
+    p2: tuple[float, float]
 
 
 class ConeRegionModel(BaseModel):
@@ -20,7 +27,8 @@ class HealpixRegionModel(BaseModel):
 
     @field_serializer("pixels")
     def serialize_pixels(self, value):
-        return list(value)
+        pixels = np.array(list(value))
+        return np.sort(pixels).tolist()
 
 
-RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel
+RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel | SkyboxRegionModel

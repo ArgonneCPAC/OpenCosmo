@@ -1,0 +1,1 @@
+:py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` now accept simple columns created with :py:meth:`oc.col <opencosmo.col>`, effectively allowing for renaming.

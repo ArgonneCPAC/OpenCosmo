@@ -69,7 +69,7 @@ def visit_dataset(
 ):
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
-    data = dataset.select(column.requires).get_data(output=column.format)
+    data = dataset.select(column.requires).get_data(format=column.format)
     try:
         data = dict(data)
     except (TypeError, ValueError):
@@ -92,7 +92,7 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
         batch_data = (
             dataset.select(column.requires)
             .take_range(start, end)
-            .get_data(output=column.format)
+            .get_data(format=column.format)
         )
         try:
             batch_data = dict(batch_data)
@@ -147,14 +147,25 @@ def verify_for_lazy_evaluation(
             )
 
     if isinstance(first_values, dict):
+        units = {
+            name: val.unit if isinstance(val, Quantity) else None
+            for name, val in first_values.items()
+        }
         produces = set(first_values.keys())
     else:
+        units = {
+            func.__name__: first_values.unit
+            if isinstance(first_values, Quantity)
+            else None
+        }
         produces = {func.__name__}
+
     column = EvaluatedColumn(
         func,
         required_columns,
         produces,
         format,
+        units,
         eval_strategy,
         batch_size,
         **evaluator_kwargs,

@@ -17,11 +17,11 @@ if TYPE_CHECKING:
 
 
 def make_unit_handler(
-    group: h5py.Group,
+    columns: list[h5py.Dataset],
     header: "OpenCosmoHeader",
     target_convention: Optional[UnitConvention] = None,
 ):
-    applicators = get_unit_applicators_hdf5(group, header)
+    applicators = get_unit_applicators_hdf5(columns, header)
     if target_convention is None:
         target_convention = header.file.unit_convention
     if not isinstance(target_convention, UnitConvention):
@@ -65,6 +65,16 @@ class UnitHandler:
     @cached_property
     def base_units(self):
         return {key: app.base_unit for key, app in self.__applicators.items()}
+
+    @property
+    def current_units(self):
+        return {
+            key: self.__conversions.get(
+                str(app.unit_in_convention(self.__current_convention)),
+                app.unit_in_convention(self.__current_convention),
+            )
+            for key, app in self.__applicators.items()
+        } | self.__column_conversions
 
     @cached_property
     def unitless_columns(self):

@@ -215,6 +215,7 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
 
 def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
     all_metadata = comm.allgather(metadata)
+
     if not all(md == all_metadata[0] for md in all_metadata[1:]):
         raise ValueError("Not all ranks recieved the same metadata!")
 
@@ -455,7 +456,11 @@ def __write_column(
         case ColumnCombineStrategy.CONCAT:
             if writer is not None:
                 data = writer.get_data(new_comm)
-                ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
+            else:
+                data = np.empty((0,), dtype=ds.dtype)
+
+            ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
+
         case ColumnCombineStrategy.SUM:
             if writer is None:
                 data = np.zeros(ds.shape, ds.dtype)
@@ -468,10 +473,11 @@ def __write_column(
                 data += ds[:]
                 ds[:] = data
 
-    if new_comm is not None:
+    if new_comm is not None and new_comm != MPI.COMM_NULL:
         assert new_group is not None
         new_comm.Free()
         new_group.Free()
     if comm is not None:
         comm.Barrier()
+
     ds.file.flush()

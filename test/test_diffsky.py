@@ -58,8 +58,10 @@ def per_test_dir(
 
 def test_comoving_to_physical(core_path_487):
     cores = oc.open(core_path_487, synth_cores=True).select(["redshift_true", "x"])
-    data_physical = cores.with_units("physical").select(["redshift_true", "x"]).data
-    data_comoving = cores.select(["redshift_true", "x"]).data
+    data_physical = (
+        cores.with_units("physical").select(["redshift_true", "x"]).get_data()
+    )
+    data_comoving = cores.select(["redshift_true", "x"]).get_data()
     a = 1 / (data_physical["redshift_true"] + 1)
     assert np.all(np.isclose(data_physical["x"], data_comoving["x"] * a))
 
@@ -71,8 +73,8 @@ def test_comoving_to_scalefree(core_path_487):
 
 def test_comoving_to_unitless(core_path_487):
     ds = oc.open(core_path_487, synth_cores=True)
-    data = ds.data
-    data_unitless = ds.with_units("unitless").data
+    data = ds.get_data()
+    data_unitless = ds.with_units("unitless").get_data()
     for col in data.columns:
         assert np.all(data[col].value == data_unitless[col].value)
 
@@ -81,9 +83,9 @@ def test_filter_take(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487, synth_cores=True)
     ds = ds.filter(oc.col("logsm_obs") < 12, oc.col("logsm_obs") > 10)
     ds = ds.select("logsm_obs")
-    assert ds.data.max().value < 12 and ds.data.min().value > 10
+    assert ds.get_data().max().value < 12 and ds.get_data().min().value > 10
     ds = ds.take(10)
-    assert ds.data.max().value < 12 and ds.data.min().value > 10
+    assert ds.get_data().max().value < 12 and ds.get_data().min().value > 10
 
 
 def test_open_multiple_write(core_path_487, core_path_475, per_test_dir):
@@ -215,6 +217,25 @@ def test_mag_units(core_path_475, core_path_487):
         assert col.unit == u.ABmag
 
 
+def test_select_with_derived(core_path_475, core_path_487):
+    dataset = oc.open(core_path_475, core_path_487)
+    host_columns = [col for col in dataset.columns if "host" in col]
+    lsst_columns = [col for col in dataset.columns if col.startswith("lsst")]
+    mag_cols = ["lsst_g", "lsst_r", "lsst_i", "lsst_z", "lsst_y"]
+    total_mag = add_mag_cols(*mag_cols)
+    # Note, you can also use oc.col to do this manually
+
+    dataset = dataset.select("ra", "dec", "*host*", "lsst*", lsst_total=total_mag)
+
+    data = dataset.get_data()
+    selected_columns = set(data.columns)
+
+    assert selected_columns.issuperset(host_columns)
+    assert selected_columns.issuperset(lsst_columns)
+    for col in mag_cols:
+        assert np.all(data[col] > data["lsst_total"])
+
+
 def test_add_mag_units(core_path_475, core_path_487):
     ds = oc.open(core_path_487, core_path_475)
     mag_columns = list(filter(lambda c: "lsst_" in c, ds.columns))
@@ -256,6 +277,7 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     assert isinstance(ds.region, HealpixRegion)
+    print(ds.region.pixels)
     assert len(ds.region.pixels) == 502
 
 

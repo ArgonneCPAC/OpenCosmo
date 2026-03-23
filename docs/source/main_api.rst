@@ -199,6 +199,22 @@ For small datasets, it is usually not an issue to request all the columns in a g
       .select(["fof_halo_mass", "sod_halo_cdelta"]) 
       # This will raise an error, because sod_halo_cdelta was not in the first select
 
+:code:`select` also accepts wildcards, allowing you to select large subsets of related columns without typing them all out explicitly:
+
+.. code-block:: python
+
+   ds = oc.open("haloproperties.hdf5")
+   ds = ds.select(["fof*", "*com*"])
+
+
+There also is an equivalent :code:`drop` function, which drops columns instead of selecting them:
+
+.. code-block:: python
+
+   ds = oc.open("haloproperties.hdf5")
+   ds = ds.drop(["fof*", "block"])
+
+
 Filters and selects generally behave as you might expect. If you select *after* filtering, the resulting dataset will only have the columns that were selected for the rows that passed the filter. If you select *before* filtering, the filter can only use columns that were included in the select. For example, this works:
 
 .. code-block:: python

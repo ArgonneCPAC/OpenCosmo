@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
 
 
@@ -31,7 +31,7 @@ class Collection(Protocol):
 
     @classmethod
     def open(
-        cls, targets: list[OpenTarget], **kwargs
+        cls, targets: list[FileTarget], **kwargs
     ) -> Union["Collection", Dataset]: ...
 
     def make_schema(self) -> Schema: ...

@@ -1,7 +1,6 @@
 import astropy.units as u
 import numpy as np
 import pytest
-from astropy.coordinates import SkyCoord
 from astropy.cosmology import units as cu
 from numpy import random
 
@@ -33,112 +32,23 @@ def structure_601(lightcone_path, all_files):
     return [lightcone_path / "step_601" / f for f in all_files]
 
 
-def test_healpix_index(haloproperties_600_path):
-    ds = oc.open(haloproperties_600_path)
-    raw_data = ds.data
+def test_create_theta_phi_coords(haloproperties_600_path, haloproperties_601_path):
+    ds = oc.open(haloproperties_601_path, haloproperties_600_path)
+    data = ds.select(("ra", "dec", "theta", "phi")).get_data()
+    assert data["ra"].unit == u.deg
+    assert data["dec"].unit == u.deg
 
-    center = (45 * u.deg, -45 * u.deg)
-    radius = 2 * u.deg
-    center_coord = SkyCoord(*center)
-
-    raw_data_coords = SkyCoord(
-        raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
-    )
-    raw_data_seps = center_coord.separation(raw_data_coords)
-    n_raw = np.sum(raw_data_seps < radius)
-
-    region = oc.make_cone(center, radius)
-    data = ds.bound(region).data
-    ra = data["phi"]
-    dec = np.pi / 2 - data["theta"]
-
-    coordinates = SkyCoord(ra, dec, unit="radian")
-    seps = center_coord.separation(coordinates)
-    seps = seps.to(u.degree)
-    assert all(seps < radius)
-    assert len(data) == n_raw
-
-
-def test_healpix_index_chain_failure(haloproperties_600_path):
-    ds = oc.open(haloproperties_600_path)
-
-    center1 = (45 * u.deg, -45 * u.deg)
-    center2 = (45 * u.deg, 45 * u.deg)
-    radius = 2 * u.deg
-
-    region1 = oc.make_cone(center1, radius)
-    region2 = oc.make_cone(center2, radius)
-    ds = ds.bound(region1)
-    ds = ds.bound(region2)
-    assert len(ds) == 0
-
-
-def test_healpix_index_chain(haloproperties_600_path):
-    ds = oc.open(haloproperties_600_path)
-    raw_data = ds.data
-
-    center = (45 * u.deg, -45 * u.deg)
-    center_coord = SkyCoord(*center)
-    radius1 = 2 * u.deg
-    radius2 = 1 * u.deg
-
-    region1 = oc.make_cone(center, radius1)
-    region2 = oc.make_cone(center, radius2)
-    ds = ds.bound(region1)
-    ds = ds.bound(region2)
-
-    raw_data_coords = SkyCoord(
-        raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
-    )
-    raw_data_seps = center_coord.separation(raw_data_coords)
-    n_raw = np.sum(raw_data_seps < radius2)
-
-    assert n_raw == len(ds)
-
-
-def test_healpix_write(haloproperties_600_path, tmp_path):
-    ds = oc.open(haloproperties_600_path)
-
-    center = (45, -45)
-    radius = 4 * u.deg
-
-    region = oc.make_cone(center, radius)
-    ds = ds.bound(region)
-
-    oc.write(tmp_path / "lightcone_test.hdf5", ds)
-    new_ds = oc.open(tmp_path / "lightcone_test.hdf5")
-
-    radius2 = 2 * u.deg
-    region2 = oc.make_cone(center, radius2)
-    ds = ds.bound(region2)
-    new_ds = new_ds.bound(region2)
-
-    assert set(ds.data["fof_halo_tag"]) == set(new_ds.data["fof_halo_tag"])
-
-
-def test_healpix_write_fail(haloproperties_600_path, tmp_path):
-    ds = oc.open(haloproperties_600_path)
-
-    center = (45 * u.deg, -45 * u.deg)
-    radius = 2 * u.deg
-
-    region = oc.make_cone(center, radius)
-    ds = ds.bound(region)
-
-    oc.write(tmp_path / "lightcone_test.hdf5", ds)
-    new_ds = oc.open(tmp_path / "lightcone_test.hdf5")
-
-    center2 = (45 * u.deg, 45 * u.deg)
-    region2 = oc.make_cone(center2, radius)
-    new_ds = new_ds.bound(region2)
-    assert len(new_ds) == 0
+    ra = (data["phi"] * u.rad).to(u.deg)
+    dec = ((np.pi / 2 - data["theta"]) * u.rad).to(u.deg)
+    assert np.allclose(data["ra"], ra, rtol=1e-2)
+    assert np.allclose(data["dec"], dec, rtol=1e-2)
 
 
 def test_lightcone_physical_units(haloproperties_600_path):
     ds_comoving = oc.open(haloproperties_600_path)
     ds_physical = ds_comoving.with_units("physical")
-    data_comoving = ds_comoving.data
-    data_physical = ds_physical.data
+    data_comoving = ds_comoving.get_data()
+    data_physical = ds_physical.get_data()
     assert np.all(
         data_physical["fof_halo_com_x"]
         == (data_comoving["fof_halo_com_x"] * data_comoving["fof_halo_center_a"])
@@ -151,9 +61,9 @@ def test_lightcone_physical_units(haloproperties_600_path):
 
 def test_lc_collection_restrict_z(haloproperties_600_path, haloproperties_601_path):
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
-    original_redshifts = ds.select("redshift").data
+    original_redshifts = ds.select("redshift").get_data()
     ds = ds.with_redshift_range(0.040, 0.0405)
-    redshifts = ds.select("redshift").data
+    redshifts = ds.select("redshift").get_data()
     masked_redshifts = (original_redshifts > 0.04) & (original_redshifts < 0.0405)
     assert np.all((redshifts > 0.04) & (redshifts < 0.0405))
     assert np.sum(masked_redshifts) == len(redshifts)
@@ -167,38 +77,10 @@ def test_lc_collection_write(
     original_length = len(ds)
     oc.write(tmp_path / "lightcone.hdf5", ds)
     ds = oc.open(tmp_path / "lightcone.hdf5")
-    data = ds.select("redshift").data
+    data = ds.select("redshift").get_data()
     assert data.min() >= 0.04 and data.max() <= 0.0405
     assert len(data) == original_length
     assert ds.z_range == (0.04, 0.0405)
-
-
-def test_lc_collection_bound(
-    haloproperties_600_path, haloproperties_601_path, tmp_path
-):
-    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
-    raw_data = ds.data
-
-    center = (45 * u.deg, -45 * u.deg)
-    radius = 2 * u.deg
-    center_coord = SkyCoord(*center)
-
-    raw_data_coords = SkyCoord(
-        raw_data["phi"], np.pi / 2 - raw_data["theta"], unit="rad"
-    )
-    raw_data_seps = center_coord.separation(raw_data_coords)
-    n_raw = np.sum(raw_data_seps < radius)
-
-    region = oc.make_cone(center, radius)
-    data = ds.bound(region).data
-    ra = data["phi"]
-    dec = np.pi / 2 - data["theta"]
-
-    coordinates = SkyCoord(ra, dec, unit="radian")
-    seps = center_coord.separation(coordinates)
-    seps = seps.to(u.degree)
-    assert all(seps < radius)
-    assert len(data) == n_raw
 
 
 def test_lc_collection_select(
@@ -209,9 +91,23 @@ def test_lc_collection_select(
     to_select = set(random.choice(columns, 10))
 
     ds = ds.select(to_select)
-    columns_found = set(ds.data.columns)
+    columns_found = set(ds.get_data().columns)
 
     assert columns_found == to_select
+
+
+def test_lc_collection_select_complex(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    columns = ds.columns
+    to_select = set(random.choice(columns, 10))
+    to_select_2 = set(random.choice(columns, 5))
+
+    ds = ds.select(*list(to_select), to_select_2)
+    columns_found = set(ds.get_data().columns)
+
+    assert columns_found == to_select.union(to_select_2)
 
 
 def test_lc_collection_select_numpy(
@@ -228,13 +124,27 @@ def test_lc_collection_select_numpy(
     assert all(isinstance(col, np.ndarray) for col in data.values())
 
 
+def test_lc_collection_drop_complex(
+    haloproperties_600_path, haloproperties_601_path, tmp_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    columns = ds.columns
+    to_drop = set(random.choice(columns, 10))
+    to_drop_2 = set(random.choice(columns, 10))
+
+    ds = ds.drop(*to_drop, list(to_drop_2))
+    columns_found = set(ds.get_data().columns)
+
+    assert not columns_found.intersection(to_drop.union(to_drop_2))
+
+
 def test_lc_collection_drop(haloproperties_600_path, haloproperties_601_path, tmp_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     columns = ds.columns
     to_drop = set(random.choice(columns, 10))
 
     ds = ds.drop(to_drop)
-    columns_found = set(ds.data.columns)
+    columns_found = set(ds.get_data().columns)
 
     assert not columns_found.intersection(to_drop)
 
@@ -245,10 +155,10 @@ def test_lc_collection_take(haloproperties_600_path, haloproperties_601_path, tm
     ds_start = ds.take(n_to_take, "start")
     ds_end = ds.take(n_to_take, "end")
     ds_random = ds.take(n_to_take, "random")
-    tags = ds.select("fof_halo_tag").data
-    tags_start = ds_start.select("fof_halo_tag").data
-    tags_end = ds_end.select("fof_halo_tag").data
-    tags_random = ds_random.select("fof_halo_tag").data
+    tags = ds.select("fof_halo_tag").get_data()
+    tags_start = ds_start.select("fof_halo_tag").get_data()
+    tags_end = ds_end.select("fof_halo_tag").get_data()
+    tags_random = ds_random.select("fof_halo_tag").get_data()
     assert np.all(tags[:n_to_take] == tags_start)
     assert np.all(tags[-n_to_take:] == tags_end)
     assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
@@ -314,7 +224,7 @@ def test_lc_collection_derive(
     ke = 0.5 * oc.col("fof_halo_mass") * vsqrd
     ds = ds.with_new_columns(ke=ke)
     ke = ds.select("ke")
-    assert ke.data.unit == u.solMass * u.Unit("km/s") ** 2
+    assert ke.get_data().unit == u.solMass * u.Unit("km/s") ** 2
 
 
 def test_lc_collection_add(haloproperties_600_path, haloproperties_601_path, tmp_path):
@@ -338,12 +248,29 @@ def test_lc_collection_add_with_description(
         assert descs[key] == value
 
 
+def test_lc_get_units(haloproperties_600_path, haloproperties_601_path, tmp_path):
+    column_conversions = {"fof_halo_center_x": u.lyr, "ra": u.radian}
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path)
+    pre_conversion_units = ds.units
+    ds = ds.with_units(None, {u.solMass: u.kg}, **column_conversions)
+    post_conversion_units = ds.units
+
+    for name, unit in pre_conversion_units.items():
+        if unit == u.solMass:
+            assert post_conversion_units[name] == u.kg
+        elif name in column_conversions:
+            assert unit != post_conversion_units[name]
+            assert post_conversion_units[name] == column_conversions[name]
+        else:
+            assert post_conversion_units[name] == unit
+
+
 def test_lc_collection_filter(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds = ds.filter(oc.col("fof_halo_mass") > 1e14)
-    assert np.all(ds.data["fof_halo_mass"].value > 1e14)
+    assert np.all(ds.get_data()["fof_halo_mass"].value > 1e14)
 
 
 def test_lc_collection_evaluate(
@@ -535,8 +462,8 @@ def test_lc_collection_units(
 ):
     ds_comoving = oc.open(haloproperties_600_path, haloproperties_601_path)
     ds_scalefree = ds_comoving.with_units("scalefree")
-    data_scalefree = ds_scalefree.data
-    data_comoving = ds_comoving.data
+    data_scalefree = ds_scalefree.get_data()
+    data_comoving = ds_comoving.get_data()
     h = ds_comoving.cosmology.h
 
     location_columns = [f"fof_halo_com_{dim}" for dim in ("x", "y", "z")]

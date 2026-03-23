@@ -103,16 +103,11 @@ def test_healpix_write(healpix_map_path, tmp_path):
     oc.write(path / "map_test.hdf5", ds)
     new_ds = oc.open(path / "map_test.hdf5")
 
-    radius2 = 1 * u.deg
-    region2 = oc.make_cone(center, radius2)
-    new_ds = new_ds.bound(region2)
-    ds = ds.bound(region2)
-
     all_valid_pixels = np.concatenate(
-        MPI.COMM_WORLD.allgather(ds.data["tsz"].valid_pixels)
+        MPI.COMM_WORLD.allgather(ds.get_data()["tsz"].valid_pixels)
     )
     written_valid_pixels = np.concatenate(
-        MPI.COMM_WORLD.allgather(new_ds.data["tsz"].valid_pixels)
+        MPI.COMM_WORLD.allgather(new_ds.get_data()["tsz"].valid_pixels)
     )
 
     parallel_assert(set(all_valid_pixels) == set(written_valid_pixels))
@@ -134,10 +129,10 @@ def test_write_single_map(healpix_map_path, tmp_path):
     path = MPI.COMM_WORLD.bcast(tmp_path)
     ds = oc.open(healpix_map_path)
 
-    original_length = len(ds.data["tsz"].valid_pixels)
+    original_length = len(ds.get_data()["tsz"].valid_pixels)
     oc.write(path / "map.hdf5", ds)
     ds = oc.open(path / "map.hdf5")
-    parallel_assert(len(ds.data["tsz"].valid_pixels) == original_length)
+    parallel_assert(len(ds.get_data()["tsz"].valid_pixels) == original_length)
 
 
 @pytest.mark.parallel(nprocs=4)

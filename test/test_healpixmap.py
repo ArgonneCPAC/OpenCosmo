@@ -180,7 +180,7 @@ def test_healpix_collection_bound(healpix_map_path):
 
     region = oc.make_cone(center, radius)
     bounded_ds = ds.bound(region)
-    data = bounded_ds.data
+    data = bounded_ds.get_data()
     ds_region = bounded_ds.region
     theta, phi = hp.pix2ang(ds.nside, data["tsz"].valid_pixels, nest=True)
     ra = phi
@@ -210,7 +210,9 @@ def test_healpix_write(healpix_map_path, tmp_path):
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    assert set(ds.data["tsz"].valid_pixels) == set(new_ds.data["tsz"].valid_pixels)
+    assert set(ds.get_data()["tsz"].valid_pixels) == set(
+        new_ds.get_data()["tsz"].valid_pixels
+    )
 
 
 def test_healpix_write_after_take_range(healpix_map_path, tmp_path):
@@ -245,7 +247,7 @@ def test_healpix_collection_drop(healpix_map_path):
     to_drop = set(["tsz"])
 
     ds = ds.drop(to_drop)
-    columns_found = set(ds.data.keys())
+    columns_found = set(ds.get_data().keys())
 
     assert not columns_found.intersection(to_drop)
 
@@ -256,10 +258,10 @@ def test_healpix_collection_take(healpix_map_path):
     ds_start = ds.take(n_to_take, "start")
     ds_end = ds.take(n_to_take, "end")
     ds_random = ds.take(n_to_take, "random")
-    tags = ds.select("tsz").data["tsz"].valid_pixels
-    tags_start = ds_start.select("tsz").data["tsz"].valid_pixels
-    tags_end = ds_end.select("tsz").data["tsz"].valid_pixels
-    tags_random = ds_random.select("tsz").data["tsz"].valid_pixels
+    tags = ds.select("tsz").get_data()["tsz"].valid_pixels
+    tags_start = ds_start.select("tsz").get_data()["tsz"].valid_pixels
+    tags_end = ds_end.select("tsz").get_data()["tsz"].valid_pixels
+    tags_random = ds_random.select("tsz").get_data()["tsz"].valid_pixels
     assert np.all(tags[:n_to_take] == tags_start)
     assert np.all(tags[-n_to_take:] == tags_end)
     assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
@@ -312,7 +314,7 @@ def test_healpix_collection_derive(healpix_map_path):
     ds = oc.open(healpix_map_path)
     sz_sqrd = oc.col("tsz") ** 2 + oc.col("ksz") ** 2
     ds = ds.with_new_columns(weird_sz=sz_sqrd)
-    weird = ds.select("weird_sz").data
+    weird = ds.select("weird_sz").get_data()
     assert isinstance(weird, dict)
 
 

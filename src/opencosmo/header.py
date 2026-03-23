@@ -27,6 +27,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from opencosmo.io.schema import Schema
+    from opencosmo.spatial.protocols import Region
+
+HEADER_WRITE_OVERRIDES = {"region_pixels": ColumnCombineStrategy.CONCAT}
 
 
 class OpenCosmoHeader:
@@ -151,7 +154,7 @@ class OpenCosmoHeader:
         except KeyError:
             return object.__getattribute__(self, key)
 
-    def with_region(self, region):
+    def with_region(self, region: Region):
         if region is not None:
             region_model = region.into_model()
         else:
@@ -202,20 +205,24 @@ class OpenCosmoHeader:
         pars = {}
         arr_pars = {}
         for path, model in to_write:
-            data = model.model_dump(by_alias=True)
+            data = model.model_dump(by_alias=True, exclude_none=True)
             data = dict(
                 map(
                     lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
                 )
             )
+
             keys = list(data.keys())
+
             for key in keys:
                 if isinstance(data[key], list):
                     arr_pars[f"{path}/{key}"] = ColumnWriter.from_numpy_array(
-                        np.array(data[key]), ColumnCombineStrategy.CONCAT
+                        np.array(data[key]),
+                        HEADER_WRITE_OVERRIDES.get(key, ColumnCombineStrategy.EXACT),
                     )
                     _ = data.pop(key)
             pars[path] = data
+
         return make_schema(
             "header", FileEntry.METADATA, attributes=pars, columns=arr_pars
         )
@@ -297,25 +304,32 @@ def read_header(
         )
 
     origin_parameter_models = origin.get_origin_parameters(file_parameters.origin)
-    required_origin_params, optional_origin_params = read_origin_parameters(
-        file, origin_parameter_models
+    required_origin_params, optional_origin_params = read_parameter_groups(
+        file,
+        origin_parameter_models,
+        additional_required=file_parameters.require_header_groups,
     )
     dtype_parameter_models = dtype.get_dtype_parameters(file_parameters)
-    dtype_params = read_dtype_parameters(file, dtype_parameter_models)
+    required_dtype_params, optional_dtype_params = read_parameter_groups(
+        file,
+        dtype_parameter_models,
+        additional_required=file_parameters.require_header_groups,
+    )
 
     h = OpenCosmoHeader(
         file_parameters,
         required_origin_params,
         optional_origin_params,
-        dtype_params,
+        required_dtype_params | optional_dtype_params,
         unit_convention,
     )
     return h
 
 
-def read_origin_parameters(
+def read_parameter_groups(
     file: h5py.File | h5py.Group,
-    origin_parameters: dict[str, dict[str, type[BaseModel]]],
+    parameter_groups: dict[str, dict[str, type[BaseModel]]],
+    additional_required: Optional[tuple] = None,
 ):
     """
     An "origin" describes the original source of a given dataset. Currently the only
@@ -323,7 +337,12 @@ def read_origin_parameters(
 
     Origins can define a set of required and optional parameters.
     """
-    required = origin_parameters["required"]
+    if not parameter_groups:
+        return {}, {}
+
+    if additional_required is None:
+        additional_required = ()
+    required = parameter_groups.get("required", {})
     required_output = {}
     for path, model in required.items():
         if isinstance(model, UnionType):
@@ -332,7 +351,7 @@ def read_origin_parameters(
             required_output[path] = read_header_attributes(file, path, model)
 
     optional_output = {}
-    optional = origin_parameters["optional"]
+    optional = parameter_groups.get("optional", {})
     for path, model in optional.items():
         if isinstance(origin, UnionType):
             read_fn = load_union_model
@@ -341,32 +360,11 @@ def read_origin_parameters(
         try:
             optional_output[path] = read_fn(file, path, model)
         except (ValidationError, KeyError):
-            continue
+            if path not in additional_required:
+                continue
+            raise
 
     return required_output, optional_output
-
-
-def read_dtype_parameters(
-    file: h5py.File | h5py.Group, dtype_paramter_models: dict[str, type[BaseModel]]
-):
-    """
-    Data types can also define parameters that they expect. For now, all dtype
-    parameters are required. They MUST define an "ACCESS_PATH" attribute,
-    which tells the header how users should be allowed to access them.
-
-    """
-    dtype_output = {}
-    for path, model in dtype_paramter_models.items():
-        if isinstance(model, UnionType):
-            dtype_output[path] = load_union_model(file, path, model)
-        else:
-            dtype_output[path] = read_header_attributes(file, path, model)
-
-        if not hasattr(model, "ACCESS_PATH"):
-            # This should be always always always caught in testing
-            raise ValueError(f"Model {model} does not have an access path!")
-
-    return dtype_output
 
 
 def load_union_model(

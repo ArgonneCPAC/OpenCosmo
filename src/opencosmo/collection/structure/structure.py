@@ -20,9 +20,9 @@ if TYPE_CHECKING:
     import astropy
     import astropy.units as u
 
-    from opencosmo.column.column import DerivedColumn
+    from opencosmo.column.column import ConstructedColumn
     from opencosmo.index import DataIndex
-    from opencosmo.io import io
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
     from opencosmo.parameters import HaccSimulationParameters
@@ -144,7 +144,7 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, targets: list[io.OpenTarget], ignore_empty=True, **kwargs
+        cls, targets: list[FileTarget], ignore_empty=True, **kwargs
     ) -> StructureCollection:
         return sio.build_structure_collection(targets, ignore_empty)
 
@@ -667,6 +667,20 @@ class StructureCollection:
         remove entire datasets from the collection with
         :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
 
+        The :py:class:`opencosmo.Dataset` class supports creating derived columns as part of
+        a :py:meth:`select <opencosmo.Dataset.select>` call. You can do the same here, with
+        the following pattern:
+
+        .. code-block:: python
+
+            halo_px = oc.col("fof_halo_mass")*oc.col("fof_halo_com_Vx")
+            collection = collection.select(
+                halo_properties = {
+                    columns = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
+                    derived_columns = {"fof_halo_px": halo_px}
+                }
+            )
+
         For nested structure collections, such as galaxies within halos, you can pass
         a nested dictionary:
 
@@ -706,9 +720,19 @@ class StructureCollection:
             return self
         new_source = self.__source
         new_datasets = {}
+
         for dataset, columns in column_selections.items():
+            if isinstance(columns, dict) and (
+                "columns" in columns or "derived_columns" in columns
+            ):
+                arg = list(columns.get("columns", []))
+                kwargs = columns.get("derived_columns", {})
+            else:
+                arg = columns  # type: ignore
+                kwargs = {}
+
             if dataset == self.__header.file.data_type:
-                new_source = self.__source.select(columns)
+                new_source = self.__source.select(arg, **kwargs)
                 continue
 
             elif dataset not in self.__datasets:
@@ -717,13 +741,13 @@ class StructureCollection:
             new_ds = self.__datasets[dataset]
 
             if not isinstance(new_ds, oc.Dataset):
-                if not isinstance(columns, dict):
+                if not isinstance(arg, dict):
                     raise ValueError(
                         "When working with nested structure collections, the argument should be a dictionary!"
                     )
-                new_ds = new_ds.select(**columns)
+                new_ds = new_ds.select(**arg)
             else:
-                new_ds = new_ds.select(columns)
+                new_ds = new_ds.select(arg, **kwargs)
 
             new_datasets[dataset] = new_ds
 
@@ -1030,7 +1054,7 @@ class StructureCollection:
         self,
         dataset: str,
         descriptions: str | dict[str, str] = {},
-        **new_columns: DerivedColumn,
+        **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
         Add new column(s) to one of the datasets in this collection. This behaves
@@ -1258,7 +1282,7 @@ class StructureCollection:
         except BaseException:
             raise
 
-    def with_datasets(self, datasets: list[str]):
+    def with_datasets(self, datasets: str | Iterable[str]):
         """
         Create a new collection out of a subset of the datasets in this collection.
         It is also possible to do this when you iterate over the collection with
@@ -1267,11 +1291,11 @@ class StructureCollection:
         the dropped datasets at any point.
         """
 
-        if not isinstance(datasets, list):
-            raise ValueError("Expected a list with at least one entry")
+        if isinstance(datasets, str):
+            datasets = [datasets]
+        requested_datasets = set(datasets)
 
         known_datasets = set(self.keys())
-        requested_datasets = set(datasets)
         if not requested_datasets.issubset(known_datasets):
             raise ValueError(f"Unknown datasets {requested_datasets - known_datasets}")
 

@@ -37,7 +37,7 @@ def test_write_dataset(halo_properties_path, tmp_path):
     write(new_path, ds)
 
     new_ds = oc.open(new_path)
-    assert all(ds.data == new_ds.data)
+    assert all(ds.get_data() == new_ds.get_data())
 
 
 def test_overwrite(halo_properties_path, tmp_path):
@@ -49,39 +49,39 @@ def test_overwrite(halo_properties_path, tmp_path):
     write(new_path, ds, overwrite=True)
 
     new_ds = oc.open(new_path)
-    assert all(ds.data == new_ds.data)
+    assert all(ds.get_data() == new_ds.get_data())
 
 
 def test_after_take_filter(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path).take(10000)
     ds = ds.filter(col("sod_halo_mass") > 0)
-    filtered_data = ds.data
+    filtered_data = ds.get_data()
 
     write(tmp_path / "haloproperties.hdf5", ds)
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
-    assert np.all(filtered_data == new_ds.data)
+    assert np.all(filtered_data == new_ds.get_data())
 
 
 def test_after_take(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path).take(10000)
-    data = ds.data
+    data = ds.get_data()
     write(tmp_path / "haloproperties.hdf5", ds)
 
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
-    assert all(data == new_ds.data)
+    assert all(data == new_ds.get_data())
 
 
 def test_after_filter(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path)
-    data = ds.data
+    data = ds.get_data()
     ds = ds.filter(col("sod_halo_mass") > 0)
-    filtered_data = ds.data
+    filtered_data = ds.get_data()
     assert len(data) > len(filtered_data)
 
     write(tmp_path / "haloproperties.hdf5", ds)
 
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
-    assert all(filtered_data == new_ds.data)
+    assert all(filtered_data == new_ds.get_data())
 
 
 def test_after_unit_transform(halo_properties_path, tmp_path):
@@ -93,4 +93,4 @@ def test_after_unit_transform(halo_properties_path, tmp_path):
 
     ds = oc.open(halo_properties_path)
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
-    assert all(ds.data == new_ds.data)
+    assert all(ds.get_data() == new_ds.get_data())

@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Optional
 from weakref import finalize
 
 import astropy.units as u
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
+from opencosmo.column.select import get_column_selection
 from opencosmo.dataset.derived import (
     build_derived_columns,
     validate_derived_columns,
@@ -25,14 +26,14 @@ from opencosmo.units import UnitConvention
 from opencosmo.units.handler import make_unit_handler
 
 if TYPE_CHECKING:
-    import h5py
-    from astropy import table, units
+    from astropy import table
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.spatial.protocols import Region
     from opencosmo.units.handler import UnitHandler
 
@@ -86,26 +87,30 @@ class DatasetState:
         return None
 
     @classmethod
-    def from_group(
+    def from_target(
         cls,
-        group: h5py.Group,
-        header: OpenCosmoHeader,
+        target: DatasetTarget,
         unit_convention: UnitConvention,
         region: Region,
         index: Optional[DataIndex] = None,
-        metadata_group: Optional[h5py.Group] = None,
+        metadata_group: Optional[str] = None,
         in_memory: bool = False,
     ):
-        data_group = group["data"]
-        if "load" in group.keys():
-            load_conditions = dict(group["load/if"].attrs)
+        data_group = target["dataset_group"]
+        if "load" in data_group.keys():
+            load_conditions = dict(data_group["load/if"].attrs)
         else:
             load_conditions = None
 
-        handler = Hdf5Handler.from_group(
-            data_group, index, metadata_group, load_conditions
+        handler = Hdf5Handler.from_columns(
+            target["columns"],
+            index,
+            metadata_group,
+            load_conditions,
         )
-        unit_handler = make_unit_handler(handler.data, header, unit_convention)
+        unit_handler = make_unit_handler(
+            target["columns"], target["header"], unit_convention
+        )
 
         columns = set(handler.columns)
         cache = ColumnCache.empty()
@@ -114,7 +119,7 @@ class DatasetState:
             cache,
             {},
             unit_handler,
-            header,
+            target["header"],
             columns,
             region,
             None,
@@ -147,6 +152,11 @@ class DatasetState:
     @property
     def unit_handler(self):
         return self.__unit_handler
+
+    @property
+    def units(self):
+        units = self.__unit_handler.current_units
+        return {name: units[name] for name in self.columns}
 
     @property
     def convention(self):
@@ -351,7 +361,7 @@ class DatasetState:
     def with_new_columns(
         self,
         descriptions: dict[str, str] = {},
-        **new_columns: DerivedColumn | np.ndarray | units.Quantity,
+        **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
         Add a set of derived columns to the dataset. A derived column is a column that
@@ -369,7 +379,7 @@ class DatasetState:
 
         for colname, column in new_columns.items():
             match column:
-                case DerivedColumn() | EvaluatedColumn():
+                case DerivedColumn() | EvaluatedColumn() | Column():
                     column.description = descriptions.get(colname, "None")
                     new_derived_columns[colname] = column
                 case np.ndarray():
@@ -468,7 +478,7 @@ class DatasetState:
         """
         return self.__rebuild(region=region)
 
-    def select(self, columns: str | Iterable[str]):
+    def select(self, columns: set[str], drop=False):
         """
         Select a subset of columns from the dataset. It is possible for a user to select
         a derived column in the dataset, but not the columns it is derived from.
@@ -478,17 +488,19 @@ class DatasetState:
         returned to the user.
 
         """
-        if isinstance(columns, str):
-            columns = [columns]
 
-        columns = set(columns)
-        missing = columns - self.__columns
+        selections, missing = get_column_selection(self.columns, columns)
         if missing:
             raise ValueError(
-                f"Tried to select columns that are not in this dataset: {missing}"
+                f"Columns are included that are not in this dataset: {missing}"
             )
+        elif not selections and columns:
+            raise ValueError("No columns matched the provided wildcards!")
 
-        return self.__rebuild(columns=columns)
+        if drop:
+            selections = set(self.columns) - selections
+
+        return self.__rebuild(columns=selections)
 
     def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:
@@ -498,7 +510,7 @@ class DatasetState:
 
     def get_sorted_index(self):
         if self.__sort_by is not None:
-            column = self.select(self.__sort_by[0]).get_data(ignore_sort=True)[
+            column = self.select({self.__sort_by[0]}).get_data(ignore_sort=True)[
                 self.__sort_by[0]
             ]
             sorted = np.argsort(column)

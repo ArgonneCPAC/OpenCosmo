@@ -21,7 +21,7 @@ def test_derive_multiply(properties_path):
     ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(fof_halo_px=derived)
-    data = ds.data
+    data = ds.get_data()
     assert "fof_halo_px" in data.columns
     assert (
         data["fof_halo_px"].unit
@@ -41,7 +41,7 @@ def test_derive_addition(properties_path, particles_path, tmp_path):
     xoff = dr / oc.col("sod_halo_radius")
 
     ds = ds.with_new_columns("halo_properties", xoff=xoff)
-    xoff = ds["halo_properties"].select("xoff").data
+    xoff = ds["halo_properties"].select("xoff").get_data()
 
     assert xoff.unit == u.dimensionless_unscaled
 
@@ -50,9 +50,9 @@ def test_derive_write(properties_path, tmp_path):
     ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(fof_halo_px=derived)
-    data = ds.data
+    data = ds.get_data()
     oc.write(tmp_path / "test.hdf5", ds)
-    written_data = oc.open(tmp_path / "test.hdf5").data
+    written_data = oc.open(tmp_path / "test.hdf5").get_data()
     assert np.all(
         np.isclose(data["fof_halo_px"].value, written_data["fof_halo_px"].value)
     )
@@ -62,7 +62,7 @@ def test_derive_divide(properties_path):
     ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") / oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(fof_halo_px=derived)
-    data = ds.data
+    data = ds.get_data()
     assert "fof_halo_px" in data.columns
     assert (
         data["fof_halo_px"].unit
@@ -82,7 +82,7 @@ def test_derive_chain(properties_path):
         oc.col("fof_halo_com_vx") * oc.col("fof_halo_com_vy")
     )
     ds = ds.with_new_columns(fof_halo_p_sqr=derived)
-    data = ds.data
+    data = ds.get_data()
     assert "fof_halo_p_sqr" in data.columns
     assert (
         data["fof_halo_p_sqr"].unit
@@ -112,7 +112,7 @@ def test_scalars(properties_path):
         derived1=derived1, derived2=derived2, derived3=derived3, derived4=derived4
     )
 
-    data = ds.data
+    data = ds.get_data()
     assert np.all(np.isclose(data["derived1"], data["fof_halo_mass"] * 5))
     assert np.all(np.isclose(data["derived2"], data["fof_halo_mass"] * 3))
     assert np.all(np.isclose(data["derived3"], 1 / data["fof_halo_mass"]))
@@ -126,7 +126,7 @@ def test_norm_(properties_path):
 
     ke = 0.5 * oc.col("fof_halo_mass") * total_speed**2
     ds = ds.with_new_columns(ke=ke)
-    data = ds.data
+    data = ds.get_data()
     assert (
         data["ke"].unit
         == data["fof_halo_mass"].unit * data["fof_halo_com_vx"].unit ** 2
@@ -149,10 +149,10 @@ def test_derive_unit_change(properties_path):
     ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(fof_halo_px=derived)
-    comoving_data = ds.data
+    comoving_data = ds.get_data()
     comoving_unit = comoving_data["fof_halo_px"].unit
     ds = ds.with_units("scalefree")
-    scalefree_data = ds.data
+    scalefree_data = ds.get_data()
     scalefree_unit = scalefree_data["fof_halo_px"].unit
     assert comoving_unit != scalefree_unit
     assert comoving_unit == (
@@ -170,11 +170,11 @@ def test_derive_mask(properties_path):
     ds = oc.open(properties_path)
     derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(fof_halo_px=derived)
-    comoving_data = ds.data["fof_halo_px"]
+    comoving_data = ds.get_data()["fof_halo_px"]
     val = 0.5 * (comoving_data.max() - comoving_data.min()) + comoving_data.min()
     ds_masked = ds.filter(oc.col("fof_halo_px") > val)
 
-    assert all(ds_masked.data["fof_halo_px"] > val)
+    assert all(ds_masked.get_data()["fof_halo_px"] > val)
 
 
 def test_derive_children(properties_path):
@@ -183,7 +183,7 @@ def test_derive_children(properties_path):
     ds = ds.with_new_columns(fof_halo_px=derived)
     derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(derived2=derived2)
-    data = ds.data
+    data = ds.get_data()
     assert np.all(
         np.isclose(
             data["derived2"], 0.5 * data["fof_halo_mass"] * data["fof_halo_com_vx"] ** 2
@@ -197,11 +197,11 @@ def test_derive_children_select(properties_path):
     ds = ds.with_new_columns(fof_halo_px=derived)
     derived2 = 0.5 * oc.col("fof_halo_px") * oc.col("fof_halo_com_vx")
     ds = ds.with_new_columns(derived2=derived2)
-    derived_data = ds.data["derived2"]
+    derived_data = ds.get_data()["derived2"]
 
     to_select = ["fof_halo_com_vy", "derived2"]
     ds = ds.select(to_select)
-    data = ds.data
+    data = ds.get_data()
     assert set(data.columns) == set(to_select)
     assert np.all(derived_data == data["derived2"])
 

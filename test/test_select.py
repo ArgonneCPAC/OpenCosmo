@@ -13,27 +13,43 @@ def input_path(snapshot_path):
 
 def test_select(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = list(data.columns)
     # select 10 columns at random
     selected_cols = np.random.choice(cols, 10, replace=False)
     selected = dataset.select(selected_cols)
-    selected_data = selected.data
+    selected_data = selected.get_data()
 
     for col in selected_cols:
         assert np.all(data[col] == selected_data[col])
     assert set(selected_cols) == set(selected_data.columns)
 
 
+def test_select_complex(input_path):
+    dataset = oc.open(input_path)
+    data = dataset.get_data()
+    cols = list(data.columns)
+    # select 10 columns at random
+    selected_cols = np.random.choice(cols, 10, replace=False)
+    selected_cols_2 = np.random.choice(cols, 5, replace=False)
+    selected = dataset.select(*selected_cols, selected_cols_2)
+    selected_data = selected.get_data()
+    all_selected_cols = set(selected_cols).union(selected_cols_2)
+
+    for col in all_selected_cols:
+        assert np.all(data[col] == selected_data[col])
+    assert all_selected_cols == set(selected_data.columns)
+
+
 def test_chained_select(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = list(data.columns)
     # select 10 columns at random
     selected_cols = np.random.choice(cols, 10, replace=False)
     subset_cols = np.random.choice(selected_cols, 5, replace=False)
     selected = dataset.select(selected_cols).select(subset_cols)
-    selected_data = selected.data
+    selected_data = selected.get_data()
 
     for col in subset_cols:
         assert np.all(data[col] == selected_data[col])
@@ -43,7 +59,7 @@ def test_chained_select(input_path):
 
 def test_select_unit_transformation(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = list(data.columns)
     # select 10 columns at random
 
@@ -53,7 +69,7 @@ def test_select_unit_transformation(input_path):
     selected = dataset.select(position_cols).with_units("scalefree")
     position_cols = filter(lambda col: "angmom" not in col, position_cols)
 
-    selected_data = selected.data
+    selected_data = selected.get_data()
     for col in position_cols:
         assert data[col].unit == selected_data[col].unit * cu.littleh
 
@@ -65,15 +81,15 @@ def test_select_derived_column():
 
 def test_select_doesnt_alter_raw(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = list(data.columns)
     # select 10 columns at random
     selected_cols = np.random.choice(cols, 10, replace=False)
     selected = dataset.select(selected_cols)
-    selected_data = selected.data
+    selected_data = selected.get_data()
 
     raw_data = (
-        dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__data_group
+        dataset._Dataset__state._DatasetState__raw_data_handler._Hdf5Handler__columns
     )
     assert all(isinstance(raw_data[col], h5py.Dataset) for col in cols)
     assert all(data[col].unit == selected_data[col].unit for col in selected_cols)
@@ -82,19 +98,19 @@ def test_select_doesnt_alter_raw(input_path):
 
 def test_single_column_select(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = list(data.columns)
     # select 1 column at random
     selected_col = np.random.choice(cols, 1)[0]
     selected = dataset.select(selected_col)
-    selected_data = selected.data
+    selected_data = selected.get_data()
 
     assert np.all(data[selected_col] == selected_data)
 
 
 def test_select_invalid_column(input_path):
     dataset = oc.open(input_path)
-    data = dataset.data
+    data = dataset.get_data()
     cols = list(data.columns)
     # select 10 columns at random
     selected_cols = np.random.choice(cols, 10, replace=False)
@@ -102,3 +118,16 @@ def test_select_invalid_column(input_path):
     selected_cols = np.append(selected_cols, "invalid_column")
     with pytest.raises(ValueError):
         dataset.select(selected_cols)
+
+
+def test_select_with_derived(input_path):
+    ds = oc.open(input_path)
+    com_columns = set(filter(lambda colname: "com" in colname, ds.columns))
+    gal_px = oc.col("gal_mass") * oc.col("gal_com_vx")
+
+    ds = ds.select("gal_mass", "*com*", gal_px=gal_px)
+
+    data = ds.get_data()
+
+    assert com_columns.issubset(data.columns)
+    assert np.all(data["gal_px"] == data["gal_mass"] * data["gal_com_vx"])

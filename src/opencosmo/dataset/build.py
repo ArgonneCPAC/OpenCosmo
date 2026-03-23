@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from itertools import chain
 from typing import TYPE_CHECKING, Optional, TypeVar
 
 import astropy.units as u
@@ -9,6 +10,7 @@ import numpy as np
 
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.state import DatasetState
+from opencosmo.io.iopen import DatasetTarget
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.tree import Tree
 from opencosmo.spatial.utils import combine_upwards
@@ -43,20 +45,24 @@ def build_dataset_from_data(
     if isinstance(data, dict):
         data = make_in_memory_h5_file_from_data(data, descriptions)
     if isinstance(spatial_index_data, dict):
-        spatial_index_data = make_spatial_index(spatial_index_data)
+        spatial_index_columns = make_spatial_index(spatial_index_data)
 
-    tree = Tree(HealPixIndex(), spatial_index_data)
+    tree = Tree(HealPixIndex(), spatial_index_columns)
     if len(data_keys) == 2:
         data_keys.remove("data")
         metadata_key = data_keys.pop()
         metadata_group = data[metadata_key]
+    else:
+        metadata_group = {}
 
-    new_state = DatasetState.from_group(
-        data,
-        header,
-        header.file.unit_convention,
-        region,
-        metadata_group=metadata_group,
+    columns = list(chain(data["data"].values(), metadata_group.values()))
+
+    target = DatasetTarget(
+        **{"header": header, "dataset_group": data, "columns": columns}
+    )
+
+    new_state = DatasetState.from_target(
+        target, header.file.unit_convention, region, metadata_group=metadata_key
     )
     return Dataset(header, new_state, tree=tree)
 
@@ -97,8 +103,12 @@ def make_spatial_index(data: SpatialIndexData):
         raise ValueError("Data for creating spatial index should include one level > 0")
     name = uuid.uuid1()
     file = h5py.File(f"{name}.hdf5", "w", driver="core", backing_store=False)
-
-    return combine_upwards(size, fold_factor, level, file)
+    data = combine_upwards(size, fold_factor, level, file)
+    output = {}
+    for group in data.values():
+        assert isinstance(group, h5py.Group)
+        output.update({ds.name[1:]: ds for ds in group.values()})
+    return output
 
 
 def split_data_and_metadata(data: dict[str, np.ndarray], descriptions: dict[str, str]):

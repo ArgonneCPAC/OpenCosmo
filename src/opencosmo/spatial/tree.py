@@ -30,7 +30,11 @@ if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
-def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = False):
+def open_tree(
+    tree_columns: dict[str, h5py.Dataset],
+    box_size: Optional[int],
+    is_lightcone: bool = False,
+):
     """
     Read a tree from an HDF5 file and the associated
     header. The tree is just a mapping between a spatial
@@ -43,16 +47,17 @@ def open_tree(file: h5py.File | h5py.Group, box_size: int, is_lightcone: bool = 
     The max level in the header is the maximum level in the full
     dataset, so this is the HIGHEST it can be.
     """
-    try:
-        group = file["index"]
-    except KeyError:
-        raise ValueError("This file does not have a spatial index!")
 
     if is_lightcone:
         spatial_index = HealPixIndex()
+    elif box_size is None:
+        raise ValueError("Cannot open a snapshot spatial index without a box size")
     else:
         spatial_index = OctTreeIndex.from_box_size(box_size)
-    return Tree(spatial_index, group)
+
+    tree_columns = {name.split("index/")[-1]: col for name, col in tree_columns.items()}
+
+    return Tree(spatial_index, tree_columns)
 
 
 def read_tree(file: h5py.File | h5py.Group, box_size: int):
@@ -153,16 +158,17 @@ class Tree:
     The Tree handles the spatial indexing of the data.
     """
 
-    def __init__(self, index: SpatialIndex, data: h5py.File | h5py.Group):
+    def __init__(
+        self, index: SpatialIndex, tree_columns: dict[str, h5py.Dataset | np.ndarray]
+    ):
         self.__index = index
-        self.__data = data
+        self.__columns = tree_columns
+        names = tree_columns.keys()
         for i in count():
-            try:
-                _ = self.__data[f"level_{i}"]["start"]
-                _ = self.__data[f"level_{i}"]["size"]
-            except KeyError:
-                self.__max_level = i - 1
-                break
+            if f"level_{i}/start" in names:
+                continue
+            self.__max_level = i - 1
+            break
 
         if self.__max_level == -1:
             raise ValueError("Tried to read a tree but no levels were found!")
@@ -176,7 +182,8 @@ class Tree:
             raise ValueError(
                 "Requested level is greater than the max level of this tree!"
             )
-        sizes = self.__data[f"level_{level}"]["size"][:]
+        sizes = self.__columns[f"level_{level}/size"][:]
+
         return np.where(sizes > 0)[0]
 
     def partition(
@@ -194,8 +201,8 @@ class Tree:
             n_partitions, counts, min_level
         )
         partitions = []
-        start = self.__data[f"level_{split_level}"]["start"]
-        size = self.__data[f"level_{split_level}"]["size"]
+        start = self.__columns[f"level_{split_level}/start"][:]
+        size = self.__columns[f"level_{split_level}/size"][:]
         for index_ in partition_indices:
             if len(index_) == 0:
                 continue
@@ -216,8 +223,8 @@ class Tree:
         intersects = []
         for level, (cidx, iidx) in indices.items():
             level_key = f"level_{level}"
-            level_starts = self.__data[level_key]["start"]
-            level_sizes = self.__data[level_key]["size"]
+            level_starts = self.__columns[f"{level_key}/start"]
+            level_sizes = self.__columns[f"{level_key}/size"]
             c_starts = get_data(level_starts, cidx)
             c_sizes = get_data(level_sizes, cidx)
             i_starts = get_data(level_starts, iidx)
@@ -232,8 +239,8 @@ class Tree:
         return (contains_start, contains_size), (intersects_start, intersects_size)
 
     def apply_index(self, index: DataIndex, min_counts: int = 100) -> Tree:
-        max_level_starts = self.__data[f"level_{self.__max_level}"]["start"][:]
-        max_level_sizes = self.__data[f"level_{self.__max_level}"]["size"][:]
+        max_level_starts = self.__columns[f"level_{self.__max_level}/start"][:]
+        max_level_sizes = self.__columns[f"level_{self.__max_level}/size"][:]
         n = n_in_range(index, max_level_starts, max_level_sizes)
         target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
         result = combine_upwards(
@@ -245,10 +252,9 @@ class Tree:
         level_schemas = {}
 
         for level in range(self.__max_level + 1):
-            source = self.__data[f"level_{level}"]
-            index = from_size(len(source["start"]))
-            start_source = Hdf5Source(source["start"], index)
-            size_source = Hdf5Source(source["size"], index)
+            index = from_size(len(self.__columns[f"level_{level}/start"]))
+            start_source = Hdf5Source(self.__columns[f"level_{level}/start"], index)
+            size_source = Hdf5Source(self.__columns[f"level_{level}/size"], index)
             start_writer = ColumnWriter([start_source], ColumnCombineStrategy.SUM)
             size_writer = ColumnWriter([size_source], ColumnCombineStrategy.SUM)
             columns = {"size": size_writer, "start": start_writer}

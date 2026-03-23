@@ -1,0 +1,3 @@
+Units are converted to comoving in :py:class:`halo_projection_array <opencosmo.analysis.halo_projection_array>`
+:py:meth:`create_yt_dataset <opencosmo.analysis.create_yt_dataset>` raises an error if the inputted dataset has factors of "littleh" in the units
+converting yt field keys to tuple in :py:class:`halo_projection_array <opencomo.analysis.halo_projection_array>`.

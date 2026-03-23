@@ -1,14 +1,8 @@
 import random
 
 import numpy as np
-import pytest
 
 import opencosmo as oc
-
-
-@pytest.fixture
-def halo_properties_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
 
 
 def test_contains():
@@ -42,9 +36,9 @@ def test_box_query(halo_properties_path):
     p2 = tuple(random.uniform(50, 60) for _ in range(3))
     reg1 = oc.make_box(p1, p2)
 
-    original_data = ds.data
+    original_data = ds.get_data()
     ds = ds.bound(reg1)
-    data = ds.data
+    data = ds.get_data()
     for i, dim in enumerate(["x", "y", "z"]):
         name = f"fof_halo_center_{dim}"
         original_col = original_data[name]
@@ -69,10 +63,10 @@ def test_box_query_physical(halo_properties_path):
     p2 = tuple(random.uniform(50, 60) for _ in range(3))
     reg1 = oc.make_box(p1, p2)
 
-    original_data = ds.data
+    original_data = ds.get_data()
     ds = ds.bound(reg1)
 
-    data = ds.data
+    data = ds.get_data()
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]
         original_col = original_data[f"fof_halo_center_{dim}"]
@@ -97,11 +91,11 @@ def test_box_query_chain(halo_properties_path):
     p21 = (28.5, 37, 46)
     p22 = (33.5, 45, 56)
     reg2 = oc.make_box(p21, p22)
-    original_data = ds.data
+    original_data = ds.get_data()
 
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
-    data = ds.data
+    data = ds.get_data()
 
     for i, dim in enumerate(["x", "y", "z"]):
         colname = f"fof_halo_center_{dim}"
@@ -130,11 +124,10 @@ def test_write_tree(halo_properties_path, tmp_path):
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
 
     ds = oc.open(tmp_path / "bound_dataset.hdf5").with_units("scalefree")
-    tree_data = ds._Dataset__tree._Tree__data
+    tree_data = ds._Dataset__tree._Tree__columns
     for i in range(3):
-        level = tree_data[f"level_{i}"]
-        starts = level["start"][:]
-        sizes = level["size"][:]
+        starts = tree_data[f"level_{i}/start"][:]
+        sizes = tree_data[f"level_{i}/size"][:]
         assert np.sum(sizes) == len(ds)
         assert np.all(np.insert(np.cumsum(sizes), 0, 0)[:-1] == starts)
 
@@ -156,8 +149,8 @@ def test_box_query_chain_with_write(halo_properties_path, tmp_path):
     ds = ds.bound(reg2)
     ds2 = ds2.bound(reg2)
 
-    data = ds.data
-    data2 = ds2.data
+    data = ds.get_data()
+    data2 = ds2.get_data()
 
     for i, dim in enumerate(["x", "y", "z"]):
         col = data[f"fof_halo_center_{dim}"]

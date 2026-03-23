@@ -14,18 +14,20 @@ from typing import (
     Self,
     Sequence,
 )
+from warnings import warn
 
 import numpy as np
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
+from opencosmo.collection.lightcone.coordinates import make_radec_columns
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
-from opencosmo.column.column import DerivedColumn, EvaluatedColumn
+from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.evaluate import prepare_kwargs
-from opencosmo.io.io import open_single_dataset
+from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
@@ -36,9 +38,9 @@ if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
     from astropy.table import Table
 
-    from opencosmo.column.column import ColumnMask
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.io import OpenTarget
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
@@ -213,7 +215,10 @@ def with_redshift_column(dataset: Dataset):
         z_col = 1 / oc.col("fof_halo_center_a") - 1
         return dataset.with_new_columns(redshift=z_col)
     elif "redshift_true" in dataset.columns:
-        z_col = 1 * oc.col("redshift_true")
+        z_col = oc.col("redshift_true")
+        return dataset.with_new_columns(redshift=z_col)
+    elif "zp" in dataset.columns:
+        z_col = oc.col("zp")
         return dataset.with_new_columns(redshift=z_col)
     raise ValueError(
         "Unable to find a redshift or scale factor column for this lightcone dataset"
@@ -352,6 +357,22 @@ class Lightcone(dict):
         )
         return descriptions
 
+    @cached_property
+    def units(self) -> dict[str, Optional[u.Unit]]:
+        """
+        Return the units of the columns in this lightcone. Columns without a unit will
+        return a value of None
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column descriptions
+        """
+        units = next(iter(self.values())).units
+        units = dict(filter(lambda kv: kv[0] not in self.__hidden, units.items()))
+        return units
+
     @property
     def cosmology(self) -> Cosmology:
         """
@@ -416,7 +437,7 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_data(self, output="astropy", unpack: bool = False):
+    def get_data(self, format="astropy", unpack: bool = False, **kwargs):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -444,7 +465,12 @@ class Lightcone(dict):
         data: Table | Column | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
-        verify_format(output)
+        if "output" in kwargs:
+            warn(
+                "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
+            )
+            format = kwargs["output"]
+        verify_format(format)
 
         data = [ds.get_data(unpack=unpack) for ds in self.values()]
         data_with_length = [d for d in data if len(d) > 0]
@@ -456,9 +482,10 @@ class Lightcone(dict):
         if self.__ordered_by is not None:
             table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
 
-        table.remove_columns(self.__hidden)
-        if output != "astropy":
-            return convert_data(dict(table), output)
+        to_remove = self.__hidden.intersection(table.colnames)
+        table.remove_columns(to_remove)
+        if format != "astropy":
+            return convert_data(dict(table), format)
         elif len(table.columns) == 1:
             return next(iter(dict(table).values()))
 
@@ -480,15 +507,20 @@ class Lightcone(dict):
         return self.get_data("astropy")
 
     @classmethod
-    def open(cls, targets: list[OpenTarget], **kwargs):
+    def open(cls, targets: list[FileTarget], **kwargs):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
-
+        dataset_targets = []
         for target in targets:
-            group_name = target.group.name.split("/")[-1]
-            group_name = group_name.lstrip(f"{target.header.file.step}_")
-            ds = open_single_dataset(target, bypass_lightcone=True)
-            step = target.header.file.step
-            assert step is not None
+            dataset_targets.extend(target["dataset_targets"])
+            for group in target["dataset_groups"].values():
+                dataset_targets += group
+        for i, ds_target in enumerate(dataset_targets):
+            group_name = ds_target["dataset_group"].name.split("/")[-1]
+            group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
+            ds = open_single_dataset(ds_target, bypass_lightcone=True)
+            step = ds_target["header"].file.step
+            if step is None:
+                step = i
             datasets[step][group_name] = ds
 
         output: dict[int, Dataset | Lightcone] = {}
@@ -503,7 +535,15 @@ class Lightcone(dict):
         ):
             raise ValueError()
 
-        return cls(output)
+        result = cls(output)
+        return make_radec_columns(result)
+
+    @classmethod
+    def from_datasets(
+        cls, datasets: dict[str, oc.Dataset], z_range: tuple[float, float]
+    ):
+        result = cls(datasets, z_range)
+        return make_radec_columns(result)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
@@ -668,6 +708,36 @@ class Lightcone(dict):
         region = oc.make_cone(center, radius)
         return self.bound(region)
 
+    def box_search(self, p1: tuple | SkyCoord, p2: tuple | SkyCoord):
+        """
+        Perform a box search in a given RA and Dec range. Of course this is not
+        really a "box" on the surface of a sphere, but it's the closet thing we got.
+        This metbhod is exactly equivalent to
+
+        .. code-block:: python
+
+            region = oc.make_cone(center, radius)
+            ds = ds.bound(region)
+
+        Parameters
+        ----------
+
+        p1: tuple | astropy.coordinates.SkyCoord
+            A point defining one corner of the box. If a tuple with no units, values are assumed to
+            be RA and Dec in degrees.
+        p2: tuple | astropy.coordinates.SkyCoord
+            A point defining the opposite corner of the box. If a tuple with no units, values are assumed to
+            be RA and Dec in degrees.
+
+        Returns
+        -------
+
+        new_lightcone: opencosmo.Lightcone
+            The new dataset, only including data within the specified region.
+        """
+        region = oc.make_skybox(p1, p2)
+        return self.bound(region)
+
     def evaluate(
         self,
         func: Callable,
@@ -830,63 +900,107 @@ class Lightcone(dict):
         """
         yield from chain.from_iterable(v.rows() for v in self.values())
 
-    def select(self, columns: str | Iterable[str]) -> Self:
+    def select(
+        self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
+    ) -> Self:
         """
-        Create a new dataset from a subset of columns in this dataset.
+
+        Create a new lightcone dataset from a subset of columns in this lightcone dataset.
+        This function accepts wildcards. For exampe, "lsst*" will select all columns
+        that start with "lsst", while "*host*" will select all columns that have
+        "host" somewhere in the middle.
+
+        You can also create new columns as part of this call, as long as they are
+        derived from other columns in the dataset. For example:
+
+        .. code-block:: python
+
+            import opencosmo as oc
+            from opencosmo.column import add_mag_cols
+
+            dataset = oc.open("galaxy_catalog.hdf5")
+            total_mag = add_mag_cols("lsst_g", "lsst_r", "lsst_i", "lsst_z", "lsst_y")
+            # Note, you can also use oc.col to do this manually
+
+
+            dataset = dataset.select("ra", "dec", "*host*", "lsst*", lsst_total = total_mag)
+
+        This new dataset will contain the :code:`ra` and :code:`dec` columns, all the columns
+        with :code:`host` somewhere in the name, all the columns that start with :code:`lsst`
+        and a newly-constructed :code:`lsst_total` column.
+
+
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The column or columns to select.
+
+        **derived_columns : DerivedColumn
+            Additional columns to create as part of the selection.
 
         Returns
         -------
-        dataset : Dataset
-            The new dataset with only the selected columns.
+        dataset : Lightcone
+            The new lightcone with only the selected columns.
 
         Raises
         ------
         ValueError
-            If any of the given columns are not in the dataset.
+            If any of the required columns are not in the dataset.
         """
-        if isinstance(columns, str):
-            columns = [columns]
-        columns = set(columns)
-        hidden = self.__hidden
+        all_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            all_columns.update(col_group)
 
-        if "redshift" not in columns:
-            columns.add("redshift")
+        hidden = self.__hidden
+        additional_columns = set()
+
+        if "redshift" not in all_columns:
+            additional_columns.add("redshift")
             hidden = hidden.union({"redshift"})
 
-        if self.__ordered_by is not None and self.__ordered_by[0] not in columns:
-            columns.add(self.__ordered_by[0])
+        if self.__ordered_by is not None and self.__ordered_by[0] not in all_columns:
+            additional_columns.add(self.__ordered_by[0])
             hidden = hidden.union({self.__ordered_by[0]})
 
-        return self.__map("select", columns, hidden=hidden)
+        return self.__map(
+            "select",
+            all_columns,
+            additional_columns,
+            mapped_arguments={},
+            hidden=hidden,
+            construct=True,
+            **derived_columns,
+        )
 
-    def drop(self, columns: str | Iterable[str]) -> Self:
+    def drop(self, *columns: str | Iterable[str]) -> Self:
         """
         Produce a new dataset by dropping columns from this dataset.
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The column or columns to drop.
 
         Returns
         -------
-        dataset : Dataset
-            The new dataset without the dropped columns
+        dataset : Lightcone
+            The new lightcone without the dropped columns
 
         Raises
         ------
         ValueError
             If any of the given columns are not in the dataset.
         """
-        if isinstance(columns, str):
-            columns = [columns]
+        dropped_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            dropped_columns.update(col_group)
 
-        dropped_columns = set(columns)
         current_columns = set(self.columns)
         if missing := dropped_columns.difference(current_columns):
             raise ValueError(
@@ -1056,7 +1170,7 @@ class Lightcone(dict):
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **columns: DerivedColumn | np.ndarray | u.Quantity,
+        **columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
@@ -1085,8 +1199,11 @@ class Lightcone(dict):
         derived = {}
         raw = {}
         for name, column in columns.items():
-            if isinstance(column, (DerivedColumn, EvaluatedColumn)):
+            if isinstance(column, (DerivedColumn, EvaluatedColumn, Column)):
                 derived[name] = column
+
+            elif not isinstance(column, np.ndarray):
+                raise ValueError(f"Invalid column type: {type(columns)}")
             elif len(column) != len(self):
                 raise ValueError(
                     f"New column {name} has length {len(column)} but this dataset "

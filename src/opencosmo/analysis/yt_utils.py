@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import yt  # type: ignore
+from astropy.table import Table
 from pyxsim import CIESourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
 
@@ -90,13 +91,19 @@ def create_yt_dataset(
         if array.unit is None:
             return unyt_array(array.data, "dimensionless")
 
+        if "littleh" in str(array.unit):
+            raise RuntimeError("cannot convert factors of littleh to yt convention, "
+                               "try converting the opencosmo dataset to comoving units "
+                               "(e.g. set `ds = ds.with_units(\"comoving\"))`")
+
         return unyt_array.from_astropy(array)
 
     for ptype in data.keys():
         if "particles" not in ptype:
             continue
 
-        particle_data = data[ptype].data
+        particle_data = data[ptype].get_data()
+        assert isinstance(particle_data, Table)
         redshift = data[ptype].redshift
         cosmo = data[ptype].cosmology
         ptype_short = ptype.split("_")[0]

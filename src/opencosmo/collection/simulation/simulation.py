@@ -4,17 +4,18 @@ from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Self
 
 from opencosmo.collection import structure as sc
 from opencosmo.dataset import Dataset
-from opencosmo.io import io
 from opencosmo.io.schema import FileEntry, make_schema
 
 if TYPE_CHECKING:
     import astropy.units as u
     import h5py
+    import numpy as np
     from astropy.cosmology import Cosmology
 
     from opencosmo.collection.protocols import Collection
-    from opencosmo.column.column import ColumnMask
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
@@ -61,23 +62,8 @@ class SimulationCollection(dict):
         )
 
     @classmethod
-    def open(cls, targets: list[io.OpenTarget], **kwargs) -> Collection | Dataset:
-        targets_by_name = {
-            target.group.name.split("/")[-1]: target for target in targets
-        }
-        if len(targets_by_name) != len(targets):
-            raise ValueError(
-                "Not all datasets in this SimulationCollection have unique names!"
-            )
-
-        datasets = {
-            name: io.open_single_dataset(target)
-            for name, target in targets_by_name.items()
-        }
-
-        if len(datasets) == 1:
-            return next(iter(datasets.values()))
-        return cls(datasets)
+    def open(cls, targets: list[FileTarget], **kwargs) -> Collection | Dataset:
+        raise NotImplementedError()
 
     def make_schema(self) -> Schema:
         children = {}
@@ -221,9 +207,10 @@ class SimulationCollection(dict):
         """
         Select a set of columns in the datasets in this collection. This method
         calls the underlying method in :class:`opencosmo.Dataset`, or
-        :class:`opencosmo.Collection` depending on the context. As such
+        :class:`opencosmo.StructureCollection` depending on the context. As such
         its behavior and arguments can vary depending on what this collection
-        contains.
+        contains. See the documentation for those objects to determine
+        the expected arguments.
 
         Parameters
         ----------
@@ -314,7 +301,7 @@ class SimulationCollection(dict):
         *args,
         datasets: Optional[str | Iterable[str]] = None,
         descriptions: str | dict[str, str] = {},
-        **kwargs,
+        **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
         Update the datasets within this collection with a set of new columns.
@@ -349,12 +336,16 @@ class SimulationCollection(dict):
             output = {name: ds for name, ds in self.items()}
             for ds_name in datasets:
                 output[ds_name] = output[ds_name].with_new_columns(
-                    *args, descriptions=descriptions, **kwargs
+                    *args, descriptions=descriptions, **new_columns
                 )
             return SimulationCollection(output)
 
         return self.__map(
-            "with_new_columns", *args, descriptions=descriptions, **kwargs
+            "with_new_columns",
+            *args,
+            descriptions=descriptions,
+            datasets=datasets,
+            **new_columns,
         )
 
     def evaluate(

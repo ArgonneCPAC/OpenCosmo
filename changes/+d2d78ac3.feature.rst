@@ -1,0 +1,1 @@
+Lightcones now automatically create a :code:`ra` and :code:`dec` column if they do not exist but can be derived from the existing columns.

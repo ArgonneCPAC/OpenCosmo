@@ -155,6 +155,21 @@ class Column:
 
     def __init__(self, column_name: str):
         self.column_name = column_name
+        self.description = None
+
+    @property
+    def requires(self):
+        return set([self.column_name])
+
+    @property
+    def produces(self):
+        return None
+
+    def get_units(self, column_units: dict[str, u.Unit]):
+        return column_units[self.column_name]
+
+    def evaluate(self, data: dict[str, np.ndarray], *args):
+        return data[self.column_name]
 
     # mypy doesn't reason about eq and neq correctly
     def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
@@ -454,6 +469,7 @@ class EvaluatedColumn:
         requires: set[str],
         produces: set[str],
         format: str,
+        units: dict[str, Optional[u.Unit]],
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         batch_size: int = -1,
         description: Optional[str] = None,
@@ -463,6 +479,7 @@ class EvaluatedColumn:
         self.__requires = requires
         self.__kwargs = kwargs
         self.__produces = produces
+        self.__units = units
         self.__format = format
         self.__strategy = strategy
         self.__batch_size = batch_size
@@ -475,6 +492,7 @@ class EvaluatedColumn:
             self.__requires,
             self.__produces,
             self.__format,
+            self.__units,
             self.__strategy,
             self.__batch_size,
             self.description,
@@ -510,31 +528,7 @@ class EvaluatedColumn:
         return self.__kwargs.keys()
 
     def get_units(self, units: dict[str, np.ndarray]):
-        test_data: dict[str, Any]
-        match self.__strategy:
-            case EvaluateStrategy.ROW_WISE:
-                test_data = {
-                    name: np.random.randint(20, 40) for name in self.__requires
-                }
-            case _:
-                test_data = {
-                    name: np.random.randint(20, 40, 2) for name in self.__requires
-                }
-
-        if self.__format == "astropy":
-            test_data = {
-                name: td * units[name] if units.get(name) is not None else td
-                for name, td in test_data.items()
-            }
-
-        results = self.__func(**test_data, **self.__kwargs)
-        if not isinstance(results, dict):
-            results = {self.__func.__name__: results}
-
-        return {
-            name: result.unit if isinstance(result, u.Quantity) else None
-            for name, result in results.items()
-        }
+        return self.__units
 
     def evaluate(self, data: dict[str, np.ndarray], index: Optional[DataIndex] = None):
         data = {name: data[name] for name in self.__requires}

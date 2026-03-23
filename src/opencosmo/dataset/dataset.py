@@ -17,6 +17,7 @@ import numpy as np
 from astropy.table import QTable  # type: ignore
 from deprecated.sphinx import deprecated
 
+from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.index import into_array, mask, project
@@ -24,10 +25,9 @@ from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
-    from astropy import units
     from astropy.cosmology import Cosmology
 
-    from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.column.column import Column, ColumnMask, ConstructedColumn
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -135,6 +135,21 @@ class Dataset:
         return self.__state.descriptions
 
     @property
+    def units(self) -> dict[str, Optional[u.Unit]]:
+        """
+        Return the current units of all columns in the dataset. Columns without units will
+        return None.
+
+        Returns
+        -------
+
+        descriptions : dict[str, str | None]
+            The column units
+
+        """
+        return self.__state.units
+
+    @property
     def cosmology(self) -> Cosmology:
         """
         The cosmology of the simulation this dataset is drawn from as
@@ -184,16 +199,17 @@ class Dataset:
         return self.__state.region
 
     @property
-    def simulation(self) -> HaccSimulationParameters:
+    def simulation(self) -> Optional[HaccSimulationParameters]:
         """
         The parameters of the simulation this dataset is drawn
-        from.
+        from. May return None if the parameters are not included
+        in the file
 
         Returns
         -------
-        parameters: opencosmo.parameters.hacc.HaccSimulationParameters
+        parameters: Optional[opencosmo.parameters.hacc.HaccSimulationParameters]
         """
-        return self.__header.simulation
+        return getattr(self.__header, "simulation", None)
 
     @property
     @deprecated(
@@ -223,10 +239,7 @@ class Dataset:
         return self.__state.get_metadata(columns)
 
     def get_data(
-        self,
-        output="astropy",
-        unpack=True,
-        metadata_columns=[],
+        self, format="astropy", unpack=True, metadata_columns=[], **kwargs
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -259,7 +272,13 @@ class Dataset:
         data: Any
             The data in this dataset.
         """
-        verify_format(output)
+        if "output" in kwargs:
+            warn(
+                "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
+            )
+            format = kwargs["output"]
+
+        verify_format(format)
 
         if self.__state.convention.value == "physical":
             scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
@@ -278,7 +297,7 @@ class Dataset:
                 for key, value in data.items()
             }
 
-        return convert_data(data, output)
+        return convert_data(data, format)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -355,10 +374,13 @@ class Dataset:
         if not self.__header.file.is_lightcone:
             check_dataset = check_dataset.with_units("scalefree")
 
-        index_mask = check.check_containment(
-            check_dataset, check_region, self.__header.file
-        )
-        new_intersects_index = mask(intersects_index, index_mask)
+        if len(check_dataset) > 0:
+            index_mask = check.check_containment(
+                check_dataset, check_region, self.__header.file
+            )
+            new_intersects_index = mask(intersects_index, index_mask)
+        else:
+            new_intersects_index = np.array([], dtype=np.int64)
 
         new_index = np.concatenate(
             [into_array(contained_index), into_array(new_intersects_index)]
@@ -484,7 +506,7 @@ class Dataset:
         self,
         include_units: bool = True,
         metadata_columns=[],
-    ) -> Generator[Mapping[str, float | units.Quantity | np.ndarray]]:
+    ) -> Generator[Mapping[str, float | u.Quantity | np.ndarray]]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
         For performance, it is recommended to first select the columns you need to
@@ -520,14 +542,36 @@ class Dataset:
                 }
             yield output_data
 
-    def select(self, columns: str | Iterable[str]) -> Dataset:
+    def select(
+        self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
+    ) -> Dataset:
         """
-        Create a new dataset from a subset of columns in this dataset
+        Create a new dataset from a subset of columns in this dataset. This
+        function accepts wildcards. For exampe, "fof*" will select all columns
+        that start with "fof", while "*com*" will select all columns that have
+        "com" somewhere in the middle.
+
+        You can also create new columns as part of this call, as long as they are
+        derived from other columns in the dataset. For example:
+
+        .. code-block:: python
+
+           dataset = oc.open("haloproperties.hdf5")
+           fof_halo_px = oc.col("fof_halo_mass")*oc.col("fof_halo_com_vx")
+
+           dataset = dataset.select("fof_halo_mass", "*com*", fof_halo_px=fof_halo_px)
+
+        This new dataset will contain the :code:`fof_halo_mass` columns, all the columns
+        with :code:`com` in the center (e.g. :code:`fof_halo_com_vx`) and a new
+        :code:`fof_halo_px` column.
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The column or columns to select.
+
+        **derived_columns : DerivedColumn
+            Any new derived columns that will be instantiated as part of the select
 
         Returns
         -------
@@ -539,26 +583,40 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        new_state = self.__state.select(columns)
+        all_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            all_columns.update(col_group)
+
+        new_state = self.__state
+        if derived_columns:
+            new_state = new_state.with_new_columns({}, **derived_columns)
+            all_columns.update(derived_columns.keys())
+
+        new_state = new_state.select(all_columns)
         return Dataset(
             self.__header,
             new_state,
             self.__tree,
         )
 
-    def drop(self, columns: str | Iterable[str]) -> Dataset:
+    def drop(self, *columns: str | Iterable[str]) -> Dataset:
         """
-        Create a new dataset without the provided columns.
+        Create a new dataset without the provided columns. This
+        function accepts wildcards. For exampe, "fof*" will drop all columns
+        that start with "fof", while "*com*" will drop all columns that have
+        "com" somewhere in the middle.
 
         Parameters
         ----------
-        columns : str or list[str]
+        *columns : str or list[str]
             The columns to drop
 
         Returns
         -------
         dataset : Dataset
-            The new dataset without the droppedcolumns
+            The new dataset without the dropped columns
 
         Raises
         ------
@@ -566,16 +624,19 @@ class Dataset:
             If any of the provided columns are not in the dataset.
 
         """
-        if isinstance(columns, str):
-            columns = [columns]
 
-        current_columns = set(self.__state.columns)
-        dropped_columns = set(columns)
+        all_columns: set[str] = set()
+        for col_group in columns:
+            if isinstance(col_group, str):
+                col_group = {col_group}
+            all_columns.update(col_group)
 
-        if missing := dropped_columns.difference(current_columns):
-            raise ValueError(f"Columns {missing} are  not in this dataset")
-
-        return self.select(current_columns - dropped_columns)
+        new_state = self.__state.select(all_columns, drop=True)
+        return Dataset(
+            self.__header,
+            new_state,
+            self.__tree,
+        )
 
     def sort_by(self, column: str, invert: bool = False) -> Dataset:
         """
@@ -718,7 +779,7 @@ class Dataset:
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **new_columns: ConstructedColumn | np.ndarray | units.Quantity,
+        **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
