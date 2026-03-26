@@ -29,6 +29,10 @@ from opencosmo.units import UnitsError
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
+    from opencosmo.column.cache import ColumnCache
+    from opencosmo.dataset.handler import Hdf5Handler
+    from opencosmo.dataset.view import DatasetView
+
 
 Comparison = Callable[[float, float], bool]
 
@@ -651,6 +655,11 @@ class CompoundColumnMask:
         self.__left = left
         self.__right = right
         self.__op = op
+
+    def update_view(
+        self, view: DatasetView, handler: Hdf5Handler, cache: ColumnCache
+    ) -> (DatasetView, ColumnCache):
+        pass
 
     @property
     def requires(self):

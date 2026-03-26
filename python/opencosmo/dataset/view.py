@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, NamedTuple
+from typing import TYPE_CHECKING, Iterable, NamedTuple, Protocol
 
 if TYPE_CHECKING:
+    from opencosmo.column.cache import ColumnCache
     from opencosmo.column.column import ConstructedColumn
+    from opencosmo.dataset.handler import Hdf5Handler
     from opencosmo.index import DataIndex
 
 
-class QueryOp:
-    pass
+class QueryOp(Protocol):
+    def update_view(
+        self, view: DatasetView, handler: Hdf5Handler, cache: ColumnCache
+    ) -> (DatasetView, ColumnCache): ...
 
 
 class DatasetView(NamedTuple):
