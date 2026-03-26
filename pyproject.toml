@@ -18,7 +18,7 @@ dependencies = [
   "pydantic>=2.10.6,<3.0.0",
   "hdf5plugin>=5.0.0,!=5.1",
   "healpy>=1.19.0,<2.0.0",
-  "healsparse==1.11.1",
+  "healsparse>=1.11",
   "deprecated>=1.2.38,<2.0.0",
   "numpy>=2.0,<2.5",
   "click (>=8.2.1,<9.0.0)",
