@@ -14,7 +14,6 @@ from opencosmo import collection as occ
 from opencosmo.dataset import state as st
 from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.index import into_array
 from opencosmo.index.build import empty, from_range
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.builders import from_model
@@ -538,39 +537,40 @@ def open_single_dataset(
         tree=tree,
     )
     if header.file.data_type == "healpix_map":
-        if (
-            (comm := get_comm_world()) is not None
-        ):  # partitioning has to be done manually since we don't store a spatial index
-            if isinstance(sim_region, FullSkyRegion):
-                sim_region = HealpixRegion(
-                    into_array(dataset.index), nside=header.healpix_map["nside"]
-                )
-            else:
-                assert isinstance(sim_region, HealpixRegion)
-                pixels = sim_region.pixels
-                splits = comm.allgather(len(dataset))
-                splits = np.insert(np.cumsum(splits), 0, 0)
-                rank = comm.Get_rank()
-                sim_region = HealpixRegion(
-                    pixels[splits[rank] : splits[rank + 1]],
-                    nside=header.healpix_map["nside"],
-                )
-
-        return occ.HealpixMap(
-            {"data": dataset},
-            header.healpix_map["nside"],
-            header.healpix_map["nside_lr"],
-            header.healpix_map["ordering"],
-            header.healpix_map["full_sky"],
-            header.healpix_map["z_range"],
-            region=sim_region,
-        )
+        return __open_healpix_map(dataset, sim_region)
     elif header.file.is_lightcone and not bypass_lightcone:
         return occ.Lightcone.from_datasets(
             {"data": dataset}, header.lightcone["z_range"]
         )
 
     return dataset
+
+
+def __open_healpix_map(dataset: oc.Dataset, sim_region):
+    header = dataset.header
+    if (comm := get_comm_world()) is not None and isinstance(
+        sim_region, HealpixRegion
+    ):  # partitioning has to be done manually since we don't store a spatial index
+        pixels = sim_region.pixels
+        splits = comm.allgather(len(dataset))
+        splits = np.insert(np.cumsum(splits), 0, 0)
+        rank = comm.Get_rank()
+        sim_region = HealpixRegion(
+            pixels[splits[rank] : splits[rank + 1]],
+            nside=header.healpix_map["nside"],
+        )
+    elif isinstance(sim_region, FullSkyRegion) or header.healpix_map["full_sky"]:
+        sim_region = HealpixRegion(dataset.index, nside=header.healpix_map["nside"])
+
+    return occ.HealpixMap(
+        {"data": dataset},
+        header.healpix_map["nside"],
+        header.healpix_map["nside_lr"],
+        header.healpix_map["ordering"],
+        header.healpix_map["full_sky"],
+        header.healpix_map["z_range"],
+        region=sim_region,
+    )
 
 
 def __expand_lightcone_region(region, tree):

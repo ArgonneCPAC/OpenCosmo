@@ -15,15 +15,19 @@ from opencosmo.dataset.derived import (
     build_derived_columns,
     validate_derived_columns,
 )
-from opencosmo.dataset.handler import Hdf5Handler
 from opencosmo.dataset.im import resort, validate_in_memory_columns
+from opencosmo.handler.empty import EmptyHandler
+from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
-from opencosmo.index.unary import get_length, get_range
+from opencosmo.index.unary import get_range
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
-from opencosmo.units.handler import make_unit_handler
+from opencosmo.units.handler import (
+    make_unit_handler_from_hdf5,
+    make_unit_handler_from_units,
+)
 
 if TYPE_CHECKING:
     from astropy import table
@@ -31,6 +35,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from opencosmo.column.column import ConstructedColumn
+    from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
@@ -38,7 +43,7 @@ if TYPE_CHECKING:
     from opencosmo.units.handler import UnitHandler
 
 
-def deregister_state(id: int, cache: ColumnCache):
+def deregister_state(id: int, cache: DataCache):
     cache.deregister_column_group(id)
 
 
@@ -50,8 +55,8 @@ class DatasetState:
 
     def __init__(
         self,
-        raw_data_handler: Hdf5Handler,
-        cache: ColumnCache,
+        raw_data_handler: DataHandler,
+        cache: DataCache,
         derived_columns: dict[str, ConstructedColumn],
         unit_handler: UnitHandler,
         header: OpenCosmoHeader,
@@ -108,7 +113,7 @@ class DatasetState:
             metadata_group,
             load_conditions,
         )
-        unit_handler = make_unit_handler(
+        unit_handler = make_unit_handler_from_hdf5(
             target["columns"], target["header"], unit_convention
         )
 
@@ -125,8 +130,44 @@ class DatasetState:
             None,
         )
 
+    @classmethod
+    def in_memory(
+        cls,
+        data_columns: dict,
+        metadata_columns: dict,
+        header: OpenCosmoHeader,
+        unit_convention: UnitConvention,
+        region: Region,
+        descriptions: Optional[str, str] = {},
+        index: Optional[DataIndex] = None,
+    ):
+        cache = ColumnCache.empty()
+        cache.add_data(
+            data_columns | metadata_columns, descriptions, set(metadata_columns.keys())
+        )
+        units = {}
+        for name, column in data_columns.items():
+            units[name] = None
+            if isinstance(column, u.Quantity):
+                units[name] = column.unit
+
+        unit_handler = make_unit_handler_from_units(units, header, unit_convention)
+
+        return DatasetState(
+            EmptyHandler(),
+            cache,
+            {},
+            unit_handler,
+            header,
+            set(data_columns.keys()),
+            region,
+            None,
+        )
+
     def __len__(self):
-        return get_length(self.__raw_data_handler.index)
+        if isinstance(self.__raw_data_handler, EmptyHandler):
+            return len(self.__cache)
+        return len(self.__raw_data_handler)
 
     @property
     def descriptions(self):
@@ -176,7 +217,10 @@ class DatasetState:
 
     @property
     def meta_columns(self) -> list[str]:
-        return self.__raw_data_handler.metadata_columns
+        columns = self.__cache.metadata_columns.union(
+            self.__raw_data_handler.metadata_columns
+        )
+        return list(columns)
 
     def get_data(
         self,
@@ -188,7 +232,7 @@ class DatasetState:
         Get the data for a given handler.
         """
         data = self.__build_derived_columns(unit_kwargs)
-        cached_data = self.__cache.get_columns(self.columns)
+        cached_data = self.__cache.get_data(self.columns)
         converted_cached_data = self.__unit_handler.apply_unit_conversions(
             cached_data, unit_kwargs
         )
@@ -213,14 +257,13 @@ class DatasetState:
             raw_data = self.__raw_data_handler.get_data(raw_columns)
             raw_data = self.__unit_handler.apply_raw_units(raw_data, unit_kwargs)
 
-            if not self.__raw_data_handler.in_memory:
-                self.__cache.add_data(raw_data)
             updated_data = self.__unit_handler.apply_unit_conversions(
                 raw_data, unit_kwargs
             )
-            if updated_data and not self.__raw_data_handler.in_memory:
-                self.__cache.add_data(updated_data, push_up=False)
-            data |= raw_data | updated_data
+            new_data = raw_data | updated_data
+            if new_data:
+                self.__cache.add_data(new_data, {}, push_up=False)
+            data |= new_data
 
         if missing := set(self.columns).difference(data.keys()):
             raise RuntimeError(
@@ -230,7 +273,15 @@ class DatasetState:
         # keep ordering
 
         if metadata_columns:
-            data.update(self.__raw_data_handler.get_metadata(metadata_columns))
+            metadata = self.__cache.get_data(metadata_columns)
+            additional_metadata_columns_to_fetch = set(metadata_columns).difference(
+                metadata.keys()
+            )
+            metadata |= self.__raw_data_handler.get_metadata(
+                additional_metadata_columns_to_fetch
+            )
+
+            data.update(metadata)
 
         if not ignore_sort and self.__sort_by is not None:
             sort_by = data[self.__sort_by[0]]
@@ -278,7 +329,7 @@ class DatasetState:
             }
             derived_storage = resort(all_derived, self.get_sorted_index())
             if derived_storage:
-                self.__cache.add_data(data)
+                self.__cache.add_data(data, {})
         except GeneratorExit:
             pass
         except BaseException:
@@ -313,14 +364,14 @@ class DatasetState:
             .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
             .get_data(ignore_sort=True)
         )
-        cached_data = self.__cache.get_columns(self.columns)
+        cached_data = self.__cache.get_data(self.columns)
         for name, coldata in cached_data.items():
             if name in derived_data or name in raw_columns:
                 continue
-            try:
+            if isinstance(coldata, u.Quantity):
                 data = coldata.value
                 unit_str = str(coldata.unit)
-            except AttributeError:
+            else:
                 data = coldata
                 unit_str = ""
             attrs = {"unit": unit_str}
@@ -397,7 +448,6 @@ class DatasetState:
                     )
 
         new_unit_handler = self.__unit_handler
-        new_cache = self.__cache
         new_derived = copy(self.__derived_columns)
         new_column_names: set[str] = set(self.columns)
         if new_in_memory_columns:
@@ -407,7 +457,7 @@ class DatasetState:
             new_in_memory_columns = resort(
                 new_in_memory_columns, self.get_sorted_index()
             )
-            new_cache = new_cache.with_data(
+            self.__cache.add_data(
                 new_in_memory_columns, descriptions=new_in_memory_descriptions
             )
             new_column_names |= set(new_in_memory_columns.keys())
@@ -430,7 +480,7 @@ class DatasetState:
             new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
         return self.__rebuild(
-            cache=new_cache,
+            cache=self.__cache,
             derived_columns=new_derived,
             columns=new_column_names,
             unit_handler=new_unit_handler,
@@ -464,13 +514,6 @@ class DatasetState:
             self.__raw_data_handler.index,
         )
         return dc
-
-    def __get_im_columns(self, data: dict, unit_kwargs) -> table.Table:
-        im_data = {}
-        for colname, column in self.__cache.columns():
-            im_data[colname] = column
-
-        return self.__unit_handler.apply_units(im_data, unit_kwargs)
 
     def with_region(self, region: Region):
         """

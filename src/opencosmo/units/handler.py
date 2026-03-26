@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING, Mapping, Optional
 import astropy.units as u
 
 from opencosmo.units import UnitConvention
-from opencosmo.units.get import UnitApplicator, get_unit_applicators_hdf5
+from opencosmo.units.get import (
+    UnitApplicator,
+    get_unit_applicators_dict,
+    get_unit_applicators_hdf5,
+)
 
 if TYPE_CHECKING:
     import h5py
@@ -16,12 +20,33 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
 
 
-def make_unit_handler(
+def make_unit_handler_from_hdf5(
     columns: list[h5py.Dataset],
     header: "OpenCosmoHeader",
     target_convention: Optional[UnitConvention] = None,
 ):
     applicators = get_unit_applicators_hdf5(columns, header)
+    if target_convention is None:
+        target_convention = header.file.unit_convention
+    if not isinstance(target_convention, UnitConvention):
+        target_convention = UnitConvention(target_convention)
+
+    return UnitHandler(
+        UnitConvention(header.file.unit_convention),
+        target_convention,
+        header.cosmology,
+        applicators,
+    )
+
+
+def make_unit_handler_from_units(
+    columns: dict[str, u.Unit],
+    header: "OpenCosmoHeader",
+    target_convention: Optional[UnitConvention] = None,
+):
+    applicators = get_unit_applicators_dict(
+        columns, header.file.unit_convention, header.cosmology
+    )
     if target_convention is None:
         target_convention = header.file.unit_convention
     if not isinstance(target_convention, UnitConvention):

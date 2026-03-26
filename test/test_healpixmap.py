@@ -100,7 +100,7 @@ def test_healpix_downgrade(healpix_map_path):
     )
 
 
-def test_healpix_downgrade_doesnt_cache(healpix_map_path):
+def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
     """
     Downgrading data produces an entirely new dataset, which exists as an
     in-memory hdf5 file. We want to ensure this data is not also sent
@@ -120,7 +120,9 @@ def test_healpix_downgrade_doesnt_cache(healpix_map_path):
     output.get_data()
     downgraded_dataset = next(iter(output.values()))
     cache = downgraded_dataset._Dataset__state._DatasetState__cache
-    assert len(cache.columns) == 0
+    handler = downgraded_dataset._Dataset__state._DatasetState__raw_data_handler
+    assert len(cache.columns) == len(dataset.columns)
+    assert len(handler) == 0
 
 
 def test_healpix_index_chain_failure(healpix_map_path):
@@ -213,6 +215,15 @@ def test_healpix_write(healpix_map_path, tmp_path):
     assert set(ds.get_data()["tsz"].valid_pixels) == set(
         new_ds.get_data()["tsz"].valid_pixels
     )
+
+
+def test_healpix_write_after_downgrade(healpix_map_path, tmp_path):
+    ds = oc.open(healpix_map_path)
+    ds = ds.with_resolution(128)
+
+    oc.write(tmp_path / "map_test.hdf5", ds)
+    new_ds = oc.open(tmp_path / "map_test.hdf5")
+    print(new_ds)
 
 
 def test_healpix_write_after_take_range(healpix_map_path, tmp_path):

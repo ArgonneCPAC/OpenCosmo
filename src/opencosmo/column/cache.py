@@ -70,12 +70,14 @@ class ColumnCache:
         cached_data: dict[str, np.ndarray],
         registered_column_groups: dict[int, set[str]],
         column_descriptions: dict[str, str],
+        metadata_columns: set[str],
         derived_index: Optional[DataIndex],
         parent: Optional[ref[ColumnCache]],
         children: Optional[list[ref[ColumnCache]]],
     ):
         self.__cached_data = cached_data
         self.__registered_column_groups = registered_column_groups
+        self.__metadata_columns = metadata_columns
         self.__descriptions = column_descriptions
         self.__derived_index = derived_index
         self.__parent = parent
@@ -96,11 +98,15 @@ class ColumnCache:
 
     @classmethod
     def empty(cls):
-        return ColumnCache({}, {}, {}, None, None, [])
+        return ColumnCache({}, {}, {}, set(), None, None, [])
 
     @property
     def columns(self):
         return set(self.__cached_data.keys())
+
+    @property
+    def metadata_columns(self):
+        return self.__metadata_columns
 
     @property
     def descriptions(self):
@@ -111,7 +117,7 @@ class ColumnCache:
         return set().union(*list(self.__registered_column_groups.values()))
 
     def duplicate(self):
-        return ColumnCache({}, {}, {}, None, ref(self), [])
+        return ColumnCache({}, {}, {}, self.__metadata_columns, ref(self), [])
 
     def __push_down(self, data: dict[str, np.ndarray]):
         columns_to_keep = self.registered_columns.intersection(data.keys()).difference(
@@ -133,9 +139,9 @@ class ColumnCache:
         )
         self.__cached_data |= {key: data[key] for key in columns_to_keep}
 
-    def register_column_group(self, key: int, data: set[str]):
-        assert key not in self.__registered_column_groups
-        self.__registered_column_groups[key] = data
+    def register_column_group(self, state_id: int, columns: set[str]):
+        assert state_id not in self.__registered_column_groups
+        self.__registered_column_groups[state_id] = columns
 
     def deregister_column_group(self, state_id: int):
         assert state_id in self.__registered_column_groups
@@ -180,6 +186,7 @@ class ColumnCache:
         self,
         data: dict[str, np.ndarray],
         descriptions: dict[str, str] = {},
+        metadata_columns: Optional[set[str]] = None,
         push_up=True,
     ):
         """
@@ -188,6 +195,9 @@ class ColumnCache:
 
         """
         check_length(self, data)
+        if metadata_columns is not None:
+            assert metadata_columns.issubset(data.keys())
+            self.__metadata_columns = self.__metadata_columns.union(metadata_columns)
 
         self.__descriptions |= descriptions
         if (
@@ -200,29 +210,8 @@ class ColumnCache:
 
         self.__cached_data = self.__cached_data | data
 
-    def with_data(
-        self,
-        data: dict[str, np.ndarray],
-        descriptions: dict[str, str] = {},
-        no_push_up=True,
-    ):
-        check_length(self, data)
-        new_cached_data = self.__cached_data | data
-        new_cache = ColumnCache(
-            new_cached_data,
-            self.__registered_column_groups,
-            self.__descriptions | descriptions,
-            self.__derived_index,
-            self.__parent,
-            self.__children,
-        )
-        for child_ref in self.__children:
-            if (child := child_ref()) is not None:
-                child.__update_parent(new_cache)
-
-        return new_cache
-
     def without_columns(self, columns: Iterable[str]):
+        columns = set(columns)
         columns_to_drop = set(self.__cached_data.keys()).intersection(columns)
         data = {
             name: data
@@ -234,7 +223,9 @@ class ColumnCache:
             for name, desc in self.__descriptions.items()
             if name not in columns_to_drop
         }
-        return ColumnCache(data, {}, descriptions, None, None, [])
+        new_meta_columns = self.__metadata_columns.difference(columns)
+
+        return ColumnCache(data, {}, descriptions, new_meta_columns, None, None, [])
 
     def drop(self, columns: Iterable[str]):
         columns_in_cache = set(self.__cached_data.keys()).intersection(columns)
@@ -276,11 +267,13 @@ class ColumnCache:
             raise ValueError(
                 "Tried to take more elements than the length of the cache!"
             )
-        new_cache = ColumnCache({}, {}, {}, index, ref(self), [])
+        new_cache = ColumnCache(
+            {}, {}, {}, self.__metadata_columns, index, ref(self), []
+        )
         self.__children.append(ref(new_cache))
         return new_cache
 
-    def get_columns(self, columns: Iterable[str]):
+    def get_data(self, columns: Iterable[str]):
         columns = set(columns)
         columns_in_cache = columns.intersection(self.__cached_data.keys())
         missing_columns = columns - columns_in_cache

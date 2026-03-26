@@ -10,7 +10,6 @@ from opencosmo.evaluate import insert_data
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
-    from opencosmo.index import ChunkedIndex
 
 
 class EvaluateStrategy(Enum):
@@ -58,11 +57,11 @@ def evaluate_chunks(
     data: dict[str, np.ndarray],
     func: Callable,
     kwargs: dict[str, Any],
-    index: ChunkedIndex,
+    chunk_sizes: np.ndarray,
 ):
     data_length = len(next(iter(data.values())))
 
-    chunk_splits = np.cumsum(index[1])
+    chunk_splits = np.cumsum(chunk_sizes)
     storage = {}
     input_data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
     for i in range(len(chunk_splits)):
