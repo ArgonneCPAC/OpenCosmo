@@ -16,14 +16,14 @@ dependencies = [
   "h5py>=3.12.1,<4.0.0",
   "astropy>=7.2.0,<8.0.0",
   "pydantic>=2.10.6,<3.0.0",
-  "hdf5plugin>=5.0.0,!=5.1",
+  "hdf5plugin>=5.0.0,!=5.1,<7.0",
   "healpy>=1.19.0,<2.0.0",
-  "healsparse==1.11.1",
+  "healsparse>=1.11,<2.0",
   "deprecated>=1.2.38,<2.0.0",
   "numpy>=2.0,<2.5",
   "click (>=8.2.1,<9.0.0)",
-  "numba>=0.64.0",
-  "rustworkx>=0.17.1",
+  "numba>=0.64.0,<1.0",
+  "rustworkx>=0.17.1,<1.0",
 ]
 
 [dependency-groups]
@@ -98,7 +98,7 @@ max-doc-length = 90
 
 [tool.ruff.lint]
 future-annotations = true
-preview = true
+preview = false
 extend-select = ["TC"]
 
 

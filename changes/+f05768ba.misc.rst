@@ -1,0 +1,1 @@
+Remove healsparse pin and allow any version >=1.11
