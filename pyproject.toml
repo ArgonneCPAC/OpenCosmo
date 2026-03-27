@@ -98,7 +98,7 @@ max-doc-length = 90
 
 [tool.ruff.lint]
 future-annotations = true
-preview = true
+preview = false
 extend-select = ["TC"]
 
 
