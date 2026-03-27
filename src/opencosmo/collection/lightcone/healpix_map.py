@@ -15,7 +15,6 @@ import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
-from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
@@ -106,10 +105,7 @@ class HealpixMap(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
-        if region is None:
-            self.__region: Region = FullSkyRegion()
-        else:
-            self.__region = region
+        self.__region = region
 
     @property
     def nside(self):
@@ -483,33 +479,7 @@ class HealpixMap(dict):
 
     @classmethod
     def open(cls, targets: list[FileTarget], **kwargs):
-        datasets: dict[str, Dataset] = {}
-
-        dataset_targets = []
-        for file_target in targets:
-            dataset_targets.extend(file_target["dataset_targets"])
-
-        for target in dataset_targets:
-            ds = open_single_dataset(target)
-            # TODO: check if we need some equivalent here
-            if not isinstance(ds, HealpixMap) or len(ds.keys()) != 1:
-                raise ValueError(
-                    "HealpixMap class can only contain datasets (not collections)"
-                )
-            if target["dataset_group"].name != "/":
-                key = target["dataset_group"].name.split("/")[-1]
-            else:
-                key = f"{target['header'].healpix_map.z_range}_{target['header'].file.data_type}"
-            datasets[key] = next(iter(ds.values()))
-
-        return cls(
-            datasets,
-            ds.nside(),
-            ds.nside_lr(),
-            ds.ordering(),
-            ds.full_sky(),
-            ds.z_range(),
-        )
+        raise NotImplementedError()
 
     def __map(
         self,

@@ -210,7 +210,9 @@ def build_derived_columns(
             produces = set((colname,))
         if all(name in data for name in produces):
             continue
-        output = derived_column.evaluate(data, index[1])
+        output = derived_column.evaluate(
+            data, index[1] if isinstance(index, tuple) else None
+        )
         if isinstance(output, dict):
             data |= output
             new_derived |= output

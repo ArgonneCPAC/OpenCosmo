@@ -538,14 +538,12 @@ class EvaluatedColumn:
             }
 
         if self.batch_size > 0:
-            if chunk_sizes is not None:
-                raise ValueError(
-                    "Cannot have both a chunk_sizes argument and a batch_size!"
-                )
             length = len(next(iter(data.values())))
             strategy = EvaluateStrategy.CHUNKED
-            chunk_sizes = np.full(np.ceil(length / self.batch_size), self.batch_size)
-            chunk_sizes[-1] = length - (length % self.batch_size)
+            chunk_sizes = np.full(
+                np.ceil(length / self.batch_size).astype(int), self.batch_size
+            )
+            chunk_sizes[-1] = (length % self.batch_size) or self.batch_size
 
         else:
             strategy = self.__strategy

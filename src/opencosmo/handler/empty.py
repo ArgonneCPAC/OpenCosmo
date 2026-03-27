@@ -15,8 +15,8 @@ class EmptyHandler:
     def get_data(self, *args):
         return {}
 
-    def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
-        return None
+    def get_metadata(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
+        return {}
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None) -> Self:
         return self

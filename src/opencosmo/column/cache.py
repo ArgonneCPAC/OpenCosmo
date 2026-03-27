@@ -117,7 +117,7 @@ class ColumnCache:
         return set().union(*list(self.__registered_column_groups.values()))
 
     def duplicate(self):
-        return ColumnCache({}, {}, {}, self.__metadata_columns, ref(self), [])
+        return ColumnCache({}, {}, {}, self.__metadata_columns, None, ref(self), [])
 
     def __push_down(self, data: dict[str, np.ndarray]):
         columns_to_keep = self.registered_columns.intersection(data.keys()).difference(
@@ -210,7 +210,7 @@ class ColumnCache:
 
         self.__cached_data = self.__cached_data | data
 
-    def without_columns(self, columns: Iterable[str]):
+    def drop(self, columns: Iterable[str]):
         columns = set(columns)
         columns_to_drop = set(self.__cached_data.keys()).intersection(columns)
         data = {
@@ -226,11 +226,6 @@ class ColumnCache:
         new_meta_columns = self.__metadata_columns.difference(columns)
 
         return ColumnCache(data, {}, descriptions, new_meta_columns, None, None, [])
-
-    def drop(self, columns: Iterable[str]):
-        columns_in_cache = set(self.__cached_data.keys()).intersection(columns)
-        for column in columns_in_cache:
-            del self.__cached_data[column]
 
     def request(self, column_names: Iterable[str], index: Optional[DataIndex]):
         column_names = set(column_names)

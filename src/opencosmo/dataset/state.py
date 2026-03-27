@@ -138,14 +138,14 @@ class DatasetState:
         header: OpenCosmoHeader,
         unit_convention: UnitConvention,
         region: Region,
-        descriptions: Optional[str, str] = {},
+        descriptions: Optional[dict[str, str]] = {},
         index: Optional[DataIndex] = None,
     ):
         cache = ColumnCache.empty()
         cache.add_data(
             data_columns | metadata_columns, descriptions, set(metadata_columns.keys())
         )
-        units = {}
+        units: dict[str, u.Unit] = {}
         for name, column in data_columns.items():
             units[name] = None
             if isinstance(column, u.Quantity):
@@ -217,7 +217,7 @@ class DatasetState:
 
     @property
     def meta_columns(self) -> list[str]:
-        columns = self.__cache.metadata_columns.union(
+        columns = set(self.__cache.metadata_columns).union(
             self.__raw_data_handler.metadata_columns
         )
         return list(columns)
@@ -277,8 +277,11 @@ class DatasetState:
             additional_metadata_columns_to_fetch = set(metadata_columns).difference(
                 metadata.keys()
             )
-            metadata |= self.__raw_data_handler.get_metadata(
-                additional_metadata_columns_to_fetch
+            metadata |= (
+                self.__raw_data_handler.get_metadata(
+                    additional_metadata_columns_to_fetch
+                )
+                or {}
             )
 
             data.update(metadata)
@@ -651,11 +654,11 @@ class DatasetState:
 
         if convention is None:
             convention_ = self.__unit_handler.current_convention
-            cache = self.__cache.duplicate()
+            cache = self.__cache
         else:
             convention_ = UnitConvention(convention)
-            cache = self.__cache.without_columns(self.__raw_data_handler.columns)
-            cache = cache.without_columns(self.__derived_columns.keys())
+            cache = self.__cache.drop(self.__raw_data_handler.columns)
+            cache = cache.drop(self.__derived_columns.keys())
 
         if (
             convention_ == UnitConvention.SCALEFREE
