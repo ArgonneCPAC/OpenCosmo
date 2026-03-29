@@ -232,6 +232,7 @@ class UnitHandler:
         if self.__current_convention == UnitConvention.UNITLESS:
             return data
         columns = {}
+
         for colname, value in data.items():
             applicator = self.__applicators.get(colname)
             column_conversion = self.__column_conversions.get(colname)

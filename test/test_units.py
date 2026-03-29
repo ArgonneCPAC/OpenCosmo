@@ -368,13 +368,9 @@ def test_convention_change_clears_symbolic_conversions(input_path):
         }
         factor = (1.0 * (u.km / u.s)).to(u.lyr / u.yr).value
 
-    print(ds.select(conversions.keys()).get_data())
     converted_data = ds.with_units(**conversions).select(conversions.keys()).get_data()
-    print(ds.select(conversions.keys()).get_data())
     original_data = ds.select(conversions.keys()).get_data()
     for colname, conversion in conversions.items():
-        print(original_data[colname])
-        print(converted_data[colname])
         assert converted_data[colname].unit == conversion
         assert np.all(
             np.isclose(

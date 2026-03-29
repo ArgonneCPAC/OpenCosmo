@@ -118,7 +118,7 @@ class ColumnCache:
     def registered_columns(self):
         return set().union(*list(self.__registered_column_groups.values()))
 
-    def duplicate(self):
+    def create_child(self):
         return ColumnCache({}, {}, {}, self.__metadata_columns, None, ref(self), [])
 
     def make_schema(self, columns: Iterable[str]):

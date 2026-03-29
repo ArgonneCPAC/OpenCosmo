@@ -60,10 +60,13 @@ def combine_with_cached_schema(raw_data_schema, cached_schema):
 
     new_columns = {}
     for column in all_column_names:
+        new_attrs = {}
+        if column in raw_data_schema.columns:
+            new_columns[column] = raw_data_schema.columns[column]
+            new_attrs = raw_data_schema.columns[column].attrs
         if column in cached_schema.columns:
             new_columns[column] = cached_schema.columns[column]
-        else:
-            new_columns[column] = raw_data_schema.columns[column]
+            new_columns[column].update_attrs(new_attrs)
 
     return make_schema(
         raw_data_schema.name,

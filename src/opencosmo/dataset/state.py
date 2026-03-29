@@ -256,13 +256,16 @@ class DatasetState:
         if raw_columns:
             raw_data = self.__raw_data_handler.get_data(raw_columns)
             raw_data = self.__unit_handler.apply_raw_units(raw_data, unit_kwargs)
+            if raw_data:
+                self.__cache.add_data(raw_data, {})
 
             updated_data = self.__unit_handler.apply_unit_conversions(
                 raw_data, unit_kwargs
             )
+            if updated_data:
+                self.__cache.add_data(updated_data, {}, push_up=False)
+
             new_data = raw_data | updated_data
-            if new_data:
-                self.__cache.add_data(new_data, {}, push_up=False)
             data |= new_data
 
         if missing := set(self.columns).difference(data.keys()):
@@ -682,8 +685,8 @@ class DatasetState:
         else:
             cached_columns_to_drop = new_units.keys()
         all_derived_names: set[str] = reduce(
-            lambda acc, next: acc.union(next.produces or set()),
-            self.__derived_columns.values(),
+            lambda acc, next: acc.union(next[1].produces or {next[0]}),
+            self.__derived_columns.items(),
             set(),
         )
         cached_columns_to_drop = list(
@@ -695,5 +698,5 @@ class DatasetState:
         )
 
         return self.__rebuild(
-            unit_handler=new_handler, cache=self.__cache.drop(cached_columns_to_drop)
+            unit_handler=new_handler, cache=self.__cache.create_child()
         )
