@@ -552,7 +552,7 @@ def __open_healpix_map(dataset: oc.Dataset, sim_region):
         sim_region, HealpixRegion
     ):  # partitioning has to be done manually since we don't store a spatial index
         pixels = sim_region.pixels
-        splits = comm.allgather(len(dataset))
+        splits = np.array(comm.allgather(len(dataset)))
         splits = np.insert(np.cumsum(splits), 0, 0)
         rank = comm.Get_rank()
         sim_region = HealpixRegion(
