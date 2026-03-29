@@ -21,7 +21,7 @@ from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
-from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.schema import FileEntry, combine_with_cached_schema, make_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
@@ -367,22 +367,13 @@ class DatasetState:
             .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
             .get_data(ignore_sort=True)
         )
-        cached_data = self.__cache.get_data(self.columns)
-        for name, coldata in cached_data.items():
-            if name in derived_data or name in raw_columns:
-                continue
-            if isinstance(coldata, u.Quantity):
-                data = coldata.value
-                unit_str = str(coldata.unit)
-            else:
-                data = coldata
-                unit_str = ""
-            attrs = {"unit": unit_str}
-            attrs["description"] = self.descriptions.get(name, "None")
-            writer = ColumnWriter.from_numpy_array(data, attrs=attrs)
-            data_schema.columns[name] = writer
+        cached_data_schema, cached_metadata_schema = self.__cache.make_schema(
+            self.columns + self.meta_columns
+        )
 
         for colname in derived_names:
+            if colname in cached_data_schema.columns:
+                continue
             coldata = derived_data[colname]
             unit = ""
             if isinstance(coldata, u.Quantity):
@@ -397,16 +388,21 @@ class DatasetState:
             writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT, attrs=attrs)
             data_schema.columns[colname] = writer
 
-        children = {"data": data_schema}
-
-        if metadata_schema is not None:
-            children[metadata_schema.name] = metadata_schema
-        if name is None:
-            name = ""
-
         attributes = {}
         if (load_conditions := self.__raw_data_handler.load_conditions) is not None:
             attributes["load/if"] = load_conditions
+
+        data_schema = combine_with_cached_schema(data_schema, cached_data_schema)
+
+        metadata_schema = combine_with_cached_schema(
+            metadata_schema, cached_metadata_schema
+        )
+        children = {"data": data_schema}
+
+        if metadata_schema.type != FileEntry.EMPTY:
+            children[metadata_schema.name] = metadata_schema
+        if name is None:
+            name = ""
 
         return make_schema(
             name, FileEntry.DATASET, children=children, attributes=attributes

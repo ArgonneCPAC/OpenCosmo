@@ -826,6 +826,7 @@ class Dataset:
 
         """
         schema = self.__state.make_schema(name)
+
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.raw_index)
             tree_schema = tree.make_schema()

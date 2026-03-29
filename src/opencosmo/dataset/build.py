@@ -26,7 +26,7 @@ def build_dataset_from_data(
     data: GroupedColumnData[np.ndarray],
     header: OpenCosmoHeader,
     region: Region,
-    spatial_index_data: SpatialIndexData,
+    spatial_index_data: Optional[SpatialIndexData],
     descriptions: GroupedColumnData[str] = {},
 ) -> Dataset:
     data_keys = set(data.keys())
@@ -40,10 +40,10 @@ def build_dataset_from_data(
             "Descriptions should be organized into the same groups as the data!"
         )
 
+    tree = None
     if isinstance(spatial_index_data, dict):
         spatial_index_columns = make_spatial_index(spatial_index_data)
-
-    tree = Tree(HealPixIndex(), spatial_index_columns)
+        tree = Tree(HealPixIndex(), spatial_index_columns)
     data_group = data.pop("data")
     if len(data_keys) == 2:
         metadata_group = next(iter(data.values()))

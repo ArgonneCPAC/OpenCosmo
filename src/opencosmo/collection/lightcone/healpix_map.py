@@ -331,7 +331,6 @@ class HealpixMap(dict):
 
         data = [ds.get_data(unpack=False) for ds in self.values()]
         pixels = self.pixels
-        print(pixels)
         table = vstack(data, join_type="exact")
 
         colnames = table.colnames
@@ -432,23 +431,13 @@ class HealpixMap(dict):
 
         new_header = self.header.with_parameters({"map_params/nside": nside_out})
 
-        index_level = 6
-        index_nside = 2**index_level
-        while index_nside > nside_out:
-            index_level -= 1
-            index_nside = 2**index_level
-
         out_npix = hp.nside2npix(nside_out)
-        index_npix = hp.nside2npix(index_nside)
-
-        pix_per_idx = out_npix / index_npix
-        size = np.full(index_npix, pix_per_idx)
 
         new_dataset = build_dataset_from_data(
             new_data,
             new_header,
             self.region,
-            {index_level: (size, 4)},
+            None,
             descriptions={
                 "data": {
                     key: desc

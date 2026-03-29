@@ -160,8 +160,6 @@ class Hdf5Handler:
 
         data_schema = make_schema("data", FileEntry.COLUMNS, columns=column_writers)
 
-        metadata_schema = None
-
         if self.metadata_columns:
             assert len(self.__metadata_columns) > 0
             metadata_writers = {}
@@ -174,6 +172,8 @@ class Hdf5Handler:
             metadata_schema = make_schema(
                 group_name, FileEntry.COLUMNS, columns=metadata_writers
             )
+        else:
+            metadata_schema = make_schema("metadata", FileEntry.EMPTY)
         return data_schema, metadata_schema
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:

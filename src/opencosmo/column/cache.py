@@ -10,6 +10,8 @@ from opencosmo.index import DataIndex
 from opencosmo.index.get import get_data
 from opencosmo.index.take import take
 from opencosmo.index.unary import get_length, get_range
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import ColumnWriter
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex
@@ -118,6 +120,42 @@ class ColumnCache:
 
     def duplicate(self):
         return ColumnCache({}, {}, {}, self.__metadata_columns, None, ref(self), [])
+
+    def make_schema(self, columns: Iterable[str]):
+        data = {}
+        metadata = {}
+        columns = set(columns)
+        cached_data = self.get_data(columns)
+        if not cached_data:
+            return (
+                make_schema("data", FileEntry.EMPTY),
+                make_schema("metadata", FileEntry.EMPTY),
+            )
+
+        for name, coldata in cached_data.items():
+            if isinstance(coldata, u.Quantity):
+                column_data = coldata.value
+                unit_str = str(coldata.unit)
+            else:
+                column_data = coldata
+                unit_str = ""
+            attrs = {"unit": unit_str}
+            attrs["description"] = self.descriptions.get(name, "None")
+            writer = ColumnWriter.from_numpy_array(column_data, attrs=attrs)
+            if name in self.metadata_columns:
+                metadata[name] = writer
+            else:
+                data[name] = writer
+
+        data_schema = make_schema("data", FileEntry.COLUMNS, columns=data)
+        if metadata:
+            metadata_schema = make_schema(
+                "metadata", FileEntry.COLUMNS, columns=metadata
+            )
+        else:
+            metadata_schema = make_schema("metadata", FileEntry.EMPTY)
+
+        return data_schema, metadata_schema
 
     def __push_down(self, data: dict[str, np.ndarray]):
         columns_to_keep = self.registered_columns.intersection(data.keys()).difference(

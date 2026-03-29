@@ -46,3 +46,28 @@ def make_schema(
     if attributes is None:
         attributes = {}
     return Schema(name, type_, children, columns, attributes)
+
+
+def combine_with_cached_schema(raw_data_schema, cached_schema):
+    if raw_data_schema is None or raw_data_schema.type == FileEntry.EMPTY:
+        return cached_schema
+    elif cached_schema is None or cached_schema.type == FileEntry.EMPTY:
+        return raw_data_schema
+
+    all_column_names = set(raw_data_schema.columns.keys()).union(
+        cached_schema.columns.keys()
+    )
+
+    new_columns = {}
+    for column in all_column_names:
+        if column in cached_schema.columns:
+            new_columns[column] = cached_schema.columns[column]
+        else:
+            new_columns[column] = raw_data_schema.columns[column]
+
+    return make_schema(
+        raw_data_schema.name,
+        type_=FileEntry.COLUMNS,
+        columns=new_columns,
+        attributes=raw_data_schema.attributes,
+    )
