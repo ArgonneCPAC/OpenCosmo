@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 from weakref import finalize
 
 import astropy.units as u
@@ -654,11 +654,9 @@ class DatasetState:
 
         if convention is None:
             convention_ = self.__unit_handler.current_convention
-            cache = self.__cache
+
         else:
             convention_ = UnitConvention(convention)
-            cache = self.__cache.drop(self.__raw_data_handler.columns)
-            cache = cache.drop(self.__derived_columns.keys())
 
         if (
             convention_ == UnitConvention.SCALEFREE
@@ -676,4 +674,30 @@ class DatasetState:
         new_handler = self.__unit_handler.with_convention(convention_).with_conversions(
             conversions, columns
         )
-        return self.__rebuild(unit_handler=new_handler, cache=cache)
+
+        original_units = self.__unit_handler.current_units
+        new_units = new_handler.current_units
+        cached_columns_to_drop: Iterable[str]
+
+        if convention_ == self.__unit_handler.current_convention:
+            cached_columns_to_drop = [
+                name for name in new_units if original_units[name] != new_units[name]
+            ]
+        else:
+            cached_columns_to_drop = new_units.keys()
+        all_derived_names: set[str] = reduce(
+            lambda acc, next: acc.union(next.produces or set()),
+            self.__derived_columns.values(),
+            set(),
+        )
+        cached_columns_to_drop = list(
+            filter(
+                lambda name: name in self.__raw_data_handler.columns
+                or name in all_derived_names,
+                cached_columns_to_drop,
+            )
+        )
+
+        return self.__rebuild(
+            unit_handler=new_handler, cache=self.__cache.drop(cached_columns_to_drop)
+        )
