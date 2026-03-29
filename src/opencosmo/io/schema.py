@@ -54,23 +54,8 @@ def combine_with_cached_schema(raw_data_schema, cached_schema):
     elif cached_schema is None or cached_schema.type == FileEntry.EMPTY:
         return raw_data_schema
 
-    all_column_names = set(raw_data_schema.columns.keys()).union(
-        cached_schema.columns.keys()
-    )
+    for cname, column in cached_schema.columns.items():
+        if cname not in raw_data_schema.columns:
+            raw_data_schema.columns[cname] = cached_schema.columns[cname]
 
-    new_columns = {}
-    for column in all_column_names:
-        new_attrs = {}
-        if column in raw_data_schema.columns:
-            new_columns[column] = raw_data_schema.columns[column]
-            new_attrs = raw_data_schema.columns[column].attrs
-        if column in cached_schema.columns:
-            new_columns[column] = cached_schema.columns[column]
-            new_columns[column].update_attrs(new_attrs)
-
-    return make_schema(
-        raw_data_schema.name,
-        type_=FileEntry.COLUMNS,
-        columns=new_columns,
-        attributes=raw_data_schema.attributes,
-    )
+    return raw_data_schema

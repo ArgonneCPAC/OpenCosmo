@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Optional
 from weakref import finalize
 
 import astropy.units as u
@@ -259,6 +259,7 @@ class DatasetState:
             if raw_data:
                 self.__cache.add_data(raw_data, {})
 
+            print(raw_data)
             updated_data = self.__unit_handler.apply_unit_conversions(
                 raw_data, unit_kwargs
             )
@@ -674,29 +675,14 @@ class DatasetState:
             conversions, columns
         )
 
-        original_units = self.__unit_handler.current_units
-        new_units = new_handler.current_units
-        cached_columns_to_drop: Iterable[str]
-
         if convention_ == self.__unit_handler.current_convention:
-            cached_columns_to_drop = [
-                name for name in new_units if original_units[name] != new_units[name]
-            ]
+            cache = self.__cache.create_child()
         else:
-            cached_columns_to_drop = new_units.keys()
-        all_derived_names: set[str] = reduce(
-            lambda acc, next: acc.union(next[1].produces or {next[0]}),
-            self.__derived_columns.items(),
-            set(),
-        )
-        cached_columns_to_drop = list(
-            filter(
-                lambda name: name in self.__raw_data_handler.columns
-                or name in all_derived_names,
-                cached_columns_to_drop,
+            all_derived_names: set[str] = reduce(
+                lambda acc, next: acc.union(next[1].produces or {next[0]}),
+                self.__derived_columns.items(),
+                set(),
             )
-        )
-
-        return self.__rebuild(
-            unit_handler=new_handler, cache=self.__cache.create_child()
-        )
+            columns_to_drop = all_derived_names.union(self.__raw_data_handler.columns)
+            cache = self.__cache.drop(columns_to_drop)
+        return self.__rebuild(unit_handler=new_handler, cache=cache)
