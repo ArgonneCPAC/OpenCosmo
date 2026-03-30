@@ -259,7 +259,6 @@ class DatasetState:
             if raw_data:
                 self.__cache.add_data(raw_data, {})
 
-            print(raw_data)
             updated_data = self.__unit_handler.apply_unit_conversions(
                 raw_data, unit_kwargs
             )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from warnings import warn
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -16,7 +16,13 @@ class EvalOperation(Enum):
 
 
 def reduce(
-    dataset, function, operation: str = "sum", all: bool = False, **evaluate_kwargs
+    dataset,
+    function,
+    operation: str = "sum",
+    all: bool = False,
+    plotting_function: Optional[Callable] = None,
+    plotting_kwargs: dict[str, Any] = {},
+    **evaluate_kwargs,
 ):
     """
     Combine results from several MPI processes into a single result. By defualt, the result is returned
@@ -27,6 +33,8 @@ def reduce(
     computation. Besides the specific arguments mentioned below, you should pass in the arguments
     that you would if you were calling :code:`evaluate` directly (including :code:`vectorize`, which you will
     probably want to set to :code:`True`)
+
+    If you like, you can also pass a plotting function
 
 
     For example, to compute a halo mass function across a large simulation:
@@ -39,22 +47,36 @@ def reduce(
         from opencosmo.analysis import reduce
 
         ds = oc.open("haloproperties.hdf5")
-
         def halo_mass_function(fof_halo_mass, log_bins, box_size):
             log_mass = np.log10(fof_halo_mass)
             hist, _ = np.histogram(log_mass, log_bins)
-            return hist / np.diff(log_mass) / box_size ** 3
+            return hist / np.diff(log_bins) / box_size**3
+
+
+        def make_plot(halo_mass_function, log_bins, path, **kwargs):
+            bin_centers = 0.5 * (log_bins[:-1] + log_bins[1:])
+            plt.plot(bin_centers, halo_mass_function)
+            plt.semilogy()
+            plt.savefig(path)
+
 
         bins = np.linspace(10, 15)
         box_size = ds.header.simulation["box_size"].value
+        plotting_arguments = {"path": "hmf.png"}
 
-        results = reduce(ds, halo_mass_function, log_bins = bins, box_size = box_size, vectorize = True)
-        if histogram is not None:
-            plt.plot(bins, histogram["halo_mass_function"])
-            plt.savefig("hmf.png")
+        reduce(
+            ds,
+            halo_mass_function,
+            plotting_function=make_plot,
+            plotting_kwargs=plotting_arguments,
+            log_bins=bins,
+            box_size=box_size,
+            vectorize=True,
+            format="numpy",
+        )
 
-    If you call this function but you are not working with MPI it will succeed but
-    print a warning.
+    When using this function, it's generally recommended you add a **kwargs to your plotting function since it will recieve
+    all of the evaulate keyword arugments in addition to the plotting arguments.
 
     This function checks that the values returned from the different processes can actually
     be combined, and throws an error if not. The most common failure cases is when the
@@ -76,9 +98,16 @@ def reduce(
     all: bool, default = False
         Whether to return the result to all processes or just the root process. If :code:`False`, all processes besides
         the root process will recieve :code:`None`
+    plotting_function: Optional[Callable], default = None
+        A function that performs some plotting or post-processing. Since the result from `evaluate` function is always
+        a dictionary, this function should take arguments with the same name as the keys of this dictionary. The :code:`evaluate_kwargs`
+        will also be passed into this function as keyword arguments.
+
+    plotting_kwargs: dict[str, Any]
+        Additional keyword arguments to pass into the plotting function.
 
     **evaluate_kwargs: Any
-        Additional keyword arguments that will be passed directly into :code:`dataset.evalute`.
+        Additional keyword arguments that will be passed directly into :code:`dataset.evalute` and :code:`plotting_function` (if applicable)
 
     Returns
     -------
@@ -91,11 +120,10 @@ def reduce(
     _ = evaluate_kwargs.pop("insert", None)
     comm = get_comm_world()
     if comm is None:
-        warn(
-            "reduce was called but could not get an MPI communicator. Either you are not running with MPI "
-            "or mpi4py is not installed"
+        result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
+        return process_output(
+            result, plotting_function, plotting_kwargs, evaluate_kwargs
         )
-        return dataset.evaluate(function, insert=False, **evaluate_kwargs)
 
     op = EvalOperation(operation)
     result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
@@ -119,14 +147,13 @@ def reduce(
 
     for key in keys:
         output[key] = reduce_func(results_to_combine[key], op=combine_operation)
-
     if not all and comm.Get_rank() != 0:
         return None
 
     if not isinstance(result, dict):
         return next(iter(output.values()))
 
-    return output
+    return process_output(output, plotting_function, plotting_kwargs, evaluate_kwargs)
 
 
 def __verify_results(result: dict[str, np.ndarray] | np.ndarray, comm: MPI.Comm):
@@ -152,3 +179,14 @@ def __verify_results(result: dict[str, np.ndarray] | np.ndarray, comm: MPI.Comm)
                 "To reduce a result, outputs from all processes must be the same length!"
             )
     return result_to_check
+
+
+def process_output(
+    output: dict[str, np.ndarray],
+    plotting_function: Optional[Callable],
+    plotting_kwargs: dict[str, Any],
+    evaluate_kwargs: dict[str, Any],
+):
+    if plotting_function is None:
+        return output
+    return plotting_function(**output, **plotting_kwargs, **evaluate_kwargs)
