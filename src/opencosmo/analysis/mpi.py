@@ -24,7 +24,7 @@ def reduce(
     plotting_kwargs: dict[str, Any] = {},
     **evaluate_kwargs,
 ):
-    """
+    r"""
     Combine results from several MPI processes into a single result. By defualt, the result is returned
     to the root process (rank 0), while all other processes are returned :code:`None`. You can
     return the result to all processes by setting :code:`all = True`.
@@ -75,7 +75,7 @@ def reduce(
             format="numpy",
         )
 
-    When using this function, it's generally recommended you add a **kwargs to your plotting function since it will recieve
+    When using this function, it's generally recommended you add a \*\*kwargs to your plotting function since it will recieve
     all of the evaulate keyword arugments in addition to the plotting arguments.
 
     This function checks that the values returned from the different processes can actually
