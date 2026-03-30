@@ -98,7 +98,7 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
             batch_data = dict(batch_data)
         except TypeError:
             batch_data = {column.requires.pop(): batch_data}
-        batch_output = column.evaluate(batch_data)
+        batch_output = column.evaluate(batch_data, None)
         if batch_output is not None and not isinstance(batch_output, dict):
             batch_output = {column.produces.pop(): batch_output}
 

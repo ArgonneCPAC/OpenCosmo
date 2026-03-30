@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from itertools import chain
 from typing import TYPE_CHECKING, Optional, TypeVar
 
 import astropy.units as u
@@ -10,7 +9,6 @@ import numpy as np
 
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.state import DatasetState
-from opencosmo.io.iopen import DatasetTarget
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.tree import Tree
 from opencosmo.spatial.utils import combine_upwards
@@ -25,10 +23,10 @@ SpatialIndexData = dict[int, tuple[np.ndarray, int]]
 
 
 def build_dataset_from_data(
-    data: GroupedColumnData[np.ndarray] | h5py.Group,
+    data: GroupedColumnData[np.ndarray],
     header: OpenCosmoHeader,
     region: Region,
-    spatial_index_data: SpatialIndexData,
+    spatial_index_data: Optional[SpatialIndexData],
     descriptions: GroupedColumnData[str] = {},
 ) -> Dataset:
     data_keys = set(data.keys())
@@ -42,27 +40,24 @@ def build_dataset_from_data(
             "Descriptions should be organized into the same groups as the data!"
         )
 
-    if isinstance(data, dict):
-        data = make_in_memory_h5_file_from_data(data, descriptions)
+    tree = None
     if isinstance(spatial_index_data, dict):
         spatial_index_columns = make_spatial_index(spatial_index_data)
-
-    tree = Tree(HealPixIndex(), spatial_index_columns)
+        tree = Tree(HealPixIndex(), spatial_index_columns)
+    data_group = data.pop("data")
     if len(data_keys) == 2:
-        data_keys.remove("data")
-        metadata_key = data_keys.pop()
-        metadata_group = data[metadata_key]
+        metadata_group = next(iter(data.values()))
     else:
         metadata_group = {}
 
-    columns = list(chain(data["data"].values(), metadata_group.values()))
-
-    target = DatasetTarget(
-        **{"header": header, "dataset_group": data, "columns": columns}
-    )
-
-    new_state = DatasetState.from_target(
-        target, header.file.unit_convention, region, metadata_group=metadata_key
+    data_descriptions = descriptions.get("data", {})
+    new_state = DatasetState.in_memory(
+        data_group,
+        metadata_group,
+        header,
+        header.file.unit_convention,
+        region,
+        data_descriptions,
     )
     return Dataset(header, new_state, tree=tree)
 
