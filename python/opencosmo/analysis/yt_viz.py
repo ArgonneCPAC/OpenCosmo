@@ -402,6 +402,7 @@ def halo_projection_array(
     data = data.with_units("comoving")
 
     halo_ids = np.atleast_2d(halo_ids)
+    yt_ds = np.atleast_2d(yt_ds)
 
     # determine shape of figure
     fig_shape = np.shape(halo_ids)
@@ -486,13 +487,6 @@ def halo_projection_array(
     halo_ids = np.array(halo_ids)
     halo_id_previous = np.inf
 
-    if yt_ds is not None:
-        yt_dataset_provided = True
-        yt_ds = np.atleast_2d(yt_ds)
-    else:
-        yt_dataset_provided = False
-
-
     for i in range(nrow):
         for j in range(ncol):
             halo_id = halo_ids[i][j]
@@ -502,14 +496,14 @@ def halo_projection_array(
                 ax.set_facecolor("black")
                 continue
 
-            if yt_dataset_provided:
-                ds = yt_ds[i][j]
-
+            ds = yt_ds[i][j]
+            if ds is not None:
                 # sodbighaloparticles holds particle data out to 2*R200
                 Rh = ds.domain_width[0] / 4
 
             else:
-                # retrieve halo particle info if new halo
+                # retrieve halo particle info if new halo, or if yt dataset
+                # is not already provided
                 if (i == 0 and j == 0) or halo_id != halo_id_previous:
                     # retrieve properties of halo
                     if len(data) > 1:
@@ -788,20 +782,50 @@ def _get_rotation_vectors(rotations, frames, normal0=(0, 0, 1), north0=(0, 1, 0)
 
 
 
-def animate_halo(halo_id, data, rotations="x", frames=30, dpi=100, normal0=(0, 0, 1), north0=(0, 1, 0)):
+def animate_halo(
+    halo_ids, data, 
+    func="visualize_halo", rotations="x", 
+    frames=30, dpi=100,
+    normal0=(0, 0, 1), north0=(0, 1, 0),
+    **kwargs,
+):
     
-    # retrieve properties of halo and load into yt
-    if len(data) > 1:
-        data_id = data.filter(oc.col("unique_tag") == halo_id)
-    else:
-        if data["halo_properties"].data["unique_tag"] != halo_id: # type: ignore
-            raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
-        data_id = data
+    halo_ids = np.atleast_2d(halo_ids)
     
-    halo_data = next(iter(data_id.objects()))
+    fig_shape = np.shape(halo_ids)
+    yt_ds_arr = np.full(fig_shape, None)
 
-    # load particles into yt
-    ds = create_yt_dataset(halo_data)
+    nrow, ncol = fig_shape
+    halo_id_previous = np.inf
+    for i in range(nrow):
+        for j in range(ncol):
+            halo_id = halo_ids[i][j]
+
+            if (i == 0 and j == 0) or halo_id != halo_id_previous:
+                # retrieve properties of halo and load into yt
+                # this part is skipped if the halo has just been found/loaded in the 
+                # previous iteration
+                # TODO: make this slightly faster by copying directly yt_ds_arr in cases where
+                # the halo was loaded into yt more than 1 iteration ago
+
+                if len(data) > 1:
+                    data_id = data.filter(oc.col("unique_tag") == halo_id)
+                else:
+                    if data["halo_properties"].data["unique_tag"] != halo_id: # type: ignore
+                        raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
+                    data_id = data
+                
+                halo_data = next(iter(data_id.objects()))
+
+                # load particles into yt
+                ds = create_yt_dataset(halo_data)
+
+                yt_ds_arr[i][j] = ds
+
+            else:
+                yt_ds_arr[i][j] = ds
+
+            halo_id_previous = halo_id
 
     normals, norths = _get_rotation_vectors(rotations, 
         frames=frames, 
@@ -809,13 +833,39 @@ def animate_halo(halo_id, data, rotations="x", frames=30, dpi=100, normal0=(0, 0
         north0=north0
     )
 
-    fig0 = visualize_halo(
-        halo_id,
-        data,
-        projection_axis=normals[0],
-        north_vector=norths[0],
-        yt_ds=ds,
-    )
+    call_visualize_halo = False
+    call_halo_projection_array = False
+    if func == "visualize_halo":
+        call_visualize_halo = True
+        if np.prod(np.shape(halo_ids) != 1):
+            raise ValueError(f"`visualize_halo` requires a single int for `halo_id`, not an array of values")
+
+
+    elif func == "halo_projection_array":
+        call_halo_projection_array = True
+    else:
+        raise RuntimeError(f"\`func\` {func} not recognized ")
+
+    if call_visualize_halo:
+        fig0 = visualize_halo(
+            halo_ids[0][0],
+            data,
+            projection_axis=normals[0],
+            north_vector=norths[0],
+            yt_ds=yt_ds_arr[0][0],
+            **kwargs,
+        )
+
+    elif call_halo_projection_array:
+         fig0 = halo_projection_array(
+            halo_ids,
+            data,
+            projection_axis=normals[0],
+            north_vector=norths[0],
+            yt_ds = yt_ds_arr,
+            **kwargs,
+        )
+       
 
     frame0 = fig_to_rgb(fig0)
     plt.close(fig0)
@@ -834,14 +884,26 @@ def animate_halo(halo_id, data, rotations="x", frames=30, dpi=100, normal0=(0, 0
         normal = normals[i]
         north = norths[i]
 
-        f = visualize_halo(
-            halo_id,
-            data,
-            projection_axis=normal,
-            north_vector=north,
-            yt_ds=ds,
-            manual_axis_alignment=True,
-        )
+        if call_visualize_halo:
+            f = visualize_halo(
+                halo_ids[0][0],
+                data,
+                projection_axis=normal,
+                north_vector=north,
+                yt_ds=yt_ds[0][0],
+                manual_axis_alignment=True,
+                **kwargs,
+            )
+        elif call_halo_projection_array:
+            f = halo_projection_array(
+                halo_ids,
+                data,
+                projection_axis=normal,
+                north_vector=north,
+                yt_ds=yt_ds_arr,
+                manual_axis_alignment=True,
+                **kwargs,
+            )
         frame = fig_to_rgb(f)
         plt.close(f)  # close each per-frame figure
 
