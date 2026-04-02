@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.mpi import MPI, get_comm_world
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class EvalOperation(Enum):
@@ -20,9 +23,10 @@ def reduce(
     function,
     operation: str = "sum",
     all: bool = False,
-    plotting_function: Optional[Callable] = None,
-    plotting_kwargs: dict[str, Any] = {},
-    **evaluate_kwargs,
+    plotting_function: Callable | None = None,
+    evaluate_kwargs: dict[str, Any] | None = None,
+    plotting_kwargs: dict[str, Any] | None = None,
+    **ekwargs,
 ):
     r"""
     Combine results from several MPI processes into a single result. By defualt, the result is returned
@@ -63,16 +67,14 @@ def reduce(
         bins = np.linspace(10, 15)
         box_size = ds.header.simulation["box_size"].value
         plotting_arguments = {"path": "hmf.png"}
+        evalute_kwargs = {"vectorize": True, "format": "numpy", "box_size": box_size, "log_bins": bins}
 
         reduce(
             ds,
             halo_mass_function,
             plotting_function=make_plot,
+            evalute_kwargs=evalute_kwargs,
             plotting_kwargs=plotting_arguments,
-            log_bins=bins,
-            box_size=box_size,
-            vectorize=True,
-            format="numpy",
         )
 
     When using this function, it's generally recommended you add a \*\*kwargs to your plotting function since it will recieve
@@ -117,16 +119,19 @@ def reduce(
         will recieve the results
 
     """
+    evaluate_kwargs = evaluate_kwargs or {}
+    plotting_kwargs = plotting_kwargs or {}
+
     _ = evaluate_kwargs.pop("insert", None)
     comm = get_comm_world()
     if comm is None:
-        result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
+        result = dataset.evaluate(function, insert=False, **evaluate_kwargs, **ekwargs)
         return process_output(
-            result, plotting_function, plotting_kwargs, evaluate_kwargs
+            result, plotting_function, plotting_kwargs, evaluate_kwargs | ekwargs
         )
 
     op = EvalOperation(operation)
-    result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
+    result = dataset.evaluate(function, insert=False, **evaluate_kwargs, **ekwargs)
     results_to_combine = __verify_results(result, comm)
     keys = get_all_keys(results_to_combine, comm)
     reduce_func = comm.allreduce if all else comm.reduce
@@ -183,7 +188,7 @@ def __verify_results(result: dict[str, np.ndarray] | np.ndarray, comm: MPI.Comm)
 
 def process_output(
     output: dict[str, np.ndarray],
-    plotting_function: Optional[Callable],
+    plotting_function: Callable | None,
     plotting_kwargs: dict[str, Any],
     evaluate_kwargs: dict[str, Any],
 ):
