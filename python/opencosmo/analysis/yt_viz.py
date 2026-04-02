@@ -10,6 +10,7 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar  # type: ignore
 from unyt import unyt_quantity  # type: ignore
 from yt.visualization.base_plot_types import get_multi_plot  # type: ignore
+from yt.visualization.particle_plots import OffAxisParticleProjectionPlot
 
 import opencosmo as oc
 from opencosmo.analysis import create_yt_dataset
@@ -144,6 +145,8 @@ def visualize_halo(
     length_scale: Optional[str] = "top left",
     text_color: Optional[str] = "lightgray",
     width: Optional[float] = None,
+    manual_axis_alignment: Optional[bool] = False,
+
 ) -> Figure:
     """
     Creates a figure showing particle projections of dark matter, stars, gas, and/or gas temperature
@@ -307,6 +310,7 @@ def halo_projection_array(
     length_scale: Optional[str] = None,
     text_color: Optional[str] = "lightgray",
     width: Optional[float] = None,
+    manual_axis_alignment: Optional[bool] = False,
 ) -> Figure:
     """
     Creates a multipanel figure of projections for different fields and/or halos.
@@ -537,13 +541,38 @@ def halo_projection_array(
 
             label = labels[i][j]
 
-            proj = ParticleProjectionPlot(
-                ds, 
-                projection_axes[i][j],
-                field,
-                weight_field=weight_field,
-                north_vector=north_vectors[i][j],
-            )
+            # we need to determine of the projection is going to be axis-aligned.
+            # yt internally checks this within ParticleProjectionPlot and forwards to
+            # OffAxisParticleProjectionPlot if it is not axis-aligned. We are manually
+            # calling OffAxisParticleProjectionPlot for more control over the normal/north
+            # vectors (ParticleProjectionPlot ignores these inputs if axis-aligned).
+            if manual_axis_alignment:
+                if isinstance(projection_axis, str):
+                    match projection_axis:
+                        case "x":
+                            projection_axis = (1, 0, 0)
+                        case "y":
+                            projection_axis = (0, 1, 0)
+                        case "z":
+                            projection_axis = (0, 0, 1)
+
+                proj = OffAxisParticleProjectionPlot(
+                    ds, 
+                    projection_axis,
+                    field,
+                    weight_field=weight_field,
+                    north_vector=north_vectors[i][j],
+                )
+
+            else:
+                proj = ParticleProjectionPlot(
+                    ds, 
+                    projection_axis,
+                    field,
+                    weight_field=weight_field,
+                    north_vector=north_vectors[i][j],
+                )
+
 
             proj.set_background_color(field, color="black")
 
@@ -646,24 +675,48 @@ def fig_to_rgb(fig):
 def _normalize(v, eps=0):
     v = np.asarray(v, dtype=float)
     
+    '''
     if eps > 0:
         # nudge exact on-axis directions off-axis
         if np.allclose(v, [1, 0, 0]):
-            v = np.array([1.0, eps, 0.0])
+            v = np.array([1.0, eps, eps])
         elif np.allclose(v, [-1, 0, 0]):
-            v = np.array([-1.0, eps, 0.0])
+            v = np.array([-1.0, eps, eps])
         elif np.allclose(v, [0, 1, 0]):
-            v = np.array([eps, 1.0, 0.0])
+            v = np.array([eps, 1.0, eps])
         elif np.allclose(v, [0, -1, 0]):
-            v = np.array([eps, -1.0, 0.0])
+            v = np.array([eps, -1.0, eps])
         elif np.allclose(v, [0, 0, 1]):
-            v = np.array([eps, 0.0, 1.0])
+            v = np.array([eps, eps, 1.0])
         elif np.allclose(v, [0, 0, -1]):
-            v = np.array([eps, 0.0, -1.0])
+            v = np.array([eps, eps, -1.0])
 
     n = np.linalg.norm(v)
 
     return v / n
+    '''
+
+     # normalize first
+    v = v / np.linalg.norm(v)
+
+    if eps > 0:
+        # count "significant" components
+        nz = np.sum(np.abs(v) > 1e-12)
+
+        if nz == 1:
+            # find dominant axis
+            i = np.argmax(np.abs(v))
+
+            # add epsilon in a perpendicular direction
+            if i == 0:
+                v[1] = eps
+            elif i == 1:
+                v[2] = eps
+            elif i == 2:
+                v[0] = eps
+
+            v = v / np.linalg.norm(v)
+    return v
 
 def _rodrigues_rotate(v, axis, angle):
     """
@@ -677,31 +730,13 @@ def _rodrigues_rotate(v, axis, angle):
     
     return vrot
 
-def _parse_rotations(rotations: str):
-    rotations = rotations.replace(" ", "")
-    parts = rotations.split("+")
-    factors = []
-    axes = []
-    for part in parts:
-        if "*" in part:
-            if part.count("*") > 1:
-                raise RuntimeError(f'rotation "{part}" not recognized')
-            fac_str, axis = part.split("*")
-            factor = float(fac_str)
-        else:
-            factor = 1.0
-            axis = part
-
-        if axis not in ("x", "y", "z"):
-            raise RuntimeError(f'rotation axis "{axis}" not recognized')
-
-        factors.append(factor)
-        axes.append(axis)
-    return factors, axes
+def _enforce_orthogonality(v1, v2):
+    # enforce orthogonality of v1, relative to v2
+    return v1 - np.dot(v1, v2) * v2
 
 def _get_rotation_vectors(rotations, frames, normal0=(0, 0, 1), north0=(0, 1, 0)):
-    normals = [normal0]
-    norths = [north0]
+    normals = [_normalize(normal0, eps=1e-3)]
+    norths = [_normalize(_enforce_orthogonality(north0, normals[-1]))]
 
     factors = []
     axes = []
@@ -710,8 +745,8 @@ def _get_rotation_vectors(rotations, frames, normal0=(0, 0, 1), north0=(0, 1, 0)
                 "y": np.array([0.0, 1.0, 0.0]),
                 "z": np.array([0.0, 0.0, 1.0])}
 
-    rotation_list = rotations.replace(" ", "").split("+")
-    for rotation in rotation_list:
+    # get a list of rotations
+    for rotation in rotations:
         if "*" in rotation:
             if rotation.count("*") > 1:
                 raise RuntimeError(f"rotation \"{rotation}\" not recognized")
@@ -724,8 +759,8 @@ def _get_rotation_vectors(rotations, frames, normal0=(0, 0, 1), north0=(0, 1, 0)
         factors.append(factor)
         axes.append(axis)
 
-    # loop through rotations again, and actually apply them
-    for i, rotation in enumerate(rotation_list):
+    # loop through rotations again and actually apply them
+    for i, rotation in enumerate(rotations):
 
         # determine number of frames for this rotation (round up)
         frames_i = int(np.ceil( frames * factors[i]/sum(factors) ))
@@ -736,8 +771,18 @@ def _get_rotation_vectors(rotations, frames, normal0=(0, 0, 1), north0=(0, 1, 0)
         axis = axes[i]
          
         for _ in range(frames_i):
-            normals.append(_normalize(_rodrigues_rotate(normals[-1], axis_map[axis], delta_angle_i), eps=1e-3))
-            norths.append(_normalize(_rodrigues_rotate(norths[-1], axis_map[axis], delta_angle_i), eps=1e-3))
+            n = _normalize(_rodrigues_rotate(normals[-1], axis_map[axis], delta_angle_i), eps=1e-3)
+            u = _normalize(_rodrigues_rotate(norths[-1], axis_map[axis], delta_angle_i))
+
+            # enforce orthogonality of normal and north vectors
+            u = _normalize( _enforce_orthogonality(u, n) )
+
+            # continuity guard: prevent sudden 180-degree flips of north
+            if np.dot(u, norths[-1]) < 0:
+                u = -u
+
+            normals.append(n)
+            norths.append(u)
 
     return normals, norths
 
@@ -783,7 +828,6 @@ def animate_halo(halo_id, data, rotations="x", frames=30, dpi=100, normal0=(0, 0
     ax.set_axis_off()
     ax.set_aspect("auto")
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
-    #fig.patch.set_facecolor("black")
     im = ax.imshow(frame0, interpolation="nearest")
 
     def update(i):
@@ -796,6 +840,7 @@ def animate_halo(halo_id, data, rotations="x", frames=30, dpi=100, normal0=(0, 0
             projection_axis=normal,
             north_vector=north,
             yt_ds=ds,
+            manual_axis_alignment=True,
         )
         frame = fig_to_rgb(f)
         plt.close(f)  # close each per-frame figure
