@@ -27,7 +27,7 @@ def reduce(
     evaluate_kwargs: dict[str, Any] | None = None,
     plotting_kwargs: dict[str, Any] | None = None,
     **ekwargs,
-):
+) -> Any:
     r"""
     Combine results from several MPI processes into a single result. By defualt, the result is returned
     to the root process (rank 0), while all other processes are returned :code:`None`. You can
@@ -121,17 +121,18 @@ def reduce(
     """
     evaluate_kwargs = evaluate_kwargs or {}
     plotting_kwargs = plotting_kwargs or {}
+    evaluate_kwargs |= ekwargs
 
     _ = evaluate_kwargs.pop("insert", None)
     comm = get_comm_world()
     if comm is None:
-        result = dataset.evaluate(function, insert=False, **evaluate_kwargs, **ekwargs)
+        result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
         return process_output(
-            result, plotting_function, plotting_kwargs, evaluate_kwargs | ekwargs
+            result, plotting_function, plotting_kwargs, evaluate_kwargs
         )
 
     op = EvalOperation(operation)
-    result = dataset.evaluate(function, insert=False, **evaluate_kwargs, **ekwargs)
+    result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
     results_to_combine = __verify_results(result, comm)
     keys = get_all_keys(results_to_combine, comm)
     reduce_func = comm.allreduce if all else comm.reduce
@@ -191,7 +192,7 @@ def process_output(
     plotting_function: Callable | None,
     plotting_kwargs: dict[str, Any],
     evaluate_kwargs: dict[str, Any],
-):
+) -> Any:
     if plotting_function is None:
         return output
     return plotting_function(**output, **plotting_kwargs, **evaluate_kwargs)
