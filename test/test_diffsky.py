@@ -277,7 +277,6 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     assert isinstance(ds.region, HealpixRegion)
-    print(ds.region.pixels)
     assert len(ds.region.pixels) == 502
 
 

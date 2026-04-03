@@ -51,7 +51,6 @@ def into_array(index: np.ndarray | tuple):
 
 
 def __chunked_into_array(starts: NDArray[np.int_], sizes: NDArray[np.int_]):
-    print("Using C!")
     if starts.ndim != 1 or sizes.ndim != 1:
         raise ValueError("Indicies must be 1 dimension")
     if len(starts) != len(sizes):

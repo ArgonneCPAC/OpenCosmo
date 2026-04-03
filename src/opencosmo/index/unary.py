@@ -2,6 +2,8 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
+from opencosmo.index._ops import get_simple_range
+
 """
 Implementations for unary operations on indices
 """
@@ -30,19 +32,8 @@ def get_range(index: SimpleIndex | ChunkedIndex):
             raise ValueError(f"Unknown index type {type(index)}")
 
 
-@nb.njit
 def __get_simple_range(index: SimpleIndex):
-    if len(index) == 0:
-        return (0, 0)
-
-    min = index[0]
-    max = index[0]
-    for val in index[1:]:
-        if val < min:
-            min = val
-        if val > max:
-            max = val
-    return (min, max)
+    return get_simple_range(index)
 
 
 @nb.njit

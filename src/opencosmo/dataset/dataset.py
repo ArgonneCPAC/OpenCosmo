@@ -20,7 +20,7 @@ from deprecated.sphinx import deprecated
 from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import into_array, mask, project
+from opencosmo.index import empty, into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -349,7 +349,7 @@ class Dataset:
             check_region = region
 
         if not self.__state.region.intersects(check_region):
-            new_state = self.__state.take_rows(np.array([]))
+            new_state = self.__state.take_rows(empty())
             return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
