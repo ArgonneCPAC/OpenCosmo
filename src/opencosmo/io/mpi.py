@@ -14,6 +14,8 @@ from opencosmo.mpi import MPI, get_comm_world
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from _typeshed import SupportsRichComparisonT
+
     from opencosmo.io.schema import Schema
 
 
@@ -110,7 +112,9 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     group_write.Free()
 
 
-def get_all_keys(data: dict, comm: Optional[MPI.Comm]):
+def get_all_keys(
+    data: dict[SupportsRichComparisonT, Any], comm: Optional[MPI.Comm]
+) -> list[SupportsRichComparisonT]:
     """
     Return all keys in the dictionary across all ranks, sorted
     alphabetically. When defining the file structure, we have to iterate
@@ -121,7 +125,7 @@ def get_all_keys(data: dict, comm: Optional[MPI.Comm]):
     if comm is None:
         return sorted(list(data_names))
 
-    all_data_names: Iterable[str]
+    all_data_names: Iterable[SupportsRichComparisonT]
     all_data_names = data_names.union(*comm.allgather(data_names))
     all_data_names = list(all_data_names)
     all_data_names.sort()

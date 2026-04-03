@@ -66,7 +66,7 @@ def visit_dataset(
     column: EvaluatedColumn,
     dataset: Dataset,
     batch_size: int,
-):
+) -> dict[str, np.ndarray]:
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
     data = dataset.select(column.requires).get_data(format=column.format)

@@ -399,7 +399,7 @@ class Dataset:
         batch_size: int = -1,
         _verify: bool = True,
         **evaluate_kwargs,
-    ) -> Dataset | np.ndarray:
+    ) -> Dataset | dict[str, np.ndarray]:
         """
         Iterate over the rows in this dataset, apply :code:`func` to each, and collect
         the result as new columns in the dataset.
