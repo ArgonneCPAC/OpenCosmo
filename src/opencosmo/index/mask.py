@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numba as nb
 import numpy as np
+
+from opencosmo.index._ops import chunked_into_array
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -49,13 +50,10 @@ def into_array(index: np.ndarray | tuple):
             return __chunked_into_array(*index)
 
 
-@nb.njit
 def __chunked_into_array(starts: NDArray[np.int_], sizes: NDArray[np.int_]):
-    output = np.zeros(np.sum(sizes), dtype=np.int64)
-    rs = 0
-    for i in range(len(starts)):
-        output[rs : rs + sizes[i]] = np.arange(
-            starts[i], starts[i] + sizes[i], dtype=np.int64
-        )
-        rs += sizes[i]
-    return output
+    print("Using C!")
+    if starts.ndim != 1 or sizes.ndim != 1:
+        raise ValueError("Indicies must be 1 dimension")
+    if len(starts) != len(sizes):
+        raise ValueError("Indicies must be 1 dimension")
+    return chunked_into_array(starts, sizes)
