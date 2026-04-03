@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -153,8 +153,12 @@ def reduce(
 
     for key in keys:
         output[key] = reduce_func(results_to_combine[key], op=combine_operation)
+
     if not all and comm.Get_rank() != 0:
         return None
+
+    assert not (any(v is None for v in output.values()))
+    output = cast("dict[str, Any]", output)
 
     if not isinstance(result, dict):
         return next(iter(output.values()))
@@ -162,7 +166,9 @@ def reduce(
     return process_output(output, plotting_function, plotting_kwargs, evaluate_kwargs)
 
 
-def __verify_results(result: dict[str, np.ndarray] | np.ndarray, comm: MPI.Comm):
+def __verify_results(
+    result: dict[str, np.ndarray] | np.ndarray, comm: MPI.Comm
+) -> dict[str, np.ndarray]:
     if not isinstance(result, dict):
         result_to_check = {"output": result}
     else:
