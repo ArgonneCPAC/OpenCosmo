@@ -217,8 +217,12 @@ class LinkHandler:
                 assert len(size_column) == 1
                 size_column_name = size_column[0]
                 size_column_data = metadata[size_column_name]
+
                 new_datasets[name] = rebuild_chunk_index(
-                    new_source, dataset, size_column_data, index_into_original
+                    new_source,
+                    dataset,
+                    size_column_data.astype(np.int64),
+                    index_into_original.astype(np.int64),
                 )
         return new_datasets
 
@@ -251,8 +255,8 @@ class LinkHandler:
             else:
                 size_column = [name for name in self.columns[name] if "size" in name]
                 assert len(size_column) == 1
-                size_column_data = meta[size_column[0]]
-                chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=int)
+                size_column_data = meta[size_column[0]].astype(np.int64)
+                chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=np.int64)
                 _ = np.cumsum(size_column_data, out=chunk_boundaries[1:])
                 starts = chunk_boundaries[sort_index]
                 sizes = size_column_data[sort_index]

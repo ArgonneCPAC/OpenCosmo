@@ -1,12 +1,13 @@
 use pyo3::prelude::*;
 #[pymodule]
 pub(crate) mod index {
+    use numpy::ndarray::s;
     use numpy::ndarray::{Array1, ArrayView1};
     use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
     use pyo3::exceptions::{PyTypeError, PyValueError};
     use pyo3::prelude::*;
-    use std::io::Result;
     use std::iter::zip;
+
     fn unpack_index_array<'py>(index: &Bound<'py, PyAny>) -> PyResult<PyReadonlyArray1<'py, i64>> {
         let index_data = index
             .cast::<PyArray1<i64>>()
@@ -34,6 +35,22 @@ pub(crate) mod index {
         let index_arr = unpack_index_array(index)?;
         get_simple_range(index_arr.as_array())
     }
+    fn get_simple_range(index: ArrayView1<'_, i64>) -> PyResult<(i64, i64)> {
+        if index.len() == 0 {
+            return Ok((0, 0));
+        }
+        let mut index_range = (index[0], index[0]);
+        for &item in index {
+            if item < index_range.0 {
+                index_range = (item, index_range.1)
+            }
+            if item > index_range.1 {
+                index_range = (index_range.0, item)
+            }
+        }
+        Ok(index_range)
+    }
+
     #[pyfunction(name = "get_chunked_range")]
     pub(crate) fn get_chunked_range_py(
         start: &Bound<'_, PyAny>,
@@ -42,6 +59,27 @@ pub(crate) mod index {
         let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
         get_chunked_range(start_arr.as_array(), size_arr.as_array())
     }
+
+    fn get_chunked_range(
+        start: ArrayView1<'_, i64>,
+        size: ArrayView1<'_, i64>,
+    ) -> PyResult<(i64, i64)> {
+        if start.len() == 0 {
+            return Ok((0, 0));
+        }
+        let mut index_range = (start[0], start[0] + size[0]);
+        for (&st, &si) in zip(start, size) {
+            let end = st + si;
+            if st < index_range.0 {
+                index_range = (st, index_range.1);
+            }
+            if end > index_range.1 {
+                index_range = (index_range.0, end);
+            }
+        }
+        Ok(index_range)
+    }
+
     #[pyfunction(name = "n_in_range_chunked")]
     pub(crate) fn n_in_range_chunked_py<'py>(
         py: Python<'py>,
@@ -91,39 +129,68 @@ pub(crate) mod index {
         }
         output
     }
-    fn get_simple_range(index: ArrayView1<'_, i64>) -> PyResult<(i64, i64)> {
-        if index.len() == 0 {
-            return Ok((0, 0));
+    #[pyfunction(name = "chunked_into_array")]
+    pub(crate) fn chunked_into_array_py<'py>(
+        py: Python<'py>,
+        start: &Bound<'_, PyAny>,
+        size: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyArray1<i64>>> {
+        let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
+        let output = chunked_into_array(start_arr.as_array(), size_arr.as_array());
+        Ok(output.into_pyarray(py))
+    }
+    fn chunked_into_array(start: ArrayView1<'_, i64>, size: ArrayView1<'_, i64>) -> Array1<i64> {
+        let total_length = size.sum();
+        let mut output = Array1::<i64>::zeros(total_length as usize);
+        let mut rs: i64 = 0;
+        for (&st, &si) in zip(start, size) {
+            let range = Array1::from_iter(st..st + si);
+            output
+                .slice_mut(s![rs as usize..(rs + si) as usize])
+                .assign(&range);
+            rs += si;
         }
-        let mut index_range = (index[0], index[0]);
-        for &item in index {
-            if item < index_range.0 {
-                index_range = (item, index_range.1)
-            }
-            if item > index_range.1 {
-                index_range = (index_range.0, item)
-            }
-        }
-        Ok(index_range)
+        output
     }
 
-    fn get_chunked_range(
+    #[pyfunction(name = "take_chunked_from_simple")]
+    fn take_chunked_from_simple_py<'py>(
+        py: Python<'py>,
+        simple: &Bound<'_, PyAny>,
+        start: &Bound<'_, PyAny>,
+        size: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyArray1<i64>>> {
+        let simple_arr = unpack_index_array(simple)?;
+        let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
+        let result = take_chunked_from_simple(
+            simple_arr.as_array(),
+            start_arr.as_array(),
+            size_arr.as_array(),
+        );
+        Ok(result?.into_pyarray(py))
+    }
+
+    fn take_chunked_from_simple(
+        simple: ArrayView1<'_, i64>,
         start: ArrayView1<'_, i64>,
         size: ArrayView1<'_, i64>,
-    ) -> PyResult<(i64, i64)> {
-        if start.len() == 0 {
-            return Ok((0, 0));
-        }
-        let mut index_range = (start[0], start[0] + size[0]);
+    ) -> Result<Array1<i64>, PyErr> {
+        let total_length = size.sum();
+        let mut output = Array1::<i64>::zeros(total_length as usize);
+        let mut rs: i64 = 0;
         for (&st, &si) in zip(start, size) {
             let end = st + si;
-            if st < index_range.0 {
-                index_range = (st, index_range.1);
+            if end as usize > simple.len() {
+                return Err(PyValueError::new_err(
+                    "The chunked index is outside of the range of the simple index!",
+                ));
             }
-            if end > index_range.1 {
-                index_range = (index_range.0, end);
-            }
+            let to_insert = simple.slice(s![st as usize..end as usize]);
+            output
+                .slice_mut(s![rs as usize..(rs + si) as usize])
+                .assign(&to_insert);
+            rs += si
         }
-        Ok(index_range)
+        Ok(output)
     }
 }

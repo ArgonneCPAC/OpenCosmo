@@ -3,6 +3,8 @@ from __future__ import annotations
 import numba as nb  # type: ignore
 import numpy as np
 
+from opencosmo._lib import index as idxlib
+
 SimpleIndex = np.ndarray
 ChunkedIndex = tuple[np.ndarray, np.ndarray]
 
@@ -12,7 +14,7 @@ def take(from_, by):
         case (np.ndarray(), np.ndarray()):
             return __take_simple_from_simple(from_, by)
         case (np.ndarray(), (np.ndarray(), np.ndarray())):
-            return __take_chunked_from_simple(from_, by)
+            return idxlib.take_chunked_from_simple(from_, by)
         case ((np.ndarray(), np.ndarray()), np.ndarray()):
             return __take_simple_from_chunked(from_, by)
         case ((np.ndarray(), np.ndarray()), (np.ndarray(), np.ndarray())):
@@ -29,28 +31,6 @@ def __take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex):
 
 def __take_simple_from_simple(from_: np.ndarray, by: np.ndarray):
     return from_[by]
-
-
-def __take_chunked_from_simple(from_: SimpleIndex, by: ChunkedIndex):
-    output = np.zeros(by[1].sum(), dtype=int)
-    output = __cfs_helper(from_, *by, output)
-    return output
-
-
-@nb.njit
-def __cfs_helper(arr, starts, sizes, storage):
-    rs = 0
-    for i in range(len(starts)):
-        cstart = starts[i]
-        csize = sizes[i]
-        storage[rs : rs + csize] = arr[cstart : cstart + csize]
-        rs += csize
-    return storage
-
-
-@nb.njit
-def __cfc_helper(from_starts, from_sizes, by_starts, by_sizes):
-    pass
 
 
 @nb.njit

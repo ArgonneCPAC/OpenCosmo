@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numba as nb
 import numpy as np
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+from opencosmo._lib import index as idxlib
 from opencosmo.index.unary import get_length
 
 
@@ -46,16 +46,4 @@ def into_array(index: np.ndarray | tuple):
             if len(index[0]) == 1:
                 return np.arange(index[0][0], index[0][0] + index[1][0])
 
-            return __chunked_into_array(*index)
-
-
-@nb.njit
-def __chunked_into_array(starts: NDArray[np.int_], sizes: NDArray[np.int_]):
-    output = np.zeros(np.sum(sizes), dtype=np.int64)
-    rs = 0
-    for i in range(len(starts)):
-        output[rs : rs + sizes[i]] = np.arange(
-            starts[i], starts[i] + sizes[i], dtype=np.int64
-        )
-        rs += sizes[i]
-    return output
+            return idxlib.chunked_into_array(*index)
