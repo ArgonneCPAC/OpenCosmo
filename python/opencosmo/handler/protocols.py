@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Iterable, Optional, Protocol, Self
 
 if TYPE_CHECKING:
     import numpy as np
-
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema

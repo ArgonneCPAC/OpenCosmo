@@ -7,7 +7,6 @@ from opencosmo.io.schema import FileEntry, make_schema
 
 if TYPE_CHECKING:
     import numpy as np
-
     from opencosmo.index import DataIndex
 
 

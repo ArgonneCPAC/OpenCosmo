@@ -5,7 +5,6 @@ from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import numpy as np
-
 from opencosmo.index import (
     SimpleIndex,
     from_size,
@@ -21,7 +20,6 @@ from opencosmo.io.writer import (
 
 if TYPE_CHECKING:
     import h5py
-
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema

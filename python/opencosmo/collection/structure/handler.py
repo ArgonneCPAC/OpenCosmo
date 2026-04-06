@@ -40,9 +40,13 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
 def create_start_size(data, start_name, size_name):
     start = data.pop(start_name, None)
     size = data.pop(size_name, None)
-    if start is None:
+    if start is None or size is None:
         return None
     valid = size > 0
+
+    start = start.astype(np.int64)
+    size = size.astype(np.int64)
+
     if isinstance(start, np.ndarray):
         return (start[valid], size[valid])
     if size == 0:
@@ -55,6 +59,7 @@ def create_idx(data, idx_name):
     if idx is None:
         return None
 
+    idx = idx.astype(np.int64)
     valid = idx >= 0
 
     if isinstance(idx, np.ndarray):
@@ -265,7 +270,7 @@ def rebuild_row_index(
     index_into_original: np.ndarray,
 ):
     valid_rows = original_metadata_column >= 0
-    index = np.full(len(original_metadata_column), -1, dtype=int)
+    index = np.full(len(original_metadata_column), -1, dtype=np.int64)
     index[valid_rows] = np.arange(0, sum(valid_rows))
     index_to_take = index[index_into_original]
     index_to_take = index_to_take[index_to_take >= 0]
@@ -279,7 +284,7 @@ def rebuild_chunk_index(
     original_size_column: np.ndarray,
     index_into_original: np.ndarray,
 ):
-    chunk_boundaries = np.zeros(len(original_size_column) + 1, dtype=int)
+    chunk_boundaries = np.zeros(len(original_size_column) + 1, dtype=np.int64)
     _ = np.cumsum(original_size_column, out=chunk_boundaries[1:])
     valid_rows = original_size_column[index_into_original] > 0
 

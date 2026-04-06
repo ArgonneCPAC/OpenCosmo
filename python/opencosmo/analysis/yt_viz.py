@@ -13,8 +13,8 @@ import opencosmo as oc
 from opencosmo.analysis import create_yt_dataset
 
 if TYPE_CHECKING:
-    from matplotlib.figure import Figure
     from matplotlib.colors import Normalize
+    from matplotlib.figure import Figure
     from yt.visualization.plot_window import NormalPlot
 
 # ruff: noqa: E501
@@ -279,7 +279,7 @@ def halo_projection_array(
     weight_field: Optional[Tuple[str, str]] = None,
     projection_axis: Optional[str] = "z",
     cmap: Optional[str] = "gray",
-    cmap_norm: Optional[Normalize] = None, # type: ignore
+    cmap_norm: Optional[Normalize] = None,  # type: ignore
     zlim: Optional[Tuple[float, float]] = None,
     params: Optional[Dict[str, Any]] = None,
     length_scale: Optional[str] = None,
@@ -306,7 +306,7 @@ def halo_projection_array(
     halo_ids : int or 2D array of int
         Unique ID of the halo(s) to be visualized. The shape of `halo_ids` sets the layout
         of the figure (e.g., if `halo_ids` is a 2x3 array, the outputted figure will be a 2x3
-        array of projections). To leave a panel in the outputted figure blank, set the corresponding 
+        array of projections). To leave a panel in the outputted figure blank, set the corresponding
         entry into the `halo_ids` array to `None`. If `int`, a single panel is output while preserving formatting.
     data : opencosmo.StructureCollection
         OpenCosmo StructureCollection dataset containing both halo properties and particle data
@@ -354,7 +354,7 @@ def halo_projection_array(
             - ``"zlims"``: 2D array of colorbar limits (log-scaled)
             - ``"labels"``: 2D array of panel labels (or None)
             - ``"cmaps"``: 2D array of Matplotlib colormaps for each panel
-            - ``"cmap_norms"``: 2D array of colormap normalization method (e.g. matplotlib.colors.LogNorm()) 
+            - ``"cmap_norms"``: 2D array of colormap normalization method (e.g. matplotlib.colors.LogNorm())
             - ``"widths"``: 2D array of widths in units of R200
     text_color : str, optional
         Set the color of all text annotations. Default is "gray"
@@ -448,7 +448,7 @@ def halo_projection_array(
                 if len(data) > 1:
                     data_id = data.filter(oc.col("unique_tag") == halo_id)
                 else:
-                    if data["halo_properties"].data["unique_tag"] != halo_id: # type: ignore
+                    if data["halo_properties"].data["unique_tag"] != halo_id:  # type: ignore
                         raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
                     data_id = data
                 halo_data = next(iter(data_id.objects()))
