@@ -80,7 +80,6 @@ def write_parallel(file: Path, file_schema: Schema):
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
     if len(has_data) == 0:
         raise ValueError("No ranks have any data to write!")
-    print("ASDF")
 
     group = comm.Get_group()
     new_group = group.Incl(has_data)

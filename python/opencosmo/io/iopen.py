@@ -396,9 +396,11 @@ def __find_datasets_under_group(
         columns = [
             nds_[1]
             for nds_ in filter(
-                lambda nds: ds_group_parent in nds[0]
-                and "header" not in nds[0]
-                and isinstance(nds[1], h5py.Dataset),
+                lambda nds: (
+                    ds_group_parent in nds[0]
+                    and "header" not in nds[0]
+                    and isinstance(nds[1], h5py.Dataset)
+                ),
                 file_map.items(),
             )
         ]

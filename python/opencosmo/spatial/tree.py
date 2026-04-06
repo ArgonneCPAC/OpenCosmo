@@ -150,7 +150,9 @@ def partition_index(n_partitions: int, counts: h5py.Group, min_level: int):
 
     split_level_indices = full_region_indices
 
-    return np.array_split(split_level_indices, n_partitions), split_level
+    return np.array_split(
+        split_level_indices.astype(np.int64), n_partitions
+    ), split_level
 
 
 class Tree:
@@ -201,8 +203,8 @@ class Tree:
             n_partitions, counts, min_level
         )
         partitions = []
-        start = self.__columns[f"level_{split_level}/start"][:]
-        size = self.__columns[f"level_{split_level}/size"][:]
+        start = self.__columns[f"level_{split_level}/start"][:].astype(np.int64)
+        size = self.__columns[f"level_{split_level}/size"][:].astype(np.int64)
         for index_ in partition_indices:
             if len(index_) == 0:
                 continue

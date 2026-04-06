@@ -143,9 +143,7 @@ def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> N
 
     path = resolve_path(path, existance_requirement)
 
-    print("Schema")
     schema = dataset.make_schema(**schema_kwargs)
-    print("Done")
 
     if mpiio is not None:
         return mpiio.write_parallel(path, schema)
