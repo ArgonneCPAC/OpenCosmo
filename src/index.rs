@@ -212,51 +212,71 @@ pub(crate) mod index {
         )?;
         Ok((result.0.into_pyarray(py), result.1.into_pyarray(py)))
     }
+    fn find_chunk(prefix: &[i64], x: i64) -> usize {
+        let mut lo = 0usize;
+        let mut hi = prefix.len() - 1;
+        while lo + 1 < hi {
+            let mid = (lo + hi) / 2;
+            if prefix[mid] <= x {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+
     fn take_chunked_from_chunked(
         start: ArrayView1<'_, i64>,
         size: ArrayView1<'_, i64>,
         take_start: ArrayView1<'_, i64>,
         take_size: ArrayView1<'_, i64>,
     ) -> Result<(Array1<i64>, Array1<i64>), PyErr> {
-        // assumption: everything is sorted
+        if take_start.len() == 0 {
+            return Ok((Array1::<i64>::zeros(0), Array1::<i64>::zeros(0)));
+        }
         let mut output_start: Vec<i64> = Vec::new();
         let mut output_size: Vec<i64> = Vec::new();
-        if size.sum() < take_start[take_start.len() - 1] + take_size[take_size.len() - 1] {
-            return Err(PyValueError::new_err(
-                "You can't take more elements than exist in an index!",
-            ));
+
+        let mut prefix = vec![0i64; size.len() + 1];
+        for i in 0..size.len() {
+            prefix[i + 1] = prefix[i] + size[i];
         }
-        let mut chunk_index: usize = 0;
-        let mut cs = 0;
+        let total = prefix[size.len()];
+
         for (&tstart, &tsize) in zip(take_start, take_size) {
-            while cs + size[chunk_index] < tstart {
-                cs += size[chunk_index];
-                chunk_index += 1;
+            if tstart + tsize > total {
+                return Err(PyValueError::new_err(
+                    "You can't take more elements than exist in an index!",
+                ));
             }
-            // chunk_index now points to the chunk that we need to start at
-            // cs is equal to the cumulative size of all chunks that we've passed
+            let mut chunk_index = find_chunk(&prefix, tstart);
+            let mut cs = prefix[chunk_index];
             let mut start_in_chunk = tstart - cs;
-            let mut chunk_taken = 0;
-            let mut chunk_completed = false;
-            while !chunk_completed {
-                let mut size_in_chunk = size[chunk_index] - start_in_chunk;
-                chunk_completed = size_in_chunk >= (tsize - chunk_taken);
-                if chunk_completed {
-                    size_in_chunk = tsize - chunk_taken;
-                }
+            let mut chunk_taken = 0i64;
+
+            loop {
+                let size_in_chunk = size[chunk_index] - start_in_chunk;
+                let remaining = tsize - chunk_taken;
+                let (take, chunk_completed) = if size_in_chunk >= remaining {
+                    (remaining, true)
+                } else {
+                    (size_in_chunk, false)
+                };
 
                 output_start.push(start[chunk_index] + start_in_chunk);
-                output_size.push(size_in_chunk);
-                chunk_taken += size_in_chunk;
-                if !chunk_completed {
-                    cs += size[chunk_index];
-                    chunk_index += 1;
-                    start_in_chunk = 0;
+                output_size.push(take);
+                chunk_taken += take;
+
+                if chunk_completed {
+                    break;
                 }
+                cs += size[chunk_index];
+                chunk_index += 1;
+                start_in_chunk = 0;
             }
         }
-        let output_start_arr = Array1::from_vec(output_start);
-        let output_size_arr = Array1::from_vec(output_size);
-        Ok((output_start_arr, output_size_arr))
+
+        Ok((Array1::from_vec(output_start), Array1::from_vec(output_size)))
     }
 }
