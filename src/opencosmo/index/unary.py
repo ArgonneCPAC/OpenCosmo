@@ -2,7 +2,7 @@ import numba as nb
 import numpy as np
 from numpy.typing import NDArray
 
-from opencosmo.index._ops import get_simple_range
+from opencosmo.index import _ops
 
 """
 Implementations for unary operations on indices
@@ -33,7 +33,7 @@ def get_range(index: SimpleIndex | ChunkedIndex):
 
 
 def __get_simple_range(index: SimpleIndex):
-    return get_simple_range(index)
+    return _ops.get_simple_range(index)
 
 
 @nb.njit

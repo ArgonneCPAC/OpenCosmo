@@ -65,8 +65,8 @@ static PyObject* method_get_simple_range(PyObject* self, PyObject *args) {
 	}
 	PyObject* size_out = PyTuple_New(2);
 	if (PyArray_DIM(index, 0) == (npy_intp)0) {
-		PyTuple_SET_ITEM(size_out, 0, PyLong_FromLong(0));
-		PyTuple_SET_ITEM(size_out, 1, PyLong_FromLong(0));
+		PyTuple_SET_ITEM(size_out, 0, PyLong_FromLongLong(0));
+		PyTuple_SET_ITEM(size_out, 1, PyLong_FromLongLong(0));
 		return size_out;
 	}
 
