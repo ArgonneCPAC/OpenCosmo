@@ -239,8 +239,12 @@ class Tree:
         return (contains_start, contains_size), (intersects_start, intersects_size)
 
     def apply_index(self, index: DataIndex, min_counts: int = 100) -> Tree:
-        max_level_starts = self.__columns[f"level_{self.__max_level}/start"][:]
-        max_level_sizes = self.__columns[f"level_{self.__max_level}/size"][:]
+        max_level_starts = self.__columns[f"level_{self.__max_level}/start"][:].astype(
+            np.int64
+        )
+        max_level_sizes = self.__columns[f"level_{self.__max_level}/size"][:].astype(
+            np.int64
+        )
         n = n_in_range(index, max_level_starts, max_level_sizes)
         target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
         result = combine_upwards(

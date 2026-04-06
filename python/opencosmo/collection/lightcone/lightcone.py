@@ -646,6 +646,7 @@ class Lightcone(dict):
             }
             children.update(child_schemas)
 
+        print("DONE")
         return make_schema(name, FileEntry.LIGHTCONE, children=children)
 
     def bound(self, region: Region, select_by: Optional[str] = None):

@@ -3,14 +3,13 @@ import shutil
 
 import astropy.units as u
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
-from pytest_mpi.parallel_assert import parallel_assert
-
-import opencosmo as oc
 from opencosmo.mpi import get_comm_world
+from pytest_mpi.parallel_assert import parallel_assert
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -410,6 +409,7 @@ def test_write_some_missing(core_path_487, core_path_475, per_test_dir):
     original_data_length = comm.allgather(len(original_data))
 
     ds = ds.with_new_columns(gal_id=np.arange(len(ds)))
+    print("hi")
     oc.write(per_test_dir / "lightcone.hdf5", ds)
     ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")

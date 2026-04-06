@@ -14,7 +14,7 @@ def take(from_, by):
         case (np.ndarray(), np.ndarray()):
             return __take_simple_from_simple(from_, by)
         case (np.ndarray(), (np.ndarray(), np.ndarray())):
-            return idxlib.take_chunked_from_simple(from_, by)
+            return idxlib.take_chunked_from_simple(from_, *by)
         case ((np.ndarray(), np.ndarray()), np.ndarray()):
             return __take_simple_from_chunked(from_, by)
         case ((np.ndarray(), np.ndarray()), (np.ndarray(), np.ndarray())):

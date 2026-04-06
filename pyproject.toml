@@ -56,6 +56,7 @@ test = [
 test-mpi = [
   "mpi-pytest>=2025.4.0,<2026.0.0"
 ]
+
 [project.scripts]
 opencosmo = "opencosmo.analysis.cli:cli"
 
@@ -63,8 +64,6 @@ opencosmo = "opencosmo.analysis.cli:cli"
 io = [
     "pyarrow>=21.0.0",
 ]
-
-
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
@@ -75,26 +74,18 @@ module-name = "opencosmo._lib"
 include = ["LICENSE.md"]
 python-source = "python"
 
+[tool.uv]
+cache-keys = [{file = "pyproject.toml"}, {file = "Cargo.toml"}, {file = "**/*.rs"}]
+
 [[tool.mypy.overrides]]
 module = ["h5py", "astropy.*", "healpy", "healsparse", "numba"]
 ignore_missing_imports = true
 
-[tool.towncrier]
-directory = "changes"
-package = "opencosmo"
-name = "opencosmo"
-filename = "docs/source/changelog.rst"
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
 log_cli = true
 log_cli_level = "INFO"
-
-[tool.pyrefly]
-project-includes = [
-    "**/*.py*",
-]
-replace-imports-with-any = ["astropy.units", "astropy.constants"]
 
 [lint.pycodestyle]
 max-doc-length = 90
@@ -104,6 +95,11 @@ future-annotations = true
 preview = false
 extend-select = ["TC"]
 
+[tool.towncrier]
+directory = "changes"
+package = "opencosmo"
+name = "opencosmo"
+filename = "docs/source/changelog.rst"
 
 [tool.towncrier.fragment.improvement]
 name = "Improvements"

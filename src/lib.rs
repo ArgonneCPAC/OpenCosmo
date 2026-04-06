@@ -6,7 +6,7 @@
 use pyo3::prelude::*;
 mod index;
 
-#[pyo3::pymodule]
+#[pymodule]
 mod _lib {
     use pyo3::prelude::*;
 

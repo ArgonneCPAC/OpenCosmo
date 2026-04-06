@@ -115,6 +115,8 @@ def stack_lightcone_datasets_in_schema(
             [schema.children["data"] for schema in schemas]
         )
 
+        print("ASDF")
+        assert False
         order = get_stacked_lightcone_order(ds_list, max_level)
         updater = partial(update_order, order=order)
 
