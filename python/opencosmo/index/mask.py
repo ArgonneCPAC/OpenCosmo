@@ -7,11 +7,13 @@ import numpy as np
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+    from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
+
 from opencosmo._lib import index as idxlib
 from opencosmo.index.unary import get_length
 
 
-def mask(index, boolean_mask):
+def mask(index: DataIndex, boolean_mask: NDArray[np.bool_]) -> SimpleIndex:
     match index:
         case np.ndarray():
             return __mask_simple(index, boolean_mask)
@@ -21,7 +23,7 @@ def mask(index, boolean_mask):
             raise TypeError(f"Unknown index type {type(index)}")
 
 
-def __mask_simple(index: NDArray[np.int_], boolean_mask: NDArray[np.bool_]):
+def __mask_simple(index: SimpleIndex, boolean_mask: NDArray[np.bool_]) -> SimpleIndex:
     if (lm := len(boolean_mask)) > len(index):
         raise ValueError(
             "Boolean mask must be less than or equal to the length of the index itself"
@@ -30,12 +32,12 @@ def __mask_simple(index: NDArray[np.int_], boolean_mask: NDArray[np.bool_]):
     return index[:lm][boolean_mask]
 
 
-def __mask_chunked(index: tuple, boolean_mask: NDArray[np.bool_]):
+def __mask_chunked(index: ChunkedIndex, boolean_mask: NDArray[np.bool_]) -> SimpleIndex:
     array = into_array(index)
     return array[boolean_mask]
 
 
-def into_array(index: np.ndarray | tuple):
+def into_array(index: DataIndex) -> SimpleIndex:
     if get_length(index) == 0:
         return np.array([], dtype=np.int64)
 
@@ -47,3 +49,5 @@ def into_array(index: np.ndarray | tuple):
                 return np.arange(index[0][0], index[0][0] + index[1][0])
 
             return idxlib.chunked_into_array(*index)
+        case _:
+            raise ValueError(f"Expected a DataIndex, got {type(index)}")

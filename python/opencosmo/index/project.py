@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
 
-def project(source: DataIndex, other: DataIndex):
+def project(source: DataIndex, other: DataIndex) -> DataIndex:
     match (source, other):
         case (tuple(), np.ndarray()):
             return __project_simple_on_chunked(source, other)
@@ -20,22 +20,26 @@ def project(source: DataIndex, other: DataIndex):
             return __project_simple_on_simple(source, other)
         case (np.ndarray(), tuple()):
             return __project_chunked_on_simple(source, other)
+        case _:
+            raise TypeError(f"Invalid index types: {type(source)}, {type(other)}")
 
 
-def __project_simple_on_simple(source, other: DataIndex):
+def __project_simple_on_simple(source: SimpleIndex, other: SimpleIndex) -> SimpleIndex:
     isin = np.isin(source, other)
     return np.where(isin)[0]
 
 
-def __project_chunked_on_simple(source, other: DataIndex):
+def __project_chunked_on_simple(source: SimpleIndex, other: ChunkedIndex) -> DataIndex:
     return project(source, into_array(other))
 
 
-def __project_simple_on_chunked(source: ChunkedIndex, other: SimpleIndex):
+def __project_simple_on_chunked(source: ChunkedIndex, other: SimpleIndex) -> DataIndex:
     return project(into_array(source), other)
 
 
-def __project_chunked_on_chunked(source: ChunkedIndex, other: ChunkedIndex):
+def __project_chunked_on_chunked(
+    source: ChunkedIndex, other: ChunkedIndex
+) -> ChunkedIndex:
     source_ends = source[0] + source[1]
     other_ends = other[0] + other[1]
 

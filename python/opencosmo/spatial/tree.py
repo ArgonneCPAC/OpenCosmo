@@ -13,7 +13,7 @@ except ImportError:
     MPI = None  # type: ignore
 
 
-from opencosmo.index import from_size, get_data, n_in_range
+from opencosmo.index import from_size, from_start_size_group, get_data, n_in_range
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import (
     ColumnCombineStrategy,
@@ -203,8 +203,7 @@ class Tree:
             n_partitions, counts, min_level
         )
         partitions = []
-        start = self.__columns[f"level_{split_level}/start"][:].astype(np.int64)
-        size = self.__columns[f"level_{split_level}/size"][:].astype(np.int64)
+        start, size = from_start_size_group(self.__columns[f"level_{split_level}"])
         for index_ in partition_indices:
             if len(index_) == 0:
                 continue
@@ -225,8 +224,9 @@ class Tree:
         intersects = []
         for level, (cidx, iidx) in indices.items():
             level_key = f"level_{level}"
-            level_starts = self.__columns[f"{level_key}/start"]
-            level_sizes = self.__columns[f"{level_key}/size"]
+            level_starts, level_sizes = from_start_size_group(
+                self.__columns[f"{level_key}"]
+            )
             c_starts = get_data(level_starts, cidx)
             c_sizes = get_data(level_sizes, cidx)
             i_starts = get_data(level_starts, iidx)
@@ -241,11 +241,8 @@ class Tree:
         return (contains_start, contains_size), (intersects_start, intersects_size)
 
     def apply_index(self, index: DataIndex, min_counts: int = 100) -> Tree:
-        max_level_starts = self.__columns[f"level_{self.__max_level}/start"][:].astype(
-            np.int64
-        )
-        max_level_sizes = self.__columns[f"level_{self.__max_level}/size"][:].astype(
-            np.int64
+        max_level_starts, max_level_sizes = from_start_size_group(
+            self.__columns[f"level_{self.__max_level}"]
         )
         n = n_in_range(index, max_level_starts, max_level_sizes)
         target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)

@@ -1,17 +1,20 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
-from numpy.typing import NDArray
 
 from opencosmo._lib import index as idx
+
+if TYPE_CHECKING:
+    from opencosmo.index import DataIndex
 
 """
 Implementations for unary operations on indices
 """
 
-SimpleIndex = NDArray[np.int_]
-ChunkedIndex = tuple[NDArray[np.int_], NDArray[np.int_]]
 
-
-def get_length(index: SimpleIndex | ChunkedIndex):
+def get_length(index: DataIndex) -> int:
     match index:
         case np.ndarray():
             return len(index)
@@ -21,7 +24,7 @@ def get_length(index: SimpleIndex | ChunkedIndex):
             raise TypeError(f"Invalid index type {type(index)}")
 
 
-def get_range(index: SimpleIndex | ChunkedIndex):
+def get_range(index: DataIndex) -> tuple[int, int]:
     match index:
         case np.ndarray():
             return idx.get_simple_range(index)

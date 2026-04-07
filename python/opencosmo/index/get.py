@@ -9,22 +9,22 @@ import numpy as np
 from .unary import get_length
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
+    from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
 
-def get_data(data: h5py.Dataset | np.ndarray, index: np.ndarray | tuple):
+def get_data(data: h5py.Dataset | np.ndarray, index: DataIndex):
     if get_length(index) == 0:
         return np.array([])
     match index:
         case np.ndarray():
             return get_data_simple(data, index)
         case (np.ndarray(), np.ndarray()):
-            return get_data_chunked(data, *index)
+            return get_data_chunked(data, index)
         case _:
             raise ValueError(f"Got invalid index of type {type(index)}")
 
 
-def get_data_simple(data: h5py.Dataset | np.ndarray, index: NDArray[np.int_]):
+def get_data_simple(data: h5py.Dataset | np.ndarray, index: SimpleIndex):
     if isinstance(data, np.ndarray):
         return data[index]
 
@@ -41,13 +41,14 @@ def get_data_simple(data: h5py.Dataset | np.ndarray, index: NDArray[np.int_]):
     return buffer[index - min_]
 
 
-def get_data_chunked(
-    data: h5py.Dataset | np.ndarray, starts: NDArray[np.int_], sizes: NDArray[np.int_]
-):
+def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
     """
     We assume that starts are ordered, and chunks are non-overlapping
 
     """
+
+    starts = index[0]
+    sizes = index[1]
 
     unit = None
     if isinstance(data, u.Quantity):
@@ -66,7 +67,7 @@ def get_data_chunked(
         else:
             storage[dest_slice] = data[source_slice]
 
-        running_index += size
+        running_index += int(size)
 
     if unit is not None:
         storage *= unit

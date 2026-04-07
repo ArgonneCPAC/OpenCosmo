@@ -1,7 +1,6 @@
 import numpy as np
-from numpy.typing import NDArray
 
-from .build import concatenate, empty, from_size, single_chunk
+from .build import concatenate, empty, from_size, from_start_size_group, single_chunk
 from .get import get_data
 from .in_range import n_in_range
 from .mask import into_array, mask
@@ -9,8 +8,10 @@ from .project import project
 from .take import take
 from .unary import get_length, get_range
 
-SimpleIndex = NDArray[np.int_]
-ChunkedIndex = tuple[NDArray[np.int_], NDArray[np.int_]]
+IndexArray = np.ndarray[tuple[int], np.dtype[np.int64]]
+
+SimpleIndex = IndexArray
+ChunkedIndex = tuple[IndexArray, IndexArray]
 DataIndex = SimpleIndex | ChunkedIndex
 
 
@@ -32,4 +33,5 @@ __all__ = [
     "take",
     "get_length",
     "get_range",
+    "from_start_size_group",
 ]
