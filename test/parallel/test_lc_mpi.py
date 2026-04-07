@@ -3,14 +3,13 @@ import shutil
 
 import astropy.units as u
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
 from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
-
-import opencosmo as oc
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -403,6 +402,7 @@ def test_diffsky_stack_with_synths(core_path_487, core_path_475, per_test_dir):
 def test_write_some_missing(core_path_487, core_path_475, per_test_dir):
     comm = MPI.COMM_WORLD
     ds = oc.open(core_path_487, core_path_475, synth_cores=False)
+    assert "early_index" in ds.columns
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1
