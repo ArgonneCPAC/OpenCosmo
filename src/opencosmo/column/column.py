@@ -29,7 +29,6 @@ from opencosmo.units import UnitsError
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
-    from opencosmo.index import DataIndex
 
 Comparison = Callable[[float, float], bool]
 
@@ -287,7 +286,7 @@ class ConstructedColumn(Protocol):
     def evaluate(
         self,
         data: dict[str, np.ndarray],
-        index: DataIndex,
+        chunk_sizes: Optional[np.ndarray],
     ) -> np.ndarray | dict[str, np.ndarray]: ...
 
     def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]: ...
@@ -440,19 +439,19 @@ class DerivedColumn:
     def sqrt(self):
         return DerivedColumn(self, None, _sqrt)
 
-    def evaluate(self, data: dict[str, np.ndarray], index: DataIndex) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray], *args) -> np.ndarray:
         lhs: np.typing.ArrayLike
         rhs: Optional[np.typing.ArrayLike]
         match self.lhs:
             case DerivedColumn():
-                lhs = self.lhs.evaluate(data, index)
+                lhs = self.lhs.evaluate(data)
             case Column():
                 lhs = data[self.lhs.column_name]
             case _:
                 lhs = self.lhs
         match self.rhs:
             case DerivedColumn():
-                rhs = self.rhs.evaluate(data, index)
+                rhs = self.rhs.evaluate(data)
             case Column():
                 rhs = data[self.rhs.column_name]
             case _:
@@ -530,7 +529,7 @@ class EvaluatedColumn:
     def get_units(self, units: dict[str, np.ndarray]):
         return self.__units
 
-    def evaluate(self, data: dict[str, np.ndarray], index: Optional[DataIndex] = None):
+    def evaluate(self, data: dict[str, np.ndarray], chunk_sizes: Optional[np.ndarray]):
         data = {name: data[name] for name in self.__requires}
         if self.__format != "astropy":
             data = {
@@ -541,10 +540,11 @@ class EvaluatedColumn:
         if self.batch_size > 0:
             length = len(next(iter(data.values())))
             strategy = EvaluateStrategy.CHUNKED
-            starts = np.arange(0, length, self.batch_size)
-            sizes = np.full_like(starts, self.batch_size)
-            sizes[-1] = length - starts[-1]
-            index = (starts, sizes)
+            chunk_sizes = np.full(
+                np.ceil(length / self.batch_size).astype(int), self.batch_size
+            )
+            chunk_sizes[-1] = (length % self.batch_size) or self.batch_size
+
         else:
             strategy = self.__strategy
 
@@ -554,11 +554,11 @@ class EvaluatedColumn:
             case EvaluateStrategy.ROW_WISE:
                 return evaluate_rows(data, self.__func, self.__kwargs)
             case EvaluateStrategy.CHUNKED:
-                if not isinstance(index, tuple):
+                if chunk_sizes is None:
                     raise ValueError(
                         "Cannot evaluate in CHUNKED strategy with a non-chunked index"
                     )
-                return evaluate_chunks(data, self.__func, self.__kwargs, index)
+                return evaluate_chunks(data, self.__func, self.__kwargs, chunk_sizes)
 
     def evaluate_one(self, dataset: Dataset):
         match self.__strategy:

@@ -1,0 +1,1 @@
+:py:func:`reduce <opencosmo.analysis.reduce>` now accepts a `plotting_function` argument, which allows production of a plot after reduction is performed.

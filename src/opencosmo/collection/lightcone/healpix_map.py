@@ -14,8 +14,7 @@ from astropy.table import Column, vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.column.column import DerivedColumn
 from opencosmo.dataset.build import build_dataset_from_data
-from opencosmo.index import into_array
-from opencosmo.io.iopen import open_single_dataset
+from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
@@ -76,24 +75,16 @@ class HealpixMap(dict):
         ordering: str,
         full_sky: bool,
         z_range: tuple[float, float],
+        region: HealpixRegion,
         hidden: Optional[set[str]] = None,
         ordered_by: Optional[tuple[str, bool]] = None,
-        region: Optional[Region] = None,
     ):
-        if (
-            not full_sky
-            and not isinstance(region, HealpixRegion)
-            and any(
-                "pixel" not in dataset.meta_columns for dataset in datasets.values()
-            )
-        ):
-            raise ValueError("Missing a pixel column for this map!")
-
         if len(datasets) > 1:
             raise NotImplementedError(
                 "Healpix map is not currently implemented correctly for multiple layers"
             )
 
+        assert isinstance(region, HealpixRegion)
         self.update(datasets)
         self.__nside = nside
         self.__nside_lr = nside_lr
@@ -114,10 +105,7 @@ class HealpixMap(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
-        if region is None:
-            self.__region: Region = FullSkyRegion()
-        else:
-            self.__region = region
+        self.__region = region
 
     @property
     def nside(self):
@@ -135,13 +123,7 @@ class HealpixMap(dict):
         """
         The healpix pixels that are included in this map
         """
-        if self.full_sky:
-            # Ensures this works with MPI partitioning
-            return into_array(next(iter(self.values())).index)
-        if self.__region is not None:
-            return self.__region.pixels
-
-        return next(iter(self.values())).get_metadata(["pixel"])["pixel"]
+        return self.__region.pixels
 
     @property
     def nside_lr(self):
@@ -441,7 +423,7 @@ class HealpixMap(dict):
             float
         )
 
-        new_data: GroupedColumnData = {"data": {}, "metadata": {"pixel": new_pixels}}
+        new_data: GroupedColumnData = {"data": {}}
         for name in self.columns:
             new_data["data"][name] = (
                 np.add.reduceat(table[name].value, boundaries) / counts
@@ -449,23 +431,13 @@ class HealpixMap(dict):
 
         new_header = self.header.with_parameters({"map_params/nside": nside_out})
 
-        index_level = 6
-        index_nside = 2**index_level
-        while index_nside > nside_out:
-            index_level -= 1
-            index_nside = 2**index_level
-
         out_npix = hp.nside2npix(nside_out)
-        index_npix = hp.nside2npix(index_nside)
-
-        pix_per_idx = out_npix / index_npix
-        size = np.full(index_npix, pix_per_idx)
 
         new_dataset = build_dataset_from_data(
             new_data,
             new_header,
             self.region,
-            {index_level: (size, 4)},
+            None,
             descriptions={
                 "data": {
                     key: desc
@@ -476,9 +448,11 @@ class HealpixMap(dict):
         )
 
         is_full_sky = self.full_sky and get_comm_world() is None
-        region = None
+
         if len(new_pixels) != out_npix:
             region = HealpixRegion(new_pixels, nside_out, self.__ordering)
+        else:
+            region = HealpixRegion(from_size(out_npix), nside_out, self.__ordering)
 
         return HealpixMap(
             {"data": new_dataset},
@@ -487,40 +461,14 @@ class HealpixMap(dict):
             self.ordering,
             is_full_sky,
             self.z_range,
+            region,
             self.__hidden,
             self.__ordered_by,
-            region,
         )
 
     @classmethod
     def open(cls, targets: list[FileTarget], **kwargs):
-        datasets: dict[str, Dataset] = {}
-
-        dataset_targets = []
-        for file_target in targets:
-            dataset_targets.extend(file_target["dataset_targets"])
-
-        for target in dataset_targets:
-            ds = open_single_dataset(target)
-            # TODO: check if we need some equivalent here
-            if not isinstance(ds, HealpixMap) or len(ds.keys()) != 1:
-                raise ValueError(
-                    "HealpixMap class can only contain datasets (not collections)"
-                )
-            if target["dataset_group"].name != "/":
-                key = target["dataset_group"].name.split("/")[-1]
-            else:
-                key = f"{target['header'].healpix_map.z_range}_{target['header'].file.data_type}"
-            datasets[key] = next(iter(ds.values()))
-
-        return cls(
-            datasets,
-            ds.nside(),
-            ds.nside_lr(),
-            ds.ordering(),
-            ds.full_sky(),
-            ds.z_range(),
-        )
+        raise NotImplementedError()
 
     def __map(
         self,
@@ -554,9 +502,9 @@ class HealpixMap(dict):
                 self.ordering,
                 self.full_sky,
                 self.z_range,
+                self.__region,
                 self.__hidden,
                 self.__ordered_by,
-                self.__region,
             )
         return output
 
@@ -591,8 +539,12 @@ class HealpixMap(dict):
             new_header = self.header.with_region(self.region).with_parameter(
                 "map_params/full_sky", False
             )
-            header_schema = new_header.dump()
-            schema.children["header"] = header_schema
+        else:
+            new_header = self.header.with_region(FullSkyRegion())
+
+        header_schema = new_header.dump()
+        schema.children["header"] = header_schema
+
         return schema
 
     def bound(self, region: Region, inclusive: bool = False):
@@ -646,6 +598,7 @@ class HealpixMap(dict):
                 np.isin(current_pixels, pixels, assume_unique=True)
             )[0]
             new_datasets[name] = dataset.take_rows(rows_to_take)
+            assert len(new_datasets[name]) == len(rows_to_take)
 
         return HealpixMap(
             new_datasets,
@@ -654,9 +607,9 @@ class HealpixMap(dict):
             self.ordering,
             False,
             self.z_range,
+            HealpixRegion(current_pixels[rows_to_take], self.nside),
             self.__hidden,
             self.__ordered_by,
-            region=HealpixRegion(current_pixels[rows_to_take], self.nside),
         )
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
@@ -843,9 +796,9 @@ class HealpixMap(dict):
             self.ordering,
             False,
             self.z_range,
+            HealpixRegion(new_pixels, self.nside),
             self.__hidden,
             self.__ordered_by,
-            region=HealpixRegion(new_pixels, self.nside),
         )
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
@@ -1017,9 +970,9 @@ class HealpixMap(dict):
             self.ordering,
             False,
             self.z_range,
+            HealpixRegion(pixels, self.nside),
             self.__hidden,
             self.__ordered_by,
-            region=HealpixRegion(pixels, self.nside),
         )
 
     def take_rows(self, rows: np.ndarray):
@@ -1085,9 +1038,9 @@ class HealpixMap(dict):
             self.ordering,
             False,
             self.z_range,
+            HealpixRegion(self.pixels[rows], self.nside),
             self.__hidden,
             self.__ordered_by,
-            HealpixRegion(self.pixels[rows], self.nside),
         )
 
     def with_new_columns(
@@ -1147,6 +1100,7 @@ class HealpixMap(dict):
             self.ordering,
             self.full_sky,
             self.z_range,
+            self.__region,
             self.__hidden,
             self.__ordered_by,
         )
@@ -1187,6 +1141,7 @@ class HealpixMap(dict):
             self.ordering,
             self.full_sky,
             self.z_range,
+            self.__region,
             self.__hidden,
             (column, invert),
         )

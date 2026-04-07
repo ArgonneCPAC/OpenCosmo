@@ -15,7 +15,7 @@ def test_cache_take():
 
     cache2 = cache.take(index2)
     cache2.register_column_group(0, set("abcdefg"))
-    cached_data = cache2.get_columns("abcdefg")
+    cached_data = cache2.get_data("abcdefg")
     for colname, column in cached_data.items():
         assert np.all(column == data[colname][index2])
 
@@ -36,7 +36,7 @@ def test_cache_passthrough():
     cache3 = cache2.take(index3)
     cache3.register_column_group(0, set("abcdefg"))
 
-    cached_data = cache3.get_columns("abcdefg")
+    cached_data = cache3.get_data("abcdefg")
     for colname, column in cached_data.items():
         assert np.all(column == data[colname][index2[index3]])
     assert set(cache3.columns) == set("abcdefg")
@@ -54,7 +54,7 @@ def test_cache_passthrough_delete():
     index2 = np.sort(np.random.choice(10_000, 1000, replace=False))
     cache2 = cache.take(index2)
     cache2.register_column_group(0, set("abcdefg"))
-    _ = cache2.get_columns("abcdefg")
+    _ = cache2.get_data("abcdefg")
 
     index3 = np.sort(np.random.choice(1000, 100, replace=False))
     cache3 = cache2.take(index3)
@@ -63,7 +63,7 @@ def test_cache_passthrough_delete():
     assert set(cache3.columns) == set()
     del cache2
     assert set(cache3.columns) == set("abcdefg")
-    cached_data = cache3.get_columns("abcdefg")
+    cached_data = cache3.get_data("abcdefg")
 
     for colname, column in cached_data.items():
         assert np.all(column == data[colname][index2[index3]])
@@ -89,7 +89,7 @@ def test_cache_passthrough_twice_delete():
     del cache
     assert set(cache2.columns) == set("abcdefg")
 
-    cached_data = cache3.get_columns("abcdefg")
+    cached_data = cache3.get_data("abcdefg")
 
     for colname, column in cached_data.items():
         assert np.all(column == data[colname][index2[index3]])

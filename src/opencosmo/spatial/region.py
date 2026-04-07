@@ -7,6 +7,7 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from healpy import ang2vec, query_disc, query_polygon  # type: ignore
 
+from opencosmo.index import get_length, into_array
 from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
@@ -23,8 +24,8 @@ from opencosmo.spatial.relations import (
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord  # type: ignore
     from astropy.cosmology import FLRW
-    from numpy.typing import NDArray
 
+    from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
     from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
@@ -191,15 +192,15 @@ class SkyboxRegion:
 
 
 class HealpixRegion:
-    def __init__(self, idxs: NDArray[np.int_], nside: int, ordering: str = "nested"):
-        self.__idxs = np.sort(idxs)
+    def __init__(self, idxs: DataIndex, nside: int, ordering: str = "nested"):
+        self.__idxs = idxs
         self.__nside = nside
         self.__ordering = ordering
 
     def __repr__(self):
         res = (
             f"Healpix Region (nside = {self.nside}, ordering = {self.ordering})\n"
-            f"{len(self.pixels)} pixels in range: {self.pixels.min()} -> {self.pixels.max()}"
+            f"{get_length(self.__idxs)} pixels in range: {self.pixels.min()} -> {self.pixels.max()}"
         )
         return res
 
@@ -207,7 +208,7 @@ class HealpixRegion:
         return self
 
     def into_model(self):
-        return HealpixRegionModel(pixels=self.__idxs, nside=self.nside)
+        return HealpixRegionModel(pixels=into_array(self.__idxs), nside=self.nside)
 
     def combine(self, *others: HealpixRegion) -> HealpixRegion:
         if any(o.nside != self.nside for o in others):
@@ -227,7 +228,7 @@ class HealpixRegion:
         """
         The Healpix pixels contained in this region.
         """
-        return self.__idxs
+        return into_array(self.__idxs)
 
     @property
     def nside(self):

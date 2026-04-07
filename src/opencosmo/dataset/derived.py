@@ -10,9 +10,8 @@ if TYPE_CHECKING:
     import astropy.units as u
     import numpy as np
 
-    from opencosmo.column.cache import ColumnCache
     from opencosmo.column.column import ConstructedColumn
-    from opencosmo.dataset.handler import Hdf5Handler
+    from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.index import DataIndex
     from opencosmo.units.handler import UnitHandler
 
@@ -155,8 +154,8 @@ def validate_derived_units(
 def build_derived_columns(
     all_derived_columns: dict[str, ConstructedColumn],
     derived_columns_to_get: set[str],
-    cache: ColumnCache,
-    hdf5_handler: Hdf5Handler,
+    cache: DataCache,
+    data_handler: DataHandler,
     unit_handler: UnitHandler,
     unit_kwargs: dict,
     index: DataIndex,
@@ -179,7 +178,7 @@ def build_derived_columns(
     dependency_graph = build_dependency_graph(
         all_derived_columns, derived_columns_to_get
     )
-    cached_data = cache.get_columns(dependency_graph.nodes())
+    cached_data = cache.get_data(dependency_graph.nodes())
     cached_data |= unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
 
     additional_derived = column_names.difference(cached_data.keys())
@@ -189,11 +188,11 @@ def build_derived_columns(
 
     columns_to_fetch = (
         set(dependency_graph.nodes())
-        .intersection(hdf5_handler.columns)
+        .intersection(data_handler.columns)
         .difference(cached_data.keys())
     )
 
-    raw_data = hdf5_handler.get_data(columns_to_fetch)
+    raw_data = data_handler.get_data(columns_to_fetch)
     data = cached_data | unit_handler.apply_units(raw_data, unit_kwargs)
 
     dependency_graph = replace_multi_producers(
@@ -211,7 +210,9 @@ def build_derived_columns(
             produces = set((colname,))
         if all(name in data for name in produces):
             continue
-        output = derived_column.evaluate(data, index)
+        output = derived_column.evaluate(
+            data, index[1] if isinstance(index, tuple) else None
+        )
         if isinstance(output, dict):
             data |= output
             new_derived |= output
@@ -220,6 +221,6 @@ def build_derived_columns(
             new_derived[colname] = output
 
     if new_derived:
-        cache.add_data(new_derived)
+        cache.add_data(new_derived, {})
 
     return data | new_derived

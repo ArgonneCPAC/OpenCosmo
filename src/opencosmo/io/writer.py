@@ -52,6 +52,9 @@ class ColumnWriter:
         self.__dtype = dtypes.pop()
         self.__transformation: Optional[Callable] = None
 
+    def update_attrs(self, new_attrs: dict[str, Any]):
+        self.__attrs |= new_attrs
+
     @classmethod
     def from_numpy_array(
         cls,

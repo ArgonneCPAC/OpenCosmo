@@ -544,7 +544,7 @@ def test_rows_cache(input_path):
         assert row["fof_px"] == row["fof_halo_mass"] * row["fof_halo_com_vx"]
 
     cache = dataset._Dataset__state._DatasetState__cache
-    cached_data = cache.get_columns(["fof_halo_mass", "fof_halo_com_vx", "fof_px"])
+    cached_data = cache.get_data(["fof_halo_mass", "fof_halo_com_vx", "fof_px"])
     assert np.all(
         cached_data["fof_px"]
         == cached_data["fof_halo_mass"] * cached_data["fof_halo_com_vx"]
@@ -639,8 +639,8 @@ def test_cache_conversion_propogation(input_path):
     cache2 = dataset2._Dataset__state._DatasetState__cache
 
     assert len(cache.columns) == len(dataset2.columns)  # just to be safe
-    cached_columns = cache.get_columns(dataset.columns)
-    cached_columns2 = cache2.get_columns(dataset.columns)
+    cached_columns = cache.get_data(dataset.columns)
+    cached_columns2 = cache2.get_data(dataset.columns)
     for col in cached_columns.values():
         if isinstance(col, u.Quantity):
             assert col.unit not in [u.lyr, u.km]
