@@ -3,14 +3,13 @@ import shutil
 
 import astropy.units as u
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
-from pytest_mpi.parallel_assert import parallel_assert
-
-import opencosmo as oc
 from opencosmo.mpi import get_comm_world
+from pytest_mpi.parallel_assert import parallel_assert
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -122,6 +121,7 @@ def test_healpix_index_chain_failure(haloproperties_600_path):
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_write(haloproperties_600_path, per_test_dir):
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
 
     pixel = np.random.choice(ds.region.pixels)
@@ -138,7 +138,13 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+    rank_tags = ds.select("fof_halo_tag").get_data()
+    new_rank_tags = new_ds.select("fof_halo_tag").get_data()
+
+    all_tags = np.concatenate(comm.allgather(rank_tags))
+    all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
+
+    parallel_assert(np.all(np.sort(all_tags) == np.sort(all_new_tags)))
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -403,6 +409,7 @@ def test_diffsky_stack_with_synths(core_path_487, core_path_475, per_test_dir):
 def test_write_some_missing(core_path_487, core_path_475, per_test_dir):
     comm = MPI.COMM_WORLD
     ds = oc.open(core_path_487, core_path_475, synth_cores=False)
+    assert "early_index" in ds.columns
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1

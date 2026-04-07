@@ -14,15 +14,20 @@ If you find that the documentation is not quite up to par, feel free to create a
 
 In addition to raising issues on the repository or adding documentation, we welcome PRs that fix bugs, improve performance, or add new features. The remainder of this document describes how to go about setting up a development environment and prepping your PR for merging.
 
-### Step 0: Install UV
+### Step 0: Install UV and Build Dependencies
 
 We use [uv](https://docs.astral.sh/uv/) to manage dependencies and provide a consistent execution environment for packaging and testing. If you do not already have uv installed on your machine, [follow the documentation](https://docs.astral.sh/uv/getting-started/installation/) for your system.
+
+Becuase `opencosmo` includes some Rust extension modules, it uses [maturin](https://github.com/pyo3/maturin) as its build system and requires a Rust compiler. `uv` should install `maturin`, which is capable of bootstrapping itself. This should all happen automatically in step 2 below, but if for some reason this does not work you may need [install a rust compiler manually](https://rust-lang.org/tools/install/)
+
 
 ### Step 1: Create a Fork of the OpenCosmo Repo and Clone
 
 You should preform your development in your own personal fork of the repository. You can create one [at this link](https://github.com/ArgonneCPAC/OpenCosmo/fork). Once you have a fork, you can clone it to the machine you will be doing your development on.
 
-### Step 2: Create a Virtual Environment with UV
+If you're only planning to make a single contribution, it's fine to commit to the main branch of your fork. If you intend to make many contributions, we recommend creating a branch for each feature. 
+
+### Step 2: Create a Virtual Environment with UV and Install Dependencies
 
 In addition to managing dependencies, uv manages a virtual environment with the appropriate versions of all packages. From the root of the repository, run the command:
 
@@ -31,6 +36,8 @@ uv sync
 ```
 
 This will create a virtual environment in the repository and install all necessary dependencies, as well as extra dependencies required for development work.
+
+As part of the initial `uv sync`, `maturin` will build the rust extension modules and install them in the correct place. This may take some time, but unless you are modifying the rust code it will only have to happen once. 
 
 ### Step 2.1: Install Parallel HDF5 (Optional)
 
@@ -49,7 +56,9 @@ Note that running with uv is required to ensure that the parallel version of HDF
 
 ### Step 3: Add a Commit & Create a PR
 
-I know what you're thinking: I haven't actually implemented my changes yet. Why am I already submitting a PR? Two reasons. First, so we know what people are working on so we're not doing duplicate work. Second, so that your PR starts running through the CI pipeline.
+I know what you're thinking: I haven't actually implemented my changes yet. Why am I already submitting a PR? Two reasons. First, so we know what people are working on so we're not doing duplicate work. Second, so that your PR starts running through the CI pipeline. This will make it easier down the line!
+
+For more details of how to do all this, see the [GitHub documentation](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request-from-a-fork)
 
 ### Step 4: Implement Your Changes
 
@@ -58,6 +67,8 @@ This is where the magic happens. Implement your features! If you have questions,
 ### Step 5: Lint and Write Tests
 
 Our CI pipeline performs linting with [ruff](https://astral.sh/ruff) and static type checking with [mypy](https://www.mypy-lang.org/). Both should have been installed automatically when you ran `uv sync`. Your PR must pass both to be merged. If you prefer, you can use [pre-commit](https://pre-commit.com/) to automatically run linting and type checking before you commit. Altenatively, you can call them manually on your last commit. 
+
+If you're unfamiliar with type hints, go ahead and implement your features without them and we can worry about the details later.
 
 Many libraries do not have full typing support. If this is the case, you can add a `# type: ignore` directive when you import them. If the type stubs exist as a seperate library, you should instead add them as a development dependency in the pyprojet.toml with 
 
@@ -79,7 +90,7 @@ uv run pytest --ignore=test/parallel
 If you are working on features designed to be used in an MPI context, you can run the parallel tests with:
 
 ```bash
-uv run mpiexec -n 4 pytest -m parallel test/parallel -x
+uv run mpiexec -n 4 pytest -m parallel test/parallel
 ```
 
 All tests must pass for your PR to be merged.
