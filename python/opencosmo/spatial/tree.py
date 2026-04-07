@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 def open_tree(
-    tree_columns: dict[str, h5py.Dataset],
+    tree_group: h5py.Group,
     box_size: Optional[int],
     is_lightcone: bool = False,
 ):
@@ -55,9 +55,7 @@ def open_tree(
     else:
         spatial_index = OctTreeIndex.from_box_size(box_size)
 
-    tree_columns = {name.split("index/")[-1]: col for name, col in tree_columns.items()}
-
-    return Tree(spatial_index, tree_columns)
+    return Tree(spatial_index, tree_group)
 
 
 def read_tree(file: h5py.File | h5py.Group, box_size: int):

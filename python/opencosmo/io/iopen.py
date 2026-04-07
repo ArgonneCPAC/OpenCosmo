@@ -50,6 +50,7 @@ class DatasetTarget(TypedDict):
     header: OpenCosmoHeader
     dataset_group: h5py.Group
     columns: list[h5py.Dataset]
+    spatial_index: Optional[h5py.Group]
 
 
 class FileType(Enum):
@@ -389,6 +390,7 @@ def __find_datasets_under_group(
             file_map.keys(),
         )
     )
+
     for ds_group_name in known_dataset_groups:
         ds_group_parent = ds_group_name.rsplit("/", maxsplit=1)[0]
         ds_group_parent += "/"
@@ -399,16 +401,19 @@ def __find_datasets_under_group(
                 lambda nds: (
                     ds_group_parent in nds[0]
                     and "header" not in nds[0]
+                    and "index" not in nds[0]
                     and isinstance(nds[1], h5py.Dataset)
                 ),
                 file_map.items(),
             )
         ]
+        index_group = file_map.get(f"{ds_group_parent}index")
 
         target = DatasetTarget(
             header=header,
             dataset_group=file_map[ds_group_name].parent,
             columns=columns,
+            spatial_index=index_group,
         )
         if evaluate_load_conditions(target, open_kwargs):
             known_datasets.append(target)
@@ -471,21 +476,18 @@ def open_single_dataset(
 
     assert header is not None
 
-    index_columns = {
-        col.name: col for col in columns if col.name.split("/")[-3] == "index"
-    }
     try:
         box_size = header.with_units("scalefree").simulation["box_size"].value
     except AttributeError:
         box_size = None
 
-    try:
+    if target["spatial_index"] is not None:
         tree = open_tree(
-            index_columns,
+            target["spatial_index"],
             box_size,
             header.file.is_lightcone,
         )
-    except (ValueError, AttributeError):
+    else:
         tree = None
 
     if header.file.region is not None:
