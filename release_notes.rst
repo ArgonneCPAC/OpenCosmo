@@ -1,10 +1,10 @@
-opencosmo 1.2.3 (2026-03-23)
+opencosmo 1.2.4 (2026-03-27)
 ============================
 
-Deprecations and Removals
--------------------------
+Miscellaneous
+-------------
 
-- :py:meth:`evaluate <opencosmo.Dataset.evaluate>` no longer broadcasts array keyword arguments that have the same length as the dataset. You can still use arrays in this way by setting :code:`vectorize = True` or first inserting the array as a new column with :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
+- Remove healsparse pin and allow any version >=1.11
 
 
 

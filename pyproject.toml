@@ -1,6 +1,6 @@
 [project]
 name = "opencosmo"
-version = "1.2.3"
+version = "1.2.4"
 description = "OpenCosmo Python Toolkit"
 authors = [
   { name = "Patrick Wells", email = "pwells@anl.gov" },
@@ -16,21 +16,21 @@ dependencies = [
   "h5py>=3.12.1,<4.0.0",
   "astropy>=7.2.0,<8.0.0",
   "pydantic>=2.10.6,<3.0.0",
-  "hdf5plugin>=5.0.0,!=5.1",
+  "hdf5plugin>=5.0.0,!=5.1,<7.0",
   "healpy>=1.19.0,<2.0.0",
-  "healsparse==1.11.1",
-  "deprecated>=1.2.38,<2.0.0",
+  "healsparse>=1.11,<2.0",
+  "deprecated>=1.2.48,<2.0.0",
   "numpy>=2.0,<2.5",
   "click (>=8.2.1,<9.0.0)",
-  "numba>=0.64.0",
-  "rustworkx>=0.17.1",
+  "numba>=0.64.0,<1.0",
+  "rustworkx>=0.17.1,<1.0",
 ]
 
 [dependency-groups]
 dev = [
   "ruff>=0.9.4,<1.0.0",
   "mypy>=1.15,<2.0.0",
-  "types-deprecated>=1.2.35.20250304",
+  "types-deprecated>=1.2.45.20250304",
   "pre-commit>=4.2.0,<5.0.0",
   "towncrier (>=24.8.0,<25.0.0)",
   "pip>=25.1.1",

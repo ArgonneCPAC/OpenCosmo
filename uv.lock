@@ -64,11 +64,11 @@ wheels = [
 
 [[package]]
 name = "astropy-iers-data"
-version = "0.2026.4.1.15.5.49"
+version = "0.2026.4.6.0.54.57"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/25/af/c4dc0106b7bc003c4e16db575a48d7d16912ea29cfe59c857d433c79d17d/astropy_iers_data-0.2026.4.1.15.5.49.tar.gz", hash = "sha256:0f76474e6a0d6a7cecf086d08dc4c00d0540518fc6e0133a24e13cf7fcae8a53", size = 1929573, upload-time = "2026-04-01T15:06:31.015Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2e/10/a5e7ffb532c10412ba18a94a91057d244c1bf294275b7063716d9a128d14/astropy_iers_data-0.2026.4.6.0.54.57.tar.gz", hash = "sha256:d248c5e154c61536533688787d14c0f45c1e22f599670e7399ed493b21c5d2a5", size = 1929792, upload-time = "2026-04-06T00:55:37.521Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/14/125eb772fc1e8985d4cdc46a7e81a61009eae02492ef62488c53245c9d9f/astropy_iers_data-0.2026.4.1.15.5.49-py3-none-any.whl", hash = "sha256:ca90106817015638234cfeb41a6543d51149d64ab0b495b76863d33411846f25", size = 1986539, upload-time = "2026-04-01T15:06:29.332Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/96/97e6e46c8198015b0dcd3709794b358aae42a18e5a1bed393dc34307165f/astropy_iers_data-0.2026.4.6.0.54.57-py3-none-any.whl", hash = "sha256:e3d85850ccfd2e68f797c417cd1cc30fe1bdbd54c3a6ec6e48c307c879858ac4", size = 1986669, upload-time = "2026-04-06T00:55:35.946Z" },
 ]
 
 [[package]]
@@ -186,14 +186,14 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.3.1"
+version = "8.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/fa/656b739db8587d7b5dfa22e22ed02566950fbfbcdc20311993483657a5c0/click-8.3.1.tar.gz", hash = "sha256:12ff4785d337a1bb490bb7e9c2b1ee5da3112e94a8622f26a6c77f5d2fc6842a", size = 295065, upload-time = "2025-11-15T20:45:42.706Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/75/31212c6bf2503fdf920d87fee5d7a86a2e3bcf444984126f13d8e4016804/click-8.3.2.tar.gz", hash = "sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5", size = 302856, upload-time = "2026-04-03T19:14:45.118Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl", hash = "sha256:981153a64e25f12d547d3426c367a4857371575ee7ad18df2a6183ab0545b2a6", size = 108274, upload-time = "2025-11-15T20:45:41.139Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/20/71885d8b97d4f3dde17b1fdb92dbd4908b00541c5a3379787137285f602e/click-8.3.2-py3-none-any.whl", hash = "sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d", size = 108379, upload-time = "2026-04-03T19:14:43.505Z" },
 ]
 
 [[package]]
@@ -483,16 +483,16 @@ wheels = [
 
 [[package]]
 name = "healsparse"
-version = "1.11.1"
+version = "1.12.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astropy" },
     { name = "hpgeom" },
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/27/b3/107766e21d622dfa001779716aa179f950a20222e8df836cb57b33d7142f/healsparse-1.11.1.tar.gz", hash = "sha256:e52c3054c906cca39c32be31fb97398c1a2cfa172d22a958816e962e602ae127", size = 126278, upload-time = "2025-03-03T23:01:24.76Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/c1/ba1dcceb6fc7d10f2f92e0019e865fef7e11ea8bbd544b5691d94d03b41c/healsparse-1.12.2.tar.gz", hash = "sha256:364e2c9966698843139c53ad878dcc8d544658d13005545d11fbc0935bc6a4b6", size = 131452, upload-time = "2026-03-17T15:04:37.646Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/42/3c/cccb7cbc2900b101e565e5ce8c10d6f6ea11418a82586cb58f73044685f4/healsparse-1.11.1-py3-none-any.whl", hash = "sha256:dfcab7635059abcbbb0b247a8319e96fb68a9c27b7f9f6eef886a5325ba987da", size = 64944, upload-time = "2025-03-03T23:01:22.894Z" },
+    { url = "https://files.pythonhosted.org/packages/15/b7/e7f914200bb10dd64cec1124f18da17c289e4009a406af7c31129ce3dbf9/healsparse-1.12.2-py3-none-any.whl", hash = "sha256:5390048c6b2f411fb62ff105f72ea39697b65883490408e8f84d90d717bac94b", size = 68524, upload-time = "2026-03-17T15:04:36.438Z" },
 ]
 
 [[package]]
@@ -1077,7 +1077,7 @@ wheels = [
 
 [[package]]
 name = "opencosmo"
-version = "1.2.3"
+version = "1.2.4"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
@@ -1133,16 +1133,16 @@ test-mpi = [
 requires-dist = [
     { name = "astropy", specifier = ">=7.2.0,<8.0.0" },
     { name = "click", specifier = ">=8.2.1,<9.0.0" },
-    { name = "deprecated", specifier = ">=1.2.38,<2.0.0" },
+    { name = "deprecated", specifier = ">=1.2.48,<2.0.0" },
     { name = "h5py", specifier = ">=3.12.1,<4.0.0" },
-    { name = "hdf5plugin", specifier = ">=5.0.0,!=5.1" },
+    { name = "hdf5plugin", specifier = ">=5.0.0,!=5.1,<7.0" },
     { name = "healpy", specifier = ">=1.19.0,<2.0.0" },
-    { name = "healsparse", specifier = "==1.11.1" },
-    { name = "numba", specifier = ">=0.64.0" },
+    { name = "healsparse", specifier = ">=1.11,<2.0" },
+    { name = "numba", specifier = ">=0.64.0,<1.0" },
     { name = "numpy", specifier = ">=2.0,<2.5" },
     { name = "pyarrow", marker = "extra == 'io'", specifier = ">=21.0.0" },
     { name = "pydantic", specifier = ">=2.10.6,<3.0.0" },
-    { name = "rustworkx", specifier = ">=0.17.1" },
+    { name = "rustworkx", specifier = ">=0.17.1,<1.0" },
 ]
 provides-extras = ["io"]
 
@@ -1155,7 +1155,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "ruff", specifier = ">=0.9.4,<1.0.0" },
     { name = "towncrier", specifier = ">=24.8.0,<25.0.0" },
-    { name = "types-deprecated", specifier = ">=1.2.35.20250304" },
+    { name = "types-deprecated", specifier = ">=1.2.45.20250304" },
 ]
 docs = [
     { name = "autodoc-pydantic", specifier = ">=2.2.0,<3.0.0" },
