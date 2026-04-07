@@ -121,6 +121,7 @@ def test_healpix_index_chain_failure(haloproperties_600_path):
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_write(haloproperties_600_path, per_test_dir):
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
 
     pixel = np.random.choice(ds.region.pixels)
@@ -137,7 +138,13 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+    rank_tags = ds.select("fof_halo_tag").get_data()
+    new_rank_tags = new_ds.select("fof_halo_tag").get_data()
+
+    all_tags = np.concatenate(comm.allgather(rank_tags))
+    all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
+
+    parallel_assert(np.all(np.sort(all_tags) == np.sort(all_new_tags)))
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
