@@ -33,6 +33,36 @@ if TYPE_CHECKING:
     from opencosmo.spatial import Region
 
 
+def make_healsparse_maps(
+    table,
+    nside: int,
+    nside_lr: int,
+) -> dict[str, hsp.HealSparseMap]:
+    sentinel = np.float32(hp.UNSEEN)
+    pixels = table["pixel"].value
+
+    # Build coverage map once, shared across all columns.
+    cov_map = hsp.HealSparseCoverage.make_empty(nside_lr, nside)
+    cov_pix = cov_map.cov_pixels(pixels)
+    unique_cov_pix = np.unique(cov_pix)
+    cov_map.initialize_pixels(unique_cov_pix)
+    sparse_indices = pixels + cov_map[cov_pix]
+    sparse_map_size = (len(unique_cov_pix) + 1) * cov_map.nfine_per_cov
+
+    result = {}
+    for name, col in table.items():
+        if name != "pixel":
+            sparse_map = np.full(sparse_map_size, sentinel, dtype=np.float32)
+            sparse_map[sparse_indices] = col.value.astype(np.float32)
+            result[name] = hsp.HealSparseMap(
+                cov_map=cov_map,
+                sparse_map=sparse_map,
+                nside_sparse=nside,
+                sentinel=sentinel,
+            )
+    return result
+
+
 def take_from_sorted(
     healpix_map: "HealpixMap", sort_by: str, invert: bool, n: int, at: str | int
 ):
@@ -302,7 +332,8 @@ class HealpixMap(dict):
 
         You can get the data in two formats, "healsparse" (the default) and "healpix".
         "healsparse" format will return the data as a healsparse sparse map.
-        "healpix" will return the data as a dictionary of numpy arrays. For map data,
+        "healpix" will return the data as a dictionary of numpy arrays. If the map does not
+        cover the full sky, this wll be a masked numpy array. For map data,
         due to format requirements, no units will be attached to the data itself,
         although these will match the units from the data attributes.
 
@@ -340,31 +371,35 @@ class HealpixMap(dict):
         table["pixel"] = pixels
         table.sort("pixel", reverse=False)
 
-        if format == "healpix":
-            if self.__len__() != hp.nside2npix(self.nside):
-                raise ValueError(
-                    "healpix format chosen but length of dataset doesn't match nside value. Use healsparse"
-                )
-
         if len(table.colnames) == 1:
             table = next(table.itercols())
 
         if format == "healpix":
+            npix = hp.nside2npix(self.nside)
             if isinstance(table, (u.Quantity, Column)):
-                return table.value
+                vals = np.zeros(npix, dtype=np.float32)
+                vals[pixels] = table.value
+                storage = {"vals": vals}
+
             else:
                 table.remove_columns(self.__hidden)
-                return {name: col.value for name, col in table.items()}
+                storage = {
+                    name: np.zeros(npix, dtype=np.float32) for name in table.columns
+                }
+                for name, arr in storage.items():
+                    arr[pixels] = table[name].value
+            if len(pixels) != hp.nside2npix(self.nside):
+                mask = np.zeros(hp.nside2npix(self.nside), dtype=bool)
+                mask[pixels] = True
+                storage = {
+                    name: np.ma.masked_array(arr, mask) for name, arr in storage.items()
+                }
+            if len(storage) == 1:
+                return next(iter(storage.values()))
+            return storage
+
         elif format == "healsparse":
-            dict_maps = {}
-            for name, col in table.items():
-                if name != "pixel":
-                    hsp_out = hsp.HealSparseMap.make_empty(
-                        self.nside_lr, self.nside, dtype=np.float32
-                    )
-                    hsp_out[table["pixel"].value] = (col.value).astype(np.float32)
-                    dict_maps[name] = hsp_out
-            return dict_maps
+            return make_healsparse_maps(table, self.nside, self.nside_lr)
 
     @property
     def data(self):
