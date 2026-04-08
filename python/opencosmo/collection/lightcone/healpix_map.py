@@ -374,11 +374,28 @@ class HealpixMap(dict):
             table = next(table.itercols())
 
         if format == "healpix":
+            npix = hp.nside2npix(self.nside)
             if isinstance(table, (u.Quantity, Column)):
-                return table.value
+                vals = np.zeros(npix, dtype=np.float32)
+                vals[pixels] = table.value
+                storage = {"vals": vals}
+
             else:
                 table.remove_columns(self.__hidden)
-                return {name: col.value for name, col in table.items()}
+                storage = {
+                    name: np.zeros(npix, dtype=np.float32) for name in table.columns
+                }
+                for name, arr in storage.items():
+                    arr[pixels] = table[name].value
+            if len(pixels) != hp.nside2npix(self.nside):
+                mask = np.zeros(hp.nside2npix(self.nside), dtype=bool)
+                mask[pixels] = True
+                storage = {
+                    name: np.ma.masked_array(arr, mask) for name, arr in storage.items()
+                }
+            if len(storage) == 1:
+                return next(iter(storage.values()))
+            return storage
 
         elif format == "healsparse":
             return make_healsparse_maps(table, self.nside, self.nside_lr)

@@ -2,10 +2,9 @@ import astropy.units as u
 import healpy as hp
 import healsparse as hsp
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
-
-import opencosmo as oc
 from opencosmo.spatial.healpix import HealpixRegion
 
 
@@ -299,6 +298,14 @@ def test_healpix_collection_select(healpix_map_path):
     ds = ds.select(to_select)
     columns_found = set(ds.columns)
     assert columns_found == to_select
+
+
+def test_healpix_collection_take_healpix(healpix_map_path):
+    ds = oc.open(healpix_map_path)
+    ds = ds.take_range(500, 1000)
+    data = ds.get_data("healpix")
+    for value in data.values():
+        assert np.all(np.where(value.mask)[0] == np.arange(500, 1000))
 
 
 def test_healpix_collection_select_healsparse(healpix_map_path):
