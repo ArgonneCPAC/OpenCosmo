@@ -340,12 +340,6 @@ class HealpixMap(dict):
         table["pixel"] = pixels
         table.sort("pixel", reverse=False)
 
-        if format == "healpix":
-            if self.__len__() != hp.nside2npix(self.nside):
-                raise ValueError(
-                    "healpix format chosen but length of dataset doesn't match nside value. Use healsparse"
-                )
-
         if len(table.colnames) == 1:
             table = next(table.itercols())
 
@@ -355,15 +349,31 @@ class HealpixMap(dict):
             else:
                 table.remove_columns(self.__hidden)
                 return {name: col.value for name, col in table.items()}
+
         elif format == "healsparse":
+            pixels = table["pixel"].value
+            sentinel = np.float32(hp.UNSEEN)
+
+            # Build coverage map once and compute sparse indices once,
+            # shared across all columns to avoid repeating this work.
+            cov_map = hsp.HealSparseCoverage.make_empty(self.nside_lr, self.nside)
+            cov_pix = cov_map.cov_pixels(pixels)
+            unique_cov_pix = np.unique(cov_pix)
+            cov_map.initialize_pixels(unique_cov_pix)
+            sparse_indices = pixels + cov_map[cov_pix]
+            sparse_map_size = (len(unique_cov_pix) + 1) * cov_map.nfine_per_cov
+
             dict_maps = {}
             for name, col in table.items():
                 if name != "pixel":
-                    hsp_out = hsp.HealSparseMap.make_empty(
-                        self.nside_lr, self.nside, dtype=np.float32
+                    sparse_map = np.full(sparse_map_size, sentinel, dtype=np.float32)
+                    sparse_map[sparse_indices] = col.value.astype(np.float32)
+                    dict_maps[name] = hsp.HealSparseMap(
+                        cov_map=cov_map,
+                        sparse_map=sparse_map,
+                        nside_sparse=self.nside,
+                        sentinel=sentinel,
                     )
-                    hsp_out[table["pixel"].value] = (col.value).astype(np.float32)
-                    dict_maps[name] = hsp_out
             return dict_maps
 
     @property
