@@ -33,28 +33,34 @@ if TYPE_CHECKING:
     from opencosmo.spatial import Region
 
 
-def make_healsparse_map(
-    pixels: np.ndarray,
-    values: np.ndarray,
+def make_healsparse_maps(
+    table,
     nside: int,
     nside_lr: int,
-) -> hsp.HealSparseMap:
+) -> dict[str, hsp.HealSparseMap]:
     sentinel = np.float32(hp.UNSEEN)
+    pixels = table["pixel"].value
+
+    # Build coverage map once, shared across all columns.
     cov_map = hsp.HealSparseCoverage.make_empty(nside_lr, nside)
     cov_pix = cov_map.cov_pixels(pixels)
     unique_cov_pix = np.unique(cov_pix)
     cov_map.initialize_pixels(unique_cov_pix)
     sparse_indices = pixels + cov_map[cov_pix]
-    sparse_map = np.full(
-        (len(unique_cov_pix) + 1) * cov_map.nfine_per_cov, sentinel, dtype=np.float32
-    )
-    sparse_map[sparse_indices] = values.astype(np.float32)
-    return hsp.HealSparseMap(
-        cov_map=cov_map,
-        sparse_map=sparse_map,
-        nside_sparse=nside,
-        sentinel=sentinel,
-    )
+    sparse_map_size = (len(unique_cov_pix) + 1) * cov_map.nfine_per_cov
+
+    result = {}
+    for name, col in table.items():
+        if name != "pixel":
+            sparse_map = np.full(sparse_map_size, sentinel, dtype=np.float32)
+            sparse_map[sparse_indices] = col.value.astype(np.float32)
+            result[name] = hsp.HealSparseMap(
+                cov_map=cov_map,
+                sparse_map=sparse_map,
+                nside_sparse=nside,
+                sentinel=sentinel,
+            )
+    return result
 
 
 def take_from_sorted(
@@ -375,12 +381,7 @@ class HealpixMap(dict):
                 return {name: col.value for name, col in table.items()}
 
         elif format == "healsparse":
-            pixels = table["pixel"].value
-            return {
-                name: make_healsparse_map(pixels, col.value, self.nside, self.nside_lr)
-                for name, col in table.items()
-                if name != "pixel"
-            }
+            return make_healsparse_maps(table, self.nside, self.nside_lr)
 
     @property
     def data(self):
