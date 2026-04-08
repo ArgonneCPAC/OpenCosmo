@@ -332,7 +332,8 @@ class HealpixMap(dict):
 
         You can get the data in two formats, "healsparse" (the default) and "healpix".
         "healsparse" format will return the data as a healsparse sparse map.
-        "healpix" will return the data as a dictionary of numpy arrays. For map data,
+        "healpix" will return the data as a dictionary of numpy arrays. If the map does not
+        cover the full sky, this wll be a masked numpy array. For map data,
         due to format requirements, no units will be attached to the data itself,
         although these will match the units from the data attributes.
 
