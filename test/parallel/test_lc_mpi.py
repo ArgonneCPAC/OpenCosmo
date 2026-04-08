@@ -133,7 +133,7 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     oc.write(per_test_dir / "lightcone_test.hdf5", ds)
     new_ds = oc.open(per_test_dir / "lightcone_test.hdf5")
 
-    radius2 = 2 * u.deg
+    radius2 = 1 * u.deg
     region2 = oc.make_cone(center, radius2)
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
