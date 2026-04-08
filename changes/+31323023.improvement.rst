@@ -1,1 +1,1 @@
-You can now request HealpixMaps in Healpix format even when the map does not cover the full sky. Maps requested in this format will contain a `pixel` column.
+You can now request HealpixMaps in Healpix format even when the map does not cover the full sky. Maps requested in this format will be returned as masked numpy arrays.
