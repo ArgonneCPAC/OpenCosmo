@@ -270,7 +270,7 @@ def visualize_halo(
         halo_ids = ([halo_id, halo_id], [halo_id, halo_id])
 
         if yt_dataset_provided:
-            yt_ds = ([yt_ds, yt_ds],[yt_ds, yt_ds])
+            yt_ds_arr = ([yt_ds, yt_ds],[yt_ds, yt_ds])
 
         params = {key: (value[:2], value[2:]) for key, value in params.items()}
 
@@ -279,7 +279,7 @@ def visualize_halo(
         halo_ids = np.shape(params["fields"])[0] * [halo_id]
 
         if yt_dataset_provided:
-            yt_ds = np.shape(params["fields"])[0] * [yt_ds]
+            yt_ds_arr = np.shape(params["fields"])[0] * [yt_ds]
 
         params = {key: [value] for key, value in params.items()}
 
@@ -292,14 +292,14 @@ def visualize_halo(
         projection_axis=projection_axis,
         text_color=text_color,
         north_vector=north_vector,
-        yt_ds=yt_ds,
+        yt_ds=yt_ds_arr,
     )
 
 
 def halo_projection_array(
     halo_ids: int | list[int] | tuple[list[int], list[int]] | np.ndarray,
     data: oc.StructureCollection,
-    yt_ds: Optional[ list[YT_Dataset] | tuple[list[YT_Dataset], list[YT_Dataset]] ] = None,
+    yt_ds: Optional[ YT_Dataset | list[YT_Dataset] | tuple[list[YT_Dataset], list[YT_Dataset]] | np.ndarray ] = None,
     field: Optional[Tuple[str, str]] = ("dm", "particle_mass"),
     weight_field: Optional[Tuple[str, str]] = None,
     projection_axis: Optional[str] = "z",
@@ -557,6 +557,9 @@ def halo_projection_array(
             # OffAxisParticleProjectionPlot if it is not axis-aligned. We are manually
             # calling OffAxisParticleProjectionPlot for more control over the normal/north
             # vectors (ParticleProjectionPlot ignores these inputs if axis-aligned).
+            
+            proj: OffAxisParticleProjectionPlot | ParticleProjectionPlot
+
             if manual_axis_alignment:
                 projection_axis = _sanitize_input_vector(projection_axis)
 
@@ -936,7 +939,7 @@ def animate_halos(
 
     # ---- animation "display" figure (single persistent figure) ----
     fig = plt.figure(figsize=(W / dpi, H / dpi), dpi=dpi)
-    ax = fig.add_axes([0,0,1,1])
+    ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
     ax.set_axis_off()
     ax.set_aspect("auto")
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
