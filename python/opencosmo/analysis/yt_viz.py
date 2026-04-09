@@ -497,12 +497,11 @@ def halo_projection_array(
     fig, axes, cbars = get_multi_plot(fig_shape[1], fig_shape[0], cbar_padding=0)
 
     # are we plotting a single halo multiple times?
-    halo_ids = np.array(halo_ids)
     halo_id_previous = np.inf
 
     for i in range(nrow):
         for j in range(ncol):
-            halo_id = halo_ids[i][j]
+            halo_id = halo_ids_2d[i][j]
             ax = axes[i][j]
 
             if halo_id is None:
