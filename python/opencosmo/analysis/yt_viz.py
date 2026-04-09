@@ -414,8 +414,8 @@ def halo_projection_array(
     # easily translatable to yt's unit conventions
     data = data.with_units("comoving")
 
-    halo_ids = np.atleast_2d(halo_ids) # type: ignore
-    yt_ds = np.atleast_2d(yt_ds) # type: ignore
+    halo_ids_2d = np.atleast_2d(halo_ids)
+    yt_ds_2d = np.atleast_2d(yt_ds)
 
     # determine shape of figure
     fig_shape = np.shape(halo_ids)
@@ -509,7 +509,7 @@ def halo_projection_array(
                 ax.set_facecolor("black")
                 continue
 
-            ds = yt_ds[i][j]
+            ds = yt_ds_2d[i][j]
             if ds is not None:
                 # sodbighaloparticles holds particle data out to 2*R200
                 Rh = ds.domain_width[0] / 4
@@ -557,9 +557,6 @@ def halo_projection_array(
             # OffAxisParticleProjectionPlot if it is not axis-aligned. We are manually
             # calling OffAxisParticleProjectionPlot for more control over the normal/north
             # vectors (ParticleProjectionPlot ignores these inputs if axis-aligned).
-            
-            proj: type[OffAxisParticleProjectionPlot] | type[ParticleProjectionPlot]
-
             if manual_axis_alignment:
                 projection_axis = _sanitize_input_vector(projection_axis)
 
@@ -569,7 +566,7 @@ def halo_projection_array(
                     field,
                     weight_field=weight_field,
                     north_vector=north_vectors[i][j],
-                )
+                ) # type: ignore
 
             else:
                 proj = ParticleProjectionPlot(
@@ -578,7 +575,7 @@ def halo_projection_array(
                     field,
                     weight_field=weight_field,
                     north_vector=north_vectors[i][j],
-                )
+                ) # type: ignore
 
 
             proj.set_background_color(field, color="black")
