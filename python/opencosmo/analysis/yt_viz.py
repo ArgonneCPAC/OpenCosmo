@@ -547,6 +547,7 @@ def halo_projection_array(
                 zlim = tuple(zlim)  # type: ignore
 
             label = labels[i][j]
+            projection_axis = projection_axes[i][j]
             
             north_vector = _sanitize_input_vector(north_vector)
 
@@ -900,7 +901,7 @@ def animate_halos(
     if func == "visualize_halo":
         call_visualize_halo = True
         if np.prod(np.shape(halo_ids)) > 1:
-            raise ValueError(f"`visualize_halo` requires a single int for `halo_id`, not an array of values")
+            raise ValueError("`visualize_halo` requires a single int for `halo_id`, not an array of values")
 
     elif func == "halo_projection_array":
         call_halo_projection_array = True
