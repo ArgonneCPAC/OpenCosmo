@@ -414,8 +414,8 @@ def halo_projection_array(
     # easily translatable to yt's unit conventions
     data = data.with_units("comoving")
 
-    halo_ids = np.atleast_2d(halo_ids)
-    yt_ds = np.atleast_2d(yt_ds)
+    halo_ids = np.atleast_2d(halo_ids) # type: ignore
+    yt_ds = np.atleast_2d(yt_ds) # type: ignore
 
     # determine shape of figure
     fig_shape = np.shape(halo_ids)
@@ -558,7 +558,7 @@ def halo_projection_array(
             # calling OffAxisParticleProjectionPlot for more control over the normal/north
             # vectors (ParticleProjectionPlot ignores these inputs if axis-aligned).
             
-            proj: OffAxisParticleProjectionPlot | ParticleProjectionPlot
+            proj: type[OffAxisParticleProjectionPlot] | type[ParticleProjectionPlot]
 
             if manual_axis_alignment:
                 projection_axis = _sanitize_input_vector(projection_axis)
