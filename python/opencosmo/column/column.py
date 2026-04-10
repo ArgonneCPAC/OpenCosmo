@@ -31,9 +31,31 @@ if TYPE_CHECKING:
     from opencosmo import Dataset
 
 Comparison = Callable[[float, float], bool]
+"""
+The structures in this file are used both internally and user-facing.
+
+The Column class represents a reference to a single column in the dataset. If
+`is_raw` is set to true, we are requiring that this column is actually instantiated
+from data originally in the hdf5 file. This is not intended to be set by the user,
+and is only used internally.
+
+A DerivedColumn represents a combination of columns that produces a single new column. 
+The columns it depends on may or may not be raw columns themselves, but eventually
+the dependency graph always points back to raw columns, or columns that were provided
+directly by the user as numpy arrays/astropy quantities.
+
+An evaluted column takes an arbitrary number of columns as input and returns an arbitrary
+number of columns as output. These columns HAVE NOT actually been evaluated yet. 
+
+These combinations all form a dependency graph, which can easily be evaluated for validity.
+
+Raw columns and columns that are in-memory are allowed to be sources. All other columns
+must take input. The dependency graph must be a DAG, where only those two types of columns
+have no inputs.
+"""
 
 
-def col(column_name: str) -> Column:
+def col(name: str) -> Column:
     """
     Create a reference to a column with a given name. These references can be combined
     to produce new columns or express queries that operate on the values in a given
@@ -50,7 +72,7 @@ def col(column_name: str) -> Column:
     For more advanced usage, see :doc:`cols`
 
     """
-    return Column(column_name)
+    return Column(name)
 
 
 ColumnOrScalar = Union["Column", "DerivedColumn", int, float]
@@ -152,45 +174,30 @@ class Column:
 
     """
 
-    def __init__(self, column_name: str):
-        self.column_name = column_name
+    def __init__(self, name: str):
+        self.name = name
         self.description = None
 
-    @property
-    def requires(self):
-        return set([self.column_name])
-
-    @property
-    def produces(self):
-        return None
-
-    def get_units(self, column_units: dict[str, u.Unit]):
-        return column_units[self.column_name]
-
-    def evaluate(self, data: dict[str, np.ndarray], *args):
-        return data[self.column_name]
-
-    # mypy doesn't reason about eq and neq correctly
     def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
-        return ColumnMask(self.column_name, other, op.eq)
+        return ColumnMask(self.name, other, op.eq)
 
     def __ne__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
-        return ColumnMask(self.column_name, other, op.ne)
+        return ColumnMask(self.name, other, op.ne)
 
     def __gt__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.column_name, other, op.gt)
+        return ColumnMask(self.name, other, op.gt)
 
     def __ge__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.column_name, other, op.ge)
+        return ColumnMask(self.name, other, op.ge)
 
     def __lt__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.column_name, other, op.lt)
+        return ColumnMask(self.name, other, op.lt)
 
     def __le__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.column_name, other, op.le)
+        return ColumnMask(self.name, other, op.le)
 
     def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
-        return ColumnMask(self.column_name, other, np.isin)
+        return ColumnMask(self.name, other, np.isin)
 
     def __rmul__(self, other: Any) -> DerivedColumn:
         match other:
@@ -292,6 +299,34 @@ class ConstructedColumn(Protocol):
     def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]: ...
 
 
+class RawColumn:
+    def __init__(self, name, description):
+        self.__name = name
+        self.__description = description
+
+    @property
+    def name(self):
+        return self.__name
+
+    @property
+    def requires(self) -> set[str]:
+        return set()
+
+    @property
+    def produces(self) -> set[str]:
+        return set([self.__name])
+
+    @property
+    def description(self):
+        return self.__description
+
+    def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]:
+        return values[self.__name]
+
+    def evaluate(self, data: dict[str, np.ndarray], *args):
+        return data[self.name]
+
+
 class DerivedColumn:
     """
     A derived column represents a combination of multiple columns that already exist in
@@ -314,9 +349,11 @@ class DerivedColumn:
         rhs: Optional[ColumnOrScalar],
         operation: Callable,
         description: Optional[str] = None,
+        output_name: Optional[str] = None,
     ):
         self.lhs = lhs
         self.rhs = rhs
+        self.name = output_name
         self.operation = operation
         self.description = description if description is not None else "None"
 
@@ -328,12 +365,12 @@ class DerivedColumn:
         vals = set()
         match self.lhs:
             case Column():
-                vals.add(self.lhs.column_name)
+                vals.add(self.lhs.name)
             case DerivedColumn():
                 vals = vals | self.lhs.requires
         match self.rhs:
             case Column():
-                vals.add(self.rhs.column_name)
+                vals.add(self.rhs.name)
             case DerivedColumn():
                 vals = vals | self.rhs.requires
 
@@ -341,12 +378,12 @@ class DerivedColumn:
 
     @property
     def produces(self):
-        return None
+        return None if self.name is None else set([self.name])
 
     def check_parent_existance(self, names: set[str]):
         match self.rhs:
             case Column():
-                rhs_valid = self.rhs.column_name in names
+                rhs_valid = self.rhs.name in names
             case DerivedColumn():
                 rhs_valid = self.rhs.check_parent_existance(names)
             case _:
@@ -354,7 +391,7 @@ class DerivedColumn:
 
         match self.lhs:
             case Column():
-                lhs_valid = self.lhs.column_name in names
+                lhs_valid = self.lhs.name in names
             case DerivedColumn():
                 lhs_valid = self.lhs.check_parent_existance(names)
             case _:
@@ -365,14 +402,14 @@ class DerivedColumn:
     def get_units(self, units: dict[str, u.Unit]):
         match self.lhs:
             case Column():
-                lhs_unit = units[self.lhs.column_name]
+                lhs_unit = units[self.lhs.name]
             case DerivedColumn():
                 lhs_unit = self.lhs.get_units(units)
             case _:
                 lhs_unit = None
         match self.rhs:
             case Column():
-                rhs_unit = units[self.rhs.column_name]
+                rhs_unit = units[self.rhs.name]
             case DerivedColumn():
                 rhs_unit = self.rhs.get_units(units)
             case _:
@@ -446,14 +483,14 @@ class DerivedColumn:
             case DerivedColumn():
                 lhs = self.lhs.evaluate(data)
             case Column():
-                lhs = data[self.lhs.column_name]
+                lhs = data[self.lhs.name]
             case _:
                 lhs = self.lhs
         match self.rhs:
             case DerivedColumn():
                 rhs = self.rhs.evaluate(data)
             case Column():
-                rhs = data[self.rhs.column_name]
+                rhs = data[self.rhs.name]
             case _:
                 rhs = self.rhs
 
@@ -497,6 +534,10 @@ class EvaluatedColumn:
             self.description,
             **new_kwargs,
         )
+
+    @property
+    def name(self):
+        return self.__func.__name__
 
     @property
     def requires(self):
@@ -603,17 +644,17 @@ class ColumnMask:
 
     def __init__(
         self,
-        column_name: str,
+        name: str,
         value: float | u.Quantity,
         operator: Callable[[table.Column, float | u.Quantity], np.ndarray],
     ):
-        self.column_name = column_name
+        self.name = name
         self.value = value
         self.operator = operator
 
     @property
     def requires(self):
-        return {self.column_name}
+        return {self.name}
 
     def apply(self, column: u.Quantity | np.ndarray) -> np.ndarray:
         """
@@ -621,7 +662,7 @@ class ColumnMask:
         """
         # Astropy's errors are good enough here
         if isinstance(column, table.Table):
-            column = column[self.column_name]
+            column = column[self.name]
 
         if isinstance(self.value, u.Quantity) and isinstance(column, u.Quantity):
             if self.value.unit != column.unit:
