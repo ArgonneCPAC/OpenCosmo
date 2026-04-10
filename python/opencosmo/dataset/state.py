@@ -14,13 +14,12 @@ from opencosmo.column.select import get_column_selection
 from opencosmo.dataset.graph import validate_column_producers
 from opencosmo.dataset.im import resort, validate_in_memory_columns
 from opencosmo.dataset.instantiate import instantiate_dataset
+from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
-from opencosmo.io.schema import FileEntry, combine_with_cached_schema, make_schema
-from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
@@ -316,71 +315,25 @@ class DatasetState:
         )
 
     def make_schema(self, name: Optional[str] = None):
-        header = self.__header.with_region(self.__region)
-        raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
-
-        data_schema, metadata_schema = self.__raw_data_handler.make_schema(
-            raw_columns, header
-        )
-        derived_names: set[str] = reduce(
-            lambda acc, col: acc.union(
-                col.produces if not isinstance(col, RawColumn) else set()
-            ),
+        derived_names = get_derived_column_names(self.__producers, self.__columns)
+        if derived_names:
+            derived_data = (
+                self.select(derived_names)
+                .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
+                .get_data(ignore_sort=True)
+            )
+        else:
+            derived_data = {}
+        return make_dataset_schema(
             self.__producers,
-            set(),
-        )
-        derived_names = derived_names.intersection(self.columns)
-
-        derived_data = (
-            self.select(derived_names)
-            .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
-            .get_data(ignore_sort=True)
-        )
-        cached_data_schema, cached_metadata_schema = self.__cache.make_schema(
-            self.columns + self.meta_columns
-        )
-
-        for producer in self.__producers:
-            if isinstance(producer, RawColumn) or producer.produces.issubset(
-                cached_data_schema.columns.keys()
-            ):
-                continue
-            coldata = {name: derived_data[name] for name in producer.produces}
-            units = {
-                name: str(cd.unit) if isinstance(cd, u.Quantity) else ""
-                for name, cd in coldata.items()
-            }
-            coldata = {
-                name: cd.value if isinstance(cd, u.Quantity) else cd
-                for name, cd in coldata.items()
-            }
-            for name, cd in coldata.items():
-                attrs = {"unit": units[name], "description": producer.description}
-
-                source = NumpySource(cd)
-                writer = ColumnWriter(
-                    [source], ColumnCombineStrategy.CONCAT, attrs=attrs
-                )
-                data_schema.columns[name] = writer
-
-        attributes = {}
-        if (load_conditions := self.__raw_data_handler.load_conditions) is not None:
-            attributes["load/if"] = load_conditions
-
-        data_schema = combine_with_cached_schema(data_schema, cached_data_schema)
-
-        metadata_schema = combine_with_cached_schema(
-            metadata_schema, cached_metadata_schema
-        )
-        children = {"data": data_schema}
-
-        if metadata_schema.type != FileEntry.EMPTY:
-            children[metadata_schema.name] = metadata_schema
-        if name is None:
-            name = ""
-
-        return make_schema(
-            name, FileEntry.DATASET, children=children, attributes=attributes
+            self.__raw_data_handler,
+            self.__cache,
+            self.__columns,
+            self.meta_columns,
+            self.__header,
+            self.__region,
+            derived_data,
+            name,
         )
 
     def with_new_columns(
