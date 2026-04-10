@@ -87,6 +87,16 @@ class UnitHandler:
     def base_convention(self):
         return self.__base_convention
 
+    @property
+    def columns_with_conversions(self):
+        return {
+            name
+            for name, applicator in self.__applicators.items()
+            if name in self.__column_conversions
+            or str(applicator.unit_in_convention(self.current_convention))
+            in self.__conversions
+        }
+
     @cached_property
     def base_units(self):
         return {key: app.base_unit for key, app in self.__applicators.items()}

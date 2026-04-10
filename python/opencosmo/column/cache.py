@@ -177,9 +177,9 @@ class ColumnCache:
         )
         self.__cached_data |= {key: data[key] for key in columns_to_keep}
 
-    def register_column_group(self, state_id: int, columns: set[str]):
+    def register_column_group(self, state_id: int, columns: Iterable[str]):
         assert state_id not in self.__registered_column_groups
-        self.__registered_column_groups[state_id] = columns
+        self.__registered_column_groups[state_id] = set(columns)
 
     def deregister_column_group(self, state_id: int):
         assert state_id in self.__registered_column_groups

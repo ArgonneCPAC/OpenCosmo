@@ -2,27 +2,24 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 from weakref import finalize
 
 import astropy.units as u
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
+from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn, RawColumn
 from opencosmo.column.select import get_column_selection
-from opencosmo.dataset.derived import (
-    build_derived_columns,
-    validate_derived_columns,
-)
+from opencosmo.dataset.graph import validate_column_producers
 from opencosmo.dataset.im import resort, validate_in_memory_columns
+from opencosmo.dataset.instantiate import instantiate_dataset
+from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
-from opencosmo.io.schema import FileEntry, combine_with_cached_schema, make_schema
-from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
@@ -55,21 +52,21 @@ class DatasetState:
 
     def __init__(
         self,
+        column_producers: Sequence[ConstructedColumn],
         raw_data_handler: DataHandler,
         cache: DataCache,
-        derived_columns: dict[str, ConstructedColumn],
         unit_handler: UnitHandler,
         header: OpenCosmoHeader,
-        columns: set[str],
+        columns: Iterable[str],
         region: Region,
         sort_by: Optional[tuple[str, bool]],
     ):
+        self.__producers = list(column_producers)
         self.__raw_data_handler = raw_data_handler
         self.__cache = cache
-        self.__derived_columns = derived_columns
         self.__unit_handler = unit_handler
         self.__header = header
-        self.__columns = columns
+        self.__columns = set(columns)
         self.__region = region
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
@@ -79,7 +76,7 @@ class DatasetState:
         new = {
             "raw_data_handler": self.__raw_data_handler,
             "cache": self.__cache,
-            "derived_columns": self.__derived_columns,
+            "column_producers": self.__producers,
             "unit_handler": self.__unit_handler,
             "header": self.__header,
             "columns": self.__columns,
@@ -116,13 +113,18 @@ class DatasetState:
         unit_handler = make_unit_handler_from_hdf5(
             target["columns"], target["header"], unit_convention
         )
+        descriptions = handler.descriptions
 
+        producers = [
+            RawColumn(cname, descriptions.get(cname, "None"))
+            for cname in handler.columns
+        ]
         columns = set(handler.columns)
         cache = ColumnCache.empty()
         return DatasetState(
+            producers,
             handler,
             cache,
-            {},
             unit_handler,
             target["header"],
             columns,
@@ -138,9 +140,10 @@ class DatasetState:
         header: OpenCosmoHeader,
         unit_convention: UnitConvention,
         region: Region,
-        descriptions: Optional[dict[str, str]] = {},
+        descriptions: Optional[dict[str, str]] = None,
         index: Optional[DataIndex] = None,
     ):
+        descriptions = descriptions or {}
         cache = ColumnCache.empty()
         cache.add_data(
             data_columns | metadata_columns, descriptions, set(metadata_columns.keys())
@@ -151,12 +154,16 @@ class DatasetState:
             if isinstance(column, u.Quantity):
                 units[name] = column.unit
 
+        producers = [
+            RawColumn(cname, descriptions.get(cname, "None"))
+            for cname in data_columns.keys()
+        ]
         unit_handler = make_unit_handler_from_units(units, header, unit_convention)
 
         return DatasetState(
+            producers,
             EmptyHandler(),
             cache,
-            {},
             unit_handler,
             header,
             set(data_columns.keys()),
@@ -171,11 +178,12 @@ class DatasetState:
 
     @property
     def descriptions(self):
-        all_descriptions = (
-            {name: col.description for name, col in self.__derived_columns.items()}
-            | self.__raw_data_handler.descriptions
-            | self.__cache.descriptions
-        )
+        all_descriptions = {}
+        for producer in self.__producers:
+            update = {name: producer.description for name in producer.produces}
+            all_descriptions |= update
+        all_descriptions |= self.__cache.descriptions
+
         return {
             name: description
             for name, description in all_descriptions.items()
@@ -231,71 +239,20 @@ class DatasetState:
         """
         Get the data for a given handler.
         """
-        data = self.__build_derived_columns(unit_kwargs)
-        cached_data = self.__cache.get_data(self.columns)
-        converted_cached_data = self.__unit_handler.apply_unit_conversions(
-            cached_data, unit_kwargs
+        data = instantiate_dataset(
+            self.__producers,
+            self.__columns,
+            self.__raw_data_handler,
+            self.__cache,
+            self.__unit_handler,
+            unit_kwargs,
+            metadata_columns,
+            None if ignore_sort else self.__sort_by,
         )
-
-        data |= cached_data
-        if converted_cached_data:
-            self.__cache.add_data(converted_cached_data, {}, push_up=False)
-            data |= converted_cached_data
-
-        raw_columns = (
-            set(self.columns)
-            .intersection(self.__raw_data_handler.columns)
-            .difference(data.keys())
-        )
-        if (
-            self.__sort_by is not None
-            and self.__sort_by[0] in self.__raw_data_handler.columns
-        ):
-            raw_columns.add(self.__sort_by[0])
-
-        if raw_columns:
-            raw_data = self.__raw_data_handler.get_data(raw_columns)
-            raw_data = self.__unit_handler.apply_raw_units(raw_data, unit_kwargs)
-            if raw_data:
-                self.__cache.add_data(raw_data, {})
-
-            updated_data = self.__unit_handler.apply_unit_conversions(
-                raw_data, unit_kwargs
-            )
-            if updated_data:
-                self.__cache.add_data(updated_data, {}, push_up=False)
-
-            new_data = raw_data | updated_data
-            data |= new_data
-
         if missing := set(self.columns).difference(data.keys()):
             raise RuntimeError(
                 f"Some columns are missing from the output! This is likely a bug. Please report it on GitHub. Missing: {missing}"
             )
-
-        # keep ordering
-
-        if metadata_columns:
-            metadata = self.__cache.get_data(metadata_columns)
-            additional_metadata_columns_to_fetch = set(metadata_columns).difference(
-                metadata.keys()
-            )
-            metadata |= (
-                self.__raw_data_handler.get_metadata(
-                    additional_metadata_columns_to_fetch
-                )
-                or {}
-            )
-
-            data.update(metadata)
-
-        if not ignore_sort and self.__sort_by is not None:
-            sort_by = data[self.__sort_by[0]]
-            order = np.argsort(sort_by)
-            if self.__sort_by[1]:
-                order = order[::-1]
-
-            data = {key: value[order] for key, value in data.items()}
 
         new_order = [c for c in self.columns]
         if metadata_columns:
@@ -305,9 +262,9 @@ class DatasetState:
 
     def rows(self, metadata_columns: list = [], unit_kwargs: dict = {}):
         derived_to_collect = (
-            set(self.__derived_columns.keys())
-            .intersection(self.columns)
+            set(self.columns)
             .difference(self.__cache.columns)
+            .difference(self.__raw_data_handler.columns)
         )
         derived_storage: dict[str, list[np.ndarray]] = {
             name: [] for name in derived_to_collect
@@ -358,57 +315,25 @@ class DatasetState:
         )
 
     def make_schema(self, name: Optional[str] = None):
-        header = self.__header.with_region(self.__region)
-        raw_columns = self.__columns.intersection(self.__raw_data_handler.columns)
-
-        data_schema, metadata_schema = self.__raw_data_handler.make_schema(
-            raw_columns, header
-        )
-        derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
-        derived_data = (
-            self.select(derived_names)
-            .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
-            .get_data(ignore_sort=True)
-        )
-        cached_data_schema, cached_metadata_schema = self.__cache.make_schema(
-            self.columns + self.meta_columns
-        )
-
-        for colname in derived_names:
-            if colname in cached_data_schema.columns:
-                continue
-            coldata = derived_data[colname]
-            unit = ""
-            if isinstance(coldata, u.Quantity):
-                unit = str(coldata.unit)
-                coldata = derived_data[colname].value
-
-            attrs = {
-                "unit": unit,
-                "description": str(self.__derived_columns[colname].description),
-            }
-            source = NumpySource(coldata)
-            writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT, attrs=attrs)
-            data_schema.columns[colname] = writer
-
-        attributes = {}
-        if (load_conditions := self.__raw_data_handler.load_conditions) is not None:
-            attributes["load/if"] = load_conditions
-
-        data_schema = combine_with_cached_schema(data_schema, cached_data_schema)
-
-        metadata_schema = combine_with_cached_schema(
-            metadata_schema, cached_metadata_schema
-        )
-        children = {"data": data_schema}
-
-        if metadata_schema.type != FileEntry.EMPTY:
-            children[metadata_schema.name] = metadata_schema
-        if name is None:
-            name = ""
-
-        return make_schema(
-            name, FileEntry.DATASET, children=children, attributes=attributes
+        derived_names = get_derived_column_names(self.__producers, self.__columns)
+        if derived_names:
+            derived_data = (
+                self.select(derived_names)
+                .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
+                .get_data(ignore_sort=True)
+            )
+        else:
+            derived_data = {}
+        return make_dataset_schema(
+            self.__producers,
+            self.__raw_data_handler,
+            self.__cache,
+            self.__columns,
+            self.meta_columns,
+            self.__header,
+            self.__region,
+            derived_data,
+            name,
         )
 
     def with_new_columns(
@@ -426,15 +351,30 @@ class DatasetState:
         if inter := existing_columns.intersection(new_columns.keys()):
             raise ValueError(f"Some columns are already in the dataset: {inter}")
 
-        new_derived_columns = {}
+        new_derived_columns: list[ConstructedColumn] = []
         new_in_memory_columns = {}
         new_in_memory_descriptions = {}
+        new_column_names = self.columns
 
+        new_static_units = {}
         for colname, column in new_columns.items():
             match column:
-                case DerivedColumn() | EvaluatedColumn() | Column():
+                case DerivedColumn():
+                    column.name = colname
                     column.description = descriptions.get(colname, "None")
-                    new_derived_columns[colname] = column
+                    new_derived_columns.append(column)
+                    new_column_names.extend(column.produces)
+                case EvaluatedColumn():
+                    column.description = descriptions.get(colname, "None")
+                    new_derived_columns.append(column)
+                    new_column_names.extend(column.produces)
+                case Column():
+                    producer = RawColumn(
+                        column.name, descriptions.get(colname, None), alias=colname
+                    )
+                    new_derived_columns.append(producer)
+                    new_column_names.extend(producer.produces)
+
                 case np.ndarray():
                     if len(column) != len(self):
                         raise ValueError(
@@ -444,14 +384,23 @@ class DatasetState:
                         colname, "None"
                     )
                     new_in_memory_columns[colname] = column
+                    new_column_names.append(colname)
+                    new_derived_columns.append(RawColumn(colname, None))
+                    new_static_units[colname] = (
+                        column.unit if isinstance(column, u.Quantity) else None
+                    )
+
                 case _:
                     raise ValueError(
                         f"Got an invalid new column of type {type(column)}"
                     )
 
-        new_unit_handler = self.__unit_handler
-        new_derived = copy(self.__derived_columns)
-        new_column_names: set[str] = set(self.columns)
+        new_unit_handler = self.__unit_handler.with_static_columns(**new_static_units)
+
+        new_producers = copy(self.__producers) + new_derived_columns
+        new_units = validate_column_producers(new_producers, new_unit_handler)
+        if new_units:
+            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
         if new_in_memory_columns:
             new_unit_handler = validate_in_memory_columns(
                 new_in_memory_columns, self.__unit_handler, len(self)
@@ -462,60 +411,13 @@ class DatasetState:
             self.__cache.add_data(
                 new_in_memory_columns, descriptions=new_in_memory_descriptions
             )
-            new_column_names |= set(new_in_memory_columns.keys())
-
-        if new_derived_columns:
-            new_units = validate_derived_columns(
-                self.__derived_columns | new_derived_columns,
-                existing_columns.union(new_in_memory_columns.keys()).difference(
-                    self.__derived_columns.keys()
-                ),
-                new_unit_handler.base_units,
-            )
-            new_derived |= new_derived_columns
-            for colname, derived in new_derived.items():
-                if (prod := derived.produces) is not None:
-                    new_column_names |= prod
-                else:
-                    new_column_names.add(colname)
-
-            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
 
         return self.__rebuild(
             cache=self.__cache,
-            derived_columns=new_derived,
+            column_producers=new_producers,
             columns=new_column_names,
             unit_handler=new_unit_handler,
         )
-
-    def __build_derived_columns(self, unit_kwargs: dict) -> table.Table:
-        """
-        Build any derived columns that are present in this dataset
-        """
-        if not self.__derived_columns:
-            return {}
-
-        all_derived_columns: set[str] = reduce(
-            lambda acc, dc: acc.union(
-                dc[1].produces if dc[1].produces is not None else {dc[0]}
-            ),
-            self.__derived_columns.items(),
-            set(),
-        )
-        derived_names = all_derived_columns.intersection(self.columns)
-        if self.__sort_by is not None and self.__sort_by[0] in all_derived_columns:
-            derived_names.add(self.__sort_by[0])
-
-        dc = build_derived_columns(
-            self.__derived_columns,
-            derived_names,
-            self.__cache,
-            self.__raw_data_handler,
-            self.__unit_handler,
-            unit_kwargs,
-            self.__raw_data_handler.index,
-        )
-        return dc
 
     def with_region(self, region: Region):
         """
@@ -677,11 +579,14 @@ class DatasetState:
         if convention_ == self.__unit_handler.current_convention:
             cache = self.__cache.create_child()
         else:
-            all_derived_names: set[str] = reduce(
-                lambda acc, next: acc.union(next[1].produces or {next[0]}),
-                self.__derived_columns.items(),
-                set(),
-            )
+            all_derived_names: set[str] = set()
+            all_derived_names = reduce(
+                lambda acc, col: acc.union(
+                    col.produces if not isinstance(col, RawColumn) else set()
+                ),
+                self.__producers,
+                all_derived_names,
+            ).intersection(self.columns)
             columns_to_drop = all_derived_names.union(self.__raw_data_handler.columns)
             cache = self.__cache.drop(columns_to_drop)
         return self.__rebuild(unit_handler=new_handler, cache=cache)
