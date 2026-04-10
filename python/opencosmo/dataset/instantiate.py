@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+from copy import copy
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
 import rustworkx as rx
 
 from opencosmo.column.column import RawColumn
@@ -15,14 +21,27 @@ def get_all_required_columns(column_names: set[str], dependency_graph: rx.PyDiGr
     return required_columns
 
 
+if TYPE_CHECKING:
+    from opencosmo.column.column import ConstructedColumn
+    from opencosmo.handler.protocols import DataCache, DataHandler
+    from opencosmo.index import DataIndex
+    from opencosmo.units.handler import UnitHandler
+
+
 def instantiate_dataset(
-    column_producers,
-    column_names,
-    raw_data_handler,
-    cache,
-    unit_handler,
-    unit_kwargs,
+    column_producers: list[ConstructedColumn],
+    column_names: set[str],
+    raw_data_handler: DataHandler,
+    cache: DataCache,
+    unit_handler: UnitHandler,
+    unit_kwargs: dict[str, Any],
+    metadata_columns: list[str] | None = None,
+    sort_by: tuple[str, bool] | None = None,
 ):
+    column_names = copy(column_names)
+    if sort_by is not None:
+        column_names.add(sort_by[0])
+
     dependency_graph = build_dependency_graph(column_producers)
     all_required_columns = get_all_required_columns(column_names, dependency_graph)
     cached_data = cache.get_data(all_required_columns)
@@ -34,16 +53,14 @@ def instantiate_dataset(
         cache.add_data(converted_cached_data, {}, push_up=False)
         cached_data |= converted_cached_data
 
-    raw_columns = list(
-        filter(
-            lambda col: (
-                isinstance(col, RawColumn)
-                and col.name not in cached_data
-                and col.name in all_required_columns
-            ),
-            column_producers,
-        )
-    )
+    raw_columns = [
+        col
+        for col in column_producers
+        if isinstance(col, RawColumn)
+        and col.name not in cached_data
+        and col.name in all_required_columns
+    ]
+
     raw_data = raw_data_handler.get_data(set(col.name for col in raw_columns))
     for column in raw_columns:
         if column.alias is None:
@@ -65,16 +82,22 @@ def instantiate_dataset(
         cache.add_data(converted_raw_data, {}, push_up=False)
         raw_data |= converted_raw_data
 
-    return cached_data | raw_data | new_derived_columns
+    data = cached_data | raw_data | new_derived_columns
+    data |= get_metadata_columns(raw_data_handler, cache, metadata_columns)
+    return sort_data(data, sort_by)
 
 
 def build_derived_columns(
-    column_producers, column_names, data, dependency_graph, index
+    column_producers: list[ConstructedColumn],
+    column_names: set[str],
+    data: dict[str, np.ndarray],
+    dependency_graph: rx.PyDiGraph,
+    index: DataIndex,
 ):
     dependency_graph = contract_derived_columns(
         dependency_graph, column_names, column_producers
     )
-    new_derived = {}
+    new_derived: dict[str, ConstructedColumn] = {}
     for colidx in rx.topological_sort(dependency_graph):
         column = dependency_graph[colidx]
         if isinstance(column, str):
@@ -91,3 +114,30 @@ def build_derived_columns(
         else:
             new_derived[column.name] = output
     return new_derived
+
+
+def get_metadata_columns(
+    raw_data_handler: DataHandler, cache: DataCache, metadata_columns: list[str] | None
+):
+    if metadata_columns is None:
+        return {}
+    metadata = cache.get_data(metadata_columns)
+    additional_metadata_columns_to_fetch = set(metadata_columns).difference(
+        metadata.keys()
+    )
+    metadata |= (
+        raw_data_handler.get_metadata(additional_metadata_columns_to_fetch) or {}
+    )
+
+    return metadata
+
+
+def sort_data(data: dict[str, np.ndarray], sort_by: tuple[str, bool] | None):
+    if sort_by is None:
+        return data
+    sort_column = data[sort_by[0]]
+    order = np.argsort(sort_column)
+    if sort_by[1]:
+        order = order[::-1]
+
+    return {key: value[order] for key, value in data.items()}

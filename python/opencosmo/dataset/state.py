@@ -240,46 +240,20 @@ class DatasetState:
         """
         Get the data for a given handler.
         """
-        columns_to_get = copy(self.__columns)
-        if self.__sort_by is not None:
-            columns_to_get.add(self.__sort_by[0])
-
         data = instantiate_dataset(
             self.__producers,
-            columns_to_get,
+            self.__columns,
             self.__raw_data_handler,
             self.__cache,
             self.__unit_handler,
             unit_kwargs,
+            metadata_columns,
+            None if ignore_sort else self.__sort_by,
         )
         if missing := set(self.columns).difference(data.keys()):
             raise RuntimeError(
                 f"Some columns are missing from the output! This is likely a bug. Please report it on GitHub. Missing: {missing}"
             )
-
-        # keep ordering
-
-        if metadata_columns:
-            metadata = self.__cache.get_data(metadata_columns)
-            additional_metadata_columns_to_fetch = set(metadata_columns).difference(
-                metadata.keys()
-            )
-            metadata |= (
-                self.__raw_data_handler.get_metadata(
-                    additional_metadata_columns_to_fetch
-                )
-                or {}
-            )
-
-            data.update(metadata)
-
-        if not ignore_sort and self.__sort_by is not None:
-            sort_by = data[self.__sort_by[0]]
-            order = np.argsort(sort_by)
-            if self.__sort_by[1]:
-                order = order[::-1]
-
-            data = {key: value[order] for key, value in data.items()}
 
         new_order = [c for c in self.columns]
         if metadata_columns:
