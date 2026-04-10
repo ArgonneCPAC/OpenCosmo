@@ -178,6 +178,8 @@ class DatasetState:
         for producer in self.__producers:
             update = {name: producer.description for name in producer.produces}
             all_descriptions |= update
+        all_descriptions |= self.__cache.descriptions
+
         return {
             name: description
             for name, description in all_descriptions.items()
@@ -277,9 +279,9 @@ class DatasetState:
 
     def rows(self, metadata_columns: list = [], unit_kwargs: dict = {}):
         derived_to_collect = (
-            set(self.__derived_columns.keys())
-            .intersection(self.columns)
+            set(self.columns)
             .difference(self.__cache.columns)
+            .difference(self.__raw_data_handler.columns)
         )
         derived_storage: dict[str, list[np.ndarray]] = {
             name: [] for name in derived_to_collect
