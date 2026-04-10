@@ -336,7 +336,15 @@ class DatasetState:
         data_schema, metadata_schema = self.__raw_data_handler.make_schema(
             raw_columns, header
         )
-        derived_names = set(self.__derived_columns.keys()).intersection(self.columns)
+        derived_names = reduce(
+            lambda acc, col: acc.union(
+                col.produces if not isinstance(col, RawColumn) else set()
+            ),
+            self.__producers,
+            set,
+        )
+        derived_names = derived_names.intersection(self.columns)
+
         derived_data = (
             self.select(derived_names)
             .with_units(self.__unit_handler.base_convention, {}, {}, None, None)
@@ -346,22 +354,28 @@ class DatasetState:
             self.columns + self.meta_columns
         )
 
-        for colname in derived_names:
-            if colname in cached_data_schema.columns:
+        for producer in self.__producers:
+            if isinstance(producer, RawColumn) or producer.produces.issubset(
+                cached_data_schema.columns.keys()
+            ):
                 continue
-            coldata = derived_data[colname]
-            unit = ""
-            if isinstance(coldata, u.Quantity):
-                unit = str(coldata.unit)
-                coldata = derived_data[colname].value
-
-            attrs = {
-                "unit": unit,
-                "description": str(self.__derived_columns[colname].description),
+            coldata = {name: derived_data[name] for name in producer.produces}
+            units = {
+                name: str(cd.unit) if isinstance(cd, u.Quantity) else ""
+                for name, cd in coldata.items()
             }
-            source = NumpySource(coldata)
-            writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT, attrs=attrs)
-            data_schema.columns[colname] = writer
+            coldata = {
+                name: cd.value if isinstance(cd, u.Quantity) else cd
+                for name, cd in coldata.items()
+            }
+            for name, cd in coldata.items():
+                attrs = {"unit": units[name], "description": producer.description}
+
+                source = NumpySource(cd)
+                writer = ColumnWriter(
+                    [source], ColumnCombineStrategy.CONCAT, attrs=attrs
+                )
+                data_schema.columns[name] = writer
 
         attributes = {}
         if (load_conditions := self.__raw_data_handler.load_conditions) is not None:
@@ -612,10 +626,12 @@ class DatasetState:
             cache = self.__cache.create_child()
         else:
             all_derived_names: set[str] = reduce(
-                lambda acc, next: acc.union(next[1].produces or {next[0]}),
-                self.__derived_columns.items(),
+                lambda acc, col: acc.union(
+                    col.produces if not isinstance(col, RawColumn) else set()
+                ),
+                self.__producers,
                 set(),
-            )
+            ).intersection(self.columns)
             columns_to_drop = all_derived_names.union(self.__raw_data_handler.columns)
             cache = self.__cache.drop(columns_to_drop)
         return self.__rebuild(unit_handler=new_handler, cache=cache)
