@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import copy
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 from weakref import finalize
 
 import astropy.units as u
@@ -53,7 +53,7 @@ class DatasetState:
 
     def __init__(
         self,
-        column_producers: list[ConstructedColumn],
+        column_producers: Sequence[ConstructedColumn],
         raw_data_handler: DataHandler,
         cache: DataCache,
         unit_handler: UnitHandler,
@@ -62,7 +62,7 @@ class DatasetState:
         region: Region,
         sort_by: Optional[tuple[str, bool]],
     ):
-        self.__producers = column_producers
+        self.__producers = list(column_producers)
         self.__raw_data_handler = raw_data_handler
         self.__cache = cache
         self.__unit_handler = unit_handler
@@ -141,9 +141,10 @@ class DatasetState:
         header: OpenCosmoHeader,
         unit_convention: UnitConvention,
         region: Region,
-        descriptions: Optional[dict[str, str]] = {},
+        descriptions: Optional[dict[str, str]] = None,
         index: Optional[DataIndex] = None,
     ):
+        descriptions = descriptions or {}
         cache = ColumnCache.empty()
         cache.add_data(
             data_columns | metadata_columns, descriptions, set(metadata_columns.keys())
@@ -154,12 +155,16 @@ class DatasetState:
             if isinstance(column, u.Quantity):
                 units[name] = column.unit
 
+        producers = [
+            RawColumn(cname, descriptions.get(cname, "None"))
+            for cname in data_columns.keys()
+        ]
         unit_handler = make_unit_handler_from_units(units, header, unit_convention)
 
         return DatasetState(
+            producers,
             EmptyHandler(),
             cache,
-            {},
             unit_handler,
             header,
             set(data_columns.keys()),
@@ -235,8 +240,13 @@ class DatasetState:
         """
         Get the data for a given handler.
         """
+        columns_to_get = copy(self.__columns)
+        if self.__sort_by is not None:
+            columns_to_get.add(self.__sort_by[0])
+
         data = instantiate_dataset(
             self.__producers,
+            columns_to_get,
             self.__raw_data_handler,
             self.__cache,
             self.__unit_handler,
@@ -338,12 +348,12 @@ class DatasetState:
         data_schema, metadata_schema = self.__raw_data_handler.make_schema(
             raw_columns, header
         )
-        derived_names = reduce(
+        derived_names: set[str] = reduce(
             lambda acc, col: acc.union(
                 col.produces if not isinstance(col, RawColumn) else set()
             ),
             self.__producers,
-            set,
+            set(),
         )
         derived_names = derived_names.intersection(self.columns)
 
@@ -414,11 +424,12 @@ class DatasetState:
         if inter := existing_columns.intersection(new_columns.keys()):
             raise ValueError(f"Some columns are already in the dataset: {inter}")
 
-        new_derived_columns = []
+        new_derived_columns: list[ConstructedColumn] = []
         new_in_memory_columns = {}
         new_in_memory_descriptions = {}
         new_column_names = self.columns
 
+        new_static_units = {}
         for colname, column in new_columns.items():
             match column:
                 case DerivedColumn():
@@ -426,10 +437,17 @@ class DatasetState:
                     column.description = descriptions.get(colname, "None")
                     new_derived_columns.append(column)
                     new_column_names.extend(column.produces)
-                case EvaluatedColumn() | Column():
+                case EvaluatedColumn():
                     column.description = descriptions.get(colname, "None")
                     new_derived_columns.append(column)
                     new_column_names.extend(column.produces)
+                case Column():
+                    producer = RawColumn(
+                        column.name, descriptions.get(colname, None), alias=colname
+                    )
+                    new_derived_columns.append(producer)
+                    new_column_names.extend(producer.produces)
+
                 case np.ndarray():
                     if len(column) != len(self):
                         raise ValueError(
@@ -440,15 +458,22 @@ class DatasetState:
                     )
                     new_in_memory_columns[colname] = column
                     new_column_names.append(colname)
-                    continue
+                    new_derived_columns.append(RawColumn(colname, None))
+                    new_static_units[colname] = (
+                        column.unit if isinstance(column, u.Quantity) else None
+                    )
+
                 case _:
                     raise ValueError(
                         f"Got an invalid new column of type {type(column)}"
                     )
 
-        new_unit_handler = self.__unit_handler
+        new_unit_handler = self.__unit_handler.with_static_columns(**new_static_units)
+
         new_producers = copy(self.__producers) + new_derived_columns
-        validate_column_producers(new_producers)
+        new_units = validate_column_producers(new_producers, new_unit_handler)
+        if new_units:
+            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
         if new_in_memory_columns:
             new_unit_handler = validate_in_memory_columns(
                 new_in_memory_columns, self.__unit_handler, len(self)
@@ -627,12 +652,13 @@ class DatasetState:
         if convention_ == self.__unit_handler.current_convention:
             cache = self.__cache.create_child()
         else:
-            all_derived_names: set[str] = reduce(
+            all_derived_names: set[str] = set()
+            all_derived_names = reduce(
                 lambda acc, col: acc.union(
                     col.produces if not isinstance(col, RawColumn) else set()
                 ),
                 self.__producers,
-                set(),
+                all_derived_names,
             ).intersection(self.columns)
             columns_to_drop = all_derived_names.union(self.__raw_data_handler.columns)
             cache = self.__cache.drop(columns_to_drop)

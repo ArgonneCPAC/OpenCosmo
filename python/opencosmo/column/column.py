@@ -286,7 +286,7 @@ class ConstructedColumn(Protocol):
     @property
     def requires(self) -> set[str]: ...
     @property
-    def produces(self) -> Optional[set[str]]: ...
+    def produces(self) -> set[str]: ...
     @property
     def description(self) -> Optional[str]: ...
 
@@ -300,9 +300,10 @@ class ConstructedColumn(Protocol):
 
 
 class RawColumn:
-    def __init__(self, name, description):
+    def __init__(self, name, description, alias=None):
         self.__name = name
         self.__description = description
+        self.__alias = alias
 
     @property
     def name(self):
@@ -310,11 +311,17 @@ class RawColumn:
 
     @property
     def requires(self) -> set[str]:
+        if self.__alias is not None:
+            return set([self.__name])
         return set()
 
     @property
+    def alias(self) -> str | None:
+        return self.__alias
+
+    @property
     def produces(self) -> set[str]:
-        return set([self.__name])
+        return set([self.__alias or self.__name])
 
     @property
     def description(self):
@@ -324,7 +331,7 @@ class RawColumn:
         return values[self.__name]
 
     def evaluate(self, data: dict[str, np.ndarray], *args):
-        return data[self.name]
+        return data[self.__name]
 
 
 class DerivedColumn:
