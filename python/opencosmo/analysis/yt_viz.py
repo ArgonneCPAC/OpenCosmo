@@ -416,7 +416,7 @@ def halo_projection_array(
     data = data.with_units("comoving")
 
     halo_ids_2d = np.atleast_2d(halo_ids)
-    yt_ds_2d = np.atleast_2d(np.array(yt_ds)) # type: ignore
+    yt_ds_2d = np.atleast_2d(yt_ds) # type: ignore
 
     # determine shape of figure
     fig_shape = np.shape(halo_ids)
