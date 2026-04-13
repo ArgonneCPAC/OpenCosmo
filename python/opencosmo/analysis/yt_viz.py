@@ -264,6 +264,7 @@ def visualize_halo(
         yt_dataset_provided = True
     else:
         yt_dataset_provided = False
+        yt_ds_arr = None
 
     if len(params["fields"]) == 4:
         # if 4 fields, make a 2x2 figure
@@ -299,7 +300,7 @@ def visualize_halo(
 def halo_projection_array(
     halo_ids: int | list[int] | tuple[list[int], list[int]] | np.ndarray,
     data: oc.StructureCollection,
-    yt_ds: Optional[ YT_Dataset | list[YT_Dataset] | tuple[list[YT_Dataset], list[YT_Dataset]] | np.ndarray ] = None,
+    yt_ds: Optional[ YT_Dataset | list[YT_Dataset|None] | tuple[list[YT_Dataset|None], list[YT_Dataset|None]] | np.ndarray ] = None,
     field: Optional[Tuple[str, str]] = ("dm", "particle_mass"),
     weight_field: Optional[Tuple[str, str]] = None,
     projection_axis: Optional[str] = "z",
@@ -415,7 +416,7 @@ def halo_projection_array(
     data = data.with_units("comoving")
 
     halo_ids_2d = np.atleast_2d(halo_ids)
-    yt_ds_2d = np.atleast_2d(yt_ds)
+    yt_ds_2d = np.atleast_2d(np.array(yt_ds)) # type: ignore
 
     # determine shape of figure
     fig_shape = np.shape(halo_ids)
