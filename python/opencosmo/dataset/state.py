@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import copy
 from functools import reduce
 from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 from weakref import finalize
@@ -9,10 +8,9 @@ import astropy.units as u
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn, RawColumn
+from opencosmo.column.column import RawColumn
 from opencosmo.column.select import get_column_selection
-from opencosmo.dataset.graph import validate_column_producers
-from opencosmo.dataset.im import resort, validate_in_memory_columns
+from opencosmo.dataset.columns import add_columns, resort
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
@@ -345,73 +343,16 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-
-        existing_columns = set(self.columns)
-
-        if inter := existing_columns.intersection(new_columns.keys()):
-            raise ValueError(f"Some columns are already in the dataset: {inter}")
-
-        new_derived_columns: list[ConstructedColumn] = []
-        new_in_memory_columns = {}
-        new_in_memory_descriptions = {}
-        new_column_names = self.columns
-
-        new_static_units = {}
-        for colname, column in new_columns.items():
-            match column:
-                case DerivedColumn():
-                    column.name = colname
-                    column.description = descriptions.get(colname, "None")
-                    new_derived_columns.append(column)
-                    new_column_names.extend(column.produces)
-                case EvaluatedColumn():
-                    column.description = descriptions.get(colname, "None")
-                    new_derived_columns.append(column)
-                    new_column_names.extend(column.produces)
-                case Column():
-                    producer = RawColumn(
-                        column.name, descriptions.get(colname, None), alias=colname
-                    )
-                    new_derived_columns.append(producer)
-                    new_column_names.extend(producer.produces)
-
-                case np.ndarray():
-                    if len(column) != len(self):
-                        raise ValueError(
-                            f"New column {colname} does not have the same length as this dataset!"
-                        )
-                    new_in_memory_descriptions[colname] = descriptions.get(
-                        colname, "None"
-                    )
-                    new_in_memory_columns[colname] = column
-                    new_column_names.append(colname)
-                    new_derived_columns.append(RawColumn(colname, None))
-                    new_static_units[colname] = (
-                        column.unit if isinstance(column, u.Quantity) else None
-                    )
-
-                case _:
-                    raise ValueError(
-                        f"Got an invalid new column of type {type(column)}"
-                    )
-
-        new_unit_handler = self.__unit_handler.with_static_columns(**new_static_units)
-
-        new_producers = copy(self.__producers) + new_derived_columns
-        new_units = validate_column_producers(new_producers, new_unit_handler)
-        if new_units:
-            new_unit_handler = new_unit_handler.with_new_columns(**new_units)
-        if new_in_memory_columns:
-            new_unit_handler = validate_in_memory_columns(
-                new_in_memory_columns, self.__unit_handler, len(self)
-            )
-            new_in_memory_columns = resort(
-                new_in_memory_columns, self.get_sorted_index()
-            )
-            self.__cache.add_data(
-                new_in_memory_columns, descriptions=new_in_memory_descriptions
-            )
-
+        new_producers, new_column_names, new_unit_handler = add_columns(
+            self.__producers,
+            self.__unit_handler,
+            self.__cache,
+            self.columns,
+            self.get_sorted_index(),
+            descriptions,
+            new_columns,
+            len(self),
+        )
         return self.__rebuild(
             cache=self.__cache,
             column_producers=new_producers,
