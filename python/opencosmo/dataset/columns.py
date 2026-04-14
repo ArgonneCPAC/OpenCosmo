@@ -10,9 +10,13 @@ from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn, RawC
 from opencosmo.dataset.graph import validate_column_producers
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache
     from opencosmo.units.handler import UnitHandler
+
+    ColumnMap = dict[str, UUID]
 
 
 def resort(columns: dict[str, np.ndarray], sorted_index: Optional[np.ndarray]):
@@ -101,14 +105,13 @@ def add_columns(
     producers: list[ConstructedColumn],
     unit_handler: UnitHandler,
     cache: DataCache,
-    existing_column_names: list[str],
+    name_to_uuid: ColumnMap,
     sorted_index: np.ndarray | None,
     descriptions: dict[str, str],
     new_columns: dict,
     ds_length: int,
-) -> tuple[list[ConstructedColumn], list[str], UnitHandler]:
-    existing_columns = set(existing_column_names)
-    if inter := existing_columns.intersection(new_columns.keys()):
+) -> tuple[list[ConstructedColumn], ColumnMap, UnitHandler]:
+    if inter := set(name_to_uuid.keys()).intersection(new_columns.keys()):
         raise ValueError(f"Some columns are already in the dataset: {inter}")
 
     (
@@ -118,6 +121,18 @@ def add_columns(
         new_column_names,
         new_static_units,
     ) = __categorize_columns(new_columns, descriptions, ds_length)
+
+    # Extend the name→UUID map with new producers' outputs so that columns added
+    # in the same with_new_columns call can reference each other.
+    extended_name_to_uuid = dict(name_to_uuid)
+    for producer in new_derived_columns:
+        if producer.produces:
+            for name in producer.produces:
+                extended_name_to_uuid[name] = producer.uuid
+
+    new_derived_columns = [
+        producer.bind(extended_name_to_uuid) for producer in new_derived_columns
+    ]
 
     new_unit_handler = unit_handler.with_static_columns(**new_static_units)
     new_producers = copy(producers) + new_derived_columns
@@ -131,6 +146,18 @@ def add_columns(
             new_in_memory_columns, unit_handler, ds_length
         )
         new_in_memory_columns = resort(new_in_memory_columns, sorted_index)
-        cache.add_data(new_in_memory_columns, descriptions=new_in_memory_descriptions)
+        # Build UUID-keyed data: each in-memory column is owned by its RawColumn producer.
+        uuid_keyed = {
+            producer.uuid: {producer.name: new_in_memory_columns[producer.name]}
+            for producer in new_derived_columns
+            if isinstance(producer, RawColumn)
+            and producer.name in new_in_memory_columns
+        }
+        cache.add_data(uuid_keyed, descriptions=new_in_memory_descriptions)
 
-    return new_producers, existing_column_names + new_column_names, new_unit_handler
+    updated_columns = dict(name_to_uuid)
+    for producer in new_derived_columns:
+        for name in producer.produces:
+            updated_columns[name] = producer.uuid
+
+    return new_producers, updated_columns, new_unit_handler

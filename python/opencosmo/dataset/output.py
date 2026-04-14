@@ -14,6 +14,8 @@ from opencosmo.io.schema import (
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.header import OpenCosmoHeader
@@ -66,19 +68,20 @@ def make_dataset_schema(
     producers: list[ConstructedColumn],
     raw_data_handler: DataHandler,
     cache: DataCache,
-    columns: set[str],
+    columns_to_uuid: dict[str, UUID],
     meta_columns: list[str],
     header: OpenCosmoHeader,
     region: Region,
     derived_data: dict,
     name: Optional[str] = None,
 ) -> Schema:
+    columns = set(columns_to_uuid.keys())
     header = header.with_region(region)
     raw_columns = columns.intersection(raw_data_handler.columns)
     data_schema, metadata_schema = raw_data_handler.make_schema(raw_columns, header)
 
     cached_data_schema, cached_metadata_schema = cache.make_schema(
-        list(columns) + meta_columns
+        columns_to_uuid, meta_columns
     )
 
     build_derived_writers(producers, derived_data, data_schema, cached_data_schema)

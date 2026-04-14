@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator as op
 from copy import copy
-from functools import cached_property, partial, partialmethod
+from functools import partial, partialmethod
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -14,6 +14,7 @@ from typing import (
     Self,
     Union,
 )
+from uuid import uuid4
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -28,6 +29,8 @@ from opencosmo.column.evaluate import (
 from opencosmo.units import UnitsError
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from opencosmo import Dataset
 
 Comparison = Callable[[float, float], bool]
@@ -284,11 +287,21 @@ class ConstructedColumn(Protocol):
     pass
 
     @property
-    def requires(self) -> set[str]: ...
+    def uuid(self) -> UUID: ...
+
+    @property
+    def requires(self) -> set[UUID]: ...
+
+    @property
+    def dep_map(self) -> dict[str, UUID] | None: ...
+
     @property
     def produces(self) -> set[str]: ...
+
     @property
     def description(self) -> Optional[str]: ...
+
+    def bind(self, name_to_uuid: dict[str, UUID]) -> Self: ...
 
     def evaluate(
         self,
@@ -300,20 +313,48 @@ class ConstructedColumn(Protocol):
 
 
 class RawColumn:
-    def __init__(self, name, description, alias=None):
+    def __init__(self, name, description, alias=None, _dep_uuid=None):
         self.__name = name
         self.__description = description
         self.__alias = alias
+        self.__uuid = uuid4()
+        self.__dep_uuid: UUID | None = _dep_uuid
+
+    @property
+    def uuid(self) -> UUID:
+        return self.__uuid
 
     @property
     def name(self):
         return self.__name
 
+    def bind(self, name_to_uuid: dict[str, UUID]) -> RawColumn:
+        if self.__alias is None:
+            return self
+        dep_uuid = name_to_uuid[self.__name]
+        return RawColumn(
+            self.__name, self.__description, alias=self.__alias, _dep_uuid=dep_uuid
+        )
+
     @property
-    def requires(self) -> set[str]:
-        if self.__alias is not None:
-            return set([self.__name])
-        return set()
+    def requires(self) -> set[UUID]:
+        if self.__alias is None:
+            return set()
+        if self.__dep_uuid is None:
+            raise RuntimeError(
+                f"RawColumn alias '{self.__alias}' has not been bound yet."
+            )
+        return {self.__dep_uuid}
+
+    @property
+    def dep_map(self) -> dict[str, UUID]:
+        if self.__alias is None:
+            return {}
+        if self.__dep_uuid is None:
+            raise RuntimeError(
+                f"RawColumn alias '{self.__alias}' has not been bound yet."
+            )
+        return {self.__name: self.__dep_uuid}
 
     @property
     def alias(self) -> str | None:
@@ -357,31 +398,60 @@ class DerivedColumn:
         operation: Callable,
         description: Optional[str] = None,
         output_name: Optional[str] = None,
+        _dep_map: dict[str, UUID] | None = None,
     ):
         self.lhs = lhs
         self.rhs = rhs
         self.name = output_name
         self.operation = operation
         self.description = description if description is not None else "None"
+        self.__uuid = uuid4()
+        self.__dep_map: dict[str, UUID] | None = _dep_map
 
-    @cached_property
-    def requires(self):
+    @property
+    def uuid(self) -> UUID:
+        return self.__uuid
+
+    @property
+    def dep_map(self) -> dict[str, UUID] | None:
+        return self.__dep_map
+
+    def bind(self, name_to_uuid: dict[str, UUID]) -> DerivedColumn:
         """
-        Return the raw data columns required to make this column
+        Resolve each dependency column name to the UUID of the producer that was
+        producing it at the time this column was registered with a dataset.
+        Returns a new bound DerivedColumn; does not mutate this instance.
         """
-        vals = set()
+        dep_map = {name: name_to_uuid[name] for name in self._traverse_names()}
+        return DerivedColumn(
+            self.lhs,
+            self.rhs,
+            self.operation,
+            self.description,
+            self.name,
+            _dep_map=dep_map,
+        )
+
+    def _traverse_names(self) -> set[str]:
+        """Walk the expression tree and collect all Column leaf names."""
+        vals: set[str] = set()
         match self.lhs:
             case Column():
                 vals.add(self.lhs.name)
             case DerivedColumn():
-                vals = vals | self.lhs.requires
+                vals |= self.lhs._traverse_names()
         match self.rhs:
             case Column():
                 vals.add(self.rhs.name)
             case DerivedColumn():
-                vals = vals | self.rhs.requires
-
+                vals |= self.rhs._traverse_names()
         return vals
+
+    @property
+    def requires(self) -> set[UUID]:
+        if self.__dep_map is None:
+            raise RuntimeError(f"DerivedColumn '{self.name}' has not been bound yet.")
+        return set(self.__dep_map.values())
 
     @property
     def produces(self):
@@ -516,6 +586,7 @@ class EvaluatedColumn:
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         batch_size: int = -1,
         description: Optional[str] = None,
+        _dep_map: dict[str, UUID] | None = None,
         **kwargs: Any,
     ):
         self.__func = func
@@ -527,6 +598,43 @@ class EvaluatedColumn:
         self.__strategy = strategy
         self.__batch_size = batch_size
         self.description = description
+        self.__uuid = uuid4()
+        self.__dep_map = _dep_map
+
+    @property
+    def uuid(self) -> UUID:
+        return self.__uuid
+
+    @property
+    def dep_map(self) -> dict[str, UUID] | None:
+        return self.__dep_map
+
+    def bind(self, name_to_uuid: dict[str, UUID]) -> EvaluatedColumn:
+        """
+        Resolve each dependency column name to the UUID of the producer that was
+        producing it at the time this column was registered with a dataset.
+        Returns a new bound EvaluatedColumn; does not mutate this instance.
+        """
+        dep_map = {name: name_to_uuid[name] for name in self.__requires}
+        return EvaluatedColumn(
+            self.__func,
+            self.__requires,
+            self.__produces,
+            self.__format,
+            self.__units,
+            self.__strategy,
+            self.__batch_size,
+            self.description,
+            _dep_map=dep_map,
+            **self.__kwargs,
+        )
+
+    @property
+    def requires_names(self) -> set[str]:
+        """Return the required column names (as strings), for use in data lookup."""
+        if self.__dep_map is not None:
+            return set(self.__dep_map.keys())
+        return copy(self.__requires)
 
     def with_kwargs(self, **new_kwargs: Any):
         new_kwargs = self.__kwargs | new_kwargs
@@ -539,6 +647,7 @@ class EvaluatedColumn:
             self.__strategy,
             self.__batch_size,
             self.description,
+            _dep_map=self.__dep_map,
             **new_kwargs,
         )
 
@@ -547,8 +656,10 @@ class EvaluatedColumn:
         return self.__func.__name__
 
     @property
-    def requires(self):
-        return copy(self.__requires)
+    def requires(self) -> set[UUID]:
+        if self.__dep_map is None:
+            raise RuntimeError(f"EvaluatedColumn '{self.name}' has not been bound yet.")
+        return set(self.__dep_map.values())
 
     @property
     def produces(self):

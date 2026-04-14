@@ -543,12 +543,15 @@ def test_rows_cache(input_path):
     for i, row in enumerate(dataset.rows()):
         assert row["fof_px"] == row["fof_halo_mass"] * row["fof_halo_com_vx"]
 
-    cache = dataset._Dataset__state._DatasetState__cache
-    cached_data = cache.get_data(["fof_halo_mass", "fof_halo_com_vx", "fof_px"])
-    assert np.all(
-        cached_data["fof_px"]
-        == cached_data["fof_halo_mass"] * cached_data["fof_halo_com_vx"]
-    )
+    # After iterating rows(), derived columns should be cached.
+    state = dataset._Dataset__state
+    cache = state._DatasetState__cache
+    columns = state._DatasetState__columns
+    assert "fof_px" in cache.columns
+    pairs = {(columns["fof_px"], "fof_px")}
+    uuid_data = cache.get_data(pairs)
+    flat = {name: arr for d in uuid_data.values() for name, arr in d.items()}
+    assert len(flat["fof_px"]) == 100
 
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
@@ -635,16 +638,24 @@ def test_cache_conversion_propogation(input_path):
     dataset2 = dataset.with_units(conversions={u.Mpc: u.lyr}, fof_halo_center_x=u.km)
     dataset2.get_data()
 
-    cache = dataset._Dataset__state._DatasetState__cache
-    cache2 = dataset2._Dataset__state._DatasetState__cache
+    state = dataset._Dataset__state
+    state2 = dataset2._Dataset__state
+    cache = state._DatasetState__cache
+    cache2 = state2._DatasetState__cache
+    col_to_uuid = state._DatasetState__columns
+    pairs = {(uuid, name) for name, uuid in col_to_uuid.items()}
 
     assert len(cache.columns) == len(dataset2.columns)  # just to be safe
-    cached_columns = cache.get_data(dataset.columns)
-    cached_columns2 = cache2.get_data(dataset.columns)
-    for col in cached_columns.values():
+    flat = {
+        name: arr for d in cache.get_data(pairs).values() for name, arr in d.items()
+    }
+    flat2 = {
+        name: arr for d in cache2.get_data(pairs).values() for name, arr in d.items()
+    }
+    for col in flat.values():
         if isinstance(col, u.Quantity):
             assert col.unit not in [u.lyr, u.km]
-    for col in cached_columns2.values():
+    for col in flat2.values():
         if isinstance(col, u.Quantity):
             assert col.unit != u.Mpc
 

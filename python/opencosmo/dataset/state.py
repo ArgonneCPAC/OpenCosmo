@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, Optional, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 from weakref import finalize
 
 import astropy.units as u
@@ -25,6 +25,8 @@ from opencosmo.units.handler import (
 )
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from astropy import table
     from astropy.cosmology import Cosmology
     from numpy.typing import NDArray
@@ -55,16 +57,18 @@ class DatasetState:
         cache: DataCache,
         unit_handler: UnitHandler,
         header: OpenCosmoHeader,
-        columns: Iterable[str],
+        columns: dict[str, UUID],
         region: Region,
         sort_by: Optional[tuple[str, bool]],
     ):
-        self.__producers = list(column_producers)
+        self.__producers: dict[UUID, ConstructedColumn] = {
+            p.uuid: p for p in column_producers
+        }
         self.__raw_data_handler = raw_data_handler
         self.__cache = cache
         self.__unit_handler = unit_handler
         self.__header = header
-        self.__columns = set(columns)
+        self.__columns: dict[str, UUID] = columns
         self.__region = region
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
@@ -74,7 +78,7 @@ class DatasetState:
         new = {
             "raw_data_handler": self.__raw_data_handler,
             "cache": self.__cache,
-            "column_producers": self.__producers,
+            "column_producers": list(self.__producers.values()),
             "unit_handler": self.__unit_handler,
             "header": self.__header,
             "columns": self.__columns,
@@ -117,7 +121,7 @@ class DatasetState:
             RawColumn(cname, descriptions.get(cname, "None"))
             for cname in handler.columns
         ]
-        columns = set(handler.columns)
+        columns = {p.name: p.uuid for p in producers}
         cache = ColumnCache.empty()
         return DatasetState(
             producers,
@@ -142,20 +146,27 @@ class DatasetState:
         index: Optional[DataIndex] = None,
     ):
         descriptions = descriptions or {}
+
+        # Producers must be created first so their UUIDs are available for the cache.
+        producers = [
+            RawColumn(cname, descriptions.get(cname, "None"))
+            for cname in data_columns.keys()
+        ]
+        columns = {p.name: p.uuid for p in producers}
+
         cache = ColumnCache.empty()
-        cache.add_data(
-            data_columns | metadata_columns, descriptions, set(metadata_columns.keys())
-        )
+        if data_columns:
+            uuid_data = {p.uuid: {p.name: data_columns[p.name]} for p in producers}
+            cache.add_data(uuid_data, descriptions)
+        if metadata_columns:
+            cache.add_metadata(dict(metadata_columns), {})
+
         units: dict[str, u.Unit] = {}
         for name, column in data_columns.items():
             units[name] = None
             if isinstance(column, u.Quantity):
                 units[name] = column.unit
 
-        producers = [
-            RawColumn(cname, descriptions.get(cname, "None"))
-            for cname in data_columns.keys()
-        ]
         unit_handler = make_unit_handler_from_units(units, header, unit_convention)
 
         return DatasetState(
@@ -164,7 +175,7 @@ class DatasetState:
             cache,
             unit_handler,
             header,
-            set(data_columns.keys()),
+            columns,
             region,
             None,
         )
@@ -177,7 +188,7 @@ class DatasetState:
     @property
     def descriptions(self):
         all_descriptions = {}
-        for producer in self.__producers:
+        for producer in self.__producers.values():
             update = {name: producer.description for name in producer.produces}
             all_descriptions |= update
         all_descriptions |= self.__cache.descriptions
@@ -219,7 +230,7 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        return list(self.__columns)
+        return list(self.__columns.keys())
 
     @property
     def meta_columns(self) -> list[str]:
@@ -238,7 +249,7 @@ class DatasetState:
         Get the data for a given handler.
         """
         data = instantiate_dataset(
-            self.__producers,
+            list(self.__producers.values()),
             self.__columns,
             self.__raw_data_handler,
             self.__cache,
@@ -290,7 +301,11 @@ class DatasetState:
             }
             derived_storage = resort(all_derived, self.get_sorted_index())
             if derived_storage:
-                self.__cache.add_data(data, {})
+                uuid_keyed: dict = {}
+                for name, arr in derived_storage.items():
+                    uuid = self.__columns[name]
+                    uuid_keyed.setdefault(uuid, {})[name] = arr
+                self.__cache.add_data(uuid_keyed, {})
         except GeneratorExit:
             pass
         except BaseException:
@@ -313,7 +328,9 @@ class DatasetState:
         )
 
     def make_schema(self, name: Optional[str] = None):
-        derived_names = get_derived_column_names(self.__producers, self.__columns)
+        producers = list(self.__producers.values())
+        columns = set(self.__columns.keys())
+        derived_names = get_derived_column_names(producers, columns)
         if derived_names:
             derived_data = (
                 self.select(derived_names)
@@ -323,7 +340,7 @@ class DatasetState:
         else:
             derived_data = {}
         return make_dataset_schema(
-            self.__producers,
+            producers,
             self.__raw_data_handler,
             self.__cache,
             self.__columns,
@@ -343,11 +360,11 @@ class DatasetState:
         Add a set of derived columns to the dataset. A derived column is a column that
         has been created based on the values in another column.
         """
-        new_producers, new_column_names, new_unit_handler = add_columns(
-            self.__producers,
+        new_producers, new_column_map, new_unit_handler = add_columns(
+            list(self.__producers.values()),
             self.__unit_handler,
             self.__cache,
-            self.columns,
+            self.__columns,
             self.get_sorted_index(),
             descriptions,
             new_columns,
@@ -356,7 +373,7 @@ class DatasetState:
         return self.__rebuild(
             cache=self.__cache,
             column_producers=new_producers,
-            columns=new_column_names,
+            columns=new_column_map,
             unit_handler=new_unit_handler,
         )
 
@@ -388,7 +405,7 @@ class DatasetState:
         if drop:
             selections = set(self.columns) - selections
 
-        return self.__rebuild(columns=selections)
+        return self.__rebuild(columns={n: self.__columns[n] for n in selections})
 
     def sort_by(self, column_name: str, invert: bool):
         if column_name not in self.columns:
@@ -525,7 +542,7 @@ class DatasetState:
                 lambda acc, col: acc.union(
                     col.produces if not isinstance(col, RawColumn) else set()
                 ),
-                self.__producers,
+                self.__producers.values(),
                 all_derived_names,
             ).intersection(self.columns)
             columns_to_drop = all_derived_names.union(self.__raw_data_handler.columns)
