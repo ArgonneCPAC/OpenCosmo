@@ -803,11 +803,12 @@ def animate_halos(
 
     .. code-block:: python
 
+        import opencosmo as oc
         from opencosmo.analysis import animate_halos
 
         # fetch data and ID for most massive halo
         ds = oc.open("haloproperties.hdf5", "haloparticles.hdf5").sort_by("sod_halo_mass").take(1, at="end")
-        halo_id = ds.select("unique_tag").get_data("numpy")
+        halo_id = ds["halo_properties"].select("unique_tag").get_data()
 
         # create a 30-frame animation that rotates the object once about the y-axis, then once about the x-axis.
         anim = animate_halos(halo_id, ds, rotations=["y", "x"], frames=30)
