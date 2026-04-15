@@ -260,10 +260,8 @@ def visualize_halo(
 
     halo_ids: list[int] | tuple[list[int], list[int]]
 
-    if yt_ds is not None:
-        yt_dataset_provided = True
-    else:
-        yt_dataset_provided = False
+    yt_dataset_provided = yt_ds is not None
+    if not yt_dataset_provided:
         yt_ds_arr = None
 
     if len(params["fields"]) == 4:
@@ -416,10 +414,16 @@ def halo_projection_array(
     data = data.with_units("comoving")
 
     halo_ids_2d = np.atleast_2d(halo_ids)
-    yt_ds_2d = np.atleast_2d(yt_ds) # type: ignore
 
     # determine shape of figure
-    fig_shape = np.shape(halo_ids)
+    fig_shape = np.shape(halo_ids_2d)
+
+    yt_datasets_provided = yt_ds is not None
+
+    if yt_datasets_provided:
+        yt_ds_2d = np.atleast_2d(yt_ds) # type: ignore
+    else:
+        yt_ds_2d = np.full(fig_shape, None)
 
     # Default plotting parameters
     if weight_field is None:
@@ -509,22 +513,25 @@ def halo_projection_array(
                 ax.set_facecolor("black")
                 continue
 
-            ds = yt_ds_2d[i][j]
-            if ds is not None:
+            if yt_datasets_provided:
+                ds = yt_ds_2d[i][j]
+                if ds is None:
+                    raise ValueError(f"provided yt dataset cannot be None")
+
                 # sodbighaloparticles holds particle data out to 2*R200
                 Rh = ds.domain_width[0] / 4
 
             else:
-                # retrieve halo particle info if new halo, or if yt dataset
-                # is not already provided
+                # retrieve halo particle info if new halo
                 if (i == 0 and j == 0) or halo_id != halo_id_previous:
                     # retrieve properties of halo
                     if len(data) > 1:
                         data_id = data.filter(oc.col("unique_tag") == halo_id)
                     else:
-                        if data["halo_properties"].data["unique_tag"] != halo_id: # type: ignore
+                        if halo_id != data["halo_properties"].select("unique_tag").get_data(): # type: ignore
                             raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
                         data_id = data
+
                     halo_data = next(iter(data_id.objects()))
 
                     # load particles into yt
@@ -791,6 +798,20 @@ def animate_halos(
     By default, this function animates a single halo using ``visualize_halo`` while
     rotating about the y-axis. It can also animate a customizable multipanel projection layout by
     setting ``func="halo_projection_array"`` and passing a 2D arrangement of halo IDs.
+
+    Example usage for visualizing the most massive halo in a dataset:
+    .. code-block:: python
+
+        from opencosmo.analysis import animate_halos
+
+        # fetch data and ID for most massive halo
+        ds = oc.open("haloproperties.hdf5", "haloparticles.hdf5").sort_by("sod_halo_mass").take(1, at="end")
+        halo_id = ds.select("unique_tag").get_data("numpy")
+
+        # create a 30-frame animation that rotates the object once about the y-axis, then once about the x-axis.
+        anim = animate_halos(halo_id, ds, rotations=["y", "x"], frames=30)
+        anim.save("animation.gif", fps=10)
+
 
     Parameters
     ----------
