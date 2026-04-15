@@ -516,7 +516,7 @@ def halo_projection_array(
             if yt_datasets_provided:
                 ds = yt_ds_2d[i][j]
                 if ds is None:
-                    raise ValueError(f"provided yt dataset cannot be None")
+                    raise ValueError("provided yt dataset cannot be None")
 
                 # sodbighaloparticles holds particle data out to 2*R200
                 Rh = ds.domain_width[0] / 4
