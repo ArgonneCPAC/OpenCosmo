@@ -105,7 +105,7 @@ The two primary functions for this purpose are:
 - :func:`opencosmo.analysis.visualize_halo` — a simple 2x2 panel plot for one halo
 - :func:`opencosmo.analysis.halo_projection_array` — a customizable grid of halos and fields
 
-These use yt under the hood, and are useful for visually inspecting halos with minimal input required. Animated versions of the visualizations outputted by either of these functions can be made using `opencosmo.analysis.animate_halos`.
+These use yt under the hood, and are useful for visually inspecting halos with minimal input required. Animated versions of the visualizations outputted by either of these functions can be made using :func:`opencosmo.analysis.animate_halos`.
 
 
 Quick Projections

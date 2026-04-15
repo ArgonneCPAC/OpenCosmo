@@ -800,6 +800,7 @@ def animate_halos(
     setting ``func="halo_projection_array"`` and passing a 2D arrangement of halo IDs.
 
     Example usage for visualizing the most massive halo in a dataset:
+
     .. code-block:: python
 
         from opencosmo.analysis import animate_halos
