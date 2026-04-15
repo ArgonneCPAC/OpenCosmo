@@ -224,6 +224,24 @@ def test_derive_invalid_units(properties_path):
         ds = ds.with_new_columns(invalid_col=invalid_col)
 
 
+def test_derive_divide_by_quantity(properties_path):
+    ds = oc.open(properties_path)
+    unitless_radius = oc.col("sod_halo_radius") / (1 * u.Mpc)
+    data = ds.select("sod_halo_radius", unitless_radius=unitless_radius).get_data()
+    assert np.all(data["sod_halo_radius"].value == data["unitless_radius"])
+
+
+def test_derive_chain_divide_by_quantity(properties_path):
+    ds = oc.open(properties_path)
+    inertia = oc.col("sod_halo_mass") * oc.col("sod_halo_radius") ** 2
+    massless_inertia = inertia / (1 * u.Msun)
+
+    data = ds.select(inertia=inertia, massless_inertia=massless_inertia).get_data()
+    assert np.all(data["inertia"].value == data["massless_inertia"].value)
+    assert data["inertia"].unit == u.Msun * u.Mpc**2
+    assert data["massless_inertia"].unit == u.Mpc**2
+
+
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_derived_symbolic_conversion(properties_path):
     ds = oc.open(properties_path)
