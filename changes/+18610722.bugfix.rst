@@ -1,1 +1,0 @@
-Fix a bug that could cause column expressions to fail when they contain an astropy unit
