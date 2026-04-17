@@ -303,6 +303,8 @@ class ConstructedColumn(Protocol):
 
     def bind(self, name_to_uuid: dict[str, UUID]) -> Self: ...
 
+    @property
+    def no_cache(self) -> bool: ...
     def evaluate(
         self,
         data: dict[str, np.ndarray],
@@ -357,6 +359,10 @@ class RawColumn:
         return {self.__name: self.__dep_uuid}
 
     @property
+    def no_cache(self):
+        return False
+
+    @property
     def alias(self) -> str | None:
         return self.__alias
 
@@ -399,6 +405,7 @@ class DerivedColumn:
         description: Optional[str] = None,
         output_name: Optional[str] = None,
         _dep_map: dict[str, UUID] | None = None,
+        no_cache: bool = False,
     ):
         self.lhs = lhs
         self.rhs = rhs
@@ -407,6 +414,7 @@ class DerivedColumn:
         self.description = description if description is not None else "None"
         self.__uuid = uuid4()
         self.__dep_map: dict[str, UUID] | None = _dep_map
+        self.__no_cache = no_cache
 
     @property
     def uuid(self) -> UUID:
@@ -456,6 +464,10 @@ class DerivedColumn:
     @property
     def produces(self):
         return None if self.name is None else set([self.name])
+
+    @property
+    def no_cache(self):
+        return self.__no_cache
 
     def check_parent_existance(self, names: set[str]):
         match self.rhs:
@@ -587,6 +599,7 @@ class EvaluatedColumn:
         batch_size: int = -1,
         description: Optional[str] = None,
         _dep_map: dict[str, UUID] | None = None,
+        no_cache: bool = False,
         **kwargs: Any,
     ):
         self.__func = func
@@ -597,6 +610,7 @@ class EvaluatedColumn:
         self.__format = format
         self.__strategy = strategy
         self.__batch_size = batch_size
+        self.__no_cache = no_cache
         self.description = description
         self.__uuid = uuid4()
         self.__dep_map = _dep_map
@@ -660,6 +674,10 @@ class EvaluatedColumn:
         if self.__dep_map is None:
             raise RuntimeError(f"EvaluatedColumn '{self.name}' has not been bound yet.")
         return set(self.__dep_map.values())
+
+    @property
+    def no_cache(self):
+        return self.__no_cache
 
     @property
     def produces(self):

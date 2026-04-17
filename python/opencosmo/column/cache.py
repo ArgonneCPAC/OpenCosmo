@@ -262,6 +262,9 @@ class ColumnCache:
         push_up: bool = True,
     ):
         """Add UUID-keyed column data to the cache."""
+
+        if not data:
+            return
         check_length(self, data)
         self.__descriptions |= descriptions
 

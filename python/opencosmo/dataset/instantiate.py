@@ -67,6 +67,7 @@ def build_derived_columns(
     uuid_data: dict[UUID, dict[str, np.ndarray]],
     dependency_graph: rx.PyDiGraph,
     index: DataIndex,
+    cache: DataCache,
 ) -> dict[UUID, dict[str, np.ndarray]]:
     """
     Evaluate all derived producers needed to produce the requested columns,
@@ -85,6 +86,7 @@ def build_derived_columns(
                 required_uuids.add(dependency_graph[node_idx].uuid)
 
     new_derived: dict[UUID, dict[str, np.ndarray]] = {}
+    to_cache: dict[UUID, dict[str, np.ndarray]] = {}
     for node_idx in rx.topological_sort(dependency_graph):
         producer = dependency_graph[node_idx]
         if isinstance(producer, RawColumn):
@@ -100,10 +102,13 @@ def build_derived_columns(
         output = producer.evaluate(
             input_data, index[1] if isinstance(index, tuple) else None
         )
-        if isinstance(output, dict):
-            new_derived[producer.uuid] = output
-        else:
-            new_derived[producer.uuid] = {next(iter(producer.produces)): output}
+        if not isinstance(output, dict):
+            output = {next(iter(producer.produces)): output}
+        new_derived[producer.uuid] = output
+        if not producer.no_cache:
+            to_cache[producer.uuid] = output
+
+    cache.add_data(to_cache, {})
     return new_derived
 
 
@@ -160,25 +165,23 @@ def instantiate_dataset(
 
     uuid_data = build_initial_uuid_data(column_producers, raw_data, cached_data)
     new_derived = build_derived_columns(
-        working_columns, uuid_data, dependency_graph, raw_data_handler.index
+        working_columns, uuid_data, dependency_graph, raw_data_handler.index, cache
     )
+
     uuid_data |= new_derived
 
     # Write freshly-fetched raw data back to the cache.
-    if raw_data:
-        raw_uuid = {
-            col.uuid: {col.alias or col.name: raw_data[col.alias or col.name]}
-            for col in raw_columns
-            if (col.alias or col.name) in raw_data
-        }
-        cache.add_data(raw_uuid, {}, push_up=True)
+    raw_data |= unit_handler.apply_unit_conversions(raw_data, unit_kwargs)
+    raw_data_uuid = _apply_uuid_mapping(raw_data, required_pairs)
+    to_add = {
+        uuid: value
+        for uuid, value in raw_data_uuid.items()
+        if uuid in working_columns.values()
+    }
 
-    converted_raw_flat = unit_handler.apply_unit_conversions(raw_data, unit_kwargs)
-    if converted_raw_flat:
-        converted_raw_uuid = _apply_uuid_mapping(converted_raw_flat, required_pairs)
-        cache.add_data(converted_raw_uuid, {}, push_up=False)
-        for uuid, col_data in converted_raw_uuid.items():
-            uuid_data.setdefault(uuid, {}).update(col_data)
+    cache.add_data(to_add, {}, push_up=False)
+    for uuid, col_data in raw_data_uuid.items():
+        uuid_data.setdefault(uuid, {}).update(col_data)
 
     data = {
         name: uuid_data[producer_uuid][name]
