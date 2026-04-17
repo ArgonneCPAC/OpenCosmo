@@ -29,10 +29,10 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import Column, ColumnMask, ConstructedColumn
     from opencosmo.dataset.state import DatasetState
+    from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
-    from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
     from opencosmo.spatial.tree import Tree
 
@@ -207,7 +207,7 @@ class Dataset:
 
         Returns
         -------
-        parameters: Optional[opencosmo.parameters.hacc.HaccSimulationParameters]
+        parameters: Optional[opencosmo.dtypes.hacc.HaccSimulationParameters]
         """
         return getattr(self.__header, "simulation", None)
 

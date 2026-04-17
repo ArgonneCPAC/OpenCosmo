@@ -1,4 +1,4 @@
-from opencosmo.parameters import hacc
+from opencosmo.dtypes import hacc
 
 from .cosmology import CosmologyParameters
 

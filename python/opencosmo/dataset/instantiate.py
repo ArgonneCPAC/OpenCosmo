@@ -99,9 +99,7 @@ def build_derived_columns(
             name: all_data[dep_uuid][name]
             for name, dep_uuid in producer.dep_map.items()
         }
-        output = producer.evaluate(
-            input_data, index[1] if isinstance(index, tuple) else None
-        )
+        output = producer.evaluate(input_data, index)
         if not isinstance(output, dict):
             output = {next(iter(producer.produces)): output}
         new_derived[producer.uuid] = output
@@ -171,15 +169,23 @@ def instantiate_dataset(
     uuid_data |= new_derived
 
     # Write freshly-fetched raw data back to the cache.
+    # Only map raw columns by UUID — if a non-raw producer shadows a raw column name,
+    # the set-iteration order in _apply_uuid_mapping would nondeterministically pick one,
+    # potentially caching unprocessed data under the derived producer's UUID.
+    raw_producer_uuids = {
+        col.uuid for col in column_producers if isinstance(col, RawColumn)
+    }
+    raw_required_pairs = {
+        pair for pair in required_pairs if pair[0] in raw_producer_uuids
+    }
     raw_data |= unit_handler.apply_unit_conversions(raw_data, unit_kwargs)
-    raw_data_uuid = _apply_uuid_mapping(raw_data, required_pairs)
+    raw_data_uuid = _apply_uuid_mapping(raw_data, raw_required_pairs)
     to_add = {
         uuid: value
         for uuid, value in raw_data_uuid.items()
         if uuid in working_columns.values()
     }
-
-    cache.add_data(to_add, {}, push_up=False)
+    cache.add_data(to_add, {}, push_up=True)
     for uuid, col_data in raw_data_uuid.items():
         uuid_data.setdefault(uuid, {}).update(col_data)
 

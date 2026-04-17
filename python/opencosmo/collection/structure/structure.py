@@ -21,11 +21,11 @@ if TYPE_CHECKING:
     import astropy.units as u
 
     from opencosmo.column.column import ConstructedColumn
+    from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
-    from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
 
@@ -193,7 +193,7 @@ class StructureCollection:
 
         Returns
         -------
-        parameters: opencosmo.parameters.HaccSimulationParameters
+        parameters: opencosmo.dtypes.HaccSimulationParameters
         """
         return self.__header.simulation
 

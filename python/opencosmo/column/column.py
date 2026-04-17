@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from opencosmo import Dataset
+    from opencosmo.index import DataIndex
 
 Comparison = Callable[[float, float], bool]
 """
@@ -308,7 +309,7 @@ class ConstructedColumn(Protocol):
     def evaluate(
         self,
         data: dict[str, np.ndarray],
-        chunk_sizes: Optional[np.ndarray],
+        index: DataIndex,
     ) -> np.ndarray | dict[str, np.ndarray]: ...
 
     def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]: ...
@@ -640,6 +641,7 @@ class EvaluatedColumn:
             self.__batch_size,
             self.description,
             _dep_map=dep_map,
+            no_cache=self.__no_cache,
             **self.__kwargs,
         )
 
@@ -706,8 +708,9 @@ class EvaluatedColumn:
     def get_units(self, units: dict[str, np.ndarray]):
         return self.__units
 
-    def evaluate(self, data: dict[str, np.ndarray], chunk_sizes: Optional[np.ndarray]):
+    def evaluate(self, data: dict[str, np.ndarray], index: DataIndex | None):
         data = {name: data[name] for name in self.__requires}
+        chunk_sizes = index[1] if isinstance(index, tuple) else None
         if self.__format != "astropy":
             data = {
                 name: val.value if isinstance(val, u.Quantity) else val
@@ -727,7 +730,7 @@ class EvaluatedColumn:
 
         match strategy:
             case EvaluateStrategy.VECTORIZE:
-                return evaluate_vectorized(data, self.__func, self.__kwargs)
+                return evaluate_vectorized(data, self.__func, self.__kwargs, index)
             case EvaluateStrategy.ROW_WISE:
                 return evaluate_rows(data, self.__func, self.__kwargs)
             case EvaluateStrategy.CHUNKED:

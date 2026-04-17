@@ -4,10 +4,10 @@ import shutil
 import astropy.units as u
 import numpy as np
 import pytest
+from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
 from opencosmo.column import add_mag_cols
-from opencosmo.spatial.region import HealpixRegion
 
 
 @pytest.fixture
@@ -277,10 +277,14 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     assert isinstance(ds.region, HealpixRegion)
-    print(ds.region.pixels)
     assert len(ds.region.pixels) == 502
 
 
 def test_open_bad_data(core_path_475, core_path_487, invalid_data_path):
     with pytest.raises(ValueError, match=str(invalid_data_path)):
         oc.open(core_path_475, core_path_487, invalid_data_path)
+
+
+def test_reindex_top_host(core_path_475, core_path_487):
+    _ = oc.open(core_path_475, core_path_487)
+    raise NotImplementedError

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from opencosmo.parameters import hacc, lightcone
+from opencosmo.dtypes import hacc, lightcone
+from opencosmo.dtypes.diffsky import top_host_idx
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from opencosmo.parameters.file import FileParameters
+    from opencosmo.dtypes.file import FileParameters
 
 
-# TODO: think I need to alter this
 def get_dtype_parameters(
     file_parameters: FileParameters,
 ) -> dict[str, dict[str, type[BaseModel]]]:
@@ -25,3 +25,25 @@ def get_dtype_parameters(
         required_dtype_params["lightcone"] = lightcone_parameters
         dtype_parameters["required"] = required_dtype_params
     return dtype_parameters
+
+
+def get_dtype_column_plugins(
+    header,
+    producers,
+    columns,
+):
+    plugins = __get_plugins(header)
+    for name, producer in plugins.items():
+        if name not in columns:
+            continue
+        producer = producer.bind(columns)
+        producers.append(producer)
+        columns[name] = producer.uuid
+
+    return producers, columns
+
+
+def __get_plugins(header):
+    if header.file.data_type == "synthetic_galaxies":
+        return {"top_host_idx": top_host_idx}
+    return {}

@@ -91,8 +91,8 @@ def __make_chunked_based_output_from_first_values(values, data_length):
     return storage
 
 
-def evaluate_vectorized(data, func, kwargs):
-    return func(**data, **kwargs)
+def evaluate_vectorized(data, func, kwargs, index):
+    return func(**data, **kwargs, index=index)
 
 
 def do_first_evaluation(

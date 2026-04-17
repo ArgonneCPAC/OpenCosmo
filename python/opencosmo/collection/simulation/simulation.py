@@ -14,10 +14,10 @@ if TYPE_CHECKING:
 
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
 
@@ -154,7 +154,7 @@ class SimulationCollection(dict):
 
         Returns
         --------
-        simulation_parameters: dict[str, opencosmo.parameters.HaccSimulationParameters]
+        simulation_parameters: dict[str, opencosmo.dtypes.HaccSimulationParameters]
         """
 
         return self.__map_attribute("simulation")

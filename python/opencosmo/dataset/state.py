@@ -13,6 +13,7 @@ from opencosmo.column.select import get_column_selection
 from opencosmo.dataset.columns import add_columns, resort
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
+from opencosmo.dtypes.dtype import get_dtype_column_plugins
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
@@ -122,6 +123,9 @@ class DatasetState:
             for cname in handler.columns
         ]
         columns = {p.name: p.uuid for p in producers}
+        producers, columns = get_dtype_column_plugins(
+            target["header"], producers, columns
+        )
         cache = ColumnCache.empty()
         return DatasetState(
             producers,

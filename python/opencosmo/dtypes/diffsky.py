@@ -5,6 +5,9 @@ from typing import ClassVar, Optional
 
 from pydantic import BaseModel, ConfigDict, field_serializer
 
+from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
+from opencosmo.index.ops import reindex_column
+
 
 class DiffskyVersionInfo(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -30,3 +33,20 @@ class DiffskyCatalogInfo(BaseModel):
         if value is not None:
             return list(value)
         return None
+
+
+def rebuild_top_host_idx(top_host_idx, index):
+    result = reindex_column(index, top_host_idx)
+
+    return {"top_host_idx": result}
+
+
+top_host_idx = EvaluatedColumn(
+    rebuild_top_host_idx,
+    requires=set(["top_host_idx"]),
+    produces=set(["top_host_idx"]),
+    format="numpy",
+    units={"top_host_idx": None},
+    strategy=EvaluateStrategy.VECTORIZE,
+    no_cache=True,
+)

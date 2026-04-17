@@ -9,7 +9,7 @@ from astropy.coordinates import SkyCoord  # type: ignore
 
 if TYPE_CHECKING:
     from opencosmo.dataset.dataset import Dataset
-    from opencosmo.parameters import FileParameters
+    from opencosmo.dtypes import FileParameters
     from opencosmo.spatial.protocols import Region
 
 ALLOWED_COORDINATES_3D = {

@@ -38,10 +38,10 @@ if TYPE_CHECKING:
     from astropy.table import Table
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
 
 
@@ -420,7 +420,7 @@ class Lightcone(dict):
 
         Returns
         -------
-        parameters: opencosmo.parameters.hacc.HaccSimulationParameters
+        parameters: opencosmo.dtypes.hacc.HaccSimulationParameters
         """
         return self.__header.simulation
 
