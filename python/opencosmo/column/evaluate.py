@@ -92,7 +92,10 @@ def __make_chunked_based_output_from_first_values(values, data_length):
 
 
 def evaluate_vectorized(data, func, kwargs, index):
-    return func(**data, **kwargs, index=index)
+    try:
+        return func(**data, **kwargs, index=index)
+    except TypeError:
+        return func(**data, **kwargs)
 
 
 def do_first_evaluation(

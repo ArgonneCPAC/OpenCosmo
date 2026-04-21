@@ -717,3 +717,39 @@ def test_description_with_insert_multiple(input_path, tmp_path):
     descriptions = ds.descriptions
     assert descriptions["random_data"] == "random data for a test"
     assert descriptions["halo_px"] == "halo x momentum"
+
+
+def test_with_new_columns_overwrite(input_path):
+    ds = oc.open(input_path)
+    log_mass = oc.col("fof_halo_mass").log10()
+
+    with pytest.raises(ValueError):
+        ds.with_new_columns(fof_halo_mass=log_mass)
+
+    ds_overwritten = ds.with_new_columns(fof_halo_mass=log_mass, allow_overwrite=True)
+    assert "fof_halo_mass" in ds_overwritten.columns
+
+    original = ds.select("fof_halo_mass").get_data("numpy")
+    overwritten = ds_overwritten.select("fof_halo_mass").get_data("numpy")
+    assert np.all(np.isclose(overwritten, np.log10(original)))
+
+
+def test_evaluate_overwrite(input_path):
+    ds = oc.open(input_path)
+
+    def fof_halo_mass(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    with pytest.raises(ValueError):
+        ds.evaluate(fof_halo_mass, vectorize=True, insert=True)
+
+    ds_overwritten = ds.evaluate(
+        fof_halo_mass, vectorize=True, insert=True, allow_overwrite=True
+    )
+    assert "fof_halo_mass" in ds_overwritten.columns
+
+    data = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
+    overwritten = ds_overwritten.select("fof_halo_mass").get_data("numpy")
+    assert np.all(
+        np.isclose(overwritten, data["fof_halo_mass"] * data["fof_halo_com_vx"])
+    )

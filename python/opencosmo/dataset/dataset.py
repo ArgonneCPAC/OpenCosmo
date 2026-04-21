@@ -397,6 +397,7 @@ class Dataset:
         insert=True,
         format="astropy",
         batch_size: int = -1,
+        allow_overwrite: bool = False,
         _verify: bool = True,
         **evaluate_kwargs,
     ) -> Dataset | dict[str, np.ndarray]:
@@ -411,18 +412,31 @@ class Dataset:
         instead of adding it as a column.
 
         The function should take in arguments with the same name as the columns in this dataset that
-        are needed for the computation, and should return a dictionary of output values.
-        The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
-        data from disk
+        are needed for the computation, and should return a dictionary of output values. Any addition
+        arguments needed by the function can be passed as keyword arguments to :code:`evaluate`.
 
-        The new columns will have the same names as the keys of the output dictionary
-        See :ref:`Evaluating On Datasets` for more details.
+        The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
+        data from disk. The new columns will have the same names as the keys of the output dictionary
+        See :ref:`Evaluating On Datasets` for more details. The keys of this dictionary must be different
+        from the names of the columns that are already in the dataset, unless allow_overwrite is set
+        to :code`True`
 
         If vectorize is set to True, the full columns will be pased to the dataset. Otherwise,
-        rows will be passed to the function one at a time.
+        rows will be passed to the function one at a time. If the function returns None, this method
+        will also return None as output.
 
-        If the function returns None, this method will also return None as output. For example, the function
-        could simply produce plots and save the to files.
+        Keyword arguments can be used to pass in external values that are not columns in the dataset.
+        For example, we can compute each halo's gas fraction bias — how much gas it retains relative to
+        the cosmic baryon fraction — by passing the dataset's cosmology object as a keyword argument:
+
+        .. code-block:: python
+
+            def baryon_fraction_bias(sod_halo_mass_gas, sod_halo_mass, cosmology):
+                f_gas = sod_halo_mass_gas / sod_halo_mass
+                f_cosmic = cosmology.Ob0 / cosmology.Om0
+                return {"sod_halo_baryon_bias": f_gas / f_cosmic}
+
+            ds = ds.evaluate(baryon_fraction_bias, cosmology=ds.cosmology, vectorize=True)
 
         Parameters
         ----------
@@ -440,6 +454,7 @@ class Dataset:
         format: str, default = astropy
             Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
             this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
+        allow_overwrite: bool, default = False
 
         batch_size: int, default = -1
             If set, feed data to the function in batches of the specified size. Default is -1, which disables batching. If
@@ -464,7 +479,9 @@ class Dataset:
             return output
 
         return self.with_new_columns(
-            descriptions={}, **{func.__name__: evaluated_column}
+            descriptions={},
+            allow_overwrite=allow_overwrite,
+            **{func.__name__: evaluated_column},
         )
 
     def filter(self, *masks: ColumnMask) -> Dataset:
@@ -591,7 +608,7 @@ class Dataset:
 
         new_state = self.__state
         if derived_columns:
-            new_state = new_state.with_new_columns({}, **derived_columns)
+            new_state = new_state.with_new_columns({}, False, **derived_columns)
             all_columns.update(derived_columns.keys())
 
         new_state = new_state.select(all_columns)
@@ -779,6 +796,7 @@ class Dataset:
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
+        allow_overwrite: bool = False,
         **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
     ):
         """
@@ -789,6 +807,25 @@ class Dataset:
         quantities will not change under unit transformations. See
         :ref:`Adding Custom Columns` for examples.
 
+        If allow_overwrite is :code:`True`, the new column may have the same name as
+        a column that already exists in the dataset. This can be used to transform a column,
+        for example:
+
+        .. code-block:: python
+
+           log_mass = oc.col("fof_halo_mass").log10()
+           ds = ds.with_new_columns(fof_halo_mass=log_mass, allow_overwrite=True)
+
+        The "fof_halo_mass" column will now be the log of the original "fof_halo_mass" column.
+
+        Columns will be given the same name as the argument you use when you pass them into the function.
+        For example, we could do the same as above but name the column "log_fof_halo_mass" with
+
+        .. code-block:: python
+
+            log_mass = oc.col("fof_halo_mass").logo10()
+            ds = ds.with_new_columns(log_fof_halo_mass = log_mass)
+
         Parameters
         ----------
 
@@ -796,8 +833,12 @@ class Dataset:
             A description for the new columns. These descriptions will be accessible through
             :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
             should have keys matching the column names.
+        allow_overwrites : bool, default = False
+            If false, attempting to add a new column with the same name as an existing column will throw an error.
+            If true, overwrites are allowed.
 
         ** new_columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
+            The new columns to add. The name of the argument is the name the column will take.
 
         Returns
         -------
@@ -807,7 +848,9 @@ class Dataset:
         """
         if isinstance(descriptions, str):
             descriptions = {key: descriptions for key in new_columns.keys()}
-        new_state = self.__state.with_new_columns(descriptions, **new_columns)
+        new_state = self.__state.with_new_columns(
+            descriptions, allow_overwrite, **new_columns
+        )
         return Dataset(self.__header, new_state, self.__tree)
 
     def make_schema(

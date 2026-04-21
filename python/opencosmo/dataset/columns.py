@@ -110,8 +110,12 @@ def add_columns(
     descriptions: dict[str, str],
     new_columns: dict,
     ds_length: int,
+    allow_overwrite: bool,
 ) -> tuple[list[ConstructedColumn], ColumnMap, UnitHandler]:
-    if inter := set(name_to_uuid.keys()).intersection(new_columns.keys()):
+    if (
+        inter := set(name_to_uuid.keys()).intersection(new_columns.keys())
+        and not allow_overwrite
+    ):
         raise ValueError(f"Some columns are already in the dataset: {inter}")
 
     (
@@ -124,11 +128,14 @@ def add_columns(
 
     # Extend the name→UUID map with new producers' outputs so that columns added
     # in the same with_new_columns call can reference each other.
+    # For overwritten columns, preserve the OLD UUID so that new producers can
+    # correctly declare a dependency on the existing data rather than on themselves.
     extended_name_to_uuid = dict(name_to_uuid)
     for producer in new_derived_columns:
         if producer.produces:
             for name in producer.produces:
-                extended_name_to_uuid[name] = producer.uuid
+                if name not in name_to_uuid:
+                    extended_name_to_uuid[name] = producer.uuid
 
     new_derived_columns = [
         producer.bind(extended_name_to_uuid) for producer in new_derived_columns

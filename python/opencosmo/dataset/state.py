@@ -358,6 +358,7 @@ class DatasetState:
     def with_new_columns(
         self,
         descriptions: dict[str, str] = {},
+        allow_overwrite: bool = False,
         **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
@@ -373,6 +374,7 @@ class DatasetState:
             descriptions,
             new_columns,
             len(self),
+            allow_overwrite=allow_overwrite,
         )
         return self.__rebuild(
             cache=self.__cache,

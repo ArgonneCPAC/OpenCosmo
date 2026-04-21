@@ -744,6 +744,7 @@ class Lightcone(dict):
         insert=True,
         format: str = "astropy",
         batch_size: int = -1,
+        allow_overwrite: bool = False,
         **evaluate_kwargs,
     ):
         """
@@ -832,6 +833,7 @@ class Lightcone(dict):
                 "with_new_columns",
                 mapped_arguments=mapped_evaluated_columns,
                 construct=True,
+                allow_overwrite=allow_overwrite,
             )
 
         result = self.__map(
@@ -842,6 +844,7 @@ class Lightcone(dict):
             insert=insert,
             mapped_arguments=mapped_kwargs,
             batch_size=batch_size,
+            allow_overwrite=allow_overwrite,
             construct=insert,
             **evaluate_kwargs,
         )
@@ -1162,6 +1165,7 @@ class Lightcone(dict):
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
+        allow_overwrite: bool = False,
         **columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
@@ -1216,7 +1220,9 @@ class Lightcone(dict):
         for i, (ds_name, ds) in enumerate(self.items()):
             raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
             columns_input = raw_columns | derived
-            new_dataset = ds.with_new_columns(descriptions, **columns_input)
+            new_dataset = ds.with_new_columns(
+                descriptions, allow_overwrite=allow_overwrite, **columns_input
+            )
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__ordered_by)
 
