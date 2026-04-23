@@ -13,12 +13,12 @@ from opencosmo.column.select import get_column_selection
 from opencosmo.dataset.columns import add_columns, resort
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
-from opencosmo.dtypes.dtype import get_dtype_column_plugins
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
+from opencosmo.plugins.plugin import PluginType, apply_plugins
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
@@ -123,9 +123,6 @@ class DatasetState:
             for cname in handler.columns
         ]
         columns = {p.name: p.uuid for p in producers}
-        producers, columns = get_dtype_column_plugins(
-            target["header"], producers, columns
-        )
         cache = ColumnCache.empty()
         return DatasetState(
             producers,
@@ -252,15 +249,17 @@ class DatasetState:
         """
         Get the data for a given handler.
         """
+        state = apply_plugins(PluginType.DatasetInstantiate, self)
+
         data = instantiate_dataset(
-            list(self.__producers.values()),
-            self.__columns,
-            self.__raw_data_handler,
-            self.__cache,
-            self.__unit_handler,
+            list(state.__producers.values()),
+            state.__columns,
+            state.__raw_data_handler,
+            state.__cache,
+            state.__unit_handler,
             unit_kwargs,
             metadata_columns,
-            None if ignore_sort else self.__sort_by,
+            None if ignore_sort else state.__sort_by,
         )
         if missing := set(self.columns).difference(data.keys()):
             raise RuntimeError(

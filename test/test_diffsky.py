@@ -2,6 +2,7 @@ import os
 import shutil
 
 import astropy.units as u
+import h5py
 import numpy as np
 import pytest
 from opencosmo.spatial.region import HealpixRegion
@@ -285,6 +286,70 @@ def test_open_bad_data(core_path_475, core_path_487, invalid_data_path):
         oc.open(core_path_475, core_path_487, invalid_data_path)
 
 
-def test_reindex_top_host(core_path_475, core_path_487):
-    _ = oc.open(core_path_475, core_path_487)
-    raise NotImplementedError
+def get_expected_core_tags(path):
+    with h5py.File(path) as f:
+        raw_top_host = f["cores"]["data"]["top_host_idx"][:]
+        core_tag = f["cores"]["data"]["core_tag"][:]
+
+    top_host_core_tag = core_tag[raw_top_host]
+    return dict(zip(core_tag, top_host_core_tag))
+
+
+def test_reindex_top_host_take_none(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+
+    found_top_host_core_tag = data["core_tag"][data["top_host_idx"]]
+    found_core_map = dict(zip(data["core_tag"], found_top_host_core_tag))
+    assert core_map == found_core_map
+
+
+def test_reindex_top_host_take_random(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).take(300)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+
+    has_top_host = data["top_host_idx"] >= 0
+
+    found_top_host_core_tag = data["core_tag"][data["top_host_idx"][has_top_host]]
+    found_core_map = dict(zip(data["core_tag"][has_top_host], found_top_host_core_tag))
+    filtered_core_map = {
+        key: val for key, val in core_map.items() if key in found_core_map
+    }
+    assert filtered_core_map == found_core_map
+
+    should_have_core_map = {
+        key: val
+        for key, val in core_map.items()
+        if val in data["core_tag"] and key in data["core_tag"]
+    }
+    assert should_have_core_map == found_core_map
+
+
+def test_reindex_top_host_take_range(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).take_range(100, 400)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+
+    has_top_host = data["top_host_idx"] >= 0
+
+    found_top_host_core_tag = data["core_tag"][data["top_host_idx"][has_top_host]]
+    found_core_map = dict(zip(data["core_tag"][has_top_host], found_top_host_core_tag))
+    filtered_core_map = {
+        key: val for key, val in core_map.items() if key in found_core_map
+    }
+    assert filtered_core_map == found_core_map
+
+    should_have_core_map = {
+        key: val
+        for key, val in core_map.items()
+        if val in data["core_tag"] and key in data["core_tag"]
+    }
+    assert should_have_core_map == found_core_map

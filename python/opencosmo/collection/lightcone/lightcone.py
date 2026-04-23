@@ -27,10 +27,11 @@ from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.dtypes.dtype import get_dtype_lightcone_plugins
-from opencosmo.io.iopen import open_single_dataset
+from opencosmo.io import iopen
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
+from opencosmo.plugins import plugin
 
 if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
@@ -223,13 +224,6 @@ def with_redshift_column(dataset: Dataset):
     raise ValueError(
         "Unable to find a redshift or scale factor column for this lightcone dataset"
     )
-
-
-def apply_plugins(datasets: Iterable[Dataset | Lightcone], plugins: list[Callable]):
-    datasets = list(datasets)
-    if len(plugins) == 0:
-        return datasets
-    return reduce(lambda datasets_, plugin: plugin(datasets_), plugins, datasets)
 
 
 class Lightcone(dict):
@@ -479,10 +473,8 @@ class Lightcone(dict):
             )
             format = kwargs["output"]
         verify_format(format)
-        datasets = apply_plugins(self.values(), self.__plugins)
-        print(datasets)
-
-        data = [ds.get_data(unpack=unpack) for ds in datasets]
+        lightcone = plugin.apply_plugins(plugin.PluginType.LightconeInstantiate, self)
+        data = [ds.get_data(unpack=unpack) for ds in lightcone.values()]
         data_with_length = [d for d in data if len(d) > 0]
         if len(data_with_length) == 0:
             return data[0]
@@ -527,7 +519,7 @@ class Lightcone(dict):
         for i, ds_target in enumerate(dataset_targets):
             group_name = ds_target["dataset_group"].name.split("/")[-1]
             group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
-            ds = open_single_dataset(ds_target, bypass_lightcone=True)
+            ds = iopen.open_single_dataset(ds_target, bypass_lightcone=True)
             step = ds_target["header"].file.step
             if step is None:
                 step = i

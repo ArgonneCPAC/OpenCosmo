@@ -8,9 +8,11 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.index.ops import reindex_column
+from opencosmo.plugins.plugin import PluginType, register_plugin
 
 if TYPE_CHECKING:
-    from opencosmo import Dataset
+    from opencosmo import Dataset, Lightcone
+    from opencosmo.dataset.state import DatasetState
 
 
 class DiffskyVersionInfo(BaseModel):
@@ -66,12 +68,45 @@ def rebuild_top_host_idx(top_host_idx, index):
     return {"top_host_idx": result}
 
 
-top_host_idx = EvaluatedColumn(
-    rebuild_top_host_idx,
-    requires=set(["top_host_idx"]),
-    produces=set(["top_host_idx"]),
-    format="numpy",
-    units={"top_host_idx": None},
-    strategy=EvaluateStrategy.VECTORIZE,
-    no_cache=True,
+def top_host_idx_plugin(dataset: DatasetState):
+    top_host_idx = EvaluatedColumn(
+        rebuild_top_host_idx,
+        requires=set(["top_host_idx"]),
+        produces=set(["top_host_idx"]),
+        format="numpy",
+        units={"top_host_idx": None},
+        strategy=EvaluateStrategy.VECTORIZE,
+        no_cache=True,
+    )
+    return dataset.with_new_columns(updated_host_idx=top_host_idx, allow_overwrite=True)
+
+
+def top_host_idx_offset_plugin(lightcone: Lightcone) -> dict[str, Dataset]:
+    cs = 0
+    output = {}
+
+    def top_host_idx(top_host_idx, offset):
+        top_host_idx[top_host_idx >= 0] += offset
+        return top_host_idx
+
+    for key, ds in lightcone.items():
+        output[key] = ds.evaluate(
+            top_host_idx, allow_overwrite=True, vectorize=True, offset=cs
+        )
+        cs += len(ds)
+
+    return output
+
+
+def top_host_idx_verifier[T: (DatasetState, Dataset, Lightcone)](dataset: T) -> bool:
+    return (
+        dataset.header.file.data_type == "synthetic_galaxies"
+        and "top_host_idx" in dataset.columns
+    )
+
+
+register_plugin(PluginType.DatasetOpen, top_host_idx_verifier, top_host_idx_plugin)
+
+register_plugin(  # type: ignore
+    PluginType.LightconeInstantiate, top_host_idx_verifier, top_host_idx_offset_plugin
 )
