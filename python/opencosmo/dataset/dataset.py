@@ -64,7 +64,7 @@ class Dataset:
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
 
-        table_repr = repr_ds.data.__repr__()
+        table_repr = repr_ds.get_data().__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
         head = f"OpenCosmo Dataset (length={length})\n"

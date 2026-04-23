@@ -11,7 +11,6 @@ from opencosmo.dataset.graph import build_dependency_graph
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from opencosmo.column.cache import CacheKey
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.index import DataIndex
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
 
 def get_all_required_pairs(
     columns_to_uuid: dict[str, UUID], dependency_graph: rx.PyDiGraph
-) -> set[CacheKey]:
+) -> set[tuple[UUID, str]]:
     """
     Return the full set of (producer_uuid, column_name) pairs needed to
     produce the requested columns, including all transitive dependencies.
@@ -35,7 +34,9 @@ def get_all_required_pairs(
             required_nodes.add(node_idx)
             required_nodes.update(rx.ancestors(dependency_graph, node_idx))
 
-    pairs: set[CacheKey] = {(uuid, name) for name, uuid in columns_to_uuid.items()}
+    pairs: set[tuple[UUID, str]] = {
+        (uuid, name) for name, uuid in columns_to_uuid.items()
+    }
     for node_idx in required_nodes:
         producer = dependency_graph[node_idx]
         for name in producer.produces:
@@ -110,6 +111,47 @@ def build_derived_columns(
     return new_derived
 
 
+def __cache_raw_columns(
+    raw_columns: list[RawColumn],
+    raw_data: dict[str, Any],
+    working_columns: dict[str, UUID],
+    unit_handler: UnitHandler,
+    unit_kwargs: dict[str, Any],
+    cache: DataCache,
+) -> dict[UUID, dict[str, Any]]:
+    """
+    Write freshly-fetched raw columns to the cache and return the merged
+    (pre- and post-conversion) UUID-keyed data for merging into uuid_data.
+
+    Pre-conversion data is pushed up to parent caches. Converted data is kept
+    local (push_up=False) to avoid propagating dataset-specific unit conversions
+    to parent caches, which could cause drift through repeated rounding.
+    """
+    raw_by_uuid: dict[UUID, dict[str, Any]] = {
+        col.uuid: {col.alias or col.name: raw_data[col.alias or col.name]}
+        for col in raw_columns
+        if (col.alias or col.name) in raw_data
+    }
+    converted_by_uuid = unit_handler.apply_unit_conversions(raw_by_uuid, unit_kwargs)
+
+    cacheable = set(working_columns.values())
+    cache.add_data(
+        {uuid: data for uuid, data in raw_by_uuid.items() if uuid in cacheable},
+        {},
+        push_up=True,
+    )
+    cache.add_data(
+        {uuid: data for uuid, data in converted_by_uuid.items() if uuid in cacheable},
+        {},
+        push_up=False,
+    )
+
+    return {
+        uuid: (data | converted_by_uuid.get(uuid, {}))
+        for uuid, data in raw_by_uuid.items()
+    }
+
+
 def instantiate_dataset(
     column_producers: list[ConstructedColumn],
     columns_to_uuid: dict[str, UUID],
@@ -134,14 +176,10 @@ def instantiate_dataset(
 
     cached_data = cache.get_data(required_pairs)
 
-    # Apply unit conversions to cached data. The unit handler works on flat
-    # name-keyed dicts; we flatten, convert, then fold results back in.
-    flat_cached = _flatten(cached_data)
-    converted_flat = unit_handler.apply_unit_conversions(flat_cached, unit_kwargs)
-    if converted_flat:
-        converted_uuid = _apply_uuid_mapping(converted_flat, required_pairs)
-        cache.add_data(converted_uuid, {}, push_up=False)
-        for uuid, col_data in converted_uuid.items():
+    converted_cached = unit_handler.apply_unit_conversions(cached_data, unit_kwargs)
+    if converted_cached:
+        cache.add_data(converted_cached, {}, push_up=False)
+        for uuid, col_data in converted_cached.items():
             cached_data.setdefault(uuid, {}).update(col_data)
 
     # Determine which raw columns still need to be fetched from the handler.
@@ -168,26 +206,9 @@ def instantiate_dataset(
 
     uuid_data |= new_derived
 
-    # Write freshly-fetched raw data back to the cache.
-    # Only map raw columns by UUID — if a non-raw producer shadows a raw column name,
-    # the set-iteration order in _apply_uuid_mapping would nondeterministically pick one,
-    # potentially caching unprocessed data under the derived producer's UUID.
-    raw_producer_uuids = {
-        col.uuid for col in column_producers if isinstance(col, RawColumn)
-    }
-    raw_required_pairs = {
-        pair for pair in required_pairs if pair[0] in raw_producer_uuids
-    }
-    raw_data |= unit_handler.apply_unit_conversions(raw_data, unit_kwargs)
-    raw_data_uuid = _apply_uuid_mapping(raw_data, raw_required_pairs)
-    to_add = {
-        uuid: value
-        for uuid, value in raw_data_uuid.items()
-        if uuid in working_columns.values()
-    }
-    cache.add_data(to_add, {}, push_up=True)
-    for uuid, col_data in raw_data_uuid.items():
-        uuid_data.setdefault(uuid, {}).update(col_data)
+    uuid_data |= __cache_raw_columns(
+        raw_columns, raw_data, working_columns, unit_handler, unit_kwargs, cache
+    )
 
     data = {
         name: uuid_data[producer_uuid][name]
@@ -221,24 +242,3 @@ def sort_data(data: dict[str, np.ndarray], sort_by: tuple[str, bool] | None):
     if sort_by[1]:
         order = order[::-1]
     return {key: value[order] for key, value in data.items()}
-
-
-def _flatten(uuid_data: dict[UUID, dict[str, np.ndarray]]) -> dict[str, np.ndarray]:
-    """Collapse UUID-keyed data to a flat name-keyed dict (last writer wins)."""
-    return {name: arr for d in uuid_data.values() for name, arr in d.items()}
-
-
-def _apply_uuid_mapping(
-    flat_data: dict[str, np.ndarray],
-    required_pairs: set[CacheKey],
-) -> dict[UUID, dict[str, np.ndarray]]:
-    """
-    Map a flat name-keyed dict back to UUID-keyed form using required_pairs to
-    resolve which UUID owns each column name.
-    """
-    name_to_uuid: dict[str, UUID] = {name: uuid for uuid, name in required_pairs}
-    result: dict[UUID, dict[str, np.ndarray]] = {}
-    for name, arr in flat_data.items():
-        if name in name_to_uuid:
-            result.setdefault(name_to_uuid[name], {})[name] = arr
-    return result

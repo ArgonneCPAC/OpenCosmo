@@ -58,7 +58,7 @@ def build_derived_writers(
             for name, cd in coldata.items()
         }
         for name, cd in coldata.items():
-            attrs = {"unit": units[name], "description": producer.description}
+            attrs = {"unit": units[name], "description": producer.description or "None"}
             source = NumpySource(cd)
             writer = ColumnWriter([source], ColumnCombineStrategy.CONCAT, attrs=attrs)
             data_schema.columns[name] = writer

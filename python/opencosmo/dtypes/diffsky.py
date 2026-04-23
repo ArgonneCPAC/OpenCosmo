@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime  # noqa
-from typing import ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
 
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.index.ops import reindex_column
+
+if TYPE_CHECKING:
+    from opencosmo import Dataset
 
 
 class DiffskyVersionInfo(BaseModel):
@@ -33,6 +37,27 @@ class DiffskyCatalogInfo(BaseModel):
         if value is not None:
             return list(value)
         return None
+
+
+def __offset(top_host_idx, offset):
+    output = top_host_idx
+    output[output >= 0] += offset
+    return {"top_host_idx": output}
+
+
+def offset_top_host_idx(datasets: list[Dataset]):
+    lengths = [len(ds) for ds in datasets]
+    offsets = np.cumsum(lengths)
+    output_datasets = [datasets[0]]
+    for offset, ds in zip(offsets, datasets[1:]):
+        output_ds = ds.evaluate(
+            __offset,
+            offset=offset,
+            vectorize=True,
+            allow_overwrite=True,
+        )
+        output_datasets.append(output_ds)  # type: ignore
+    return output_datasets
 
 
 def rebuild_top_host_idx(top_host_idx, index):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from opencosmo.dtypes import hacc, lightcone
-from opencosmo.dtypes.diffsky import top_host_idx
+from opencosmo.dtypes.diffsky import offset_top_host_idx, top_host_idx
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -32,7 +32,7 @@ def get_dtype_column_plugins(
     producers,
     columns,
 ):
-    plugins = __get_plugins(header)
+    plugins = __get_column_plugins(header)
     for name, producer in plugins.items():
         if name not in columns:
             continue
@@ -43,7 +43,13 @@ def get_dtype_column_plugins(
     return producers, columns
 
 
-def __get_plugins(header):
+def __get_column_plugins(header):
     if header.file.data_type == "synthetic_galaxies":
         return {"top_host_idx": top_host_idx}
     return {}
+
+
+def get_dtype_lightcone_plugins(header, columns):
+    if header.file.data_type == "synthetic_galaxies" and "top_host_idx" in columns:
+        return [offset_top_host_idx]
+    return []

@@ -26,6 +26,7 @@ from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
+from opencosmo.dtypes.dtype import get_dtype_lightcone_plugins
 from opencosmo.io.iopen import open_single_dataset
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
@@ -224,6 +225,13 @@ def with_redshift_column(dataset: Dataset):
     )
 
 
+def apply_plugins(datasets: Iterable[Dataset | Lightcone], plugins: list[Callable]):
+    datasets = list(datasets)
+    if len(plugins) == 0:
+        return datasets
+    return reduce(lambda datasets_, plugin: plugin(datasets_), plugins, datasets)
+
+
 class Lightcone(dict):
     """
     A lightcone contains two or more datasets that are part of a lightcone. Typically
@@ -270,6 +278,7 @@ class Lightcone(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
+        self.__plugins = get_dtype_lightcone_plugins(self.__header, self.columns)
 
     def __repr__(self):
         """
@@ -284,7 +293,7 @@ class Lightcone(dict):
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
 
-        table_repr = repr_ds.data.__repr__()
+        table_repr = repr_ds.get_data().__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
         z_range = self.z_range
@@ -470,8 +479,10 @@ class Lightcone(dict):
             )
             format = kwargs["output"]
         verify_format(format)
+        datasets = apply_plugins(self.values(), self.__plugins)
+        print(datasets)
 
-        data = [ds.get_data(unpack=unpack) for ds in self.values()]
+        data = [ds.get_data(unpack=unpack) for ds in datasets]
         data_with_length = [d for d in data if len(d) > 0]
         if len(data_with_length) == 0:
             return data[0]
