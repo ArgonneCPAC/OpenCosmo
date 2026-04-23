@@ -353,3 +353,27 @@ def test_reindex_top_host_take_range(core_path_475, core_path_487):
         if val in data["core_tag"] and key in data["core_tag"]
     }
     assert should_have_core_map == found_core_map
+
+
+def test_reindex_top_host_filter(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).filter(oc.col("logsm_obs") > 10)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+
+    has_top_host = data["top_host_idx"] >= 0
+
+    found_top_host_core_tag = data["core_tag"][data["top_host_idx"][has_top_host]]
+    found_core_map = dict(zip(data["core_tag"][has_top_host], found_top_host_core_tag))
+    filtered_core_map = {
+        key: val for key, val in core_map.items() if key in found_core_map
+    }
+    assert filtered_core_map == found_core_map
+
+    should_have_core_map = {
+        key: val
+        for key, val in core_map.items()
+        if val in data["core_tag"] and key in data["core_tag"]
+    }
+    assert should_have_core_map == found_core_map
