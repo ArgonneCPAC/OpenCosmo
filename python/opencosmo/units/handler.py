@@ -13,6 +13,8 @@ from opencosmo.units.get import (
 )
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     import h5py
     import numpy as np
     from astropy.cosmology import Cosmology
@@ -218,25 +220,26 @@ class UnitHandler:
         return columns
 
     def apply_unit_conversions(
-        self, data: dict[str, u.Quantity | np.ndarray], unit_kwargs
-    ):
-        # Only apply the unit CONVERSIONS. Useful for cached data
-        # Does not return data that was not updated
-        output_data = {}
+        self,
+        data: dict[UUID, dict[str, u.Quantity | np.ndarray]],
+        unit_kwargs,
+    ) -> dict[UUID, dict[str, u.Quantity | np.ndarray]]:
+        # Only apply the unit CONVERSIONS. Useful for cached data.
+        # Does not return data that was not updated.
         if not self.__conversions and not self.__column_conversions:
             return {}
-        for colname, column in data.items():
-            if not isinstance(column, u.Quantity):
-                continue
-            assert isinstance(column, u.Quantity)
-            column_conversion = self.__column_conversions.get(colname)
-            unit_conversion = self.__conversions.get(str(column.unit))
-            if unit_conversion is not None and column_conversion is None:
-                output_data[colname] = column.to(unit_conversion)
-            elif column_conversion is not None:
-                output_data[colname] = column.to(column_conversion)
-
-        return output_data
+        output: dict[UUID, dict[str, u.Quantity | np.ndarray]] = {}
+        for uuid, uuid_data in data.items():
+            for colname, column in uuid_data.items():
+                if not isinstance(column, u.Quantity):
+                    continue
+                column_conversion = self.__column_conversions.get(colname)
+                unit_conversion = self.__conversions.get(str(column.unit))
+                if unit_conversion is not None and column_conversion is None:
+                    output.setdefault(uuid, {})[colname] = column.to(unit_conversion)
+                elif column_conversion is not None:
+                    output.setdefault(uuid, {})[colname] = column.to(column_conversion)
+        return output
 
     def apply_units(self, data: dict[str, np.ndarray], unit_kwargs):
         if self.__current_convention == UnitConvention.UNITLESS:

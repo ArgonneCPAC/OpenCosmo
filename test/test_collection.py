@@ -530,6 +530,36 @@ def test_visit_source(halo_paths):
     )
 
 
+def test_structure_collection_evaluate_overwrite(halo_paths):
+    collection = oc.open(*halo_paths).take(20)
+
+    def fof_halo_mass(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    with pytest.raises(ValueError):
+        collection.evaluate(fof_halo_mass, dataset="halo_properties")
+
+    collection_overwritten = collection.evaluate(
+        fof_halo_mass,
+        dataset="halo_properties",
+        allow_overwrite=True,
+        vectorize=True,
+    )
+    original = (
+        collection["halo_properties"]
+        .select(["fof_halo_mass", "fof_halo_com_vx"])
+        .get_data("numpy")
+    )
+    overwritten = (
+        collection_overwritten["halo_properties"]
+        .select("fof_halo_mass")
+        .get_data("numpy")
+    )
+    assert np.all(
+        np.isclose(overwritten, original["fof_halo_mass"] * original["fof_halo_com_vx"])
+    )
+
+
 def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
     collection = oc.open(*halo_paths)
 
@@ -563,6 +593,22 @@ def test_visit_dataset_in_structure_collection_nochunk(halo_paths):
     offset_vec = collection_vec["halo_properties"].select("offset").get_data("numpy")
     offset_loop = collection_loop["halo_properties"].select("offset").get_data("numpy")
     assert np.all(offset_vec == offset_loop)
+
+
+def test_evaluate_on_dataset_nested_path(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths).take(10)
+
+    def particle_id(x, y, z):
+        return np.arange(len(x))
+
+    collection = collection.evaluate_on_dataset(
+        particle_id, dataset="galaxies.star_particles", vectorize=True, insert=True
+    )
+    assert "particle_id" in collection["galaxies"]["star_particles"].columns
+    for halo in collection.halos(["galaxies"]):
+        for galaxy in halo["galaxies"].galaxies(["star_particles"]):
+            pid = galaxy["star_particles"].select("particle_id").get_data("numpy")
+            assert np.all(pid == np.arange(len(pid)))
 
 
 def test_visit_galaxies_in_halo_collection(halo_paths, galaxy_paths):
@@ -1027,6 +1073,30 @@ def test_simulation_collection_evaluate_map_kwarg(multi_path):
         )
 
 
+def test_simulation_collection_evaluate_overwrite(multi_path):
+    collection = oc.open(multi_path)
+
+    def fof_halo_mass(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    with pytest.raises(ValueError):
+        collection.evaluate(fof_halo_mass, vectorize=True, insert=True)
+
+    collection_overwritten = collection.evaluate(
+        fof_halo_mass, vectorize=True, insert=True, allow_overwrite=True
+    )
+    for ds_name, ds in collection.items():
+        original = ds.select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
+        overwritten = (
+            collection_overwritten[ds_name].select("fof_halo_mass").get_data("numpy")
+        )
+        assert np.all(
+            np.isclose(
+                overwritten, original["fof_halo_mass"] * original["fof_halo_com_vx"]
+            )
+        )
+
+
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
@@ -1227,7 +1297,10 @@ def test_data_cached_after_objects(halo_paths):
         pass
 
     dataset = ds["dm_particles"]
-    cache = dataset._Dataset__state._DatasetState__cache
-    data = cache.get_data(("gpe",))
-    assert data.get("gpe") is not None
+    state = dataset._Dataset__state
+    cache = state._DatasetState__cache
+    columns = state._DatasetState__columns  # dict[str, UUID]
+    gpe_uuid = columns["gpe"]
+    uuid_data = cache.get_data({(gpe_uuid, "gpe")})
+    assert uuid_data.get(gpe_uuid, {}).get("gpe") is not None
     assert dataset.descriptions["gpe"] != "None"

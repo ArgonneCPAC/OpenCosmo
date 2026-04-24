@@ -16,6 +16,7 @@ from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index.build import empty, from_range
 from opencosmo.mpi import get_comm_world
+from opencosmo.plugins.plugin import PluginType, apply_plugins
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.spatial.tree import open_tree
@@ -547,7 +548,7 @@ def open_single_dataset(
             {"data": dataset}, header.lightcone["z_range"]
         )
 
-    return dataset
+    return apply_plugins(PluginType.DatasetOpen, dataset)
 
 
 def __open_healpix_map(dataset: oc.Dataset, sim_region):
