@@ -24,6 +24,37 @@ def update_order(data: np.ndarray, comm: Optional[MPI.Comm], order: np.ndarray):
     return data[order]
 
 
+def update_top_host_idx(
+    data: np.ndarray,
+    comm: Optional[MPI.Comm],
+    order: np.ndarray,
+    slice_sizes: list[int],
+):
+    result = data.copy()
+
+    # Add per-slice global offsets so local row references become global
+    offset = 0
+    pos = 0
+    for size in slice_sizes:
+        segment = result[pos : pos + size]
+        segment[segment >= 0] += offset
+        offset += size
+        pos += size
+
+    # Reorder row positions (same as all other columns)
+    if comm is not None:
+        result = update_global_order_mpi(result, comm, order)
+    else:
+        result = result[order]
+
+    # Remap stored row references through the inverse permutation
+    inverse_order = np.argsort(order)
+    output = np.full_like(result, -1)
+    valid = result >= 0
+    output[valid] = inverse_order[result[valid]]
+    return output
+
+
 def update_global_order_mpi(data, comm, order):
     needs_global_reordering = comm.allgather(np.any((order < 0) | (order > len(order))))
     if not np.any(needs_global_reordering):
@@ -117,9 +148,16 @@ def stack_lightcone_datasets_in_schema(
 
         order = get_stacked_lightcone_order(ds_list, max_level)
         updater = partial(update_order, order=order)
+        slice_sizes = [len(dataset) for dataset in ds_list]
+        top_host_idx_updater = partial(
+            update_top_host_idx, order=order, slice_sizes=slice_sizes
+        )
 
-        for column in new_data_group.columns.values():
-            column.set_transformation(updater)
+        for col_name, column in new_data_group.columns.items():
+            if col_name == "top_host_idx":
+                column.set_transformation(top_host_idx_updater)
+            else:
+                column.set_transformation(updater)
 
         new_index_group = stack_index_groups(
             [schema.children["index"] for schema in schemas]
