@@ -24,6 +24,28 @@ def update_order(data: np.ndarray, comm: Optional[MPI.Comm], order: np.ndarray):
     return data[order]
 
 
+def _global_inverse_order_mpi(order: np.ndarray, comm) -> np.ndarray:
+    """
+    Build the global inverse permutation across all MPI ranks.
+
+    Each rank's `order` (possibly referencing rows on other ranks) is combined
+    into a single global permutation of length N. The inverse maps global input
+    position -> global output position in the written file.
+    """
+    sizes = comm.allgather(len(order))
+    ends = np.cumsum(sizes)
+    starts = np.insert(ends, 0, 0)
+    N = int(starts[-1])
+
+    # global_order[i] is the global input position that lands at global output i
+    global_order = order + starts[comm.Get_rank()]
+    all_global_orders = np.concatenate(comm.allgather(global_order))
+
+    global_inv = np.empty(N, dtype=np.int64)
+    global_inv[all_global_orders] = np.arange(N)
+    return global_inv
+
+
 def update_top_host_idx(
     data: np.ndarray,
     comm: Optional[MPI.Comm],
@@ -34,6 +56,12 @@ def update_top_host_idx(
 
     # Add per-slice global offsets so local row references become global
     offset = 0
+    if comm is not None:
+        offsets = np.cumsum(comm.allgather(len(data)))
+        rank = comm.Get_rank()
+        if rank > 0:
+            offset = offsets[rank - 1]
+
     pos = 0
     for size in slice_sizes:
         segment = result[pos : pos + size]
@@ -44,11 +72,15 @@ def update_top_host_idx(
     # Reorder row positions (same as all other columns)
     if comm is not None:
         result = update_global_order_mpi(result, comm, order)
+        # After a cross-rank shuffle, result[valid] may contain global indices
+        # (0..N-1). np.argsort(order) only covers this rank's local portion, so
+        # we need the full global inverse permutation instead.
+        inverse_order = _global_inverse_order_mpi(order, comm)
     else:
         result = result[order]
+        inverse_order = np.argsort(order)
 
     # Remap stored row references through the inverse permutation
-    inverse_order = np.argsort(order)
     output = np.full_like(result, -1)
     valid = result >= 0
     output[valid] = inverse_order[result[valid]]
