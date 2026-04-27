@@ -87,7 +87,7 @@ def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
     if len(valid_targets) > 1:
         collection_type = __determine_multi_file_collection_type(valid_targets)
         return collection_type.open(valid_targets, **open_kwargs)
-    return __open_single_file(valid_targets[0])
+    return __open_single_file(valid_targets[0], open_kwargs)
 
 
 def __make_group_map(group: h5py.File | h5py.Group, prefix: str = ""):
@@ -119,14 +119,18 @@ def __make_file_target(path: Path, open_kwargs: dict[str, Any]) -> Optional[File
     )
 
 
-def __open_single_file(target: FileTarget) -> oc.Dataset | oc.collection.Collection:
+def __open_single_file(
+    target: FileTarget, open_kwargs: dict[str, Any] = {}
+) -> oc.Dataset | oc.collection.Collection:
     """
     Opens a single file, which may or may not contain
     several datasets
     """
     if len(target["dataset_targets"]) == 1:
         # Just one dataset, easy
-        return open_single_dataset(target["dataset_targets"][0])
+        return open_single_dataset(
+            target["dataset_targets"][0], open_kwargs=open_kwargs
+        )
 
     elif target["dataset_targets"]:
         # Multiple datasets, but all grouped together
@@ -470,6 +474,7 @@ def open_single_dataset(
     metadata_group: Optional[str] = None,
     bypass_lightcone: bool = False,
     bypass_mpi: bool = False,
+    open_kwargs: dict[str, Any] = {},
 ):
     header = target["header"]
     ds_group = target["dataset_group"]
@@ -548,7 +553,7 @@ def open_single_dataset(
             {"data": dataset}, header.lightcone["z_range"]
         )
 
-    return apply_plugins(PluginType.DatasetOpen, dataset)
+    return apply_plugins(PluginType.DatasetOpen, dataset, **open_kwargs)
 
 
 def __open_healpix_map(dataset: oc.Dataset, sim_region):

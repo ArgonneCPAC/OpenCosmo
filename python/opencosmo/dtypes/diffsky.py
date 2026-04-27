@@ -7,12 +7,19 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
 
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
+from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
-from opencosmo.plugins.plugin import PluginType, register_plugin
+from opencosmo.plugins.plugin import (
+    IndexPluginSpec,
+    PluginSpec,
+    PluginType,
+    register_plugin,
+)
 
 if TYPE_CHECKING:
     from opencosmo import Dataset, Lightcone
     from opencosmo.dataset.state import DatasetState
+    from opencosmo.index import DataIndex
 
 
 class DiffskyVersionInfo(BaseModel):
@@ -68,7 +75,7 @@ def rebuild_top_host_idx(top_host_idx, index):
     return {"top_host_idx": result}
 
 
-def top_host_idx_plugin(dataset: DatasetState):
+def top_host_idx_plugin(dataset: DatasetState, **kwargs):
     top_host_idx = EvaluatedColumn(
         rebuild_top_host_idx,
         requires=set(["top_host_idx"]),
@@ -98,15 +105,70 @@ def top_host_idx_offset_plugin(lightcone: Lightcone) -> dict[str, Dataset]:
     return output
 
 
-def top_host_idx_verifier[T: (DatasetState, Dataset, Lightcone)](dataset: T) -> bool:
+def top_host_idx_verifier[T: (DatasetState, Dataset, Lightcone)](
+    dataset: T, **kwargs
+) -> bool:
     return (
         dataset.header.file.data_type == "synthetic_galaxies"
         and "top_host_idx" in dataset.columns
     )
 
 
-register_plugin(PluginType.DatasetOpen, top_host_idx_verifier, top_host_idx_plugin)
+def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
+    index_array = into_array(new_index)
+    top_host_idx = dataset.select({"top_host_idx"}).get_data()["top_host_idx"]
+    unique_in_sample = np.unique(top_host_idx[index_array])
 
-register_plugin(  # type: ignore
-    PluginType.LightconeInstantiate, top_host_idx_verifier, top_host_idx_offset_plugin
+    missing_hosts = np.setdiff1d(unique_in_sample, index_array)
+    all_satellites = np.where(np.isin(top_host_idx, unique_in_sample))[0]
+    missing_satellites = np.setdiff1d(all_satellites, index_array)
+
+    if len(missing_hosts) == 0 and len(missing_satellites) == 0:
+        return new_index
+
+    all_missing = np.sort(np.concatenate((missing_hosts, missing_satellites)))
+
+    insert_idx = np.searchsorted(index_array, all_missing)
+    result = np.insert(index_array, insert_idx, all_missing)
+
+    return result
+
+
+def keep_top_host_idx_verifier(dataset: DatasetState):
+    return "top_host_idx" in dataset.columns
+
+
+def register_keep_top_host_idx(dataset: Dataset, **kwargs):
+    register_plugin(
+        IndexPluginSpec(
+            PluginType.IndexUpdate, keep_top_host_idx_verifier, keep_top_host_idx
+        )
+    )
+    return dataset
+
+
+def register_keep_top_host_idx_verifier(
+    dataset: Dataset, keep_top_host: bool = False, **kwargs
+):
+    return keep_top_host and top_host_idx_verifier(dataset)
+
+
+register_plugin(
+    PluginSpec(PluginType.DatasetOpen, top_host_idx_verifier, top_host_idx_plugin)
+)
+
+register_plugin(
+    PluginSpec(
+        PluginType.LightconeInstantiate,
+        top_host_idx_verifier,
+        top_host_idx_offset_plugin,
+    )
+)
+
+register_plugin(
+    PluginSpec(
+        PluginType.LightconeLoad,
+        register_keep_top_host_idx_verifier,
+        register_keep_top_host_idx,
+    )
 )

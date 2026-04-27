@@ -25,6 +25,10 @@ dependencies = [
   "rustworkx>=0.17.1,<1.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/ArgonneCPAC/OpenCosmo"
+Documentation = "https://opencosmo.readthedocs.io/en/stable/"
+
 [dependency-groups]
 dev = [
   "ruff>=0.9.4,<1.0.0",

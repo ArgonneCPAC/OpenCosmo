@@ -519,7 +519,9 @@ class Lightcone(dict):
         for i, ds_target in enumerate(dataset_targets):
             group_name = ds_target["dataset_group"].name.split("/")[-1]
             group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
-            ds = iopen.open_single_dataset(ds_target, bypass_lightcone=True)
+            ds = iopen.open_single_dataset(
+                ds_target, bypass_lightcone=True, open_kwargs=kwargs
+            )
             step = ds_target["header"].file.step
             if step is None:
                 step = i
@@ -538,6 +540,8 @@ class Lightcone(dict):
             raise ValueError()
 
         result = cls(output)
+        result = plugin.apply_plugins(plugin.PluginType.LightconeLoad, result, **kwargs)
+
         return make_radec_columns(result)
 
     @classmethod
@@ -1163,6 +1167,7 @@ class Lightcone(dict):
             if len(split) > 0:
                 output[name] = dataset.take_rows(split - rs)
             rs += len(dataset)
+
         return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
 
     def with_new_columns(

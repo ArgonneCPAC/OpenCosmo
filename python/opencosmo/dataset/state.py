@@ -18,7 +18,7 @@ from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
-from opencosmo.plugins.plugin import PluginType, apply_plugins
+from opencosmo.plugins.plugin import PluginType, apply_index_plugins, apply_plugins
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
@@ -322,7 +322,10 @@ class DatasetState:
         return metadata
 
     def with_mask(self, mask: NDArray[np.bool_]):
-        index = np.where(mask)[0]
+        return self.with_index(np.where(mask)[0])
+
+    def with_index(self, index: DataIndex):
+        index = apply_index_plugins(self, index)
         new_raw_handler = self.__raw_data_handler.take(index)
         new_cache = self.__cache.take(index)
         return self.__rebuild(
@@ -479,16 +482,12 @@ class DatasetState:
         else:
             take_index = np.sort(sorted[start:end])
 
-        new_raw_handler = self.__raw_data_handler.take(take_index)
-        new_im = self.__cache.take(take_index)
-        return self.__rebuild(
-            raw_data_handler=new_raw_handler,
-            cache=new_im,
-        )
+        return self.take_rows(take_index)
 
     def take_rows(self, rows: DataIndex):
         if len(self) == 0:
             return self
+        rows = apply_index_plugins(self, rows)
         row_range = get_range(rows)
 
         if row_range[1] > len(self) or row_range[0] < 0:
