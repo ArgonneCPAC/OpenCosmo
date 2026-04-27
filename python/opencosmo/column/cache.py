@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Iterable, Optional
+from uuid import UUID
 from weakref import finalize, ref
 
 import astropy.units as u
 import numpy as np
 
 from opencosmo.index import DataIndex
+from opencosmo.index.build import from_size
 from opencosmo.index.get import get_data
 from opencosmo.index.take import take
 from opencosmo.index.unary import get_length, get_range
@@ -16,12 +18,14 @@ from opencosmo.io.writer import ColumnWriter
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex
 
+# (producer_uuid, column_name) — the unambiguous key for a cached column.
+CacheKey = tuple[UUID, str]
 
 ColumnUpdater = Callable[[np.ndarray | u.Quantity], np.ndarray | u.Quantity]
 
 
 def finish(
-    cached_data: dict[str, np.ndarray],
+    cached_data: dict[CacheKey, np.ndarray],
     index: Optional[DataIndex],
     cache_ref: ref[ColumnCache],
 ):
@@ -29,23 +33,24 @@ def finish(
     if cache is None:
         return
 
-    columns_to_add = (
-        cache.registered_columns.intersection(cached_data.keys()) - cache.columns
+    # pylint: disable=protected-access
+    if index is None:
+        index = from_size(len(cache))
+    pairs_to_add = cache.registered_pairs.intersection(cached_data.keys()) - set(
+        cache.keys()
     )
-    data = {name: cached_data[name] for name in columns_to_add}
-    if index is not None:
-        data = {name: get_data(cd, index) for name, cd in data.items()}
+    data = {key[0]: {key[1]: get_data(cached_data[key], index)} for key in pairs_to_add}
     if data:
         cache.add_data(data)
 
 
-def check_length(cache: ColumnCache, data: dict[str, np.ndarray]):
-    lengths = set(len(d) for d in data.values())
+def check_length(cache: ColumnCache, data: dict[UUID, dict[str, np.ndarray]]):
+    lengths = {len(arr) for uuid_data in data.values() for arr in uuid_data.values()}
     if len(lengths) > 1:
         raise ValueError(
             "When adding data to the cache, all columns must be the same length"
         )
-    elif (length := len(cache)) > 0 and length != lengths.pop():
+    elif (length := len(cache)) > 0 and lengths and length != lengths.pop():
         raise ValueError(
             "When adding data to the cache, the columns must be the same length as the columns currently in the cache"
         )
@@ -65,14 +70,17 @@ class ColumnCache:
        cache. This allows us to preserve the standard "operations create new objects" pattern that is present
        throughout the library.
 
+    Internal storage uses (producer_uuid, column_name) tuples as keys so that multiple
+    producers that happen to produce a column with the same name are kept separate.
     """
 
     def __init__(
         self,
-        cached_data: dict[str, np.ndarray],
-        registered_column_groups: dict[int, set[str]],
+        cached_data: dict[CacheKey, np.ndarray],
+        registered_column_groups: dict[int, set[CacheKey]],
         column_descriptions: dict[str, str],
         metadata_columns: set[str],
+        metadata_data: dict[str, np.ndarray],
         derived_index: Optional[DataIndex],
         parent: Optional[ref[ColumnCache]],
         children: Optional[list[ref[ColumnCache]]],
@@ -80,6 +88,7 @@ class ColumnCache:
         self.__cached_data = cached_data
         self.__registered_column_groups = registered_column_groups
         self.__metadata_columns = metadata_columns
+        self.__metadata_data = metadata_data
         self.__descriptions = column_descriptions
         self.__derived_index = derived_index
         self.__parent = parent
@@ -100,97 +109,123 @@ class ColumnCache:
 
     @classmethod
     def empty(cls):
-        return ColumnCache({}, {}, {}, set(), None, None, [])
+        return ColumnCache({}, {}, {}, set(), {}, None, None, [])
 
     @property
-    def columns(self):
+    def columns(self) -> set[str]:
+        return {name for (_, name) in self.__cached_data.keys()}
+
+    def keys(self) -> set[CacheKey]:
         return set(self.__cached_data.keys())
 
     @property
-    def metadata_columns(self):
+    def metadata_columns(self) -> set[str]:
         return self.__metadata_columns
 
     @property
-    def descriptions(self):
+    def descriptions(self) -> dict[str, str]:
         return self.__descriptions
 
     @property
-    def registered_columns(self):
-        return set().union(*list(self.__registered_column_groups.values()))
+    def registered_pairs(self) -> set[CacheKey]:
+        if not self.__registered_column_groups:
+            return set()
+        return set().union(*self.__registered_column_groups.values())
 
-    def create_child(self):
-        return ColumnCache({}, {}, {}, self.__metadata_columns, None, ref(self), [])
+    def create_child(self) -> ColumnCache:
+        return ColumnCache({}, {}, {}, self.__metadata_columns, {}, None, ref(self), [])
 
-    def make_schema(self, columns: Iterable[str]):
+    def make_schema(
+        self, columns_to_uuid: dict[str, UUID], meta_columns: list[str]
+    ) -> tuple:
         data = {}
         metadata = {}
-        columns = set(columns)
-        cached_data = self.get_data(columns)
-        if not cached_data:
-            return (
-                make_schema("data", FileEntry.EMPTY),
-                make_schema("metadata", FileEntry.EMPTY),
-            )
 
-        for name, coldata in cached_data.items():
+        cached = self.get_data({(uuid, name) for name, uuid in columns_to_uuid.items()})
+        for name, coldata in _flatten(cached).items():
             if isinstance(coldata, u.Quantity):
                 column_data = coldata.value
                 unit_str = str(coldata.unit)
             else:
                 column_data = coldata
                 unit_str = ""
-            attrs = {"unit": unit_str}
-            attrs["description"] = self.descriptions.get(name, "None")
+            attrs = {
+                "unit": unit_str,
+                "description": self.__descriptions.get(name, "None"),
+            }
             writer = ColumnWriter.from_numpy_array(column_data, attrs=attrs)
-            if name in self.metadata_columns:
-                metadata[name] = writer
+            data[name] = writer
+
+        for name, coldata in self.get_metadata(meta_columns).items():
+            if isinstance(coldata, u.Quantity):
+                column_data = coldata.value
+                unit_str = str(coldata.unit)
             else:
-                data[name] = writer
+                column_data = coldata
+                unit_str = ""
+            attrs = {
+                "unit": unit_str,
+                "description": self.__descriptions.get(name, "None"),
+            }
+            writer = ColumnWriter.from_numpy_array(column_data, attrs=attrs)
+            metadata[name] = writer
 
-        data_schema = make_schema("data", FileEntry.COLUMNS, columns=data)
-        if metadata:
-            metadata_schema = make_schema(
-                "metadata", FileEntry.COLUMNS, columns=metadata
+        if not data and not metadata:
+            return (
+                make_schema("data", FileEntry.EMPTY),
+                make_schema("metadata", FileEntry.EMPTY),
             )
-        else:
-            metadata_schema = make_schema("metadata", FileEntry.EMPTY)
 
+        data_schema = (
+            make_schema("data", FileEntry.COLUMNS, columns=data)
+            if data
+            else make_schema("data", FileEntry.EMPTY)
+        )
+        metadata_schema = (
+            make_schema("metadata", FileEntry.COLUMNS, columns=metadata)
+            if metadata
+            else make_schema("metadata", FileEntry.EMPTY)
+        )
         return data_schema, metadata_schema
 
-    def __push_down(self, data: dict[str, np.ndarray]):
-        columns_to_keep = self.registered_columns.intersection(data.keys()).difference(
+    def __push_down(self, data: dict[CacheKey, np.ndarray]):
+        pairs_to_keep = self.registered_pairs.intersection(data.keys()).difference(
             self.__cached_data.keys()
         )
-        cached_data = {colname: data[colname] for colname in columns_to_keep}
+        cached_data = {key: data[key] for key in pairs_to_keep}
         if self.__derived_index is not None:
             cached_data = {
-                colname: get_data(coldata, self.__derived_index)
-                for colname, coldata in cached_data.items()
+                key: get_data(cd, self.__derived_index)
+                for key, cd in cached_data.items()
             }
-
         self.__cached_data |= cached_data
 
-    def __push_up(self, data: dict[str, np.ndarray]):
+    def __push_up(self, data: dict[CacheKey, np.ndarray]):
         assert len(self) == 0 or all(len(d) == len(self) for d in data.values())
-        columns_to_keep = self.registered_columns.intersection(data.keys()).difference(
+        pairs_to_keep = self.registered_pairs.intersection(data.keys()).difference(
             self.__cached_data.keys()
         )
-        self.__cached_data |= {key: data[key] for key in columns_to_keep}
+        self.__cached_data |= {key: data[key] for key in pairs_to_keep}
 
-    def register_column_group(self, state_id: int, columns: Iterable[str]):
+    def register_column_group(self, state_id: int, columns: dict[str, UUID]):
         assert state_id not in self.__registered_column_groups
-        self.__registered_column_groups[state_id] = set(columns)
+        self.__registered_column_groups[state_id] = {
+            (uuid, name) for name, uuid in columns.items()
+        }
 
     def deregister_column_group(self, state_id: int):
         assert state_id in self.__registered_column_groups
-        columns = self.__registered_column_groups.pop(state_id)
-        remaining_columns = set().union(*list(self.__registered_column_groups.values()))
-
-        to_drop = columns.difference(remaining_columns)
+        pairs = self.__registered_column_groups.pop(state_id)
+        remaining = (
+            set().union(*self.__registered_column_groups.values())
+            if self.__registered_column_groups
+            else set()
+        )
+        to_drop = pairs.difference(remaining)
         cached_data = {
-            name: self.__cached_data.pop(name)
-            for name in to_drop
-            if name in self.__cached_data
+            key: self.__cached_data.pop(key)
+            for key in to_drop
+            if key in self.__cached_data
         }
         if not cached_data:
             return
@@ -222,58 +257,73 @@ class ColumnCache:
 
     def add_data(
         self,
-        data: dict[str, np.ndarray],
+        data: dict[UUID, dict[str, np.ndarray]],
         descriptions: dict[str, str] = {},
-        metadata_columns: Optional[set[str]] = None,
-        push_up=True,
+        push_up: bool = True,
     ):
-        """
-        The in-place equivalent of with_data. Should not be used outside the context of this
-        file.
+        """Add UUID-keyed column data to the cache."""
 
-        """
+        if not data:
+            return
         check_length(self, data)
-        if metadata_columns is not None:
-            assert metadata_columns.issubset(data.keys())
-            self.__metadata_columns = self.__metadata_columns.union(metadata_columns)
-
         self.__descriptions |= descriptions
+
+        flat: dict[CacheKey, np.ndarray] = {
+            (uuid, name): arr
+            for uuid, uuid_data in data.items()
+            for name, arr in uuid_data.items()
+        }
         if (
             push_up
             and self.__derived_index is None
             and self.__parent is not None
             and (p := self.__parent()) is not None
         ):
-            p.__push_up(data)
+            p.__push_up(flat)
 
-        self.__cached_data = self.__cached_data | data
+        self.__cached_data |= flat
 
-    def drop(self, columns: Iterable[str]):
-        columns = set(columns)
-        columns_to_drop = set(self.__cached_data.keys()).intersection(columns)
+    def add_metadata(
+        self,
+        data: dict[str, np.ndarray],
+        descriptions: dict[str, str] = {},
+    ):
+        """Add metadata columns (name-keyed, no producer UUID) to the cache."""
+        self.__metadata_columns = self.__metadata_columns.union(data.keys())
+        self.__descriptions |= descriptions
+        self.__metadata_data |= data
+
+    def drop(self, column_names: Iterable[str]) -> ColumnCache:
+        names_to_drop = set(column_names)
         data = {
-            name: data
-            for name, data in self.__cached_data.items()
-            if name not in columns_to_drop
+            key: val
+            for key, val in self.__cached_data.items()
+            if key[1] not in names_to_drop
         }
         descriptions = {
             name: desc
             for name, desc in self.__descriptions.items()
-            if name not in columns_to_drop
+            if name not in names_to_drop
         }
-        new_meta_columns = self.__metadata_columns.difference(columns)
+        new_meta_columns = self.__metadata_columns.difference(names_to_drop)
+        new_meta_data = {
+            name: val
+            for name, val in self.__metadata_data.items()
+            if name not in names_to_drop
+        }
+        return ColumnCache(
+            data, {}, descriptions, new_meta_columns, new_meta_data, None, None, []
+        )
 
-        return ColumnCache(data, {}, descriptions, new_meta_columns, None, None, [])
-
-    def request(self, column_names: Iterable[str], index: Optional[DataIndex]):
-        column_names = set(column_names)
-        columns_in_cache = column_names.intersection(self.__cached_data.keys())
-
-        data = {name: self.__cached_data[name] for name in columns_in_cache}
+    def request(
+        self, pairs: set[CacheKey], index: Optional[DataIndex]
+    ) -> dict[CacheKey, np.ndarray]:
+        pairs_in_cache = pairs.intersection(self.__cached_data.keys())
+        data = {key: self.__cached_data[key] for key in pairs_in_cache}
         if index is not None:
-            data = {name: get_data(cd, index) for name, cd in data.items()}
+            data = {key: get_data(cd, index) for key, cd in data.items()}
 
-        if self.__parent is None or column_names == columns_in_cache:
+        if self.__parent is None or pairs == pairs_in_cache:
             return data
 
         parent = self.__parent()
@@ -291,9 +341,9 @@ class ColumnCache:
                 assert self.__derived_index is not None and index is not None
                 new_index = take(self.__derived_index, index)
 
-        return data | parent.request(column_names, new_index)
+        return data | parent.request(pairs - pairs_in_cache, new_index)
 
-    def take(self, index: DataIndex):
+    def take(self, index: DataIndex) -> ColumnCache:
         if len(self) == 0 and not self.columns:
             return ColumnCache.empty()
         if get_range(index)[1] > len(self):
@@ -301,26 +351,55 @@ class ColumnCache:
                 "Tried to take more elements than the length of the cache!"
             )
         new_cache = ColumnCache(
-            {}, {}, {}, self.__metadata_columns, index, ref(self), []
+            {}, {}, {}, self.__metadata_columns, {}, index, ref(self), []
         )
         self.__children.append(ref(new_cache))
         return new_cache
 
-    def get_data(self, columns: Iterable[str]):
-        columns = set(columns)
-        columns_in_cache = columns.intersection(self.__cached_data.keys())
-        missing_columns = columns - columns_in_cache
-        output = {c: self.__cached_data[c] for c in columns_in_cache}
-        output |= self.__get_derived_columns(missing_columns)
-        return output
+    def get_data(self, pairs: set[CacheKey]) -> dict[UUID, dict[str, np.ndarray]]:
+        """
+        Retrieve data for the requested (uuid, name) pairs. Returns a
+        UUID-keyed dict so callers can look up each producer's contribution.
+        """
+        pairs_in_cache = pairs.intersection(self.__cached_data.keys())
+        missing_pairs = pairs - pairs_in_cache
+        flat = {key: self.__cached_data[key] for key in pairs_in_cache}
+        flat |= self.__get_derived_pairs(missing_pairs)
+        return _unflatten(flat)
 
-    def __get_derived_columns(self, column_names: set[str]):
+    def get_metadata(self, column_names: Iterable[str]) -> dict[str, np.ndarray]:
+        """Retrieve name-keyed metadata columns."""
+        names = set(column_names)
+        result = {
+            name: self.__metadata_data[name]
+            for name in names
+            if name in self.__metadata_data
+        }
+        if self.__parent is not None and (p := self.__parent()) is not None:
+            missing = names - set(result.keys())
+            if missing:
+                result |= p.get_metadata(missing)
+        return result
+
+    def __get_derived_pairs(self, pairs: set[CacheKey]) -> dict[CacheKey, np.ndarray]:
         if self.__parent is None:
             return {}
         parent = self.__parent()
         if parent is None:
             return {}
-        result = parent.request(column_names, self.__derived_index)
-
-        self.__cached_data = self.__cached_data | result
+        result = parent.request(pairs, self.__derived_index)
+        self.__cached_data |= result
         return result
+
+
+def _flatten(uuid_data: dict[UUID, dict[str, np.ndarray]]) -> dict[str, np.ndarray]:
+    """Collapse UUID-keyed data to a flat name-keyed dict. Last writer wins."""
+    return {name: arr for d in uuid_data.values() for name, arr in d.items()}
+
+
+def _unflatten(flat: dict[CacheKey, np.ndarray]) -> dict[UUID, dict[str, np.ndarray]]:
+    """Group (uuid, name) → array back into {uuid: {name: array}}."""
+    result: dict[UUID, dict[str, np.ndarray]] = {}
+    for (uuid, name), arr in flat.items():
+        result.setdefault(uuid, {})[name] = arr
+    return result

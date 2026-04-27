@@ -26,10 +26,10 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
+    from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
 
 
@@ -306,7 +306,7 @@ class HealpixMap(dict):
 
         Returns
         -------
-        parameters: opencosmo.parameters.hacc.HaccSimulationParameters
+        parameters: opencosmo.dtypes.hacc.HaccSimulationParameters
         """
         return self.__header.simulation
 

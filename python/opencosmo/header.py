@@ -10,17 +10,17 @@ import h5py
 import numpy as np
 from pydantic import BaseModel, ValidationError
 
-from opencosmo.file import broadcast_read, file_reader, file_writer
-from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
-from opencosmo.parameters import (
+from opencosmo.dtypes import (
     FileParameters,
     dtype,
     origin,
     read_header_attributes,
     write_header_attributes,
 )
-from opencosmo.parameters.units import apply_units
+from opencosmo.dtypes.units import apply_units
+from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:

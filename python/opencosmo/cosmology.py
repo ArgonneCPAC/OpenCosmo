@@ -11,7 +11,7 @@ from opencosmo.file import broadcast_read, file_reader
 if TYPE_CHECKING:
     import h5py
 
-    from opencosmo.parameters import CosmologyParameters
+    from opencosmo.dtypes import CosmologyParameters
 
 """
 Reads cosmology from the header of the file and returns the

@@ -2,14 +2,16 @@ import os
 import shutil
 
 import astropy.units as u
+import h5py
 import numpy as np
-import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
 from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
+
+import opencosmo as oc
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -528,3 +530,48 @@ def test_lightcone_stacking(
     assert np.all(np.isin(all_fof_tags, all_fof_tags_new))
     assert ds_new.z_range == ds.z_range
     assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range
+
+
+def _get_expected_core_tags(path):
+    with h5py.File(path) as f:
+        raw_top_host = f["cores"]["data"]["top_host_idx"][:]
+        core_tag = f["cores"]["data"]["core_tag"][:]
+    top_host_core_tag = core_tag[raw_top_host]
+    return dict(zip(core_tag, top_host_core_tag))
+
+
+def _assert_top_host_idx_correct(data, core_map):
+    """
+    Verify top_host_idx is correctly remapped in `data` (a numpy dict with
+    "top_host_idx" and "core_tag" keys). Works for both local (per-rank) and
+    global (gathered) data.
+
+    Synthetic cores (core_tag == -1) are checked separately: each must point
+    to its own row index. Real cores are checked against core_map.
+    """
+    synth_mask = data["core_tag"] == -1
+    synth_indices = np.where(synth_mask)[0]
+    assert np.all(data["top_host_idx"][synth_mask] == synth_indices)
+
+    # Restrict to real cores for the map check, but dereference top_host_idx
+    # against the full data so that indices into synthetic rows resolve correctly.
+    real_mask = ~synth_mask
+    real_top_host_idx = data["top_host_idx"][real_mask]
+    real_core_tag = data["core_tag"][real_mask]
+
+    has_top_host = real_top_host_idx >= 0
+    found_top_host_core_tag = data["core_tag"][real_top_host_idx[has_top_host]]
+    found_core_map = dict(zip(real_core_tag[has_top_host], found_top_host_core_tag))
+
+    filtered_core_map = {
+        key: val for key, val in core_map.items() if key in found_core_map
+    }
+    assert filtered_core_map == found_core_map
+
+    should_have_core_map = {
+        key: val
+        for key, val in core_map.items()
+        if val in data["core_tag"] and key in real_core_tag
+    }
+    print(len(should_have_core_map))
+    assert should_have_core_map == found_core_map

@@ -69,11 +69,12 @@ def visit_dataset(
 ) -> dict[str, np.ndarray]:
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
-    data = dataset.select(column.requires).get_data(format=column.format)
+    requires_names = column.requires_names
+    data = dataset.select(requires_names).get_data(format=column.format)
     try:
         data = dict(data)
     except (TypeError, ValueError):
-        data = {column.requires.pop(): data}
+        data = {next(iter(requires_names)): data}
     output = column.evaluate(data, dataset.index)
     if not isinstance(output, dict):
         assert len(column.produces) == 1
@@ -88,16 +89,17 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
 
     output = defaultdict(list)
 
+    requires_names = column.requires_names
     for start, end in np.lib.stride_tricks.sliding_window_view(ranges, 2):
         batch_data = (
-            dataset.select(column.requires)
+            dataset.select(requires_names)
             .take_range(start, end)
             .get_data(format=column.format, unpack=False)
         )
         try:
             batch_data = dict(batch_data)
         except TypeError:
-            batch_data = {column.requires.pop(): batch_data}
+            batch_data = {next(iter(requires_names)): batch_data}
         batch_output = column.evaluate(batch_data, None)
         if batch_output is not None and not isinstance(batch_output, dict):
             batch_output = {column.produces.pop(): batch_output}

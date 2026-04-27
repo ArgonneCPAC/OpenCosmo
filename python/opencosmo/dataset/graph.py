@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from functools import reduce
-from itertools import product
 from typing import TYPE_CHECKING
 
 import rustworkx as rx
@@ -9,6 +8,8 @@ import rustworkx as rx
 from opencosmo.column.column import RawColumn
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     import astropy.units as u
 
     from opencosmo.column.column import ConstructedColumn
@@ -21,106 +22,59 @@ def validate_column_producers(
     """
     Validate the network of column producers.
     """
-    raw_columns = set(col.name for col in producers if isinstance(col, RawColumn))
-
     dependency_graph = build_dependency_graph(producers)
+
     if cycle := rx.digraph_find_cycle(dependency_graph):
         all_nodes: set[int] = reduce(
             lambda known, edge: known.union(edge), cycle, set()
         )
-        names = [dependency_graph[i] for i in all_nodes]
+        names = [dependency_graph[i].produces for i in all_nodes]
         raise ValueError(f"Found columns that depend on each other! Columns: {names}")
 
-    sources = set(
-        filter(
-            lambda i: not dependency_graph.in_degree(i),
-            range(dependency_graph.num_nodes()),
-        )
-    )
-    source_names = set(map(lambda i: dependency_graph[i], sources))
-    if missing := set(source_names).difference(raw_columns):
-        raise ValueError(f"Tried to derive columns from unknown columns: {missing}")
-
-    return get_derived_units(dependency_graph, producers, unit_handler.base_units)
-
-
-def build_dependency_graph(producers: list[ConstructedColumn]):
-    dependency_graph = rx.PyDiGraph()
-    all_requires: set[str] = reduce(
-        lambda known, dc: known.union(dc.requires if dc.requires is not None else []),
-        producers,
-        set(),
-    )
-    nodeidx = dependency_graph.add_nodes_from(all_requires)
-    nodemap = {name: idx for (name, idx) in zip(all_requires, nodeidx)}
-
-    for column_producer in producers:
-        requires = column_producer.requires
-        produces = column_producer.produces
-        assert produces is not None
-        to_add = list(filter(lambda p: p not in nodemap, produces))
-        new_map = dependency_graph.add_nodes_from(to_add)
-        nodemap.update({name: idx for (name, idx) in zip(to_add, new_map)})
-        if not requires:
+    for i in range(dependency_graph.num_nodes()):
+        if dependency_graph.in_degree(i):
             continue
-
-        requires_idx = tuple(nodemap[r] for r in requires)
-        produces_idx = tuple(nodemap[r] for r in produces)
-
-        dependency_graph.add_edges_from_no_data(product(requires_idx, produces_idx))
-
-    return dependency_graph
-
-
-def contract_derived_columns(
-    graph: rx.PyDiGraph,
-    column_names: set[str],
-    column_producers: list[ConstructedColumn],
-):
-    """
-    Some derived columns actually produce multiple outputs. At this stage, the dependency
-    graph is working solely with actual column names, meaning if any of those columns is
-    produced by one of these "multi-produces" they will not be in the derived_columns
-    dictionary and therefore cannot be instantiated. This function replaces such
-    columns with the name of the derived_column that produces them.
-    """
-    node_map = {name: i for i, name in enumerate(graph.nodes())}
-    nodes_to_keep: set[int] = set()
-    for producer in column_producers:
-        if producer.produces.intersection(column_names):
-            produces_idx = {node_map[name] for name in producer.produces}
-            nodes_to_keep = reduce(
-                lambda acc, node: acc.union(rx.ancestors(graph, node)),
-                produces_idx,
-                nodes_to_keep,
+        node = dependency_graph[i]
+        if not isinstance(node, RawColumn):
+            raise ValueError(
+                f"Tried to derive columns from unknown columns: {node.produces}"
             )
-            nodes_to_keep.update(produces_idx)
-    subgraph = graph.subgraph(list(nodes_to_keep))
-    node_map = {name: i for i, name in enumerate(subgraph.nodes())}
 
-    for producer in column_producers:
-        if isinstance(producer, RawColumn):
-            continue
-        produces = producer.produces
-        produces_index = [node_map[name] for name in produces if name in node_map]
-        if produces_index:
-            subgraph.contract_nodes(produces_index, producer)
-    return subgraph
+    return get_derived_units(dependency_graph, unit_handler.base_units)
+
+
+def build_dependency_graph(
+    producers: list[ConstructedColumn],
+) -> rx.PyDiGraph:
+    graph = rx.PyDiGraph()
+    uuid_to_node: dict[UUID, int] = {}
+
+    for producer in producers:
+        node_idx = graph.add_node(producer)
+        uuid_to_node[producer.uuid] = node_idx
+
+    for producer in producers:
+        produces_idx = uuid_to_node[producer.uuid]
+        if not producer.requires.issubset(uuid_to_node.keys()):
+            raise ValueError(
+                f"Producer {producer.produces} depends on an unknown producer UUID."
+            )
+        new_edges = (
+            (uuid_to_node[dep_uuid], produces_idx) for dep_uuid in producer.requires
+        )
+        graph.add_edges_from_no_data(new_edges)
+
+    return graph
 
 
 def get_derived_units(
     dependency_graph: rx.PyDiGraph,
-    producers: list[ConstructedColumn],
     units: dict[str, u.Unit],
 ):
-    dependency_graph = contract_derived_columns(
-        dependency_graph, set(dependency_graph.nodes()), producers
-    )
-
     new_units: dict[str, u.Unit | None] = {}
-    for node in rx.topological_sort(dependency_graph):
-        node = dependency_graph[node]
-        if isinstance(node, str):
+    for node_idx in rx.topological_sort(dependency_graph):
+        node = dependency_graph[node_idx]
+        if isinstance(node, RawColumn):
             continue
         column_units = node.get_units(units | new_units)
         if not isinstance(column_units, dict):

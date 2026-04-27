@@ -14,10 +14,10 @@ if TYPE_CHECKING:
 
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
 
@@ -154,7 +154,7 @@ class SimulationCollection(dict):
 
         Returns
         --------
-        simulation_parameters: dict[str, opencosmo.parameters.HaccSimulationParameters]
+        simulation_parameters: dict[str, opencosmo.dtypes.HaccSimulationParameters]
         """
 
         return self.__map_attribute("simulation")
@@ -301,6 +301,7 @@ class SimulationCollection(dict):
         *args,
         datasets: Optional[str | Iterable[str]] = None,
         descriptions: str | dict[str, str] = {},
+        allow_overwrite: bool = False,
         **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
@@ -324,6 +325,9 @@ class SimulationCollection(dict):
             :py:attr:`SimulationCollection(datasets).descriptions <opencosmo.SimulationCollection.descriptions>`.
             If a dictionary, should have keys matching the column names.
 
+        allow_overwrite: bool, default = False
+
+
         ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
             The new columns
         """
@@ -336,7 +340,10 @@ class SimulationCollection(dict):
             output = {name: ds for name, ds in self.items()}
             for ds_name in datasets:
                 output[ds_name] = output[ds_name].with_new_columns(
-                    *args, descriptions=descriptions, **new_columns
+                    *args,
+                    descriptions=descriptions,
+                    allow_overwrite=allow_overwrite,
+                    **new_columns,
                 )
             return SimulationCollection(output)
 
@@ -345,6 +352,7 @@ class SimulationCollection(dict):
             *args,
             descriptions=descriptions,
             datasets=datasets,
+            allow_overwrite=allow_overwrite,
             **new_columns,
         )
 
@@ -355,6 +363,7 @@ class SimulationCollection(dict):
         format: str = "astropy",
         vectorize: bool = False,
         insert: bool = False,
+        allow_overwrite: bool = False,
         **evaluate_kwargs,
     ):
         """
@@ -403,6 +412,7 @@ class SimulationCollection(dict):
             vectorize=vectorize,
             insert=insert,
             format=format,
+            allow_overwrite=allow_overwrite,
             construct=insert,
             **evaluate_kwargs,
         )

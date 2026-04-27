@@ -6,6 +6,7 @@ pub(crate) mod index {
     use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
     use pyo3::exceptions::{PyTypeError, PyValueError};
     use pyo3::prelude::*;
+    use std::collections::HashMap;
     use std::iter::zip;
 
     fn unpack_index_array<'py>(index: &Bound<'py, PyAny>) -> PyResult<PyReadonlyArray1<'py, i64>> {
@@ -277,6 +278,40 @@ pub(crate) mod index {
             }
         }
 
-        Ok((Array1::from_vec(output_start), Array1::from_vec(output_size)))
+        Ok((
+            Array1::from_vec(output_start),
+            Array1::from_vec(output_size),
+        ))
+    }
+    #[pyfunction(name = "reindex_column")]
+    fn reindex_columns_py<'py>(
+        py: Python<'py>,
+        index: &Bound<'_, PyAny>,
+        index_column: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyArray1<i64>>> {
+        let index_arr = unpack_index_array(index)?;
+        let index_column_arr = unpack_index_array(index_column)?;
+        Ok(reindex_column(index_arr.as_array(), index_column_arr.as_array()).into_pyarray(py))
+    }
+
+    fn reindex_column(
+        index: ArrayView1<'_, i64>,
+        index_column: ArrayView1<'_, i64>,
+    ) -> Array1<i64> {
+        let mut index_map: HashMap<i64, i64> = HashMap::new();
+        for (i, &index_entry) in index.iter().enumerate() {
+            index_map.insert(index_entry, i as i64);
+        }
+
+        let mut output: Vec<i64> = Vec::with_capacity(index_column.len());
+        for val in index_column.iter() {
+            let val_index_opt = index_map.get(val);
+            if let Some(&val_index) = val_index_opt {
+                output.push(val_index)
+            } else {
+                output.push(-1)
+            }
+        }
+        Array1::from_vec(output)
     }
 }

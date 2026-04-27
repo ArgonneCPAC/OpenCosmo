@@ -21,11 +21,11 @@ if TYPE_CHECKING:
     import astropy.units as u
 
     from opencosmo.column.column import ConstructedColumn
+    from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
-    from opencosmo.parameters import HaccSimulationParameters
     from opencosmo.spatial.protocols import Region
 
 
@@ -193,7 +193,7 @@ class StructureCollection:
 
         Returns
         -------
-        parameters: opencosmo.parameters.HaccSimulationParameters
+        parameters: opencosmo.dtypes.HaccSimulationParameters
         """
         return self.__header.simulation
 
@@ -290,6 +290,7 @@ class StructureCollection:
         dataset: Optional[str] = None,
         format: str = "astropy",
         insert: bool = True,
+        allow_overwrite: bool = False,
         **evaluate_kwargs: Any,
     ):
         """
@@ -383,7 +384,12 @@ class StructureCollection:
         # If the user sets insert=False, everything is eager.
         if dataset is not None and dataset == self.__source.dtype:
             return self.evaluate_on_dataset(
-                func, dataset=dataset, format=format, insert=insert, **evaluate_kwargs
+                func,
+                dataset=dataset,
+                format=format,
+                insert=insert,
+                allow_overwrite=allow_overwrite,
+                **evaluate_kwargs,
             )
 
         if format not in ["astropy", "numpy"]:
@@ -397,7 +403,12 @@ class StructureCollection:
                 sub_dataset = dataset_path[1]
 
             result = self[dataset_path[0]].evaluate(
-                func, sub_dataset, format, insert, **evaluate_kwargs
+                func,
+                sub_dataset,
+                format,
+                insert,
+                allow_overwrite=allow_overwrite,
+                **evaluate_kwargs,
             )
             if not insert:
                 return result
@@ -427,6 +438,7 @@ class StructureCollection:
                 func,
                 insert=insert,
                 format=format,
+                allow_overwrite=allow_overwrite,
                 strategy="chunked",
                 **evaluate_kwargs,
             )
@@ -463,6 +475,7 @@ class StructureCollection:
             return self.with_new_columns(
                 **output,
                 dataset=dataset if dataset is not None else self.__source.dtype,
+                allow_overwrite=allow_overwrite,
             )
 
     def evaluate_on_dataset(
@@ -473,6 +486,7 @@ class StructureCollection:
         format: str = "astropy",
         insert: bool = True,
         batch_size: int = -1,
+        allow_overwrite: bool = False,
         **evaluate_kwargs: Any,
     ):
         """
@@ -530,7 +544,12 @@ class StructureCollection:
         ds: oc.Dataset | StructureCollection
         if dataset is None or dataset == self.__source.dtype:
             result = self.__source.evaluate(
-                func, vectorize, insert, format, **evaluate_kwargs
+                func,
+                vectorize,
+                insert,
+                format,
+                allow_overwrite=allow_overwrite,
+                **evaluate_kwargs,
             )
             if not insert:
                 return result
@@ -554,7 +573,14 @@ class StructureCollection:
             )
 
         if len(ds_path) == 1 and isinstance(ds, oc.Dataset):
-            result = ds.evaluate(func, vectorize, insert, format, **evaluate_kwargs)
+            result = ds.evaluate(
+                func,
+                vectorize,
+                insert,
+                format,
+                allow_overwrite=allow_overwrite,
+                **evaluate_kwargs,
+            )
             if not insert:
                 return result
             assert isinstance(result, oc.Dataset)
@@ -570,11 +596,18 @@ class StructureCollection:
                 self.__derived_columns.union(new_derived_columns_),
             )
         elif len(ds_path) == 1 and isinstance(ds, oc.StructureCollection):
-            result = ds.evaluate(func, None, format, insert)
+            result = ds.evaluate(
+                func, None, format, insert, allow_overwrite=allow_overwrite
+            )
 
         elif len(ds_path) > 1 and isinstance(ds, oc.StructureCollection):
             result = ds.evaluate_on_dataset(
-                func, ".".join(dataset[1:]), vectorize, format, insert
+                func,
+                ".".join(ds_path[1:]),
+                vectorize,
+                format,
+                insert,
+                allow_overwrite=allow_overwrite,
             )
 
         if not insert:
@@ -1054,6 +1087,7 @@ class StructureCollection:
         self,
         dataset: str,
         descriptions: str | dict[str, str] = {},
+        allow_overwrite: bool = False,
         **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
@@ -1122,7 +1156,10 @@ class StructureCollection:
             if not isinstance(new_collection, StructureCollection):
                 raise ValueError(f"{collection_name} is not a collection!")
             new_collection = new_collection.with_new_columns(
-                ".".join(path[1:]), descriptions=descriptions, **new_columns
+                ".".join(path[1:]),
+                descriptions=descriptions,
+                allow_overwrite=allow_overwrite,
+                **new_columns,
             )
             return StructureCollection(
                 self.__source,
@@ -1134,7 +1171,9 @@ class StructureCollection:
 
         if dataset == self.__source.dtype:
             new_source = self.__source.with_new_columns(
-                **new_columns, descriptions=descriptions
+                **new_columns,
+                descriptions=descriptions,
+                allow_overwrite=allow_overwrite,
             )
             return StructureCollection(
                 new_source,
@@ -1156,7 +1195,9 @@ class StructureCollection:
         if not isinstance(ds, oc.Dataset):
             raise ValueError(f"{dataset} is not a dataset!")
 
-        new_ds = ds.with_new_columns(**new_columns, descriptions=descriptions)
+        new_ds = ds.with_new_columns(
+            **new_columns, descriptions=descriptions, allow_overwrite=allow_overwrite
+        )
         new_derived_columns = (
             set(new_ds.columns).difference(ds.columns).difference(new_im_cols)
         )

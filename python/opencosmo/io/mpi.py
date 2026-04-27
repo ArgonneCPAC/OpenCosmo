@@ -297,6 +297,7 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
         child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
         new_child_schema = __replace_writers_with_updates(child_schema, comm)
         schema.children[cn] = new_child_schema
+
     return schema
 
 

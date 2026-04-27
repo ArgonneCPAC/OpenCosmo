@@ -26,10 +26,12 @@ from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.io.iopen import open_single_dataset
+from opencosmo.dtypes.dtype import get_dtype_lightcone_plugins
+from opencosmo.io import iopen
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world, get_mpi
+from opencosmo.plugins import plugin
 
 if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
@@ -38,10 +40,10 @@ if TYPE_CHECKING:
     from astropy.table import Table
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.parameters.hacc import HaccSimulationParameters
     from opencosmo.spatial import Region
 
 
@@ -270,6 +272,7 @@ class Lightcone(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
+        self.__plugins = get_dtype_lightcone_plugins(self.__header, self.columns)
 
     def __repr__(self):
         """
@@ -284,7 +287,7 @@ class Lightcone(dict):
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
 
-        table_repr = repr_ds.data.__repr__()
+        table_repr = repr_ds.get_data().__repr__()
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
         z_range = self.z_range
@@ -420,7 +423,7 @@ class Lightcone(dict):
 
         Returns
         -------
-        parameters: opencosmo.parameters.hacc.HaccSimulationParameters
+        parameters: opencosmo.dtypes.hacc.HaccSimulationParameters
         """
         return self.__header.simulation
 
@@ -470,8 +473,8 @@ class Lightcone(dict):
             )
             format = kwargs["output"]
         verify_format(format)
-
-        data = [ds.get_data(unpack=unpack) for ds in self.values()]
+        lightcone = plugin.apply_plugins(plugin.PluginType.LightconeInstantiate, self)
+        data = [ds.get_data(unpack=unpack) for ds in lightcone.values()]
         data_with_length = [d for d in data if len(d) > 0]
         if len(data_with_length) == 0:
             return data[0]
@@ -516,7 +519,7 @@ class Lightcone(dict):
         for i, ds_target in enumerate(dataset_targets):
             group_name = ds_target["dataset_group"].name.split("/")[-1]
             group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
-            ds = open_single_dataset(ds_target, bypass_lightcone=True)
+            ds = iopen.open_single_dataset(ds_target, bypass_lightcone=True)
             step = ds_target["header"].file.step
             if step is None:
                 step = i
@@ -744,6 +747,7 @@ class Lightcone(dict):
         insert=True,
         format: str = "astropy",
         batch_size: int = -1,
+        allow_overwrite: bool = False,
         **evaluate_kwargs,
     ):
         """
@@ -832,6 +836,7 @@ class Lightcone(dict):
                 "with_new_columns",
                 mapped_arguments=mapped_evaluated_columns,
                 construct=True,
+                allow_overwrite=allow_overwrite,
             )
 
         result = self.__map(
@@ -842,6 +847,7 @@ class Lightcone(dict):
             insert=insert,
             mapped_arguments=mapped_kwargs,
             batch_size=batch_size,
+            allow_overwrite=allow_overwrite,
             construct=insert,
             **evaluate_kwargs,
         )
@@ -1162,6 +1168,7 @@ class Lightcone(dict):
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
+        allow_overwrite: bool = False,
         **columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
@@ -1216,7 +1223,9 @@ class Lightcone(dict):
         for i, (ds_name, ds) in enumerate(self.items()):
             raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
             columns_input = raw_columns | derived
-            new_dataset = ds.with_new_columns(descriptions, **columns_input)
+            new_dataset = ds.with_new_columns(
+                descriptions, allow_overwrite=allow_overwrite, **columns_input
+            )
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__ordered_by)
 
