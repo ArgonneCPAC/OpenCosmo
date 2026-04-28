@@ -273,10 +273,10 @@ def test_healpix_collection_take(healpix_map_path):
     ds_start = ds.take(n_to_take, "start")
     ds_end = ds.take(n_to_take, "end")
     ds_random = ds.take(n_to_take, "random")
-    tags = ds.select("tsz").get_data()["tsz"].valid_pixels
-    tags_start = ds_start.select("tsz").get_data()["tsz"].valid_pixels
-    tags_end = ds_end.select("tsz").get_data()["tsz"].valid_pixels
-    tags_random = ds_random.select("tsz").get_data()["tsz"].valid_pixels
+    tags = ds.select("tsz").get_data().valid_pixels
+    tags_start = ds_start.select("tsz").get_data().valid_pixels
+    tags_end = ds_end.select("tsz").get_data().valid_pixels
+    tags_random = ds_random.select("tsz").get_data().valid_pixels
     assert np.all(tags[:n_to_take] == tags_start)
     assert np.all(tags[-n_to_take:] == tags_end)
     assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
@@ -288,8 +288,8 @@ def test_healpix_collection_range(healpix_map_path):
     end = int(0.75 * len(ds))
 
     ds_range = ds.take_range(start, end)
-    halo_tags = ds.select("tsz").get_data("healsparse")["tsz"].valid_pixels[start:end]
-    range_halo_tags = ds_range.select("tsz").get_data("healsparse")["tsz"].valid_pixels
+    halo_tags = ds.select("tsz").get_data("healsparse").valid_pixels[start:end]
+    range_halo_tags = ds_range.select("tsz").get_data("healsparse").valid_pixels
     assert np.all(halo_tags == range_halo_tags)
 
 
@@ -337,8 +337,14 @@ def test_healpix_collection_derive(healpix_map_path):
     ds = oc.open(healpix_map_path)
     sz_sqrd = oc.col("tsz") ** 2 + oc.col("ksz") ** 2
     ds = ds.with_new_columns(weird_sz=sz_sqrd)
-    weird = ds.select("weird_sz").get_data()
-    assert isinstance(weird, dict)
+    data = ds.get_data()
+    assert isinstance(data, dict)
+    assert np.all(data["weird_sz"].valid_pixels == data["tsz"].valid_pixels)
+
+    tsz = data["tsz"][data["tsz"].valid_pixels]
+    ksz = data["ksz"][data["ksz"].valid_pixels]
+    weird_sz = data["weird_sz"][data["weird_sz"].valid_pixels]
+    assert np.all(weird_sz == tsz**2 + ksz**2)
 
 
 def test_healpix_collection_add(healpix_map_path):
@@ -346,7 +352,7 @@ def test_healpix_collection_add(healpix_map_path):
     map_data = ds.get_data("healsparse")["tsz"].valid_pixels
     data = np.zeros(len(map_data))
     ds = ds.with_new_columns(random=data)
-    stored_data = ds.select("random").get_data("healpix")["random"]
+    stored_data = ds.select("random").get_data("healpix")
     assert np.all(stored_data == data)
 
 
@@ -355,9 +361,7 @@ def test_healpix_collection_add_sparse(healpix_map_path):
     map_data = ds.get_data("healsparse")["tsz"].valid_pixels
     data = np.zeros(len(map_data))
     ds = ds.with_new_columns(random=data)
-    stored_data = (
-        ds.select("random").get_data("healsparse")["random"].get_values_pix(map_data)
-    )
+    stored_data = ds.select("random").get_data("healsparse").get_values_pix(map_data)
     assert np.all(stored_data == data)
 
 
@@ -379,9 +383,9 @@ def test_healpix_collection_evaluate(healpix_map_path):
     ds_vec = ds.evaluate(offset, vectorize=True, insert=True)
     ds_iter = ds.evaluate(offset, insert=True)
 
-    offset_vec = ds_vec.select("offset").get_data("healsparse")["offset"]
+    offset_vec = ds_vec.select("offset").get_data("healsparse")
     offset_vec = offset_vec.get_values_pix(offset_vec.valid_pixels)
-    offset_iter = ds_iter.select("offset").get_data("healsparse")["offset"]
+    offset_iter = ds_iter.select("offset").get_data("healsparse")
     offset_iter = offset_iter.get_values_pix(offset_iter.valid_pixels)
     assert np.all(offset_vec == offset_iter)
 
