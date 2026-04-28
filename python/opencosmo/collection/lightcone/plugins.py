@@ -33,7 +33,7 @@ def with_redshift_column(dataset: Lightcone, *args, **kwargs):
 
 register_plugin(
     PluginSpec(
-        PluginType.LightconeLoad,
+        PluginType.LightconeOpen,
         lambda *args, **kwargs: True,
         with_redshift_column,
     )

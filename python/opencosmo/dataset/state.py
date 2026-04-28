@@ -456,13 +456,7 @@ class DatasetState:
         else:
             take_index = np.sort(sorted[row_indices])
 
-        new_handler = self.__raw_data_handler.take(take_index)
-        new_cache = self.__cache.take(take_index)
-
-        return self.__rebuild(
-            raw_data_handler=new_handler,
-            cache=new_cache,
-        )
+        return self.take_rows(take_index)
 
     def take_range(self, start: int, end: int):
         """

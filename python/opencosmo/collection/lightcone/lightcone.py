@@ -353,7 +353,7 @@ class Lightcone(dict):
             raise ValueError()
 
         result = cls(output)
-        result = plugin.apply_plugins(plugin.PluginType.LightconeLoad, result, **kwargs)
+        result = plugin.apply_plugins(plugin.PluginType.LightconeOpen, result, **kwargs)
 
         return make_radec_columns(result)
 
@@ -366,7 +366,7 @@ class Lightcone(dict):
     ):
         result = cls(datasets, z_range)
         result = plugin.apply_plugins(
-            plugin.PluginType.LightconeLoad, result, **open_kwargs
+            plugin.PluginType.LightconeOpen, result, **open_kwargs
         )
         return make_radec_columns(result)
 

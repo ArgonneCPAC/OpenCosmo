@@ -167,7 +167,7 @@ register_plugin(
 
 register_plugin(
     PluginSpec(
-        PluginType.LightconeLoad,
+        PluginType.LightconeOpen,
         register_keep_top_host_idx_verifier,
         register_keep_top_host_idx,
     )

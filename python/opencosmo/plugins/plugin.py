@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class PluginType(StrEnum):
     DatasetOpen = "dataset_open"
     DatasetInstantiate = "dataset_instantiate"
-    LightconeLoad = "lightcone_load"
+    LightconeOpen = "lightcone_open"
     LightconeInstantiate = "lightcone_instantiate"
     IndexUpdate = "index_update"
 
