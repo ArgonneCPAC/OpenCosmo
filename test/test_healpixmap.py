@@ -4,6 +4,7 @@ import healsparse as hsp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+from healsparse import HealSparseMap
 from opencosmo.spatial.healpix import HealpixRegion
 
 import opencosmo as oc
@@ -67,7 +68,7 @@ def test_healpix_downgrade(healpix_map_path):
     original_data = ds.get_data("healpix")
     downgraded_data = downgraded_ds.get_data("healpix")
 
-    downgraded_data_2 = original_data["tsz"].reshape((-1, 4)).sum(axis=1) / 4
+    downgraded_data_2 = original_data.reshape((-1, 4)).sum(axis=1) / 4
 
     center = (0 * u.deg, 0 * u.deg)
     radius = 1 * u.deg
@@ -81,23 +82,21 @@ def test_healpix_downgrade(healpix_map_path):
         hp.query_disc(downgraded_nside, [1, 0, 0], 1 * (np.pi / 180.0))
     )
 
-    assert len(original_data["tsz"]) == original_npix
-    assert len(downgraded_data["tsz"]) == downgraded_npix
+    assert len(original_data) == original_npix
+    assert len(downgraded_data) == downgraded_npix
 
-    assert len(data_region_original["tsz"].valid_pixels) == npix_region
-    assert len(data_region_downgraded["tsz"].valid_pixels) == npix_region_downgraded
+    assert len(data_region_original.valid_pixels) == npix_region
+    assert len(data_region_downgraded.valid_pixels) == npix_region_downgraded
 
     assert np.all(
         np.isclose(
             downgraded_data_2,
-            downgraded_data["tsz"],
+            downgraded_data,
             atol=1.0e-13,
         )
     )
 
-    assert np.isclose(
-        np.mean(original_data["tsz"]), np.mean(downgraded_data["tsz"]), atol=1.0e-13
-    )
+    assert np.isclose(np.mean(original_data), np.mean(downgraded_data), atol=1.0e-13)
 
 
 def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
@@ -229,7 +228,7 @@ def test_healpix_write_after_downgrade(healpix_map_path, tmp_path):
 
     assert np.all(original_data["ksz"] == written_data["ksz"])
     assert np.all(original_data["tsz"] == written_data["tsz"])
-    assert np.all(original_data["pixel"] == written_data["pixel"])
+    assert np.all(ds.pixels == new_ds.pixels)
 
 
 def test_healpix_write_after_take_range(healpix_map_path, tmp_path):
@@ -264,9 +263,8 @@ def test_healpix_collection_drop(healpix_map_path):
     to_drop = set(["tsz"])
 
     ds = ds.drop(to_drop)
-    columns_found = set(ds.get_data().keys())
 
-    assert not columns_found.intersection(to_drop)
+    assert isinstance(ds.get_data(), HealSparseMap)
 
 
 def test_healpix_collection_take(healpix_map_path):

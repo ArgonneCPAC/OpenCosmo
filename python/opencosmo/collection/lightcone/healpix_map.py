@@ -60,6 +60,8 @@ def make_healsparse_maps(
                 nside_sparse=nside,
                 sentinel=sentinel,
             )
+    if len(result) == 1:
+        return next(iter(result.values()))
     return result
 
 
@@ -397,7 +399,6 @@ class HealpixMap(dict):
                 storage = {
                     name: np.ma.masked_array(arr, mask) for name, arr in storage.items()
                 }
-            storage["pixel"] = self.pixels
             if len(storage) == 1:
                 return next(iter(storage.values()))
             return storage
