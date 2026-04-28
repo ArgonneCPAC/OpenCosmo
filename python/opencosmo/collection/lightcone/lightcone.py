@@ -295,7 +295,9 @@ class Lightcone(dict):
         table = vstack(data_with_length, join_type="exact")
 
         if self.__ordered_by is not None:
-            table.sort(self.__ordered_by[0], reverse=self.__ordered_by[1])
+            order = table.argsort(self.__ordered_by[0], reverse=self.__ordered_by[1])
+            table = table[order]
+            table = plugin.apply_post_sort_plugins(self, table, np.argsort(order))
 
         to_remove = self.__hidden.intersection(table.colnames)
         table.remove_columns(to_remove)

@@ -13,10 +13,13 @@ from opencosmo.plugins.plugin import (
     IndexPluginSpec,
     PluginSpec,
     PluginType,
+    PostSortPluginSpec,
     register_plugin,
 )
 
 if TYPE_CHECKING:
+    from astropy.table import Table
+
     from opencosmo import Dataset, Lightcone
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex
@@ -138,6 +141,12 @@ def keep_top_host_idx_verifier(dataset: DatasetState):
     return "top_host_idx" in dataset.columns
 
 
+def update_top_host_idx_after_sort(data: Table, reverse_index: DataIndex):
+    mask = data["top_host_idx"] > 0
+    data["top_host_idx"][mask] = reverse_index[data["top_host_idx"][mask]]
+    return data
+
+
 def register_keep_top_host_idx(dataset: Dataset, **kwargs):
     register_plugin(
         IndexPluginSpec(
@@ -170,5 +179,11 @@ register_plugin(
         PluginType.LightconeOpen,
         register_keep_top_host_idx_verifier,
         register_keep_top_host_idx,
+    )
+)
+
+register_plugin(
+    PostSortPluginSpec(
+        PluginType.PostSort, top_host_idx_verifier, update_top_host_idx_after_sort
     )
 )

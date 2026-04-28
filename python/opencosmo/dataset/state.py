@@ -18,7 +18,12 @@ from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
-from opencosmo.plugins.plugin import PluginType, apply_index_plugins, apply_plugins
+from opencosmo.plugins.plugin import (
+    PluginType,
+    apply_index_plugins,
+    apply_plugins,
+    apply_post_sort_plugins,
+)
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
@@ -43,6 +48,22 @@ if TYPE_CHECKING:
 
 def deregister_state(id: int, cache: DataCache):
     cache.deregister_column_group(id)
+
+
+def sort_data(
+    data: dict[str, np.ndarray], sort_by: tuple[str, bool] | None, state: DatasetState
+):
+    if sort_by is None:
+        return data
+    sort_column = data[sort_by[0]]
+    order = np.argsort(sort_column)
+    if sort_by[1]:
+        order = order[::-1]
+
+    data = {key: value[order] for key, value in data.items()}
+    if sort_by[0] not in state.columns:
+        data.pop(sort_by[0])
+    return apply_post_sort_plugins(state, data, np.argsort(order))
 
 
 class DatasetState:
@@ -250,7 +271,6 @@ class DatasetState:
         Get the data for a given handler.
         """
         state = apply_plugins(PluginType.DatasetInstantiate, self)
-
         data = instantiate_dataset(
             list(state.__producers.values()),
             state.__columns,
@@ -259,12 +279,16 @@ class DatasetState:
             state.__unit_handler,
             unit_kwargs,
             metadata_columns,
-            None if ignore_sort else state.__sort_by,
+            None if (ignore_sort or state.__sort_by is None) else state.__sort_by[0],
         )
+
         if missing := set(self.columns).difference(data.keys()):
             raise RuntimeError(
                 f"Some columns are missing from the output! This is likely a bug. Please report it on GitHub. Missing: {missing}"
             )
+
+        if not ignore_sort:
+            data = sort_data(data, self.__sort_by, self)
 
         new_order = [c for c in self.columns]
         if metadata_columns:

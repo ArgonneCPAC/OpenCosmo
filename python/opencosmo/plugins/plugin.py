@@ -11,9 +11,15 @@ from typing import (
     TypedDict,
 )
 
+from opencosmo.index import into_array
+
 if TYPE_CHECKING:
+    import numpy as np
+    from astropy.table import Table
+
+    from opencosmo import Lightcone
     from opencosmo.dataset.state import DatasetState
-    from opencosmo.index import DataIndex
+    from opencosmo.index import DataIndex, IndexArray
 
 
 class PluginType(StrEnum):
@@ -21,6 +27,7 @@ class PluginType(StrEnum):
     DatasetInstantiate = "dataset_instantiate"
     LightconeOpen = "lightcone_open"
     LightconeInstantiate = "lightcone_instantiate"
+    PostSort = "post_sort"
     IndexUpdate = "index_update"
 
 
@@ -40,6 +47,12 @@ class IndexPluginSpec(NamedTuple):
     plugin: Callable[[DatasetState, DataIndex], DataIndex]
 
 
+class PostSortPluginSpec[T: (DatasetState, Lightcone)](NamedTuple):
+    plugin_type: PluginType
+    verifier: Callable[[T], bool]
+    plugin: Callable[[Table, IndexArray], dict[str, np.ndarray]]
+
+
 class Plugins(TypedDict):
     dataset_open: list[PluginSpec]
     dataset_instantiate: list[PluginSpec]
@@ -51,7 +64,7 @@ class Plugins(TypedDict):
 KNOWN_PLUGINS: Plugins = defaultdict(list)  # type: ignore
 
 
-def register_plugin(spec: PluginSpec | IndexPluginSpec) -> None:
+def register_plugin(spec: PluginSpec | IndexPluginSpec | PostSortPluginSpec) -> None:
     KNOWN_PLUGINS[str(spec.plugin_type)].append(spec)  # type: ignore
 
 
@@ -80,6 +93,29 @@ def apply_index_plugins(state: DatasetState, index: DataIndex) -> DataIndex:
         plugins_to_apply,
         index,
     )
+
+
+def apply_post_sort_plugins[T: (DatasetState, Lightcone)](
+    state: T,
+    data: Table,
+    index: DataIndex,
+) -> T:
+    plugins_to_apply: list[PostSortPluginSpec] = KNOWN_PLUGINS[str(PluginType.PostSort)]  # type: ignore
+    index_arr = into_array(index)
+
+    return reduce(
+        lambda data_, spec: _apply_single_post_sort(spec, state, data_, index_arr),
+        plugins_to_apply,
+        data,
+    )
+
+
+def _apply_single_post_sort[T: (DatasetState, Lightcone)](
+    spec: PostSortPluginSpec, state: T, data: Table, index: IndexArray
+):
+    if spec.verifier(state):
+        return spec.plugin(data, index)
+    return data
 
 
 def _apply_single[T](spec: PluginSpec[T], target: T, **kwargs: Any) -> T:
