@@ -2,10 +2,11 @@ import astropy.units as u
 import healpy as hp
 import healsparse as hsp
 import numpy as np
-import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
 from opencosmo.spatial.healpix import HealpixRegion
+
+import opencosmo as oc
 
 
 @pytest.fixture
@@ -222,7 +223,13 @@ def test_healpix_write_after_downgrade(healpix_map_path, tmp_path):
 
     oc.write(tmp_path / "map_test.hdf5", ds)
     new_ds = oc.open(tmp_path / "map_test.hdf5")
-    print(new_ds)
+
+    original_data = ds.get_data("healpix")
+    written_data = new_ds.get_data("healpix")
+
+    assert np.all(original_data["ksz"] == written_data["ksz"])
+    assert np.all(original_data["tsz"] == written_data["tsz"])
+    assert np.all(original_data["pixel"] == written_data["pixel"])
 
 
 def test_healpix_write_after_take_range(healpix_map_path, tmp_path):

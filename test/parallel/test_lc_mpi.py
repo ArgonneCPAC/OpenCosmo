@@ -125,6 +125,7 @@ def test_healpix_index_chain_failure(haloproperties_600_path):
 def test_healpix_write(haloproperties_600_path, per_test_dir):
     comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
+    assert "redshift" in ds.columns
 
     pixel = np.random.choice(ds.region.pixels)
     center = pix2ang(ds.region.nside, pixel, True, True)
@@ -418,7 +419,6 @@ def test_write_some_missing(core_path_487, core_path_475, per_test_dir):
     original_data = ds.select("early_index").get_data("numpy")
     original_data_length = comm.allgather(len(original_data))
 
-    ds = ds.with_new_columns(gal_id=np.arange(len(ds)))
     oc.write(per_test_dir / "lightcone.hdf5", ds)
     ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")
@@ -442,11 +442,6 @@ def test_write_diffsky_some_missing_no_stack(
     if comm.Get_rank() == 0:
         ds.pop(475)
         assert len(ds.keys()) == 1
-
-    all_lengths = comm.allgather(len(ds))
-    all_ends = np.insert(np.cumsum(all_lengths), 0, 0)
-    rank = comm.Get_rank()
-    ds = ds.with_new_columns(gal_id=np.arange(all_ends[rank], all_ends[rank + 1]))
 
     columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
     columns_to_check = np.insert(columns_to_check, 0, "gal_id")
@@ -573,5 +568,4 @@ def _assert_top_host_idx_correct(data, core_map):
         for key, val in core_map.items()
         if val in data["core_tag"] and key in real_core_tag
     }
-    print(len(should_have_core_map))
     assert should_have_core_map == found_core_map

@@ -26,7 +26,6 @@ from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_sch
 from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.dtypes.dtype import get_dtype_lightcone_plugins
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.plugins import plugin
@@ -87,7 +86,6 @@ class Lightcone(dict):
 
         self.__hidden = hidden
         self.__ordered_by = ordered_by
-        self.__plugins = get_dtype_lightcone_plugins(self.__header, self.columns)
 
     def __repr__(self):
         """
@@ -361,9 +359,15 @@ class Lightcone(dict):
 
     @classmethod
     def from_datasets(
-        cls, datasets: dict[str, oc.Dataset], z_range: tuple[float, float]
+        cls,
+        datasets: dict[str, oc.Dataset],
+        z_range: tuple[float, float],
+        **open_kwargs,
     ):
         result = cls(datasets, z_range)
+        result = plugin.apply_plugins(
+            plugin.PluginType.LightconeLoad, result, **open_kwargs
+        )
         return make_radec_columns(result)
 
     def with_redshift_range(self, z_low: float, z_high: float):

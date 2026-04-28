@@ -550,7 +550,7 @@ def open_single_dataset(
         return __open_healpix_map(dataset, sim_region)
     elif header.file.is_lightcone and not bypass_lightcone:
         return occ.Lightcone.from_datasets(
-            {"data": dataset}, header.lightcone["z_range"]
+            {"data": dataset}, header.lightcone["z_range"], **open_kwargs
         )
 
     return apply_plugins(PluginType.DatasetOpen, dataset, **open_kwargs)

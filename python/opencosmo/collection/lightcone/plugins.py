@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from opencosmo import Lightcone
 
 
-def with_redshift_column(dataset: Lightcone):
+def with_redshift_column(dataset: Lightcone, *args, **kwargs):
     """
     Ensures a column exists called "redshift" which contains the redshift of the objects
     in the lightcone.
@@ -34,7 +34,7 @@ def with_redshift_column(dataset: Lightcone):
 register_plugin(
     PluginSpec(
         PluginType.LightconeLoad,
-        lambda _: True,
+        lambda *args, **kwargs: True,
         with_redshift_column,
     )
 )
