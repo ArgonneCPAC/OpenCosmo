@@ -440,8 +440,6 @@ class DatasetState:
         Take rows from the dataset.
         """
 
-        take_index: DataIndex
-
         if at == "start":
             return self.take_range(0, n)
         elif at == "end":
@@ -449,14 +447,7 @@ class DatasetState:
         elif at == "random":
             row_indices = np.random.choice(len(self), n, replace=False)
             row_indices.sort()
-
-        sorted = self.get_sorted_index()
-        if sorted is None:
-            take_index = row_indices
-        else:
-            take_index = np.sort(sorted[row_indices])
-
-        return self.take_rows(take_index)
+        return self.take_rows(row_indices)
 
     def take_range(self, start: int, end: int):
         """
@@ -469,13 +460,7 @@ class DatasetState:
         if end > len(self):
             raise ValueError("end must be less than the length of the dataset.")
 
-        sorted = self.get_sorted_index()
-        take_index: DataIndex
-        if sorted is None:
-            take_index = single_chunk(start, end - start)
-        else:
-            take_index = np.sort(sorted[start:end])
-
+        take_index = single_chunk(start, end - start)
         return self.take_rows(take_index)
 
     def take_rows(self, rows: DataIndex):
@@ -489,7 +474,9 @@ class DatasetState:
                 "Row indices must be between 0 and the length of this dataset!"
             )
         sorted = self.get_sorted_index()
-        new_handler = self.__raw_data_handler.take(rows, sorted)
+        if sorted is not None:
+            rows = np.sort(sorted[into_array(rows)])
+        new_handler = self.__raw_data_handler.take(rows)
         new_cache = self.__cache.take(rows)
 
         return self.__rebuild(
