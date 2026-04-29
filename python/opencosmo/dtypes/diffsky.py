@@ -9,20 +9,31 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
+from opencosmo.mpi import get_mpi
 from opencosmo.plugins.plugin import (
     IndexPluginSpec,
+    PartitionPluginSpec,
     PluginSpec,
     PluginType,
     PostSortPluginSpec,
     register_plugin,
 )
+from opencosmo.spatial.tree import TreePartition
 
 if TYPE_CHECKING:
+    import h5py
     from astropy.table import Table
+    from mpi4py import MPI
 
     from opencosmo import Dataset, Lightcone
     from opencosmo.dataset.state import DatasetState
+    from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.spatial.tree import Tree
+
+
+else:
+    MPI = get_mpi()
 
 
 class DiffskyVersionInfo(BaseModel):
@@ -162,6 +173,50 @@ def register_keep_top_host_idx_verifier(
     return keep_top_host and top_host_idx_verifier(dataset)
 
 
+def partition_plugin(
+    comm: MPI.Comm,
+    index_group: h5py.Group,
+    data_group: h5py.Group,
+    tree: Optional[Tree] = None,
+    min_level: Optional[int] = None,
+):
+    top_host_idx = data_group["top_host_idx"][:]
+    if comm.Get_rank() == 0:
+        n_ranks = comm.Get_size()
+        unique_hosts = np.unique(top_host_idx, sorted=True)
+        ave, res = divmod(unique_hosts.size, n_ranks)
+        counts = np.array(
+            [ave + 1 if i < res else ave for i in range(n_ranks)], dtype=np.int64
+        )
+        displs = np.cumsum(np.concatenate(([0], counts[:-1])))
+        counts = comm.bcast(counts)
+        # Should always be roughly balanced, since data is
+        # ordered spatially
+        rank_top_hosts = np.zeros(counts[0], dtype=np.int64)
+        comm.Scatterv([unique_hosts, counts, displs, MPI.INT64_T], rank_top_hosts)
+    else:
+        counts = comm.bcast(None)
+        rank_top_hosts = np.zeros(counts[comm.Get_rank()], dtype=np.int64)
+        comm.Scatterv([None, counts, None, MPI.INT64_T], rank_top_hosts)
+
+    is_in_groups = np.isin(top_host_idx, rank_top_hosts)
+    index = np.where(is_in_groups)[0]
+    return TreePartition(idx=index, region=None, level=None)
+
+
+def partition_plugin_verifier(
+    header: OpenCosmoHeader,
+    index_group: h5py.Group,
+    data_group: h5py.Group,
+    tree: Optional[Tree] = None,
+    min_level: Optional[int] = None,
+):
+    return (
+        header.file.data_type == "synthetic_galaxies"
+        and "top_host_idx" in data_group.keys()
+    )
+
+
 register_plugin(
     PluginSpec(PluginType.DatasetOpen, top_host_idx_verifier, top_host_idx_plugin)
 )
@@ -185,5 +240,11 @@ register_plugin(
 register_plugin(
     PostSortPluginSpec(
         PluginType.PostSort, top_host_idx_verifier, update_top_host_idx_after_sort
+    )
+)
+
+register_plugin(
+    PartitionPluginSpec(
+        PluginType.Partition, partition_plugin_verifier, partition_plugin
     )
 )

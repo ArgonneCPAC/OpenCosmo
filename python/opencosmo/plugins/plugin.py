@@ -3,23 +3,21 @@ from __future__ import annotations
 from collections import defaultdict
 from enum import StrEnum
 from functools import reduce
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    NamedTuple,
-    TypedDict,
-)
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, TypedDict
 
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:
+    import h5py
     import numpy as np
     from astropy.table import Table
+    from mpi4py import MPI
 
     from opencosmo import Lightcone
     from opencosmo.dataset.state import DatasetState
+    from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex, IndexArray
+    from opencosmo.spatial.tree import Tree, TreePartition
 
 
 class PluginType(StrEnum):
@@ -29,6 +27,7 @@ class PluginType(StrEnum):
     LightconeInstantiate = "lightcone_instantiate"
     PostSort = "post_sort"
     IndexUpdate = "index_update"
+    Partition = "partition"
 
 
 type Verifier[T] = Callable[[T], bool]
@@ -53,18 +52,30 @@ class PostSortPluginSpec[T: (DatasetState, Lightcone)](NamedTuple):
     plugin: Callable[[Table, IndexArray], dict[str, np.ndarray]]
 
 
+class PartitionPluginSpec(NamedTuple):
+    plugin_type: PluginType
+    verifier: Callable[[OpenCosmoHeader, h5py.Group, h5py.Group], bool]
+    plugin: Callable[
+        [MPI.Comm, h5py.Group, h5py.Group, Optional[Tree], Optional[int]],
+        Optional[TreePartition],
+    ]
+
+
 class Plugins(TypedDict):
     dataset_open: list[PluginSpec]
     dataset_instantiate: list[PluginSpec]
     lightcone_load: list[PluginSpec]
     lightcone_instantiate: list[PluginSpec]
     index_update: list[IndexPluginSpec]
+    partition: list[PartitionPluginSpec]
 
 
 KNOWN_PLUGINS: Plugins = defaultdict(list)  # type: ignore
 
 
-def register_plugin(spec: PluginSpec | IndexPluginSpec | PostSortPluginSpec) -> None:
+def register_plugin(
+    spec: PluginSpec | IndexPluginSpec | PostSortPluginSpec | PartitionPluginSpec,
+) -> None:
     KNOWN_PLUGINS[str(spec.plugin_type)].append(spec)  # type: ignore
 
 
@@ -108,6 +119,26 @@ def apply_post_sort_plugins[T: (DatasetState, Lightcone)](
         plugins_to_apply,
         data,
     )
+
+
+def apply_partition_plugins(
+    comm: MPI.Comm,
+    header: OpenCosmoHeader,
+    index_group: h5py.Group,
+    data_group: h5py.Group,
+    tree: Optional[Tree] = None,
+    min_level: Optional[int] = None,
+) -> Optional[TreePartition]:
+    partition_plugins = KNOWN_PLUGINS[str(PluginType.Partition)]  # type: ignore
+    if len(partition_plugins) == 0:
+        return None
+    if partition_plugins > 1:
+        raise ValueError("Only one partition plugin is allowed at a time")
+    plugin_spec = partition_plugins[0]
+    if not plugin_spec.verifier(header, index_group, data_group):
+        return None
+
+    return plugin_spec.plugin(comm, index_group, data_group, tree, min_level)
 
 
 def _apply_single_post_sort[T: (DatasetState, Lightcone)](

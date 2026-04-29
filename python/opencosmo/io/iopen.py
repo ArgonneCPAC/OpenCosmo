@@ -515,8 +515,7 @@ def open_single_dataset(
     if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
         try:
-            idx_data = ds_group["index"]
-            part = partition(comm, ds_length, idx_data, tree)
+            part = partition(comm, header, ds_group["index"], ds_group["data"], tree)
             if part is None:
                 index = empty()
             else:
