@@ -132,7 +132,7 @@ def apply_partition_plugins(
     partition_plugins = KNOWN_PLUGINS[str(PluginType.Partition)]  # type: ignore
     if len(partition_plugins) == 0:
         return None
-    if partition_plugins > 1:
+    if len(partition_plugins) > 1:
         raise ValueError("Only one partition plugin is allowed at a time")
     plugin_spec = partition_plugins[0]
     if not plugin_spec.verifier(header, index_group, data_group):

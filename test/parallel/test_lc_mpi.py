@@ -475,6 +475,30 @@ def test_write_diffsky_some_missing_no_stack(
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_open_parallel_top_host(core_path_487, core_path_475):
+    core_map = _get_expected_core_tags(core_path_487)
+    core_map |= _get_expected_core_tags(core_path_475)
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data()
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_keep_top_host_filter(core_path_487, core_path_475):
+    core_map = _get_expected_core_tags(core_path_487)
+    core_map |= _get_expected_core_tags(core_path_475)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    data = ds.take(10).select("top_host_idx", "core_tag").get_data()
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_write_some_missing_no_stack(
     haloproperties_600_path, haloproperties_601_path, per_test_dir
 ):
@@ -569,3 +593,30 @@ def _assert_top_host_idx_correct(data, core_map):
         if val in data["core_tag"] and key in real_core_tag
     }
     assert should_have_core_map == found_core_map
+
+    comm = get_comm_world()
+    all_data_core_maps = comm.allgather(found_core_map)
+    seen = set()
+    for m in all_data_core_maps:
+        assert len(seen.intersection(m.keys())) == 0
+        seen |= m.keys()
+
+
+def _assert_all_group_members_present(data, core_map):
+    """
+    Verify that for every top_host represented in the data, all rows from the
+    full dataset that point to that top_host are also present.
+    """
+    host_to_members: dict = {}
+    for ct, host_ct in core_map.items():
+        host_to_members.setdefault(host_ct, set()).add(ct)
+
+    present_core_tags = set(data["core_tag"])
+    top_host_core_tags = set(data["core_tag"][data["top_host_idx"]])
+
+    for top_host_ct in top_host_core_tags:
+        expected_members = host_to_members.get(top_host_ct, set())
+        missing = expected_members - present_core_tags
+        assert not missing, (
+            f"top_host {top_host_ct}: {len(missing)} member(s) missing from result"
+        )
