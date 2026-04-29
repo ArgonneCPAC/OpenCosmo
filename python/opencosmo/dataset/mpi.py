@@ -4,19 +4,22 @@ from typing import TYPE_CHECKING, Optional
 from warnings import warn
 
 from opencosmo.index.build import single_chunk
+from opencosmo.plugins.plugin import apply_partition_plugins
 from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
     import h5py
     from mpi4py import MPI
 
+    from opencosmo.header import OpenCosmoHeader
     from opencosmo.spatial.tree import Tree
 
 
 def partition(
     comm: MPI.Comm,
-    length: int,
-    counts: h5py.Group,
+    header: OpenCosmoHeader,
+    index_group: h5py.Group,
+    data_group: h5py.Group,
     tree: Optional[Tree],
     min_level: Optional[int] = None,
 ) -> Optional[TreePartition]:
@@ -25,8 +28,14 @@ def partition(
     spatial index. In principle this means the number of objects are similar
     between ranks.
     """
+    partition_plugin_result = apply_partition_plugins(
+        comm, header, index_group, data_group, tree, min_level
+    )
+    if partition_plugin_result is not None:
+        return partition_plugin_result
+
     if tree is not None:
-        partitions = tree.partition(comm.Get_size(), counts, min_level)
+        partitions = tree.partition(comm.Get_size(), index_group, min_level)
         try:
             part = partitions[comm.Get_rank()]
         except IndexError:
@@ -37,6 +46,7 @@ def partition(
             part = None
         return part
 
+    length = len(next(iter(data_group.values())))
     nranks = comm.Get_size()
     rank = comm.Get_rank()
     if rank == nranks - 1:

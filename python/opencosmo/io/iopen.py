@@ -515,8 +515,7 @@ def open_single_dataset(
     if not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
         try:
-            idx_data = ds_group["index"]
-            part = partition(comm, ds_length, idx_data, tree)
+            part = partition(comm, header, ds_group["index"], ds_group["data"], tree)
             if part is None:
                 index = empty()
             else:
@@ -546,6 +545,7 @@ def open_single_dataset(
         state,
         tree=tree,
     )
+    dataset = apply_plugins(PluginType.DatasetOpen, dataset, **open_kwargs)
     if header.file.data_type == "healpix_map":
         return __open_healpix_map(dataset, sim_region)
     elif header.file.is_lightcone and not bypass_lightcone:
@@ -553,7 +553,7 @@ def open_single_dataset(
             {"data": dataset}, header.lightcone["z_range"], **open_kwargs
         )
 
-    return apply_plugins(PluginType.DatasetOpen, dataset, **open_kwargs)
+    return dataset
 
 
 def __open_healpix_map(dataset: oc.Dataset, sim_region):

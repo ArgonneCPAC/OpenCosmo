@@ -9,20 +9,31 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
+from opencosmo.mpi import get_mpi
 from opencosmo.plugins.plugin import (
     IndexPluginSpec,
+    PartitionPluginSpec,
     PluginSpec,
     PluginType,
     PostSortPluginSpec,
     register_plugin,
 )
+from opencosmo.spatial.tree import TreePartition
 
 if TYPE_CHECKING:
+    import h5py
     from astropy.table import Table
+    from mpi4py import MPI
 
     from opencosmo import Dataset, Lightcone
     from opencosmo.dataset.state import DatasetState
+    from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.spatial.tree import Tree
+
+
+else:
+    MPI = get_mpi()
 
 
 class DiffskyVersionInfo(BaseModel):
@@ -162,6 +173,55 @@ def register_keep_top_host_idx_verifier(
     return keep_top_host and top_host_idx_verifier(dataset)
 
 
+def partition_plugin(
+    comm: MPI.Comm,
+    index_group: h5py.Group,
+    data_group: h5py.Group,
+    tree: Optional[Tree] = None,
+    min_level: Optional[int] = None,
+):
+    top_host_idx = data_group["top_host_idx"][:]
+    n_rows = len(top_host_idx)
+    n_ranks = comm.Get_size()
+    rank = comm.Get_rank()
+
+    # Step 1: partition row indices evenly between ranks
+    ave, res = divmod(n_rows, n_ranks)
+    counts = np.array(
+        [ave + 1 if i < res else ave for i in range(n_ranks)], dtype=np.int64
+    )
+    displs = np.cumsum(np.concatenate(([0], counts[:-1])))
+    start = displs[rank]
+    count = counts[rank]
+    row_indices = np.arange(start, start + count, dtype=np.int64)
+    chunk = top_host_idx[start : start + count]
+
+    # Step 2: find top hosts (self-referential rows) and orphans (top_host_idx == -1)
+    # in this rank's chunk
+    rank_top_hosts = row_indices[chunk == row_indices]
+    rank_orphans = row_indices[chunk == -1]
+
+    # Step 3: search the full array for all rows that belong to this rank's top hosts
+    all_group_rows = np.where(np.isin(top_host_idx, rank_top_hosts))[0]
+
+    # Step 4: combine group members with orphans from this rank's partition
+    index = np.union1d(all_group_rows, rank_orphans)
+    return TreePartition(idx=index, region=None, level=None)
+
+
+def partition_plugin_verifier(
+    header: OpenCosmoHeader,
+    index_group: h5py.Group,
+    data_group: h5py.Group,
+    tree: Optional[Tree] = None,
+    min_level: Optional[int] = None,
+):
+    return (
+        header.file.data_type == "synthetic_galaxies"
+        and "top_host_idx" in data_group.keys()
+    )
+
+
 register_plugin(
     PluginSpec(PluginType.DatasetOpen, top_host_idx_verifier, top_host_idx_plugin)
 )
@@ -185,5 +245,11 @@ register_plugin(
 register_plugin(
     PostSortPluginSpec(
         PluginType.PostSort, top_host_idx_verifier, update_top_host_idx_after_sort
+    )
+)
+
+register_plugin(
+    PartitionPluginSpec(
+        PluginType.Partition, partition_plugin_verifier, partition_plugin
     )
 )
