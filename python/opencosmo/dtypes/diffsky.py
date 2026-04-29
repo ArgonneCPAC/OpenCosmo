@@ -181,26 +181,31 @@ def partition_plugin(
     min_level: Optional[int] = None,
 ):
     top_host_idx = data_group["top_host_idx"][:]
-    if comm.Get_rank() == 0:
-        n_ranks = comm.Get_size()
-        unique_hosts = np.unique(top_host_idx, sorted=True)
-        ave, res = divmod(unique_hosts.size, n_ranks)
-        counts = np.array(
-            [ave + 1 if i < res else ave for i in range(n_ranks)], dtype=np.int64
-        )
-        displs = np.cumsum(np.concatenate(([0], counts[:-1])))
-        counts = comm.bcast(counts)
-        # Should always be roughly balanced, since data is
-        # ordered spatially
-        rank_top_hosts = np.zeros(counts[0], dtype=np.int64)
-        comm.Scatterv([unique_hosts, counts, displs, MPI.INT64_T], rank_top_hosts)
-    else:
-        counts = comm.bcast(None)
-        rank_top_hosts = np.zeros(counts[comm.Get_rank()], dtype=np.int64)
-        comm.Scatterv([None, counts, None, MPI.INT64_T], rank_top_hosts)
+    n_rows = len(top_host_idx)
+    n_ranks = comm.Get_size()
+    rank = comm.Get_rank()
 
-    is_in_groups = np.isin(top_host_idx, rank_top_hosts)
-    index = np.where(is_in_groups)[0]
+    # Step 1: partition row indices evenly between ranks
+    ave, res = divmod(n_rows, n_ranks)
+    counts = np.array(
+        [ave + 1 if i < res else ave for i in range(n_ranks)], dtype=np.int64
+    )
+    displs = np.cumsum(np.concatenate(([0], counts[:-1])))
+    start = displs[rank]
+    count = counts[rank]
+    row_indices = np.arange(start, start + count, dtype=np.int64)
+    chunk = top_host_idx[start : start + count]
+
+    # Step 2: find top hosts (self-referential rows) and orphans (top_host_idx == -1)
+    # in this rank's chunk
+    rank_top_hosts = row_indices[chunk == row_indices]
+    rank_orphans = row_indices[chunk == -1]
+
+    # Step 3: search the full array for all rows that belong to this rank's top hosts
+    all_group_rows = np.where(np.isin(top_host_idx, rank_top_hosts))[0]
+
+    # Step 4: combine group members with orphans from this rank's partition
+    index = np.union1d(all_group_rows, rank_orphans)
     return TreePartition(idx=index, region=None, level=None)
 
 
