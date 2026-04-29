@@ -476,8 +476,10 @@ def test_write_diffsky_some_missing_no_stack(
 
 @pytest.mark.parallel(nprocs=4)
 def test_open_parallel_top_host(core_path_487, core_path_475):
-    core_map = _get_expected_core_tags(core_path_487)
-    core_map |= _get_expected_core_tags(core_path_475)
+    with h5py.File(core_path_487) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+    with h5py.File(core_path_475) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
 
     ds = oc.open(core_path_475, core_path_487)
     data = ds.select("top_host_idx", "core_tag").get_data()
@@ -541,8 +543,10 @@ def test_open_write_parallel_top_after_filter(
 
 @pytest.mark.parallel(nprocs=4)
 def test_keep_top_host_filter(core_path_487, core_path_475):
-    core_map = _get_expected_core_tags(core_path_487)
-    core_map |= _get_expected_core_tags(core_path_475)
+    with h5py.File(core_path_487) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+    with h5py.File(core_path_475) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
 
     ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
     data = ds.take(10).select("top_host_idx", "core_tag").get_data()
