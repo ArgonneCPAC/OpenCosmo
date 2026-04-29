@@ -299,7 +299,7 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     assert isinstance(ds.region, HealpixRegion)
-    assert len(ds.region.pixels) == 502
+    assert len(ds.region.pixels) == 1610
 
 
 def test_open_bad_data(core_path_475, core_path_487, invalid_data_path):
@@ -314,6 +314,26 @@ def get_expected_core_tags(path):
 
     top_host_core_tag = core_tag[raw_top_host]
     return dict(zip(core_tag, top_host_core_tag))
+
+
+def assert_all_group_members_present(data, core_map):
+    """
+    Verify that for every top_host represented in the data, all rows from the
+    full dataset that point to that top_host are also present.
+    """
+    host_to_members: dict = {}
+    for ct, host_ct in core_map.items():
+        host_to_members.setdefault(host_ct, set()).add(ct)
+
+    present_core_tags = set(data["core_tag"])
+    top_host_core_tags = set(data["core_tag"][data["top_host_idx"]])
+
+    for top_host_ct in top_host_core_tags:
+        expected_members = host_to_members.get(top_host_ct, set())
+        missing = expected_members - present_core_tags
+        assert not missing, (
+            f"top_host {top_host_ct}: {len(missing)} member(s) missing from result"
+        )
 
 
 def assert_top_host_idx_correct(data, core_map):
@@ -361,6 +381,15 @@ def test_reindex_top_host_take_random(core_path_475, core_path_487):
     assert_top_host_idx_correct(data, core_map)
 
 
+def test_reindex_top_host_take_range_sorted(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).sort_by("logsm_obs").take(300)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+
+
 def test_reindex_top_host_take_range(core_path_475, core_path_487):
     core_map = get_expected_core_tags(core_path_475)
     core_map |= get_expected_core_tags(core_path_487)
@@ -377,3 +406,64 @@ def test_reindex_top_host_filter(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487).filter(oc.col("logsm_obs") > 10)
     data = ds.select("top_host_idx", "core_tag").get_data("numpy")
     assert_top_host_idx_correct(data, core_map)
+
+
+def test_keep_top_host_take_random(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.take(20)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+    print(len(ds))
+
+
+def test_keep_top_host_take_start(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.take(20, at="start")
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+
+
+def test_keep_top_host_take_range(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.take_range(20, 60)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+
+
+def test_keep_top_host_take_range_after_sort(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True).sort_by("logsm_obs")
+    ds = ds.take_range(20, 60)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+
+
+def test_keep_top_host_filter(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.filter(oc.col("logsm_obs") < 10)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)

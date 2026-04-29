@@ -1,0 +1,3 @@
+The OpenCosmo internals now include a basic plugin architecture, which allows for specific data types to introduce
+modified behavior at particular points. Currently being used to dynamically re-build the `top_host_idx` column in
+diffsky data.

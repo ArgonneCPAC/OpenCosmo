@@ -60,6 +60,8 @@ def make_healsparse_maps(
                 nside_sparse=nside,
                 sentinel=sentinel,
             )
+    if len(result) == 1:
+        return next(iter(result.values()))
     return result
 
 
@@ -384,10 +386,13 @@ class HealpixMap(dict):
             else:
                 table.remove_columns(self.__hidden)
                 storage = {
-                    name: np.zeros(npix, dtype=np.float32) for name in table.columns
+                    name: np.zeros(npix, dtype=np.float32)
+                    for name in table.columns
+                    if name != "pixel"
                 }
                 for name, arr in storage.items():
                     arr[pixels] = table[name].value
+
             if len(pixels) != hp.nside2npix(self.nside):
                 mask = np.zeros(hp.nside2npix(self.nside), dtype=bool)
                 mask[pixels] = True

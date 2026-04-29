@@ -114,8 +114,7 @@ def add_columns(
 ) -> tuple[list[ConstructedColumn], ColumnMap, UnitHandler]:
     if (
         inter := set(name_to_uuid.keys()).intersection(new_columns.keys())
-        and not allow_overwrite
-    ):
+    ) and not allow_overwrite:
         raise ValueError(f"Some columns are already in the dataset: {inter}")
 
     (

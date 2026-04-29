@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import rustworkx as rx
 
 from opencosmo.column.column import RawColumn
@@ -10,6 +9,8 @@ from opencosmo.dataset.graph import build_dependency_graph
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    import numpy as np
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
@@ -160,12 +161,12 @@ def instantiate_dataset(
     unit_handler: UnitHandler,
     unit_kwargs: dict[str, Any],
     metadata_columns: list[str] | None = None,
-    sort_by: tuple[str, bool] | None = None,
+    sort_by: str | None = None,
 ):
     # Extend working_columns with the sort column if it isn't already included.
     working_columns = dict(columns_to_uuid)
-    if sort_by is not None and sort_by[0] not in working_columns:
-        sort_name = sort_by[0]
+    if sort_by is not None and sort_by not in working_columns:
+        sort_name = sort_by
         for producer in column_producers:
             if sort_name in producer.produces:
                 working_columns[sort_name] = producer.uuid
@@ -216,7 +217,7 @@ def instantiate_dataset(
         if producer_uuid in uuid_data and name in uuid_data[producer_uuid]
     }
     data |= get_metadata_columns(raw_data_handler, cache, metadata_columns)
-    return sort_data(data, sort_by)
+    return data
 
 
 def get_metadata_columns(
@@ -232,13 +233,3 @@ def get_metadata_columns(
         raw_data_handler.get_metadata(additional_metadata_columns_to_fetch) or {}
     )
     return metadata
-
-
-def sort_data(data: dict[str, np.ndarray], sort_by: tuple[str, bool] | None):
-    if sort_by is None:
-        return data
-    sort_column = data[sort_by[0]]
-    order = np.argsort(sort_column)
-    if sort_by[1]:
-        order = order[::-1]
-    return {key: value[order] for key, value in data.items()}
