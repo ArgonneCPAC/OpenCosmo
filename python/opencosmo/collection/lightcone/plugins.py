@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
+import warnings
 from typing import TYPE_CHECKING
+
+import astropy.units as u
+import numpy as np
 
 import opencosmo as oc
 from opencosmo.plugins.contexts import HookPoint
@@ -33,4 +37,24 @@ def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
     )
 
 
-plugins = None
+@hook(HookPoint.LightconeOpen)
+def _make_radec_columns(ctx: LightconeOpenCtx):
+    lightcone: Lightcone = ctx.lightcone
+    if "ra" in lightcone.columns and "dec" in lightcone.columns:
+        pass
+    elif "theta" in lightcone.columns and "phi" in lightcone.columns:
+        lightcone = lightcone.evaluate(
+            radec_from_thetaphi, vectorize=True, insert=True, format="numpy"
+        )
+    else:
+        warnings.warn(
+            "Could not find coordinates in this catalog. Spatial queries will not be available"
+        )
+
+    return dataclasses.replace(ctx, lightcone=lightcone)
+
+
+def radec_from_thetaphi(theta, phi):
+    theta_deg = theta * 180 / np.pi
+    phi_deg = phi * 180 / np.pi
+    return {"ra": phi_deg * u.deg, "dec": (90.0 - theta_deg) * u.deg}

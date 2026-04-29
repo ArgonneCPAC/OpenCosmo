@@ -21,7 +21,6 @@ from astropy.table import vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import utils as lcutils
-from opencosmo.collection.lightcone.coordinates import make_radec_columns
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset.evaluate import build_evaluated_column
@@ -365,11 +364,7 @@ class Lightcone(dict):
             raise ValueError()
 
         result = cls(output)
-        result = fold(
-            HookPoint.LightconeOpen, LightconeOpenCtx(result, kwargs)
-        ).lightcone
-
-        return make_radec_columns(result)
+        return fold(HookPoint.LightconeOpen, LightconeOpenCtx(result, kwargs)).lightcone
 
     @classmethod
     def from_datasets(
@@ -379,10 +374,9 @@ class Lightcone(dict):
         **open_kwargs,
     ):
         result = cls(datasets, z_range)
-        result = fold(
+        return fold(
             HookPoint.LightconeOpen, LightconeOpenCtx(result, open_kwargs)
         ).lightcone
-        return make_radec_columns(result)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
