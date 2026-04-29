@@ -142,7 +142,7 @@ def keep_top_host_idx_verifier(dataset: DatasetState):
 
 
 def update_top_host_idx_after_sort(data: Table, reverse_index: DataIndex):
-    mask = data["top_host_idx"] > 0
+    mask = data["top_host_idx"] >= 0
     data["top_host_idx"][mask] = reverse_index[data["top_host_idx"][mask]]
     return data
 
