@@ -487,6 +487,59 @@ def test_open_parallel_top_host(core_path_487, core_path_475):
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_open_write_parallel_top_host(core_path_487, core_path_475, per_test_dir):
+    with h5py.File(core_path_475) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+
+    with h5py.File(core_path_487) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+
+    oc.write(per_test_dir / "test.hdf5", ds)
+    with h5py.File(per_test_dir / "test.hdf5") as f:
+        written_core_map = _get_expected_core_tags(f["475_475"])
+    assert core_map == written_core_map
+
+    data = (
+        oc.open(per_test_dir / "test.hdf5")
+        .select("top_host_idx", "core_tag")
+        .get_data("numpy")
+    )
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_write_parallel_top_after_filter(
+    core_path_487, core_path_475, per_test_dir
+):
+    with h5py.File(core_path_475) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+
+    with h5py.File(core_path_487) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True).take(10)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+    oc.write(per_test_dir / "test.hdf5", ds)
+
+    data = (
+        oc.open(per_test_dir / "test.hdf5")
+        .select("top_host_idx", "core_tag")
+        .get_data("numpy")
+    )
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_keep_top_host_filter(core_path_487, core_path_475):
     core_map = _get_expected_core_tags(core_path_487)
     core_map |= _get_expected_core_tags(core_path_475)
@@ -551,10 +604,9 @@ def test_lightcone_stacking(
     assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range
 
 
-def _get_expected_core_tags(path):
-    with h5py.File(path) as f:
-        raw_top_host = f["cores"]["data"]["top_host_idx"][:]
-        core_tag = f["cores"]["data"]["core_tag"][:]
+def _get_expected_core_tags(group):
+    raw_top_host = group["data"]["top_host_idx"][:]
+    core_tag = group["data"]["core_tag"][:]
     top_host_core_tag = core_tag[raw_top_host]
     return dict(zip(core_tag, top_host_core_tag))
 

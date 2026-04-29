@@ -545,6 +545,7 @@ def open_single_dataset(
         state,
         tree=tree,
     )
+    dataset = apply_plugins(PluginType.DatasetOpen, dataset, **open_kwargs)
     if header.file.data_type == "healpix_map":
         return __open_healpix_map(dataset, sim_region)
     elif header.file.is_lightcone and not bypass_lightcone:
@@ -552,7 +553,7 @@ def open_single_dataset(
             {"data": dataset}, header.lightcone["z_range"], **open_kwargs
         )
 
-    return apply_plugins(PluginType.DatasetOpen, dataset, **open_kwargs)
+    return dataset
 
 
 def __open_healpix_map(dataset: oc.Dataset, sim_region):
