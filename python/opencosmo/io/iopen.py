@@ -16,7 +16,8 @@ from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader, read_header
 from opencosmo.index.build import empty, from_range
 from opencosmo.mpi import get_comm_world
-from opencosmo.plugins.plugin import PluginType, apply_plugins
+from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
+from opencosmo.plugins.hook import fold
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.spatial.tree import open_tree
@@ -545,7 +546,7 @@ def open_single_dataset(
         state,
         tree=tree,
     )
-    dataset = apply_plugins(PluginType.DatasetOpen, dataset, **open_kwargs)
+    dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
     if header.file.data_type == "healpix_map":
         return __open_healpix_map(dataset, sim_region)
     elif header.file.is_lightcone and not bypass_lightcone:

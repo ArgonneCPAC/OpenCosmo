@@ -1,42 +1,36 @@
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import opencosmo as oc
-from opencosmo.plugins import PluginSpec, PluginType, register_plugin
+from opencosmo.plugins.contexts import HookPoint
+from opencosmo.plugins.hook import hook
 
 if TYPE_CHECKING:
     from opencosmo import Lightcone
+    from opencosmo.plugins.contexts import LightconeOpenCtx
 
 
-def with_redshift_column(dataset: Lightcone, *args, **kwargs):
-    """
-    Ensures a column exists called "redshift" which contains the redshift of the objects
-    in the lightcone.
-    """
-    if "redshift" in dataset.columns:
-        return dataset
-
-    elif "fof_halo_center_a" in dataset.columns:
+@hook(HookPoint.LightconeOpen)
+def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
+    """Ensures a column called 'redshift' exists on every lightcone."""
+    lightcone: Lightcone = ctx.lightcone
+    if "redshift" in lightcone.columns:
+        return ctx
+    elif "fof_halo_center_a" in lightcone.columns:
         z_col = 1 / oc.col("fof_halo_center_a") - 1
-        return dataset.with_new_columns(redshift=z_col)
-    elif "redshift_true" in dataset.columns:
+    elif "redshift_true" in lightcone.columns:
         z_col = oc.col("redshift_true")
-        return dataset.with_new_columns(redshift=z_col)
-    elif "zp" in dataset.columns:
+    elif "zp" in lightcone.columns:
         z_col = oc.col("zp")
-        return dataset.with_new_columns(redshift=z_col)
-    raise ValueError(
-        "Unable to find a redshift or scale factor column for this lightcone dataset"
+    else:
+        raise ValueError(
+            "Unable to find a redshift or scale factor column for this lightcone dataset"
+        )
+    return dataclasses.replace(
+        ctx, lightcone=lightcone.with_new_columns(redshift=z_col)
     )
 
-
-register_plugin(
-    PluginSpec(
-        PluginType.LightconeOpen,
-        lambda *args, **kwargs: True,
-        with_redshift_column,
-    )
-)
 
 plugins = None

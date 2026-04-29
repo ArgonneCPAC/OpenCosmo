@@ -18,12 +18,13 @@ from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
-from opencosmo.plugins.plugin import (
-    PluginType,
-    apply_index_plugins,
-    apply_plugins,
-    apply_post_sort_plugins,
+from opencosmo.plugins.contexts import (
+    DatasetInstantiateCtx,
+    HookPoint,
+    IndexUpdateCtx,
+    PostSortCtx,
 )
+from opencosmo.plugins.hook import fold
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
@@ -63,7 +64,7 @@ def sort_data(
     data = {key: value[order] for key, value in data.items()}
     if sort_by[0] not in state.columns:
         data.pop(sort_by[0])
-    return apply_post_sort_plugins(state, data, np.argsort(order))
+    return fold(HookPoint.PostSort, PostSortCtx(state, data, np.argsort(order))).data
 
 
 class DatasetState:
@@ -270,7 +271,7 @@ class DatasetState:
         """
         Get the data for a given handler.
         """
-        state = apply_plugins(PluginType.DatasetInstantiate, self)
+        state = fold(HookPoint.DatasetInstantiate, DatasetInstantiateCtx(self)).state
         data = instantiate_dataset(
             list(state.__producers.values()),
             state.__columns,
@@ -349,7 +350,7 @@ class DatasetState:
         return self.with_index(np.where(mask)[0])
 
     def with_index(self, index: DataIndex):
-        index = apply_index_plugins(self, index)
+        index = fold(HookPoint.IndexUpdate, IndexUpdateCtx(self, index)).index
         new_raw_handler = self.__raw_data_handler.take(index)
         new_cache = self.__cache.take(index)
         return self.__rebuild(
@@ -490,7 +491,7 @@ class DatasetState:
     def take_rows(self, rows: DataIndex):
         if len(self) == 0:
             return self
-        rows = apply_index_plugins(self, rows)
+        rows = fold(HookPoint.IndexUpdate, IndexUpdateCtx(self, rows)).index
         row_range = get_range(rows)
 
         if row_range[1] > len(self) or row_range[0] < 0:

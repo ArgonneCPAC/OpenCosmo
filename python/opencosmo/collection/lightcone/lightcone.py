@@ -28,7 +28,13 @@ from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.plugins import plugin
+from opencosmo.plugins.contexts import (
+    HookPoint,
+    LightconeInstantiateCtx,
+    LightconeOpenCtx,
+    PostSortCtx,
+)
+from opencosmo.plugins.hook import fold
 
 if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
@@ -286,7 +292,9 @@ class Lightcone(dict):
             )
             format = kwargs["output"]
         verify_format(format)
-        lightcone = plugin.apply_plugins(plugin.PluginType.LightconeInstantiate, self)
+        lightcone = fold(
+            HookPoint.LightconeInstantiate, LightconeInstantiateCtx(self)
+        ).lightcone
         data = [ds.get_data(unpack=unpack) for ds in lightcone.values()]
         data_with_length = [d for d in data if len(d) > 0]
         if len(data_with_length) == 0:
@@ -297,7 +305,9 @@ class Lightcone(dict):
         if self.__ordered_by is not None:
             order = table.argsort(self.__ordered_by[0], reverse=self.__ordered_by[1])
             table = table[order]
-            table = plugin.apply_post_sort_plugins(self, table, np.argsort(order))
+            table = fold(
+                HookPoint.PostSort, PostSortCtx(self, table, np.argsort(order))
+            ).data
 
         to_remove = self.__hidden.intersection(table.colnames)
         table.remove_columns(to_remove)
@@ -355,7 +365,9 @@ class Lightcone(dict):
             raise ValueError()
 
         result = cls(output)
-        result = plugin.apply_plugins(plugin.PluginType.LightconeOpen, result, **kwargs)
+        result = fold(
+            HookPoint.LightconeOpen, LightconeOpenCtx(result, kwargs)
+        ).lightcone
 
         return make_radec_columns(result)
 
@@ -367,9 +379,9 @@ class Lightcone(dict):
         **open_kwargs,
     ):
         result = cls(datasets, z_range)
-        result = plugin.apply_plugins(
-            plugin.PluginType.LightconeOpen, result, **open_kwargs
-        )
+        result = fold(
+            HookPoint.LightconeOpen, LightconeOpenCtx(result, open_kwargs)
+        ).lightcone
         return make_radec_columns(result)
 
     def with_redshift_range(self, z_low: float, z_high: float):

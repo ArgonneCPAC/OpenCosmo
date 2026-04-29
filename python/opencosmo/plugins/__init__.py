@@ -1,3 +1,25 @@
-from .plugin import PluginSpec, PluginType, register_plugin
+from .contexts import (
+    DatasetInstantiateCtx,
+    DatasetOpenCtx,
+    HookPoint,
+    IndexUpdateCtx,
+    LightconeInstantiateCtx,
+    LightconeOpenCtx,
+    PartitionCtx,
+    PostSortCtx,
+)
+from .hook import fold, hook, query
 
-__all__ = ["register_plugin", "PluginSpec", "PluginType"]
+__all__ = [
+    "fold",
+    "hook",
+    "query",
+    "HookPoint",
+    "DatasetOpenCtx",
+    "DatasetInstantiateCtx",
+    "LightconeOpenCtx",
+    "LightconeInstantiateCtx",
+    "IndexUpdateCtx",
+    "PostSortCtx",
+    "PartitionCtx",
+]
