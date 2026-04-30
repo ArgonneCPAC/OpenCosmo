@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator as op
 from copy import copy
-from functools import partial, partialmethod
+from functools import partial, partialmethod, wraps
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -77,6 +77,21 @@ def col(name: str) -> Column:
 
     """
     return Column(name)
+
+
+def _require_scalar_quantity(func: Callable) -> Callable:
+    """Decorator that raises if any Quantity argument is non-scalar."""
+
+    @wraps(func)
+    def wrapper(self: Any, other: Any) -> Any:
+        if isinstance(other, u.Quantity) and not other.isscalar:
+            raise ValueError(
+                f"Only scalar Quantity values can be used in column arithmetic, "
+                f"got shape {other.shape}"
+            )
+        return func(self, other)
+
+    return wrapper
 
 
 ColumnOrScalar = Union["Column", "DerivedColumn", int, float]
@@ -203,34 +218,39 @@ class Column:
     def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
         return ColumnMask(self.name, other, np.isin)
 
+    @_require_scalar_quantity
     def __rmul__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float():
+            case int() | float() | u.Quantity():
                 return self * other
             case _:
                 return NotImplemented
 
+    @_require_scalar_quantity
     def __mul__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | Column():
+            case int() | float() | Column() | u.Quantity():
                 return DerivedColumn(self, other, op.mul)
             case _:
                 return NotImplemented
 
+    @_require_scalar_quantity
     def __rtruediv__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float():
+            case int() | float() | u.Quantity():
                 return DerivedColumn(other, self, op.truediv)
             case _:
                 return NotImplemented
 
+    @_require_scalar_quantity
     def __truediv__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | Column():
+            case int() | float() | Column() | u.Quantity():
                 return DerivedColumn(self, other, op.truediv)
             case _:
                 return NotImplemented
 
+    @_require_scalar_quantity
     def __pow__(self, other: Any) -> DerivedColumn:
         match other:
             case int() | float():
@@ -238,6 +258,7 @@ class Column:
             case _:
                 return NotImplemented
 
+    @_require_scalar_quantity
     def __add__(self, other: Any) -> DerivedColumn:
         match other:
             case Column():
@@ -245,6 +266,7 @@ class Column:
             case _:
                 return NotImplemented
 
+    @_require_scalar_quantity
     def __sub__(self, other: Any) -> DerivedColumn:
         match other:
             case Column():
@@ -495,6 +517,8 @@ class DerivedColumn:
                 lhs_unit = units[self.lhs.name]
             case DerivedColumn():
                 lhs_unit = self.lhs.get_units(units)
+            case u.Quantity():
+                lhs_unit = self.lhs.unit
             case _:
                 lhs_unit = None
         match self.rhs:
@@ -502,6 +526,8 @@ class DerivedColumn:
                 rhs_unit = units[self.rhs.name]
             case DerivedColumn():
                 rhs_unit = self.rhs.get_units(units)
+            case u.Quantity():
+                rhs_unit = self.rhs.unit
             case _:
                 rhs_unit = None
 
@@ -529,8 +555,13 @@ class DerivedColumn:
         """
         Combine such that this column becomes the lhs of a new derived column.
         """
+        if isinstance(other, u.Quantity) and not other.isscalar:
+            raise ValueError(
+                f"Only scalar Quantity values can be used in column arithmetic, "
+                f"got shape {other.shape}"
+            )
         match other:
-            case Column() | DerivedColumn() | int() | float():
+            case Column() | DerivedColumn() | int() | float() | u.Quantity():
                 return DerivedColumn(self, other, operation)
             case _:
                 return NotImplemented
@@ -539,8 +570,13 @@ class DerivedColumn:
         """
         Combine such that this column becomes the rhs of a new derived column.
         """
+        if isinstance(other, u.Quantity) and not other.isscalar:
+            raise ValueError(
+                f"Only scalar Quantity values can be used in column arithmetic, "
+                f"got shape {other.shape}"
+            )
         match other:
-            case Column() | DerivedColumn() | int() | float():
+            case Column() | DerivedColumn() | int() | float() | u.Quantity():
                 return DerivedColumn(other, self, operation)
             case _:
                 return NotImplemented

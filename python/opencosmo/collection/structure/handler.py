@@ -31,7 +31,13 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
     "sodbighaloparticles_gravity_particles": "gravity_particles",
     "sodbighaloparticles_agn_particles": "agn_particles",
     "sodbighaloparticles_gas_particles": "gas_particles",
+    "fofbighaloparticles_star_particles": "star_particles",
+    "fofbighaloparticles_dm_particles": "dm_particles",
+    "fofbighaloparticles_gravity_particles": "gravity_particles",
+    "fofbighaloparticles_agn_particles": "agn_particles",
+    "fofbighaloparticles_gas_particles": "gas_particles",
     "sod_profile": "halo_profiles",
+    "haloprofiles": "halo_profiles",
     "galaxyproperties": "galaxy_properties",
     "galaxyparticles_star_particles": "star_particles",
 }
