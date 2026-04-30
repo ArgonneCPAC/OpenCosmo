@@ -26,7 +26,6 @@ if TYPE_CHECKING:
         DatasetOpenCtx,
         IndexUpdateCtx,
         LightconeInstantiateCtx,
-        LightconeOpenCtx,
         PartitionCtx,
         PostSortCtx,
     )
@@ -158,20 +157,17 @@ def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCt
     return dataclasses.replace(ctx, lightcone=output)  # type: ignore[arg-type]
 
 
+# Registers an IndexUpdate hook dynamically so that keep_top_host_idx only
+# activates when the user explicitly requests it via open(..., keep_top_host=True).
 @hook(
-    HookPoint.LightconeOpen,
-    when=lambda ctx: ctx.open_kwargs.get("keep_top_host", False)
-    and _is_synthetic_galaxies_with_top_host_idx(ctx.lightcone),
+    HookPoint.IndexUpdate,
+    when=lambda ctx: (
+        "top_host_idx" in ctx.state.columns
+        and ctx.state.kwargs.get("keep_top_host", False)
+    ),
 )
-def _register_keep_top_host_idx(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
-    # Registers an IndexUpdate hook dynamically so that keep_top_host_idx only
-    # activates when the user explicitly requests it via open(..., keep_top_host=True).
-    # TODO: store intent in DatasetState to avoid mutating global hook registry.
-    @hook(HookPoint.IndexUpdate, when=lambda ctx: "top_host_idx" in ctx.state.columns)
-    def _keep(ctx: IndexUpdateCtx) -> IndexUpdateCtx:
-        return dataclasses.replace(ctx, index=keep_top_host_idx(ctx.state, ctx.index))
-
-    return ctx
+def _keep(ctx: IndexUpdateCtx) -> IndexUpdateCtx:
+    return dataclasses.replace(ctx, index=keep_top_host_idx(ctx.state, ctx.index))
 
 
 @hook(
@@ -187,8 +183,10 @@ def _remap_top_host_idx_after_sort(ctx: PostSortCtx) -> PostSortCtx:
 
 @hook(
     HookPoint.Partition,
-    when=lambda ctx: ctx.header.file.data_type == "synthetic_galaxies"
-    and "top_host_idx" in ctx.data_group.keys(),
+    when=lambda ctx: (
+        ctx.header.file.data_type == "synthetic_galaxies"
+        and "top_host_idx" in ctx.data_group.keys()
+    ),
 )
 def _partition_by_top_host_groups(ctx: PartitionCtx) -> Optional[TreePartition]:
     top_host_idx = ctx.data_group["top_host_idx"][:]

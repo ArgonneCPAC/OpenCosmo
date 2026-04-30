@@ -537,6 +537,7 @@ def open_single_dataset(
         target,
         UnitConvention.COMOVING,
         sim_region,
+        open_kwargs,
         index,
         metadata_group,
     )

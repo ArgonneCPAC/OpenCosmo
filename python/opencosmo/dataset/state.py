@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 from weakref import finalize
 
 import astropy.units as u
@@ -82,6 +82,7 @@ class DatasetState:
         header: OpenCosmoHeader,
         columns: dict[str, UUID],
         region: Region,
+        open_kwargs: dict[str, Any],
         sort_by: Optional[tuple[str, bool]],
     ):
         self.__producers: dict[UUID, ConstructedColumn] = {
@@ -95,6 +96,7 @@ class DatasetState:
         self.__region = region
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
+        self.__kwargs = open_kwargs
         finalize(self, deregister_state, id(self), self.__cache)
 
     def __rebuild(self, **updates):
@@ -107,6 +109,7 @@ class DatasetState:
             "columns": self.__columns,
             "region": self.__region,
             "sort_by": self.__sort_by,
+            "open_kwargs": self.__kwargs,
         } | updates
         return DatasetState(**new)
 
@@ -119,9 +122,9 @@ class DatasetState:
         target: DatasetTarget,
         unit_convention: UnitConvention,
         region: Region,
+        open_kwargs: dict[str, Any],
         index: Optional[DataIndex] = None,
         metadata_group: Optional[str] = None,
-        in_memory: bool = False,
     ):
         data_group = target["dataset_group"]
         if "load" in data_group.keys():
@@ -154,6 +157,7 @@ class DatasetState:
             target["header"],
             columns,
             region,
+            open_kwargs,
             None,
         )
 
@@ -165,6 +169,7 @@ class DatasetState:
         header: OpenCosmoHeader,
         unit_convention: UnitConvention,
         region: Region,
+        open_kwargs: dict[str, Any],
         descriptions: Optional[dict[str, str]] = None,
         index: Optional[DataIndex] = None,
     ):
@@ -200,6 +205,7 @@ class DatasetState:
             header,
             columns,
             region,
+            open_kwargs,
             None,
         )
 
@@ -221,6 +227,10 @@ class DatasetState:
             for name, description in all_descriptions.items()
             if name in self.columns
         }
+
+    @property
+    def kwargs(self):
+        return self.__kwargs
 
     @property
     def raw_index(self):
