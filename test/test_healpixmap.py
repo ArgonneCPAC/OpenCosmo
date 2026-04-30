@@ -4,9 +4,10 @@ import healsparse as hsp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+from healsparse import HealSparseMap
+from opencosmo.spatial.healpix import HealpixRegion
 
 import opencosmo as oc
-from opencosmo.spatial.healpix import HealpixRegion
 
 
 @pytest.fixture
@@ -67,7 +68,7 @@ def test_healpix_downgrade(healpix_map_path):
     original_data = ds.get_data("healpix")
     downgraded_data = downgraded_ds.get_data("healpix")
 
-    downgraded_data_2 = original_data["tsz"].reshape((-1, 4)).sum(axis=1) / 4
+    downgraded_data_2 = original_data.reshape((-1, 4)).sum(axis=1) / 4
 
     center = (0 * u.deg, 0 * u.deg)
     radius = 1 * u.deg
@@ -81,23 +82,21 @@ def test_healpix_downgrade(healpix_map_path):
         hp.query_disc(downgraded_nside, [1, 0, 0], 1 * (np.pi / 180.0))
     )
 
-    assert len(original_data["tsz"]) == original_npix
-    assert len(downgraded_data["tsz"]) == downgraded_npix
+    assert len(original_data) == original_npix
+    assert len(downgraded_data) == downgraded_npix
 
-    assert len(data_region_original["tsz"].valid_pixels) == npix_region
-    assert len(data_region_downgraded["tsz"].valid_pixels) == npix_region_downgraded
+    assert len(data_region_original.valid_pixels) == npix_region
+    assert len(data_region_downgraded.valid_pixels) == npix_region_downgraded
 
     assert np.all(
         np.isclose(
             downgraded_data_2,
-            downgraded_data["tsz"],
+            downgraded_data,
             atol=1.0e-13,
         )
     )
 
-    assert np.isclose(
-        np.mean(original_data["tsz"]), np.mean(downgraded_data["tsz"]), atol=1.0e-13
-    )
+    assert np.isclose(np.mean(original_data), np.mean(downgraded_data), atol=1.0e-13)
 
 
 def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
@@ -223,7 +222,13 @@ def test_healpix_write_after_downgrade(healpix_map_path, tmp_path):
 
     oc.write(tmp_path / "map_test.hdf5", ds)
     new_ds = oc.open(tmp_path / "map_test.hdf5")
-    print(new_ds)
+
+    original_data = ds.get_data("healpix")
+    written_data = new_ds.get_data("healpix")
+
+    assert np.all(original_data["ksz"] == written_data["ksz"])
+    assert np.all(original_data["tsz"] == written_data["tsz"])
+    assert np.all(ds.pixels == new_ds.pixels)
 
 
 def test_healpix_write_after_take_range(healpix_map_path, tmp_path):
@@ -258,9 +263,8 @@ def test_healpix_collection_drop(healpix_map_path):
     to_drop = set(["tsz"])
 
     ds = ds.drop(to_drop)
-    columns_found = set(ds.get_data().keys())
 
-    assert not columns_found.intersection(to_drop)
+    assert isinstance(ds.get_data(), HealSparseMap)
 
 
 def test_healpix_collection_take(healpix_map_path):
@@ -269,10 +273,10 @@ def test_healpix_collection_take(healpix_map_path):
     ds_start = ds.take(n_to_take, "start")
     ds_end = ds.take(n_to_take, "end")
     ds_random = ds.take(n_to_take, "random")
-    tags = ds.select("tsz").get_data()["tsz"].valid_pixels
-    tags_start = ds_start.select("tsz").get_data()["tsz"].valid_pixels
-    tags_end = ds_end.select("tsz").get_data()["tsz"].valid_pixels
-    tags_random = ds_random.select("tsz").get_data()["tsz"].valid_pixels
+    tags = ds.select("tsz").get_data().valid_pixels
+    tags_start = ds_start.select("tsz").get_data().valid_pixels
+    tags_end = ds_end.select("tsz").get_data().valid_pixels
+    tags_random = ds_random.select("tsz").get_data().valid_pixels
     assert np.all(tags[:n_to_take] == tags_start)
     assert np.all(tags[-n_to_take:] == tags_end)
     assert len(tags_random) == n_to_take and len(set(tags_random)) == len(tags_random)
@@ -284,8 +288,8 @@ def test_healpix_collection_range(healpix_map_path):
     end = int(0.75 * len(ds))
 
     ds_range = ds.take_range(start, end)
-    halo_tags = ds.select("tsz").get_data("healsparse")["tsz"].valid_pixels[start:end]
-    range_halo_tags = ds_range.select("tsz").get_data("healsparse")["tsz"].valid_pixels
+    halo_tags = ds.select("tsz").get_data("healsparse").valid_pixels[start:end]
+    range_halo_tags = ds_range.select("tsz").get_data("healsparse").valid_pixels
     assert np.all(halo_tags == range_halo_tags)
 
 
@@ -299,6 +303,14 @@ def test_healpix_collection_select(healpix_map_path):
     ds = ds.select(to_select)
     columns_found = set(ds.columns)
     assert columns_found == to_select
+
+
+def test_healpix_collection_take_healpix(healpix_map_path):
+    ds = oc.open(healpix_map_path)
+    ds = ds.take_range(500, 1000)
+    data = ds.get_data("healpix")
+    for value in data.values():
+        assert np.all(np.where(value.mask)[0] == np.arange(500, 1000))
 
 
 def test_healpix_collection_select_healsparse(healpix_map_path):
@@ -325,8 +337,14 @@ def test_healpix_collection_derive(healpix_map_path):
     ds = oc.open(healpix_map_path)
     sz_sqrd = oc.col("tsz") ** 2 + oc.col("ksz") ** 2
     ds = ds.with_new_columns(weird_sz=sz_sqrd)
-    weird = ds.select("weird_sz").get_data()
-    assert isinstance(weird, dict)
+    data = ds.get_data()
+    assert isinstance(data, dict)
+    assert np.all(data["weird_sz"].valid_pixels == data["tsz"].valid_pixels)
+
+    tsz = data["tsz"][data["tsz"].valid_pixels]
+    ksz = data["ksz"][data["ksz"].valid_pixels]
+    weird_sz = data["weird_sz"][data["weird_sz"].valid_pixels]
+    assert np.all(weird_sz == tsz**2 + ksz**2)
 
 
 def test_healpix_collection_add(healpix_map_path):
@@ -334,7 +352,7 @@ def test_healpix_collection_add(healpix_map_path):
     map_data = ds.get_data("healsparse")["tsz"].valid_pixels
     data = np.zeros(len(map_data))
     ds = ds.with_new_columns(random=data)
-    stored_data = ds.select("random").get_data("healpix")["random"]
+    stored_data = ds.select("random").get_data("healpix")
     assert np.all(stored_data == data)
 
 
@@ -343,9 +361,7 @@ def test_healpix_collection_add_sparse(healpix_map_path):
     map_data = ds.get_data("healsparse")["tsz"].valid_pixels
     data = np.zeros(len(map_data))
     ds = ds.with_new_columns(random=data)
-    stored_data = (
-        ds.select("random").get_data("healsparse")["random"].get_values_pix(map_data)
-    )
+    stored_data = ds.select("random").get_data("healsparse").get_values_pix(map_data)
     assert np.all(stored_data == data)
 
 
@@ -367,9 +383,9 @@ def test_healpix_collection_evaluate(healpix_map_path):
     ds_vec = ds.evaluate(offset, vectorize=True, insert=True)
     ds_iter = ds.evaluate(offset, insert=True)
 
-    offset_vec = ds_vec.select("offset").get_data("healsparse")["offset"]
+    offset_vec = ds_vec.select("offset").get_data("healsparse")
     offset_vec = offset_vec.get_values_pix(offset_vec.valid_pixels)
-    offset_iter = ds_iter.select("offset").get_data("healsparse")["offset"]
+    offset_iter = ds_iter.select("offset").get_data("healsparse")
     offset_iter = offset_iter.get_values_pix(offset_iter.valid_pixels)
     assert np.all(offset_vec == offset_iter)
 

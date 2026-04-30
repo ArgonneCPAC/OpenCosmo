@@ -2,15 +2,16 @@ import os
 import shutil
 
 import astropy.units as u
+import h5py
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
+from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-from opencosmo.mpi import get_comm_world
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -122,7 +123,9 @@ def test_healpix_index_chain_failure(haloproperties_600_path):
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_write(haloproperties_600_path, per_test_dir):
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
+    assert "redshift" in ds.columns
 
     pixel = np.random.choice(ds.region.pixels)
     center = pix2ang(ds.region.nside, pixel, True, True)
@@ -133,12 +136,18 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     oc.write(per_test_dir / "lightcone_test.hdf5", ds)
     new_ds = oc.open(per_test_dir / "lightcone_test.hdf5")
 
-    radius2 = 2 * u.deg
+    radius2 = 1 * u.deg
     region2 = oc.make_cone(center, radius2)
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+    rank_tags = ds.select("fof_halo_tag").get_data()
+    new_rank_tags = new_ds.select("fof_halo_tag").get_data()
+
+    all_tags = np.concatenate(comm.allgather(rank_tags))
+    all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
+
+    parallel_assert(np.all(np.sort(all_tags) == np.sort(all_new_tags)))
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -403,13 +412,13 @@ def test_diffsky_stack_with_synths(core_path_487, core_path_475, per_test_dir):
 def test_write_some_missing(core_path_487, core_path_475, per_test_dir):
     comm = MPI.COMM_WORLD
     ds = oc.open(core_path_487, core_path_475, synth_cores=False)
+    assert "early_index" in ds.columns
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1
     original_data = ds.select("early_index").get_data("numpy")
     original_data_length = comm.allgather(len(original_data))
 
-    ds = ds.with_new_columns(gal_id=np.arange(len(ds)))
     oc.write(per_test_dir / "lightcone.hdf5", ds)
     ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")
@@ -433,11 +442,6 @@ def test_write_diffsky_some_missing_no_stack(
     if comm.Get_rank() == 0:
         ds.pop(475)
         assert len(ds.keys()) == 1
-
-    all_lengths = comm.allgather(len(ds))
-    all_ends = np.insert(np.cumsum(all_lengths), 0, 0)
-    rank = comm.Get_rank()
-    ds = ds.with_new_columns(gal_id=np.arange(all_ends[rank], all_ends[rank + 1]))
 
     columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
     columns_to_check = np.insert(columns_to_check, 0, "gal_id")
@@ -468,6 +472,87 @@ def test_write_diffsky_some_missing_no_stack(
                 == column_data_written[written_order]
             )
         )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_parallel_top_host(core_path_487, core_path_475):
+    with h5py.File(core_path_487) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+    with h5py.File(core_path_475) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data()
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_write_parallel_top_host(core_path_487, core_path_475, per_test_dir):
+    with h5py.File(core_path_475) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+
+    with h5py.File(core_path_487) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+
+    oc.write(per_test_dir / "test.hdf5", ds)
+    with h5py.File(per_test_dir / "test.hdf5") as f:
+        written_core_map = _get_expected_core_tags(f["475_475"])
+    assert core_map == written_core_map
+
+    data = (
+        oc.open(per_test_dir / "test.hdf5")
+        .select("top_host_idx", "core_tag")
+        .get_data("numpy")
+    )
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_write_parallel_top_after_filter(
+    core_path_487, core_path_475, per_test_dir
+):
+    with h5py.File(core_path_475) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+
+    with h5py.File(core_path_487) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True).take(10)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+    oc.write(per_test_dir / "test.hdf5", ds)
+
+    data = (
+        oc.open(per_test_dir / "test.hdf5")
+        .select("top_host_idx", "core_tag")
+        .get_data("numpy")
+    )
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_keep_top_host_filter(core_path_487, core_path_475):
+    with h5py.File(core_path_487) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+    with h5py.File(core_path_475) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    data = ds.take(10).select("top_host_idx", "core_tag").get_data()
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -521,3 +606,73 @@ def test_lightcone_stacking(
     assert np.all(np.isin(all_fof_tags, all_fof_tags_new))
     assert ds_new.z_range == ds.z_range
     assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range
+
+
+def _get_expected_core_tags(group):
+    raw_top_host = group["data"]["top_host_idx"][:]
+    core_tag = group["data"]["core_tag"][:]
+    top_host_core_tag = core_tag[raw_top_host]
+    return dict(zip(core_tag, top_host_core_tag))
+
+
+def _assert_top_host_idx_correct(data, core_map):
+    """
+    Verify top_host_idx is correctly remapped in `data` (a numpy dict with
+    "top_host_idx" and "core_tag" keys). Works for both local (per-rank) and
+    global (gathered) data.
+
+    Synthetic cores (core_tag == -1) are checked separately: each must point
+    to its own row index. Real cores are checked against core_map.
+    """
+    synth_mask = data["core_tag"] == -1
+    synth_indices = np.where(synth_mask)[0]
+    assert np.all(data["top_host_idx"][synth_mask] == synth_indices)
+
+    # Restrict to real cores for the map check, but dereference top_host_idx
+    # against the full data so that indices into synthetic rows resolve correctly.
+    real_mask = ~synth_mask
+    real_top_host_idx = data["top_host_idx"][real_mask]
+    real_core_tag = data["core_tag"][real_mask]
+
+    has_top_host = real_top_host_idx >= 0
+    found_top_host_core_tag = data["core_tag"][real_top_host_idx[has_top_host]]
+    found_core_map = dict(zip(real_core_tag[has_top_host], found_top_host_core_tag))
+
+    filtered_core_map = {
+        key: val for key, val in core_map.items() if key in found_core_map
+    }
+    assert filtered_core_map == found_core_map
+
+    should_have_core_map = {
+        key: val
+        for key, val in core_map.items()
+        if val in data["core_tag"] and key in real_core_tag
+    }
+    assert should_have_core_map == found_core_map
+
+    comm = get_comm_world()
+    all_data_core_maps = comm.allgather(found_core_map)
+    seen = set()
+    for m in all_data_core_maps:
+        assert len(seen.intersection(m.keys())) == 0
+        seen |= m.keys()
+
+
+def _assert_all_group_members_present(data, core_map):
+    """
+    Verify that for every top_host represented in the data, all rows from the
+    full dataset that point to that top_host are also present.
+    """
+    host_to_members: dict = {}
+    for ct, host_ct in core_map.items():
+        host_to_members.setdefault(host_ct, set()).add(ct)
+
+    present_core_tags = set(data["core_tag"])
+    top_host_core_tags = set(data["core_tag"][data["top_host_idx"]])
+
+    for top_host_ct in top_host_core_tags:
+        expected_members = host_to_members.get(top_host_ct, set())
+        missing = expected_members - present_core_tags
+        assert not missing, (
+            f"top_host {top_host_ct}: {len(missing)} member(s) missing from result"
+        )

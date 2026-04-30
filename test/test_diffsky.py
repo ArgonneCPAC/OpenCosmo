@@ -2,12 +2,13 @@ import os
 import shutil
 
 import astropy.units as u
+import h5py
 import numpy as np
 import pytest
+from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
 from opencosmo.column import add_mag_cols
-from opencosmo.spatial.region import HealpixRegion
 
 
 @pytest.fixture
@@ -149,9 +150,13 @@ def test_evaluate_with_mapped_kwargs(core_path_475, core_path_487):
 
 
 def test_open_write_with_synthetics(core_path_475, core_path_487, per_test_dir):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
     n = 10_000
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     ds = ds.filter(oc.col("lsst_g") < 20).take(n).with_new_columns(galid=np.arange(n))
+
     original_data = ds.get_data()
     assert len(original_data) == n
     assert len(ds) == n
@@ -163,12 +168,29 @@ def test_open_write_with_synthetics(core_path_475, core_path_487, per_test_dir):
     ds = oc.open(per_test_dir / "test.hdf5", synth_cores=True)
     assert len(ds) == n
 
-    written_data = ds.get_data()
+    # Check top_host_idx correctness on the spatially-sorted written data before
+    # any reordering, since top_host_idx values are indices into that ordering.
+    reindex_data = (
+        oc.open(per_test_dir / "test.hdf5")
+        .select("top_host_idx", "core_tag")
+        .get_data("numpy")
+    )
+    assert_top_host_idx_correct(reindex_data, core_map)
 
+    written_data = ds.get_data()
     written_data.sort("galid")
-    columns_to_check = np.random.choice(ds.columns, size=20, replace=False)
+    other_columns = [c for c in ds.columns if c != "top_host_idx"]
+    columns_to_check = np.random.choice(other_columns, size=20, replace=False)
+
     for column in columns_to_check:
         assert np.all(original_data[column] == written_data[column])
+
+    # Check the synthetic cores still point to themselves
+    synth_core_check_data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    synth_core_rows = np.where(synth_core_check_data["core_tag"] == -1)[0]
+    assert np.all(
+        synth_core_check_data["top_host_idx"][synth_core_rows] == synth_core_rows
+    )
 
 
 def test_open_write_with_multiple_synthetics(
@@ -277,10 +299,171 @@ def test_add_mag_units_unitless(core_path_475, core_path_487):
 def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     assert isinstance(ds.region, HealpixRegion)
-    print(ds.region.pixels)
-    assert len(ds.region.pixels) == 502
+    assert len(ds.region.pixels) == 1610
 
 
 def test_open_bad_data(core_path_475, core_path_487, invalid_data_path):
     with pytest.raises(ValueError, match=str(invalid_data_path)):
         oc.open(core_path_475, core_path_487, invalid_data_path)
+
+
+def get_expected_core_tags(path):
+    with h5py.File(path) as f:
+        raw_top_host = f["cores"]["data"]["top_host_idx"][:]
+        core_tag = f["cores"]["data"]["core_tag"][:]
+
+    top_host_core_tag = core_tag[raw_top_host]
+    return dict(zip(core_tag, top_host_core_tag))
+
+
+def assert_all_group_members_present(data, core_map):
+    """
+    Verify that for every top_host represented in the data, all rows from the
+    full dataset that point to that top_host are also present.
+    """
+    host_to_members: dict = {}
+    for ct, host_ct in core_map.items():
+        host_to_members.setdefault(host_ct, set()).add(ct)
+
+    present_core_tags = set(data["core_tag"])
+    top_host_core_tags = set(data["core_tag"][data["top_host_idx"]])
+
+    for top_host_ct in top_host_core_tags:
+        expected_members = host_to_members.get(top_host_ct, set())
+        missing = expected_members - present_core_tags
+        assert not missing, (
+            f"top_host {top_host_ct}: {len(missing)} member(s) missing from result"
+        )
+
+
+def assert_top_host_idx_correct(data, core_map):
+    """
+    Verify that top_host_idx correctly references the expected host after any
+    transformation. For each row with a valid index, checks that the referenced
+    row has the core_tag the original file associates with that host. Also
+    asserts that every galaxy whose host is present in the data has a valid index.
+
+    data: numpy dict with "top_host_idx" and "core_tag" columns.
+    core_map: dict mapping core_tag -> host core_tag from the raw HDF5 files.
+    """
+    has_top_host = data["top_host_idx"] >= 0
+    found_top_host_core_tag = data["core_tag"][data["top_host_idx"][has_top_host]]
+    found_core_map = dict(zip(data["core_tag"][has_top_host], found_top_host_core_tag))
+
+    filtered_core_map = {
+        key: val for key, val in core_map.items() if key in found_core_map
+    }
+    assert filtered_core_map == found_core_map
+
+    should_have_core_map = {
+        key: val
+        for key, val in core_map.items()
+        if val in data["core_tag"] and key in data["core_tag"]
+    }
+    assert should_have_core_map == found_core_map
+
+
+def test_reindex_top_host_take_none(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+
+
+def test_reindex_top_host_take_random(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).take(300)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+
+
+def test_reindex_top_host_take_range_sorted(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).sort_by("logsm_obs").take(300)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+
+
+def test_reindex_top_host_take_range(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).take_range(100, 400)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+
+
+def test_reindex_top_host_filter(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487).filter(oc.col("logsm_obs") > 10)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+
+
+def test_keep_top_host_take_random(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.take(20)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+    print(len(ds))
+
+
+def test_keep_top_host_take_start(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.take(20, at="start")
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+
+
+def test_keep_top_host_take_range(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.take_range(20, 60)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+
+
+def test_keep_top_host_take_range_after_sort(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True).sort_by("logsm_obs")
+    ds = ds.take_range(20, 60)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
+
+
+def test_keep_top_host_filter(core_path_475, core_path_487):
+    core_map = get_expected_core_tags(core_path_475)
+    core_map |= get_expected_core_tags(core_path_487)
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    ds = ds.filter(oc.col("logsm_obs") < 10)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    assert_top_host_idx_correct(data, core_map)
+    assert np.all(data["top_host_idx"] >= 0)
+    assert_all_group_members_present(data, core_map)
