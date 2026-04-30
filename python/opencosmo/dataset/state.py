@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 from weakref import finalize
 
 import astropy.units as u
@@ -18,12 +18,13 @@ from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index.build import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
-from opencosmo.plugins.plugin import (
-    PluginType,
-    apply_index_plugins,
-    apply_plugins,
-    apply_post_sort_plugins,
+from opencosmo.plugins.contexts import (
+    DatasetInstantiateCtx,
+    HookPoint,
+    IndexUpdateCtx,
+    PostSortCtx,
 )
+from opencosmo.plugins.hook import fold
 from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
@@ -63,7 +64,7 @@ def sort_data(
     data = {key: value[order] for key, value in data.items()}
     if sort_by[0] not in state.columns:
         data.pop(sort_by[0])
-    return apply_post_sort_plugins(state, data, np.argsort(order))
+    return fold(HookPoint.PostSort, PostSortCtx(state, data, np.argsort(order))).data
 
 
 class DatasetState:
@@ -81,6 +82,7 @@ class DatasetState:
         header: OpenCosmoHeader,
         columns: dict[str, UUID],
         region: Region,
+        open_kwargs: dict[str, Any],
         sort_by: Optional[tuple[str, bool]],
     ):
         self.__producers: dict[UUID, ConstructedColumn] = {
@@ -94,6 +96,7 @@ class DatasetState:
         self.__region = region
         self.__sort_by = sort_by
         self.__cache.register_column_group(id(self), self.__columns)
+        self.__kwargs = open_kwargs
         finalize(self, deregister_state, id(self), self.__cache)
 
     def __rebuild(self, **updates):
@@ -106,6 +109,7 @@ class DatasetState:
             "columns": self.__columns,
             "region": self.__region,
             "sort_by": self.__sort_by,
+            "open_kwargs": self.__kwargs,
         } | updates
         return DatasetState(**new)
 
@@ -118,9 +122,9 @@ class DatasetState:
         target: DatasetTarget,
         unit_convention: UnitConvention,
         region: Region,
+        open_kwargs: dict[str, Any],
         index: Optional[DataIndex] = None,
         metadata_group: Optional[str] = None,
-        in_memory: bool = False,
     ):
         data_group = target["dataset_group"]
         if "load" in data_group.keys():
@@ -153,6 +157,7 @@ class DatasetState:
             target["header"],
             columns,
             region,
+            open_kwargs,
             None,
         )
 
@@ -164,6 +169,7 @@ class DatasetState:
         header: OpenCosmoHeader,
         unit_convention: UnitConvention,
         region: Region,
+        open_kwargs: dict[str, Any],
         descriptions: Optional[dict[str, str]] = None,
         index: Optional[DataIndex] = None,
     ):
@@ -199,6 +205,7 @@ class DatasetState:
             header,
             columns,
             region,
+            open_kwargs,
             None,
         )
 
@@ -220,6 +227,10 @@ class DatasetState:
             for name, description in all_descriptions.items()
             if name in self.columns
         }
+
+    @property
+    def kwargs(self):
+        return self.__kwargs
 
     @property
     def raw_index(self):
@@ -270,7 +281,7 @@ class DatasetState:
         """
         Get the data for a given handler.
         """
-        state = apply_plugins(PluginType.DatasetInstantiate, self)
+        state = fold(HookPoint.DatasetInstantiate, DatasetInstantiateCtx(self)).state
         data = instantiate_dataset(
             list(state.__producers.values()),
             state.__columns,
@@ -349,7 +360,7 @@ class DatasetState:
         return self.with_index(np.where(mask)[0])
 
     def with_index(self, index: DataIndex):
-        index = apply_index_plugins(self, index)
+        index = fold(HookPoint.IndexUpdate, IndexUpdateCtx(self, index)).index
         new_raw_handler = self.__raw_data_handler.take(index)
         new_cache = self.__cache.take(index)
         return self.__rebuild(
@@ -490,7 +501,7 @@ class DatasetState:
     def take_rows(self, rows: DataIndex):
         if len(self) == 0:
             return self
-        rows = apply_index_plugins(self, rows)
+        rows = fold(HookPoint.IndexUpdate, IndexUpdateCtx(self, rows)).index
         row_range = get_range(rows)
 
         if row_range[1] > len(self) or row_range[0] < 0:

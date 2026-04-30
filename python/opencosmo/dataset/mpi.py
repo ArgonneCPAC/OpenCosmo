@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING, Optional
 from warnings import warn
 
 from opencosmo.index.build import single_chunk
-from opencosmo.plugins.plugin import apply_partition_plugins
+from opencosmo.plugins.contexts import HookPoint, PartitionCtx
+from opencosmo.plugins.hook import query
 from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
@@ -28,8 +29,9 @@ def partition(
     spatial index. In principle this means the number of objects are similar
     between ranks.
     """
-    partition_plugin_result = apply_partition_plugins(
-        comm, header, index_group, data_group, tree, min_level
+    partition_plugin_result = query(
+        HookPoint.Partition,
+        PartitionCtx(comm, header, index_group, data_group, tree, min_level),
     )
     if partition_plugin_result is not None:
         return partition_plugin_result

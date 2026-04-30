@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from datetime import datetime  # noqa
 from typing import TYPE_CHECKING, ClassVar, Optional
 
@@ -10,27 +11,24 @@ from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
 from opencosmo.mpi import get_mpi
-from opencosmo.plugins.plugin import (
-    IndexPluginSpec,
-    PartitionPluginSpec,
-    PluginSpec,
-    PluginType,
-    PostSortPluginSpec,
-    register_plugin,
-)
+from opencosmo.plugins.contexts import HookPoint
+from opencosmo.plugins.hook import hook
 from opencosmo.spatial.tree import TreePartition
 
 if TYPE_CHECKING:
-    import h5py
     from astropy.table import Table
     from mpi4py import MPI
 
-    from opencosmo import Dataset, Lightcone
+    from opencosmo import Dataset
     from opencosmo.dataset.state import DatasetState
-    from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.spatial.tree import Tree
-
+    from opencosmo.plugins.contexts import (
+        DatasetOpenCtx,
+        IndexUpdateCtx,
+        LightconeInstantiateCtx,
+        PartitionCtx,
+        PostSortCtx,
+    )
 
 else:
     MPI = get_mpi()
@@ -62,6 +60,9 @@ class DiffskyCatalogInfo(BaseModel):
         return None
 
 
+# --- pure logic ---
+
+
 def __offset(top_host_idx, offset):
     output = top_host_idx
     output[output >= 0] += offset
@@ -85,47 +86,7 @@ def offset_top_host_idx(datasets: list[Dataset]):
 
 def rebuild_top_host_idx(top_host_idx, index):
     result = reindex_column(index, top_host_idx)
-
     return {"top_host_idx": result}
-
-
-def top_host_idx_plugin(dataset: DatasetState, **kwargs):
-    top_host_idx = EvaluatedColumn(
-        rebuild_top_host_idx,
-        requires=set(["top_host_idx"]),
-        produces=set(["top_host_idx"]),
-        format="numpy",
-        units={"top_host_idx": None},
-        strategy=EvaluateStrategy.VECTORIZE,
-        no_cache=True,
-    )
-    return dataset.with_new_columns(updated_host_idx=top_host_idx, allow_overwrite=True)
-
-
-def top_host_idx_offset_plugin(lightcone: Lightcone) -> dict[str, Dataset]:
-    cs = 0
-    output = {}
-
-    def top_host_idx(top_host_idx, offset):
-        top_host_idx[top_host_idx >= 0] += offset
-        return top_host_idx
-
-    for key, ds in lightcone.items():
-        output[key] = ds.evaluate(
-            top_host_idx, allow_overwrite=True, vectorize=True, offset=cs
-        )
-        cs += len(ds)
-
-    return output
-
-
-def top_host_idx_verifier[T: (DatasetState, Dataset, Lightcone)](
-    dataset: T, **kwargs
-) -> bool:
-    return (
-        dataset.header.file.data_type == "synthetic_galaxies"
-        and "top_host_idx" in dataset.columns
-    )
 
 
 def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
@@ -141,51 +102,98 @@ def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
         return new_index
 
     all_missing = np.sort(np.concatenate((missing_hosts, missing_satellites)))
-
     insert_idx = np.searchsorted(index_array, all_missing)
-    result = np.insert(index_array, insert_idx, all_missing)
-
-    return result
+    return np.insert(index_array, insert_idx, all_missing)
 
 
-def keep_top_host_idx_verifier(dataset: DatasetState):
-    return "top_host_idx" in dataset.columns
-
-
-def update_top_host_idx_after_sort(data: Table, reverse_index: DataIndex):
-    mask = data["top_host_idx"] >= 0
-    data["top_host_idx"][mask] = reverse_index[data["top_host_idx"][mask]]
-    return data
-
-
-def register_keep_top_host_idx(dataset: Dataset, **kwargs):
-    register_plugin(
-        IndexPluginSpec(
-            PluginType.IndexUpdate, keep_top_host_idx_verifier, keep_top_host_idx
-        )
+def _is_synthetic_galaxies_with_top_host_idx(obj) -> bool:
+    return (
+        obj.header.file.data_type == "synthetic_galaxies"
+        and "top_host_idx" in obj.columns
     )
-    return dataset
 
 
-def register_keep_top_host_idx_verifier(
-    dataset: Dataset, keep_top_host: bool = False, **kwargs
-):
-    return keep_top_host and top_host_idx_verifier(dataset)
+# --- hooks ---
 
 
-def partition_plugin(
-    comm: MPI.Comm,
-    index_group: h5py.Group,
-    data_group: h5py.Group,
-    tree: Optional[Tree] = None,
-    min_level: Optional[int] = None,
-):
-    top_host_idx = data_group["top_host_idx"][:]
+@hook(
+    HookPoint.DatasetOpen,
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.dataset),
+)
+def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
+    top_host_idx = EvaluatedColumn(
+        rebuild_top_host_idx,
+        requires={"top_host_idx"},
+        produces={"top_host_idx"},
+        format="numpy",
+        units={"top_host_idx": None},
+        strategy=EvaluateStrategy.VECTORIZE,
+        no_cache=True,
+    )
+    new_dataset = ctx.dataset.with_new_columns(
+        updated_host_idx=top_host_idx, allow_overwrite=True
+    )
+    return dataclasses.replace(ctx, dataset=new_dataset)
+
+
+@hook(
+    HookPoint.LightconeInstantiate,
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.lightcone),
+)
+def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCtx:
+    cs = 0
+    output = {}
+
+    def _offset_top_host_idx(top_host_idx, offset):
+        top_host_idx[top_host_idx >= 0] += offset
+        return top_host_idx
+
+    for key, ds in ctx.lightcone.items():
+        output[key] = ds.evaluate(
+            _offset_top_host_idx, allow_overwrite=True, vectorize=True, offset=cs
+        )
+        cs += len(ds)
+
+    return dataclasses.replace(ctx, lightcone=output)  # type: ignore[arg-type]
+
+
+# Registers an IndexUpdate hook dynamically so that keep_top_host_idx only
+# activates when the user explicitly requests it via open(..., keep_top_host=True).
+@hook(
+    HookPoint.IndexUpdate,
+    when=lambda ctx: (
+        "top_host_idx" in ctx.state.columns
+        and ctx.state.kwargs.get("keep_top_host", False)
+    ),
+)
+def _keep(ctx: IndexUpdateCtx) -> IndexUpdateCtx:
+    return dataclasses.replace(ctx, index=keep_top_host_idx(ctx.state, ctx.index))
+
+
+@hook(
+    HookPoint.PostSort,
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.state),
+)
+def _remap_top_host_idx_after_sort(ctx: PostSortCtx) -> PostSortCtx:
+    data: Table = ctx.data  # type: ignore[assignment]
+    mask = data["top_host_idx"] >= 0
+    data["top_host_idx"][mask] = ctx.index[data["top_host_idx"][mask]]
+    return ctx
+
+
+@hook(
+    HookPoint.Partition,
+    when=lambda ctx: (
+        ctx.header.file.data_type == "synthetic_galaxies"
+        and "top_host_idx" in ctx.data_group.keys()
+    ),
+)
+def _partition_by_top_host_groups(ctx: PartitionCtx) -> Optional[TreePartition]:
+    top_host_idx = ctx.data_group["top_host_idx"][:]
     n_rows = len(top_host_idx)
-    n_ranks = comm.Get_size()
-    rank = comm.Get_rank()
+    n_ranks = ctx.comm.Get_size()
+    rank = ctx.comm.Get_rank()
 
-    # Step 1: partition row indices evenly between ranks
     ave, res = divmod(n_rows, n_ranks)
     counts = np.array(
         [ave + 1 if i < res else ave for i in range(n_ranks)], dtype=np.int64
@@ -196,60 +204,12 @@ def partition_plugin(
     row_indices = np.arange(start, start + count, dtype=np.int64)
     chunk = top_host_idx[start : start + count]
 
-    # Step 2: find top hosts (self-referential rows) and orphans (top_host_idx == -1)
-    # in this rank's chunk
+    # find top hosts (self-referential) and orphans (top_host_idx == -1)
     rank_top_hosts = row_indices[chunk == row_indices]
     rank_orphans = row_indices[chunk == -1]
 
-    # Step 3: search the full array for all rows that belong to this rank's top hosts
+    # gather all rows belonging to this rank's top hosts
     all_group_rows = np.where(np.isin(top_host_idx, rank_top_hosts))[0]
 
-    # Step 4: combine group members with orphans from this rank's partition
     index = np.union1d(all_group_rows, rank_orphans)
     return TreePartition(idx=index, region=None, level=None)
-
-
-def partition_plugin_verifier(
-    header: OpenCosmoHeader,
-    index_group: h5py.Group,
-    data_group: h5py.Group,
-    tree: Optional[Tree] = None,
-    min_level: Optional[int] = None,
-):
-    return (
-        header.file.data_type == "synthetic_galaxies"
-        and "top_host_idx" in data_group.keys()
-    )
-
-
-register_plugin(
-    PluginSpec(PluginType.DatasetOpen, top_host_idx_verifier, top_host_idx_plugin)
-)
-
-register_plugin(
-    PluginSpec(
-        PluginType.LightconeInstantiate,
-        top_host_idx_verifier,
-        top_host_idx_offset_plugin,
-    )
-)
-
-register_plugin(
-    PluginSpec(
-        PluginType.LightconeOpen,
-        register_keep_top_host_idx_verifier,
-        register_keep_top_host_idx,
-    )
-)
-
-register_plugin(
-    PostSortPluginSpec(
-        PluginType.PostSort, top_host_idx_verifier, update_top_host_idx_after_sort
-    )
-)
-
-register_plugin(
-    PartitionPluginSpec(
-        PluginType.Partition, partition_plugin_verifier, partition_plugin
-    )
-)
