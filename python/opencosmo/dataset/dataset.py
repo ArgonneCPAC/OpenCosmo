@@ -20,7 +20,7 @@ from deprecated.sphinx import deprecated
 from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import empty, into_array, mask, project
+from opencosmo.index import empty, into_array, mask, project, single_chunk
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -516,7 +516,7 @@ class Dataset:
         for m in masks:
             bool_mask &= m.apply(data)
 
-        new_state = self.__state.with_mask(bool_mask)
+        new_state = self.__state.take_rows(np.where(bool_mask)[0])
         return Dataset(self.__header, new_state, self.__tree)
 
     def rows(
@@ -728,14 +728,17 @@ class Dataset:
             or if 'at' is invalid.
 
         """
+        if at == "start":
+            return self.take_range(0, n)
+        elif at == "end":
+            return self.take_range(len(self) - n, len(self))
+        elif at != "random":
+            raise ValueError(f"Unknown take type {at}")
 
-        new_state = self.__state.take(n, at)
-
-        return Dataset(
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        row_indices = np.random.choice(len(self), n, replace=False)
+        row_indices.sort()
+        new_state = self.__state.take_rows(row_indices)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def take_range(self, start: int, end: int) -> Dataset:
         """
@@ -761,8 +764,15 @@ class Dataset:
             or if end is greater than start.
 
         """
+        if start < 0 or end < 0:
+            raise ValueError("start and end must be positive.")
+        if end < start:
+            raise ValueError("end must be greater than start.")
+        if end > len(self):
+            raise ValueError("end must be less than the length of the dataset.")
 
-        new_state = self.__state.take_range(start, end)
+        take_index = single_chunk(start, end - start)
+        new_state = self.__state.take_rows(take_index)
 
         return Dataset(
             self.__header,

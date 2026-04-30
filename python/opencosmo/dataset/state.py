@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Optional, Sequence
 from weakref import finalize
@@ -15,7 +16,7 @@ from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
-from opencosmo.index.build import single_chunk
+from opencosmo.index import single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.index.unary import get_range
 from opencosmo.plugins.contexts import (
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
 
     from astropy import table
     from astropy.cosmology import Cosmology
-    from numpy.typing import NDArray
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
@@ -65,6 +65,19 @@ def sort_data(
     if sort_by[0] not in state.columns:
         data.pop(sort_by[0])
     return fold(HookPoint.PostSort, PostSortCtx(state, data, np.argsort(order))).data
+
+
+@dataclass(frozen=True)
+class _DatasetState:
+    column_producers: Sequence[ConstructedColumn]
+    raw_data_handler: DataHandler
+    cache: DataCache
+    unit_handler: UnitHandler
+    header: OpenCosmoHeader
+    columns: dict[str, UUID]
+    region: Region
+    open_kwargs: dict[str, Any]
+    sort_by: Optional[tuple[str, bool]]
 
 
 class DatasetState:
@@ -325,7 +338,7 @@ class DatasetState:
 
         try:
             for start, end in chunk_ranges:
-                chunk = self.take_range(start, end)
+                chunk = self.take_rows(single_chunk(start, end - start))
                 data = chunk.get_data(
                     metadata_columns=metadata_columns, unit_kwargs=unit_kwargs
                 )
@@ -355,18 +368,6 @@ class DatasetState:
         if sorted_index is not None:
             metadata = {name: values[sorted_index] for name, values in metadata.items()}
         return metadata
-
-    def with_mask(self, mask: NDArray[np.bool_]):
-        return self.with_index(np.where(mask)[0])
-
-    def with_index(self, index: DataIndex):
-        index = fold(HookPoint.IndexUpdate, IndexUpdateCtx(self, index)).index
-        new_raw_handler = self.__raw_data_handler.take(index)
-        new_cache = self.__cache.take(index)
-        return self.__rebuild(
-            cache=new_cache,
-            raw_data_handler=new_raw_handler,
-        )
 
     def make_schema(self, name: Optional[str] = None):
         producers = list(self.__producers.values())
@@ -469,34 +470,6 @@ class DatasetState:
             sorted = None
 
         return sorted
-
-    def take(self, n: int, at: str):
-        """
-        Take rows from the dataset.
-        """
-
-        if at == "start":
-            return self.take_range(0, n)
-        elif at == "end":
-            return self.take_range(len(self) - n, len(self))
-        elif at == "random":
-            row_indices = np.random.choice(len(self), n, replace=False)
-            row_indices.sort()
-        return self.take_rows(row_indices)
-
-    def take_range(self, start: int, end: int):
-        """
-        Take a range of rows form the dataset.
-        """
-        if start < 0 or end < 0:
-            raise ValueError("start and end must be positive.")
-        if end < start:
-            raise ValueError("end must be greater than start.")
-        if end > len(self):
-            raise ValueError("end must be less than the length of the dataset.")
-
-        take_index = single_chunk(start, end - start)
-        return self.take_rows(take_index)
 
     def take_rows(self, rows: DataIndex):
         if len(self) == 0:
