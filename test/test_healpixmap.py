@@ -112,14 +112,14 @@ def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
 
     # First dataset backed by actual file, data should be cached
     dataset = next(iter(ds.values()))
-    cache = dataset._Dataset__state._DatasetState__cache
+    cache = dataset._Dataset__state.cache
     assert len(cache.columns) > 1
 
     # New dataset entirely in-memory, so no cache
     output.get_data()
     downgraded_dataset = next(iter(output.values()))
     cache = downgraded_dataset._Dataset__state._DatasetState__cache
-    handler = downgraded_dataset._Dataset__state._DatasetState__raw_data_handler
+    handler = downgraded_dataset._Dataset__state.raw_data_handler
     assert len(cache.columns) == len(dataset.columns)
     assert len(handler) == 0
 
