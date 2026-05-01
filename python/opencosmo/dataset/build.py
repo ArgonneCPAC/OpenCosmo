@@ -7,8 +7,8 @@ import astropy.units as u
 import h5py
 import numpy as np
 
+import opencosmo.dataset.state as state
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.state import DatasetState
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.tree import Tree
 from opencosmo.spatial.utils import combine_upwards
@@ -51,7 +51,7 @@ def build_dataset_from_data(
         metadata_group = {}
 
     data_descriptions = descriptions.get("data", {})
-    new_state = DatasetState.in_memory(
+    new_state = state.state_in_memory(
         data_group,
         metadata_group,
         header,

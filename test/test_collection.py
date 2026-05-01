@@ -1298,8 +1298,8 @@ def test_data_cached_after_objects(halo_paths):
 
     dataset = ds["dm_particles"]
     state = dataset._Dataset__state
-    cache = state._DatasetState__cache
-    columns = state._DatasetState__columns  # dict[str, UUID]
+    cache = state.cache
+    columns = state.column_map  # dict[str, UUID]
     gpe_uuid = columns["gpe"]
     uuid_data = cache.get_data({(gpe_uuid, "gpe")})
     assert uuid_data.get(gpe_uuid, {}).get("gpe") is not None
