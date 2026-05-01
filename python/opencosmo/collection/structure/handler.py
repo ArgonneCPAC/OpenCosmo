@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 import numpy as np
 
+from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:
@@ -43,30 +44,46 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
 }
 
 
-def create_start_size(data, start_name, size_name):
+def create_start_size(data, start_name, size_name, offsets):
+
     start = data.pop(start_name, None)
     size = data.pop(size_name, None)
     if start is None or size is None:
         return None
+
+    start = np.atleast_1d(start).astype(np.int64)
+    size = np.atleast_1d(size).astype(np.int64)
     valid = size > 0
-
-    start = start.astype(np.int64)
-    size = size.astype(np.int64)
-
-    if isinstance(start, np.ndarray):
-        return (start[valid], size[valid])
-    if size == 0:
+    if not np.any(valid):
         return None
-    return (np.atleast_1d(start), np.atleast_1d(size))
+
+    if offsets is not None:
+        ds_rs = 0
+        src_rs = 0
+        for source_len, ds_len in offsets:
+            slice = start[src_rs : src_rs + source_len]
+            slice[slice >= 0] += ds_rs
+            src_rs += source_len
+            ds_rs += ds_len
+
+    return (start[valid], size[valid])
 
 
-def create_idx(data, idx_name):
+def create_idx(data, idx_name, offsets):
     idx = data.pop(idx_name, None)
     if idx is None:
         return None
 
     idx = idx.astype(np.int64)
     valid = idx >= 0
+    if offsets is not None:
+        ds_rs = 0
+        src_rs = 0
+        for source_len, ds_len in offsets:
+            slice = idx[src_rs : src_rs + source_len]
+            slice[slice >= 0] += ds_rs
+            src_rs += source_len
+            ds_rs += ds_len
 
     if isinstance(idx, np.ndarray):
         return idx[valid]
@@ -147,15 +164,23 @@ class LinkHandler:
         links, columns = make_links(names, rename_galaxies)
         return LinkHandler(links, columns, None)
 
-    def parse(self, data: dict[str, Any]):
+    def parse(
+        self, data: dict[str, Any], offsets: Optional[dict[str, list[int]]] = None
+    ):
         output = {}
         for name, handler in self.links.items():
-            result = handler(data)
+            result = handler(
+                data, offsets=offsets[name] if offsets is not None else None
+            )
             if result is not None:
                 output[name] = result
         return output
 
-    def prep_datasets(self, source: oc.Dataset, datasets: dict[str, oc.Dataset]):
+    def prep_datasets(
+        self,
+        source: oc.Dataset | oc.Lightcone,
+        datasets: dict[str, oc.Dataset | oc.Lightcone],
+    ):
         """
         Called once when a datasets are opened for the first time. Downstream
         versions always use rebuild_datsets
@@ -165,8 +190,17 @@ class LinkHandler:
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
         meta = source.get_metadata(all_columns)
-        indices = self.parse(meta)
+        offsets = None
+        if isinstance(source, lc.Lightcone):
+            offsets = {}
+            for ds_type, lightcone in datasets.items():
+                offsets[ds_type] = [
+                    (len(source[key]), len(ds)) for key, ds in lightcone.items()
+                ]
+
+        indices = self.parse(meta, offsets)
         new_datasets = datasets
+
         for name, index in indices.items():
             new_datasets[name] = new_datasets[name].take_rows(index)
         return new_datasets
@@ -184,9 +218,26 @@ class LinkHandler:
 
         return LinkHandler(self.links, self.columns, derived_from)
 
+    def rebuild_lightcones(
+        self, new_source: oc.Lightcone, lightcones: dict[str, oc.Lightcone]
+    ):
+        new_datasets = {name: {} for name in lightcones}
+
+        for step, step_source in new_source.items():
+            step_datasets = {name: lc[step] for name, lc in lightcones.items()}
+            new_step_datasets = self.__rebuild_datasets(
+                self.__derived_from[step], step_source, step_datasets
+            )
+            for name, new_step_ds in new_step_datasets.items():
+                new_datasets[name][step] = new_step_ds
+        return {
+            name: lc.Lightcone.from_datasets(datasets)
+            for name, datasets in new_datasets.items()
+        }
+
     def rebuild_datasets(
         self,
-        new_source: oc.Dataset,
+        new_source: oc.Dataset | oc.Lightcone,
         datasets: dict[str, oc.Dataset],
     ):
         """
@@ -199,7 +250,12 @@ class LinkHandler:
         """
         if self.__derived_from is None:
             return datasets
-        original_index = into_array(self.__derived_from.index)
+        elif isinstance(new_source, lc.Lightcone):
+            return self.rebuild_lightcones(new_source, datasets)
+        return self.__rebuild_datasets(self.__derived_from, new_source, datasets)
+
+    def __rebuild_datasets(self, derived_from, new_source, datasets):
+        original_index = into_array(derived_from.index)
         new_index = into_array(new_source.index)
 
         _, index_into_original, index_into_new = np.intersect1d(
@@ -209,7 +265,7 @@ class LinkHandler:
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
         index_into_original = index_into_original[np.argsort(index_into_new)]
-        metadata = self.__derived_from.get_metadata(all_columns)
+        metadata = derived_from.get_metadata(all_columns)
         new_datasets = {}
 
         for name, dataset in datasets.items():

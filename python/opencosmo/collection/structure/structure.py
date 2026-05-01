@@ -92,7 +92,6 @@ class StructureCollection:
     def __init__(
         self,
         source: oc.Dataset,
-        header: oc.header.OpenCosmoHeader,
         datasets: Mapping[str, oc.Dataset | StructureCollection],
         hide_source: bool = False,
         link_handler: Optional[LinkHandler] = None,
@@ -104,9 +103,7 @@ class StructureCollection:
         """
 
         self.__source = source
-        self.__header = header
         self.__datasets = dict(datasets)
-        self.__index = self.__source.index
         self.__hide_source = hide_source
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
@@ -140,7 +137,7 @@ class StructureCollection:
         return self.__datasets
 
     def __repr__(self):
-        structure_type = self.__header.file.data_type.split("_")[0] + "s"
+        structure_type = self.__source.header.file.data_type.split("_")[0] + "s"
         keys = list(self.keys())
         if len(keys) == 2:
             dtype_str = " and ".join(keys)
@@ -158,12 +155,8 @@ class StructureCollection:
         return sio.build_structure_collection(targets, ignore_empty)
 
     @property
-    def header(self):
-        return self.__header
-
-    @property
     def dtype(self):
-        structure_type = self.__header.file.data_type.split("_")[0]
+        structure_type = self.__source.header.file.dt
         return structure_type
 
     @property
@@ -192,7 +185,7 @@ class StructureCollection:
         redshift: float | tuple[float, float]
 
         """
-        return self.__header.file.redshift
+        raise NotImplementedError
 
     @property
     def simulation(self) -> HaccSimulationParameters:
@@ -204,7 +197,7 @@ class StructureCollection:
         -------
         parameters: opencosmo.dtypes.HaccSimulationParameters
         """
-        return self.__header.simulation
+        return self.__source.simulation
 
     def keys(self) -> list[str]:
         """
@@ -233,7 +226,7 @@ class StructureCollection:
         """
         Return the linked dataset with the given key.
         """
-        if key == self.__header.file.data_type:
+        if key == self.__source.header.file.data_type:
             return self.__source
         datasets = self.__get_datasets()
         if key not in datasets.keys():
@@ -286,7 +279,6 @@ class StructureCollection:
         new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
             bounded,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             new_handler,
@@ -423,7 +415,6 @@ class StructureCollection:
                 return result
             return StructureCollection(
                 self.__source,
-                self.__header,
                 self.__get_datasets() | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -461,7 +452,6 @@ class StructureCollection:
             new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
             return StructureCollection(
                 self.__source,
-                self.__header,
                 self.__get_datasets() | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -565,7 +555,6 @@ class StructureCollection:
             assert isinstance(result, oc.Dataset)
             return StructureCollection(
                 result,
-                self.__header,
                 self.__datasets,
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -598,7 +587,6 @@ class StructureCollection:
             new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
             return StructureCollection(
                 self.__source,
-                self.__header,
                 self.__datasets | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -625,7 +613,6 @@ class StructureCollection:
         assert isinstance(result, (oc.Dataset, StructureCollection))
         return StructureCollection(
             self.__source,
-            self.__header,
             self.__datasets | {ds_path[0]: result},
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -683,7 +670,6 @@ class StructureCollection:
         new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
             filtered,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             new_handler,
@@ -773,7 +759,7 @@ class StructureCollection:
                 arg = columns  # type: ignore
                 kwargs = {}
 
-            if dataset == self.__header.file.data_type:
+            if dataset == self.__source.file.data_type:
                 new_source = self.__source.select(arg, **kwargs)
                 continue
 
@@ -795,7 +781,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets | new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -837,7 +822,7 @@ class StructureCollection:
         new_datasets = {}
 
         for dataset_name, columns in columns_to_drop.items():
-            if dataset_name == self.__header.file.data_type:
+            if dataset_name == self.__source.file.data_type:
                 new_source = self.__source.drop(columns)
                 continue
 
@@ -853,7 +838,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets | new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -888,7 +872,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -992,7 +975,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1034,7 +1016,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             new_handler,
@@ -1080,7 +1061,6 @@ class StructureCollection:
         new_source = self.__source.take_range(start, end, mode)
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1110,7 +1090,6 @@ class StructureCollection:
         new_source = self.__source.take_rows(rows)
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1197,7 +1176,6 @@ class StructureCollection:
             )
             return StructureCollection(
                 self.__source,
-                self.__header,
                 {**datasets, collection_name: new_collection},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -1211,7 +1189,6 @@ class StructureCollection:
             )
             return StructureCollection(
                 new_source,
-                self.__header,
                 self.__datasets,
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -1239,7 +1216,6 @@ class StructureCollection:
 
         return StructureCollection(
             self.__source,
-            self.__header,
             {**datasets, dataset: new_ds},
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1287,7 +1263,6 @@ class StructureCollection:
         for column in self.__derived_columns:
             name_parts = column.split(".")
             columns_to_collect[name_parts[0]][name_parts[1]] = []
-
         try:
             for row in self.__source.rows(metadata_columns=metadata_columns):
                 row = dict(row)
@@ -1383,7 +1358,6 @@ class StructureCollection:
         new_datasets = {name: self.__datasets[name] for name in requested_datasets}
         return StructureCollection(
             self.__source,
-            self.__header,
             new_datasets,
             hide_source,
             self.__handler.make_derived(self.__source),

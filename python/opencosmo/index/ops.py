@@ -22,3 +22,9 @@ def rebuild_by_ranges(index: DataIndex, ranges: ChunkedIndex):
             return idxlib.rebuild_simple_by_ranges(index, *ranges)
         case (np.ndarray(), np.ndarray()):
             return idxlib.rebuild_chunked_by_ranges(*index, *ranges)
+
+
+def offset(index: DataIndex, offset_amount: int):
+    if isinstance(index, np.ndarray):
+        return index + offset_amount
+    return (index[0] + offset_amount, index[1])

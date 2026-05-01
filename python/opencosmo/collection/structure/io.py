@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from functools import reduce
+from itertools import chain
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
 from opencosmo import io
-from opencosmo.collection import lightcone as lc
+from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import structure as sc
 
 if TYPE_CHECKING:
@@ -73,7 +74,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
                 name = target["header"].file.data_type
             elif name.startswith("halo_properties"):
                 name = name[16:]
-            link_targets["halo_targets"][name].append(dataset)
+            link_targets["halo_properties"][name].append(dataset)
         elif str(target["header"].file.data_type).startswith("galaxy"):
             dataset = io.iopen.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
@@ -83,7 +84,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
                 name = target["header"].file.data_type
             elif name.startswith("galaxy_properties"):
                 name = name[18:]
-            link_targets["galaxy_targets"][name].append(dataset)
+            link_targets["halo_properties"][name].append(dataset)
         else:
             raise ValueError(
                 f"Unknown data type for structure collection {target['header'].data_type}"
@@ -93,30 +94,8 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
         len(link_sources["halo_properties"]) > 1
         or len(link_sources["galaxy_properties"]) > 1
     ):
-        raise NotImplementedError(
-            "Opening structure collections that span multiple redshifts is not currently supported"
-        )
         # Potentially a lightcone structure collection
-        collections = {}
-        sources_by_step, targets_by_step = __sort_by_step(link_sources, link_targets)
-        if set(sources_by_step.keys()) != set(targets_by_step.keys()):
-            raise ValueError("Datasets are not the same across all lightcone steps!")
-        for step, sources in sources_by_step.items():
-            halo_properties = sources.get("halo_properties")
-            galaxy_properties = sources.get("galaxy_properties")
-            targets = targets_by_step[step]
-            collection = __build_structure_collection(
-                halo_properties, galaxy_properties, targets, ignore_empty
-            )
-            collections[step] = collection
-
-        expected_datasets = set(next(iter(collections.values())).keys())
-        for collection in collections.values():
-            if set(collection.keys()) != expected_datasets:
-                raise ValueError(
-                    "All structure collections in a lightcone must have the same set of datasets"
-                )
-        return lc.Lightcone(collections)
+        return build_lightcone_structure_collection(link_sources, link_targets)
 
     halo_properties_target = None
     galaxy_properties_target = None
@@ -143,33 +122,52 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
     )
 
 
-def __sort_by_step(link_sources: dict[str, list[io.iopen.DatasetTarget]], link_targets):
-    sources_by_step: dict[int, dict[str, io.iopen.DatasetTarget]] = defaultdict(dict)
-    targets_by_step: dict[int, dict[str, dict[str, d.Dataset]]] = defaultdict(
-        lambda: defaultdict(dict)
-    )
-    for source_name, sources in link_sources.items():
-        for source in sources:
-            if not source["header"].file.is_lightcone:
+def build_lightcone_structure_collection(
+    link_sources: dict[str, list[io.iopen.DatasetTarget]],
+    link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
+):
+    found_redshift_steps = set()
+    for source_type, source_list in link_sources.items():
+        if not all(t["header"].file.is_lightcone for t in source_list):
+            raise ValueError("All sources must be lightcone datasets!")
+        redshift_steps = set(t["header"].file.step for t in source_list)
+        if found_redshift_steps and found_redshift_steps != redshift_steps:
+            raise ValueError(
+                "All source types must have the same set of redshift steps!"
+            )
+        if not all(
+            t.header.file.is_lightcone
+            for t in chain.from_iterable(link_targets[source_type].values())
+        ):
+            raise ValueError("All dataset must be lightcone datasets!")
+        for targets in link_targets[source_type].values():
+            target_redshift_steps = set(t.header.file.step for t in targets)
+            if target_redshift_steps != redshift_steps:
                 raise ValueError(
-                    "Recived multiple source datasets of a single type, but not all are lightcone datasets!"
+                    "All datasets must have the same set of redshift steps!"
                 )
-            if source["header"].file.step is None:
-                raise ValueError("No step in source!")
+    output_sources = {}
+    output_targets = defaultdict(dict)
+    for source_type, source_list in link_sources.items():
+        if source_type == "galaxy_properties":
+            raise NotImplementedError
 
-            sources_by_step[source["header"].file.step][source_name] = source
-    for target_type, targets_ in link_targets.items():
-        for target_name, targets in targets_.items():
-            for target in targets:
-                if not target.header.file.is_lightcone:
-                    raise ValueError(
-                        "Recived multiple datasets of a single type, but not all are lightcone datasets!"
-                    )
-                targets_by_step[target.header.file.step][target_type][target_name] = (
-                    target
-                )
+        datasets = [
+            io.iopen.open_single_dataset(t, "data_linked", bypass_lightcone=True)
+            for t in source_list
+        ]
+        output_sources[source_type] = lc.Lightcone.from_datasets(
+            {ds.header.file.step: ds for ds in datasets}
+        )
+        for target_type, targets in link_targets[source_type].items():
+            output_targets[source_type][target_type] = lc.Lightcone.from_datasets(
+                {ds.header.file.step: ds for ds in targets}
+            )
+    return sc.StructureCollection(
+        output_sources["halo_properties"], output_targets["halo_properties"]
+    )
 
-    return sources_by_step, targets_by_step
+    return output_sources, output_targets
 
 
 def __build_structure_collection(

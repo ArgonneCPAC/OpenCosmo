@@ -20,6 +20,10 @@ if TYPE_CHECKING:
 def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
     """Ensures a column called 'redshift' exists on every lightcone."""
     lightcone: Lightcone = ctx.lightcone
+    if (
+        "properties" not in lightcone.dtype
+    ):  # Particles or profiles, redshift handled at structure collection level
+        return ctx
     if "redshift" in lightcone.columns:
         return ctx
     elif "fof_halo_center_a" in lightcone.columns:
@@ -46,7 +50,7 @@ def _make_radec_columns(ctx: LightconeOpenCtx):
         lightcone = lightcone.evaluate(
             radec_from_thetaphi, vectorize=True, insert=True, format="numpy"
         )
-    else:
+    elif "properties" in lightcone.dtype:
         warnings.warn(
             "Could not find coordinates in this catalog. Spatial queries will not be available"
         )

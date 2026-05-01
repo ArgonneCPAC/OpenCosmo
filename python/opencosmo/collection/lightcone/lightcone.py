@@ -17,7 +17,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np
-from astropy.table import vstack  # type: ignore
+from astropy.table import QTable, vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
@@ -167,6 +167,17 @@ class Lightcone(dict):
         cols = list(filter(lambda col: col not in self.__hidden, cols))
         return cols
 
+    @property
+    def meta_columns(self) -> list[str]:
+        """
+        The names of the columns in this dataset.
+
+        Returns
+        -------
+        columns: list[str]
+        """
+        return next(iter(self.values())).meta_columns
+
     @cached_property
     def descriptions(self) -> dict[str, Optional[str]]:
         """
@@ -266,7 +277,7 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_data(self, format="astropy", unpack: bool = False, **kwargs):
+    def get_data(self, format="astropy", unpack: bool = True, **kwargs):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -303,7 +314,7 @@ class Lightcone(dict):
         lightcone = fold(
             HookPoint.LightconeInstantiate, LightconeInstantiateCtx(self)
         ).lightcone
-        data = [ds.get_data(unpack=unpack) for ds in lightcone.values()]
+        data = [ds.get_data(unpack=False) for ds in lightcone.values()]
         data_with_length = [d for d in data if len(d) > 0]
         if len(data_with_length) == 0:
             return data[0]
@@ -319,12 +330,30 @@ class Lightcone(dict):
 
         to_remove = self.__hidden.intersection(table.colnames)
         table.remove_columns(to_remove)
+        if unpack:
+            data = {
+                key: value[0] if len(value) == 1 else value
+                for key, value in table.items()
+            }
+            table = QTable(data)
+
         if format != "astropy":
             return convert_data(dict(table), format)
         elif len(table.columns) == 1:
             return next(iter(dict(table).values()))
 
         return table
+
+    def get_metadata(self, columns: list[str] = []):
+        data = [ds.get_metadata(columns) for ds in self.values()]
+        data_with_length = [d for d in data if len(d) > 0]
+        if len(data_with_length) == 0:
+            return data[0]
+
+        output = {}
+        for key in data[0].keys():
+            output[key] = np.concatenate([d[key] for d in data])
+        return output
 
     @property
     def data(self):
@@ -379,7 +408,7 @@ class Lightcone(dict):
     def from_datasets(
         cls,
         datasets: dict[str, oc.Dataset],
-        z_range: tuple[float, float],
+        z_range: Optional[tuple[float, float]] = None,
         **open_kwargs,
     ):
         result = cls(datasets, z_range)
@@ -723,7 +752,9 @@ class Lightcone(dict):
         """
         return self.__map("filter", *masks, **kwargs)
 
-    def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
+    def rows(
+        self, metadata_columns=[]
+    ) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
         For performance, it is recommended to first select the columns you need to
@@ -734,7 +765,9 @@ class Lightcone(dict):
         row : dict
             A dictionary of values for each row in the dataset with units.
         """
-        yield from chain.from_iterable(v.rows() for v in self.values())
+        yield from chain.from_iterable(
+            v.rows(metadata_columns=metadata_columns) for v in self.values()
+        )
 
     def select(
         self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
@@ -794,7 +827,7 @@ class Lightcone(dict):
         hidden = self.__hidden
         additional_columns = set()
 
-        if "redshift" not in all_columns:
+        if "redshift" not in all_columns and "properties" in self.dtype:
             additional_columns.add("redshift")
             hidden = hidden.union({"redshift"})
 
@@ -984,7 +1017,6 @@ class Lightcone(dict):
                 "Rows must be between 0 and the length of this dataset - 1"
             )
         rows = get_rows_take_index(self, rows, self.__sort_key)
-
         return self.__take_rows(rows)
 
     def __make_sort_index(self):
@@ -999,7 +1031,7 @@ class Lightcone(dict):
 
     def __take_rows(self, rows: DataIndex):
         """
-        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorte.
+        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorted.
         For internal use only.
         """
         sizes = np.fromiter((len(ds) for ds in self.values()), dtype=np.int64)
@@ -1009,7 +1041,6 @@ class Lightcone(dict):
         output = {}
         for (name, ds), index in zip(self.items(), projected):
             output[name] = ds.take_rows(index)
-
         if all(len(ds) == 0 for ds in output.values()):
             output = {"data": next(iter(output.values()))}
         else:
