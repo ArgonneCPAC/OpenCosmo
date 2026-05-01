@@ -533,7 +533,7 @@ def open_single_dataset(
             rank = comm.Get_rank()
             index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
 
-    state = st.DatasetState.from_target(
+    state = st.state_from_target(
         target,
         UnitConvention.COMOVING,
         sim_region,

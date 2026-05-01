@@ -545,8 +545,8 @@ def test_rows_cache(input_path):
 
     # After iterating rows(), derived columns should be cached.
     state = dataset._Dataset__state
-    cache = state._DatasetState__cache
-    columns = state._DatasetState__columns
+    cache = state.cache
+    columns = state.column_map
     assert "fof_px" in cache.columns
     pairs = {(columns["fof_px"], "fof_px")}
     uuid_data = cache.get_data(pairs)
@@ -578,7 +578,7 @@ def test_cache(input_path):
 def test_cache_select(input_path):
     dataset = oc.open(input_path)
     _ = dataset.get_data()
-    cache = dataset._Dataset__state._DatasetState__cache
+    cache = dataset._Dataset__state.cache
     assert set(dataset.columns) == cache.columns
     columns = np.random.choice(dataset.columns, 5, replace=False)
     dataset2 = dataset.select(columns)
@@ -595,7 +595,7 @@ def test_cache_filter(input_path):
     dataset = oc.open(input_path)
     dataset = dataset.filter(oc.col("fof_halo_mass") > 1e14)
 
-    cache = dataset._Dataset__state._DatasetState__cache
+    cache = dataset._Dataset__state.cache
 
     assert (
         len(cache.columns) > 0 or cache._ColumnCache__parent() is not None
@@ -613,7 +613,7 @@ def test_cache_column_conversion(input_path):
 
     dataset2 = dataset.with_units(conversions={u.Mpc: u.lyr})
 
-    cache = dataset2._Dataset__state._DatasetState__cache
+    cache = dataset2._Dataset__state.cache
 
     data2 = dataset2.get_data()
     assert len(cache.columns) == len(dataset2.columns)
@@ -626,7 +626,7 @@ def test_cache_change_units(input_path):
     dataset.get_data()
     dataset2 = dataset.with_units("scalefree")
 
-    cache = dataset2._Dataset__state._DatasetState__cache
+    cache = dataset2._Dataset__state.cache
 
     assert (
         len(cache.columns) == 0 and cache._ColumnCache__parent is None
@@ -640,9 +640,9 @@ def test_cache_conversion_propogation(input_path):
 
     state = dataset._Dataset__state
     state2 = dataset2._Dataset__state
-    cache = state._DatasetState__cache
-    cache2 = state2._DatasetState__cache
-    col_to_uuid = state._DatasetState__columns
+    cache = state.cache
+    cache2 = state2.cache
+    col_to_uuid = state.column_map
     pairs = {(uuid, name) for name, uuid in col_to_uuid.items()}
 
     assert len(cache.columns) == len(dataset2.columns)  # just to be safe

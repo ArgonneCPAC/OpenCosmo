@@ -17,10 +17,11 @@ import numpy as np
 from astropy.table import QTable  # type: ignore
 from deprecated.sphinx import deprecated
 
+import opencosmo.dataset.state as st
 from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import empty, into_array, mask, project, single_chunk
+from opencosmo.index import empty, get_range, into_array, mask, project, single_chunk
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -83,10 +84,10 @@ class Dataset:
         return self
 
     def __exit__(self, *exc_details):
-        return self.__state.__exit__(*exc_details)
+        return st.exit_state(self.__state, *exc_details)
 
     def close(self):
-        return self.__state.__exit__()
+        return st.exit_state(self.__state)
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -236,7 +237,7 @@ class Dataset:
         if isinstance(columns, str):
             columns = [columns]
 
-        return self.__state.get_metadata(columns)
+        return st.get_metadata(self.__state, columns)
 
     def get_data(
         self, format="astropy", unpack=True, metadata_columns=[], **kwargs
@@ -286,8 +287,8 @@ class Dataset:
         else:
             unit_kwargs = {}
 
-        data = self.__state.get_data(
-            unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
+        data = st.get_data(
+            self.__state, unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
         )  # dict
         if unpack:
             data = {
@@ -336,7 +337,7 @@ class Dataset:
             columns = check.find_coordinates_3d(self, self.dtype)
 
             check_region = region.into_base_convention(
-                self.__state.unit_handler,
+                self.__state.unit_handler,  # type: ignore[arg-type]
                 columns,
                 self.__state.convention,
                 {
@@ -349,7 +350,7 @@ class Dataset:
             check_region = region
 
         if not self.__state.region.intersects(check_region):
-            new_state = self.__state.take_rows(empty())
+            new_state = st.take_rows(self.__state, empty())
             return Dataset(self.__header, new_state, self.__tree)
 
         if not self.__state.region.contains(check_region):
@@ -365,7 +366,7 @@ class Dataset:
         contained_index = project(self.__state.raw_index, contained_index)
         intersects_index = project(self.__state.raw_index, intersects_index)
 
-        check_state = self.__state.take_rows(intersects_index)
+        check_state = st.take_rows(self.__state, intersects_index)
         check_dataset = Dataset(
             self.__header,
             check_state,
@@ -386,7 +387,7 @@ class Dataset:
             [into_array(contained_index), into_array(new_intersects_index)]
         )
 
-        new_state = self.__state.take_rows(new_index).with_region(check_region)
+        new_state = st.with_region(st.take_rows(self.__state, new_index), check_region)
 
         return Dataset(self.__header, new_state, self.__tree)
 
@@ -516,7 +517,7 @@ class Dataset:
         for m in masks:
             bool_mask &= m.apply(data)
 
-        new_state = self.__state.take_rows(np.where(bool_mask)[0])
+        new_state = st.take_rows(self.__state, np.where(bool_mask)[0])
         return Dataset(self.__header, new_state, self.__tree)
 
     def rows(
@@ -547,7 +548,7 @@ class Dataset:
         else:
             unit_kwargs = {}
 
-        for row in self.__state.rows(metadata_columns, unit_kwargs):
+        for row in st.iter_rows(self.__state, metadata_columns, unit_kwargs):
             output_data = row
             if not isinstance(output_data, dict):
                 output_data = {self.columns[0]: row}
@@ -608,10 +609,10 @@ class Dataset:
 
         new_state = self.__state
         if derived_columns:
-            new_state = new_state.with_new_columns({}, False, **derived_columns)
+            new_state = st.with_new_columns(new_state, {}, False, **derived_columns)
             all_columns.update(derived_columns.keys())
 
-        new_state = new_state.select(all_columns)
+        new_state = st.select(new_state, all_columns)
         return Dataset(
             self.__header,
             new_state,
@@ -648,7 +649,7 @@ class Dataset:
                 col_group = {col_group}
             all_columns.update(col_group)
 
-        new_state = self.__state.select(all_columns, drop=True)
+        new_state = st.select(self.__state, all_columns, drop=True)
         return Dataset(
             self.__header,
             new_state,
@@ -688,7 +689,7 @@ class Dataset:
 
 
         """
-        new_state = self.__state.sort_by(column, invert)
+        new_state = st.sort_by(self.__state, column, invert)
         return Dataset(
             self.__header,
             new_state,
@@ -735,10 +736,12 @@ class Dataset:
         elif at != "random":
             raise ValueError(f"Unknown take type {at}")
 
+        if n > len(self):
+            raise ValueError("Cannot take more rows than are in this dataset!")
+
         row_indices = np.random.choice(len(self), n, replace=False)
         row_indices.sort()
-        new_state = self.__state.take_rows(row_indices)
-        return Dataset(self.__header, new_state, self.__tree)
+        return self.take_rows(row_indices)
 
     def take_range(self, start: int, end: int) -> Dataset:
         """
@@ -772,13 +775,7 @@ class Dataset:
             raise ValueError("end must be less than the length of the dataset.")
 
         take_index = single_chunk(start, end - start)
-        new_state = self.__state.take_rows(take_index)
-
-        return Dataset(
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        return self.take_rows(take_index)
 
     def take_rows(self, rows: np.ndarray | DataIndex):
         """
@@ -800,7 +797,13 @@ class Dataset:
             dataset.
 
         """
-        new_state = self.__state.take_rows(rows)
+        row_range = get_range(rows)
+        if row_range[0] < 0 or row_range[1] > len(self):
+            raise ValueError(
+                "Row indices must be between 0 and the length of this dataset - 1!"
+            )
+
+        new_state = st.take_rows(self.__state, rows)
         return Dataset(self.__header, new_state, self.__tree)
 
     def with_new_columns(
@@ -858,8 +861,8 @@ class Dataset:
         """
         if isinstance(descriptions, str):
             descriptions = {key: descriptions for key in new_columns.keys()}
-        new_state = self.__state.with_new_columns(
-            descriptions, allow_overwrite, **new_columns
+        new_state = st.with_new_columns(
+            self.__state, descriptions, allow_overwrite, **new_columns
         )
         return Dataset(self.__header, new_state, self.__tree)
 
@@ -878,7 +881,7 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        schema = self.__state.make_schema(name)
+        schema = st.make_schema(self.__state, name)
 
         if self.__tree is not None:
             tree = self.__tree.apply_index(self.__state.raw_index)
@@ -954,8 +957,13 @@ class Dataset:
 
         """
 
-        new_state = self.__state.with_units(
-            convention, conversions, columns, self.cosmology, self.redshift
+        new_state = st.with_units(
+            self.__state,
+            convention,
+            conversions,
+            columns,
+            self.cosmology,
+            self.redshift,
         )
         if convention is not None:
             new_header = self.__header.with_units(convention)

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 import astropy.units as u
 from astropy.cosmology import units as cu
 
+import opencosmo.dataset.state as st
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
@@ -173,12 +174,12 @@ def get_scale_factor(dataset: "DatasetState", cosmology, redshift):
     columns = set(dataset.columns)
     for column in KNOWN_SCALEFACTOR_COLUMNS:
         if column in columns:
-            col = dataset.select({column}).get_data()[column]
+            col = st.get_data(st.select(dataset, {column}))[column]
             return col
 
     for column in KNOWN_REDSHIFT_COLUMNS:
         if column in columns:
-            col = dataset.select({column}).get_data()[column]
+            col = st.get_data(st.select(dataset, {column}))[column]
             return 1 / (1 + col)
 
     return cosmology.scale_factor(redshift)
