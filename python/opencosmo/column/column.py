@@ -155,6 +155,57 @@ def _sqrt(left: np.ndarray | u.Unit, right: None):
     return left**0.5
 
 
+def _require_dimensionless(unit: u.UnitBase, func_name: str) -> None:
+    if not unit.is_equivalent(u.dimensionless_unscaled):
+        raise UnitsError(
+            f"{func_name} requires a dimensionless input, got unit '{unit}'"
+        )
+
+
+def _arcsin(left: Any, right: Any) -> Any:
+    if isinstance(left, u.UnitBase):
+        _require_dimensionless(left, "arcsin")
+        return u.rad
+    if isinstance(left, u.Quantity):
+        _require_dimensionless(left.unit, "arcsin")
+        return np.arcsin(left.value) * u.rad
+    return np.arcsin(left)
+
+
+def _arccos(left: Any, right: Any) -> Any:
+    if isinstance(left, u.UnitBase):
+        _require_dimensionless(left, "arccos")
+        return u.rad
+    if isinstance(left, u.Quantity):
+        _require_dimensionless(left.unit, "arccos")
+        return np.arccos(left.value) * u.rad
+    return np.arccos(left)
+
+
+def _arctan2(left: Any, right: Any) -> Any:
+    left_is_unit = isinstance(left, u.UnitBase)
+    right_is_unit = isinstance(right, u.UnitBase)
+    if left_is_unit or right_is_unit:
+        if not (left_is_unit and right_is_unit) or not left.is_equivalent(right):
+            raise UnitsError(
+                "arctan2 requires both inputs to have equivalent units or both to be unitless"
+            )
+        return u.rad
+    left_is_qty = isinstance(left, u.Quantity)
+    right_is_qty = isinstance(right, u.Quantity)
+    if left_is_qty != right_is_qty:
+        raise UnitsError(
+            "arctan2 requires both inputs to have equivalent units or both to be unitless"
+        )
+    if left_is_qty:
+        if not left.unit.is_equivalent(right.unit):
+            raise UnitsError(
+                f"arctan2 inputs have incompatible units: '{left.unit}' and '{right.unit}'"
+            )
+        return np.arctan2(left.value, right.value) * u.rad
+    return np.arctan2(left, right)
+
+
 class Column:
     """
     Represents a reference to a column with a given name. Column reference
@@ -303,6 +354,27 @@ class Column:
         """
         return DerivedColumn(self, None, _sqrt)
 
+    def arcsin(self) -> DerivedColumn:
+        """
+        Create a derived column containing the arcsine of this column (in radians).
+        The column must be dimensionless.
+        """
+        return DerivedColumn(self, None, _arcsin)
+
+    def arccos(self) -> DerivedColumn:
+        """
+        Create a derived column containing the arccosine of this column (in radians).
+        The column must be dimensionless.
+        """
+        return DerivedColumn(self, None, _arccos)
+
+    def arctan2(self, other: ColumnOrScalar) -> DerivedColumn:
+        """
+        Create a derived column containing arctan2(self, other) in radians.
+        Both columns must be dimensionless.
+        """
+        return DerivedColumn(self, other, _arctan2)
+
 
 class ConstructedColumn(Protocol):
     pass
@@ -336,11 +408,11 @@ class ConstructedColumn(Protocol):
 
 
 class RawColumn:
-    def __init__(self, name, description, alias=None, _dep_uuid=None):
+    def __init__(self, name, description, alias=None, _dep_uuid=None, _uuid=None):
         self.__name = name
         self.__description = description
         self.__alias = alias
-        self.__uuid = uuid4()
+        self.__uuid = _uuid if _uuid is not None else uuid4()
         self.__dep_uuid: UUID | None = _dep_uuid
 
     @property
@@ -356,7 +428,11 @@ class RawColumn:
             return self
         dep_uuid = name_to_uuid[self.__name]
         return RawColumn(
-            self.__name, self.__description, alias=self.__alias, _dep_uuid=dep_uuid
+            self.__name,
+            self.__description,
+            alias=self.__alias,
+            _dep_uuid=dep_uuid,
+            _uuid=self.__uuid,
         )
 
     @property
@@ -427,13 +503,14 @@ class DerivedColumn:
         output_name: Optional[str] = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = False,
+        _uuid: UUID | None = None,
     ):
         self.lhs = lhs
         self.rhs = rhs
         self.name = output_name
         self.operation = operation
         self.description = description if description is not None else "None"
-        self.__uuid = uuid4()
+        self.__uuid = _uuid if _uuid is not None else uuid4()
         self.__dep_map: dict[str, UUID] | None = _dep_map
         self.__no_cache = no_cache
 
@@ -459,6 +536,7 @@ class DerivedColumn:
             self.description,
             self.name,
             _dep_map=dep_map,
+            _uuid=self.__uuid,
         )
 
     def _traverse_names(self) -> set[str]:
@@ -600,6 +678,15 @@ class DerivedColumn:
     def sqrt(self):
         return DerivedColumn(self, None, _sqrt)
 
+    def arcsin(self) -> DerivedColumn:
+        return DerivedColumn(self, None, _arcsin)
+
+    def arccos(self) -> DerivedColumn:
+        return DerivedColumn(self, None, _arccos)
+
+    def arctan2(self, other: ColumnOrScalar) -> DerivedColumn:
+        return DerivedColumn(self, other, _arctan2)
+
     def evaluate(self, data: dict[str, np.ndarray], *args) -> np.ndarray:
         lhs: np.typing.ArrayLike
         rhs: Optional[np.typing.ArrayLike]
@@ -635,6 +722,7 @@ class EvaluatedColumn:
         description: Optional[str] = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = False,
+        _uuid: UUID | None = None,
         **kwargs: Any,
     ):
         self.__func = func
@@ -647,7 +735,7 @@ class EvaluatedColumn:
         self.__batch_size = batch_size
         self.__no_cache = no_cache
         self.description = description
-        self.__uuid = uuid4()
+        self.__uuid = _uuid if _uuid is not None else uuid4()
         self.__dep_map = _dep_map
 
     @property
@@ -676,6 +764,7 @@ class EvaluatedColumn:
             self.description,
             _dep_map=dep_map,
             no_cache=self.__no_cache,
+            _uuid=self.__uuid,
             **self.__kwargs,
         )
 

@@ -84,7 +84,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
                 name = target["header"].file.data_type
             elif name.startswith("galaxy_properties"):
                 name = name[18:]
-            link_targets["halo_properties"][name].append(dataset)
+            link_targets["galaxy_properties"][name].append(dataset)
         else:
             raise ValueError(
                 f"Unknown data type for structure collection {target['header'].data_type}"
@@ -127,6 +127,7 @@ def build_lightcone_structure_collection(
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
 ):
     found_redshift_steps = set()
+    print(link_sources.keys(), link_targets.keys())
     for source_type, source_list in link_sources.items():
         if not all(t["header"].file.is_lightcone for t in source_list):
             raise ValueError("All sources must be lightcone datasets!")
@@ -146,8 +147,36 @@ def build_lightcone_structure_collection(
                 raise ValueError(
                     "All datasets must have the same set of redshift steps!"
                 )
-    output_sources = {}
-    output_targets = defaultdict(dict)
+    if (
+        len(link_sources.get("galaxy_properties", [])) > 0
+        and "galaxy_properties" in link_targets
+    ):
+        # Galaxy properties and galaxy particles
+        datasets = [
+            io.iopen.open_single_dataset(
+                t,
+                "data_linked",
+                bypass_lightcone=True,
+                bypass_mpi=len(link_sources.get("halo_properties", [])) > 0,
+            )
+            for t in link_sources["galaxy_properties"]
+        ]
+        galaxy_lightcone = lc.Lightcone.from_datasets(
+            {ds.header.file.step: ds for ds in datasets}
+        )
+        galaxy_target_datasets = {}
+        for target_type, targets in link_targets[source_type].items():
+            galaxy_target_datasets[target_type] = lc.Lightcone.from_datasets(
+                {ds.header.file.step: ds for ds in targets}
+            )
+        collection = sc.StructureCollection(galaxy_lightcone, galaxy_target_datasets)
+        if len(link_sources.get("halo_properties", [])) > 0:
+            link_targets["halo_properties"]["galaxy_properties"] = collection
+        else:
+            return collection
+
+    print(link_targets)
+    assert False
     for source_type, source_list in link_sources.items():
         if source_type == "galaxy_properties":
             raise NotImplementedError
@@ -176,7 +205,7 @@ def __build_structure_collection(
     link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]],
     ignore_empty: bool,
 ):
-    if galaxy_properties_target is not None and "galaxy_targets" in link_targets:
+    if galaxy_properties_target is not None and "galaxy_properties" in link_targets:
         # Galaxy properties and galaxy particles
         source_dataset = io.iopen.open_single_dataset(
             galaxy_properties_target,
@@ -189,25 +218,25 @@ def __build_structure_collection(
         collection = sc.StructureCollection(
             source_dataset,
             source_dataset.header,
-            link_targets["galaxy_targets"],
+            link_targets["galaxy_properties"],
         )
         if halo_properties_target is not None:
-            link_targets["halo_targets"]["galaxy_properties"] = collection
+            link_targets["halo_properties"]["galaxy_properties"] = collection
         else:
             return collection
 
     if (
         halo_properties_target is not None
         and galaxy_properties_target is not None
-        and "galaxy_targets" not in link_targets
+        and "galaxy_properties" not in link_targets
     ):
         # Halo properties and galaxy properties, but no galaxy particles
         galaxy_properties = io.iopen.open_single_dataset(
             galaxy_properties_target, bypass_lightcone=True, bypass_mpi=True
         )
-        link_targets["halo_targets"]["galaxy_properties"] = galaxy_properties
+        link_targets["halo_properties"]["galaxy_properties"] = galaxy_properties
 
-    if halo_properties_target is not None and link_targets["halo_targets"]:
+    if halo_properties_target is not None and link_targets["halo_properties"]:
         source_dataset = io.iopen.open_single_dataset(
             halo_properties_target, metadata_group="data_linked", bypass_lightcone=True
         )
@@ -216,6 +245,5 @@ def __build_structure_collection(
 
         return sc.StructureCollection(
             source_dataset,
-            source_dataset.header,
-            link_targets["halo_targets"],
+            link_targets["halo_properties"],
         )

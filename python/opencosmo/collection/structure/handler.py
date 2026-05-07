@@ -45,7 +45,6 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
 
 
 def create_start_size(data, start_name, size_name, offsets):
-
     start = data.pop(start_name, None)
     size = data.pop(size_name, None)
     if start is None or size is None:
@@ -170,7 +169,7 @@ class LinkHandler:
         output = {}
         for name, handler in self.links.items():
             result = handler(
-                data, offsets=offsets[name] if offsets is not None else None
+                data, offsets=offsets.get(name) if offsets is not None else None
             )
             if result is not None:
                 output[name] = result
