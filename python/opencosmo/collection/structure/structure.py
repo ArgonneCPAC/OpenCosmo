@@ -188,7 +188,7 @@ class StructureCollection:
         raise NotImplementedError
 
     @property
-    def simulation(self) -> HaccSimulationParameters:
+    def simulation(self) -> HaccSimulationParameters | None:
         """
         Get the parameters of the simulation this dataset is drawn
         from.
@@ -664,7 +664,7 @@ class StructureCollection:
             galaxy_properties = self["galaxy_properties"]
             assert isinstance(galaxy_properties, oc.Dataset)
             filtered = filter_source_by_dataset(
-                galaxy_properties, self.__source, self.__header, *masks
+                galaxy_properties, self.__source, self.__source.header, *masks
             )
 
         new_handler = self.__handler.make_derived(self.__source)
@@ -759,7 +759,7 @@ class StructureCollection:
                 arg = columns  # type: ignore
                 kwargs = {}
 
-            if dataset == self.__source.file.data_type:
+            if dataset == self.__source.header.file.data_type:
                 new_source = self.__source.select(arg, **kwargs)
                 continue
 

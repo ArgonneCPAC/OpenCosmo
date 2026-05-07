@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from functools import partial, reduce
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional, cast
 
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo.collection.structure import structure as sc
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:
@@ -152,7 +154,7 @@ class LinkHandler:
         self,
         links,
         columns,
-        derived_from: Optional[oc.Dataset],
+        derived_from: Optional[oc.Dataset | oc.Lightcone],
     ):
         self.__derived_from = derived_from
         self.links = links
@@ -164,7 +166,9 @@ class LinkHandler:
         return LinkHandler(links, columns, None)
 
     def parse(
-        self, data: dict[str, Any], offsets: Optional[dict[str, list[int]]] = None
+        self,
+        data: dict[str, Any],
+        offsets: Optional[dict[str, list[tuple[int, int]]]] = None,
     ):
         output = {}
         for name, handler in self.links.items():
@@ -184,7 +188,6 @@ class LinkHandler:
         Called once when a datasets are opened for the first time. Downstream
         versions always use rebuild_datsets
         """
-
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
@@ -192,7 +195,12 @@ class LinkHandler:
         offsets = None
         if isinstance(source, lc.Lightcone):
             offsets = {}
+
             for ds_type, lightcone in datasets.items():
+                if isinstance(lightcone, sc.StructureCollection):
+                    lightcone = lightcone["galaxy_properties"]
+
+                assert isinstance(lightcone, lc.Lightcone)
                 offsets[ds_type] = [
                     (len(source[key]), len(ds)) for key, ds in lightcone.items()
                 ]
@@ -218,12 +226,19 @@ class LinkHandler:
         return LinkHandler(self.links, self.columns, derived_from)
 
     def rebuild_lightcones(
-        self, new_source: oc.Lightcone, lightcones: dict[str, oc.Lightcone]
+        self,
+        new_source: oc.Lightcone,
+        lightcones: dict[str, oc.Lightcone | sc.StructureCollection],
     ):
-        new_datasets = {name: {} for name in lightcones}
+        new_datasets: dict[str, lc.Lightcone | sc.StructureCollection] = defaultdict(
+            dict
+        )
+        if "galaxies" in lightcones:
+            raise NotImplementedError()
 
         for step, step_source in new_source.items():
             step_datasets = {name: lc[step] for name, lc in lightcones.items()}
+            assert isinstance(self.__derived_from, lc.Lightcone)
             new_step_datasets = self.__rebuild_datasets(
                 self.__derived_from[step], step_source, step_datasets
             )
@@ -237,7 +252,7 @@ class LinkHandler:
     def rebuild_datasets(
         self,
         new_source: oc.Dataset | oc.Lightcone,
-        datasets: dict[str, oc.Dataset],
+        datasets: Mapping[str, oc.Dataset | oc.Lightcone | sc.StructureCollection],
     ):
         """
         We have a few guarantees here:
@@ -250,6 +265,13 @@ class LinkHandler:
         if self.__derived_from is None:
             return datasets
         elif isinstance(new_source, lc.Lightcone):
+            assert all(
+                isinstance(ds_, (lc.Lightcone | sc.StructureCollection))
+                for ds_ in datasets.values()
+            )
+            datasets = cast(
+                "dict[str, sc.StructureCollection | lc.Lightcone]", datasets
+            )
             return self.rebuild_lightcones(new_source, datasets)
         return self.__rebuild_datasets(self.__derived_from, new_source, datasets)
 

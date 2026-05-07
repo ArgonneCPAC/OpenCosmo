@@ -4,6 +4,7 @@ import dataclasses
 import warnings
 from typing import TYPE_CHECKING
 
+import astropy.cosmology.units as cu
 import astropy.units as u
 import numpy as np
 
@@ -97,7 +98,5 @@ def radec_from_thetaphi(theta, phi):
 
 
 def redshift_from_chi(chi, cosmology):
-    import astropy.cosmology.units as cu
-
     redshift = chi.to(cu.redshift, cu.redshift_distance(cosmology, kind="comoving"))
     return {"redshift": redshift}

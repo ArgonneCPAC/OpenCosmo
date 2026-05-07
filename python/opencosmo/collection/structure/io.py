@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
+from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import structure as sc
@@ -14,7 +15,6 @@ from opencosmo.collection.structure import structure as sc
 if TYPE_CHECKING:
     import h5py
 
-    from opencosmo import dataset as d
     from opencosmo.io.iopen import FileTarget
 
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
@@ -126,8 +126,7 @@ def build_lightcone_structure_collection(
     link_sources: dict[str, list[io.iopen.DatasetTarget]],
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
 ):
-    found_redshift_steps = set()
-    print(link_sources.keys(), link_targets.keys())
+    found_redshift_steps: set[int] = set()
     for source_type, source_list in link_sources.items():
         if not all(t["header"].file.is_lightcone for t in source_list):
             raise ValueError("All sources must be lightcone datasets!")
@@ -165,9 +164,9 @@ def build_lightcone_structure_collection(
             {ds.header.file.step: ds for ds in datasets}
         )
         galaxy_target_datasets = {}
-        for target_type, targets in link_targets[source_type].items():
+        for target_type, targets in link_targets["galaxy_properties"].items():
             galaxy_target_datasets[target_type] = lc.Lightcone.from_datasets(
-                {ds.header.file.step: ds for ds in targets}
+                {ds.header.file.step: ds for ds in targets}  # type: ignore # already asserted this step exists
             )
         collection = sc.StructureCollection(galaxy_lightcone, galaxy_target_datasets)
         if len(link_sources.get("halo_properties", [])) > 0:
@@ -175,28 +174,24 @@ def build_lightcone_structure_collection(
         else:
             return collection
 
-    print(link_targets)
-    assert False
-    for source_type, source_list in link_sources.items():
-        if source_type == "galaxy_properties":
-            raise NotImplementedError
-
-        datasets = [
-            io.iopen.open_single_dataset(t, "data_linked", bypass_lightcone=True)
-            for t in source_list
-        ]
-        output_sources[source_type] = lc.Lightcone.from_datasets(
-            {ds.header.file.step: ds for ds in datasets}
-        )
-        for target_type, targets in link_targets[source_type].items():
-            output_targets[source_type][target_type] = lc.Lightcone.from_datasets(
-                {ds.header.file.step: ds for ds in targets}
-            )
-    return sc.StructureCollection(
-        output_sources["halo_properties"], output_targets["halo_properties"]
+    source_list = link_sources["halo_properties"]
+    source_datasets = [
+        io.iopen.open_single_dataset(t, "data_linked", bypass_lightcone=True)
+        for t in source_list
+    ]
+    source_lightcone = lc.Lightcone.from_datasets(
+        {ds.header.file.step: ds for ds in source_datasets}
     )
+    output_targets = {}
+    for target_type, targets in link_targets[source_type].items():
+        if isinstance(targets, (d.Dataset, sc.StructureCollection)):
+            output_targets[target_type] = targets
+            continue
 
-    return output_sources, output_targets
+        output_targets[target_type] = lc.Lightcone.from_datasets(
+            {ds.header.file.step: ds for ds in targets}
+        )
+    return sc.StructureCollection(source_lightcone, output_targets)
 
 
 def __build_structure_collection(
@@ -217,7 +212,6 @@ def __build_structure_collection(
             source_dataset = remove_empty(source_dataset)
         collection = sc.StructureCollection(
             source_dataset,
-            source_dataset.header,
             link_targets["galaxy_properties"],
         )
         if halo_properties_target is not None:
