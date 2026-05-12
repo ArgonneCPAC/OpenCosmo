@@ -6,6 +6,7 @@ from typing import (
     Callable,
     Generator,
     Iterable,
+    Literal,
     Mapping,
     Optional,
     TypeAlias,
@@ -21,6 +22,7 @@ import opencosmo.dataset.state as st
 from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
+from opencosmo.dataset.take import get_random_take_index
 from opencosmo.index import empty, get_range, into_array, mask, project, single_chunk
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
@@ -697,9 +699,7 @@ class Dataset:
         )
 
     def take(
-        self,
-        n: int,
-        at: str = "random",
+        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
     ) -> Dataset:
         """
         Create a new dataset from some number of rows from this dataset.
@@ -715,6 +715,9 @@ class Dataset:
         at : str
             Where to take the rows from. One of "start", "end", or "random".
             The default is "random".
+        mode : str, "local" or "global", default = "local"
+            If working with MPI, whether the `n` is a per-rank or global
+            number
 
 
         Returns
@@ -736,11 +739,7 @@ class Dataset:
         elif at != "random":
             raise ValueError(f"Unknown take type {at}")
 
-        if n > len(self):
-            raise ValueError("Cannot take more rows than are in this dataset!")
-
-        row_indices = np.random.choice(len(self), n, replace=False)
-        row_indices.sort()
+        row_indices = get_random_take_index(n, len(self), mode)
         return self.take_rows(row_indices)
 
     def take_range(self, start: int, end: int) -> Dataset:
