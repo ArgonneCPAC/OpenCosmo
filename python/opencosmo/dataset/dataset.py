@@ -22,8 +22,8 @@ import opencosmo.dataset.state as st
 from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.dataset.take import get_random_take_index
-from opencosmo.index import empty, get_range, into_array, mask, project, single_chunk
+from opencosmo.dataset.take import get_random_take_index, get_range_take_index
+from opencosmo.index import empty, get_range, into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -733,16 +733,18 @@ class Dataset:
 
         """
         if at == "start":
-            return self.take_range(0, n)
+            return self.take_range(0, n, mode)
         elif at == "end":
-            return self.take_range(len(self) - n, len(self))
+            return self.take_range(len(self) - n, len(self), mode)
         elif at != "random":
             raise ValueError(f"Unknown take type {at}")
 
         row_indices = get_random_take_index(n, len(self), mode)
         return self.take_rows(row_indices)
 
-    def take_range(self, start: int, end: int) -> Dataset:
+    def take_range(
+        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+    ) -> Dataset:
         """
         Create a new dataset from a row range in this dataset. We use standard
         indexing conventions, so the rows included will be start -> end - 1.
@@ -770,10 +772,9 @@ class Dataset:
             raise ValueError("start and end must be positive.")
         if end < start:
             raise ValueError("end must be greater than start.")
-        if end > len(self):
-            raise ValueError("end must be less than the length of the dataset.")
 
-        take_index = single_chunk(start, end - start)
+        take_index = get_range_take_index(self.__state, start, end - start, mode)
+
         return self.take_rows(take_index)
 
     def take_rows(self, rows: np.ndarray | DataIndex):
