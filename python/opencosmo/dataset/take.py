@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 
 import opencosmo.dataset.state as st
-from opencosmo.index import single_chunk
+from opencosmo.index import empty, from_size, single_chunk
 from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ def get_random_take_index(
         return get_random_take_index_mpi(n, ds_length)
 
     if n > ds_length:
-        raise ValueError("You cannot take more rows than exist in the dataset!")
+        return from_size(ds_length)
 
     generator = np.random.default_rng()
     rows = generator.choice(ds_length, n, replace=False)
@@ -37,8 +37,30 @@ def get_range_take_index(
     if mode == "global" and has_mpi():
         return get_range_take_index_mpi(state, start, size)
 
-    if start + size > len(state):
-        raise ValueError("end must be less than the length of the dataset.")
+    ds_len = len(state)
+    if start + size > ds_len:
+        size = len(state) - ds_len
+    return single_chunk(start, size)
+
+
+def get_end_take_index(
+    n: int,
+    state: st.DatasetState,
+    mode: Literal["local", "global"],
+):
+    ds_length = len(state)
+    if mode == "global" and has_mpi():
+        comm = get_comm_world()
+        assert comm is not None
+        total_length = np.sum(comm.allgather(ds_length))
+        if n > total_length:
+            return from_size(ds_length)
+
+        return get_range_take_index_mpi(state, total_length - n, n)
+
+    if n > ds_length:
+        start = 0
+        size = ds_length
     return single_chunk(start, size)
 
 
@@ -48,10 +70,11 @@ def get_range_take_index_mpi(state: st.DatasetState, start, size):
     lengths = np.array(comm.allgather(len(state)), dtype=np.int64)
     total_length = int(np.sum(lengths))
 
+    if start > total_length:
+        return empty()
+
     if start + size > total_length:
-        raise ValueError(
-            f"Tried to take {start + size} rows but total length of data is {total_length}"
-        )
+        size = total_length - start
 
     if state.sort_key is not None:
         global_sort_order = get_global_sort_order(state)
@@ -141,9 +164,7 @@ def get_random_take_index_mpi(n: int, ds_length: int):
     lengths = comm.allgather(ds_length)
 
     if (total_length := np.sum(lengths)) < n:
-        raise ValueError(
-            f"Tried to take {n} rows but total length of data is {total_length}"
-        )
+        return from_size(ds_length)
 
     if comm.Get_rank() == 0:
         rng = np.random.default_rng()
@@ -173,9 +194,9 @@ def get_local_rows_simple(rows: IndexArray | None, lengths, comm):
         buffer_offsets = np.zeros_like(scatter_lengths)
         buffer_offsets[1:] = np.cumsum(scatter_lengths)[:-1]
 
-        buffspec = [rows, scatter_lengths, buffer_offsets, get_mpi().DOUBLE]
+        buffspec = [rows, scatter_lengths, buffer_offsets, get_mpi().INT64_T]
         comm.Scatterv(buffspec, local_rows)
     else:
-        comm.Scatterv([None, None, None, get_mpi().DOUBLE], local_rows)
+        comm.Scatterv([None, None, None, get_mpi().INT64_T], local_rows)
 
     return local_rows - chunk_ranges[rank_num]

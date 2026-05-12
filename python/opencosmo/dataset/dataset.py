@@ -22,7 +22,11 @@ import opencosmo.dataset.state as st
 from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.dataset.take import get_random_take_index, get_range_take_index
+from opencosmo.dataset.take import (
+    get_end_take_index,
+    get_random_take_index,
+    get_range_take_index,
+)
 from opencosmo.index import empty, get_range, into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
@@ -735,7 +739,8 @@ class Dataset:
         if at == "start":
             return self.take_range(0, n, mode)
         elif at == "end":
-            return self.take_range(len(self) - n, len(self), mode)
+            take_index = get_end_take_index(n, self.__state, mode)
+            return self.take_rows(take_index)
         elif at != "random":
             raise ValueError(f"Unknown take type {at}")
 
