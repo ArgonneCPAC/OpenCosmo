@@ -58,10 +58,11 @@ def get_end_take_index(
 
         return get_range_take_index_mpi(state, total_length - n, n)
 
+    start = ds_length - n
     if n > ds_length:
         start = 0
-        size = ds_length
-    return single_chunk(start, size)
+        n = ds_length
+    return single_chunk(start, n)
 
 
 def get_range_take_index_mpi(state: st.DatasetState, start, size):

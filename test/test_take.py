@@ -58,5 +58,6 @@ def test_take_chain(input_path):
 def test_take_too_many(input_path):
     ds = oc.open(input_path)
     length = len(ds.get_data())
-    with pytest.raises(ValueError):
-        ds.take(length + 1)
+
+    new_ds = ds.take(length + 1)
+    assert len(new_ds) == len(ds)
