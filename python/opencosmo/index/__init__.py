@@ -4,6 +4,7 @@ from .build import concatenate, empty, from_size, from_start_size_group, single_
 from .get import get_data
 from .in_range import n_in_range
 from .mask import into_array, mask
+from .ops import rebuild_by_ranges
 from .project import project
 from .take import take
 from .unary import get_length, get_range
@@ -34,4 +35,5 @@ __all__ = [
     "get_length",
     "get_range",
     "from_start_size_group",
+    "rebuild_by_ranges",
 ]

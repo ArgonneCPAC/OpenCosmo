@@ -6,6 +6,7 @@ pub(crate) mod index {
     use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
     use pyo3::exceptions::{PyTypeError, PyValueError};
     use pyo3::prelude::*;
+    use pyo3::types::PyList;
     use std::collections::HashMap;
     use std::iter::zip;
 
@@ -313,5 +314,57 @@ pub(crate) mod index {
             }
         }
         Array1::from_vec(output)
+    }
+
+    #[pyfunction(name = "rebuild_simple_by_ranges")]
+    fn rebuild_simple_by_ranges_py<'py>(
+        py: Python<'py>,
+        index: &Bound<'_, PyAny>,
+        range_starts: &Bound<'_, PyAny>,
+        range_sizes: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let index_arr = unpack_index_array(index)?;
+        let (start_arr, size_arr) = unpack_chunked_index(range_starts, range_sizes)?;
+        let mut output = rebuild_simple_by_ranges(
+            index_arr.as_array(),
+            start_arr.as_array(),
+            size_arr.as_array(),
+        );
+        PyList::new(py, output.drain(0..).map(|a| a.into_pyarray(py)))
+    }
+
+    fn rebuild_simple_by_ranges(
+        index: ArrayView1<'_, i64>,
+        range_starts: ArrayView1<'_, i64>,
+        range_sizes: ArrayView1<'_, i64>,
+    ) -> Vec<Array1<i64>> {
+        let mut rs: i64 = 0;
+        let mut current_chunk_index: usize = 0;
+        let mut current_chunk_end: i64 =
+            range_starts[current_chunk_index] + range_sizes[current_chunk_index];
+        let mut output_indices = Vec::new();
+        let mut current_chunk_indices = Vec::new();
+        for &idx in index {
+            if idx >= current_chunk_end {
+                output_indices.push(Array1::from_vec(current_chunk_indices));
+                rs = current_chunk_end;
+                current_chunk_index += 1;
+                current_chunk_end =
+                    range_starts[current_chunk_index] + range_sizes[current_chunk_index];
+                current_chunk_indices = Vec::new();
+                current_chunk_indices.push(idx - rs);
+            } else if idx < rs {
+                continue;
+            } else {
+                current_chunk_indices.push(idx - rs);
+            }
+        }
+        output_indices.push(Array1::from_vec(current_chunk_indices));
+        if output_indices.len() < range_starts.len() {
+            for _ in 0..range_starts.len() - output_indices.len() {
+                output_indices.push(Array1::zeros(0))
+            }
+        }
+        return output_indices;
     }
 }

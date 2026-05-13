@@ -294,7 +294,10 @@ class Dataset:
             unit_kwargs = {}
 
         data = st.get_data(
-            self.__state, unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
+            self.__state,
+            unit_kwargs=unit_kwargs,
+            metadata_columns=metadata_columns,
+            **kwargs,
         )  # dict
         if unpack:
             data = {
@@ -739,7 +742,7 @@ class Dataset:
         if at == "start":
             return self.take_range(0, n, mode)
         elif at == "end":
-            take_index = get_end_take_index(n, self.__state, mode)
+            take_index = get_end_take_index(n, self, self.__state.sort_key, mode)
             return self.take_rows(take_index)
         elif at != "random":
             raise ValueError(f"Unknown take type {at}")
@@ -778,7 +781,9 @@ class Dataset:
         if end < start:
             raise ValueError("end must be greater than start.")
 
-        take_index = get_range_take_index(self.__state, start, end - start, mode)
+        take_index = get_range_take_index(
+            self, self.__state.sort_key, start, end - start, mode
+        )
 
         return self.take_rows(take_index)
 

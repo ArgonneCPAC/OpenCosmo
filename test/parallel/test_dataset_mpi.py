@@ -138,6 +138,61 @@ def test_take_range_global_sorted_end(input_path):
     )
 
 
+# ── take global end ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_take_global_end(input_path):
+    """take(n, at='end', mode='global') selects the last n rows across all ranks."""
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    lengths = np.array(comm.allgather(len(ds)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    n = total // 3
+    global_start = total - n
+
+    ds_taken = ds.take(n, at="end", mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(
+        0,
+        min(int(lengths[rank]), total - offset) - max(0, global_start - offset),
+    )
+
+    parallel_assert(
+        len(ds_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(ds_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(ds_taken))) == n)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_take_global_end_sorted(input_path):
+    """take(n, at='end', mode='global') on sorted data selects the n globally largest values."""
+    comm = get_comm_world()
+    ds = oc.open(input_path).sort_by("fof_halo_mass")
+
+    total = sum(comm.allgather(len(ds)))
+    n = total // 3
+
+    original = ds.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    ds_taken = ds.take(n, at="end", mode="global")
+
+    selected = ds_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
 # ── take_range global, middle ─────────────────────────────────────────────────
 
 

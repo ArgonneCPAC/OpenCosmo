@@ -61,3 +61,26 @@ def test_take_too_many(input_path):
 
     new_ds = ds.take(length + 1)
     assert len(new_ds) == len(ds)
+
+
+def test_take_end_too_many(input_path):
+    ds = oc.open(input_path)
+    length = len(ds)
+
+    new_ds = ds.take(length + 1, at="end")
+    assert len(new_ds) == length
+
+
+def test_take_end_sorted(input_path):
+    ds = oc.open(input_path)
+    cols = ds.columns
+    sort_col = cols[0]
+    n = 10
+
+    all_values = ds.select(sort_col).get_data("numpy")
+    threshold = np.sort(all_values)[-n]
+
+    taken = ds.sort_by(sort_col).take(n, at="end").select(sort_col).get_data("numpy")
+
+    assert len(taken) == n
+    assert np.all(taken >= threshold)

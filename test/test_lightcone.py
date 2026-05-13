@@ -179,7 +179,7 @@ def test_lc_collection_range(
 
 def test_lc_collection_take_rows(haloproperties_600_path, haloproperties_601_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
-    n_to_take = int(0.75 * len(ds))
+    n_to_take = int(0.25 * len(ds))
     rows = np.random.choice(len(ds), n_to_take, replace=False)
     rows.sort()
     ds_rows = ds.take_rows(rows)

@@ -3,7 +3,16 @@ from __future__ import annotations
 from collections import defaultdict
 from functools import partial, reduce
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Mapping, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Literal,
+    Mapping,
+    Optional,
+)
 from warnings import warn
 
 import numpy as np
@@ -989,7 +998,9 @@ class StructureCollection:
             self.__handler.make_derived(self.__source),
         )
 
-    def take(self, n: int, at: str = "random"):
+    def take(
+        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+    ):
         """
         Take some number of structures from the collection.
         See :py:meth:`opencosmo.Dataset.take`.
@@ -1007,7 +1018,7 @@ class StructureCollection:
         StructureCollection
             A new collection with the structures taken from the original.
         """
-        new_source = self.__source.take(n, at)
+        new_source = self.__source.take(n, at, mode)
         new_handler = self.__handler.make_derived(self.__source)
 
         return StructureCollection(

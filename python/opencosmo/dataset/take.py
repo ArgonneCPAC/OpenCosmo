@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
 
-import opencosmo.dataset.state as st
 from opencosmo.index import empty, from_size, single_chunk
 from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
@@ -29,26 +28,28 @@ def get_random_take_index(
 
 
 def get_range_take_index(
-    state: st.DatasetState,
+    ds,
+    sort_key: Optional[tuple[str, bool]],
     start: int,
     size: int,
     mode: Literal["local", "global"],
 ):
     if mode == "global" and has_mpi():
-        return get_range_take_index_mpi(state, start, size)
+        return get_range_take_index_mpi(ds, sort_key, start, size)
 
-    ds_len = len(state)
+    ds_len = len(ds)
     if start + size > ds_len:
-        size = len(state) - ds_len
+        size = len(ds) - ds_len
     return single_chunk(start, size)
 
 
 def get_end_take_index(
     n: int,
-    state: st.DatasetState,
+    ds,
+    sort_key,
     mode: Literal["local", "global"],
 ):
-    ds_length = len(state)
+    ds_length = len(ds)
     if mode == "global" and has_mpi():
         comm = get_comm_world()
         assert comm is not None
@@ -56,7 +57,7 @@ def get_end_take_index(
         if n > total_length:
             return from_size(ds_length)
 
-        return get_range_take_index_mpi(state, total_length - n, n)
+        return get_range_take_index_mpi(ds, sort_key, total_length - n, n)
 
     start = ds_length - n
     if n > ds_length:
@@ -65,10 +66,10 @@ def get_end_take_index(
     return single_chunk(start, n)
 
 
-def get_range_take_index_mpi(state: st.DatasetState, start, size):
+def get_range_take_index_mpi(ds, sort_key, start, size):
     comm = get_comm_world()
     assert comm is not None
-    lengths = np.array(comm.allgather(len(state)), dtype=np.int64)
+    lengths = np.array(comm.allgather(len(ds)), dtype=np.int64)
     total_length = int(np.sum(lengths))
 
     if start > total_length:
@@ -77,8 +78,8 @@ def get_range_take_index_mpi(state: st.DatasetState, start, size):
     if start + size > total_length:
         size = total_length - start
 
-    if state.sort_key is not None:
-        global_sort_order = get_global_sort_order(state)
+    if sort_key is not None:
+        global_sort_order = get_global_sort_order(ds, sort_key)
 
         if comm.Get_rank() == 0:
             assert global_sort_order is not None
@@ -123,13 +124,13 @@ def get_range_take_index_mpi(state: st.DatasetState, start, size):
     return single_chunk(local_start, local_end - local_start)
 
 
-def get_global_sort_order(state: st.DatasetState):
+def get_global_sort_order(ds, sort_key):
     comm = get_comm_world()
     assert comm is not None
 
-    assert state.sort_key is not None
-    sort_col, sort_desc = state.sort_key
-    raw = st.get_data(st.select(state, {sort_col}), ignore_sort=True)[sort_col]
+    assert sort_key is not None
+    sort_col, sort_desc = sort_key
+    raw = ds.select(sort_col).get_data("numpy", ignore_sort=True)
     local_values = np.asarray(
         raw.value if hasattr(raw, "value") else raw, dtype=np.float64
     )
