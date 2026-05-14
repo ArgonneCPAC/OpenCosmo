@@ -35,7 +35,6 @@ from opencosmo.dataset.take import (
 from opencosmo.index import get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.mpi import has_mpi
 from opencosmo.plugins.contexts import (
     HookPoint,
     LightconeInstantiateCtx,
@@ -889,12 +888,12 @@ class Lightcone(dict):
             index = get_random_take_index(n, len(self), mode)
         elif at == "start":
             index = get_range_take_index(self, self.__sort_key, 0, n, mode)
-            if self.__sort_key is not None and not (mode == "global" and has_mpi()):
+            if self.__sort_key is not None:
                 sort_index = self.__make_sort_index()
                 index = np.sort(sort_index[into_array(index)])
         elif at == "end":
             index = get_end_take_index(n, self, self.__sort_key, mode)
-            if self.__sort_key is not None and not (mode == "global" and has_mpi()):
+            if self.__sort_key is not None:
                 sort_index = self.__make_sort_index()
                 index = np.sort(sort_index[into_array(index)])
         else:
@@ -946,7 +945,7 @@ class Lightcone(dict):
             raise ValueError("Tried to take negative rows!")
 
         index = get_range_take_index(self, self.__sort_key, start, end - start, mode)
-        if self.__sort_key is not None and not (mode == "global" and has_mpi()):
+        if self.__sort_key is not None:
             sort_index = self.__make_sort_index()
             index = np.sort(sort_index[into_array(index)])
         return self.__take_rows(index)

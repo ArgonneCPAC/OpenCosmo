@@ -890,6 +890,8 @@ def test_lc_take_global_start_sorted(haloproperties_600_path, haloproperties_601
 
     selected = lc_taken.select("fof_halo_mass").get_data("numpy")
     all_selected = np.concatenate(comm.allgather(selected))
+    print(all_selected)
+    print(threshold)
 
     parallel_assert(len(all_selected) == n)
     parallel_assert(
