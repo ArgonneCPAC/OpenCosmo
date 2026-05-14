@@ -32,7 +32,7 @@ from opencosmo.dataset.take import (
     get_range_take_index,
     get_rows_take_index,
 )
-from opencosmo.index import get_length, get_range, into_array, rebuild_by_ranges
+from opencosmo.index import get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import has_mpi
@@ -1009,9 +1009,12 @@ class Lightcone(dict):
         projected = rebuild_by_ranges(rows, (starts, sizes))
         output = {}
         for (name, ds), index in zip(self.items(), projected):
-            if get_length(index) == 0:
-                continue
             output[name] = ds.take_rows(index)
+
+        if all(len(ds) == 0 for ds in output.values()):
+            output = {"data": next(iter(output.values()))}
+        else:
+            output = {name: ds for name, ds in output.items() if len(ds) != 0}
 
         return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
 
