@@ -19,7 +19,7 @@ def haloproperties_601_path(lightcone_path):
 
 @pytest.fixture
 def all_files():
-    return ["haloparticles.hdf5", "haloproperties.hdf5", "sodpropertybins.hdf5"]
+    return ["haloparticles.hdf5", "haloproperties.hdf5", "haloprofiles.hdf5"]
 
 
 @pytest.fixture

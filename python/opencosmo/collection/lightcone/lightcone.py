@@ -31,7 +31,7 @@ from opencosmo.dataset.take import (
     get_random_take_index,
     get_range_take_index,
 )
-from opencosmo.index import rebuild_by_ranges
+from opencosmo.index import DataIndex, get_range, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.plugins.contexts import (
@@ -308,7 +308,7 @@ class Lightcone(dict):
 
         table = vstack(data_with_length, join_type="exact")
 
-        if self.__sort_key is not None:
+        if self.__sort_key is not None and not kwargs.get("ignore_sort", False):
             order = table.argsort(self.__sort_key[0], reverse=self.__sort_key[1])
             table = table[order]
             table = fold(
@@ -887,7 +887,7 @@ class Lightcone(dict):
             raise ValueError(
                 f'"at" should be one of ("start", "end", "random", got {at}'
             )
-        return self.take_rows(index)
+        return self.__take_rows(index)
 
     def take_range(
         self, start: int, end: int, mode: Literal["local", "global"] = "local"
@@ -921,30 +921,10 @@ class Lightcone(dict):
         if start < 0:
             raise ValueError("Tried to take negative rows!")
 
-        if self.__sort_key is not None:
-            indices = lcutils.take_from_sorted(
-                self, *self.__sort_key, end - start, at=start
-            )
-            return self.__take_rows(indices)
+        index = get_range_take_index(self, self.__sort_key, start, end - start, mode)
+        return self.__take_rows(index)
 
-        ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
-        starts = np.insert(ends, 0, 0)[:-1]
-        clipped_starts = np.clip(starts, a_min=start, a_max=None)
-        clipped_ends = np.clip(ends, a_min=None, a_max=end)
-
-        output = {}
-        for i, (name, dataset) in enumerate(self.items()):
-            if starts[i] == clipped_starts[i] and ends[i] == clipped_ends[i]:
-                output[name] = dataset
-            elif clipped_starts[i] >= clipped_ends[i]:
-                continue
-            else:
-                output[name] = dataset.take_range(
-                    clipped_starts[i] - starts[i], clipped_ends[i] - starts[i]
-                )
-        return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
-
-    def take_rows(self, rows: np.ndarray):
+    def take_rows(self, rows: DataIndex):
         """
         Take the rows of a lightcone specified by the :code:`rows` argument.
         :code:`rows` should be an array of integers.
@@ -965,8 +945,15 @@ class Lightcone(dict):
             lightcone.
 
         """
-        rows = np.sort(rows)
-        if rows[-1] >= len(self) or rows[0] < 0:
+        if isinstance(rows, np.ndarray):
+            rows = np.sort(rows)
+        else:
+            order = np.argsort(rows[0])
+            rows = (rows[0][order], rows[1][order])
+
+        index_range = get_range(rows)
+
+        if index_range[0] < 0 or index_range[1] > len(self):
             raise ValueError(
                 "Rows must be between 0 and the length of this dataset - 1"
             )
@@ -987,7 +974,7 @@ class Lightcone(dict):
             data = -data
         return np.argsort(data)
 
-    def __take_rows(self, rows: np.ndarray):
+    def __take_rows(self, rows: DataIndex):
         """
         Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorte.
         For internal use only.

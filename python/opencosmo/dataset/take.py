@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
 
-from opencosmo.index import empty, from_size, single_chunk
+from opencosmo.index import empty, from_size, into_array, single_chunk
 from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
 if TYPE_CHECKING:
@@ -27,6 +27,20 @@ def get_random_take_index(
     return np.sort(rows)
 
 
+def apply_sort_index(rows: DataIndex, sort_index: np.ndarray) -> np.ndarray:
+    """Map logical sorted-order positions to physical row positions for either index type."""
+    return np.sort(sort_index[into_array(rows)])
+
+
+def _get_sort_index(ds, sort_key: tuple[str, bool]) -> np.ndarray:
+    sort_col, sort_desc = sort_key
+    raw = ds.select(sort_col).get_data(ignore_sort=True)
+    values = np.asarray(raw.value, dtype=np.float64)
+    if sort_desc:
+        values = -values
+    return np.argsort(values, kind="stable")
+
+
 def get_range_take_index(
     ds,
     sort_key: Optional[tuple[str, bool]],
@@ -39,7 +53,12 @@ def get_range_take_index(
 
     ds_len = len(ds)
     if start + size > ds_len:
-        size = len(ds) - ds_len
+        size = ds_len - start
+
+    if sort_key is not None:
+        sort_index = _get_sort_index(ds, sort_key)
+        return np.sort(sort_index[start : start + size])
+
     return single_chunk(start, size)
 
 
@@ -63,6 +82,11 @@ def get_end_take_index(
     if n > ds_length:
         start = 0
         n = ds_length
+
+    if sort_key is not None:
+        sort_index = _get_sort_index(ds, sort_key)
+        return np.sort(sort_index[start : start + n])
+
     return single_chunk(start, n)
 
 

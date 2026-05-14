@@ -17,4 +17,9 @@ def reindex_column(index: DataIndex, column: np.ndarray):
 
 
 def rebuild_by_ranges(index: DataIndex, ranges: ChunkedIndex):
-    return idxlib.rebuild_simple_by_ranges(index, *ranges)
+    print(index)
+    match index:
+        case np.ndarray():
+            return idxlib.rebuild_simple_by_ranges(index, *ranges)
+        case (np.ndarray(), np.ndarray()):
+            return idxlib.rebuild_chunked_by_ranges(*index, *ranges)
