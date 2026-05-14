@@ -30,10 +30,12 @@ from opencosmo.dataset.take import (
     get_end_take_index,
     get_random_take_index,
     get_range_take_index,
+    get_rows_take_index,
 )
-from opencosmo.index import DataIndex, get_range, rebuild_by_ranges
+from opencosmo.index import get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.mpi import has_mpi
 from opencosmo.plugins.contexts import (
     HookPoint,
     LightconeInstantiateCtx,
@@ -51,6 +53,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset import Dataset
     from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
@@ -859,11 +862,21 @@ class Lightcone(dict):
         at : str
             Where to take the rows from. One of "start", "end", or "random".
             The default is "random".
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
+
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
 
         Returns
         -------
-        dataset : Dataset
-            The new dataset with only the selected rows.
+        lightcone : Lightcone
+            The new lightcone with only the selected rows.
 
         Raises
         ------
@@ -872,17 +885,18 @@ class Lightcone(dict):
             or if 'at' is invalid.
 
         """
-        if n > len(self):
-            raise ValueError(
-                "Number of rows to take must be less than number of rows in dataset"
-            )
         if at == "random":
             index = get_random_take_index(n, len(self), mode)
-
         elif at == "start":
             index = get_range_take_index(self, self.__sort_key, 0, n, mode)
+            if self.__sort_key is not None and mode == "global" and has_mpi():
+                sort_index = self.__make_sort_index()
+                index = np.sort(sort_index[into_array(index)])
         elif at == "end":
             index = get_end_take_index(n, self, self.__sort_key, mode)
+            if self.__sort_key is not None and mode == "global" and has_mpi():
+                sort_index = self.__make_sort_index()
+                index = np.sort(sort_index[into_array(index)])
         else:
             raise ValueError(
                 f'"at" should be one of ("start", "end", "random", got {at}'
@@ -902,9 +916,19 @@ class Lightcone(dict):
         Parameters
         ----------
         start : int
-            The beginning of the range
+            The beginning of the range.
         end : int
-            The end of the range
+            The end of the range (exclusive).
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
+
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
 
         Returns
         -------
@@ -922,6 +946,9 @@ class Lightcone(dict):
             raise ValueError("Tried to take negative rows!")
 
         index = get_range_take_index(self, self.__sort_key, start, end - start, mode)
+        if self.__sort_key is not None and mode == "global" and has_mpi():
+            sort_index = self.__make_sort_index()
+            index = np.sort(sort_index[into_array(index)])
         return self.__take_rows(index)
 
     def take_rows(self, rows: DataIndex):
@@ -945,22 +972,19 @@ class Lightcone(dict):
             lightcone.
 
         """
+        index_range = get_range(rows)
         if isinstance(rows, np.ndarray):
             rows = np.sort(rows)
+            index_range = (index_range[0], index_range[1] + 1)
         else:
             order = np.argsort(rows[0])
             rows = (rows[0][order], rows[1][order])
-
-        index_range = get_range(rows)
 
         if index_range[0] < 0 or index_range[1] > len(self):
             raise ValueError(
                 "Rows must be between 0 and the length of this dataset - 1"
             )
-        if self.__sort_key is not None:
-            sort_index = self.__make_sort_index()
-            rows = sort_index[rows]
-            rows.sort()
+        rows = get_rows_take_index(self, rows, self.__sort_key)
 
         return self.__take_rows(rows)
 

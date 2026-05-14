@@ -723,9 +723,15 @@ class Dataset:
             Where to take the rows from. One of "start", "end", or "random".
             The default is "random".
         mode : str, "local" or "global", default = "local"
-            If working with MPI, whether the `n` is a per-rank or global
-            number
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
 
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
 
         Returns
         -------
@@ -760,14 +766,25 @@ class Dataset:
         Parameters
         ----------
         start : int
-            The beginning of the range
+            The beginning of the range.
         end : int
-            The end of the range
+            The end of the range (exclusive).
+
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
+
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
 
         Returns
         -------
-        table : astropy.table.Table
-            The table with only the rows from start to end.
+        dataset : Dataset
+            The new dataset with only the rows from start to end.
 
         Raises
         ------

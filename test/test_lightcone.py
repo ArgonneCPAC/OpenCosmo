@@ -197,19 +197,17 @@ def test_lc_collection_take_rows(haloproperties_600_path, haloproperties_601_pat
     assert np.all(
         data["fof_halo_mass"][sorted_index][rows] == sorted_tags["fof_halo_mass"]
     )
-    toolkit_sorted_tags_mass = dict(
-        zip(sorted_tags["fof_halo_tag"], sorted_tags["fof_halo_mass"])
-    )
-    sorted_tags_mass = dict(
-        zip(
-            data["fof_halo_tag"][sorted_index][rows],
-            data["fof_halo_mass"][sorted_index][rows],
-        )
-    )
-    # Exact order is not deterministic, because many low_mass halos have the same mass,
-    # So we just make sure the tag->mass mapping is the same in the two datasets.
+    # Verify each returned (tag, mass) pair is internally consistent with the original
+    # dataset. We do not compare against a reference sort because sort stability
+    # determines which specific halo is selected among ties, and we don't require a
+    # particular choice — only that the returned tag actually belongs to a halo with
+    # the returned mass.
+    tag_order = np.argsort(data["fof_halo_tag"])
+    all_tags_sorted = data["fof_halo_tag"][tag_order]
+    all_mass_by_tag = data["fof_halo_mass"][tag_order]
 
-    assert toolkit_sorted_tags_mass == sorted_tags_mass
+    positions = np.searchsorted(all_tags_sorted, sorted_tags["fof_halo_tag"])
+    assert np.all(all_mass_by_tag[positions] == sorted_tags["fof_halo_mass"])
 
 
 def test_lc_collection_derive(

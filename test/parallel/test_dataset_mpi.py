@@ -254,3 +254,56 @@ def test_take_range_global_sorted_middle(input_path):
         np.all(all_selected <= upper_threshold),
         "some selected values exceed the upper global threshold",
     )
+
+
+# ── inverted sort ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_take_range_global_sorted_inverted_start(input_path):
+    """Inverted sort: global start selects the n globally largest values."""
+    comm = get_comm_world()
+    ds = oc.open(input_path).sort_by("fof_halo_mass", invert=True)
+
+    total = sum(comm.allgather(len(ds)))
+    n = total // 3
+
+    original = ds.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    ds_taken = ds.take_range(0, n, mode="global")
+
+    selected = ds_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_take_range_global_sorted_inverted_end(input_path):
+    """Inverted sort: global end selects the n globally smallest values."""
+    comm = get_comm_world()
+    ds = oc.open(input_path).sort_by("fof_halo_mass", invert=True)
+
+    total = sum(comm.allgather(len(ds)))
+    n = total // 3
+
+    original = ds.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    ds_taken = ds.take_range(total - n, total, mode="global")
+
+    selected = ds_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )

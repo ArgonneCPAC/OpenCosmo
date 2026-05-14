@@ -8,6 +8,8 @@ from opencosmo.index import empty, from_size, into_array, single_chunk
 from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
 if TYPE_CHECKING:
+    from opencosmo.collection.lightcone import Lightcone
+    from opencosmo.dataset.dataset import Dataset
     from opencosmo.index import DataIndex, IndexArray
 
 
@@ -24,25 +26,45 @@ def get_random_take_index(
 
     generator = np.random.default_rng()
     rows = generator.choice(ds_length, n, replace=False)
-    return np.sort(rows)
+    return apply_sort_index(rows)
 
 
-def apply_sort_index(rows: DataIndex, sort_index: np.ndarray) -> np.ndarray:
-    """Map logical sorted-order positions to physical row positions for either index type."""
-    return np.sort(sort_index[into_array(rows)])
+def apply_sort_index(
+    rows: DataIndex, sort_index: Optional[np.ndarray] = None
+) -> np.ndarray:
+    """Return row positions in ascending physical order.
+
+    With sort_index: treats rows as logical sorted-order positions and maps
+    them to physical row positions. Without sort_index: rows are already
+    physical positions and are simply sorted.
+    """
+    arr = into_array(rows)
+    if sort_index is not None:
+        return np.sort(sort_index[arr])
+    return np.sort(arr)
 
 
-def _get_sort_index(ds, sort_key: tuple[str, bool]) -> np.ndarray:
+def _get_sort_index(ds: Dataset | Lightcone, sort_key: tuple[str, bool]) -> np.ndarray:
     sort_col, sort_desc = sort_key
-    raw = ds.select(sort_col).get_data(ignore_sort=True)
-    values = np.asarray(raw.value, dtype=np.float64)
+    values = ds.select(sort_col).get_data("numpy", ignore_sort=True)
+    assert isinstance(values, np.ndarray)
     if sort_desc:
         values = -values
     return np.argsort(values, kind="stable")
 
 
+def get_rows_take_index(
+    ds: Dataset | Lightcone, rows: DataIndex, sort_key: Optional[tuple[str, bool]]
+) -> DataIndex:
+    """Map user-provided logical (sorted-order) row positions to physical row positions."""
+    if sort_key is None:
+        return rows
+    sort_index = _get_sort_index(ds, sort_key)
+    return apply_sort_index(rows, sort_index)
+
+
 def get_range_take_index(
-    ds,
+    ds: Dataset | Lightcone,
     sort_key: Optional[tuple[str, bool]],
     start: int,
     size: int,
@@ -64,7 +86,7 @@ def get_range_take_index(
 
 def get_end_take_index(
     n: int,
-    ds,
+    ds: Dataset | Lightcone,
     sort_key,
     mode: Literal["local", "global"],
 ):
@@ -90,7 +112,9 @@ def get_end_take_index(
     return single_chunk(start, n)
 
 
-def get_range_take_index_mpi(ds, sort_key, start, size):
+def get_range_take_index_mpi(
+    ds: Dataset | Lightcone, sort_key: Optional[tuple[str, bool]], start: int, size: int
+):
     comm = get_comm_world()
     assert comm is not None
     lengths = np.array(comm.allgather(len(ds)), dtype=np.int64)
@@ -148,7 +172,7 @@ def get_range_take_index_mpi(ds, sort_key, start, size):
     return single_chunk(local_start, local_end - local_start)
 
 
-def get_global_sort_order(ds, sort_key):
+def get_global_sort_order(ds: Dataset | Lightcone, sort_key: tuple[str, bool]):
     comm = get_comm_world()
     assert comm is not None
 
@@ -200,7 +224,7 @@ def get_random_take_index_mpi(n: int, ds_length: int):
     return get_local_rows_simple(rows, lengths, comm)
 
 
-def get_local_rows_simple(rows: IndexArray | None, lengths, comm):
+def get_local_rows_simple(rows: IndexArray | None, lengths: list[int], comm):
     chunk_ranges = np.zeros(len(lengths) + 1, dtype=np.int64)
     chunk_ranges[1:] = np.cumsum(lengths)
     if comm.Get_rank() == 0:

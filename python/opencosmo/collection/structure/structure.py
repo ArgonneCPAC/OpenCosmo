@@ -1012,6 +1012,17 @@ class StructureCollection:
         at : str, optional
             The method to use to take the structures. One of "random", "first",
             or "last". Default is "random".
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
+
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
+
 
         Returns
         -------
@@ -1030,7 +1041,9 @@ class StructureCollection:
             self.__derived_columns,
         )
 
-    def take_range(self, start: int, end: int):
+    def take_range(
+        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+    ):
         """
         Create a new collection from a row range in this collection. We use standard
         indexing conventions, so the rows included will be start -> end - 1.
@@ -1041,6 +1054,17 @@ class StructureCollection:
             The first row to get.
         end : int
             The last row to get.
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
+
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
+
 
         Returns
         -------
@@ -1054,7 +1078,7 @@ class StructureCollection:
             or if end is greater than start.
 
         """
-        new_source = self.__source.take_range(start, end)
+        new_source = self.__source.take_range(start, end, mode)
         return StructureCollection(
             new_source,
             self.__header,

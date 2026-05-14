@@ -16,3 +16,9 @@ def reindex_column(index: IndexArray, index_column: IndexArray) -> IndexArray: .
 def rebuild_simple_by_ranges(
     index: IndexArray, starts: IndexArray, sizes: IndexArray
 ) -> IndexArray: ...
+def rebuild_chunked_by_ranges(
+    starts: IndexArray,
+    sizes: IndexArray,
+    chunk_starts: IndexArray,
+    chunk_sizes: IndexArray,
+) -> IndexArray: ...
