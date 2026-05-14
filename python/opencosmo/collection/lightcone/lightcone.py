@@ -9,6 +9,7 @@ from typing import (
     Callable,
     Generator,
     Iterable,
+    Literal,
     Mapping,
     Optional,
     Self,
@@ -25,6 +26,13 @@ from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_sch
 from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import convert_data, verify_format
+from opencosmo.dataset.take import (
+    get_end_take_index,
+    get_random_take_index,
+    get_range_take_index,
+    get_rows_take_index,
+)
+from opencosmo.index import get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.plugins.contexts import (
@@ -44,6 +52,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset import Dataset
     from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
@@ -69,7 +78,7 @@ class Lightcone(dict):
         datasets: Mapping[Any, Dataset | Lightcone],
         z_range: Optional[tuple[float, float]] = None,
         hidden: Optional[set[str]] = None,
-        ordered_by: Optional[tuple[str, bool]] = None,
+        sort_key: Optional[tuple[str, bool]] = None,
     ):
         self.update(datasets)
         z_range = (
@@ -90,7 +99,7 @@ class Lightcone(dict):
             hidden = set()
 
         self.__hidden = hidden
-        self.__ordered_by = ordered_by
+        self.__sort_key = sort_key
 
     def __repr__(self):
         """
@@ -301,8 +310,8 @@ class Lightcone(dict):
 
         table = vstack(data_with_length, join_type="exact")
 
-        if self.__ordered_by is not None:
-            order = table.argsort(self.__ordered_by[0], reverse=self.__ordered_by[1])
+        if self.__sort_key is not None and not kwargs.get("ignore_sort", False):
+            order = table.argsort(self.__sort_key[0], reverse=self.__sort_key[1])
             table = table[order]
             table = fold(
                 HookPoint.PostSort, PostSortCtx(self, table, np.argsort(order))
@@ -408,9 +417,7 @@ class Lightcone(dict):
             )
             if len(new_dataset) > 0:
                 new_datasets[key] = new_dataset
-        return Lightcone(
-            new_datasets, (z_low, z_high), self.__hidden, self.__ordered_by
-        )
+        return Lightcone(new_datasets, (z_low, z_high), self.__hidden, self.__sort_key)
 
     def __map(
         self,
@@ -445,7 +452,7 @@ class Lightcone(dict):
         if not output:
             output = zero_length_output
         if construct:
-            return Lightcone(output, self.z_range, hidden, self.__ordered_by)
+            return Lightcone(output, self.z_range, hidden, self.__sort_key)
         return output
 
     def __map_attribute(self, attribute):
@@ -791,9 +798,9 @@ class Lightcone(dict):
             additional_columns.add("redshift")
             hidden = hidden.union({"redshift"})
 
-        if self.__ordered_by is not None and self.__ordered_by[0] not in all_columns:
-            additional_columns.add(self.__ordered_by[0])
-            hidden = hidden.union({self.__ordered_by[0]})
+        if self.__sort_key is not None and self.__sort_key[0] not in all_columns:
+            additional_columns.add(self.__sort_key[0])
+            hidden = hidden.union({self.__sort_key[0]})
 
         return self.__map(
             "select",
@@ -838,7 +845,9 @@ class Lightcone(dict):
         kept_columns = current_columns - dropped_columns
         return self.select(kept_columns)
 
-    def take(self, n: int, at: str = "random") -> "Lightcone":
+    def take(
+        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+    ) -> "Lightcone":
         """
         Create a new dataset from some number of rows from this dataset.
 
@@ -852,11 +861,21 @@ class Lightcone(dict):
         at : str
             Where to take the rows from. One of "start", "end", or "random".
             The default is "random".
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
+
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
 
         Returns
         -------
-        dataset : Dataset
-            The new dataset with only the selected rows.
+        lightcone : Lightcone
+            The new lightcone with only the selected rows.
 
         Raises
         ------
@@ -865,28 +884,27 @@ class Lightcone(dict):
             or if 'at' is invalid.
 
         """
-        if n > len(self):
-            raise ValueError(
-                "Number of rows to take must be less than number of rows in dataset"
-            )
         if at == "random":
-            indices = np.random.choice(len(self), n, replace=False)
-            indices = np.sort(indices)
-            return self.__take_rows(indices)
-
-        elif self.__ordered_by is not None:
-            index = lcutils.take_from_sorted(self, *self.__ordered_by, n=n, at=at)
-            return self.__take_rows(index)
+            index = get_random_take_index(n, len(self), mode)
         elif at == "start":
-            return self.take_range(0, n)
+            index = get_range_take_index(self, self.__sort_key, 0, n, mode)
+            if self.__sort_key is not None:
+                sort_index = self.__make_sort_index()
+                index = np.sort(sort_index[into_array(index)])
         elif at == "end":
-            return self.take_range(len(self) - n, len(self))
+            index = get_end_take_index(n, self, self.__sort_key, mode)
+            if self.__sort_key is not None:
+                sort_index = self.__make_sort_index()
+                index = np.sort(sort_index[into_array(index)])
         else:
             raise ValueError(
                 f'"at" should be one of ("start", "end", "random", got {at}'
             )
+        return self.__take_rows(index)
 
-    def take_range(self, start: int, end: int):
+    def take_range(
+        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+    ):
         """
         Create a new lightcone from a row range in this lightcone. We use standard
         indexing conventions, so the rows included will be start -> end - 1. Because
@@ -897,9 +915,19 @@ class Lightcone(dict):
         Parameters
         ----------
         start : int
-            The beginning of the range
+            The beginning of the range.
         end : int
-            The end of the range
+            The end of the range (exclusive).
+        mode : str, "local" or "global", default = "local"
+            Controls how ``start`` and ``end`` are interpreted when running
+            under MPI. Has no effect if you are not using MPI.
+
+            * ``"local"`` (default): the range is applied independently on
+              each rank.
+            * ``"global"``: ``start`` and ``end`` index into the global row
+              space across all ranks combined. Each rank receives the portion
+              of that range it owns. If the lightcone is sorted, ranks will
+              coordinate to take from the globally-sorted lightcone.
 
         Returns
         -------
@@ -913,33 +941,16 @@ class Lightcone(dict):
             or if end is greater than start.
 
         """
-        if start < 0 or end > len(self):
-            raise ValueError("Got row indices that are out of range!")
+        if start < 0:
+            raise ValueError("Tried to take negative rows!")
 
-        if self.__ordered_by is not None:
-            indices = lcutils.take_from_sorted(
-                self, *self.__ordered_by, end - start, at=start
-            )
-            return self.__take_rows(indices)
+        index = get_range_take_index(self, self.__sort_key, start, end - start, mode)
+        if self.__sort_key is not None:
+            sort_index = self.__make_sort_index()
+            index = np.sort(sort_index[into_array(index)])
+        return self.__take_rows(index)
 
-        ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
-        starts = np.insert(ends, 0, 0)[:-1]
-        clipped_starts = np.clip(starts, a_min=start, a_max=None)
-        clipped_ends = np.clip(ends, a_min=None, a_max=end)
-
-        output = {}
-        for i, (name, dataset) in enumerate(self.items()):
-            if starts[i] == clipped_starts[i] and ends[i] == clipped_ends[i]:
-                output[name] = dataset
-            elif clipped_starts[i] >= clipped_ends[i]:
-                continue
-            else:
-                output[name] = dataset.take_range(
-                    clipped_starts[i] - starts[i], clipped_ends[i] - starts[i]
-                )
-        return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
-
-    def take_rows(self, rows: np.ndarray):
+    def take_rows(self, rows: DataIndex):
         """
         Take the rows of a lightcone specified by the :code:`rows` argument.
         :code:`rows` should be an array of integers.
@@ -960,44 +971,51 @@ class Lightcone(dict):
             lightcone.
 
         """
-        rows = np.sort(rows)
-        if rows[-1] >= len(self) or rows[0] < 0:
+        index_range = get_range(rows)
+        if isinstance(rows, np.ndarray):
+            rows = np.sort(rows)
+            index_range = (index_range[0], index_range[1] + 1)
+        else:
+            order = np.argsort(rows[0])
+            rows = (rows[0][order], rows[1][order])
+
+        if index_range[0] < 0 or index_range[1] > len(self):
             raise ValueError(
                 "Rows must be between 0 and the length of this dataset - 1"
             )
-        if self.__ordered_by is not None:
-            sort_index = self.__make_sort_index()
-            rows = sort_index[rows]
-            rows.sort()
+        rows = get_rows_take_index(self, rows, self.__sort_key)
 
         return self.__take_rows(rows)
 
     def __make_sort_index(self):
-        if self.__ordered_by is None:
+        if self.__sort_key is None:
             return None
         data = np.concatenate(
-            [ds.select(self.__ordered_by[0]).get_data("numpy") for ds in self.values()]
+            [ds.select(self.__sort_key[0]).get_data("numpy") for ds in self.values()]
         )
-        if self.__ordered_by[1]:
+        if self.__sort_key[1]:
             data = -data
         return np.argsort(data)
 
-    def __take_rows(self, rows: np.ndarray):
+    def __take_rows(self, rows: DataIndex):
         """
         Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorte.
         For internal use only.
         """
-        ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
-        partitions = np.searchsorted(rows, ds_ends)
-        splits = np.split(rows, partitions)
-        rs = 0
+        sizes = np.fromiter((len(ds) for ds in self.values()), dtype=np.int64)
+        starts = np.zeros_like(sizes)
+        starts[1:] = np.cumsum(sizes)[:-1]
+        projected = rebuild_by_ranges(rows, (starts, sizes))
         output = {}
-        for split, (name, dataset) in zip(splits, self.items()):
-            if len(split) > 0:
-                output[name] = dataset.take_rows(split - rs)
-            rs += len(dataset)
+        for (name, ds), index in zip(self.items(), projected):
+            output[name] = ds.take_rows(index)
 
-        return Lightcone(output, self.z_range, self.__hidden, self.__ordered_by)
+        if all(len(ds) == 0 for ds in output.values()):
+            output = {"data": next(iter(output.values()))}
+        else:
+            output = {name: ds for name, ds in output.items() if len(ds) != 0}
+
+        return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
 
     def with_new_columns(
         self,
@@ -1045,7 +1063,7 @@ class Lightcone(dict):
             else:
                 raw[name] = column
 
-        if self.__ordered_by is not None:
+        if self.__sort_key is not None:
             sort_index = self.__make_sort_index()
             sort_index = np.argsort(sort_index)
             raw = {name: raw_data[sort_index] for name, raw_data in raw.items()}
@@ -1061,7 +1079,7 @@ class Lightcone(dict):
                 descriptions, allow_overwrite=allow_overwrite, **columns_input
             )
             new_datasets[ds_name] = new_dataset
-        return Lightcone(new_datasets, self.z_range, self.__hidden, self.__ordered_by)
+        return Lightcone(new_datasets, self.z_range, self.__hidden, self.__sort_key)
 
     def sort_by(self, column: str, invert: bool = False):
         """

@@ -608,6 +608,426 @@ def test_lightcone_stacking(
     assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range
 
 
+# ── take global ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global(haloproperties_600_path, haloproperties_601_path):
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+    total_length = sum(comm.allgather(len(lc)))
+    n_to_take = np.random.randint(total_length // 4, int(total_length * 0.75))
+    n_to_take = comm.bcast(n_to_take)
+
+    lc = lc.take(n_to_take, mode="global")
+    all_lengths = comm.allgather(len(lc))
+
+    parallel_assert(sum(all_lengths) == n_to_take)
+
+
+# ── take_range global, unsorted ───────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_start(haloproperties_600_path, haloproperties_601_path):
+    """First n global rows land on the correct ranks with the right counts."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    n = total // 3
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(0, min(int(lengths[rank]), n - offset))
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_end(haloproperties_600_path, haloproperties_601_path):
+    """Last n global rows land on the correct ranks with the right counts."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    n = total // 3
+    global_start = total - n
+
+    lc_taken = lc.take_range(global_start, total, mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(
+        0,
+        min(int(lengths[rank]), total - offset) - max(0, global_start - offset),
+    )
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_middle(haloproperties_600_path, haloproperties_601_path):
+    """A middle window of global rows lands on the correct ranks with the right counts."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    global_start = total // 4
+    global_end = 3 * total // 4
+
+    lc_taken = lc.take_range(global_start, global_end, mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(
+        0,
+        min(int(lengths[rank]), global_end - offset) - max(0, global_start - offset),
+    )
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == global_end - global_start)
+
+
+# ── take_range global, sorted ─────────────────────────────────────────────────
+#
+# The sorted tests verify value-level correctness: after a global range take on
+# a sorted lightcone, every selected value must satisfy the global threshold
+# implied by the range position.
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_start(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Global start on sorted data selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_end(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Global end on sorted data selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take_range(total - n, total, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_middle(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """A middle window on sorted data selects the correct globally-ranked values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    global_start = total // 4
+    global_end = 3 * total // 4
+    size = global_end - global_start
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    sorted_all = np.sort(all_original)
+    lower_threshold = sorted_all[global_start]
+    upper_threshold = sorted_all[global_end - 1]
+
+    lc_taken = lc.take_range(global_start, global_end, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == size)
+    parallel_assert(
+        np.all(all_selected >= lower_threshold),
+        "some selected values fall below the lower global threshold",
+    )
+    parallel_assert(
+        np.all(all_selected <= upper_threshold),
+        "some selected values exceed the upper global threshold",
+    )
+
+
+# ── take global end ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_end(haloproperties_600_path, haloproperties_601_path):
+    """take(n, at='end', mode='global') selects the last n rows across all ranks."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    n = total // 3
+    global_start = total - n
+
+    lc_taken = lc.take(n, at="end", mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(
+        0,
+        min(int(lengths[rank]), total - offset) - max(0, global_start - offset),
+    )
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_end_sorted(haloproperties_600_path, haloproperties_601_path):
+    """take(n, at='end', mode='global') on sorted data selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take(n, at="end", mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+# ── take(at="start") global, sorted ──────────────────────────────────────────
+#
+# take(n, at="start") is a distinct branch from take_range(0, n) in the
+# Lightcone implementation; the sort-order → physical conversion lives
+# separately in each branch and must be tested independently.
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_start_sorted(haloproperties_600_path, haloproperties_601_path):
+    """take(n, at='start', mode='global') on sorted data selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take(n, at="start", mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+    print(all_selected)
+    print(threshold)
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+# ── inverted sort ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_inverted_start(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Inverted sort: global start selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass", invert=True
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_inverted_end(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Inverted sort: global end selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass", invert=True
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take_range(total - n, total, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+# ── single-step lightcone ─────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_single_step(haloproperties_600_path):
+    """Global take on a single-step lightcone produces the correct total count."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_600_path)
+
+    total = sum(comm.allgather(len(lc)))
+    n_to_take = np.random.randint(total // 4, int(total * 0.75))
+    n_to_take = comm.bcast(n_to_take)
+
+    lc_taken = lc.take(n_to_take, mode="global")
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n_to_take)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_single_step_sorted(haloproperties_600_path):
+    """Sorted global take_range on a single-step lightcone selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_600_path).sort_by("fof_halo_mass")
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_single_step_sorted_inverted(haloproperties_600_path):
+    """Inverted sort on a single-step lightcone: global start selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_600_path).sort_by("fof_halo_mass", invert=True)
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
 def _get_expected_core_tags(group):
     raw_top_host = group["data"]["top_host_idx"][:]
     core_tag = group["data"]["core_tag"][:]

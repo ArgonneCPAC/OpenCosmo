@@ -6,6 +6,7 @@ from typing import (
     Callable,
     Generator,
     Iterable,
+    Literal,
     Mapping,
     Optional,
     TypeAlias,
@@ -21,7 +22,12 @@ import opencosmo.dataset.state as st
 from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.index import empty, get_range, into_array, mask, project, single_chunk
+from opencosmo.dataset.take import (
+    get_end_take_index,
+    get_random_take_index,
+    get_range_take_index,
+)
+from opencosmo.index import empty, get_range, into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
@@ -288,7 +294,10 @@ class Dataset:
             unit_kwargs = {}
 
         data = st.get_data(
-            self.__state, unit_kwargs=unit_kwargs, metadata_columns=metadata_columns
+            self.__state,
+            unit_kwargs=unit_kwargs,
+            metadata_columns=metadata_columns,
+            **kwargs,
         )  # dict
         if unpack:
             data = {
@@ -697,9 +706,7 @@ class Dataset:
         )
 
     def take(
-        self,
-        n: int,
-        at: str = "random",
+        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
     ) -> Dataset:
         """
         Create a new dataset from some number of rows from this dataset.
@@ -715,7 +722,16 @@ class Dataset:
         at : str
             Where to take the rows from. One of "start", "end", or "random".
             The default is "random".
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
 
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
 
         Returns
         -------
@@ -730,20 +746,19 @@ class Dataset:
 
         """
         if at == "start":
-            return self.take_range(0, n)
+            return self.take_range(0, n, mode)
         elif at == "end":
-            return self.take_range(len(self) - n, len(self))
+            take_index = get_end_take_index(n, self, self.__state.sort_key, mode)
+            return self.take_rows(take_index)
         elif at != "random":
             raise ValueError(f"Unknown take type {at}")
 
-        if n > len(self):
-            raise ValueError("Cannot take more rows than are in this dataset!")
-
-        row_indices = np.random.choice(len(self), n, replace=False)
-        row_indices.sort()
+        row_indices = get_random_take_index(n, len(self), mode)
         return self.take_rows(row_indices)
 
-    def take_range(self, start: int, end: int) -> Dataset:
+    def take_range(
+        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+    ) -> Dataset:
         """
         Create a new dataset from a row range in this dataset. We use standard
         indexing conventions, so the rows included will be start -> end - 1.
@@ -751,14 +766,25 @@ class Dataset:
         Parameters
         ----------
         start : int
-            The beginning of the range
+            The beginning of the range.
         end : int
-            The end of the range
+            The end of the range (exclusive).
+
+        mode : str, "local" or "global", default = "local"
+            Controls how ``start`` and ``end`` are interpreted when running
+            under MPI. Has no effect if you are not using MPI.
+
+            * ``"local"`` (default): the range is applied independently on
+              each rank.
+            * ``"global"``: ``start`` and ``end`` index into the global row
+              space across all ranks combined. Each rank receives the portion
+              of that range it owns. If the dataset is sorted, ranks will
+              coordinate to take from the globally-sorted dataset.
 
         Returns
         -------
-        table : astropy.table.Table
-            The table with only the rows from start to end.
+        dataset : Dataset
+            The new dataset with only the rows from start to end.
 
         Raises
         ------
@@ -771,10 +797,10 @@ class Dataset:
             raise ValueError("start and end must be positive.")
         if end < start:
             raise ValueError("end must be greater than start.")
-        if end > len(self):
-            raise ValueError("end must be less than the length of the dataset.")
 
-        take_index = single_chunk(start, end - start)
+        take_index = get_range_take_index(
+            self, self.__state.sort_key, start, end - start, mode
+        )
         return self.take_rows(take_index)
 
     def take_rows(self, rows: np.ndarray | DataIndex):

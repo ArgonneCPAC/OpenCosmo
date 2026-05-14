@@ -3,7 +3,16 @@ from __future__ import annotations
 from collections import defaultdict
 from functools import partial, reduce
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Mapping, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Literal,
+    Mapping,
+    Optional,
+)
 from warnings import warn
 
 import numpy as np
@@ -989,7 +998,9 @@ class StructureCollection:
             self.__handler.make_derived(self.__source),
         )
 
-    def take(self, n: int, at: str = "random"):
+    def take(
+        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+    ):
         """
         Take some number of structures from the collection.
         See :py:meth:`opencosmo.Dataset.take`.
@@ -1001,13 +1012,24 @@ class StructureCollection:
         at : str, optional
             The method to use to take the structures. One of "random", "first",
             or "last". Default is "random".
+        mode : str, "local" or "global", default = "local"
+            Controls how ``n`` is interpreted when running under MPI. Has no
+            effect if you are not using MPI.
+
+            * ``"local"`` (default): ``n`` rows are taken independently on
+              each rank.
+            * ``"global"``: ``n`` is the total number of rows to select across
+              all ranks combined. Each rank receives the portion of those rows
+              that it owns. If the dataset is sorted, ranks will coordinate
+              to take from the globally-sorted dataset.
+
 
         Returns
         -------
         StructureCollection
             A new collection with the structures taken from the original.
         """
-        new_source = self.__source.take(n, at)
+        new_source = self.__source.take(n, at, mode)
         new_handler = self.__handler.make_derived(self.__source)
 
         return StructureCollection(
@@ -1019,7 +1041,9 @@ class StructureCollection:
             self.__derived_columns,
         )
 
-    def take_range(self, start: int, end: int):
+    def take_range(
+        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+    ):
         """
         Create a new collection from a row range in this collection. We use standard
         indexing conventions, so the rows included will be start -> end - 1.
@@ -1030,11 +1054,21 @@ class StructureCollection:
             The first row to get.
         end : int
             The last row to get.
+        mode : str, "local" or "global", default = "local"
+            Controls how ``start`` and ``end`` are interpreted when running
+            under MPI. Has no effect if you are not using MPI.
+
+            * ``"local"`` (default): the range is applied independently on
+              each rank.
+            * ``"global"``: ``start`` and ``end`` index into the global row
+              space across all ranks combined. Each rank receives the portion
+              of that range it owns. If the collection is sorted, ranks will
+              coordinate to take from the globally-sorted collection.
 
         Returns
         -------
-        table : astropy.table.Table
-            The table with only the rows from start to end.
+        collection : StructureCollection
+            The collection with only the rows from start to end.
 
         Raises
         ------
@@ -1043,7 +1077,7 @@ class StructureCollection:
             or if end is greater than start.
 
         """
-        new_source = self.__source.take_range(start, end)
+        new_source = self.__source.take_range(start, end, mode)
         return StructureCollection(
             new_source,
             self.__header,

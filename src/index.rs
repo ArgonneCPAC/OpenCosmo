@@ -6,6 +6,7 @@ pub(crate) mod index {
     use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
     use pyo3::exceptions::{PyTypeError, PyValueError};
     use pyo3::prelude::*;
+    use pyo3::types::PyList;
     use std::collections::HashMap;
     use std::iter::zip;
 
@@ -313,5 +314,128 @@ pub(crate) mod index {
             }
         }
         Array1::from_vec(output)
+    }
+
+    #[pyfunction(name = "rebuild_chunked_by_ranges")]
+    fn rebuild_chunked_by_ranges_py<'py>(
+        py: Python<'py>,
+        starts: &Bound<'_, PyAny>,
+        sizes: &Bound<'_, PyAny>,
+        range_starts: &Bound<'_, PyAny>,
+        range_sizes: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let (start_arr, size_arr) = unpack_chunked_index(starts, sizes)?;
+        let (range_starts_arr, range_sizes_arr) = unpack_chunked_index(range_starts, range_sizes)?;
+        let mut output = rebuild_chunked_by_ranges(
+            start_arr.as_array(),
+            size_arr.as_array(),
+            range_starts_arr.as_array(),
+            range_sizes_arr.as_array(),
+        );
+        PyList::new(
+            py,
+            output
+                .drain(0..)
+                .map(|(st, si)| (st.into_pyarray(py), si.into_pyarray(py))),
+        )
+    }
+
+    fn rebuild_chunked_by_ranges(
+        starts: ArrayView1<'_, i64>,
+        sizes: ArrayView1<'_, i64>,
+        range_starts: ArrayView1<'_, i64>,
+        range_sizes: ArrayView1<'_, i64>,
+    ) -> Vec<(Array1<i64>, Array1<i64>)> {
+        let n_datasets = range_starts.len();
+        let mut outputs: Vec<(Vec<i64>, Vec<i64>)> =
+            (0..n_datasets).map(|_| (Vec::new(), Vec::new())).collect();
+
+        if starts.len() == 0 || n_datasets == 0 {
+            return outputs
+                .into_iter()
+                .map(|(st, si)| (Array1::from_vec(st), Array1::from_vec(si)))
+                .collect();
+        }
+
+        let mut i = 0usize;
+        let mut j = 0usize;
+
+        while i < starts.len() && j < n_datasets {
+            let chunk_start = starts[i];
+            let chunk_end = chunk_start + sizes[i];
+            let ds_start = range_starts[j];
+            let ds_end = ds_start + range_sizes[j];
+
+            if chunk_end <= ds_start {
+                i += 1;
+            } else if chunk_start >= ds_end {
+                j += 1;
+            } else {
+                let overlap_start = chunk_start.max(ds_start);
+                let overlap_end = chunk_end.min(ds_end);
+                outputs[j].0.push(overlap_start - ds_start);
+                outputs[j].1.push(overlap_end - overlap_start);
+
+                if chunk_end <= ds_end {
+                    i += 1;
+                } else {
+                    j += 1;
+                }
+            }
+        }
+
+        outputs
+            .into_iter()
+            .map(|(st, si)| (Array1::from_vec(st), Array1::from_vec(si)))
+            .collect()
+    }
+    #[pyfunction(name = "rebuild_simple_by_ranges")]
+    fn rebuild_simple_by_ranges_py<'py>(
+        py: Python<'py>,
+        index: &Bound<'_, PyAny>,
+        range_starts: &Bound<'_, PyAny>,
+        range_sizes: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let index_arr = unpack_index_array(index)?;
+        let (start_arr, size_arr) = unpack_chunked_index(range_starts, range_sizes)?;
+        let mut output = rebuild_simple_by_ranges(
+            index_arr.as_array(),
+            start_arr.as_array(),
+            size_arr.as_array(),
+        );
+        PyList::new(py, output.drain(0..).map(|a| a.into_pyarray(py)))
+    }
+
+    fn rebuild_simple_by_ranges(
+        index: ArrayView1<'_, i64>,
+        range_starts: ArrayView1<'_, i64>,
+        range_sizes: ArrayView1<'_, i64>,
+    ) -> Vec<Array1<i64>> {
+        let n_ranges = range_starts.len();
+        let mut outputs: Vec<Vec<i64>> = (0..n_ranges).map(|_| Vec::new()).collect();
+
+        if n_ranges == 0 || index.len() == 0 {
+            return outputs.into_iter().map(Array1::from_vec).collect();
+        }
+
+        let mut j = 0usize;
+        for &idx in index {
+            // Advance past all ranges whose end is at or before idx.
+            // Using a while loop handles the case where idx skips multiple ranges
+            // and prevents an OOB panic when advancing past the last range.
+            while j < n_ranges && idx >= range_starts[j] + range_sizes[j] {
+                j += 1;
+            }
+            if j >= n_ranges {
+                break;
+            }
+            // idx falls before the start of range j (gap in a non-contiguous layout).
+            if idx < range_starts[j] {
+                continue;
+            }
+            outputs[j].push(idx - range_starts[j]);
+        }
+
+        outputs.into_iter().map(Array1::from_vec).collect()
     }
 }
