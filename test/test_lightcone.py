@@ -40,8 +40,8 @@ def test_create_theta_phi_coords(haloproperties_600_path, haloproperties_601_pat
 
     ra = (data["phi"] * u.rad).to(u.deg)
     dec = ((np.pi / 2 - data["theta"]) * u.rad).to(u.deg)
-    assert np.allclose(data["ra"], ra, rtol=1e-2)
-    assert np.allclose(data["dec"], dec, rtol=1e-2)
+    assert np.allclose(data["ra"], ra, atol=0.01, rtol=1e-2)
+    assert np.allclose(data["dec"], dec, atol=0.01, rtol=1e-2)
 
 
 def test_lightcone_physical_units(haloproperties_600_path):

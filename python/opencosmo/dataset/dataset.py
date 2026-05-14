@@ -801,7 +801,6 @@ class Dataset:
         take_index = get_range_take_index(
             self, self.__state.sort_key, start, end - start, mode
         )
-
         return self.take_rows(take_index)
 
     def take_rows(self, rows: np.ndarray | DataIndex):

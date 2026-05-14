@@ -78,8 +78,10 @@ def get_range_take_index(
         size = ds_len - start
 
     if sort_key is not None:
-        sort_index = _get_sort_index(ds, sort_key)
-        return np.sort(sort_index[start : start + size])
+        # Return logical sorted positions; st.take_rows (for Dataset) will map
+        # them to physical positions via sorted_idx. Lightcone callers must apply
+        # their own sort mapping after calling this function.
+        return np.arange(start, start + size, dtype=np.int64)
 
     return single_chunk(start, size)
 
@@ -106,8 +108,7 @@ def get_end_take_index(
         n = ds_length
 
     if sort_key is not None:
-        sort_index = _get_sort_index(ds, sort_key)
-        return np.sort(sort_index[start : start + n])
+        return np.arange(start, start + n, dtype=np.int64)
 
     return single_chunk(start, n)
 
