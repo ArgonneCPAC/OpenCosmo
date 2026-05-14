@@ -77,19 +77,13 @@ def get_range_take_index(
     if start + size > ds_len:
         size = ds_len - start
 
-    if sort_key is not None:
-        # Return logical sorted positions; st.take_rows (for Dataset) will map
-        # them to physical positions via sorted_idx. Lightcone callers must apply
-        # their own sort mapping after calling this function.
-        return np.arange(start, start + size, dtype=np.int64)
-
     return single_chunk(start, size)
 
 
 def get_end_take_index(
     n: int,
     ds: Dataset | Lightcone,
-    sort_key,
+    sort_key: Optional[tuple[str, bool]],
     mode: Literal["local", "global"],
 ):
     ds_length = len(ds)
@@ -106,9 +100,6 @@ def get_end_take_index(
     if n > ds_length:
         start = 0
         n = ds_length
-
-    if sort_key is not None:
-        return np.arange(start, start + n, dtype=np.int64)
 
     return single_chunk(start, n)
 
@@ -159,7 +150,7 @@ def get_range_take_index_mpi(
         local_size = int(count_per_rank[rank])
 
         if local_size == 0:
-            return np.array([], dtype=np.int64)
+            return empty()
         return single_chunk(local_start, local_size)
 
     # Handle the case without sorting: contiguous global range
@@ -187,14 +178,11 @@ def get_global_sort_order(ds: Dataset | Lightcone, sort_key: tuple[str, bool]):
     lengths = np.array(comm.allgather(len(local_values)), dtype=np.int64)
     total_length = int(np.sum(lengths))
     rank = comm.Get_rank()
-    offset = int(np.sum(lengths[:rank]))
 
-    # Use comm.Reduce to get the full catalog on rank 0.
-    # Each rank writes its values at its global offset; summing gives the full array.
-    local_contribution = np.zeros(total_length, dtype=np.float64)
-    local_contribution[offset : offset + len(local_values)] = local_values
-    recv = np.zeros(total_length, dtype=np.float64) if rank == 0 else None
-    comm.Reduce(local_contribution, recv, op=get_mpi().SUM, root=0)
+    offsets = np.zeros(len(lengths), dtype=np.int64)
+    offsets[1:] = np.cumsum(lengths)[:-1]
+    recv = np.empty(total_length, dtype=np.float64) if rank == 0 else None
+    comm.Gatherv(local_values, [recv, lengths, offsets, get_mpi().DOUBLE], root=0)
 
     # Other ranks return None
     if rank != 0:

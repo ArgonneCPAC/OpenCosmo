@@ -32,7 +32,7 @@ from opencosmo.dataset.take import (
     get_range_take_index,
     get_rows_take_index,
 )
-from opencosmo.index import get_range, into_array, rebuild_by_ranges
+from opencosmo.index import get_length, get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import has_mpi
@@ -920,15 +920,15 @@ class Lightcone(dict):
         end : int
             The end of the range (exclusive).
         mode : str, "local" or "global", default = "local"
-            Controls how ``n`` is interpreted when running under MPI. Has no
-            effect if you are not using MPI.
+            Controls how ``start`` and ``end`` are interpreted when running
+            under MPI. Has no effect if you are not using MPI.
 
-            * ``"local"`` (default): ``n`` rows are taken independently on
+            * ``"local"`` (default): the range is applied independently on
               each rank.
-            * ``"global"``: ``n`` is the total number of rows to select across
-              all ranks combined. Each rank receives the portion of those rows
-              that it owns. If the dataset is sorted, ranks will coordinate
-              to take from the globally-sorted dataset.
+            * ``"global"``: ``start`` and ``end`` index into the global row
+              space across all ranks combined. Each rank receives the portion
+              of that range it owns. If the lightcone is sorted, ranks will
+              coordinate to take from the globally-sorted lightcone.
 
         Returns
         -------
@@ -1009,6 +1009,8 @@ class Lightcone(dict):
         projected = rebuild_by_ranges(rows, (starts, sizes))
         output = {}
         for (name, ds), index in zip(self.items(), projected):
+            if get_length(index) == 0:
+                continue
             output[name] = ds.take_rows(index)
 
         return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)

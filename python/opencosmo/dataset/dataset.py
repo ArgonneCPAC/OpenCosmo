@@ -771,15 +771,15 @@ class Dataset:
             The end of the range (exclusive).
 
         mode : str, "local" or "global", default = "local"
-            Controls how ``n`` is interpreted when running under MPI. Has no
-            effect if you are not using MPI.
+            Controls how ``start`` and ``end`` are interpreted when running
+            under MPI. Has no effect if you are not using MPI.
 
-            * ``"local"`` (default): ``n`` rows are taken independently on
+            * ``"local"`` (default): the range is applied independently on
               each rank.
-            * ``"global"``: ``n`` is the total number of rows to select across
-              all ranks combined. Each rank receives the portion of those rows
-              that it owns. If the dataset is sorted, ranks will coordinate
-              to take from the globally-sorted dataset.
+            * ``"global"``: ``start`` and ``end`` index into the global row
+              space across all ranks combined. Each rank receives the portion
+              of that range it owns. If the dataset is sorted, ranks will
+              coordinate to take from the globally-sorted dataset.
 
         Returns
         -------

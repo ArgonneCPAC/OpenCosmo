@@ -1,0 +1,1 @@
+Requesting more rows than exist via :py:meth:`take <opencosmo.Dataset.take>` or :py:meth:`take_range <opencosmo.Dataset.take_range>` no longer raises a ``ValueError``. Instead, all available rows are returned. This applies to :py:class:`Dataset <opencosmo.Dataset>`, :py:class:`Lightcone <opencosmo.Lightcone>`, and :py:class:`StructureCollection <opencosmo.StructureCollection>`.

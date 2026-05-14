@@ -411,33 +411,31 @@ pub(crate) mod index {
         range_starts: ArrayView1<'_, i64>,
         range_sizes: ArrayView1<'_, i64>,
     ) -> Vec<Array1<i64>> {
-        let mut rs: i64 = 0;
-        let mut current_chunk_index: usize = 0;
-        let mut current_chunk_end: i64 =
-            range_starts[current_chunk_index] + range_sizes[current_chunk_index];
-        let mut output_indices = Vec::new();
-        let mut current_chunk_indices = Vec::new();
+        let n_ranges = range_starts.len();
+        let mut outputs: Vec<Vec<i64>> = (0..n_ranges).map(|_| Vec::new()).collect();
+
+        if n_ranges == 0 || index.len() == 0 {
+            return outputs.into_iter().map(Array1::from_vec).collect();
+        }
+
+        let mut j = 0usize;
         for &idx in index {
-            if idx >= current_chunk_end {
-                output_indices.push(Array1::from_vec(current_chunk_indices));
-                rs = current_chunk_end;
-                current_chunk_index += 1;
-                current_chunk_end =
-                    range_starts[current_chunk_index] + range_sizes[current_chunk_index];
-                current_chunk_indices = Vec::new();
-                current_chunk_indices.push(idx - rs);
-            } else if idx < rs {
+            // Advance past all ranges whose end is at or before idx.
+            // Using a while loop handles the case where idx skips multiple ranges
+            // and prevents an OOB panic when advancing past the last range.
+            while j < n_ranges && idx >= range_starts[j] + range_sizes[j] {
+                j += 1;
+            }
+            if j >= n_ranges {
+                break;
+            }
+            // idx falls before the start of range j (gap in a non-contiguous layout).
+            if idx < range_starts[j] {
                 continue;
-            } else {
-                current_chunk_indices.push(idx - rs);
             }
+            outputs[j].push(idx - range_starts[j]);
         }
-        output_indices.push(Array1::from_vec(current_chunk_indices));
-        if output_indices.len() < range_starts.len() {
-            for _ in 0..range_starts.len() - output_indices.len() {
-                output_indices.push(Array1::zeros(0))
-            }
-        }
-        return output_indices;
+
+        outputs.into_iter().map(Array1::from_vec).collect()
     }
 }
