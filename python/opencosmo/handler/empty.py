@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable, Optional, Self
 
-from opencosmo.index import empty
 from opencosmo.io.schema import FileEntry, make_schema
+
+from opencosmo.index import empty
 
 if TYPE_CHECKING:
     import numpy as np
+
     from opencosmo.index import DataIndex
 
 
 class EmptyHandler:
     def get_data(self, *args):
-        return {}
-
-    def get_metadata(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         return {}
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None) -> Self:
@@ -35,10 +34,6 @@ class EmptyHandler:
     @property
     def load_conditions(self):
         return None
-
-    @property
-    def metadata_columns(self) -> Iterable[str]:
-        return set()
 
     @property
     def descriptions(self):

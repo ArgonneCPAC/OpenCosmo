@@ -84,6 +84,7 @@ class DatasetState:
     region: Region
     open_kwargs: dict[str, Any]
     sort_key: Optional[tuple[str, bool]]
+    metadata_columns: frozenset[str]
 
     def __post_init__(self):
         self.cache.register_column_group(id(self), self.column_map)
@@ -91,14 +92,11 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        return list(self.column_map.keys())
+        return [c for c in self.column_map if c not in self.metadata_columns]
 
     @property
     def meta_columns(self) -> list[str]:
-        columns = set(self.cache.metadata_columns).union(
-            self.raw_data_handler.metadata_columns
-        )
-        return list(columns)
+        return [c for c in self.column_map if c in self.metadata_columns]
 
     @property
     def descriptions(self):
@@ -168,6 +166,11 @@ def state_from_target(
     unit_handler = make_unit_handler_from_hdf5(
         target["columns"], target["header"], unit_convention
     )
+    meta_column_names = frozenset(
+        col.name.split("/")[-1]
+        for col in target["columns"]
+        if metadata_group and col.name.split("/")[-2] == metadata_group
+    )
     descriptions = handler.descriptions
 
     raw_producers = [
@@ -186,6 +189,7 @@ def state_from_target(
         region=region,
         open_kwargs=open_kwargs,
         sort_key=None,
+        metadata_columns=meta_column_names,
     )
 
 
@@ -201,22 +205,21 @@ def state_in_memory(
 ) -> DatasetState:
     descriptions = descriptions or {}
 
+    all_columns = dict(data_columns) | dict(metadata_columns)
     raw_producers = [
         RawColumn(cname, descriptions.get(cname, "None"))
-        for cname in data_columns.keys()
+        for cname in all_columns.keys()
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
     producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
 
     cache = ColumnCache.empty()
-    if data_columns:
-        uuid_data = {p.uuid: {p.name: data_columns[p.name]} for p in raw_producers}
+    if all_columns:
+        uuid_data = {p.uuid: {p.name: all_columns[p.name]} for p in raw_producers}
         cache.add_data(uuid_data, descriptions)
-    if metadata_columns:
-        cache.add_metadata(dict(metadata_columns), {})
 
     units: dict[str, u.Unit] = {}
-    for name, column in data_columns.items():
+    for name, column in all_columns.items():
         units[name] = None
         if isinstance(column, u.Quantity):
             units[name] = column.unit
@@ -233,6 +236,7 @@ def state_in_memory(
         region=region,
         open_kwargs=open_kwargs,
         sort_key=None,
+        metadata_columns=frozenset(metadata_columns.keys()),
     )
 
 
@@ -263,7 +267,6 @@ def get_data(
         state.cache,
         state.unit_handler,
         unit_kwargs,
-        metadata_columns,
         None if (ignore_sort or state.sort_key is None) else state.sort_key[0],
     )
 
@@ -275,9 +278,10 @@ def get_data(
     if not ignore_sort:
         data = sort_data(data, state.sort_key, state)
 
-    new_order = [c for c in state.columns]
-    if metadata_columns:
-        new_order.extend(metadata_columns)
+    new_order = list(state.columns)
+    for name in metadata_columns:
+        if name in state.metadata_columns:
+            new_order.append(name)
 
     return {name: data[name] for name in new_order}
 
@@ -333,11 +337,20 @@ def iter_rows(
 
 
 def get_metadata(state: DatasetState, columns: list = []) -> dict:
-    metadata = state.raw_data_handler.get_metadata(columns)
+    names = list(columns) if columns else list(state.metadata_columns)
+    data = instantiate_dataset(
+        list(state.producers.values()),
+        {name: state.column_map[name] for name in names},
+        state.raw_data_handler,
+        state.cache,
+        state.unit_handler,
+        {},
+        None,
+    )
     sorted_index = get_sorted_index(state)
     if sorted_index is not None:
-        metadata = {name: values[sorted_index] for name, values in metadata.items()}
-    return metadata
+        data = {name: values[sorted_index] for name, values in data.items()}
+    return data
 
 
 def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
@@ -415,9 +428,9 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     if drop:
         selections = set(state.columns) - selections
 
-    return dataclasses.replace(
-        state, column_map={n: state.column_map[n] for n in selections}
-    )
+    new_column_map = {n: state.column_map[n] for n in selections}
+    new_column_map |= {n: state.column_map[n] for n in state.metadata_columns}
+    return dataclasses.replace(state, column_map=new_column_map)
 
 
 def sort_by(state: DatasetState, column_name: str, invert: bool) -> DatasetState:

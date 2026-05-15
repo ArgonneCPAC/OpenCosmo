@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from functools import cached_property
-from itertools import chain
 from typing import TYPE_CHECKING, Iterable, Optional
 
-import h5py
 import numpy as np
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import (
@@ -21,13 +19,11 @@ from opencosmo.index import (
 )
 
 if TYPE_CHECKING:
+    import h5py
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.schema import Schema
 
     from opencosmo.index import DataIndex
-
-
-ColumnSpec = tuple[h5py.Dataset, bool]
 
 
 class Hdf5Handler:
@@ -37,13 +33,13 @@ class Hdf5Handler:
 
     def __init__(
         self,
-        columns: dict[str, ColumnSpec],
+        columns: dict[str, h5py.Dataset],
         index: DataIndex,
         load_conditions: Optional[dict[str, bool]] = None,
     ):
         self.__index = index
         self.__columns = columns
-        self.__in_memory = next(iter(columns.values()))[0].file.driver == "core"
+        self.__in_memory = next(iter(columns.values())).file.driver == "core"
         self.__load_conditions = load_conditions
 
     @classmethod
@@ -54,28 +50,24 @@ class Hdf5Handler:
         metadata_group: Optional[str] = None,
         load_conditions: Optional[dict[str, bool]] = None,
     ):
-        data_columns = filter(lambda col: col.name.split("/")[-2] == "data", columns)
-        metadata_columns: Iterable[h5py.Dataset] = []
+        groups = {"data"}
         if metadata_group:
-            metadata_columns = filter(
-                lambda col: col.name.split("/")[-2] == metadata_group, columns
-            )
+            groups.add(metadata_group)
 
-        data_columns_ = {col.name.split("/")[-1]: (col, True) for col in data_columns}
-        metadata_columns_ = {
-            col.name.split("/")[-1]: (col, False) for col in metadata_columns
+        all_columns = {
+            col.name.split("/")[-1]: col
+            for col in columns
+            if col.name.split("/")[-2] in groups
         }
-        lengths = set(
-            len(col[0])
-            for col in chain(data_columns_.values(), metadata_columns_.values())
-        )
+
+        lengths = set(len(col) for col in all_columns.values())
         if len(lengths) > 1:
             raise ValueError("Not all columns are the same length!")
 
         if index is None:
             index = from_size(lengths.pop())
 
-        return Hdf5Handler(data_columns_ | metadata_columns_, index, load_conditions)
+        return Hdf5Handler(all_columns, index, load_conditions)
 
     def __len__(self):
         return get_length(self.__index)
@@ -110,7 +102,7 @@ class Hdf5Handler:
 
     @property
     def data(self):
-        return next(iter(self.__columns.values()))[0].parent
+        return next(iter(self.__columns.values())).parent
 
     @property
     def index(self):
@@ -118,24 +110,13 @@ class Hdf5Handler:
 
     @cached_property
     def columns(self):
-        return [
-            colname for colname in self.__columns.keys() if self.__columns[colname][1]
-        ]
-
-    @property
-    def metadata_columns(self):
-        return [
-            colname
-            for colname in self.__columns.keys()
-            if not self.__columns[colname][1]
-        ]
+        return list(self.__columns.keys())
 
     @cached_property
     def descriptions(self):
         return {
-            colname: column[0].attrs.get("description")
+            colname: column.attrs.get("description")
             for colname, column in self.__columns.items()
-            if column[1]
         }
 
     def mask(self, mask):
@@ -152,39 +133,32 @@ class Hdf5Handler:
     def make_schema(
         self,
         columns: Iterable[str],
+        metadata_columns: set[str] = set(),
         header: Optional[OpenCosmoHeader] = None,
     ) -> tuple[Schema, Optional[Schema]]:
-        column_writers = {}
-        for column_name in columns:
+        columns = set(columns)
+        data_writers = {}
+        for column_name in columns - metadata_columns:
             column = self.__columns[column_name]
-            if not column[1]:
-                continue
-            column_writers[column_name] = ColumnWriter.from_h5_dataset(
-                column[0],
-                self.__index,
-                attrs=dict(column[0].attrs),
+            data_writers[column_name] = ColumnWriter.from_h5_dataset(
+                column, self.__index, attrs=dict(column.attrs)
             )
+        data_schema = make_schema("data", FileEntry.COLUMNS, columns=data_writers)
 
-        data_schema = make_schema("data", FileEntry.COLUMNS, columns=column_writers)
+        raw_meta = columns & metadata_columns
+        if not raw_meta:
+            return data_schema, make_schema("metadata", FileEntry.EMPTY)
 
-        metadata_columns = {
-            name: column for name, column in self.__columns.items() if not column[1]
-        }
-        if not metadata_columns:
-            metadata_schema = make_schema("metadata", FileEntry.EMPTY)
-            return data_schema, metadata_schema
-
+        group_name = self.__columns[next(iter(raw_meta))].parent.name.split("/")[-1]
         metadata_writers = {}
-        group_name = next(iter(metadata_columns.values()))[0].parent.name
-        group_name = group_name.split("/")[-1]
-        for column_name, column in metadata_columns.items():
+        for column_name in raw_meta:
+            column = self.__columns[column_name]
             metadata_writers[column_name] = ColumnWriter.from_h5_dataset(
-                column[0], self.__index, attrs=dict(column[0].attrs)
+                column, self.__index, attrs=dict(column.attrs)
             )
-        metadata_schema = make_schema(
+        return data_schema, make_schema(
             group_name, FileEntry.COLUMNS, columns=metadata_writers
         )
-        return data_schema, metadata_schema
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
@@ -193,24 +167,9 @@ class Hdf5Handler:
         data = {}
 
         for colname in columns:
-            data[colname] = get_data(self.__columns[colname][0], self.__index)
+            data[colname] = get_data(self.__columns[colname], self.__index)
         # Ensure order is preserved
         return {name: data[name] for name in columns}
-
-    def get_metadata(self, columns: Iterable[str]) -> Optional[dict[str, np.ndarray]]:
-        metadata_columns = {
-            name: col[0] for name, col in self.__columns.items() if not col[1]
-        }
-        if len(metadata_columns) == 0:
-            return None
-        if not columns:
-            columns = metadata_columns.keys()
-
-        data = {}
-        for colname in columns:
-            data[colname] = get_data(metadata_columns[colname], self.__index)
-
-        return data
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
         if start < 0 or end > len(indices):

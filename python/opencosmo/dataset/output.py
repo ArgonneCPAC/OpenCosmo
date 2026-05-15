@@ -78,7 +78,10 @@ def make_dataset_schema(
     columns = set(columns_to_uuid.keys())
     header = header.with_region(region)
     raw_columns = columns.intersection(raw_data_handler.columns)
-    data_schema, metadata_schema = raw_data_handler.make_schema(raw_columns, header)
+    raw_meta_columns = raw_columns & set(meta_columns)
+    data_schema, metadata_schema = raw_data_handler.make_schema(
+        raw_columns, raw_meta_columns, header
+    )
 
     cached_data_schema, cached_metadata_schema = cache.make_schema(
         columns_to_uuid, meta_columns
