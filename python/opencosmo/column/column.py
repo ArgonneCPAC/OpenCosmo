@@ -258,18 +258,16 @@ class Column:
             case _:
                 return NotImplemented
 
-    @_require_scalar_quantity
     def __add__(self, other: Any) -> DerivedColumn:
         match other:
-            case Column():
+            case Column() | int() | float() | u.Quantity():
                 return DerivedColumn(self, other, op.add)
             case _:
                 return NotImplemented
 
-    @_require_scalar_quantity
     def __sub__(self, other: Any) -> DerivedColumn:
         match other:
-            case Column():
+            case Column() | int() | float() | u.Quantity():
                 return DerivedColumn(self, other, op.sub)
             case _:
                 return NotImplemented
