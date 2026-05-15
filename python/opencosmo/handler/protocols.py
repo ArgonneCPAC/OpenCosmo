@@ -16,18 +16,17 @@ class DataHandler(Protocol):
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
 
-    def get_metadata(self, columns: Iterable[str]) -> dict[str, np.ndarray]: ...
-
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None) -> Self: ...
 
     def make_schema(
-        self, columns: Iterable[str], header: Optional[OpenCosmoHeader] = None
+        self,
+        columns: Iterable[str],
+        metadata_columns: set[str] = set(),
+        header: Optional[OpenCosmoHeader] = None,
     ) -> tuple[Schema, Schema]: ...
 
     @property
     def columns(self) -> Iterable[str]: ...
-    @property
-    def metadata_columns(self) -> Iterable[str]: ...
     @property
     def load_conditions(self) -> Optional[dict]: ...
 

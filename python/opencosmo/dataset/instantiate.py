@@ -160,7 +160,6 @@ def instantiate_dataset(
     cache: DataCache,
     unit_handler: UnitHandler,
     unit_kwargs: dict[str, Any],
-    metadata_columns: list[str] | None = None,
     sort_by: str | None = None,
 ):
     # Extend working_columns with the sort column if it isn't already included.
@@ -216,20 +215,4 @@ def instantiate_dataset(
         for name, producer_uuid in working_columns.items()
         if producer_uuid in uuid_data and name in uuid_data[producer_uuid]
     }
-    data |= get_metadata_columns(raw_data_handler, cache, metadata_columns)
     return data
-
-
-def get_metadata_columns(
-    raw_data_handler: DataHandler, cache: DataCache, metadata_columns: list[str] | None
-):
-    if metadata_columns is None:
-        return {}
-    metadata = cache.get_metadata(metadata_columns)
-    additional_metadata_columns_to_fetch = set(metadata_columns).difference(
-        metadata.keys()
-    )
-    metadata |= (
-        raw_data_handler.get_metadata(additional_metadata_columns_to_fetch) or {}
-    )
-    return metadata
