@@ -112,7 +112,9 @@ class StructureCollection:
             self.__handler = LinkHandler.from_link_names(
                 self.__source.meta_columns, "galaxies" in self.__datasets
             )
-            datasets = self.__handler.prep_datasets(self.__source, self.__datasets)
+            self.__datasets = self.__handler.prep_datasets(
+                self.__source, self.__datasets
+            )
         else:
             self.__handler = link_handler
 

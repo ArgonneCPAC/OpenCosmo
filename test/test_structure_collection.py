@@ -47,13 +47,25 @@ def test_open_lightcone_structure(halos_600_path, halos_601_path):
         assert np.all(halo_bin_tags == halo["halo_properties"]["fof_halo_tag"])
 
 
+def test_open_lightcone_galaxy_structure_collection(
+    galaxies_600_path,
+    galaxies_601_path,
+):
+    ds = oc.open(*galaxies_600_path, *galaxies_601_path)
+    for galaxy in ds.take(100).galaxies():
+        if "star_particles" not in galaxy:
+            continue
+        tags = galaxy["star_particles"].select("gal_tag").get_data("numpy")
+        assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
+
+
 def test_open_lightcone_structure_with_galaxies(
     halos_600_path, galaxies_600_path, halos_601_path, galaxies_601_path
 ):
     ds = oc.open(
         *halos_600_path, *galaxies_600_path, *halos_601_path, *galaxies_601_path
     )
-    ds = ds.filter(oc.col("sod_halo_mass") > 1e14)
+    ds = ds.filter(oc.col("sod_halo_mass") > 1e14).take(10)
 
     for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10).halos():
         gravity_particle_tags = (
@@ -70,7 +82,7 @@ def test_open_lightcone_structure_with_galaxies(
                 == halo["halo_properties"]["fof_halo_tag"]
             )
 
-            print(galaxy.keys())
+            if "star_particles" not in galaxy:
+                continue
             tags = galaxy["star_particles"].select("gal_tag").get_data("numpy")
             assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
-            assert False

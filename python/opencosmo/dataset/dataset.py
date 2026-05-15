@@ -823,6 +823,7 @@ class Dataset:
             dataset.
 
         """
+
         row_range = get_range(rows)
         if row_range[0] < 0 or row_range[1] > len(self):
             raise ValueError(

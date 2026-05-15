@@ -1005,12 +1005,6 @@ class Lightcone(dict):
 
         """
         index_range = get_range(rows)
-        if isinstance(rows, np.ndarray):
-            rows = np.sort(rows)
-            index_range = (index_range[0], index_range[1] + 1)
-        else:
-            order = np.argsort(rows[0])
-            rows = (rows[0][order], rows[1][order])
 
         if index_range[0] < 0 or index_range[1] > len(self):
             raise ValueError(

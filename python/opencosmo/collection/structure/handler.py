@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from functools import partial, reduce
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional, cast
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
 
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.structure import structure as sc
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:
     import opencosmo as oc
+    from opencosmo.collection.structure import structure as sc
 
 """
 A tale in 3 acts:
@@ -91,6 +90,27 @@ def create_idx(data, idx_name, offsets):
     elif idx == -1:
         return None
     return np.atleast_1d(idx)
+
+
+def build_lightcone_index(old_source: lc.Lightcone, new_source: lc.Lightcone):
+    index = np.zeros(len(new_source), dtype=np.int64)
+    offset = 0
+    rs = 0
+    for name, ds in old_source.items():
+        if name not in new_source.keys():
+            offset += len(ds)
+            continue
+        original_index = into_array(ds.index)
+        new_index = into_array(new_source[name].index)
+        _, index_into_original, index_into_new = np.intersect1d(
+            original_index, new_index, assume_unique=True, return_indices=True
+        )
+        index_into_original = index_into_original[np.argsort(index_into_new)]
+
+        index[rs : rs + len(index_into_original)] = index_into_original + offset
+        offset += len(ds)
+        rs += len(index_into_original)
+    return index
 
 
 def make_links(keys, rename_galaxies=False):
@@ -192,20 +212,10 @@ class LinkHandler:
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
         meta = source.get_metadata(all_columns)
-        offsets = None
-        if isinstance(source, lc.Lightcone):
-            offsets = {}
-
-            for ds_type, lightcone in datasets.items():
-                if isinstance(lightcone, sc.StructureCollection):
-                    lightcone = lightcone["galaxy_properties"]
-
-                assert isinstance(lightcone, lc.Lightcone)
-                offsets[ds_type] = [
-                    (len(source[key]), len(ds)) for key, ds in lightcone.items()
-                ]
-
-        indices = self.parse(meta, offsets)
+        # Offsets are now baked into the metadata columns at construction time
+        # (see build_lightcone_structure_collection in io.py), so no per-step
+        # offset calculation is needed here.
+        indices = self.parse(meta, offsets=None)
         new_datasets = datasets
 
         for name, index in indices.items():
@@ -225,92 +235,6 @@ class LinkHandler:
 
         return LinkHandler(self.links, self.columns, derived_from)
 
-    def rebuild_lightcones(
-        self,
-        new_source: oc.Lightcone,
-        lightcones: dict[str, oc.Lightcone | sc.StructureCollection],
-    ):
-        new_datasets: dict[str, lc.Lightcone | sc.StructureCollection] = defaultdict(
-            dict
-        )
-
-        lc_datasets = {
-            k: v for k, v in lightcones.items() if isinstance(v, lc.Lightcone)
-        }
-        sc_datasets = {
-            k: v for k, v in lightcones.items() if isinstance(v, sc.StructureCollection)
-        }
-
-        for step, step_source in new_source.items():
-            step_datasets = {name: ds[step] for name, ds in lc_datasets.items()}
-            assert isinstance(self.__derived_from, lc.Lightcone)
-            new_step_datasets = self.__rebuild_datasets(
-                self.__derived_from[step], step_source, step_datasets
-            )
-            for name, new_step_ds in new_step_datasets.items():
-                new_datasets[name][step] = new_step_ds
-
-        result: dict[str, lc.Lightcone | sc.StructureCollection] = {
-            name: lc.Lightcone.from_datasets(datasets)
-            for name, datasets in new_datasets.items()
-        }
-        for name, galaxy_sc in sc_datasets.items():
-            result[name] = self.__rebuild_sc_from_lightcone(new_source, name, galaxy_sc)
-        return result
-
-    def __rebuild_sc_from_lightcone(
-        self,
-        new_source: oc.Lightcone,
-        name: str,
-        galaxy_sc: sc.StructureCollection,
-    ) -> sc.StructureCollection:
-        """
-        Rebuild a StructureCollection linked dataset (e.g. galaxies) after the
-        parent halo lightcone has been filtered.
-
-        After prep_datasets the galaxy SC rows are in halo order, grouped by
-        step: [step_0 galaxies][step_1 galaxies].... We compute cumulative
-        size boundaries per step to find which chunks in the post-prep SC
-        correspond to halos that survive the filter, then call take_rows on
-        the SC directly — avoiding the need to wrap per-step
-        StructureCollections inside a Lightcone.
-        """
-        assert isinstance(self.__derived_from, lc.Lightcone)
-        col_names = self.columns[name]
-        size_col_name = next(c for c in col_names if "size" in c)
-
-        all_starts: list[np.ndarray] = []
-        all_sizes: list[np.ndarray] = []
-        galaxy_offset = 0
-
-        for step, step_source in new_source.items():
-            step_derived = self.__derived_from[step]
-            meta = step_derived.get_metadata(col_names)
-            size_col = meta[size_col_name].astype(np.int64)
-
-            original_index = into_array(step_derived.index)
-            new_index = into_array(step_source.index)
-            _, idx_into_original, idx_into_new = np.intersect1d(
-                original_index, new_index, assume_unique=True, return_indices=True
-            )
-            idx_into_original = idx_into_original[np.argsort(idx_into_new)]
-
-            # chunk_boundaries[i] = start of halo i's galaxies within this
-            # step's portion of the post-prep SC. Add galaxy_offset to get
-            # the global position across all steps.
-            chunk_boundaries = np.zeros(len(size_col) + 1, dtype=np.int64)
-            np.cumsum(size_col, out=chunk_boundaries[1:])
-
-            valid = size_col[idx_into_original] > 0
-            all_starts.append(chunk_boundaries[idx_into_original[valid]] + galaxy_offset)
-            all_sizes.append(size_col[idx_into_original[valid]])
-
-            galaxy_offset += int(size_col.sum())
-
-        starts = np.concatenate(all_starts) if all_starts else np.array([], dtype=np.int64)
-        sizes = np.concatenate(all_sizes) if all_sizes else np.array([], dtype=np.int64)
-        return galaxy_sc.take_rows((starts, sizes))
-
     def rebuild_datasets(
         self,
         new_source: oc.Dataset | oc.Lightcone,
@@ -326,28 +250,22 @@ class LinkHandler:
         """
         if self.__derived_from is None:
             return datasets
-        elif isinstance(new_source, lc.Lightcone):
-            assert all(
-                isinstance(ds_, (lc.Lightcone | sc.StructureCollection))
-                for ds_ in datasets.values()
-            )
-            datasets = cast(
-                "dict[str, sc.StructureCollection | lc.Lightcone]", datasets
-            )
-            return self.rebuild_lightcones(new_source, datasets)
         return self.__rebuild_datasets(self.__derived_from, new_source, datasets)
 
     def __rebuild_datasets(self, derived_from, new_source, datasets):
-        original_index = into_array(derived_from.index)
-        new_index = into_array(new_source.index)
+        if isinstance(derived_from, lc.Lightcone):
+            index_into_original = build_lightcone_index(derived_from, new_source)
+        else:
+            original_index = into_array(derived_from.index)
+            new_index = into_array(new_source.index)
 
-        _, index_into_original, index_into_new = np.intersect1d(
-            original_index, new_index, assume_unique=True, return_indices=True
-        )
+            _, index_into_original, index_into_new = np.intersect1d(
+                original_index, new_index, assume_unique=True, return_indices=True
+            )
+            index_into_original = index_into_original[np.argsort(index_into_new)]
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
-        index_into_original = index_into_original[np.argsort(index_into_new)]
         metadata = derived_from.get_metadata(all_columns)
         new_datasets = {}
 
