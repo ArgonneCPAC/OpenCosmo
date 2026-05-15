@@ -539,13 +539,6 @@ def test_lightcone_stacking_nostack(
     assert ds_new.z_range == ds.z_range
 
 
-@pytest.mark.skip
 def test_lightcone_structure_collection_open(structure_600):
     c = oc.open(*structure_600)
     assert isinstance(c, oc.StructureCollection)
-
-
-@pytest.mark.skip
-def test_lightcone_structure_collection_open_multiple(structure_600, structure_601):
-    with pytest.raises(NotImplementedError):
-        _ = oc.open(*structure_600, *structure_601)

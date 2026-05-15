@@ -233,21 +233,83 @@ class LinkHandler:
         new_datasets: dict[str, lc.Lightcone | sc.StructureCollection] = defaultdict(
             dict
         )
-        if "galaxies" in lightcones:
-            raise NotImplementedError()
+
+        lc_datasets = {
+            k: v for k, v in lightcones.items() if isinstance(v, lc.Lightcone)
+        }
+        sc_datasets = {
+            k: v for k, v in lightcones.items() if isinstance(v, sc.StructureCollection)
+        }
 
         for step, step_source in new_source.items():
-            step_datasets = {name: lc[step] for name, lc in lightcones.items()}
+            step_datasets = {name: ds[step] for name, ds in lc_datasets.items()}
             assert isinstance(self.__derived_from, lc.Lightcone)
             new_step_datasets = self.__rebuild_datasets(
                 self.__derived_from[step], step_source, step_datasets
             )
             for name, new_step_ds in new_step_datasets.items():
                 new_datasets[name][step] = new_step_ds
-        return {
+
+        result: dict[str, lc.Lightcone | sc.StructureCollection] = {
             name: lc.Lightcone.from_datasets(datasets)
             for name, datasets in new_datasets.items()
         }
+        for name, galaxy_sc in sc_datasets.items():
+            result[name] = self.__rebuild_sc_from_lightcone(new_source, name, galaxy_sc)
+        return result
+
+    def __rebuild_sc_from_lightcone(
+        self,
+        new_source: oc.Lightcone,
+        name: str,
+        galaxy_sc: sc.StructureCollection,
+    ) -> sc.StructureCollection:
+        """
+        Rebuild a StructureCollection linked dataset (e.g. galaxies) after the
+        parent halo lightcone has been filtered.
+
+        After prep_datasets the galaxy SC rows are in halo order, grouped by
+        step: [step_0 galaxies][step_1 galaxies].... We compute cumulative
+        size boundaries per step to find which chunks in the post-prep SC
+        correspond to halos that survive the filter, then call take_rows on
+        the SC directly — avoiding the need to wrap per-step
+        StructureCollections inside a Lightcone.
+        """
+        assert isinstance(self.__derived_from, lc.Lightcone)
+        col_names = self.columns[name]
+        size_col_name = next(c for c in col_names if "size" in c)
+
+        all_starts: list[np.ndarray] = []
+        all_sizes: list[np.ndarray] = []
+        galaxy_offset = 0
+
+        for step, step_source in new_source.items():
+            step_derived = self.__derived_from[step]
+            meta = step_derived.get_metadata(col_names)
+            size_col = meta[size_col_name].astype(np.int64)
+
+            original_index = into_array(step_derived.index)
+            new_index = into_array(step_source.index)
+            _, idx_into_original, idx_into_new = np.intersect1d(
+                original_index, new_index, assume_unique=True, return_indices=True
+            )
+            idx_into_original = idx_into_original[np.argsort(idx_into_new)]
+
+            # chunk_boundaries[i] = start of halo i's galaxies within this
+            # step's portion of the post-prep SC. Add galaxy_offset to get
+            # the global position across all steps.
+            chunk_boundaries = np.zeros(len(size_col) + 1, dtype=np.int64)
+            np.cumsum(size_col, out=chunk_boundaries[1:])
+
+            valid = size_col[idx_into_original] > 0
+            all_starts.append(chunk_boundaries[idx_into_original[valid]] + galaxy_offset)
+            all_sizes.append(size_col[idx_into_original[valid]])
+
+            galaxy_offset += int(size_col.sum())
+
+        starts = np.concatenate(all_starts) if all_starts else np.array([], dtype=np.int64)
+        sizes = np.concatenate(all_sizes) if all_sizes else np.array([], dtype=np.int64)
+        return galaxy_sc.take_rows((starts, sizes))
 
     def rebuild_datasets(
         self,

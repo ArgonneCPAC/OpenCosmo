@@ -48,7 +48,7 @@ def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
     """Ensures a column called 'redshift' exists on every lightcone."""
     lightcone: Lightcone = ctx.lightcone
     if (
-        "properties" not in lightcone.dtype
+        "particles" in lightcone.dtype or "profiles" in lightcone.dtype
     ):  # Particles or profiles, redshift handled at structure collection level
         return ctx
     if "redshift" in lightcone.columns:

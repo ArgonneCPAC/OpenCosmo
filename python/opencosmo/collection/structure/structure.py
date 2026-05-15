@@ -822,7 +822,7 @@ class StructureCollection:
         new_datasets = {}
 
         for dataset_name, columns in columns_to_drop.items():
-            if dataset_name == self.__source.file.data_type:
+            if dataset_name == self.__source.header.file.data_type:
                 new_source = self.__source.drop(columns)
                 continue
 
