@@ -40,7 +40,7 @@ def validate_column_producers(
                 f"Tried to derive columns from unknown columns: {node.produces}"
             )
 
-    return get_derived_units(dependency_graph, unit_handler.base_units)
+    return get_derived_units(dependency_graph, unit_handler.current_units)
 
 
 def build_dependency_graph(

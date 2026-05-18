@@ -5,6 +5,7 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import col
+from opencosmo.column import offset_3d
 
 
 @pytest.fixture
@@ -31,6 +32,7 @@ def test_multi_filters_single_column(input_path, max_mass):
 
     ds = ds.filter(col("sod_halo_mass") > 0, col("sod_halo_mass") < max_mass)
     data = ds.get_data()
+
     assert data["sod_halo_mass"].min() > 0
     assert data["sod_halo_mass"].max() < max_mass
 
@@ -138,7 +140,6 @@ def test_or_filter(input_path):
 
     ds = ds.filter(high_mass | low_mass)
     data = ds.select("fof_halo_mass").get_data("numpy")
-    assert len(data) > 0
     assert np.all((data > 1e14) | (data < 1e12))
     assert np.any(data > 1e14)
     assert np.any(data < 1e12)
@@ -169,3 +170,12 @@ def test_filter_tree(input_path):
     assert np.all(data["sod_halo_cdelta"] < 5)
     assert np.any(data["fof_halo_mass"] > 1e14)
     assert np.any(data["fof_halo_mass"] < 1e12)
+
+
+def test_filter_by_derived(input_path):
+    col = offset_3d("fof_halo_center", "fof_halo_com") / oc.col("sod_halo_radius")
+    ds = oc.open(input_path)
+
+    ds = ds.filter(col > 0.1)
+    data = ds.select(xoff=col).get_data()
+    assert np.all(data > 0.1)
