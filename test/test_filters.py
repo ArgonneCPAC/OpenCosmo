@@ -179,3 +179,18 @@ def test_filter_by_derived(input_path):
     ds = ds.filter(col > 0.1)
     data = ds.select(xoff=col).get_data()
     assert np.all(data > 0.1)
+
+
+def test_column_comparison(input_path):
+    ds = oc.open(input_path)
+
+    ds = ds.filter(oc.col("fof_halo_center_x") < oc.col("fof_halo_center_y"))
+    data = ds.select("fof_halo_center_x", "fof_halo_center_y").get_data()
+    assert np.all(data["fof_halo_center_x"] < data["fof_halo_center_y"])
+
+
+def test_filter_bad_units(input_path):
+    ds = oc.open(input_path)
+
+    with pytest.raises(u.UnitConversionError):
+        ds = ds.filter(oc.col("fof_halo_center_x") < 10 * u.kg)
