@@ -221,7 +221,7 @@ class Column:
         return ColumnMask(self, other, op.le)
 
     def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
-        return ColumnMask(self, other, np.isin, force_binary=True)
+        return ColumnMask(self, other, np.isin)
 
     @_require_scalar_quantity
     def __rmul__(self, other: Any) -> DerivedColumn:
@@ -629,7 +629,7 @@ class DerivedColumn:
         return ColumnMask(self, other, op.le)
 
     def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
-        return ColumnMask(self, other, np.isin, force_binary=True)
+        return ColumnMask(self, other, np.isin)
 
     def evaluate(self, data: dict[str, np.ndarray], *args) -> np.ndarray:
         lhs: Any
@@ -851,7 +851,6 @@ class ColumnMask:
         left: ColumnOrScalar,
         right: ColumnOrScalar,
         operator: Callable[[table.Column, float | u.Quantity], np.ndarray],
-        force_binary: bool = False,
     ):
         self.left = left
         self.right = right
