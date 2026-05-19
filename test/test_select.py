@@ -129,3 +129,10 @@ def test_select_with_derived(input_path):
 
     assert com_columns.issubset(data.columns)
     assert np.all(data["gal_px"] == data["gal_mass"] * data["gal_com_vx"])
+
+
+def test_select_single_check_units(input_path):
+    ds = oc.open(input_path)
+    ds = ds.select("fof_halo_center_x", center_x=oc.col("fof_halo_center_x"))
+    data = ds.get_data()
+    assert np.all(data["fof_halo_center_x"] == data["center_x"])
