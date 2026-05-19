@@ -1395,7 +1395,7 @@ class StructureCollection:
         else:
             raise AttributeError("This collection does not contain galaxies!")
 
-    def make_schema(self, name: Optional[str] = None) -> Schema:
+    def make_schema(self, name: Optional[str] = None, **kwargs) -> Schema:
         children = {}
         source_name = self.__source.dtype
         datasets = self.__handler.resort(self.__source, self.__get_datasets())

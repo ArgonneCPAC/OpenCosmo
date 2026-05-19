@@ -89,6 +89,7 @@ def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
     if len(valid_targets) > 1:
         collection_type = __determine_multi_file_collection_type(valid_targets)
         return collection_type.open(valid_targets, **open_kwargs)
+
     return __open_single_file(valid_targets[0], open_kwargs)
 
 
@@ -160,7 +161,6 @@ def __open_single_file(
             == FileType.LIGHTCONE
         ):
             result = sc.StructureCollection.open([target], **open_kwargs)
-            print(result)
             return result
 
         datasets = {

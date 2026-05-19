@@ -97,7 +97,14 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             dataset = io.iopen.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
-            name = target["dataset_group"].name.split("/")[-1]
+            name_source = target["dataset_group"]
+            if (
+                "particles" in name_source.parent.name
+                or "profiles" in target["dataset_group"].parent.name
+            ):
+                name_source = target["dataset_group"].parent
+            name = name_source.name.split("/")[-1]
+
             if not name:
                 name = target["header"].file.data_type
             elif name.startswith("galaxy_properties"):

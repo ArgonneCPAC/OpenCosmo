@@ -139,6 +139,40 @@ def test_write_lightcone_structure(halos_600_path, halos_601_path, tmp_path):
         verify_halo(halo)
 
 
+def test_write_lightcone_structure_with_galaxies(
+    halos_600_path, halos_601_path, galaxies_600_path, galaxies_601_path, tmp_path
+):
+    ds = (
+        oc.open(
+            *halos_600_path, *halos_601_path, *galaxies_600_path, *galaxies_601_path
+        )
+        .filter(oc.col("fof_halo_mass") > 1e14)
+        .take(1000)
+    )
+    halo_tags_start = set()
+    halo_tags_end = set()
+    for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="start").halos():
+        halo_tags_start.add(halo["halo_properties"]["fof_halo_tag"])
+        verify_halo(halo)
+
+    for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="end").halos():
+        halo_tags_end.add(halo["halo_properties"]["fof_halo_tag"])
+        verify_halo(halo)
+    oc.write(tmp_path / "halos.hdf5", ds)
+    ds_new = oc.open(tmp_path / "halos.hdf5")
+
+    for halo in (
+        ds_new.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="start").halos()
+    ):
+        assert halo["halo_properties"]["fof_halo_tag"] in halo_tags_start
+        verify_halo(halo)
+    for halo in (
+        ds_new.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="end").halos()
+    ):
+        assert halo["halo_properties"]["fof_halo_tag"] in halo_tags_end
+        verify_halo(halo)
+
+
 def test_data_link_sort_write_lightcone(halos_600_path, halos_601_path, tmp_path):
     collection = oc.open(*halos_600_path, *halos_601_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**14).sort_by(

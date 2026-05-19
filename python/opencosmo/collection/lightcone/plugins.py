@@ -61,7 +61,9 @@ def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
         z_col = oc.col("zp")
     elif "chi" in lightcone.columns:
         lightcone = lightcone.evaluate(
-            redshift_from_chi, cosmology=lightcone.cosmology, vectorize=True
+            redshift_from_chi,
+            cosmology=lightcone.cosmology,
+            vectorize=True,
         )
         return dataclasses.replace(ctx, lightcone=lightcone)
 
@@ -97,6 +99,10 @@ def radec_from_thetaphi(theta, phi):
     return {"ra": phi_deg * u.deg, "dec": (90.0 - theta_deg) * u.deg}
 
 
-def redshift_from_chi(chi, cosmology):
-    redshift = chi.to(cu.redshift, cu.redshift_distance(cosmology, kind="comoving"))
+def redshift_from_chi(chi: u.Quantity, cosmology):
+    distance = chi.to(u.Mpc, cu.with_H0(cosmology.H0))
+
+    redshift = distance.to(
+        cu.redshift, cu.redshift_distance(cosmology, kind="comoving")
+    )
     return {"redshift": redshift}
