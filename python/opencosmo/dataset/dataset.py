@@ -250,11 +250,11 @@ class Dataset:
         # Also the point is that there's MORE data than just the table
         return self.get_data("astropy")
 
-    def get_metadata(self, columns: str | list[str] = []):
+    def get_metadata(self, columns: str | list[str] = [], ignore_sort: bool = False):
         if isinstance(columns, str):
             columns = [columns]
 
-        return st.get_metadata(self.__state, columns)
+        return st.get_metadata(self.__state, columns, ignore_sort)
 
     def get_data(
         self, format="astropy", unpack=True, metadata_columns=[], **kwargs

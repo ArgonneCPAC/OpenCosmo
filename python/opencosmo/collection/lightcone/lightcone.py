@@ -18,6 +18,7 @@ from warnings import warn
 
 import numpy as np
 from astropy.table import QTable, vstack  # type: ignore
+from deprecated import deprecated
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
@@ -355,18 +356,24 @@ class Lightcone(dict):
 
         return table
 
-    def get_metadata(self, columns: list[str] = []):
+    def get_metadata(self, columns: str | list[str] = [], ignore_sort: bool = False):
         data = [ds.get_metadata(columns) for ds in self.values()]
-        data_with_length = [d for d in data if len(d) > 0]
-        if len(data_with_length) == 0:
-            return data[0]
 
         output = {}
         for key in data[0].keys():
             output[key] = np.concatenate([d[key] for d in data])
-        return output
+        if ignore_sort or self.__sort_key is None:
+            return output
+        order = np.argsort(self.select(self.__sort_key[0]).get_data("numpy"))
+        if self.__sort_key[1]:
+            order = order[::-1]
+        return {name: arr[order] for name, arr in output.items()}
 
     @property
+    @deprecated(
+        version="1.1.0",
+        reason="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
+    )
     def data(self):
         """
         Return the data in the dataset in astropy format. The value of this

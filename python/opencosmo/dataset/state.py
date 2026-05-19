@@ -336,7 +336,9 @@ def iter_rows(
         raise
 
 
-def get_metadata(state: DatasetState, columns: list = []) -> dict:
+def get_metadata(
+    state: DatasetState, columns: list = [], ignore_sort: bool = False
+) -> dict:
     names = list(columns) if columns else list(state.metadata_columns)
     data = instantiate_dataset(
         list(state.producers.values()),
@@ -347,6 +349,9 @@ def get_metadata(state: DatasetState, columns: list = []) -> dict:
         {},
         None,
     )
+    if ignore_sort:
+        return data
+
     sorted_index = get_sorted_index(state)
     if sorted_index is not None:
         data = {name: values[sorted_index] for name, values in data.items()}

@@ -139,6 +139,19 @@ def test_write_lightcone_structure(halos_600_path, halos_601_path, tmp_path):
         verify_halo(halo)
 
 
-def test_write_lightcone_structure_short(halos_600_path, halos_601_path, tmp_path):
-    ds = oc.open(*halos_600_path, *halos_601_path).take(20)
-    oc.write(tmp_path / "halos.hdf5", ds)
+def test_data_link_sort_write_lightcone(halos_600_path, halos_601_path, tmp_path):
+    collection = oc.open(*halos_600_path, *halos_601_path)
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14).sort_by(
+        "fof_halo_mass"
+    )
+    output = tmp_path / "halos.hdf5"
+    oc.write(output, collection)
+    new_collection = oc.open(output).take(10)
+    assert np.all(
+        collection["halo_properties"].select("sod_halo_mass").get_data("numpy") > 10**14
+    )
+    for halo in new_collection.objects(("halo_profiles",)):
+        assert np.all(
+            halo["halo_properties"]["fof_halo_tag"]
+            == halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")[0]
+        )

@@ -141,6 +141,52 @@ def make_links(keys, rename_galaxies=False):
     return output, columns
 
 
+def resort_datasets(
+    source: oc.Dataset | oc.Lightcone,
+    datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    columns: dict[str, list[str]],
+):
+    all_columns: list[str] = reduce(
+        lambda acc, ds: acc + columns[ds], datasets.keys(), []
+    )
+    all_columns = list(
+        filter(lambda name: "idx" in name or "size" in name, all_columns)
+    )
+    sort_column = next(filter(lambda c: "start" in c or "idx" in c, all_columns))
+    unsorted_meta_column = source.get_metadata(sort_column, ignore_sort=True)
+    sorted_meta_column = source.get_metadata(sort_column)
+
+    argsort_meta_column = np.argsort(sorted_meta_column[sort_column])
+
+    sort_index = argsort_meta_column[
+        np.searchsorted(
+            sorted_meta_column[sort_column],
+            unsorted_meta_column[sort_column],
+            sorter=argsort_meta_column,
+        )
+    ]
+
+    meta = source.get_metadata(all_columns)
+    output = {}
+    for name, dataset in datasets.items():
+        if len(columns[name]) == 1:
+            valid_rows = meta[columns[name][0]] >= 0
+            new_dataset = dataset.take_rows(sort_index[valid_rows])
+        else:
+            size_column = [name for name in columns[name] if "size" in name]
+            assert len(size_column) == 1
+            size_column_data = meta[size_column[0]].astype(np.int64)
+            chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=np.int64)
+            _ = np.cumsum(size_column_data, out=chunk_boundaries[1:])
+            starts = chunk_boundaries[sort_index]
+            sizes = size_column_data[sort_index]
+            valid = sizes > 0
+            idx = (starts[valid], sizes[valid])
+            new_dataset = dataset.take_rows(idx)
+        output[name] = new_dataset
+    return output
+
+
 class LinkHandler:
     """
     This needs some explanation. We break the "don't mutate state" rule pretty hard here.
@@ -303,36 +349,7 @@ class LinkHandler:
         if not is_sorted:
             return datasets
 
-        all_columns: list[str] = reduce(
-            lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
-        )
-        all_columns = list(
-            filter(lambda name: "idx" in name or "size" in name, all_columns)
-        )
-        if isinstance(source, lc.Lightcone):
-            raise NotImplementedError
-        else:
-            sort_index = np.argsort(source.index)
-
-        meta = source.get_metadata(all_columns)
-        output = {}
-        for name, dataset in datasets.items():
-            if len(self.columns[name]) == 1:
-                valid_rows = meta[self.columns[name][0]] >= 0
-                new_dataset = dataset.take_rows(sort_index[valid_rows])
-            else:
-                size_column = [name for name in self.columns[name] if "size" in name]
-                assert len(size_column) == 1
-                size_column_data = meta[size_column[0]].astype(np.int64)
-                chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=np.int64)
-                _ = np.cumsum(size_column_data, out=chunk_boundaries[1:])
-                starts = chunk_boundaries[sort_index]
-                sizes = size_column_data[sort_index]
-                valid = sizes > 0
-                idx = (starts[valid], sizes[valid])
-                new_dataset = dataset.take_rows(idx)
-            output[name] = new_dataset
-        return output
+        return resort_datasets(source, datasets, self.columns)
 
 
 def rebuild_row_index(
