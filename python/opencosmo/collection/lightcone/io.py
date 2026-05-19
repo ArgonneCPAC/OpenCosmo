@@ -58,7 +58,8 @@ def combine_adjacent_datasets_mpi(
 
 def combine_adjacent_datasets(
     ordered_datasets: dict[str, ocds.Dataset] | dict[str, dict[str, ocds.Dataset]],
-    min_dataset_size=100_000,
+    min_dataset_size: int,
+    no_stack: bool,
 ):
     is_single = isinstance(next(iter(ordered_datasets.values())), ocds.Dataset)
     datasets: dict[str, dict[str, ocds.Dataset]]
@@ -80,7 +81,7 @@ def combine_adjacent_datasets(
     )
 
     for key, step_datasets in datasets.items():
-        if running_sum < min_dataset_size:
+        if not no_stack and running_sum < min_dataset_size:
             running_sum += sum(len(ds) for ds in step_datasets.values())
             output_datasets[current_key].append(step_datasets)
             continue

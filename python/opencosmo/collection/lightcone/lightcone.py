@@ -266,6 +266,17 @@ class Lightcone(dict):
         return self.__header.simulation
 
     @property
+    def sorted_by(self) -> Optional[str]:
+        """
+        The column this dataset is sorted by. If not sorted, returns None.
+
+        Returns
+        -------
+        column: Optional[str]
+        """
+        return self.__sort_key[0] if self.__sort_key is not None else None
+
+    @property
     def z_range(self):
         """
         The redshift range of this lightcone.
@@ -331,11 +342,11 @@ class Lightcone(dict):
         to_remove = self.__hidden.intersection(table.colnames)
         table.remove_columns(to_remove)
         if unpack:
-            data = {
+            output_data = {
                 key: value[0] if len(value) == 1 else value
                 for key, value in table.items()
             }
-            table = QTable(data)
+            table = QTable(output_data)
 
         if format != "astropy":
             return convert_data(dict(table), format)
@@ -407,7 +418,7 @@ class Lightcone(dict):
     @classmethod
     def from_datasets(
         cls,
-        datasets: dict[str, oc.Dataset],
+        datasets: Mapping[int, oc.Dataset],
         z_range: Optional[tuple[float, float]] = None,
         **open_kwargs,
     ):
@@ -487,13 +498,15 @@ class Lightcone(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self, name: str = "", _min_size=100_000) -> Schema:
+    def make_schema(
+        self, name: str = "", _min_size=100_000, no_stack: bool = False
+    ) -> Schema:
         datasets = lcio.order_by_redshift_range(self)
         for key in datasets:
             if isinstance(datasets[key], Lightcone):
                 datasets[key] = dict(datasets[key])
         output_datasets = lcio.combine_adjacent_datasets(
-            datasets, min_dataset_size=_min_size
+            datasets, min_dataset_size=_min_size, no_stack=no_stack
         )
         children = {}
 
@@ -1106,7 +1119,7 @@ class Lightcone(dict):
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__sort_key)
 
-    def sort_by(self, column: str, invert: bool = False):
+    def sort_by(self, column: Optional[str], invert: bool = False):
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -1124,9 +1137,9 @@ class Lightcone(dict):
 
         Parameters
         ----------
-        column : str
+        column : Optional[str]
             The column in the halo_properties or galaxy_properties dataset to
-            order the collection by.
+            order the collection by. Pass None to remove sorting.
 
         invert : bool, default = False
             If False (the default), ordering will be from least to greatest.
@@ -1140,9 +1153,14 @@ class Lightcone(dict):
 
         """
 
-        if column not in self.columns:
+        if column is None:
+            sort_key = None
+        elif column not in self.columns:
             raise ValueError(f"Column {column} does not exist in this dataset!")
-        return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))
+        else:
+            sort_key = (column, invert)
+
+        return Lightcone(dict(self), self.z_range, self.__hidden, sort_key)
 
     def with_units(
         self,

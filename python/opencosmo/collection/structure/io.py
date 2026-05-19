@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from functools import reduce
+from functools import partial
 from itertools import chain
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional, TypeGuard
 
 import numpy as np
 
@@ -16,6 +16,7 @@ from opencosmo.collection.structure.handler import LINK_ALIASES
 
 if TYPE_CHECKING:
     import h5py
+    from mpi4py import MPI
 
     from opencosmo.io.iopen import FileTarget
 
@@ -39,6 +40,10 @@ def remove_empty(dataset):
     return dataset
 
 
+def is_dataset(ds: Any) -> TypeGuard[d.Dataset]:
+    return isinstance(ds, d.Dataset)
+
+
 def validate_linked_groups(groups: dict[str, h5py.Group]):
     if "halo_properties" in groups:
         if "data_linked" not in groups["halo_properties"].keys():
@@ -59,9 +64,13 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
         defaultdict(lambda: defaultdict(list))
     )
-    dataset_targets: list[io.iopen.DatasetTarget] = reduce(
-        lambda acc, t: acc + t["dataset_targets"], targets, []
-    )
+
+    dataset_targets: list[io.iopen.DatasetTarget] = []
+    for t in targets:
+        dataset_targets.extend(t["dataset_targets"])
+        for datasets in t["dataset_groups"].values():
+            dataset_targets.extend(datasets)
+
     for target in dataset_targets:
         if target["header"].file.data_type == "halo_properties":
             link_sources["halo_properties"].append(target)
@@ -71,7 +80,14 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             dataset = io.iopen.open_single_dataset(
                 target, bypass_lightcone=True, bypass_mpi=True
             )
-            name = target["dataset_group"].name.split("/")[-1]
+            name_source = target["dataset_group"]
+            if (
+                "particles" in name_source.parent.name
+                or "profiles" in target["dataset_group"].parent.name
+            ):
+                name_source = target["dataset_group"].parent
+            name = name_source.name.split("/")[-1]
+
             if not name:
                 name = target["header"].file.data_type
             elif name.startswith("halo_properties"):
@@ -125,8 +141,8 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
 
 
 def _apply_offset_corrections(
-    source_by_step: dict[int, d.Dataset],
-    targets_by_step: dict[str, dict[int, d.Dataset | sc.StructureCollection]],
+    source_by_step: Mapping[int, d.Dataset],
+    targets_by_step: Mapping[str, Mapping[int, d.Dataset | sc.StructureCollection]],
 ) -> dict[int, d.Dataset]:
     """
     Correct step-local _start and _idx metadata columns to be globally correct
@@ -232,9 +248,14 @@ def build_lightcone_structure_collection(
             )
             for t in link_sources["galaxy_properties"]
         ]
-        galaxy_source_by_step = {ds.header.file.step: ds for ds in galaxy_datasets}
-        galaxy_targets_by_step = {
-            target_type: {ds.header.file.step: ds for ds in targets}  # type: ignore
+        galaxy_source_by_step: dict[int, d.Dataset] = {}
+        for ds in galaxy_datasets:
+            assert ds.header.file.step is not None
+            galaxy_source_by_step[ds.header.file.step] = ds
+        galaxy_targets_by_step: dict[
+            str, Mapping[int, d.Dataset | sc.StructureCollection]
+        ] = {
+            target_type: {ds.header.file.step: ds for ds in targets}  # type: ignore[misc]
             for target_type, targets in link_targets["galaxy_properties"].items()
         }
         galaxy_source_by_step = _apply_offset_corrections(
@@ -248,7 +269,7 @@ def build_lightcone_structure_collection(
             )
         collection = sc.StructureCollection(galaxy_lightcone, galaxy_target_datasets)
         if len(link_sources.get("halo_properties", [])) > 0:
-            link_targets["halo_properties"]["galaxy_properties"] = collection
+            link_targets["halo_properties"]["galaxy_properties"] = collection  # type: ignore[assignment]
         else:
             return collection
 
@@ -257,7 +278,10 @@ def build_lightcone_structure_collection(
         io.iopen.open_single_dataset(t, "data_linked", bypass_lightcone=True)
         for t in halo_source_list
     ]
-    halo_source_by_step = {ds.header.file.step: ds for ds in halo_datasets}
+    halo_source_by_step: dict[int, d.Dataset] = {}
+    for ds in halo_datasets:
+        assert ds.header.file.step is not None
+        halo_source_by_step[ds.header.file.step] = ds
     halo_targets_by_step: dict[str, dict[int, d.Dataset]] = {}
     for target_type, targets in link_targets["halo_properties"].items():
         if isinstance(targets, sc.StructureCollection):
@@ -268,9 +292,12 @@ def build_lightcone_structure_collection(
             assert isinstance(inner_lc, lc.Lightcone)
             halo_targets_by_step[target_type] = dict(inner_lc)
         elif isinstance(targets, list):
-            halo_targets_by_step[target_type] = {
-                ds.header.file.step: ds for ds in targets
-            }
+            step_map: dict[int, d.Dataset] = {}
+            for ds in targets:
+                assert isinstance(ds, d.Dataset)
+                assert ds.header.file.step is not None
+                step_map[ds.header.file.step] = ds
+            halo_targets_by_step[target_type] = step_map
     halo_source_by_step = _apply_offset_corrections(
         halo_source_by_step, halo_targets_by_step
     )
@@ -281,9 +308,13 @@ def build_lightcone_structure_collection(
         if isinstance(targets, (d.Dataset, sc.StructureCollection)):
             output_targets[target_type] = targets
             continue
-        output_targets[target_type] = lc.Lightcone.from_datasets(
-            {ds.header.file.step: ds for ds in targets}
-        )
+        output_targets_of_type: dict[int, d.Dataset] = {}
+        for ds in targets:
+            assert isinstance(ds, d.Dataset)
+            assert ds.header.file.step is not None
+            output_targets_of_type[ds.header.file.step] = ds
+
+        output_targets[target_type] = lc.Lightcone.from_datasets(output_targets_of_type)
     return sc.StructureCollection(source_lightcone, output_targets)
 
 
@@ -334,3 +365,40 @@ def __build_structure_collection(
             source_dataset,
             link_targets["halo_properties"],
         )
+
+
+def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+    if comm is None:
+        return np.arange(len(data))
+    lengths = comm.allgather(len(data))
+    offsets = np.insert(np.cumsum(lengths), 0, 0)
+    offset = offsets[comm.Get_rank()]
+    result = np.arange(offset, offset + len(data))
+    return result
+
+
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
+    psum = np.insert(np.cumsum(size), 0, 0)[:-1]
+    if comm is None:
+        return psum
+    lengths = comm.allgather(np.sum(size))
+    offsets = np.insert(np.cumsum(lengths), 0, 0)
+    offset = offsets[comm.Get_rank()]
+    return psum + offset
+
+
+def rebuild_data_linked(source_schema):
+    if source_schema.type == io.schema.FileEntry.LIGHTCONE:
+        for key, value in source_schema.children.items():
+            source_schema.children[key] = rebuild_data_linked(value)
+        return source_schema
+
+    for colname, column in source_schema.children["data_linked"].columns.items():
+        if "idx" in colname:
+            column.set_transformation(do_idx_update)
+        elif "start" in colname:
+            size_colname = colname.replace("start", "size")
+            size_data = source_schema.children["data_linked"].columns[size_colname].data
+            updater = partial(do_start_update, size=size_data)
+            column.set_transformation(updater)
+    return source_schema

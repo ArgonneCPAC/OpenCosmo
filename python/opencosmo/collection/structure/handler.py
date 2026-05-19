@@ -289,25 +289,30 @@ class LinkHandler:
                 )
         return new_datasets
 
-    def resort(self, source: oc.Dataset, datasets: dict[str, oc.Dataset]):
+    def resort(
+        self, source: oc.Dataset | oc.Lightcone, datasets: dict[str, oc.Dataset]
+    ):
         """
         Data is always written in its original order, whether or not it has been sorted.
         This is to preserve the spatial index. However, when linked datasets are rebuilt
         they are rebuilt in the sorted order. This method re-sorts them based on the
         index from the original data.
         """
+
+        is_sorted = source.sorted_by is not None
+        if not is_sorted:
+            return datasets
+
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
         all_columns = list(
             filter(lambda name: "idx" in name or "size" in name, all_columns)
         )
-
-        sort_index = np.argsort(into_array(source.index))
-
-        if np.all(sort_index[1:] >= sort_index[:-1]):
-            # Already sorted. Carry on!
-            return datasets
+        if isinstance(source, lc.Lightcone):
+            raise NotImplementedError
+        else:
+            sort_index = np.argsort(source.index)
 
         meta = source.get_metadata(all_columns)
         output = {}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from functools import partial, reduce
+from functools import reduce
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -18,6 +18,7 @@ from warnings import warn
 import numpy as np
 
 import opencosmo as oc
+from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index.unary import get_length
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.dtypes import HaccSimulationParameters
+    from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
@@ -140,12 +142,16 @@ class StructureCollection:
 
     def __repr__(self):
         structure_type = self.__source.header.file.data_type.split("_")[0] + "s"
+        is_lightcone = isinstance(self.__source, lc.Lightcone)
         keys = list(self.keys())
         if len(keys) == 2:
             dtype_str = " and ".join(keys)
         else:
             dtype_str = ", ".join(keys[:-1]) + ", and " + keys[-1]
-        return f"Collection of {structure_type} with {dtype_str}"
+        header = f"Collection of {structure_type} {'on a lightcone ' if is_lightcone else ' '}with {dtype_str}\n"
+        source_repr = self.__source.__repr__().split("\n", maxsplit=1)[1]
+
+        return header + source_repr
 
     def __len__(self):
         return len(self.__source)
@@ -154,7 +160,8 @@ class StructureCollection:
     def open(
         cls, targets: list[FileTarget], ignore_empty=True, **kwargs
     ) -> StructureCollection:
-        return sio.build_structure_collection(targets, ignore_empty)
+        result = sio.build_structure_collection(targets, ignore_empty)
+        return result
 
     @property
     def dtype(self):
@@ -167,6 +174,10 @@ class StructureCollection:
         The cosmology of the structure collection
         """
         return self.__source.cosmology
+
+    @property
+    def header(self) -> OpenCosmoHeader:
+        return self.__source.header
 
     @property
     def properties(self) -> list[str]:
@@ -1388,25 +1399,17 @@ class StructureCollection:
         children = {}
         source_name = self.__source.dtype
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
+        schema_kwargs: dict[str, Any] = (
+            {"no_stack": True} if isinstance(self.__source, lc.Lightcone) else {}
+        )
 
-        source_schema = self.__source.make_schema()
-        for colname, column in source_schema.children["data_linked"].columns.items():
-            if "idx" in colname:
-                column.set_transformation(do_idx_update)
-            elif "start" in colname:
-                size_colname = colname.replace("start", "size")
-                size_data = (
-                    source_schema.children["data_linked"].columns[size_colname].data
-                )
-                updater = partial(do_start_update, size=size_data)
-                column.set_transformation(updater)
-
-        children[source_name] = source_schema
+        source_schema = self.__source.make_schema(**schema_kwargs)
+        children[source_name] = sio.rebuild_data_linked(source_schema)
 
         for name, dataset in datasets.items():
             if name == "galaxies":
                 name = "galaxy_properties"
-            ds_schema = dataset.make_schema()
+            ds_schema = dataset.make_schema(**schema_kwargs)
             if not isinstance(dataset, StructureCollection):
                 children[name] = ds_schema
                 continue

@@ -34,6 +34,27 @@ def galaxies_601_path(lightcone_path):
     return [properties, particles]
 
 
+def verify_halo(halo):
+    gravity_particle_tags = (
+        halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
+    )
+    assert np.all(gravity_particle_tags == halo["halo_properties"]["fof_halo_tag"])
+    halo_bin_tags = halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
+    assert np.all(halo_bin_tags == halo["halo_properties"]["fof_halo_tag"])
+    if "galaxy" not in halo:
+        return
+    for galaxy in halo["galaxies"].galaxies():
+        assert (
+            galaxy["galaxy_properties"]["fof_halo_tag"]
+            == halo["halo_properties"]["fof_halo_tag"]
+        )
+
+        if "star_particles" not in galaxy:
+            continue
+        tags = galaxy["star_particles"].select("gal_tag").get_data("numpy")
+        assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
+
+
 def test_open_lightcone_structure(halos_600_path, halos_601_path):
     ds = oc.open(*halos_600_path, *halos_601_path)
     for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10).halos():
@@ -86,3 +107,38 @@ def test_open_lightcone_structure_with_galaxies(
                 continue
             tags = galaxy["star_particles"].select("gal_tag").get_data("numpy")
             assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
+
+
+def test_write_lightcone_structure(halos_600_path, halos_601_path, tmp_path):
+    ds = (
+        oc.open(*halos_600_path, *halos_601_path)
+        .filter(oc.col("fof_halo_mass") > 1e14)
+        .take(1000)
+    )
+    halo_tags_start = set()
+    halo_tags_end = set()
+    for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="start").halos():
+        halo_tags_start.add(halo["halo_properties"]["fof_halo_tag"])
+        verify_halo(halo)
+
+    for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="end").halos():
+        halo_tags_end.add(halo["halo_properties"]["fof_halo_tag"])
+        verify_halo(halo)
+    oc.write(tmp_path / "halos.hdf5", ds)
+    ds_new = oc.open(tmp_path / "halos.hdf5")
+
+    for halo in (
+        ds_new.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="start").halos()
+    ):
+        assert halo["halo_properties"]["fof_halo_tag"] in halo_tags_start
+        verify_halo(halo)
+    for halo in (
+        ds_new.filter(oc.col("sod_halo_mass") > 1e14).take(10, at="end").halos()
+    ):
+        assert halo["halo_properties"]["fof_halo_tag"] in halo_tags_end
+        verify_halo(halo)
+
+
+def test_write_lightcone_structure_short(halos_600_path, halos_601_path, tmp_path):
+    ds = oc.open(*halos_600_path, *halos_601_path).take(20)
+    oc.write(tmp_path / "halos.hdf5", ds)

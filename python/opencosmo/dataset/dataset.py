@@ -219,6 +219,17 @@ class Dataset:
         return getattr(self.__header, "simulation", None)
 
     @property
+    def sorted_by(self) -> Optional[str]:
+        """
+        The column this dataset is sorted by. If not sorted, returns None.
+
+        Returns
+        -------
+        column: Optional[str]
+        """
+        return self.__state.sort_key[0] if self.__state.sort_key is not None else None
+
+    @property
     @deprecated(
         version="1.1.0",
         reason="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
@@ -665,7 +676,7 @@ class Dataset:
             self.__tree,
         )
 
-    def sort_by(self, column: str, invert: bool = False) -> Dataset:
+    def sort_by(self, column: Optional[str], invert: bool = False) -> Dataset:
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -683,9 +694,9 @@ class Dataset:
 
         Parameters
         ----------
-        column : str
+        column : Optional[str]
             The column in the halo_properties or galaxy_properties dataset to
-            order the collection by.
+            order the collection by. Pass :code:`None` to remove sorting.
 
         invert : bool, default = False
             If False (the default), ordering will be from least to greatest.
