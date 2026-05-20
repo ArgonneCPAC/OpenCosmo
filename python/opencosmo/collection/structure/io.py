@@ -395,7 +395,10 @@ def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]
 
 
 def rebuild_data_linked(source_schema):
-    if source_schema.type == io.schema.FileEntry.LIGHTCONE:
+    if (
+        source_schema.type == io.schema.FileEntry.LIGHTCONE
+        and "data" not in source_schema.children
+    ):
         for key, value in source_schema.children.items():
             source_schema.children[key] = rebuild_data_linked(value)
         return source_schema

@@ -21,7 +21,8 @@ def order_by_redshift_range(datasets: dict[str, ocds.Dataset]):
 
 def combine_adjacent_datasets_mpi(
     ordered_datasets: dict[str, dict[str, ocds.Dataset]],
-    min_dataset_size,
+    min_dataset_size: int,
+    no_stack: bool,
 ):
     MIN_DATASET_SIZE = 100_000
     comm = get_comm_world()
@@ -42,7 +43,7 @@ def combine_adjacent_datasets_mpi(
             rs += comm.allreduce(length)
             output_datasets[current_key].append(ordered_datasets[step])
 
-        if rs > MIN_DATASET_SIZE:
+        if rs > MIN_DATASET_SIZE or no_stack:
             rs = 0
 
     output = OrderedDict()
@@ -71,7 +72,7 @@ def combine_adjacent_datasets(
         datasets = ordered_datasets  # type: ignore
 
     if get_comm_world() is not None:
-        return combine_adjacent_datasets_mpi(datasets, min_dataset_size)
+        return combine_adjacent_datasets_mpi(datasets, min_dataset_size, no_stack)
 
     running_sum = 0
 

@@ -146,7 +146,20 @@ def verify_structure_collection_data(schema: Schema):
         raise ValueError("No valid link holder found in schema!")
 
     for child_name, child_schema in schema.children.items():
-        if child_name == link_holder:
+        if child_schema.type == FileEntry.LIGHTCONE and child_name == link_holder:
+            for grandchild_name, grandchild_schema in child_schema.children.items():
+                has_link = any(
+                    map(
+                        lambda cn: "data_linked" in cn,
+                        grandchild_schema.children.keys(),
+                    )
+                )
+                if not has_link:
+                    raise ValueError(
+                        f'Source dataset {child_name}/{grandchild_name} does not have expected "data_linked" group'
+                    )
+
+        elif child_name == link_holder:
             has_link = any(
                 map(lambda cn: "data_linked" in cn, child_schema.children.keys())
             )
@@ -160,5 +173,7 @@ def verify_structure_collection_data(schema: Schema):
                 verify_dataset_data(child_schema)
             case FileEntry.STRUCTURE_COLLECTION:
                 verify_structure_collection_data(child_schema)
+            case FileEntry.LIGHTCONE:
+                verify_lightcone_collection_schema(child_schema)
             case _:
                 raise ValueError("Got an unknown child for structure collection!")

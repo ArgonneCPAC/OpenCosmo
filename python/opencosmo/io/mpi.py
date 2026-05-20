@@ -72,6 +72,7 @@ def write_parallel(file: Path, file_schema: Schema):
         results = comm.allgather(CombineState.VALID)
     except ValueError:
         results = comm.allgather(CombineState.INVALID)
+        raise
     except ZeroLengthError:
         results = comm.allgather(CombineState.ZERO_LENGTH)
     if any(rs == CombineState.INVALID for rs in results):

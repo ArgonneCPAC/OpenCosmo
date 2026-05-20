@@ -530,7 +530,9 @@ class Lightcone(dict):
                 min(header_zrange[1], my_zrange[1]),
             )
 
-            child_schemas = stack_lightcone_datasets_in_schema(datasets, step, zrange)
+            child_schemas = stack_lightcone_datasets_in_schema(
+                datasets, step, zrange, no_stack
+            )
             child_schemas = {
                 f"{step}_{name}": schema for name, schema in child_schemas.items()
             }
