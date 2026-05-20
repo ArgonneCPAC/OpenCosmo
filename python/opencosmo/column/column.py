@@ -18,7 +18,6 @@ from uuid import uuid4
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from astropy import table  # type: ignore
 
 from opencosmo.column.evaluate import (
     EvaluateStrategy,
@@ -30,6 +29,8 @@ from opencosmo.units import UnitsError
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    from astropy import table
 
     from opencosmo import Dataset
     from opencosmo.index import DataIndex
@@ -94,7 +95,7 @@ def _require_scalar_quantity(func: Callable) -> Callable:
     return wrapper
 
 
-ColumnOrScalar = Union["Column", "DerivedColumn", int, float]
+ColumnOrScalar = Union["ConstructedColumn", int, float, u.Quantity]
 
 
 def _log10(
@@ -248,26 +249,30 @@ class Column:
         self.name = name
         self.description = None
 
+    @property
+    def requires(self):
+        return {self.name}
+
     def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
-        return ColumnMask(self.name, other, op.eq)
+        return ColumnMask(self, other, op.eq)
 
     def __ne__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
-        return ColumnMask(self.name, other, op.ne)
+        return ColumnMask(self, other, op.ne)
 
     def __gt__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.name, other, op.gt)
+        return ColumnMask(self, other, op.gt)
 
     def __ge__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.name, other, op.ge)
+        return ColumnMask(self, other, op.ge)
 
     def __lt__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.name, other, op.lt)
+        return ColumnMask(self, other, op.lt)
 
     def __le__(self, other: float | u.Quantity) -> ColumnMask:
-        return ColumnMask(self.name, other, op.le)
+        return ColumnMask(self, other, op.le)
 
     def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
-        return ColumnMask(self.name, other, np.isin)
+        return ColumnMask(self, other, np.isin)
 
     @_require_scalar_quantity
     def __rmul__(self, other: Any) -> DerivedColumn:
@@ -507,6 +512,7 @@ class DerivedColumn:
     ):
         self.lhs = lhs
         self.rhs = rhs
+
         self.name = output_name
         self.operation = operation
         self.description = description if description is not None else "None"
@@ -528,6 +534,10 @@ class DerivedColumn:
         producing it at the time this column was registered with a dataset.
         Returns a new bound DerivedColumn; does not mutate this instance.
         """
+        required_names = self._traverse_names()
+        if missing := required_names.difference(name_to_uuid):
+            raise ValueError(f"Derived column depends on unknown columns {missing}")
+
         dep_map = {name: name_to_uuid[name] for name in self._traverse_names()}
         return DerivedColumn(
             self.lhs,
@@ -686,10 +696,30 @@ class DerivedColumn:
 
     def arctan2(self, other: ColumnOrScalar) -> DerivedColumn:
         return DerivedColumn(self, other, _arctan2)
+    def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+        return ColumnMask(self, other, op.eq)
+
+    def __ne__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+        return ColumnMask(self, other, op.ne)
+
+    def __gt__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.gt)
+
+    def __ge__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.ge)
+
+    def __lt__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.lt)
+
+    def __le__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.le)
+
+    def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
+        return ColumnMask(self, other, np.isin)
 
     def evaluate(self, data: dict[str, np.ndarray], *args) -> np.ndarray:
-        lhs: np.typing.ArrayLike
-        rhs: Optional[np.typing.ArrayLike]
+        lhs: Any
+        rhs: Any
         match self.lhs:
             case DerivedColumn():
                 lhs = self.lhs.evaluate(data)
@@ -906,36 +936,41 @@ class ColumnMask:
 
     def __init__(
         self,
-        name: str,
-        value: float | u.Quantity,
+        left: ColumnOrScalar,
+        right: ColumnOrScalar,
         operator: Callable[[table.Column, float | u.Quantity], np.ndarray],
     ):
-        self.name = name
-        self.value = value
+        self.left = left
+        self.right = right
         self.operator = operator
 
-    @property
-    def requires(self):
-        return {self.name}
+    def apply(self, ds: Dataset):
+        match self.left:
+            case Column():
+                left = ds.select(self.left.name).get_data()
+            case DerivedColumn():
+                left = ds.select(data=self.left).get_data()
+            case _:
+                left = self.left
 
-    def apply(self, column: u.Quantity | np.ndarray) -> np.ndarray:
-        """
-        mask the dataset based on the mask.
-        """
-        # Astropy's errors are good enough here
-        if isinstance(column, table.Table):
-            column = column[self.name]
-
-        if isinstance(self.value, u.Quantity) and isinstance(column, u.Quantity):
-            if self.value.unit != column.unit:
-                raise ValueError(
-                    f"Incompatible units in fiter: {self.value.unit} and {column.unit}"
-                )
-
-        elif isinstance(column, u.Quantity):
-            return self.operator(column.value, self.value)
-
-        return self.operator(column, self.value)  # type: ignore
+        right_selected = False
+        match self.right:
+            case Column():
+                right = ds.select(self.right.name).get_data()
+                right_selected = True
+            case DerivedColumn():
+                right = ds.select(data=self.right).get_data()
+                right_selected = True
+            case _:
+                right = self.right
+        if (
+            isinstance(left, u.Quantity)
+            and not isinstance(right, u.Quantity)
+            and not right_selected
+        ):
+            return self.operator(left.value, right)
+        result = self.operator(left, right)
+        return result
 
     def __and__(self, other: Self | CompoundColumnMask):
         return CompoundColumnMask(self, other, lambda left, right: left & right)
@@ -968,7 +1003,7 @@ class CompoundColumnMask:
     def __or__(self, other: ColumnMask | Self):
         return CompoundColumnMask(self, other, lambda left, right: left | right)
 
-    def apply(self, data):
-        left_mask = self.__left.apply(data)
-        right_mask = self.__right.apply(data)
+    def apply(self, ds: Dataset):
+        left_mask = self.__left.apply(ds)
+        right_mask = self.__right.apply(ds)
         return self.__op(left_mask, right_mask)

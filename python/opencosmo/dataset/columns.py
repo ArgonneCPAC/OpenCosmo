@@ -72,8 +72,11 @@ def __categorize_columns(
                 new_derived_columns.append(column)
                 new_column_names.extend(column.produces)
             case Column():
-                producer = RawColumn(
-                    column.name, descriptions.get(colname, None), alias=colname
+                producer = DerivedColumn(
+                    lhs=column,
+                    rhs=None,
+                    operation=lambda x, _: x,
+                    output_name=colname,
                 )
                 new_derived_columns.append(producer)
                 new_column_names.extend(producer.produces)

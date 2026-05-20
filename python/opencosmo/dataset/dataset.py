@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import reduce
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -529,13 +528,9 @@ class Dataset:
         """
         if not masks:
             return self
-        required_columns: set[str] = reduce(
-            lambda acc, r: acc | r.requires, masks, set()
-        )
-        data = self.select(required_columns).get_data(unpack=False)
-        bool_mask = np.ones(len(data), dtype=bool)
+        bool_mask = np.ones(len(self), dtype=bool)
         for m in masks:
-            bool_mask &= m.apply(data)
+            bool_mask &= m.apply(self)
 
         new_state = st.take_rows(self.__state, np.where(bool_mask)[0])
         return Dataset(self.__header, new_state, self.__tree)
