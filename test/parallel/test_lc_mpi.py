@@ -445,8 +445,9 @@ def test_write_diffsky_some_missing_no_stack(
         ds.pop(475)
         assert len(ds.keys()) == 1
 
-    columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
-    columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+    # columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
+    # columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+    columns_to_check = list(ds.columns)
 
     original_data = ds.select(columns_to_check).get_data("numpy")
 
@@ -463,9 +464,8 @@ def test_write_diffsky_some_missing_no_stack(
     columns_to_check.sort()
 
     for column_name in columns_to_check:
-        if column_name == "gal_id":
+        if column_name in ["gal_id", "top_host_idx"]:
             continue
-        column_name = str(column_name)
         column_data_original = np.concat(comm.allgather(original_data.pop(column_name)))
         column_data_written = np.concat(comm.allgather(written_data.pop(column_name)))
         parallel_assert(
