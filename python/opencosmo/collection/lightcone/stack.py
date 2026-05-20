@@ -149,7 +149,7 @@ def stack_lightcone_datasets_in_schema(
     datasets: dict[str, list[ds.Dataset]],
     name: Optional[str],
     redshift_range: Optional[tuple[float, float]],
-    no_stack: bool = True,
+    no_stack: bool = False,
 ):
     n_datasets = sum(len(lst) for lst in datasets.values())
     if n_datasets == 1 and get_comm_world() is None:

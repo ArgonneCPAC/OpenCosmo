@@ -243,6 +243,7 @@ def test_box_search_write(haloproperties_600_path, per_test_dir):
 
     # Each rank works with a pixel it owns so the search is guaranteed to find data.
     pixel = np.random.choice(ds.region.pixels)
+    print(pixel)
     ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
 
     # Write with a wider box, refine with a narrower one after re-open.
@@ -258,7 +259,9 @@ def test_box_search_write(haloproperties_600_path, per_test_dir):
     ds = ds.box_search(p1_inner, p2_inner)
     new_ds = new_ds.box_search(p1_inner, p2_inner)
 
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+    assert set(ds.get_data(unpack=False)["fof_halo_tag"]) == set(
+        new_ds.get_data(unpack=False)["fof_halo_tag"]
+    )
 
 
 @pytest.mark.parallel(nprocs=4)

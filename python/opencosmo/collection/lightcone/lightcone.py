@@ -17,7 +17,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np
-from astropy.table import QTable, vstack  # type: ignore
+from astropy.table import vstack  # type: ignore
 from deprecated import deprecated
 
 import opencosmo as oc
@@ -342,12 +342,12 @@ class Lightcone(dict):
 
         to_remove = self.__hidden.intersection(table.colnames)
         table.remove_columns(to_remove)
-        if unpack:
+        if len(table) == 1 and unpack:
             output_data = {
                 key: value[0] if len(value) == 1 else value
                 for key, value in table.items()
             }
-            table = QTable(output_data)
+            return convert_data(output_data, format)
 
         if format != "astropy":
             return convert_data(dict(table), format)
