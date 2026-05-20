@@ -463,7 +463,8 @@ def __write_column(
             if writer is not None:
                 data = writer.get_data(new_comm)
             else:
-                data = np.empty((0,), dtype=ds.dtype)
+                shape = (0,) + ds.shape[1:]
+                data = np.empty(shape, dtype=ds.dtype)
 
             ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
 
