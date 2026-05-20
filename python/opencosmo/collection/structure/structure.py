@@ -190,15 +190,49 @@ class StructureCollection:
     @property
     def redshift(self) -> float | tuple[float, float] | None:
         """
-        For snapshots, return the redshift or redshift range
-        this dataset was drawn from.
+        For snapshots, return the redshift this dataset was drawn from.
 
         Returns
         -------
         redshift: float | tuple[float, float]
 
         """
-        raise NotImplementedError
+        if isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "This is a lightcone structure collection. Use .z_range to get the redshift range."
+            )
+        return self.__source.header.file.redshift
+
+    @property
+    def z_range(self) -> tuple[float, float]:
+        """
+        The redshift range covered by this lightcone structure collection.
+
+        Returns
+        -------
+        z_range: tuple[float, float]
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "This is not a lightcone structure collection. Use .redshift to get the redshift."
+            )
+        return self.__source.z_range
+
+    @property
+    def sorted_by(self) -> Optional[str]:
+        """
+        The column this collection is currently sorted by, or ``None`` if unsorted.
+
+        Returns
+        -------
+        column : Optional[str]
+        """
+        return self.__source.sorted_by
 
     @property
     def simulation(self) -> HaccSimulationParameters | None:
@@ -297,6 +331,104 @@ class StructureCollection:
             new_handler,
             self.__derived_columns,
         )
+
+    def with_redshift_range(self, z_low: float, z_high: float) -> StructureCollection:
+        """
+        Restrict this lightcone structure collection to a specific redshift range.
+        This is more efficient than filtering on the redshift column directly because
+        it prunes entire redshift steps before row-level filtering, and it updates
+        the z_range metadata on the returned collection.
+
+        Parameters
+        ----------
+        z_low : float
+            The lower bound of the redshift range (inclusive).
+        z_high : float
+            The upper bound of the redshift range (inclusive).
+
+        Returns
+        -------
+        result : StructureCollection
+            A new StructureCollection restricted to the given redshift range.
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        ValueError
+            If the requested range does not overlap the available redshift range.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "with_redshift_range is only available on lightcone structure collections."
+            )
+        new_source = self.__source.with_redshift_range(z_low, z_high)
+        new_handler = self.__handler.make_derived(self.__source)
+        return StructureCollection(
+            new_source,
+            self.__datasets,
+            self.__hide_source,
+            new_handler,
+            self.__derived_columns,
+        )
+
+    def cone_search(self, center, radius) -> StructureCollection:
+        """
+        Search for structures within an angular distance of a point on the sky.
+        Equivalent to ``collection.bound(oc.make_cone(center, radius))``.
+
+        Parameters
+        ----------
+        center : tuple | astropy.coordinates.SkyCoord
+            Center of the search cone. If a tuple with no units, assumed to be
+            (RA, Dec) in degrees.
+        radius : float | astropy.units.Quantity
+            Angular radius of the search cone. If no units, assumed to be degrees.
+
+        Returns
+        -------
+        result : StructureCollection
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "cone_search is only available on lightcone structure collections."
+            )
+        region = oc.make_cone(center, radius)
+        return self.bound(region)
+
+    def box_search(self, p1, p2) -> StructureCollection:
+        """
+        Search for structures within a rectangular region of the sky (defined by
+        RA/Dec corners). Equivalent to ``collection.bound(oc.make_skybox(p1, p2))``.
+
+        Parameters
+        ----------
+        p1 : tuple | astropy.coordinates.SkyCoord
+            One corner of the box. If a tuple with no units, assumed to be
+            (RA, Dec) in degrees.
+        p2 : tuple | astropy.coordinates.SkyCoord
+            The opposite corner of the box.
+
+        Returns
+        -------
+        result : StructureCollection
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "box_search is only available on lightcone structure collections."
+            )
+        region = oc.make_skybox(p1, p2)
+        return self.bound(region)
 
     def evaluate(
         self,
