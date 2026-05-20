@@ -1323,3 +1323,5 @@ def test_modify_metadata_column(halo_paths):
         (galaxyproperties_start["galaxyproperties_start"] + 1000)
         == updated_galaxyproperties_start["galaxyproperties_start"]
     )
+    assert "galaxyproperties_start" not in ds["halo_properties"].columns
+    assert "galaxyproperties_start" not in ds["halo_properties"].get_data("numpy")

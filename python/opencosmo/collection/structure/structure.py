@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from functools import partial, reduce
+from functools import reduce
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -18,6 +18,7 @@ from warnings import warn
 import numpy as np
 
 import opencosmo as oc
+from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.index.unary import get_length
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.dtypes import HaccSimulationParameters
+    from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
@@ -92,7 +94,6 @@ class StructureCollection:
     def __init__(
         self,
         source: oc.Dataset,
-        header: oc.header.OpenCosmoHeader,
         datasets: Mapping[str, oc.Dataset | StructureCollection],
         hide_source: bool = False,
         link_handler: Optional[LinkHandler] = None,
@@ -104,9 +105,7 @@ class StructureCollection:
         """
 
         self.__source = source
-        self.__header = header
         self.__datasets = dict(datasets)
-        self.__index = self.__source.index
         self.__hide_source = hide_source
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
@@ -115,7 +114,9 @@ class StructureCollection:
             self.__handler = LinkHandler.from_link_names(
                 self.__source.meta_columns, "galaxies" in self.__datasets
             )
-            datasets = self.__handler.prep_datasets(self.__source, self.__datasets)
+            self.__datasets = self.__handler.prep_datasets(
+                self.__source, self.__datasets
+            )
         else:
             self.__handler = link_handler
 
@@ -140,13 +141,17 @@ class StructureCollection:
         return self.__datasets
 
     def __repr__(self):
-        structure_type = self.__header.file.data_type.split("_")[0] + "s"
+        structure_type = self.__source.header.file.data_type.split("_")[0] + "s"
+        is_lightcone = isinstance(self.__source, lc.Lightcone)
         keys = list(self.keys())
         if len(keys) == 2:
             dtype_str = " and ".join(keys)
         else:
             dtype_str = ", ".join(keys[:-1]) + ", and " + keys[-1]
-        return f"Collection of {structure_type} with {dtype_str}"
+        header = f"Collection of {structure_type} {'on a lightcone ' if is_lightcone else ' '}with {dtype_str}\n"
+        source_repr = self.__source.__repr__().split("\n", maxsplit=1)[1]
+
+        return header + source_repr
 
     def __len__(self):
         return len(self.__source)
@@ -155,15 +160,12 @@ class StructureCollection:
     def open(
         cls, targets: list[FileTarget], ignore_empty=True, **kwargs
     ) -> StructureCollection:
-        return sio.build_structure_collection(targets, ignore_empty)
-
-    @property
-    def header(self):
-        return self.__header
+        result = sio.build_structure_collection(targets, ignore_empty)
+        return result
 
     @property
     def dtype(self):
-        structure_type = self.__header.file.data_type.split("_")[0]
+        structure_type = self.__source.header.file.dt
         return structure_type
 
     @property
@@ -172,6 +174,10 @@ class StructureCollection:
         The cosmology of the structure collection
         """
         return self.__source.cosmology
+
+    @property
+    def header(self) -> OpenCosmoHeader:
+        return self.__source.header
 
     @property
     def properties(self) -> list[str]:
@@ -184,18 +190,52 @@ class StructureCollection:
     @property
     def redshift(self) -> float | tuple[float, float] | None:
         """
-        For snapshots, return the redshift or redshift range
-        this dataset was drawn from.
+        For snapshots, return the redshift this dataset was drawn from.
 
         Returns
         -------
         redshift: float | tuple[float, float]
 
         """
-        return self.__header.file.redshift
+        if isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "This is a lightcone structure collection. Use .z_range to get the redshift range."
+            )
+        return self.__source.header.file.redshift
 
     @property
-    def simulation(self) -> HaccSimulationParameters:
+    def z_range(self) -> tuple[float, float]:
+        """
+        The redshift range covered by this lightcone structure collection.
+
+        Returns
+        -------
+        z_range: tuple[float, float]
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "This is not a lightcone structure collection. Use .redshift to get the redshift."
+            )
+        return self.__source.z_range
+
+    @property
+    def sorted_by(self) -> Optional[str]:
+        """
+        The column this collection is currently sorted by, or ``None`` if unsorted.
+
+        Returns
+        -------
+        column : Optional[str]
+        """
+        return self.__source.sorted_by
+
+    @property
+    def simulation(self) -> HaccSimulationParameters | None:
         """
         Get the parameters of the simulation this dataset is drawn
         from.
@@ -204,7 +244,7 @@ class StructureCollection:
         -------
         parameters: opencosmo.dtypes.HaccSimulationParameters
         """
-        return self.__header.simulation
+        return self.__source.simulation
 
     def keys(self) -> list[str]:
         """
@@ -233,7 +273,7 @@ class StructureCollection:
         """
         Return the linked dataset with the given key.
         """
-        if key == self.__header.file.data_type:
+        if key == self.__source.header.file.data_type:
             return self.__source
         datasets = self.__get_datasets()
         if key not in datasets.keys():
@@ -286,12 +326,109 @@ class StructureCollection:
         new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
             bounded,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             new_handler,
             self.__derived_columns,
         )
+
+    def with_redshift_range(self, z_low: float, z_high: float) -> StructureCollection:
+        """
+        Restrict this lightcone structure collection to a specific redshift range.
+        This is more efficient than filtering on the redshift column directly because
+        it prunes entire redshift steps before row-level filtering, and it updates
+        the z_range metadata on the returned collection.
+
+        Parameters
+        ----------
+        z_low : float
+            The lower bound of the redshift range (inclusive).
+        z_high : float
+            The upper bound of the redshift range (inclusive).
+
+        Returns
+        -------
+        result : StructureCollection
+            A new StructureCollection restricted to the given redshift range.
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        ValueError
+            If the requested range does not overlap the available redshift range.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "with_redshift_range is only available on lightcone structure collections."
+            )
+        new_source = self.__source.with_redshift_range(z_low, z_high)
+        new_handler = self.__handler.make_derived(self.__source)
+        return StructureCollection(
+            new_source,
+            self.__datasets,
+            self.__hide_source,
+            new_handler,
+            self.__derived_columns,
+        )
+
+    def cone_search(self, center, radius) -> StructureCollection:
+        """
+        Search for structures within an angular distance of a point on the sky.
+        Equivalent to ``collection.bound(oc.make_cone(center, radius))``.
+
+        Parameters
+        ----------
+        center : tuple | astropy.coordinates.SkyCoord
+            Center of the search cone. If a tuple with no units, assumed to be
+            (RA, Dec) in degrees.
+        radius : float | astropy.units.Quantity
+            Angular radius of the search cone. If no units, assumed to be degrees.
+
+        Returns
+        -------
+        result : StructureCollection
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "cone_search is only available on lightcone structure collections."
+            )
+        region = oc.make_cone(center, radius)
+        return self.bound(region)
+
+    def box_search(self, p1, p2) -> StructureCollection:
+        """
+        Search for structures within a rectangular region of the sky (defined by
+        RA/Dec corners). Equivalent to ``collection.bound(oc.make_skybox(p1, p2))``.
+
+        Parameters
+        ----------
+        p1 : tuple | astropy.coordinates.SkyCoord
+            One corner of the box. If a tuple with no units, assumed to be
+            (RA, Dec) in degrees.
+        p2 : tuple | astropy.coordinates.SkyCoord
+            The opposite corner of the box.
+
+        Returns
+        -------
+        result : StructureCollection
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        """
+        if not isinstance(self.__source, lc.Lightcone):
+            raise AttributeError(
+                "box_search is only available on lightcone structure collections."
+            )
+        region = oc.make_skybox(p1, p2)
+        return self.bound(region)
 
     def evaluate(
         self,
@@ -423,7 +560,6 @@ class StructureCollection:
                 return result
             return StructureCollection(
                 self.__source,
-                self.__header,
                 self.__get_datasets() | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -461,7 +597,6 @@ class StructureCollection:
             new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
             return StructureCollection(
                 self.__source,
-                self.__header,
                 self.__get_datasets() | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -565,7 +700,6 @@ class StructureCollection:
             assert isinstance(result, oc.Dataset)
             return StructureCollection(
                 result,
-                self.__header,
                 self.__datasets,
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -598,7 +732,6 @@ class StructureCollection:
             new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
             return StructureCollection(
                 self.__source,
-                self.__header,
                 self.__datasets | {dataset: result},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -625,7 +758,6 @@ class StructureCollection:
         assert isinstance(result, (oc.Dataset, StructureCollection))
         return StructureCollection(
             self.__source,
-            self.__header,
             self.__datasets | {ds_path[0]: result},
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -677,13 +809,12 @@ class StructureCollection:
             galaxy_properties = self["galaxy_properties"]
             assert isinstance(galaxy_properties, oc.Dataset)
             filtered = filter_source_by_dataset(
-                galaxy_properties, self.__source, self.__header, *masks
+                galaxy_properties, self.__source, self.__source.header, *masks
             )
 
         new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
             filtered,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             new_handler,
@@ -773,7 +904,7 @@ class StructureCollection:
                 arg = columns  # type: ignore
                 kwargs = {}
 
-            if dataset == self.__header.file.data_type:
+            if dataset == self.__source.header.file.data_type:
                 new_source = self.__source.select(arg, **kwargs)
                 continue
 
@@ -795,7 +926,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets | new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -837,7 +967,7 @@ class StructureCollection:
         new_datasets = {}
 
         for dataset_name, columns in columns_to_drop.items():
-            if dataset_name == self.__header.file.data_type:
+            if dataset_name == self.__source.header.file.data_type:
                 new_source = self.__source.drop(columns)
                 continue
 
@@ -853,7 +983,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets | new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -888,7 +1017,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -992,7 +1120,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             new_datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1034,7 +1161,6 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             new_handler,
@@ -1080,7 +1206,6 @@ class StructureCollection:
         new_source = self.__source.take_range(start, end, mode)
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1110,7 +1235,6 @@ class StructureCollection:
         new_source = self.__source.take_rows(rows)
         return StructureCollection(
             new_source,
-            self.__header,
             self.__datasets,
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1197,7 +1321,6 @@ class StructureCollection:
             )
             return StructureCollection(
                 self.__source,
-                self.__header,
                 {**datasets, collection_name: new_collection},
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -1211,7 +1334,6 @@ class StructureCollection:
             )
             return StructureCollection(
                 new_source,
-                self.__header,
                 self.__datasets,
                 self.__hide_source,
                 self.__handler.make_derived(self.__source),
@@ -1239,7 +1361,6 @@ class StructureCollection:
 
         return StructureCollection(
             self.__source,
-            self.__header,
             {**datasets, dataset: new_ds},
             self.__hide_source,
             self.__handler.make_derived(self.__source),
@@ -1287,7 +1408,6 @@ class StructureCollection:
         for column in self.__derived_columns:
             name_parts = column.split(".")
             columns_to_collect[name_parts[0]][name_parts[1]] = []
-
         try:
             for row in self.__source.rows(metadata_columns=metadata_columns):
                 row = dict(row)
@@ -1383,7 +1503,6 @@ class StructureCollection:
         new_datasets = {name: self.__datasets[name] for name in requested_datasets}
         return StructureCollection(
             self.__source,
-            self.__header,
             new_datasets,
             hide_source,
             self.__handler.make_derived(self.__source),
@@ -1408,29 +1527,21 @@ class StructureCollection:
         else:
             raise AttributeError("This collection does not contain galaxies!")
 
-    def make_schema(self, name: Optional[str] = None) -> Schema:
+    def make_schema(self, name: Optional[str] = None, **kwargs) -> Schema:
         children = {}
         source_name = self.__source.dtype
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
+        schema_kwargs: dict[str, Any] = (
+            {"no_stack": True} if isinstance(self.__source, lc.Lightcone) else {}
+        )
 
-        source_schema = self.__source.make_schema()
-        for colname, column in source_schema.children["data_linked"].columns.items():
-            if "idx" in colname:
-                column.set_transformation(do_idx_update)
-            elif "start" in colname:
-                size_colname = colname.replace("start", "size")
-                size_data = (
-                    source_schema.children["data_linked"].columns[size_colname].data
-                )
-                updater = partial(do_start_update, size=size_data)
-                column.set_transformation(updater)
-
-        children[source_name] = source_schema
+        source_schema = self.__source.make_schema(**schema_kwargs)
+        children[source_name] = sio.rebuild_data_linked(source_schema)
 
         for name, dataset in datasets.items():
             if name == "galaxies":
                 name = "galaxy_properties"
-            ds_schema = dataset.make_schema()
+            ds_schema = dataset.make_schema(**schema_kwargs)
             if not isinstance(dataset, StructureCollection):
                 children[name] = ds_schema
                 continue

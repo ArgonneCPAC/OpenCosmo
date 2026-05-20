@@ -336,7 +336,9 @@ def iter_rows(
         raise
 
 
-def get_metadata(state: DatasetState, columns: list = []) -> dict:
+def get_metadata(
+    state: DatasetState, columns: list = [], ignore_sort: bool = False
+) -> dict:
     names = list(columns) if columns else list(state.metadata_columns)
     data = instantiate_dataset(
         list(state.producers.values()),
@@ -347,6 +349,9 @@ def get_metadata(state: DatasetState, columns: list = []) -> dict:
         {},
         None,
     )
+    if ignore_sort:
+        return data
+
     sorted_index = get_sorted_index(state)
     if sorted_index is not None:
         data = {name: values[sorted_index] for name, values in data.items()}
@@ -358,7 +363,7 @@ def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
     Get metadata columns.
     """
     producers = list(state.producers.values())
-    columns = set(state.column_map.keys())
+    columns = set(state.column_map.keys()).difference(state.metadata_columns)
     derived_names = get_derived_column_names(producers, columns)
     if derived_names:
         selected = select(state, derived_names)
@@ -433,10 +438,17 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     return dataclasses.replace(state, column_map=new_column_map)
 
 
-def sort_by(state: DatasetState, column_name: str, invert: bool) -> DatasetState:
-    if column_name not in state.columns:
+def sort_by(
+    state: DatasetState, column_name: Optional[str], invert: bool
+) -> DatasetState:
+    if column_name is None:
+        sort_key = None
+    elif column_name not in state.columns:
         raise ValueError(f"This dataset has no column {column_name}")
-    return dataclasses.replace(state, sort_key=(column_name, invert))
+    else:
+        sort_key = (column_name, invert)
+
+    return dataclasses.replace(state, sort_key=sort_key)
 
 
 def get_sorted_index(state: DatasetState) -> np.ndarray | None:

@@ -418,7 +418,6 @@ def test_keep_top_host_take_random(core_path_475, core_path_487):
     assert_top_host_idx_correct(data, core_map)
     assert np.all(data["top_host_idx"] >= 0)
     assert_all_group_members_present(data, core_map)
-    print(len(ds))
 
 
 def test_keep_top_host_take_start(core_path_475, core_path_487):

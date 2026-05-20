@@ -87,7 +87,10 @@ def make_dataset_schema(
         columns_to_uuid, meta_columns
     )
 
-    build_derived_writers(producers, derived_data, data_schema, cached_data_schema)
+    data_producers = [
+        prod for prod in producers if not prod.produces.issubset(meta_columns)
+    ]
+    build_derived_writers(data_producers, derived_data, data_schema, cached_data_schema)
 
     attributes = {}
     if (load_conditions := raw_data_handler.load_conditions) is not None:

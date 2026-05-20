@@ -149,6 +149,7 @@ def stack_lightcone_datasets_in_schema(
     datasets: dict[str, list[ds.Dataset]],
     name: Optional[str],
     redshift_range: Optional[tuple[float, float]],
+    no_stack: bool = False,
 ):
     n_datasets = sum(len(lst) for lst in datasets.values())
     if n_datasets == 1 and get_comm_world() is None:
@@ -162,9 +163,12 @@ def stack_lightcone_datasets_in_schema(
     schema_children = {}
     ds_groups = get_all_keys(datasets, get_comm_world())
     for ds_group in ds_groups:
+        schema_name = ds_group if len(datasets) > 1 else name
         ds_list = datasets.get(ds_group, [])
         ds_list = list(filter(lambda ds: len(ds) > 0, ds_list))
         if len(ds_list) == 0:
+            if no_stack:
+                continue
             get_stacked_lightcone_order([], -1)
             sync_headers(ds_list, None)
             continue
@@ -174,10 +178,13 @@ def stack_lightcone_datasets_in_schema(
         max_level = int(index_names[-1][-1])
 
         assert all(isinstance(dataset, ds.Dataset) for dataset in ds_list)
+        if no_stack:
+            assert len(schemas) == 1
+            schema_children[schema_name] = schemas[0]
+            continue
         new_data_group = stack_data_groups(
             [schema.children["data"] for schema in schemas]
         )
-
         order = get_stacked_lightcone_order(ds_list, max_level)
         updater = partial(update_order, order=order)
         slice_sizes = [len(dataset) for dataset in ds_list]
@@ -202,8 +209,11 @@ def stack_lightcone_datasets_in_schema(
             "index": new_index_group,
             "header": header_schema,
         }
+        if all("data_linked" in c.children for c in schemas):
+            children["data_linked"] = stack_data_groups(
+                [schema.children["data_linked"] for schema in schemas]
+            )
 
-        schema_name = ds_group if len(datasets) > 1 else name
         assert schema_name is not None
         schema_children[schema_name] = make_schema(
             schema_name,

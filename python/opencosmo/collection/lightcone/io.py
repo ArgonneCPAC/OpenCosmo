@@ -21,7 +21,8 @@ def order_by_redshift_range(datasets: dict[str, ocds.Dataset]):
 
 def combine_adjacent_datasets_mpi(
     ordered_datasets: dict[str, dict[str, ocds.Dataset]],
-    min_dataset_size,
+    min_dataset_size: int,
+    no_stack: bool,
 ):
     MIN_DATASET_SIZE = 100_000
     comm = get_comm_world()
@@ -42,7 +43,7 @@ def combine_adjacent_datasets_mpi(
             rs += comm.allreduce(length)
             output_datasets[current_key].append(ordered_datasets[step])
 
-        if rs > MIN_DATASET_SIZE:
+        if rs > MIN_DATASET_SIZE or no_stack:
             rs = 0
 
     output = OrderedDict()
@@ -58,7 +59,8 @@ def combine_adjacent_datasets_mpi(
 
 def combine_adjacent_datasets(
     ordered_datasets: dict[str, ocds.Dataset] | dict[str, dict[str, ocds.Dataset]],
-    min_dataset_size=100_000,
+    min_dataset_size: int,
+    no_stack: bool,
 ):
     is_single = isinstance(next(iter(ordered_datasets.values())), ocds.Dataset)
     datasets: dict[str, dict[str, ocds.Dataset]]
@@ -70,7 +72,7 @@ def combine_adjacent_datasets(
         datasets = ordered_datasets  # type: ignore
 
     if get_comm_world() is not None:
-        return combine_adjacent_datasets_mpi(datasets, min_dataset_size)
+        return combine_adjacent_datasets_mpi(datasets, min_dataset_size, no_stack)
 
     running_sum = 0
 
@@ -80,7 +82,7 @@ def combine_adjacent_datasets(
     )
 
     for key, step_datasets in datasets.items():
-        if running_sum < min_dataset_size:
+        if not no_stack and running_sum < min_dataset_size:
             running_sum += sum(len(ds) for ds in step_datasets.values())
             output_datasets[current_key].append(step_datasets)
             continue

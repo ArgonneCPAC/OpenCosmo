@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Iterable, Protocol, Self, Union
 if TYPE_CHECKING:
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
-    from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
 
@@ -37,9 +36,6 @@ class Collection(Protocol):
     def make_schema(self) -> Schema: ...
     @property
     def dtype(self) -> str | dict[str, str]: ...
-
-    @property
-    def header(self) -> OpenCosmoHeader | dict[str, OpenCosmoHeader]: ...
 
     def __getitem__(self, key: str) -> Union[Dataset, "Collection"]: ...
     def keys(self) -> Iterable[str]: ...

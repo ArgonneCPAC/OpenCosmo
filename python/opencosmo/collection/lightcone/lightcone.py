@@ -18,6 +18,7 @@ from warnings import warn
 
 import numpy as np
 from astropy.table import vstack  # type: ignore
+from deprecated import deprecated
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
@@ -167,6 +168,17 @@ class Lightcone(dict):
         cols = list(filter(lambda col: col not in self.__hidden, cols))
         return cols
 
+    @property
+    def meta_columns(self) -> list[str]:
+        """
+        The names of the columns in this dataset.
+
+        Returns
+        -------
+        columns: list[str]
+        """
+        return next(iter(self.values())).meta_columns
+
     @cached_property
     def descriptions(self) -> dict[str, Optional[str]]:
         """
@@ -255,6 +267,17 @@ class Lightcone(dict):
         return self.__header.simulation
 
     @property
+    def sorted_by(self) -> Optional[str]:
+        """
+        The column this dataset is sorted by. If not sorted, returns None.
+
+        Returns
+        -------
+        column: Optional[str]
+        """
+        return self.__sort_key[0] if self.__sort_key is not None else None
+
+    @property
     def z_range(self):
         """
         The redshift range of this lightcone.
@@ -266,7 +289,7 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_data(self, format="astropy", unpack: bool = False, **kwargs):
+    def get_data(self, format="astropy", unpack: bool = True, **kwargs):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -303,7 +326,7 @@ class Lightcone(dict):
         lightcone = fold(
             HookPoint.LightconeInstantiate, LightconeInstantiateCtx(self)
         ).lightcone
-        data = [ds.get_data(unpack=unpack) for ds in lightcone.values()]
+        data = [ds.get_data(unpack=False) for ds in lightcone.values()]
         data_with_length = [d for d in data if len(d) > 0]
         if len(data_with_length) == 0:
             return data[0]
@@ -319,6 +342,13 @@ class Lightcone(dict):
 
         to_remove = self.__hidden.intersection(table.colnames)
         table.remove_columns(to_remove)
+        if len(table) == 1 and unpack:
+            output_data = {
+                key: value[0] if len(value) == 1 else value
+                for key, value in table.items()
+            }
+            return convert_data(output_data, format)
+
         if format != "astropy":
             return convert_data(dict(table), format)
         elif len(table.columns) == 1:
@@ -326,7 +356,24 @@ class Lightcone(dict):
 
         return table
 
+    def get_metadata(self, columns: str | list[str] = [], ignore_sort: bool = False):
+        data = [ds.get_metadata(columns) for ds in self.values()]
+
+        output = {}
+        for key in data[0].keys():
+            output[key] = np.concatenate([d[key] for d in data])
+        if ignore_sort or self.__sort_key is None:
+            return output
+        order = np.argsort(self.select(self.__sort_key[0]).get_data("numpy"))
+        if self.__sort_key[1]:
+            order = order[::-1]
+        return {name: arr[order] for name, arr in output.items()}
+
     @property
+    @deprecated(
+        version="1.1.0",
+        reason="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
+    )
     def data(self):
         """
         Return the data in the dataset in astropy format. The value of this
@@ -378,8 +425,8 @@ class Lightcone(dict):
     @classmethod
     def from_datasets(
         cls,
-        datasets: dict[str, oc.Dataset],
-        z_range: tuple[float, float],
+        datasets: Mapping[int, oc.Dataset],
+        z_range: Optional[tuple[float, float]] = None,
         **open_kwargs,
     ):
         result = cls(datasets, z_range)
@@ -458,19 +505,21 @@ class Lightcone(dict):
     def __map_attribute(self, attribute):
         return {k: getattr(v, attribute) for k, v in self.items()}
 
-    def make_schema(self, name: str = "", _min_size=100_000) -> Schema:
+    def make_schema(
+        self, name: str = "", _min_size=100_000, no_stack: bool = False
+    ) -> Schema:
         datasets = lcio.order_by_redshift_range(self)
         for key in datasets:
             if isinstance(datasets[key], Lightcone):
                 datasets[key] = dict(datasets[key])
         output_datasets = lcio.combine_adjacent_datasets(
-            datasets, min_dataset_size=_min_size
+            datasets, min_dataset_size=_min_size, no_stack=no_stack
         )
         children = {}
 
         for step, datasets in output_datasets.items():
             if len(datasets) == 0:
-                stack_lightcone_datasets_in_schema(datasets, None, None)
+                stack_lightcone_datasets_in_schema(datasets, None, None, no_stack)
                 continue
 
             all_datasets = list(chain(*tuple(lst for lst in datasets.values())))
@@ -481,7 +530,9 @@ class Lightcone(dict):
                 min(header_zrange[1], my_zrange[1]),
             )
 
-            child_schemas = stack_lightcone_datasets_in_schema(datasets, step, zrange)
+            child_schemas = stack_lightcone_datasets_in_schema(
+                datasets, step, zrange, no_stack
+            )
             child_schemas = {
                 f"{step}_{name}": schema for name, schema in child_schemas.items()
             }
@@ -723,7 +774,9 @@ class Lightcone(dict):
         """
         return self.__map("filter", *masks, **kwargs)
 
-    def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
+    def rows(
+        self, metadata_columns=[]
+    ) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
         Iterate over the rows in the dataset. Rows are returned as a dictionary
         For performance, it is recommended to first select the columns you need to
@@ -734,7 +787,9 @@ class Lightcone(dict):
         row : dict
             A dictionary of values for each row in the dataset with units.
         """
-        yield from chain.from_iterable(v.rows() for v in self.values())
+        yield from chain.from_iterable(
+            v.rows(metadata_columns=metadata_columns) for v in self.values()
+        )
 
     def select(
         self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
@@ -794,7 +849,7 @@ class Lightcone(dict):
         hidden = self.__hidden
         additional_columns = set()
 
-        if "redshift" not in all_columns:
+        if "redshift" not in all_columns and "properties" in self.dtype:
             additional_columns.add("redshift")
             hidden = hidden.union({"redshift"})
 
@@ -972,19 +1027,12 @@ class Lightcone(dict):
 
         """
         index_range = get_range(rows)
-        if isinstance(rows, np.ndarray):
-            rows = np.sort(rows)
-            index_range = (index_range[0], index_range[1] + 1)
-        else:
-            order = np.argsort(rows[0])
-            rows = (rows[0][order], rows[1][order])
 
         if index_range[0] < 0 or index_range[1] > len(self):
             raise ValueError(
                 "Rows must be between 0 and the length of this dataset - 1"
             )
         rows = get_rows_take_index(self, rows, self.__sort_key)
-
         return self.__take_rows(rows)
 
     def __make_sort_index(self):
@@ -999,7 +1047,7 @@ class Lightcone(dict):
 
     def __take_rows(self, rows: DataIndex):
         """
-        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorte.
+        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorted.
         For internal use only.
         """
         sizes = np.fromiter((len(ds) for ds in self.values()), dtype=np.int64)
@@ -1009,7 +1057,6 @@ class Lightcone(dict):
         output = {}
         for (name, ds), index in zip(self.items(), projected):
             output[name] = ds.take_rows(index)
-
         if all(len(ds) == 0 for ds in output.values()):
             output = {"data": next(iter(output.values()))}
         else:
@@ -1081,7 +1128,7 @@ class Lightcone(dict):
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__sort_key)
 
-    def sort_by(self, column: str, invert: bool = False):
+    def sort_by(self, column: Optional[str], invert: bool = False):
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -1099,9 +1146,9 @@ class Lightcone(dict):
 
         Parameters
         ----------
-        column : str
+        column : Optional[str]
             The column in the halo_properties or galaxy_properties dataset to
-            order the collection by.
+            order the collection by. Pass None to remove sorting.
 
         invert : bool, default = False
             If False (the default), ordering will be from least to greatest.
@@ -1115,9 +1162,14 @@ class Lightcone(dict):
 
         """
 
-        if column not in self.columns:
+        if column is None:
+            sort_key = None
+        elif column not in self.columns:
             raise ValueError(f"Column {column} does not exist in this dataset!")
-        return Lightcone(dict(self), self.z_range, self.__hidden, (column, invert))
+        else:
+            sort_key = (column, invert)
+
+        return Lightcone(dict(self), self.z_range, self.__hidden, sort_key)
 
     def with_units(
         self,

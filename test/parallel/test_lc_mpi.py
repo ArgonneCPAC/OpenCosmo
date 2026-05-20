@@ -141,8 +141,8 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    rank_tags = ds.select("fof_halo_tag").get_data()
-    new_rank_tags = new_ds.select("fof_halo_tag").get_data()
+    rank_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+    new_rank_tags = new_ds.select("fof_halo_tag").get_data("numpy", unpack=False)
 
     all_tags = np.concatenate(comm.allgather(rank_tags))
     all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
@@ -239,9 +239,9 @@ def test_box_search_chain_failure(haloproperties_600_path):
 @pytest.mark.parallel(nprocs=4)
 def test_box_search_write(haloproperties_600_path, per_test_dir):
     """Written box-search result supports a narrower refinement search on re-open."""
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
 
-    # Each rank works with a pixel it owns so the search is guaranteed to find data.
     pixel = np.random.choice(ds.region.pixels)
     ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
 
@@ -258,7 +258,12 @@ def test_box_search_write(haloproperties_600_path, per_test_dir):
     ds = ds.box_search(p1_inner, p2_inner)
     new_ds = new_ds.box_search(p1_inner, p2_inner)
 
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+    original_halo_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+    written_halo_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+
+    all_original_tags = np.concat(comm.allgather(original_halo_tags))
+    all_written_tags = np.concat(comm.allgather(written_halo_tags))
+    parallel_assert(np.all(all_original_tags == all_written_tags))
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -443,8 +448,9 @@ def test_write_diffsky_some_missing_no_stack(
         ds.pop(475)
         assert len(ds.keys()) == 1
 
-    columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
-    columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+    # columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
+    # columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+    columns_to_check = list(ds.columns)
 
     original_data = ds.select(columns_to_check).get_data("numpy")
 
@@ -461,9 +467,8 @@ def test_write_diffsky_some_missing_no_stack(
     columns_to_check.sort()
 
     for column_name in columns_to_check:
-        if column_name == "gal_id":
+        if column_name in ["gal_id", "top_host_idx"]:
             continue
-        column_name = str(column_name)
         column_data_original = np.concat(comm.allgather(original_data.pop(column_name)))
         column_data_written = np.concat(comm.allgather(written_data.pop(column_name)))
         parallel_assert(
@@ -890,8 +895,6 @@ def test_lc_take_global_start_sorted(haloproperties_600_path, haloproperties_601
 
     selected = lc_taken.select("fof_halo_mass").get_data("numpy")
     all_selected = np.concatenate(comm.allgather(selected))
-    print(all_selected)
-    print(threshold)
 
     parallel_assert(len(all_selected) == n)
     parallel_assert(

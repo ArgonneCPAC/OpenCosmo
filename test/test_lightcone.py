@@ -40,8 +40,9 @@ def test_create_theta_phi_coords(haloproperties_600_path, haloproperties_601_pat
 
     ra = (data["phi"] * u.rad).to(u.deg)
     dec = ((np.pi / 2 - data["theta"]) * u.rad).to(u.deg)
-    assert np.allclose(data["ra"], ra, atol=0.01, rtol=1e-2)
-    assert np.allclose(data["dec"], dec, atol=0.01, rtol=1e-2)
+
+    assert np.allclose(data["ra"], ra, atol=0.0001, rtol=1e-2)
+    assert np.allclose(data["dec"], dec, atol=0.0001, rtol=1e-2)
 
 
 def test_lightcone_physical_units(haloproperties_600_path):
@@ -538,13 +539,6 @@ def test_lightcone_stacking_nostack(
     assert ds_new.z_range == ds.z_range
 
 
-@pytest.mark.skip
 def test_lightcone_structure_collection_open(structure_600):
     c = oc.open(*structure_600)
     assert isinstance(c, oc.StructureCollection)
-
-
-@pytest.mark.skip
-def test_lightcone_structure_collection_open_multiple(structure_600, structure_601):
-    with pytest.raises(NotImplementedError):
-        _ = oc.open(*structure_600, *structure_601)

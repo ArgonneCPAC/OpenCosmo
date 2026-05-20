@@ -28,6 +28,14 @@ class Schema(NamedTuple):
     attributes: dict[str, Any]
 
 
+def dataset_schema_length(schema: Schema) -> Optional[int]:
+    if schema.type != FileEntry.DATASET:
+        return None
+
+    column = next(iter(schema.children["data"].columns.values()))
+    return column.shape[0]
+
+
 def empty_schema(name: str, type_: FileEntry) -> Schema:
     return Schema(name, type_, {}, {}, {})
 

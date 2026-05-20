@@ -11,6 +11,7 @@ import numpy as np
 
 import opencosmo as oc
 from opencosmo import collection as occ
+from opencosmo.collection.structure import structure as sc
 from opencosmo.dataset import state as st
 from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader, read_header
@@ -88,6 +89,7 @@ def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
     if len(valid_targets) > 1:
         collection_type = __determine_multi_file_collection_type(valid_targets)
         return collection_type.open(valid_targets, **open_kwargs)
+
     return __open_single_file(valid_targets[0], open_kwargs)
 
 
@@ -143,7 +145,7 @@ def __open_single_file(
             == FileType.STRUCTURE_COLLECTION
         ):
             # Structure collection
-            return occ.StructureCollection.open([target])
+            return occ.StructureCollection.open([target], **open_kwargs)
     elif target["dataset_groups"]:
         # Sometimes, lightcones have multiple datasets per slice
         if all(
@@ -151,6 +153,15 @@ def __open_single_file(
             for group_type in target["dataset_group_types"].values()
         ):
             return occ.Lightcone.open([target])
+
+        # Lightcone structure collection
+        elif (
+            target["dataset_group_types"].get("halo_properties") == FileType.LIGHTCONE
+            or target["dataset_group_types"].get("galaxy_properties")
+            == FileType.LIGHTCONE
+        ):
+            result = sc.StructureCollection.open([target], **open_kwargs)
+            return result
 
         datasets = {
             name: __open_dataset_targets_for_sim_collection(
@@ -552,7 +563,7 @@ def open_single_dataset(
         return __open_healpix_map(dataset, sim_region)
     elif header.file.is_lightcone and not bypass_lightcone:
         return occ.Lightcone.from_datasets(
-            {"data": dataset}, header.lightcone["z_range"], **open_kwargs
+            {0: dataset}, header.lightcone["z_range"], **open_kwargs
         )
 
     return dataset
