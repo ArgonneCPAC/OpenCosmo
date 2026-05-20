@@ -134,7 +134,6 @@ def test_write_lightcone_structure(halos_600_path, halos_601_path, per_test_dir)
         )
     )
 
-    print("ASDFASDFASFDFASD")
     oc.write(per_test_dir / "halos.hdf5", ds)
     ds_new = oc.open(per_test_dir / "halos.hdf5")
 

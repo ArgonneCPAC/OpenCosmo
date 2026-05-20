@@ -243,7 +243,6 @@ def test_box_search_write(haloproperties_600_path, per_test_dir):
 
     # Each rank works with a pixel it owns so the search is guaranteed to find data.
     pixel = np.random.choice(ds.region.pixels)
-    print(pixel)
     ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
 
     # Write with a wider box, refine with a narrower one after re-open.
@@ -893,8 +892,6 @@ def test_lc_take_global_start_sorted(haloproperties_600_path, haloproperties_601
 
     selected = lc_taken.select("fof_halo_mass").get_data("numpy")
     all_selected = np.concatenate(comm.allgather(selected))
-    print(all_selected)
-    print(threshold)
 
     parallel_assert(len(all_selected) == n)
     parallel_assert(

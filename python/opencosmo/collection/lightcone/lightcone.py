@@ -519,7 +519,7 @@ class Lightcone(dict):
 
         for step, datasets in output_datasets.items():
             if len(datasets) == 0:
-                stack_lightcone_datasets_in_schema(datasets, None, None)
+                stack_lightcone_datasets_in_schema(datasets, None, None, no_stack)
                 continue
 
             all_datasets = list(chain(*tuple(lst for lst in datasets.values())))
