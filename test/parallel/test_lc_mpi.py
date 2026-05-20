@@ -141,8 +141,8 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    rank_tags = ds.select("fof_halo_tag").get_data()
-    new_rank_tags = new_ds.select("fof_halo_tag").get_data()
+    rank_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+    new_rank_tags = new_ds.select("fof_halo_tag").get_data("numpy", unpack=False)
 
     all_tags = np.concatenate(comm.allgather(rank_tags))
     all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
