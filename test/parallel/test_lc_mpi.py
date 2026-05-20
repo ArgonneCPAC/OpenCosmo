@@ -239,9 +239,9 @@ def test_box_search_chain_failure(haloproperties_600_path):
 @pytest.mark.parallel(nprocs=4)
 def test_box_search_write(haloproperties_600_path, per_test_dir):
     """Written box-search result supports a narrower refinement search on re-open."""
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
 
-    # Each rank works with a pixel it owns so the search is guaranteed to find data.
     pixel = np.random.choice(ds.region.pixels)
     ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
 
@@ -258,9 +258,12 @@ def test_box_search_write(haloproperties_600_path, per_test_dir):
     ds = ds.box_search(p1_inner, p2_inner)
     new_ds = new_ds.box_search(p1_inner, p2_inner)
 
-    assert set(ds.get_data(unpack=False)["fof_halo_tag"]) == set(
-        new_ds.get_data(unpack=False)["fof_halo_tag"]
-    )
+    original_halo_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+    written_halo_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+
+    all_original_tags = np.concat(comm.allgather(original_halo_tags))
+    all_written_tags = np.concat(comm.allgather(written_halo_tags))
+    parallel_assert(np.all(all_original_tags == all_written_tags))
 
 
 @pytest.mark.parallel(nprocs=4)
