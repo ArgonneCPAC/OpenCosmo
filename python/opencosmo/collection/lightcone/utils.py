@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Optional, Sequence
 
 import healpy as hp
 import numpy as np
-from returns.maybe import Maybe, Nothing
 
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.dataset import dataset as ds
@@ -78,37 +77,32 @@ def take_from_sorted(
     return sorted_indices
 
 
-def determine_max_level(lightcone: lc.Lightcone, requested_level: int) -> Maybe[int]:
+def determine_max_level(lightcone: lc.Lightcone) -> Optional[int]:
     """
-    Find the common level that can be used by all the trees and is at least equal to the
-    requested level.
+    Return the minimum tree max_level across all datasets in the lightcone, or
+    None if any dataset has no spatial index.
     """
-
-    max_level: Maybe[int] = Nothing
+    max_level: Optional[int] = None
     for ds_ in lightcone.values():
         if isinstance(ds_, lc.Lightcone):
-            ds_level = determine_max_level(ds_, requested_level)
+            ds_level = determine_max_level(ds_)
         else:
             assert isinstance(ds_, ds.Dataset)
-            ds_level = Maybe.from_optional(ds_.tree).map(lambda t: t.max_level)
-        max_level = ds_level.lash(lambda _: ds_level)
-        max_level = max_level.bind(
-            lambda ml: ds_level.map(lambda dl: ml if dl >= ml else dl)
-        )
+            ds_level = ds_.tree.max_level if ds_.tree is not None else None
+        if ds_level is None:
+            return None
+        if max_level is None or ds_level < max_level:
+            max_level = ds_level
     return max_level
-
-
-def raise_missing_spatial_index(_):
-    raise ValueError("Lightcone does not have a spatial index!")
 
 
 def get_pixels(
     lightcone: lc.Lightcone, level: int, is_occupied: Optional[np.ndarray] = None
 ):
     # We know nside is a power of two at this point
-    available_level = (
-        determine_max_level(lightcone, level).lash(raise_missing_spatial_index).unwrap()
-    )
+    available_level = determine_max_level(lightcone)
+    if available_level is None:
+        raise ValueError("Lightcone does not have a spatial index!")
     if level > available_level:
         raise ValueError(
             f"The maximum available nside for this lightcone is {2**available_level}, but {2**level} was requested"
@@ -119,7 +113,9 @@ def get_pixels(
 
     for ds_ in lightcone.values():
         if isinstance(ds_, lc.Lightcone):
-            is_occupied = get_pixels(ds_, level, is_occupied)
+            lightcone_pixels = get_pixels(ds_, level, is_occupied)
+            is_occupied[lightcone_pixels] = True
+            continue
 
         assert isinstance(ds_, ds.Dataset)
         tree = ds_.tree

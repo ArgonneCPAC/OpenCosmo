@@ -703,16 +703,14 @@ class Lightcone(dict):
         level = int(level)
         pixels = np.atleast_1d(pixels)
         pixels = np.unique(pixels)
-        if (
-            not np.isdtype(pixels.dtype, "integral")
-            or pixels[0] < 0
-            or pixels[-1] > hp.nside2npix(nside)
-        ):
+        if not np.isdtype(pixels.dtype, "integral") or len(pixels) == 0:
+            raise ValueError("Pixels must be a 1d array of positive integers")
+        if pixels[0] < 0 or pixels[-1] >= hp.nside2npix(nside):
             raise ValueError("Pixels must be a 1d array of positive integers")
         output = {}
         for name, ds in self.items():
             if isinstance(ds, Lightcone):
-                output[name] = ds.pixel_search(pixels)
+                output[name] = ds.pixel_search(pixels, nside)
                 continue
             rows = ds.tree.project_on_index(level, ds.index, pixels)
             output[name] = ds.take_rows(rows)
