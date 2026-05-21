@@ -1,0 +1,1 @@
+Add the :py:meth:`Lightcone.get_pixels() <opencosmo.Lightcone.get_pixels()` to retrieve the healpix pixels covered by a lightcone.
