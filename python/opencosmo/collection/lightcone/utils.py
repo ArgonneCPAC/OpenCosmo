@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 
+import healpy as hp
 import numpy as np
+from returns.maybe import Maybe, Nothing
 
-from opencosmo.collection.lightcone import lightcone as oclc
+from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo.dataset import dataset as ds
 
 if TYPE_CHECKING:
     from astropy.table import Table
 
-    from opencosmo import Dataset
 
-
-def get_redshift_range(datasets: Sequence[Dataset | oclc.Lightcone]):
+def get_redshift_range(datasets: Sequence[ds.Dataset | lc.Lightcone]):
     redshift_ranges = list(map(get_single_redshift_range, datasets))
     min_z = min(rr[0] for rr in redshift_ranges)
     max_z = max(rr[1] for rr in redshift_ranges)
@@ -20,8 +21,8 @@ def get_redshift_range(datasets: Sequence[Dataset | oclc.Lightcone]):
     return (min_z, max_z)
 
 
-def get_single_redshift_range(dataset: Dataset | oclc.Lightcone):
-    if isinstance(dataset, oclc.Lightcone):
+def get_single_redshift_range(dataset: ds.Dataset | lc.Lightcone):
+    if isinstance(dataset, lc.Lightcone):
         return dataset.z_range
     redshift_range = dataset.header.lightcone["z_range"]
     if redshift_range is not None:
@@ -34,7 +35,7 @@ def get_single_redshift_range(dataset: Dataset | oclc.Lightcone):
     return (min_redshift, max_redshift)
 
 
-def is_in_range(dataset: Dataset, z_low: float, z_high: float):
+def is_in_range(dataset: ds.Dataset, z_low: float, z_high: float):
     z_range = dataset.header.lightcone["z_range"]
     if z_range is None:
         z_range = get_single_redshift_range(dataset)
@@ -54,7 +55,7 @@ def sort_table(table: Table, column: str, invert: bool):
 
 
 def take_from_sorted(
-    lightcone: "oclc.Lightcone", sort_by: str, invert: bool, n: int, at: str | int
+    lightcone: lc.Lightcone, sort_by: str, invert: bool, n: int, at: str | int
 ):
     column = np.concatenate(
         [ds.select(sort_by).get_data("numpy") for ds in lightcone.values()]
@@ -75,3 +76,58 @@ def take_from_sorted(
 
     sorted_indices = np.sort(sort_index)
     return sorted_indices
+
+
+def determine_max_level(lightcone: lc.Lightcone, requested_level: int) -> Maybe[int]:
+    """
+    Find the common level that can be used by all the trees and is at least equal to the
+    requested level.
+    """
+
+    max_level = Nothing
+    for ds_ in lightcone.values():
+        if isinstance(ds_, lc.Lightcone):
+            ds_level = determine_max_level(ds_, requested_level)
+        else:
+            assert isinstance(ds_, ds.Dataset)
+            ds_level = Maybe.from_optional(ds_.tree).map(lambda t: t.max_level)
+        max_level = ds_level.lash(lambda _: ds_level)
+        max_level = max_level.bind(
+            lambda ml: ds_level.map(lambda dl: ml if dl >= ml else dl)
+        )
+    return max_level
+
+
+def raise_missing_spatial_index():
+    raise ValueError("Lightcone does not have a spatial index!")
+
+
+def get_pixels(
+    lightcone: lc.Lightcone, level: int, is_occupied: Optional[np.ndarray] = None
+):
+    # We know nside is a power of two at this point
+    available_level = (
+        determine_max_level(lightcone, level).lash(raise_missing_spatial_index).unwrap()
+    )
+    if level > available_level:
+        raise ValueError(
+            f"The maximum available nside for this lightcone is {2**available_level}, but {2**level} was requested"
+        )
+
+    if is_occupied is None:
+        is_occupied = np.zeros(hp.nside2npix(2**level), dtype=bool)
+
+    for ds_ in lightcone.values():
+        if isinstance(ds_, lc.Lightcone):
+            is_occupied = get_pixels(ds_, level, is_occupied)
+
+        assert isinstance(ds_, ds.Dataset)
+        tree = ds_.tree
+        if tree is None:
+            raise ValueError(
+                "One or more datasets in this lightcone does not have a spatial index!"
+            )
+        read_level = tree.max_level if tree.max_level < level else level
+        ds_pixels = tree.get_occupied_partitions(read_level, ds_.index)
+        is_occupied[ds_pixels] = True
+    return np.where(is_occupied)[0]

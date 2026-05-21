@@ -1,4 +1,5 @@
 import astropy.units as u
+import healpy as hp
 import numpy as np
 import pytest
 from astropy.cosmology import units as cu
@@ -68,6 +69,37 @@ def test_lc_collection_restrict_z(haloproperties_600_path, haloproperties_601_pa
     masked_redshifts = (original_redshifts > 0.04) & (original_redshifts < 0.0405)
     assert np.all((redshifts > 0.04) & (redshifts < 0.0405))
     assert np.sum(masked_redshifts) == len(redshifts)
+
+
+def test_lc_collection_pixel_search(haloproperties_600_path, haloproperties_601_path):
+    ds = oc.open(haloproperties_601_path, haloproperties_600_path)
+    pixels = ds.get_pixels(64)
+
+    all_coordinates = ds.select("theta", "phi").get_data("numpy")
+    all_pixels = hp.ang2pix(
+        64, all_coordinates["theta"], all_coordinates["phi"], nest=True
+    )
+
+    assert np.all(np.unique(all_pixels) == pixels)
+
+    pixels_to_search = np.sort(np.random.choice(pixels, 20, replace=False))
+    ds_bound = ds.pixel_search(pixels_to_search)
+
+    bound_coordinates = ds_bound.select("ra", "dec").get_data("numpy")
+    bound_pixels = np.unique(
+        hp.ang2pix(
+            64,
+            bound_coordinates["ra"],
+            bound_coordinates["dec"],
+            lonlat=True,
+            nest=True,
+        )
+    )
+    assert np.all(pixels_to_search == bound_pixels)
+    expected_index = np.isin(all_pixels, pixels_to_search)
+    found_halo_tags = ds_bound.select("fof_halo_tag").get_data()
+    expected_halo_tags = ds.select("fof_halo_tag").get_data()[expected_index]
+    assert np.all(found_halo_tags == expected_halo_tags)
 
 
 def test_lc_collection_write(

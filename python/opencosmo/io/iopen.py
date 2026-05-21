@@ -511,7 +511,7 @@ def open_single_dataset(
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
     elif header.file.is_lightcone and tree is not None:
-        pixels = tree.get_full_index(tree.max_level)
+        pixels = tree.get_partitions_with_data(tree.max_level)
         sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
     elif header.file.data_type == "healpix_map":
         assert header.healpix_map["full_sky"]
@@ -602,7 +602,7 @@ def __expand_lightcone_region(region, tree):
     pixels = pixels[:, None] * npix_ratio + np.arange(npix_ratio)
     pixels = pixels.flatten()
 
-    full_pixels = tree.get_full_index(tree.max_level)
+    full_pixels = tree.get_partitions_with_data(tree.max_level)
     full_pixels = np.intersect1d(pixels, full_pixels)
     return HealpixRegion(full_pixels, 2**tree.max_level)
 

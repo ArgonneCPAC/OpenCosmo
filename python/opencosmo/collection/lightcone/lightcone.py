@@ -16,6 +16,7 @@ from typing import (
 )
 from warnings import warn
 
+import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
 from deprecated import deprecated
@@ -46,6 +47,7 @@ from opencosmo.plugins.hook import fold
 
 if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
+    import numpy.typing as npt
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
 
@@ -288,6 +290,15 @@ class Lightcone(dict):
         """
 
         return self.__header.lightcone["z_range"]
+
+    def get_pixels(self, nside: int = 128):
+        """The healpix pixels this lightcone covers"""
+
+        level = np.log2(nside)
+        if not level.is_integer() or level < 0:
+            raise ValueError("nside must be a positive power of two!")
+
+        return lcutils.get_pixels(self, int(level))
 
     def get_data(self, format="astropy", unpack: bool = True, **kwargs):
         """
@@ -628,6 +639,28 @@ class Lightcone(dict):
         """
         region = oc.make_skybox(p1, p2)
         return self.bound(region)
+
+    def pixel_search(self, pixels: npt.NDArray[np.int_], nside: int = 64):
+        level = np.log2(nside)
+        if not level.is_integer() or level < 0:
+            raise ValueError("nside must be a positive power of two!")
+        level = int(level)
+        pixels = np.atleast_1d(pixels)
+        pixels = np.unique(pixels)
+        if (
+            not np.isdtype(pixels.dtype, "integral")
+            or pixels[0] < 0
+            or pixels[-1] > hp.nside2npix(nside)
+        ):
+            raise ValueError("Pixels must be a 1d array of positive integers")
+        output = {}
+        for name, ds in self.items():
+            if isinstance(ds, Lightcone):
+                output[name] = ds.pixel_search(pixels)
+                continue
+            rows = ds.tree.project_on_index(level, ds.index, pixels)
+            output[name] = ds.take_rows(rows)
+        return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
 
     def evaluate(
         self,
