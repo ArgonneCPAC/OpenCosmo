@@ -16,6 +16,7 @@ from typing import (
 )
 from warnings import warn
 
+import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
 from deprecated import deprecated
@@ -46,6 +47,7 @@ from opencosmo.plugins.hook import fold
 
 if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
+    import numpy.typing as npt
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
 
@@ -288,6 +290,40 @@ class Lightcone(dict):
         """
 
         return self.__header.lightcone["z_range"]
+
+    def get_pixels(self, nside: int = 64):
+        """
+        Return the HEALPix pixels occupied by this lightcone at a given resolution.
+
+        Pixel indices are returned in nested ordering. The ``nside`` parameter
+        controls angular resolution: larger values produce finer pixels. The
+        requested resolution may not exceed the resolution of the spatial index
+        stored in the file.
+
+        Parameters
+        ----------
+        nside : int, default = 64
+            The HEALPix resolution parameter. Must be a positive power of two.
+
+        Returns
+        -------
+        pixels : numpy.ndarray[int]
+            HEALPix pixel indices (nested ordering) occupied by this lightcone
+            at the given resolution.
+
+        Raises
+        ------
+        ValueError
+            If ``nside`` is not a positive power of two, if ``nside`` exceeds
+            the maximum resolution of the spatial index, or if the lightcone
+            does not have a spatial index.
+        """
+
+        level = np.log2(nside)
+        if not level.is_integer() or level < 0:
+            raise ValueError("nside must be a positive power of two!")
+
+        return lcutils.get_pixels(self, int(level))
 
     def get_data(self, format="astropy", unpack: bool = True, **kwargs):
         """
@@ -628,6 +664,57 @@ class Lightcone(dict):
         """
         region = oc.make_skybox(p1, p2)
         return self.bound(region)
+
+    def pixel_search(self, pixels: npt.NDArray[np.int_], nside: int = 64):
+        """
+        Return the subset of this lightcone that falls within a set of HEALPix pixels.
+
+        Pixels must be specified in nested ordering and must be valid indices at
+        the given ``nside``. Duplicate pixel indices are ignored. Use
+        :py:meth:`get_pixels <opencosmo.Lightcone.get_pixels>` to discover
+        which pixels this lightcone covers.
+
+        Parameters
+        ----------
+        pixels : array_like[int]
+            HEALPix pixel indices to query, in nested ordering. Must be a 1-D
+            array of non-negative integers. Values must be less than
+            ``healpy.nside2npix(nside)``.
+        nside : int, default = 64
+            The HEALPix resolution parameter. Must be a positive power of two
+            and must not exceed the resolution of the spatial index stored in
+            the file.
+
+        Returns
+        -------
+        lightcone : opencosmo.Lightcone
+            A new lightcone containing only the objects that fall within the
+            specified pixels.
+
+        Raises
+        ------
+        ValueError
+            If ``nside`` is not a positive power of two, or if ``pixels``
+            contains values that are out of range for the given ``nside``.
+        """
+        level = np.log2(nside)
+        if not level.is_integer() or level < 0:
+            raise ValueError("nside must be a positive power of two!")
+        level = int(level)
+        pixels = np.atleast_1d(pixels)
+        pixels = np.unique(pixels)
+        if not np.isdtype(pixels.dtype, "integral") or len(pixels) == 0:
+            raise ValueError("Pixels must be a 1d array of positive integers")
+        if pixels[0] < 0 or pixels[-1] >= hp.nside2npix(nside):
+            raise ValueError("Pixels must be a 1d array of positive integers")
+        output = {}
+        for name, ds in self.items():
+            if isinstance(ds, Lightcone):
+                output[name] = ds.pixel_search(pixels, nside)
+                continue
+            rows = ds.tree.project_on_index(level, ds.index, pixels)
+            output[name] = ds.take_rows(rows)
+        return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
 
     def evaluate(
         self,

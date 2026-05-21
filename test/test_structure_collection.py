@@ -189,3 +189,14 @@ def test_data_link_sort_write_lightcone(halos_600_path, halos_601_path, tmp_path
             halo["halo_properties"]["fof_halo_tag"]
             == halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")[0]
         )
+
+
+def test_redshift_bound(halos_600_path, halos_601_path, tmp_path):
+    collection = oc.open(*halos_600_path, *halos_601_path)
+    collection = collection.with_redshift_range(0.038, 0.039)
+
+    collection = collection.filter(oc.col("sod_halo_mass") > 10**14)
+    for halo in collection.halos():
+        redshift = halo["halo_properties"]["redshift"]
+        assert redshift > 0.038 and redshift < 0.039
+        verify_halo(halo)

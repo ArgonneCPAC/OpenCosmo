@@ -108,6 +108,20 @@ def test_open_structures(halo_paths, galaxy_paths):
     assert isinstance(c3, oc.StructureCollection)
 
 
+def test_call_lightcone_fails(halo_paths, galaxy_paths):
+    ds = oc.open(*halo_paths, *galaxy_paths)
+    with pytest.raises(AttributeError):
+        ds.get_pixels()
+    with pytest.raises(AttributeError):
+        ds.cone_search(None, None)
+    with pytest.raises(AttributeError):
+        ds.box_search(None, None)
+    with pytest.raises(AttributeError):
+        ds.pixel_search(None)
+    with pytest.raises(AttributeError):
+        ds.with_redshift_range(0.0, 1.0)
+
+
 def test_multi_filter(multi_path):
     collection = oc.open(multi_path)
     collection = collection.filter(oc.col("sod_halo_mass") > 0)

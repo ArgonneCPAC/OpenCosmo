@@ -3,6 +3,7 @@ import shutil
 
 import astropy.units as u
 import h5py
+import healpy as hp
 import numpy as np
 import pytest
 from opencosmo.spatial.region import HealpixRegion
@@ -300,6 +301,39 @@ def test_region(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487)
     assert isinstance(ds.region, HealpixRegion)
     assert len(ds.region.pixels) == 1610
+
+
+def test_lc_collection_pixel_search_with_synthetics(core_path_475, core_path_487):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    pixels = ds.get_pixels(64)
+
+    all_coordinates = ds.select("ra", "dec").get_data("numpy")
+    all_pixels = hp.ang2pix(
+        64, all_coordinates["ra"], all_coordinates["dec"], nest=True, lonlat=True
+    )
+
+    assert np.all(np.unique(all_pixels) == pixels)
+
+    pixels_to_search = np.sort(np.random.choice(pixels, 20, replace=False))
+    ds_bound = ds.pixel_search(pixels_to_search)
+    for ds_ in ds_bound.values():
+        assert isinstance(ds_, oc.Lightcone)
+
+    bound_coordinates = ds_bound.select("ra", "dec").get_data("numpy")
+    bound_pixels = np.unique(
+        hp.ang2pix(
+            64,
+            bound_coordinates["ra"],
+            bound_coordinates["dec"],
+            lonlat=True,
+            nest=True,
+        )
+    )
+    assert np.all(pixels_to_search == bound_pixels)
+    expected_index = np.isin(all_pixels, pixels_to_search)
+    found_halo_tags = ds_bound.select("gal_id").get_data()
+    expected_halo_tags = ds.select("gal_id").get_data()[expected_index]
+    assert np.all(found_halo_tags == expected_halo_tags)
 
 
 def test_open_bad_data(core_path_475, core_path_487, invalid_data_path):

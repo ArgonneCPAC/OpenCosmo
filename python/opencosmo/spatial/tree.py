@@ -13,7 +13,14 @@ except ImportError:
     MPI = None  # type: ignore
 
 
-from opencosmo.index import from_size, from_start_size_group, get_data, n_in_range
+from opencosmo.index import (
+    from_size,
+    from_start_size_group,
+    get_data,
+    into_array,
+    n_in_range,
+    project,
+)
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import (
     ColumnCombineStrategy,
@@ -177,7 +184,7 @@ class Tree:
     def max_level(self):
         return self.__max_level
 
-    def get_full_index(self, level: int):
+    def get_partitions_with_data(self, level: int):
         if level > self.max_level:
             raise ValueError(
                 "Requested level is greater than the max level of this tree!"
@@ -185,6 +192,30 @@ class Tree:
         sizes = self.__columns[f"level_{level}/size"][:]
 
         return np.where(sizes > 0)[0]
+
+    def get_occupied_partitions(self, level: int, index: DataIndex):
+        if level > self.max_level:
+            raise ValueError(
+                "Level must be less than or equal to the max level of this tree"
+            )
+        starts = self.__columns[f"level_{level}/start"][:]
+        return np.searchsorted(starts, into_array(index), side="right") - 1
+
+    def project_on_index(
+        self, level: int, index: DataIndex, partitions: Optional[DataIndex]
+    ):
+        if level > self.max_level:
+            raise ValueError(
+                "Level must be less than or equal to the max level of this tree"
+            )
+        starts = self.__columns[f"level_{level}/start"]
+        sizes = self.__columns[f"level_{level}/size"]
+        if partitions is None:
+            partitions = from_size(len(starts))
+
+        return project(
+            index, (get_data(starts, partitions), get_data(sizes, partitions))
+        )
 
     def partition(
         self, n_partitions: int, counts: h5py.Group, min_level: Optional[int] = None

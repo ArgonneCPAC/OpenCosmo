@@ -229,6 +229,10 @@ class Dataset:
         return self.__state.sort_key[0] if self.__state.sort_key is not None else None
 
     @property
+    def tree(self) -> Optional[Tree]:
+        return self.__tree
+
+    @property
     @deprecated(
         version="1.1.0",
         reason="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",

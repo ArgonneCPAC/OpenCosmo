@@ -406,6 +406,52 @@ pub(crate) mod index {
         PyList::new(py, output.drain(0..).map(|a| a.into_pyarray(py)))
     }
 
+    #[pyfunction(name = "project_chunked_on_simple")]
+    fn project_chunked_on_simple_py<'py>(
+        py: Python<'py>,
+        simple: &Bound<'_, PyAny>,
+        start: &Bound<'_, PyAny>,
+        size: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyArray1<i64>>> {
+        let simple_arr = unpack_index_array(simple)?;
+        let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
+        let result = project_chunked_on_simple(
+            simple_arr.as_array(),
+            start_arr.as_array(),
+            size_arr.as_array(),
+        );
+        Ok(result.into_pyarray(py))
+    }
+
+    fn project_chunked_on_simple(
+        simple: ArrayView1<'_, i64>,
+        start: ArrayView1<'_, i64>,
+        size: ArrayView1<'_, i64>,
+    ) -> Array1<i64> {
+        let mut output: Vec<i64> = Vec::new();
+        let n_chunks = start.len();
+        if simple.is_empty() || n_chunks == 0 {
+            return Array1::from_vec(output);
+        }
+
+        let mut chunk_idx = 0usize;
+        for (i, &val) in simple.iter().enumerate() {
+            // Advance past chunks whose end is at or before val.
+            while chunk_idx < n_chunks && val >= start[chunk_idx] + size[chunk_idx] {
+                chunk_idx += 1;
+            }
+            if chunk_idx >= n_chunks {
+                break;
+            }
+            // val is before the current chunk; skip.
+            if val < start[chunk_idx] {
+                continue;
+            }
+            output.push(i as i64);
+        }
+        Array1::from_vec(output)
+    }
+
     fn rebuild_simple_by_ranges(
         index: ArrayView1<'_, i64>,
         range_starts: ArrayView1<'_, i64>,
