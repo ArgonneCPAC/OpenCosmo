@@ -84,7 +84,7 @@ def determine_max_level(lightcone: lc.Lightcone, requested_level: int) -> Maybe[
     requested level.
     """
 
-    max_level = Nothing
+    max_level: Maybe[int] = Nothing
     for ds_ in lightcone.values():
         if isinstance(ds_, lc.Lightcone):
             ds_level = determine_max_level(ds_, requested_level)
@@ -98,7 +98,7 @@ def determine_max_level(lightcone: lc.Lightcone, requested_level: int) -> Maybe[
     return max_level
 
 
-def raise_missing_spatial_index():
+def raise_missing_spatial_index(_):
     raise ValueError("Lightcone does not have a spatial index!")
 
 

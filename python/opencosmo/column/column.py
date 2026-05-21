@@ -696,6 +696,7 @@ class DerivedColumn:
 
     def arctan2(self, other: ColumnOrScalar) -> DerivedColumn:
         return DerivedColumn(self, other, _arctan2)
+
     def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
         return ColumnMask(self, other, op.eq)
 
