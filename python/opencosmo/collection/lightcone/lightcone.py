@@ -291,8 +291,33 @@ class Lightcone(dict):
 
         return self.__header.lightcone["z_range"]
 
-    def get_pixels(self, nside: int = 128):
-        """The healpix pixels this lightcone covers"""
+    def get_pixels(self, nside: int = 64):
+        """
+        Return the HEALPix pixels occupied by this lightcone at a given resolution.
+
+        Pixel indices are returned in nested ordering. The ``nside`` parameter
+        controls angular resolution: larger values produce finer pixels. The
+        requested resolution may not exceed the resolution of the spatial index
+        stored in the file.
+
+        Parameters
+        ----------
+        nside : int, default = 64
+            The HEALPix resolution parameter. Must be a positive power of two.
+
+        Returns
+        -------
+        pixels : numpy.ndarray[int]
+            HEALPix pixel indices (nested ordering) occupied by this lightcone
+            at the given resolution.
+
+        Raises
+        ------
+        ValueError
+            If ``nside`` is not a positive power of two, if ``nside`` exceeds
+            the maximum resolution of the spatial index, or if the lightcone
+            does not have a spatial index.
+        """
 
         level = np.log2(nside)
         if not level.is_integer() or level < 0:
@@ -641,6 +666,37 @@ class Lightcone(dict):
         return self.bound(region)
 
     def pixel_search(self, pixels: npt.NDArray[np.int_], nside: int = 64):
+        """
+        Return the subset of this lightcone that falls within a set of HEALPix pixels.
+
+        Pixels must be specified in nested ordering and must be valid indices at
+        the given ``nside``. Duplicate pixel indices are ignored. Use
+        :py:meth:`get_pixels <opencosmo.Lightcone.get_pixels>` to discover
+        which pixels this lightcone covers.
+
+        Parameters
+        ----------
+        pixels : array_like[int]
+            HEALPix pixel indices to query, in nested ordering. Must be a 1-D
+            array of non-negative integers. Values must be less than
+            ``healpy.nside2npix(nside)``.
+        nside : int, default = 64
+            The HEALPix resolution parameter. Must be a positive power of two
+            and must not exceed the resolution of the spatial index stored in
+            the file.
+
+        Returns
+        -------
+        lightcone : opencosmo.Lightcone
+            A new lightcone containing only the objects that fall within the
+            specified pixels.
+
+        Raises
+        ------
+        ValueError
+            If ``nside`` is not a positive power of two, or if ``pixels``
+            contains values that are out of range for the given ``nside``.
+        """
         level = np.log2(nside)
         if not level.is_integer() or level < 0:
             raise ValueError("nside must be a positive power of two!")

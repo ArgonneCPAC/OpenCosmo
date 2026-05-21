@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from functools import reduce
+from functools import reduce, wraps
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
@@ -76,6 +76,18 @@ def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]
     offsets = np.insert(np.cumsum(lengths), 0, 0)
     offset = offsets[comm.Get_rank()]
     return psum + offset
+
+
+def _lightcone_only(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if not isinstance(self._StructureCollection__source, lc.Lightcone):
+            raise AttributeError(
+                f"{func.__name__} is only available on lightcone structure collections."
+            )
+        return func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class StructureCollection:
@@ -332,6 +344,7 @@ class StructureCollection:
             self.__derived_columns,
         )
 
+    @_lightcone_only
     def with_redshift_range(self, z_low: float, z_high: float) -> StructureCollection:
         """
         Restrict this lightcone structure collection to a specific redshift range.
@@ -358,10 +371,7 @@ class StructureCollection:
         ValueError
             If the requested range does not overlap the available redshift range.
         """
-        if not isinstance(self.__source, lc.Lightcone):
-            raise AttributeError(
-                "with_redshift_range is only available on lightcone structure collections."
-            )
+        assert isinstance(self.__source, lc.Lightcone)
         new_source = self.__source.with_redshift_range(z_low, z_high)
         new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
@@ -372,6 +382,7 @@ class StructureCollection:
             self.__derived_columns,
         )
 
+    @_lightcone_only
     def cone_search(self, center, radius) -> StructureCollection:
         """
         Search for structures within an angular distance of a point on the sky.
@@ -394,13 +405,10 @@ class StructureCollection:
         AttributeError
             If this is not a lightcone structure collection.
         """
-        if not isinstance(self.__source, lc.Lightcone):
-            raise AttributeError(
-                "cone_search is only available on lightcone structure collections."
-            )
         region = oc.make_cone(center, radius)
         return self.bound(region)
 
+    @_lightcone_only
     def box_search(self, p1, p2) -> StructureCollection:
         """
         Search for structures within a rectangular region of the sky (defined by
@@ -423,12 +431,89 @@ class StructureCollection:
         AttributeError
             If this is not a lightcone structure collection.
         """
-        if not isinstance(self.__source, lc.Lightcone):
-            raise AttributeError(
-                "box_search is only available on lightcone structure collections."
-            )
         region = oc.make_skybox(p1, p2)
         return self.bound(region)
+
+    @_lightcone_only
+    def get_pixels(self, nside: int = 64) -> np.ndarray:
+        """
+        Return the HEALPix pixels occupied by this lightcone structure collection
+        at a given resolution.
+
+        Pixel indices are returned in nested ordering. The ``nside`` parameter
+        controls angular resolution: larger values produce finer pixels. The
+        requested resolution may not exceed the resolution of the spatial index
+        stored in the file.
+
+        Parameters
+        ----------
+        nside : int, default = 64
+            The HEALPix resolution parameter. Must be a positive power of two.
+
+        Returns
+        -------
+        pixels : numpy.ndarray[int]
+            HEALPix pixel indices (nested ordering) occupied by this collection
+            at the given resolution.
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        ValueError
+            If ``nside`` is not a positive power of two, if ``nside`` exceeds
+            the maximum resolution of the spatial index, or if the lightcone
+            does not have a spatial index.
+        """
+        assert isinstance(self.__source, lc.Lightcone)
+        return self.__source.get_pixels(nside)
+
+    @_lightcone_only
+    def pixel_search(self, pixels: np.ndarray, nside: int = 64) -> StructureCollection:
+        """
+        Return the subset of this lightcone structure collection that falls within
+        a set of HEALPix pixels.
+
+        Pixels must be specified in nested ordering and must be valid indices at
+        the given ``nside``. Duplicate pixel indices are ignored. Use
+        :py:meth:`get_pixels <opencosmo.StructureCollection.get_pixels>` to
+        discover which pixels this collection covers.
+
+        Parameters
+        ----------
+        pixels : array_like[int]
+            HEALPix pixel indices to query, in nested ordering. Must be a 1-D
+            array of non-negative integers. Values must be less than
+            ``healpy.nside2npix(nside)``.
+        nside : int, default = 64
+            The HEALPix resolution parameter. Must be a positive power of two
+            and must not exceed the resolution of the spatial index stored in
+            the file.
+
+        Returns
+        -------
+        result : StructureCollection
+            A new collection containing only the structures that fall within
+            the specified pixels.
+
+        Raises
+        ------
+        AttributeError
+            If this is not a lightcone structure collection.
+        ValueError
+            If ``nside`` is not a positive power of two, or if ``pixels``
+            contains values that are out of range for the given ``nside``.
+        """
+        assert isinstance(self.__source, lc.Lightcone)
+        new_source = self.__source.pixel_search(pixels, nside)
+        new_handler = self.__handler.make_derived(self.__source)
+        return StructureCollection(
+            new_source,
+            self.__datasets,
+            self.__hide_source,
+            new_handler,
+            self.__derived_columns,
+        )
 
     def evaluate(
         self,
