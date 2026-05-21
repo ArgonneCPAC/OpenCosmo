@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 def get_data(data: h5py.Dataset | np.ndarray, index: DataIndex):
     if get_length(index) == 0:
-        return np.array([])
+        return np.array([], data.dtype)
     match index:
         case np.ndarray():
             return get_data_simple(data, index)

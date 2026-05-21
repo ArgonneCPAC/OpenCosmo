@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from opencosmo._lib import index as idxlib
+
 from . import into_array
 
 if TYPE_CHECKING:
@@ -29,8 +31,12 @@ def __project_simple_on_simple(source: SimpleIndex, other: SimpleIndex) -> Simpl
     return np.where(isin)[0]
 
 
-def __project_chunked_on_simple(source: SimpleIndex, other: ChunkedIndex) -> DataIndex:
-    return project(source, into_array(other))
+def __project_chunked_on_simple(
+    source: SimpleIndex, other: ChunkedIndex
+) -> SimpleIndex:
+    if len(other[0]) == 0:
+        return np.array([], dtype=np.int64)
+    return idxlib.project_chunked_on_simple(source, *other)
 
 
 def __project_simple_on_chunked(source: ChunkedIndex, other: SimpleIndex) -> DataIndex:

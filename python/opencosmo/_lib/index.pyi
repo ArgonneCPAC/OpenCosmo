@@ -22,3 +22,8 @@ def rebuild_chunked_by_ranges(
     chunk_starts: IndexArray,
     chunk_sizes: IndexArray,
 ) -> IndexArray: ...
+def project_chunked_on_simple(
+    simple: IndexArray,
+    chunk_starts: IndexArray,
+    chunk_sizes: IndexArray,
+) -> IndexArray: ...
