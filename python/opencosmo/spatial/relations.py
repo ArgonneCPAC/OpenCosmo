@@ -160,7 +160,6 @@ def __healpix_contains_other(region: HealpixRegion, other) -> bool:
         intersections = other.get_healpix_intersections(region.nside)
     except AttributeError:
         raise ValueError(f"Expected a 2D Sky Region but received {type(other)}")
-    print(intersections)
     return bool(np.all(np.isin(intersections, region.pixels)))
 
 
