@@ -406,8 +406,10 @@ class Dataset:
         else:
             new_intersects_index = np.array([], dtype=np.int64)
 
-        new_index = np.concatenate(
-            [into_array(contained_index), into_array(new_intersects_index)]
+        new_index = np.sort(
+            np.concatenate(
+                [into_array(contained_index), into_array(new_intersects_index)]
+            )
         )
 
         new_state = st.with_region(st.take_rows(self.__state, new_index), check_region)
