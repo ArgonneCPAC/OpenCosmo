@@ -12,12 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      prerelease: ${{ steps.check-version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT }}
           ref: 'release'
+
+      - name: Check if pre-release
+        id: check-version
+        run: |
+          if echo "${{ inputs.version }}" | grep -qE '(a|b|rc|alpha|beta|dev)[0-9]*$'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -31,9 +42,11 @@ jobs:
         run: uv run towncrier build --draft --version ${{ inputs.version }} > release_notes.rst
 
       - name: Build changelog
+        if: steps.check-version.outputs.prerelease == 'false'
         run: uv run towncrier build --yes --version ${{ inputs.version }}
 
       - name: Commit, tag, and push release branch
+        if: steps.check-version.outputs.prerelease == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -42,6 +55,14 @@ jobs:
           git commit -m "Release ${{ inputs.version }}"
           git tag ${{ inputs.version }}
           git push origin release --force
+          git push origin ${{ inputs.version }}
+
+      - name: Tag pre-release
+        if: steps.check-version.outputs.prerelease == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ inputs.version }}
           git push origin ${{ inputs.version }}
 
       - name: Upload release notes
@@ -105,7 +126,7 @@ jobs:
         run: uv publish --token ${{ secrets.PYPI_TOKEN }}
 
   github-release:
-    needs: publish
+    needs: [publish, prepare]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,4 +149,5 @@ jobs:
           tag: ${{ inputs.version }}
           bodyFile: release_notes.rst
           artifacts: dist/*
-          makeLatest: true
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          makeLatest: ${{ needs.prepare.outputs.prerelease == 'false' }}
