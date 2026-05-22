@@ -22,10 +22,13 @@ post_commit_hooks = []
 allow_shell_hooks = true
 
 [[tool.bumpversion.files]]
-filename = "src/opencosmo/__init__.py"
+filename = "python/opencosmo/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
 
 [[tool.bumpversion.files]]
 filename = "docs/source/conf.py"
+
+[[tool.bumpversion.files]]
+filename = "Cargo.toml"
