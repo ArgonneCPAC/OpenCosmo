@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import healpy as hp
 import numpy as np
+from astropy.coordinates import SkyCoord
 
 from opencosmo.index import into_array
 from opencosmo.spatial.region import HealpixRegion
@@ -47,4 +49,18 @@ class HealPixIndex:
             raise ValueError("Didn't recieve a 2D region!")
         nside = 2**level
         intersects = region.get_healpix_intersections(nside)
-        return {level: (np.array([]), intersects)}
+        boundaries = (
+            hp.boundaries(nside, intersects, nest=True)
+            .transpose(
+                0,
+                2,
+                1,
+            )
+            .reshape(-1, 3)
+        )
+        coords = SkyCoord(*hp.vec2ang(boundaries, lonlat=True), unit="deg")
+        coord_is_contained = region.contains(coords)
+        pixel_is_contained = np.all(coord_is_contained.reshape(-1, 4), axis=1)
+        return {
+            level: (intersects[pixel_is_contained], intersects[~pixel_is_contained])
+        }
