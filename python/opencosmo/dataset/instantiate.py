@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import rustworkx as rx
 
-from opencosmo.column.column import RawColumn
+from opencosmo.column.column import EvaluatedColumn, RawColumn
 from opencosmo.dataset.graph import build_dependency_graph
 
 if TYPE_CHECKING:
@@ -101,9 +101,12 @@ def build_derived_columns(
             name: all_data[dep_uuid][name]
             for name, dep_uuid in producer.dep_map.items()
         }
-        output = producer.evaluate(input_data, index)
-        if not isinstance(output, dict):
-            output = {next(iter(producer.produces)): output}
+        if isinstance(producer, EvaluatedColumn):
+            output = producer.evaluate_for_storage(input_data, index)
+        else:
+            output = producer.evaluate(input_data, index)
+            if not isinstance(output, dict):
+                output = {next(iter(producer.produces)): output}
         new_derived[producer.uuid] = output
         if not producer.no_cache:
             to_cache[producer.uuid] = output

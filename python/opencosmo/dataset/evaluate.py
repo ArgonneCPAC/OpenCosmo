@@ -10,6 +10,7 @@ from astropy.units import Quantity
 
 from opencosmo.column.column import EvaluatedColumn
 from opencosmo.column.evaluate import EvaluateStrategy, do_first_evaluation
+from opencosmo.dataset.formats import concat_chunks, fetch_as_dict
 from opencosmo.evaluate import (
     insert_data,
     make_output_from_first_values,
@@ -27,10 +28,6 @@ we are using here is known as a "visitor."
 def build_evaluated_column(
     dataset, func, vectorize, insert, format, batch_size, evaluate_kwargs
 ):
-    if format not in ["astropy", "numpy"]:
-        raise ValueError(
-            f"Evaluate only supports numpy and astropy format, got: {format}"
-        )
     kwarg_columns = set(evaluate_kwargs.keys()).intersection(dataset.columns)
     if kwarg_columns:
         raise ValueError(
@@ -69,12 +66,7 @@ def visit_dataset(
 ) -> dict[str, np.ndarray]:
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
-    requires_names = column.requires_names
-    data = dataset.select(requires_names).get_data(format=column.format)
-    try:
-        data = dict(data)
-    except (TypeError, ValueError):
-        data = {next(iter(requires_names)): data}
+    data = fetch_as_dict(dataset, column.requires_names, column.format)
     output = column.evaluate(data, dataset.index)
     if not isinstance(output, dict):
         assert len(column.produces) == 1
@@ -89,24 +81,22 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
 
     output = defaultdict(list)
 
-    requires_names = column.requires_names
     for start, end in np.lib.stride_tricks.sliding_window_view(ranges, 2):
-        batch_data = (
-            dataset.select(requires_names)
-            .take_range(start, end)
-            .get_data(format=column.format, unpack=False)
+        batch_data = fetch_as_dict(
+            dataset.take_range(start, end),
+            column.requires_names,
+            column.format,
+            unpack=False,
         )
-        try:
-            batch_data = dict(batch_data)
-        except TypeError:
-            batch_data = {next(iter(requires_names)): batch_data}
         batch_output = column.evaluate(batch_data, None)
         if batch_output is not None and not isinstance(batch_output, dict):
             batch_output = {column.produces.pop(): batch_output}
 
         for name, column_batch in batch_output.items():
             output[name].append(column_batch)
-    full_output = {name: np.concat(out) for name, out in output.items()}
+    full_output = {
+        name: concat_chunks(out, column.format) for name, out in output.items()
+    }
     return full_output
 
 

@@ -1,3 +1,4 @@
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -28,6 +29,12 @@ def test_return_pyarrow(input_path):
     assert all(isinstance(v, pa.Array) for v in data.values())
 
 
+def test_return_jax(input_path):
+    data = oc.open(input_path).get_data("jax")
+    assert isinstance(data, dict)
+    assert all(isinstance(v, jnp.ndarray) for v in data.values())
+
+
 def test_return_pandas_single(input_path):
     dataset = oc.open(input_path)
     column = np.random.choice(dataset.columns)
@@ -48,3 +55,10 @@ def test_return_pyarrow_single(input_path):
     column = np.random.choice(dataset.columns)
     data = dataset.select(column).get_data("arrow")
     assert isinstance(data, pa.Array)
+
+
+def test_return_jax_single(input_path):
+    dataset = oc.open(input_path)
+    column = np.random.choice(dataset.columns)
+    data = dataset.select(column).get_data("jax")
+    assert isinstance(data, jnp.ndarray)
