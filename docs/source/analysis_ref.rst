@@ -9,6 +9,8 @@ Analysis
 
 .. autofunction:: opencosmo.analysis.halo_projection_array
 
+.. autofunction:: opencosmo.analysis.animate_halos
+
 .. autofunction:: opencosmo.analysis.ParticleProjectionPlot
 
 .. autofunction:: opencosmo.analysis.ProjectionPlot

@@ -1,0 +1,1 @@
+Calls to :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` and :py:meth:`evaluate <opencosmo.Dataset.evaluate>` now accept an `allow_overwrite` flag. In this way you can "transform" a column by creating a derived column that depends on a column of the same name. The input will be the original column, and the output will be the new version.

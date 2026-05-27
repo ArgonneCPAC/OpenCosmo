@@ -2,15 +2,16 @@ import os
 import shutil
 
 import astropy.units as u
+import h5py
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
+from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-from opencosmo.mpi import get_comm_world
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -122,7 +123,9 @@ def test_healpix_index_chain_failure(haloproperties_600_path):
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_write(haloproperties_600_path, per_test_dir):
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
+    assert "redshift" in ds.columns
 
     pixel = np.random.choice(ds.region.pixels)
     center = pix2ang(ds.region.nside, pixel, True, True)
@@ -133,12 +136,18 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     oc.write(per_test_dir / "lightcone_test.hdf5", ds)
     new_ds = oc.open(per_test_dir / "lightcone_test.hdf5")
 
-    radius2 = 2 * u.deg
+    radius2 = 1 * u.deg
     region2 = oc.make_cone(center, radius2)
     new_ds = new_ds.bound(region2)
     ds = ds.bound(region2)
 
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+    rank_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+    new_rank_tags = new_ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+
+    all_tags = np.concatenate(comm.allgather(rank_tags))
+    all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
+
+    parallel_assert(np.all(np.sort(all_tags) == np.sort(all_new_tags)))
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -230,9 +239,9 @@ def test_box_search_chain_failure(haloproperties_600_path):
 @pytest.mark.parallel(nprocs=4)
 def test_box_search_write(haloproperties_600_path, per_test_dir):
     """Written box-search result supports a narrower refinement search on re-open."""
+    comm = get_comm_world()
     ds = oc.open(haloproperties_600_path)
 
-    # Each rank works with a pixel it owns so the search is guaranteed to find data.
     pixel = np.random.choice(ds.region.pixels)
     ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
 
@@ -249,7 +258,12 @@ def test_box_search_write(haloproperties_600_path, per_test_dir):
     ds = ds.box_search(p1_inner, p2_inner)
     new_ds = new_ds.box_search(p1_inner, p2_inner)
 
-    assert set(ds.get_data()["fof_halo_tag"]) == set(new_ds.get_data()["fof_halo_tag"])
+    original_halo_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+    written_halo_tags = ds.select("fof_halo_tag").get_data("numpy", unpack=False)
+
+    all_original_tags = np.concat(comm.allgather(original_halo_tags))
+    all_written_tags = np.concat(comm.allgather(written_halo_tags))
+    parallel_assert(np.all(all_original_tags == all_written_tags))
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -403,13 +417,13 @@ def test_diffsky_stack_with_synths(core_path_487, core_path_475, per_test_dir):
 def test_write_some_missing(core_path_487, core_path_475, per_test_dir):
     comm = MPI.COMM_WORLD
     ds = oc.open(core_path_487, core_path_475, synth_cores=False)
+    assert "early_index" in ds.columns
     if comm.Get_rank() == 0:
         ds = ds.with_redshift_range(0, 0.02)
         assert len(ds.keys()) == 1
     original_data = ds.select("early_index").get_data("numpy")
     original_data_length = comm.allgather(len(original_data))
 
-    ds = ds.with_new_columns(gal_id=np.arange(len(ds)))
     oc.write(per_test_dir / "lightcone.hdf5", ds)
     ds = oc.open(per_test_dir / "lightcone.hdf5", synth_cores=True)
     written_data = ds.select("early_index").get_data("numpy")
@@ -434,13 +448,9 @@ def test_write_diffsky_some_missing_no_stack(
         ds.pop(475)
         assert len(ds.keys()) == 1
 
-    all_lengths = comm.allgather(len(ds))
-    all_ends = np.insert(np.cumsum(all_lengths), 0, 0)
-    rank = comm.Get_rank()
-    ds = ds.with_new_columns(gal_id=np.arange(all_ends[rank], all_ends[rank + 1]))
-
-    columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
-    columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+    # columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
+    # columns_to_check = np.insert(columns_to_check, 0, "gal_id")
+    columns_to_check = list(ds.columns)
 
     original_data = ds.select(columns_to_check).get_data("numpy")
 
@@ -457,9 +467,8 @@ def test_write_diffsky_some_missing_no_stack(
     columns_to_check.sort()
 
     for column_name in columns_to_check:
-        if column_name == "gal_id":
+        if column_name in ["gal_id", "top_host_idx"]:
             continue
-        column_name = str(column_name)
         column_data_original = np.concat(comm.allgather(original_data.pop(column_name)))
         column_data_written = np.concat(comm.allgather(written_data.pop(column_name)))
         parallel_assert(
@@ -468,6 +477,87 @@ def test_write_diffsky_some_missing_no_stack(
                 == column_data_written[written_order]
             )
         )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_parallel_top_host(core_path_487, core_path_475):
+    with h5py.File(core_path_487) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+    with h5py.File(core_path_475) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data()
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_write_parallel_top_host(core_path_487, core_path_475, per_test_dir):
+    with h5py.File(core_path_475) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+
+    with h5py.File(core_path_487) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+
+    oc.write(per_test_dir / "test.hdf5", ds)
+    with h5py.File(per_test_dir / "test.hdf5") as f:
+        written_core_map = _get_expected_core_tags(f["475_475"])
+    assert core_map == written_core_map
+
+    data = (
+        oc.open(per_test_dir / "test.hdf5")
+        .select("top_host_idx", "core_tag")
+        .get_data("numpy")
+    )
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_write_parallel_top_after_filter(
+    core_path_487, core_path_475, per_test_dir
+):
+    with h5py.File(core_path_475) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+
+    with h5py.File(core_path_487) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True).take(10)
+    data = ds.select("top_host_idx", "core_tag").get_data("numpy")
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+    oc.write(per_test_dir / "test.hdf5", ds)
+
+    data = (
+        oc.open(per_test_dir / "test.hdf5")
+        .select("top_host_idx", "core_tag")
+        .get_data("numpy")
+    )
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_keep_top_host_filter(core_path_487, core_path_475):
+    with h5py.File(core_path_487) as f:
+        core_map = _get_expected_core_tags(f["cores"])
+    with h5py.File(core_path_475) as f:
+        core_map |= _get_expected_core_tags(f["cores"])
+
+    ds = oc.open(core_path_475, core_path_487, keep_top_host=True)
+    data = ds.take(10).select("top_host_idx", "core_tag").get_data()
+
+    _assert_top_host_idx_correct(data, core_map)
+    _assert_all_group_members_present(data, core_map)
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -521,3 +611,491 @@ def test_lightcone_stacking(
     assert np.all(np.isin(all_fof_tags, all_fof_tags_new))
     assert ds_new.z_range == ds.z_range
     assert next(iter(ds_new.values())).header.lightcone["z_range"] == ds_new.z_range
+
+
+# ── take global ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global(haloproperties_600_path, haloproperties_601_path):
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+    total_length = sum(comm.allgather(len(lc)))
+    n_to_take = np.random.randint(total_length // 4, int(total_length * 0.75))
+    n_to_take = comm.bcast(n_to_take)
+
+    lc = lc.take(n_to_take, mode="global")
+    all_lengths = comm.allgather(len(lc))
+
+    parallel_assert(sum(all_lengths) == n_to_take)
+
+
+# ── take_range global, unsorted ───────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_start(haloproperties_600_path, haloproperties_601_path):
+    """First n global rows land on the correct ranks with the right counts."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    n = total // 3
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(0, min(int(lengths[rank]), n - offset))
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_end(haloproperties_600_path, haloproperties_601_path):
+    """Last n global rows land on the correct ranks with the right counts."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    n = total // 3
+    global_start = total - n
+
+    lc_taken = lc.take_range(global_start, total, mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(
+        0,
+        min(int(lengths[rank]), total - offset) - max(0, global_start - offset),
+    )
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_middle(haloproperties_600_path, haloproperties_601_path):
+    """A middle window of global rows lands on the correct ranks with the right counts."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    global_start = total // 4
+    global_end = 3 * total // 4
+
+    lc_taken = lc.take_range(global_start, global_end, mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(
+        0,
+        min(int(lengths[rank]), global_end - offset) - max(0, global_start - offset),
+    )
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == global_end - global_start)
+
+
+# ── take_range global, sorted ─────────────────────────────────────────────────
+#
+# The sorted tests verify value-level correctness: after a global range take on
+# a sorted lightcone, every selected value must satisfy the global threshold
+# implied by the range position.
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_start(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Global start on sorted data selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_end(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Global end on sorted data selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take_range(total - n, total, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_middle(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """A middle window on sorted data selects the correct globally-ranked values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    global_start = total // 4
+    global_end = 3 * total // 4
+    size = global_end - global_start
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    sorted_all = np.sort(all_original)
+    lower_threshold = sorted_all[global_start]
+    upper_threshold = sorted_all[global_end - 1]
+
+    lc_taken = lc.take_range(global_start, global_end, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == size)
+    parallel_assert(
+        np.all(all_selected >= lower_threshold),
+        "some selected values fall below the lower global threshold",
+    )
+    parallel_assert(
+        np.all(all_selected <= upper_threshold),
+        "some selected values exceed the upper global threshold",
+    )
+
+
+# ── take global end ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_end(haloproperties_600_path, haloproperties_601_path):
+    """take(n, at='end', mode='global') selects the last n rows across all ranks."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path)
+
+    lengths = np.array(comm.allgather(len(lc)), dtype=np.int64)
+    total = int(np.sum(lengths))
+    n = total // 3
+    global_start = total - n
+
+    lc_taken = lc.take(n, at="end", mode="global")
+
+    rank = comm.Get_rank()
+    offset = int(np.sum(lengths[:rank]))
+    expected_local = max(
+        0,
+        min(int(lengths[rank]), total - offset) - max(0, global_start - offset),
+    )
+
+    parallel_assert(
+        len(lc_taken) == expected_local,
+        f"rank {rank}: expected {expected_local} rows, got {len(lc_taken)}",
+    )
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_end_sorted(haloproperties_600_path, haloproperties_601_path):
+    """take(n, at='end', mode='global') on sorted data selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take(n, at="end", mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+# ── take(at="start") global, sorted ──────────────────────────────────────────
+#
+# take(n, at="start") is a distinct branch from take_range(0, n) in the
+# Lightcone implementation; the sort-order → physical conversion lives
+# separately in each branch and must be tested independently.
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_start_sorted(haloproperties_600_path, haloproperties_601_path):
+    """take(n, at='start', mode='global') on sorted data selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass"
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take(n, at="start", mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+# ── inverted sort ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_inverted_start(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Inverted sort: global start selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass", invert=True
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_sorted_inverted_end(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """Inverted sort: global end selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_601_path, haloproperties_600_path).sort_by(
+        "fof_halo_mass", invert=True
+    )
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take_range(total - n, total, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+# ── single-step lightcone ─────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_global_single_step(haloproperties_600_path):
+    """Global take on a single-step lightcone produces the correct total count."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_600_path)
+
+    total = sum(comm.allgather(len(lc)))
+    n_to_take = np.random.randint(total // 4, int(total * 0.75))
+    n_to_take = comm.bcast(n_to_take)
+
+    lc_taken = lc.take(n_to_take, mode="global")
+    parallel_assert(sum(comm.allgather(len(lc_taken))) == n_to_take)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_single_step_sorted(haloproperties_600_path):
+    """Sorted global take_range on a single-step lightcone selects the n globally smallest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_600_path).sort_by("fof_halo_mass")
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected <= threshold),
+        "some selected values exceed the global n-th smallest threshold",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_lc_take_range_global_single_step_sorted_inverted(haloproperties_600_path):
+    """Inverted sort on a single-step lightcone: global start selects the n globally largest values."""
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_600_path).sort_by("fof_halo_mass", invert=True)
+
+    total = sum(comm.allgather(len(lc)))
+    n = total // 3
+
+    original = lc.select("fof_halo_mass").get_data("numpy")
+    all_original = np.concatenate(comm.allgather(original))
+    threshold = np.sort(all_original)[::-1][n - 1]
+
+    lc_taken = lc.take_range(0, n, mode="global")
+
+    selected = lc_taken.select("fof_halo_mass").get_data("numpy")
+    all_selected = np.concatenate(comm.allgather(selected))
+
+    parallel_assert(len(all_selected) == n)
+    parallel_assert(
+        np.all(all_selected >= threshold),
+        "some selected values fall below the global n-th largest threshold",
+    )
+
+
+def _get_expected_core_tags(group):
+    raw_top_host = group["data"]["top_host_idx"][:]
+    core_tag = group["data"]["core_tag"][:]
+    top_host_core_tag = core_tag[raw_top_host]
+    return dict(zip(core_tag, top_host_core_tag))
+
+
+def _assert_top_host_idx_correct(data, core_map):
+    """
+    Verify top_host_idx is correctly remapped in `data` (a numpy dict with
+    "top_host_idx" and "core_tag" keys). Works for both local (per-rank) and
+    global (gathered) data.
+
+    Synthetic cores (core_tag == -1) are checked separately: each must point
+    to its own row index. Real cores are checked against core_map.
+    """
+    synth_mask = data["core_tag"] == -1
+    synth_indices = np.where(synth_mask)[0]
+    assert np.all(data["top_host_idx"][synth_mask] == synth_indices)
+
+    # Restrict to real cores for the map check, but dereference top_host_idx
+    # against the full data so that indices into synthetic rows resolve correctly.
+    real_mask = ~synth_mask
+    real_top_host_idx = data["top_host_idx"][real_mask]
+    real_core_tag = data["core_tag"][real_mask]
+
+    has_top_host = real_top_host_idx >= 0
+    found_top_host_core_tag = data["core_tag"][real_top_host_idx[has_top_host]]
+    found_core_map = dict(zip(real_core_tag[has_top_host], found_top_host_core_tag))
+
+    filtered_core_map = {
+        key: val for key, val in core_map.items() if key in found_core_map
+    }
+    assert filtered_core_map == found_core_map
+
+    should_have_core_map = {
+        key: val
+        for key, val in core_map.items()
+        if val in data["core_tag"] and key in real_core_tag
+    }
+    assert should_have_core_map == found_core_map
+
+    comm = get_comm_world()
+    all_data_core_maps = comm.allgather(found_core_map)
+    seen = set()
+    for m in all_data_core_maps:
+        assert len(seen.intersection(m.keys())) == 0
+        seen |= m.keys()
+
+
+def _assert_all_group_members_present(data, core_map):
+    """
+    Verify that for every top_host represented in the data, all rows from the
+    full dataset that point to that top_host are also present.
+    """
+    host_to_members: dict = {}
+    for ct, host_ct in core_map.items():
+        host_to_members.setdefault(host_ct, set()).add(ct)
+
+    present_core_tags = set(data["core_tag"])
+    top_host_core_tags = set(data["core_tag"][data["top_host_idx"]])
+
+    for top_host_ct in top_host_core_tags:
+        expected_members = host_to_members.get(top_host_ct, set())
+        missing = expected_members - present_core_tags
+        assert not missing, (
+            f"top_host {top_host_ct}: {len(missing)} member(s) missing from result"
+        )

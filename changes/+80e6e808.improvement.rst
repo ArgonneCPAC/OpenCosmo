@@ -1,0 +1,1 @@
+Difficult indexing routines have been rewritten in native code, allowing the removal of numba as a dependency.

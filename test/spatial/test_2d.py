@@ -1,9 +1,9 @@
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
+from opencosmo.spatial.relations import contains_2d, intersects_2d
 
 import opencosmo as oc
-from opencosmo.spatial.relations import contains_2d, intersects_2d
 
 # ---------------------------------------------------------------------------
 # Cone search (bound with ConeRegion)

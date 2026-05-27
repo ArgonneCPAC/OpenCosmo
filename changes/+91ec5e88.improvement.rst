@@ -1,0 +1,1 @@
+Conversion to healsparse in :py:meth:`HealpixMap.get_data <opencosmo.HealpixMap.get_data` with `format = healsparse` has been rewritten, improving performance by roughly a factor of 5.

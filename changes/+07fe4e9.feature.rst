@@ -1,0 +1,1 @@
+Added animate_halos function, which calls either "visualize_halo" or "halo_projection_array" in a loop to create an animated visualization of a given halo or set of halos.

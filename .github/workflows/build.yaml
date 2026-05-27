@@ -1,5 +1,5 @@
 name: build dev
-on: 
+on:
   workflow_call:
     inputs:
       push-docker:
@@ -14,34 +14,37 @@ on:
         required: false
 
 jobs:
-  build-wheel:
-    runs-on: ubuntu-latest
+  build-wheels:
+    name: Build wheels (${{ matrix.target }})
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64 }
+          - { os: ubuntu-latest, target: aarch64 }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        if: matrix.os != 'ubuntu-latest'
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+          python-version: |
+            3.12
+            3.13
+            3.14
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
         with:
-          version: "0.8.2"
-      - name: Build package
-        run: uv build
+          target: ${{ matrix.target }}
+          manylinux: auto
+          args: --release --out dist --interpreter 3.12 3.13 3.14
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist/
 
-  build-container:
-    runs-on: ubuntu-latest
-    steps:
-      - id: login
-        if: ${{ inputs.push-docker }}
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.docker-username }}
-          password: ${{ secrets.docker-access-key }}
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/bake-action@v6
-        with:
-          push: ${{ inputs.push-docker }}
-          targets: dev
 

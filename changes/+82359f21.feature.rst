@@ -1,0 +1,1 @@
+The :py:class:`StructureCollection <opencosmo.StructureCollection>` object now supports multi-step lightcones.

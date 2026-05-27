@@ -4,12 +4,6 @@ jobs:
   get-test-data:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup AWS CLI
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.TEST_DATA_ACCESS_KEY }}
-          aws-secret-access-key: ${{ secrets.TEST_DATA_SECRET_KEY }}
-          aws-region: us-west-2
       - name: check if cache exists
         id: check-cache
         uses: actions/cache@v4
@@ -19,6 +13,13 @@ jobs:
           lookup-only: true
           restore-keys: |
             test-data
+      - name: Setup AWS CLI
+        if: steps.check-cache.outputs.cache-hit != 'true'
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.TEST_DATA_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.TEST_DATA_SECRET_KEY }}
+          aws-region: us-west-2
       - name: Download test data 
         if: steps.check-cache.outputs.cache-hit != 'true'
         run: aws s3 cp s3://${{ secrets.TEST_DATA_BUCKET }}/test_data.tar.gz test_data.tar.gz

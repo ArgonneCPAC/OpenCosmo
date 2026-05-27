@@ -17,7 +17,7 @@ Cosmology
 
 Most OpenCosmo files will contain cosmology parameters, which describe the cosmology the simulation was run under. In general you will not interact with this parameter block directly. Instead, requiresting it will return an astropy.cosmology.Cosmology object. Dataset and collections will generally make this object available directly with the :py:attr:`.cosmology <opencosmo.Dataset.cosmology>` attribute.
 
-.. autoclass:: opencosmo.parameters.cosmology.CosmologyParameters
+.. autoclass:: opencosmo.dtypes.cosmology.CosmologyParameters
    :members:
    :undoc-members:
    :exclude-members: model_config, ACCESS_PATH, ACCESS_TRANSFORMATION
@@ -28,14 +28,14 @@ Simulation Parameters
 
 Data that was originally produced by HACC will contain the parameters that were used to initialize the simulation. Datasets and collections will generally make these paramters available with the :py:attr:`.simulation <opencosmo.Dataset.simulation>` attribute.
 
-.. autoclass:: opencosmo.parameters.hacc.HaccSimulationParameters
+.. autoclass:: opencosmo.dtypes.hacc.HaccSimulationParameters
    :members:
    :undoc-members:
    :exclude-members: model_config,empty_string_to_none,cosmology_parameters,ACCESS_PATH
    :member-order: bysource
 
 
-.. autoclass:: opencosmo.parameters.hacc.HaccHydroSimulationParameters
+.. autoclass:: opencosmo.dtypes.hacc.HaccHydroSimulationParameters
    :members:
    :undoc-members:
    :exclude-members: model_config
