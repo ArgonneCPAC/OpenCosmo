@@ -16,14 +16,14 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
 
 ### Installation
 
-The OpenCosmo library is available for Python 3.11 and up on Linux and MacOS (and Windows via [WSL](https://learn.microsoft.com/en-us/windows/wsl/setup/environment)). It can be installed easily with `pip`:
+The OpenCosmo library is available for Python 3.12 and up on Linux and MacOS (and Windows via [WSL](https://learn.microsoft.com/en-us/windows/wsl/setup/environment)). It can be installed easily with `pip`:
 
 ```bash
 pip install opencosmo
 ```
 
 
-There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing `opencosmo` into a virtual environment. If you're using [Conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html), you can create a new environment and install `opencosmo` into it automatically:
+There's a good chance the default version of Python on your system is less than 3.12. Whether or not this is the case, we recommend installing `opencosmo` into a virtual environment. If you're using [Conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html), you can create a new environment and install `opencosmo` into it automatically:
 
 ```bash
 conda create -n opencosmo_env conda-forge::opencosmo
