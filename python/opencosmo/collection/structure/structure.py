@@ -21,6 +21,7 @@ import opencosmo as oc
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
+from opencosmo.dataset.formats import verify_format
 from opencosmo.index.unary import get_length
 from opencosmo.io.schema import FileEntry, make_schema
 
@@ -597,8 +598,11 @@ class StructureCollection:
             collection contains galaxies. If False, simply return the data.
 
         format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
-            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
+            The format in which to provide column data to your function. Supports the same formats
+            as :py:meth:`get_data <opencosmo.Dataset.get_data>` ("astropy", "numpy", "pandas",
+            "polars", "arrow", "jax"). When :code:`insert=True`, the function's output is converted
+            back to numpy before being stored. Unit information is preserved only when the function
+            returns astropy Quantities; outputs in other formats are stored without unit metadata.
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
@@ -623,8 +627,7 @@ class StructureCollection:
                 **evaluate_kwargs,
             )
 
-        if format not in ["astropy", "numpy"]:
-            raise ValueError(f"Invalid format requested for data: {format}")
+        verify_format(format)
 
         if dataset is not None and dataset.startswith("galaxies"):
             # Nested structure collection, special case
@@ -701,10 +704,12 @@ class StructureCollection:
             )
             if not insert or output is None:
                 return output
+            from opencosmo.dataset.formats import to_numpy_dict
+
             return self.with_new_columns(
-                **output,
                 dataset=dataset if dataset is not None else self.__source.dtype,
                 allow_overwrite=allow_overwrite,
+                **to_numpy_dict(output),  # type: ignore
             )
 
     def evaluate_on_dataset(
@@ -751,8 +756,11 @@ class StructureCollection:
             Whether to provide the values as full columns (True) or one row at a time (False). Ignored if :code:`batch_size` is set.
 
         format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
-            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
+            The format in which to provide column data to your function. Supports the same formats
+            as :py:meth:`get_data <opencosmo.Dataset.get_data>` ("astropy", "numpy", "pandas",
+            "polars", "arrow", "jax"). When :code:`insert=True`, the function's output is converted
+            back to numpy before being stored. Unit information is preserved only when the function
+            returns astropy Quantities; outputs in other formats are stored without unit metadata.
 
         insert: bool, default = True
             If true, the data will be inserted as a column in this dataset. The new column will have the same name

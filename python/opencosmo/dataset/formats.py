@@ -40,20 +40,29 @@ def __verify_import(import_name: str, format_name: str):
         )
 
 
-def convert_data(data: dict[str, np.ndarray], output_format: str):
+def convert_data(
+    data: dict[str, np.ndarray], output_format: str, wrap_single: bool = False
+):
+    """
+    If `wrap_single` is True, the result is always the format's natural
+    multi-column container (QTable, DataFrame, dict[name, array], etc.) even
+    when there is only one column, instead of collapsing to a bare array /
+    Series. Used by callers (e.g. evaluate) that want a uniform
+    `container[colname]` access pattern regardless of column count.
+    """
     match output_format:
         case "astropy":
-            return __convert_to_astropy(data)
+            return __convert_to_astropy(data, wrap_single)
         case "numpy":
-            return convert_to_numpy(data)
+            return convert_to_numpy(data, wrap_single)
         case "pandas":
-            return __convert_to_pandas(data)
+            return __convert_to_pandas(data, wrap_single)
         case "polars":
-            return __convert_to_polars(data)
+            return __convert_to_polars(data, wrap_single)
         case "arrow":
-            return __convert_to_arrow(data)
+            return __convert_to_arrow(data, wrap_single)
         case "jax":
-            return __convert_to_jax(data)
+            return __convert_to_jax(data, wrap_single)
         case _:
             raise ValueError(f"Unknown data output format {output_format}")
 
@@ -196,8 +205,10 @@ def concat_chunks(chunks: list, output_format: str):
             raise ValueError(f"Unknown data output format {output_format}")
 
 
-def __convert_to_astropy(data: dict[str, np.ndarray]) -> QTable:
-    if len(data) == 1:
+def __convert_to_astropy(
+    data: dict[str, np.ndarray], wrap_single: bool = False
+) -> QTable:
+    if len(data) == 1 and not wrap_single:
         return next(iter(data.values()))
     if any(
         (isinstance(d, u.Quantity) and d.isscalar) or not isinstance(d, np.ndarray)
@@ -210,6 +221,7 @@ def __convert_to_astropy(data: dict[str, np.ndarray]) -> QTable:
 
 def convert_to_numpy(
     data: dict[str, np.ndarray],
+    wrap_single: bool = False,
 ) -> dict[str, np.ndarray] | np.ndarray:
     converted_data = dict(
         map(
@@ -220,25 +232,25 @@ def convert_to_numpy(
             data.items(),
         )
     )
-    if len(converted_data) == 1:
+    if len(converted_data) == 1 and not wrap_single:
         return next(iter(converted_data.values()))
     return converted_data
 
 
-def __convert_to_pandas(data: dict[str, np.ndarray]):
+def __convert_to_pandas(data: dict[str, np.ndarray], wrap_single: bool = False):
     import pandas as pd
 
-    numpy_data = convert_to_numpy(data)
-    if isinstance(numpy_data, np.ndarray):  # only one column
+    numpy_data = convert_to_numpy(data, wrap_single)
+    if isinstance(numpy_data, np.ndarray):  # only one column, wrap_single=False
         return pd.Series(numpy_data, name=next(iter(data.keys())))
 
     return pd.DataFrame(numpy_data, copy=True)
 
 
-def __convert_to_arrow(data: dict[str, np.ndarray]):
+def __convert_to_arrow(data: dict[str, np.ndarray], wrap_single: bool = False):
     import pyarrow as pa  # type: ignore
 
-    numpy_data = convert_to_numpy(data)
+    numpy_data = convert_to_numpy(data, wrap_single)
     if isinstance(numpy_data, np.ndarray):
         return pa.array(numpy_data)
 
@@ -249,20 +261,20 @@ def __convert_to_arrow(data: dict[str, np.ndarray]):
     return dict(converted_data)
 
 
-def __convert_to_polars(data: dict[str, np.ndarray]):
+def __convert_to_polars(data: dict[str, np.ndarray], wrap_single: bool = False):
     import polars as pl
 
-    numpy_data = convert_to_numpy(data)
+    numpy_data = convert_to_numpy(data, wrap_single)
     if isinstance(numpy_data, np.ndarray):
         return pl.Series(name=next(iter(data.keys())), values=numpy_data)
 
     return pl.from_dict(data)  # type: ignore
 
 
-def __convert_to_jax(data: dict[str, np.ndarray]):
+def __convert_to_jax(data: dict[str, np.ndarray], wrap_single: bool = False):
     import jax.numpy as jnp
 
-    output_data = convert_to_numpy(data)
+    output_data = convert_to_numpy(data, wrap_single)
     if isinstance(output_data, np.ndarray):
         return jnp.asarray(output_data)
     return {key: jnp.asarray(value) for key, value in output_data.items()}

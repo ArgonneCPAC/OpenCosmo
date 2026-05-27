@@ -260,7 +260,12 @@ class Dataset:
         return st.get_metadata(self.__state, columns, ignore_sort)
 
     def get_data(
-        self, format="astropy", unpack=True, metadata_columns=[], **kwargs
+        self,
+        format="astropy",
+        unpack=True,
+        metadata_columns=[],
+        wrap_single=False,
+        **kwargs,
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -280,13 +285,19 @@ class Dataset:
 
         If the dataset only contains a single column, it will not be put in a table
         or dictionary. "astropy", "numpy" and "arrow" will return a single array
-        in this case, while "polars" and "pandas" will return a Series object.
+        in this case, while "polars" and "pandas" will return a Series object. Pass
+        :code:`wrap_single=True` to always return the format's multi-column container
+        (QTable, DataFrame, dict, ...) regardless of column count.
 
         Parameters
         ----------
         output: str, default="astropy"
             The format to output the data in.
             Currently supported are "astropy", "numpy", "pandas", "polars", "arrow", "jax"
+
+        wrap_single: bool, default=False
+            If True, always return the format's natural multi-column container even
+            when only one column is present.
 
         Returns
         -------
@@ -321,7 +332,7 @@ class Dataset:
                 for key, value in data.items()
             }
 
-        return convert_data(data, format)
+        return convert_data(data, format, wrap_single=wrap_single)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """

@@ -183,3 +183,155 @@ def test_evaluate_noinsert_returns_native_container(input_path, format, expected
         _vectorized_func(format), vectorize=True, insert=False, format=format
     )
     assert isinstance(result["fof_px"], expected_type)
+
+
+# ---------------------------------------------------------------------------
+# StructureCollection paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def halo_paths(snapshot_path):
+    files = ["haloproperties.hdf5", "haloparticles.hdf5"]
+    return [snapshot_path / f for f in files]
+
+
+def _mean_x(format):
+    """Per-structure function: mean of dm_particles 'x' coord. Returns a scalar
+    in the user's format. fof_halo_center_x is a scalar Quantity that has had
+    its unit stripped for non-astropy formats, so it's plain float."""
+
+    def offset(halo_properties, dm_particles):
+        x = dm_particles["x"]
+        if format == "arrow":
+            mean_x = pc.mean(x).as_py()
+        elif format == "polars":
+            mean_x = x.mean()
+        elif format == "pandas":
+            mean_x = float(x.mean())
+        elif format == "jax":
+            mean_x = float(jnp.mean(x))
+        else:
+            mean_x = float(np.mean(x))
+        return mean_x - float(halo_properties["fof_halo_center_x"])
+
+    return offset
+
+
+def _arange_like(format):
+    """Per-structure function with dataset=`dm_particles`: must return an array
+    in the user's format with the same length as the input dataset."""
+
+    def particle_id(x, y, z):
+        n = len(x)
+        if format == "jax":
+            return jnp.arange(n)
+        if format == "pandas":
+            return pd.Series(np.arange(n))
+        if format == "polars":
+            return pl.Series(values=np.arange(n))
+        if format == "arrow":
+            return pa.array(np.arange(n))
+        return np.arange(n)
+
+    return particle_id
+
+
+@pytest.mark.parametrize("format", FORMATS)
+def test_collection_evaluate_into_properties(halo_paths, format):
+    collection = oc.open(*halo_paths).take(50)
+    spec = {
+        "dm_particles": ["x"],
+        "halo_properties": ["fof_halo_center_x"],
+    }
+    collection = collection.evaluate(
+        _mean_x(format), **spec, format=format, insert=True
+    )
+    data = collection["halo_properties"].select("offset").get_data("numpy")
+    assert len(data) == 50
+    assert np.any(data != 0)
+
+
+@pytest.mark.parametrize("format", FORMATS)
+def test_collection_evaluate_into_properties_noinsert(halo_paths, format):
+    collection = oc.open(*halo_paths).take(50)
+    spec = {
+        "dm_particles": ["x"],
+        "halo_properties": ["fof_halo_center_x"],
+    }
+    result = collection.evaluate(_mean_x(format), **spec, format=format, insert=False)
+    assert "offset" in result
+    assert len(result["offset"]) == 50
+
+
+@pytest.mark.parametrize("format", FORMATS)
+def test_collection_evaluate_into_dataset(halo_paths, format):
+    collection = oc.open(*halo_paths).take(20)
+    collection = collection.evaluate(
+        _arange_like(format),
+        dataset="dm_particles",
+        format=format,
+        insert=True,
+    )
+    for halo in collection.halos(["dm_particles"]):
+        pid = halo["dm_particles"].select("particle_id").get_data("numpy")
+        assert np.all(pid == np.arange(len(pid)))
+
+
+@pytest.mark.parametrize("format", FORMATS)
+def test_collection_evaluate_on_dataset(halo_paths, format):
+    """Routes through Dataset.evaluate via the collection wrapper."""
+    collection = oc.open(*halo_paths).take(50)
+    selected = (
+        collection["halo_properties"]
+        .select(["fof_halo_mass", "fof_halo_com_vx"])
+        .get_data("numpy")
+    )
+    collection = collection.evaluate_on_dataset(
+        _vectorized_func(format),
+        dataset="halo_properties",
+        vectorize=True,
+        format=format,
+        insert=True,
+    )
+    data = collection["halo_properties"].select("fof_px").get_data("numpy")
+    expected = selected["fof_halo_mass"] * selected["fof_halo_com_vx"]
+    assert np.allclose(data, expected)
+
+
+# ---------------------------------------------------------------------------
+# Lightcone paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def lc_paths(lightcone_path):
+    return [
+        lightcone_path / "step_600" / "haloproperties.hdf5",
+        lightcone_path / "step_601" / "haloproperties.hdf5",
+    ]
+
+
+@pytest.mark.parametrize("format", FORMATS)
+def test_lightcone_evaluate_insert(lc_paths, format):
+    ds = oc.open(*lc_paths).take(100)
+    ds = ds.evaluate(
+        _vectorized_func(format), vectorize=True, insert=True, format=format
+    )
+    for name in ds.keys():
+        data = ds[name].select("fof_px").get_data("numpy")
+        original = (
+            ds[name].select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
+        )
+        expected = original["fof_halo_mass"] * original["fof_halo_com_vx"]
+        assert np.allclose(data, expected)
+
+
+@pytest.mark.parametrize("format", FORMATS)
+def test_lightcone_evaluate_noinsert(lc_paths, format):
+    ds = oc.open(*lc_paths).take(100)
+    result = ds.evaluate(
+        _vectorized_func(format), vectorize=True, insert=False, format=format
+    )
+    assert "fof_px" in result
+    assert len(result["fof_px"]) == len(ds)

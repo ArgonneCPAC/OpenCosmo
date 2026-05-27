@@ -27,7 +27,7 @@ from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
 from opencosmo.dataset.evaluate import build_evaluated_column
-from opencosmo.dataset.formats import convert_data, verify_format
+from opencosmo.dataset.formats import concat_chunks, convert_data, verify_format
 from opencosmo.dataset.take import (
     get_end_take_index,
     get_random_take_index,
@@ -325,7 +325,13 @@ class Lightcone(dict):
 
         return lcutils.get_pixels(self, int(level))
 
-    def get_data(self, format="astropy", unpack: bool = True, **kwargs):
+    def get_data(
+        self,
+        format="astropy",
+        unpack: bool = True,
+        wrap_single: bool = False,
+        **kwargs,
+    ):
         """
         Get the data in this dataset as an astropy table/column or as
         numpy array(s). Note that a dataset does not load data from disk into
@@ -340,13 +346,19 @@ class Lightcone(dict):
         units will be attached.
 
         If the dataset only contains a single column, it will be returned as an
-        astropy.table.Column or a single numpy array.
+        astropy.table.Column or a single numpy array. Pass :code:`wrap_single=True`
+        to always return the format's multi-column container (QTable, DataFrame,
+        dict, ...) regardless of column count.
 
         Parameters
         ----------
         output: str, default="astropy"
             The format to output the data in. Currently supported are "astropy", "numpy",
             "pandas", "polars", and "arrow"
+
+        wrap_single: bool, default=False
+            If True, always return the format's natural multi-column container even
+            when only one column is present.
 
         Returns
         -------
@@ -383,11 +395,11 @@ class Lightcone(dict):
                 key: value[0] if len(value) == 1 else value
                 for key, value in table.items()
             }
-            return convert_data(output_data, format)
+            return convert_data(output_data, format, wrap_single=wrap_single)
 
         if format != "astropy":
-            return convert_data(dict(table), format)
-        elif len(table.columns) == 1:
+            return convert_data(dict(table), format, wrap_single=wrap_single)
+        elif len(table.columns) == 1 and not wrap_single:
             return next(iter(dict(table).values()))
 
         return table
@@ -758,9 +770,11 @@ class Lightcone(dict):
             The function to evaluate on the rows in the dataset.
 
         format: str, default = "astropy"
-            The format of the data that is provided to your function. If "astropy", will be a dictionary of
-            astropy quantities. If "numpy", will be a dictionary of numpy arrays. Note that
-            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Lightcone.get_data>`
+            The format in which to provide column data to your function. Supports the same formats
+            as :py:meth:`get_data <opencosmo.Lightcone.get_data>` ("astropy", "numpy", "pandas",
+            "polars", "arrow", "jax"). When :code:`insert=True`, the function's output is converted
+            back to numpy before being stored. Unit information is preserved only when the function
+            returns astropy Quantities; outputs in other formats are stored without unit metadata.
 
         vectorize: bool, default = False
             Whether to provide the values as full columns (True) or one row at a time (False)
@@ -834,7 +848,7 @@ class Lightcone(dict):
         keys = next(iter(result.values())).keys()
         output = {}
         for key in keys:
-            output[key] = np.concatenate([r[key] for r in result.values()])
+            output[key] = concat_chunks([r[key] for r in result.values()], format)
         return output
 
     def filter(self, *masks: ColumnMask, **kwargs) -> Self:
