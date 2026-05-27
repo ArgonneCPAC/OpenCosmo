@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 from inspect import Parameter, signature
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
-import numpy as np
 from astropy.units import Quantity  # type: ignore
 
 from opencosmo import dataset as ds
-from opencosmo.evaluate import (
-    insert_data,
-    make_output_from_first_values,
-)
+from opencosmo.dataset.formats import concat_chunks, stack_rows
 
 if TYPE_CHECKING:
     from opencosmo import StructureCollection
@@ -82,17 +78,22 @@ def evaluate_into_properties(
     kwargs: dict[str, Any],
     insert: bool,
 ):
-    storage = __make_output(function, collection, format, kwargs, {}, insert)
-    for i, structure in enumerate(collection.objects()):
-        if i == 0:
-            continue
+    per_column: dict[str, list] = {}
+    for structure in collection.objects():
         input_structure = __make_input(structure, format)
-
         output = function(**input_structure, **kwargs)
-        if storage is not None:
-            insert_data(storage, i, output)
+        if output is None and insert:
+            raise ValueError(
+                "You asked to insert these values, but your function returns None!"
+            )
+        if not isinstance(output, dict):
+            output = {function.__name__: output}
+        for name, value in output.items():
+            per_column.setdefault(name, []).append(value)
 
-    return storage
+    if not per_column:
+        return None
+    return {name: stack_rows(values, format) for name, values in per_column.items()}
 
 
 def evaluate_into_dataset(
@@ -103,25 +104,28 @@ def evaluate_into_dataset(
     dataset: str,
     insert: bool,
 ):
-    storage = __make_chunked_output(function, collection, dataset, format, kwargs, {})
-
+    per_column: dict[str, list] = {}
     for i, structure in enumerate(collection.objects()):
-        if i == 0:
-            continue
         input_structure = __make_input(structure, format)
-
         output = function(**input_structure, **kwargs)
+        if output is None and insert:
+            raise ValueError(
+                "You asked to insert these values, but your function returns None!"
+            )
         if not isinstance(output, dict):
             output = {function.__name__: output}
+        if i == 0:
+            expected_length = len(input_structure[dataset])
+            if any(len(v) != expected_length for v in output.values()):
+                raise ValueError(
+                    "If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
+                )
+        for name, output_arr in output.items():
+            per_column.setdefault(name, []).append(output_arr)
 
-        if storage is not None:
-            for name, output_arr in output.items():
-                storage[name].append(output_arr)
-
-    if storage is None:
-        return
-    output_data = {name: np.concatenate(data) for name, data in storage.items()}
-    return output_data
+    if not per_column:
+        return None
+    return {name: concat_chunks(data, format) for name, data in per_column.items()}
 
 
 def __make_input(structure: dict, format: str = "astropy"):
@@ -130,76 +134,13 @@ def __make_input(structure: dict, format: str = "astropy"):
         if isinstance(element, dict):
             values[name] = __make_input(element, format)
         elif isinstance(element, ds.Dataset):
-            data = element.get_data(format)
+            data = element.get_data(format, wrap_single=True)
             values[name] = data
-        elif isinstance(element, Quantity) and format == "numpy":
+        elif isinstance(element, Quantity) and format != "astropy":
             values[name] = element.value
         else:
             values[name] = element
     return values
-
-
-def __make_output(
-    function: Callable,
-    collection: StructureCollection,
-    format: str = "astropy",
-    kwargs: dict[str, Any] = {},
-    iterable_kwargs: dict[str, Sequence] = {},
-    insert: bool = True,
-) -> dict | None:
-    first_structure = next(collection.take(1, at="start").objects())
-    first_input = __make_input(first_structure, format)
-    first_values = function(
-        **first_input,
-        **kwargs,
-        **{name: arr[0] for name, arr in iterable_kwargs.items()},
-    )
-    if first_values is None and insert:
-        raise ValueError(
-            "You asked to insert these values, but your function returns None!"
-        )
-    elif first_values is None:
-        return None
-    if not isinstance(first_values, dict):
-        name = function.__name__
-        first_values = {name: first_values}
-    n_rows = len(collection)
-    return make_output_from_first_values(first_values, n_rows)
-
-
-def __make_chunked_output(
-    function: Callable,
-    collection: StructureCollection,
-    dataset: str,
-    format: str = "astropy",
-    kwargs: dict[str, Any] = {},
-    iterable_kwargs: dict[str, Sequence] = {},
-    insert: bool = True,
-) -> dict | None:
-    first_structure = collection.take(1, at="start")
-    expected_length = len(first_structure[dataset])
-    first_structure_data = next(iter(first_structure.objects()))
-
-    first_input = __make_input(first_structure_data, format)
-    first_values = function(
-        **first_input,
-        **kwargs,
-        **{name: arr[0] for name, arr in iterable_kwargs.items()},
-    )
-    if first_values is None and insert:
-        raise ValueError(
-            "You asked to insert these values, but your function returns None!"
-        )
-    elif first_values is None:
-        return None
-    if not isinstance(first_values, dict):
-        name = function.__name__
-        first_values = {name: first_values}
-    if any(len(fv) != expected_length for fv in first_values.values()):
-        raise ValueError(
-            "If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
-        )
-    return {name: [fv] for name, fv in first_values.items()}
 
 
 def __prepare_collection(

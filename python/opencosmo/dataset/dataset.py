@@ -260,7 +260,12 @@ class Dataset:
         return st.get_metadata(self.__state, columns, ignore_sort)
 
     def get_data(
-        self, format="astropy", unpack=True, metadata_columns=[], **kwargs
+        self,
+        format="astropy",
+        unpack=True,
+        metadata_columns=[],
+        wrap_single=False,
+        **kwargs,
     ) -> OpenCosmoData:
         """
         Get the data in this dataset as an astropy table/column or as
@@ -270,7 +275,7 @@ class Dataset:
         on the data.
 
         The method supports output into several different formats, including
-        "astropy", "numpy", "pandas", "polars", and "pyarrow". Although astropy
+        "astropy", "numpy", "pandas", "polars", "jax", and "arrow". Although astropy
         and numpy are core dependencies of OpenCosmo, the remaining formats
         require you to have the relevant libraries installed in your python
         environment. This method will check that it can import the necessary
@@ -280,13 +285,19 @@ class Dataset:
 
         If the dataset only contains a single column, it will not be put in a table
         or dictionary. "astropy", "numpy" and "arrow" will return a single array
-        in this case, while "polars" and "pandas" will return a Series object.
+        in this case, while "polars" and "pandas" will return a Series object. Pass
+        :code:`wrap_single=True` to always return the format's multi-column container
+        (QTable, DataFrame, dict, ...) regardless of column count.
 
         Parameters
         ----------
         output: str, default="astropy"
             The format to output the data in.
-            Currently supported are "astropy", "numpy", "pandas", "polars", "arrow"
+            Currently supported are "astropy", "numpy", "pandas", "polars", "arrow", "jax"
+
+        wrap_single: bool, default=False
+            If True, always return the format's natural multi-column container even
+            when only one column is present.
 
         Returns
         -------
@@ -321,7 +332,7 @@ class Dataset:
                 for key, value in data.items()
             }
 
-        return convert_data(data, format)
+        return convert_data(data, format, wrap_single=wrap_single)
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -478,8 +489,10 @@ class Dataset:
             as the function. Otherwise the data will be returned directly.
 
         format: str, default = astropy
-            Whether to provide data to your function as "astropy" quantities or "numpy" arrays/scalars. Default "astropy". Note that
-            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
+            The format in which to provide column data to your function. Supports the same formats
+            as :py:meth:`get_data <opencosmo.Dataset.get_data>` ("astropy", "numpy", "pandas",
+            "polars", "arrow", "jax"). When :code:`insert=True`, the function's output is converted
+            back to numpy before being stored.
         allow_overwrite: bool, default = False
 
         batch_size: int, default = -1
@@ -496,6 +509,7 @@ class Dataset:
         result : Dataset | dict[str, np.ndarray | astropy.units.Quantity]
             The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
+        verify_format(format)
         evaluated_column = build_evaluated_column(
             self, func, vectorize, insert, format, batch_size, evaluate_kwargs
         )

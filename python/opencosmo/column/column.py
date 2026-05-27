@@ -865,11 +865,6 @@ class EvaluatedColumn:
     def evaluate(self, data: dict[str, np.ndarray], index: DataIndex | None):
         data = {name: data[name] for name in self.__requires}
         chunk_sizes = index[1] if isinstance(index, tuple) else None
-        if self.__format != "astropy":
-            data = {
-                name: val.value if isinstance(val, u.Quantity) else val
-                for name, val in data.items()
-            }
 
         if self.batch_size > 0:
             length = len(next(iter(data.values())))
@@ -886,13 +881,33 @@ class EvaluatedColumn:
             case EvaluateStrategy.VECTORIZE:
                 return evaluate_vectorized(data, self.__func, self.__kwargs, index)
             case EvaluateStrategy.ROW_WISE:
-                return evaluate_rows(data, self.__func, self.__kwargs)
+                return evaluate_rows(data, self.__func, self.__kwargs, self.__format)
             case EvaluateStrategy.CHUNKED:
                 if chunk_sizes is None:
                     raise ValueError(
                         "Cannot evaluate in CHUNKED strategy with a non-chunked index"
                     )
-                return evaluate_chunks(data, self.__func, self.__kwargs, chunk_sizes)
+                return evaluate_chunks(
+                    data, self.__func, self.__kwargs, chunk_sizes, self.__format
+                )
+
+    def evaluate_for_storage(
+        self, data: dict[str, np.ndarray], index: DataIndex | None
+    ) -> dict[str, np.ndarray]:
+        """
+        Evaluate and return numpy-formatted output suitable for the column
+        cache. Input arrives in the numpy/astropy form used internally, so
+        it is first converted to the user's requested format before the
+        function runs, and the output is converted back to numpy.
+        """
+        from opencosmo.dataset.formats import to_format_dict, to_numpy_dict
+
+        required = {name: data[name] for name in self.__requires}
+        converted = to_format_dict(required, self.__format)
+        output = self.evaluate(converted, index)
+        if not isinstance(output, dict):
+            output = {next(iter(self.__produces)): output}
+        return to_numpy_dict(output)
 
     def evaluate_one(self, dataset: Dataset):
         match self.__strategy:

@@ -3,10 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
-import astropy.units as u
 import numpy as np
-
-from opencosmo.evaluate import insert_data
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
@@ -18,77 +15,48 @@ class EvaluateStrategy(Enum):
     CHUNKED = "chunked"
 
 
-def evaluate_rows(data: dict[str, np.ndarray], func: Callable, kwargs: dict[str, Any]):
+def evaluate_rows(
+    data: dict[str, Any],
+    func: Callable,
+    kwargs: dict[str, Any],
+    format: str,
+):
+    from opencosmo.dataset.formats import stack_rows
+
     data_length = len(next(iter(data.values())))
-    storage = {}
+    per_column: dict[str, list] = {}
     for i in range(data_length):
         iterable_inputs = {name: values[i] for name, values in data.items()}
         output = func(**iterable_inputs, **kwargs)
         if not isinstance(output, dict):
             output = {func.__name__: output}
-        if i == 0:
-            storage = __make_row_based_output_from_first_values(output, data_length)
-            continue
-        insert_data(storage, i, output)
-    return storage
-
-
-def __make_row_based_output_from_first_values(values, data_length):
-    storage = {}
-    for name, value in values.items():
-        try:
-            shape = (data_length,) + value.shape
-        except AttributeError:
-            shape = (data_length,)
-        try:
-            dtype = value.dtype
-        except AttributeError:
-            dtype = type(value)
-        column_storage = np.zeros(shape, dtype=dtype)
-        if isinstance(value, u.Quantity):
-            column_storage *= value.unit
-        column_storage[0] = value
-        storage[name] = column_storage
-
-    return storage
+        for name, value in output.items():
+            per_column.setdefault(name, []).append(value)
+    return {name: stack_rows(values, format) for name, values in per_column.items()}
 
 
 def evaluate_chunks(
-    data: dict[str, np.ndarray],
+    data: dict[str, Any],
     func: Callable,
     kwargs: dict[str, Any],
     chunk_sizes: np.ndarray,
+    format: str,
 ):
-    data_length = len(next(iter(data.values())))
+    from opencosmo.dataset.formats import concat_chunks
 
     chunk_splits = np.cumsum(chunk_sizes)
-    storage = {}
-    input_data = {name: np.split(arr, chunk_splits) for name, arr in data.items()}
-    for i in range(len(chunk_splits)):
-        chunk_input_data = {name: split[i] for name, split in input_data.items()}
+    starts = np.concatenate([[0], chunk_splits[:-1]])
+    per_column: dict[str, list] = {}
+    for start, end in zip(starts, chunk_splits):
+        chunk_input_data = {
+            name: arr[int(start) : int(end)] for name, arr in data.items()
+        }
         output = func(**chunk_input_data, **kwargs)
         if not isinstance(output, dict):
             output = {func.__name__: output}
-        if i == 0:
-            storage = __make_chunked_based_output_from_first_values(output, data_length)
-            continue
-        for name, values in output.items():
-            storage[name][chunk_splits[i - 1] : chunk_splits[i]] = values
-    return storage
-
-
-def __make_chunked_based_output_from_first_values(values, data_length):
-    storage = {}
-    for name, value in values.items():
-        shape = (data_length,) + value.shape[1:]
-        dtype = value.dtype
-        column_storage = np.zeros(shape, dtype=dtype)
-        if isinstance(value, u.Quantity):
-            column_storage *= value.unit
-        column_storage[0 : len(value)] = value
-        storage[name] = column_storage
-
-    return storage
+        for name, value in output.items():
+            per_column.setdefault(name, []).append(value)
+    return {name: concat_chunks(chunks, format) for name, chunks in per_column.items()}
 
 
 def evaluate_vectorized(data, func, kwargs, index):
@@ -105,29 +73,25 @@ def do_first_evaluation(
     kwargs: dict[str, Any],
     dataset: Dataset,
 ):
+    from opencosmo.dataset.formats import fetch_as_dict
+
     eval_strategy = EvaluateStrategy(strategy)
+    columns = list(dataset.columns)
     match eval_strategy:
         case EvaluateStrategy.VECTORIZE:
-            values = dataset.take(1).get_data(format, unpack=False)
-            try:
-                values = dict(values)
-            except TypeError:
-                values = {dataset.columns[0]: values}
-
+            values = fetch_as_dict(dataset.take(1), columns, format, unpack=False)
             return func(**values, **kwargs), eval_strategy
 
         case EvaluateStrategy.ROW_WISE:
-            values = dataset.take(1).get_data(format, unpack=True)
-            try:
-                values = dict(values)
-            except TypeError:
-                values = {dataset.columns[0]: values}
+            values = fetch_as_dict(dataset.take(1), columns, format, unpack=False)
+            values = {name: container[0] for name, container in values.items()}
             return func(**values, **kwargs), eval_strategy
 
         case EvaluateStrategy.CHUNKED:
             index = dataset.index
             assert isinstance(index, tuple)
             first_chunk_size = index[1][0]
-            first_chunk = dataset.take(first_chunk_size, at="start").get_data(format)
-            first_chunk = dict(first_chunk)
+            first_chunk = fetch_as_dict(
+                dataset.take(first_chunk_size, at="start"), columns, format
+            )
             return func(**first_chunk, **kwargs), eval_strategy
