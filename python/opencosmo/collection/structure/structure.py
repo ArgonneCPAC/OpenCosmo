@@ -601,8 +601,7 @@ class StructureCollection:
             The format in which to provide column data to your function. Supports the same formats
             as :py:meth:`get_data <opencosmo.Dataset.get_data>` ("astropy", "numpy", "pandas",
             "polars", "arrow", "jax"). When :code:`insert=True`, the function's output is converted
-            back to numpy before being stored. Unit information is preserved only when the function
-            returns astropy Quantities; outputs in other formats are stored without unit metadata.
+            back to numpy before being stored.
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
@@ -759,8 +758,7 @@ class StructureCollection:
             The format in which to provide column data to your function. Supports the same formats
             as :py:meth:`get_data <opencosmo.Dataset.get_data>` ("astropy", "numpy", "pandas",
             "polars", "arrow", "jax"). When :code:`insert=True`, the function's output is converted
-            back to numpy before being stored. Unit information is preserved only when the function
-            returns astropy Quantities; outputs in other formats are stored without unit metadata.
+            back to numpy before being stored.
 
         insert: bool, default = True
             If true, the data will be inserted as a column in this dataset. The new column will have the same name

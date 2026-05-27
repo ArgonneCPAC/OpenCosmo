@@ -384,9 +384,11 @@ class SimulationCollection(dict):
         datasets: str | list[str], optional
             The datasets to evaluate on. If not provided, will be evaluated on all datasets
         format: str, default = "astropy"
-            The format of the data that is provided to your function. If "astropy", will be a dictionary of
-            astropy quantities. If "numpy", will be a dictionary of numpy arrays. Note that
-            this method does not support all the formats available in :py:meth:`get_data <opencosmo.Dataset.get_data>`
+            The format in which to provide column data to your function. Supports the same formats
+            as :py:meth:`get_data <opencosmo.Dataset.get_data>` ("astropy", "numpy", "pandas",
+            "polars", "arrow", "jax"). When :code:`insert=True`, the function's output is converted
+            back to numpy before being stored.
+
         vectorize: bool, default = False
             Whether to vectorize the computation. See :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.Evaluate>`
             and/or :py:meth:`Dataset.evaluate <opencosmo.Dataset.Evaluate>` for more details.
