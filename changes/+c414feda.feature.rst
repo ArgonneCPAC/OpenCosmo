@@ -1,1 +1,0 @@
-All :code:`evaluate` methods (e.g. :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`) now support passing data to the function in any format supported by :py:meth:`get_data <opencosmo.Dataset.get_data>`.

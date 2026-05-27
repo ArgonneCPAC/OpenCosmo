@@ -1,1 +1,0 @@
-Add the :py:meth:`Lightcone.query_pixels <opencosmo.Lightcone.query_pixels>` method to query a lightcone based on healpix pixels.

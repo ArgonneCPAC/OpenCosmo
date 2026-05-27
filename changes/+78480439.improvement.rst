@@ -1,1 +1,0 @@
-Improved spatial querying on lightcones, which should result in significant speedup for larger regions.

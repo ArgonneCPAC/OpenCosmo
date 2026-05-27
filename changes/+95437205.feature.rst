@@ -1,1 +1,0 @@
-:py:meth:`get_data <opencosmo.Dataset.get_data>` now supports :code:`jax` as an output format.

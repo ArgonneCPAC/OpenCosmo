@@ -1,2 +1,0 @@
-HealpixMap now correctly unpacks data when there is only a single map, instead of returning a dictionary. Mirrors
-behavior in Dataset etc.

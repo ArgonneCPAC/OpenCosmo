@@ -1,2 +1,0 @@
-Diffsky catalog can be forced to keep groups during filtering etc. by setting the `get_top_host = True` flag when
-opening.
