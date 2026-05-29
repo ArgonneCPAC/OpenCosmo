@@ -27,8 +27,16 @@ ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
 
 
 def remove_empty(dataset):
-    metadata = dataset.get_metadata()
-    mask = np.ones(len(dataset), dtype=bool)
+    """Drop empty rows from a Dataset (peeks into the underlying state)."""
+    import opencosmo.dataset.state as _st
+    from opencosmo import dataset as _ds_mod
+
+    if isinstance(dataset, _ds_mod.Dataset):
+        state = dataset.state
+    else:
+        state = dataset
+    metadata = _st.get_metadata(state)
+    mask = np.ones(len(state), dtype=bool)
     for name, col in metadata.items():
         if "size" in name:
             mask &= col != 0
@@ -36,8 +44,10 @@ def remove_empty(dataset):
             mask &= col != -1
 
     if not mask.all():
-        dataset = dataset.take_rows(np.where(mask)[0])
-    return dataset
+        state = _st.take_rows(state, np.where(mask)[0])
+    if isinstance(dataset, _ds_mod.Dataset):
+        return _ds_mod.Dataset(state)
+    return state
 
 
 def is_dataset(ds: Any) -> TypeGuard[d.Dataset]:
@@ -176,10 +186,13 @@ def _apply_offset_corrections(
                 cumulative += len(ds)
         type_step_offset[target_type] = per_step
 
+    import opencosmo.dataset.state as _st
+
     corrected: dict[int, d.Dataset] = {}
     for step in steps:
         step_ds = source_by_step[step]
-        meta_cols = set(step_ds.meta_columns)
+        step_state = step_ds.state
+        meta_cols = set(step_state.meta_columns)
         updates: dict = {}
 
         for col in meta_cols:
@@ -204,7 +217,7 @@ def _apply_offset_corrections(
                 continue
 
             if is_idx:
-                arr = step_ds.get_metadata([col])[col].copy()
+                arr = _st.get_metadata(step_state, [col])[col].copy()
                 arr[arr >= 0] += offset
                 updates[col] = arr
             else:

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     import astropy.units as u
 
     from opencosmo.column.column import ConstructedColumn
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -41,22 +42,39 @@ if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region
 
 
+def _wrap_for_user(state: DatasetState) -> oc.Dataset:
+    """Wrap a state in a Dataset for user-facing returns."""
+    return oc.Dataset(state)
+
+
+def _st():
+    """Lazy import of opencosmo.dataset.state to avoid a circular import.
+
+    `collection` is loaded before `dataset.state` finishes initializing
+    (state pulls in io.schema which pulls in iopen which pulls in
+    collection.structure), so we defer until first call.
+    """
+    import opencosmo.dataset.state as st
+
+    return st
+
+
 def filter_source_by_dataset(
-    dataset: oc.Dataset,
-    source: oc.Dataset,
+    dataset: DatasetState,
+    source: DatasetState,
     header: oc.header.OpenCosmoHeader,
     *masks,
-) -> oc.Dataset:
-    masked_dataset = dataset.filter(*masks)
+) -> DatasetState:
+    st = _st()
+    masked_dataset = st.filter(dataset, *masks)
     linked_column: str
     if header.file.data_type == "halo_properties":
         linked_column = "fof_halo_tag"
     elif header.file.data_type == "galaxy_properties":
         linked_column = "gal_tag"
 
-    tags = masked_dataset.select(linked_column).data
-    new_source = source.filter(oc.col(linked_column).isin(tags))
-    return new_source
+    tag_values = st.get_data(st.select(masked_dataset, {linked_column}))
+    return st.filter(source, oc.col(linked_column).isin(tag_values))
 
 
 def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
@@ -106,8 +124,8 @@ class StructureCollection:
 
     def __init__(
         self,
-        source: oc.Dataset,
-        datasets: Mapping[str, oc.Dataset | StructureCollection],
+        source,
+        datasets: Mapping[str, Any],
         hide_source: bool = False,
         link_handler: Optional[LinkHandler] = None,
         derived_columns: Optional[set[str]] = None,
@@ -115,10 +133,17 @@ class StructureCollection:
     ):
         """
         Initialize a linked collection with the provided datasets and links.
+        ``source`` may be a :class:`oc.Dataset`, :class:`DatasetState`, or
+        :class:`Lightcone`. Datasets in ``datasets`` are likewise normalized.
+        Auto-unwrap of Dataset → state is a transitional convenience until
+        Step 4 wires the I/O layer to hand back states directly.
         """
 
-        self.__source = source
-        self.__datasets = dict(datasets)
+        def _unwrap(value):
+            return value.state if isinstance(value, oc.Dataset) else value
+
+        self.__source = _unwrap(source)
+        self.__datasets = {k: _unwrap(v) for k, v in datasets.items()}
         self.__hide_source = hide_source
         if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
             self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
@@ -162,7 +187,9 @@ class StructureCollection:
         else:
             dtype_str = ", ".join(keys[:-1]) + ", and " + keys[-1]
         header = f"Collection of {structure_type} {'on a lightcone ' if is_lightcone else ' '}with {dtype_str}\n"
-        source_repr = self.__source.__repr__().split("\n", maxsplit=1)[1]
+        source_repr = (
+            _wrap_for_user(self.__source).__repr__().split("\n", maxsplit=1)[1]
+        )
 
         return header + source_repr
 
@@ -177,16 +204,20 @@ class StructureCollection:
         return result
 
     @property
+    def __source_dtype(self) -> str:
+        """Internal helper: the source's data type string."""
+        return str(self.__source.header.file.data_type)
+
+    @property
     def dtype(self):
-        structure_type = self.__source.header.file.dt
-        return structure_type
+        return self.__source.header.file.dt
 
     @property
     def cosmology(self) -> astropy.cosmology.Cosmology:
         """
         The cosmology of the structure collection
         """
-        return self.__source.cosmology
+        return self.__source.header.cosmology
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -245,7 +276,9 @@ class StructureCollection:
         -------
         column : Optional[str]
         """
-        return self.__source.sorted_by
+        if self.__source.sort_key is None:
+            return None
+        return self.__source.sort_key[0]
 
     @property
     def simulation(self) -> HaccSimulationParameters | None:
@@ -257,7 +290,7 @@ class StructureCollection:
         -------
         parameters: opencosmo.dtypes.HaccSimulationParameters
         """
-        return self.__source.simulation
+        return getattr(self.__source.header, "simulation", None)
 
     def keys(self) -> list[str]:
         """
@@ -265,7 +298,7 @@ class StructureCollection:
         """
         keys = list(self.__datasets.keys())
         if not self.__hide_source:
-            keys.append(self.__source.dtype)
+            keys.append(self.__source_dtype)
         return keys
 
     def values(self) -> list[oc.Dataset | StructureCollection]:
@@ -286,12 +319,15 @@ class StructureCollection:
         """
         Return the linked dataset with the given key.
         """
-        if key == self.__source.header.file.data_type:
-            return self.__source
+        if key == self.__source_dtype:
+            return _wrap_for_user(self.__source)
         datasets = self.__get_datasets()
         if key not in datasets.keys():
             raise KeyError(f"Dataset {key} not found in collection.")
-        return datasets[key]
+        value = datasets[key]
+        if isinstance(value, StructureCollection):
+            return value
+        return _wrap_for_user(value)
 
     def __enter__(self):
         return self
@@ -335,7 +371,7 @@ class StructureCollection:
             If the dataset does not contain a spatial index
         """
 
-        bounded = self.__source.bound(region, select_by)
+        bounded = _st().bound(self.__source, region, select_by)
         new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
             bounded,
@@ -616,7 +652,7 @@ class StructureCollection:
 
         # The second of these can (and has) been made lazy. The 1st and 3rd are eager, for now.
         # If the user sets insert=False, everything is eager.
-        if dataset is not None and dataset == self.__source.dtype:
+        if dataset is not None and dataset == self.__source_dtype:
             return self.evaluate_on_dataset(
                 func,
                 dataset=dataset,
@@ -706,7 +742,7 @@ class StructureCollection:
             from opencosmo.dataset.formats import to_numpy_dict
 
             return self.with_new_columns(
-                dataset=dataset if dataset is not None else self.__source.dtype,
+                dataset=dataset if dataset is not None else self.__source_dtype,
                 allow_overwrite=allow_overwrite,
                 **to_numpy_dict(output),  # type: ignore
             )
@@ -776,19 +812,18 @@ class StructureCollection:
 
         """
 
-        ds: oc.Dataset | StructureCollection
-        if dataset is None or dataset == self.__source.dtype:
-            result = self.__source.evaluate(
+        if dataset is None or dataset == self.__source_dtype:
+            result = _st().evaluate(
+                self.__source,
                 func,
-                vectorize,
-                insert,
-                format,
+                vectorize=vectorize,
+                insert=insert,
+                format=format,
                 allow_overwrite=allow_overwrite,
                 **evaluate_kwargs,
             )
             if not insert:
                 return result
-            assert isinstance(result, oc.Dataset)
             return StructureCollection(
                 result,
                 self.__datasets,
@@ -801,25 +836,26 @@ class StructureCollection:
         if ds_path[0] not in self.__datasets:
             raise ValueError(f"Unknown dataset {dataset}")
         ds = self.__datasets[ds_path[0]]
-        if len(ds_path) > 1 and isinstance(ds, oc.Dataset):
+        is_collection = isinstance(ds, StructureCollection)
+        if len(ds_path) > 1 and not is_collection:
             raise ValueError(
                 f"Recieved {dataset} as the dataset argument but {ds_path[0]} is a dataset, not a collection!"
             )
 
-        if len(ds_path) == 1 and isinstance(ds, oc.Dataset):
-            result = ds.evaluate(
+        if len(ds_path) == 1 and not is_collection:
+            old_columns = list(ds.columns)
+            result = _st().evaluate(
+                ds,
                 func,
-                vectorize,
-                insert,
-                format,
+                vectorize=vectorize,
+                insert=insert,
+                format=format,
                 allow_overwrite=allow_overwrite,
                 **evaluate_kwargs,
             )
             if not insert:
                 return result
-            assert isinstance(result, oc.Dataset)
-            assert isinstance(ds, oc.Dataset)
-            new_derived_columns = set(result.columns).difference(ds.columns)
+            new_derived_columns = set(result.columns).difference(old_columns)
             new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
             return StructureCollection(
                 self.__source,
@@ -828,12 +864,12 @@ class StructureCollection:
                 self.__handler.make_derived(self.__source),
                 self.__derived_columns.union(new_derived_columns_),
             )
-        elif len(ds_path) == 1 and isinstance(ds, oc.StructureCollection):
+        elif len(ds_path) == 1 and is_collection:
             result = ds.evaluate(
                 func, None, format, insert, allow_overwrite=allow_overwrite
             )
 
-        elif len(ds_path) > 1 and isinstance(ds, oc.StructureCollection):
+        elif len(ds_path) > 1 and is_collection:
             result = ds.evaluate_on_dataset(
                 func,
                 ".".join(ds_path[1:]),
@@ -846,7 +882,6 @@ class StructureCollection:
         if not insert:
             return result
 
-        assert isinstance(result, (oc.Dataset, StructureCollection))
         return StructureCollection(
             self.__source,
             self.__datasets | {ds_path[0]: result},
@@ -892,13 +927,12 @@ class StructureCollection:
         """
         if not masks:
             return self
-        if not on_galaxies or self.__source.dtype == "galaxy_properties":
-            filtered = self.__source.filter(*masks)
+        if not on_galaxies or self.__source_dtype == "galaxy_properties":
+            filtered = _st().filter(self.__source, *masks)
         elif "galaxy_properties" not in self.__datasets:
             raise ValueError("Dataset galaxy_properties not found in collection.")
         else:
-            galaxy_properties = self["galaxy_properties"]
-            assert isinstance(galaxy_properties, oc.Dataset)
+            galaxy_properties = self.__datasets["galaxy_properties"]
             filtered = filter_source_by_dataset(
                 galaxy_properties, self.__source, self.__source.header, *masks
             )
@@ -982,8 +1016,19 @@ class StructureCollection:
         """
         if not column_selections:
             return self
+        st = _st()
         new_source = self.__source
-        new_datasets = {}
+        new_datasets: dict[str, Any] = {}
+
+        def _apply_select(target, columns_arg, derived):
+            if isinstance(columns_arg, str):
+                columns_set = {columns_arg}
+            else:
+                columns_set = set(columns_arg)
+            if derived:
+                target = st.with_new_columns(target, {}, False, **derived)
+                columns_set.update(derived.keys())
+            return st.select(target, columns_set)
 
         for dataset, columns in column_selections.items():
             if isinstance(columns, dict) and (
@@ -995,8 +1040,8 @@ class StructureCollection:
                 arg = columns  # type: ignore
                 kwargs = {}
 
-            if dataset == self.__source.header.file.data_type:
-                new_source = self.__source.select(arg, **kwargs)
+            if dataset == self.__source_dtype:
+                new_source = _apply_select(self.__source, arg, kwargs)
                 continue
 
             elif dataset not in self.__datasets:
@@ -1004,14 +1049,14 @@ class StructureCollection:
 
             new_ds = self.__datasets[dataset]
 
-            if not isinstance(new_ds, oc.Dataset):
+            if isinstance(new_ds, StructureCollection):
                 if not isinstance(arg, dict):
                     raise ValueError(
                         "When working with nested structure collections, the argument should be a dictionary!"
                     )
                 new_ds = new_ds.select(**arg)
             else:
-                new_ds = new_ds.select(arg, **kwargs)
+                new_ds = _apply_select(new_ds, arg, kwargs)
 
             new_datasets[dataset] = new_ds
 
@@ -1054,21 +1099,27 @@ class StructureCollection:
         """
         if not columns_to_drop:
             return self
+        st = _st()
         new_source = self.__source
-        new_datasets = {}
+        new_datasets: dict[str, Any] = {}
+
+        def _to_col_set(columns_arg):
+            if isinstance(columns_arg, str):
+                return {columns_arg}
+            return set(columns_arg)
 
         for dataset_name, columns in columns_to_drop.items():
-            if dataset_name == self.__source.header.file.data_type:
-                new_source = self.__source.drop(columns)
+            if dataset_name == self.__source_dtype:
+                new_source = st.select(self.__source, _to_col_set(columns), drop=True)
                 continue
 
             elif dataset_name not in self.__datasets:
                 raise ValueError(f"Dataset {dataset_name} not found in collection.")
             new_ds = self.__datasets[dataset_name]
-            if isinstance(new_ds, oc.Dataset):
-                new_ds = new_ds.drop(columns)
-            elif isinstance(new_ds.StructureCollection):
+            if isinstance(new_ds, StructureCollection):
                 new_ds = new_ds.drop(**columns)
+            else:
+                new_ds = st.select(new_ds, _to_col_set(columns), drop=True)
 
             new_datasets[dataset_name] = new_ds
 
@@ -1104,7 +1155,7 @@ class StructureCollection:
 
         """
 
-        new_source = self.__source.sort_by(column, invert=invert)
+        new_source = _st().sort_by(self.__source, column, invert)
 
         return StructureCollection(
             new_source,
@@ -1192,22 +1243,32 @@ class StructureCollection:
         if unknown:
             raise ValueError(f"Unknown datasets in conversions: {unknown}")
 
-        if self.__source.dtype in conversion_keys or (
+        st = _st()
+
+        def _apply(target, ds_conversions):
+            inner_conversions = ds_conversions.get("conversions", {})
+            column_conversions = {
+                k: v for k, v in ds_conversions.items() if k != "conversions"
+            }
+            return st.with_units(
+                target, convention, inner_conversions, column_conversions
+            )
+
+        if self.__source_dtype in conversion_keys or (
             not conversion_keys and convention is not None
         ):
-            new_source = self.__source.with_units(
-                convention, **dataset_conversions.get(self.__source.dtype, {})
+            new_source = _apply(
+                self.__source, dataset_conversions.get(self.__source_dtype, {})
             )
         else:
             new_source = self.__source
-        new_datasets = {}
+        new_datasets: dict[str, Any] = {}
         for key, dataset in self.__datasets.items():
             ds_conversions = dataset_conversions.get(key, {})
             if convention is None and not ds_conversions:
-                new_datasets[key] = dataset.with_units()
+                new_datasets[key] = st.with_units(dataset, None, {}, {})
                 continue
-            new_ds = dataset.with_units(convention, **ds_conversions)
-            new_datasets[key] = new_ds
+            new_datasets[key] = _apply(dataset, ds_conversions)
 
         return StructureCollection(
             new_source,
@@ -1247,7 +1308,7 @@ class StructureCollection:
         StructureCollection
             A new collection with the structures taken from the original.
         """
-        new_source = self.__source.take(n, at, mode)
+        new_source = _st().take(self.__source, n, at, mode)
         new_handler = self.__handler.make_derived(self.__source)
 
         return StructureCollection(
@@ -1294,7 +1355,7 @@ class StructureCollection:
             or if end is greater than start.
 
         """
-        new_source = self.__source.take_range(start, end, mode)
+        new_source = _st().take_range(self.__source, start, end, mode)
         return StructureCollection(
             new_source,
             self.__datasets,
@@ -1323,7 +1384,7 @@ class StructureCollection:
             dataset.
 
         """
-        new_source = self.__source.take_rows(rows)
+        new_source = _st().take_rows(self.__source, rows)
         return StructureCollection(
             new_source,
             self.__datasets,
@@ -1417,11 +1478,12 @@ class StructureCollection:
                 self.__handler.make_derived(self.__source),
             )
 
-        if dataset == self.__source.dtype:
-            new_source = self.__source.with_new_columns(
-                **new_columns,
-                descriptions=descriptions,
-                allow_overwrite=allow_overwrite,
+        if isinstance(descriptions, str):
+            descriptions = {key: descriptions for key in new_columns.keys()}
+
+        if dataset == self.__source_dtype:
+            new_source = _st().with_new_columns(
+                self.__source, descriptions, allow_overwrite, **new_columns
             )
             return StructureCollection(
                 new_source,
@@ -1439,14 +1501,15 @@ class StructureCollection:
         datasets = self.__get_datasets()
         ds = datasets[dataset]
 
-        if not isinstance(ds, oc.Dataset):
+        if isinstance(ds, StructureCollection):
             raise ValueError(f"{dataset} is not a dataset!")
 
-        new_ds = ds.with_new_columns(
-            **new_columns, descriptions=descriptions, allow_overwrite=allow_overwrite
+        old_columns = list(ds.columns)
+        new_ds = _st().with_new_columns(
+            ds, descriptions, allow_overwrite, **new_columns
         )
         new_derived_columns = (
-            set(new_ds.columns).difference(ds.columns).difference(new_im_cols)
+            set(new_ds.columns).difference(old_columns).difference(new_im_cols)
         )
         new_derived_columns_ = [f"{dataset}.{col}" for col in new_derived_columns]
 
@@ -1499,20 +1562,22 @@ class StructureCollection:
         for column in self.__derived_columns:
             name_parts = column.split(".")
             columns_to_collect[name_parts[0]][name_parts[1]] = []
+        st = _st()
         try:
-            for row in self.__source.rows(metadata_columns=metadata_columns):
+            for row in st.iter_rows(self.__source, metadata_columns=metadata_columns):
                 row = dict(row)
                 links = self.__handler.parse(row)
-                output = {}
+                output: dict[str, Any] = {}
                 for name, index in links.items():
                     ilength = get_length(index)
-                    output[name] = datasets[name].take_range(
-                        rs[name], rs[name] + ilength
+                    sliced = st.take_range(
+                        datasets[name], rs[name], rs[name] + ilength, "local"
                     )
+                    output[name] = _wrap_for_user(sliced)
                     rs[name] += ilength
 
                 if not self.__hide_source:
-                    output.update({self.__source.dtype: row})
+                    output.update({self.__source_dtype: row})
                 if not output:
                     continue
 
@@ -1551,17 +1616,15 @@ class StructureCollection:
                 self.__derived_columns = self.__derived_columns.difference(
                     f"{ds_name}.{name}" for name in ds_data.keys()
                 )
+                ds_target = new_datasets[ds_name]
                 descriptions = {
-                    name: new_datasets[ds_name].descriptions[name]
-                    for name in ds_data.keys()
+                    name: ds_target.descriptions[name] for name in ds_data.keys()
                 }
 
-                new_dataset = (
-                    new_datasets[ds_name]
-                    .drop(ds_data.keys())
-                    .with_new_columns(descriptions=descriptions, **ds_data)
+                dropped = st.select(ds_target, set(ds_data.keys()), drop=True)
+                new_datasets[ds_name] = st.with_new_columns(
+                    dropped, descriptions, False, **ds_data
                 )
-                new_datasets[ds_name] = new_dataset
             self.__datasets = new_datasets
         except GeneratorExit:
             pass
@@ -1585,11 +1648,11 @@ class StructureCollection:
         if not requested_datasets.issubset(known_datasets):
             raise ValueError(f"Unknown datasets {requested_datasets - known_datasets}")
 
-        if self.__source.dtype not in requested_datasets:
+        if self.__source_dtype not in requested_datasets:
             hide_source = True
         else:
             hide_source = False
-            requested_datasets.remove(self.__source.dtype)
+            requested_datasets.remove(self.__source_dtype)
 
         new_datasets = {name: self.__datasets[name] for name in requested_datasets}
         return StructureCollection(
@@ -1604,7 +1667,7 @@ class StructureCollection:
         """
         Alias for "objects" in the case that this StructureCollection contains halos.
         """
-        if self.__source.dtype == "halo_properties":
+        if self.__source_dtype == "halo_properties":
             yield from self.objects(*args, **kwargs)
         else:
             raise AttributeError("This collection does not contain halos!")
@@ -1613,34 +1676,35 @@ class StructureCollection:
         """
         Alias for "objects" in the case that this StructureCollection contains galaxies
         """
-        if self.__source.dtype == "galaxy_properties":
+        if self.__source_dtype == "galaxy_properties":
             yield from self.objects(*args, **kwargs)
         else:
             raise AttributeError("This collection does not contain galaxies!")
 
     def make_schema(self, name: Optional[str] = None, **kwargs) -> Schema:
         children = {}
-        source_name = self.__source.dtype
+        source_name = self.__source_dtype
+        st = _st()
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
-        schema_kwargs: dict[str, Any] = (
-            {"no_stack": True} if isinstance(self.__source, lc.Lightcone) else {}
-        )
 
-        source_schema = self.__source.make_schema(**schema_kwargs)
+        source_schema = st.make_schema(self.__source)
         children[source_name] = sio.rebuild_data_linked(source_schema)
 
-        for name, dataset in datasets.items():
-            if name == "galaxies":
-                name = "galaxy_properties"
-            ds_schema = dataset.make_schema(**schema_kwargs)
+        for ds_name, dataset in datasets.items():
+            if ds_name == "galaxies":
+                ds_name = "galaxy_properties"
+            if isinstance(dataset, StructureCollection):
+                ds_schema = dataset.make_schema()
+            else:
+                ds_schema = st.make_schema(dataset)
             if not isinstance(dataset, StructureCollection):
-                children[name] = ds_schema
+                children[ds_name] = ds_schema
                 continue
             for grandchild_name, grandchild in ds_schema.children.items():
                 if "properties" in grandchild_name:
                     children[grandchild_name] = grandchild
                 else:
-                    children[f"{name}_{grandchild_name}"] = grandchild
+                    children[f"{ds_name}_{grandchild_name}"] = grandchild
 
         if name is None:
             name = ""

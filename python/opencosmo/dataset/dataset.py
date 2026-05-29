@@ -52,6 +52,15 @@ class Dataset:
     def __init__(self, state: DatasetState):
         self.__state = state
 
+    @property
+    def state(self) -> DatasetState:
+        """
+        The underlying :class:`DatasetState`. Intended for internal callers
+        (collections, I/O glue) that need to drop down to the canonical state
+        API. Will be removed once the I/O layer returns states directly.
+        """
+        return self.__state
+
     def __repr__(self):
         """
         A basic string representation of the dataset

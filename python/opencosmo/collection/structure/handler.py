@@ -5,12 +5,10 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
 
 import numpy as np
 
-from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:
-    import opencosmo as oc
-    from opencosmo.collection.structure import structure as sc
+    from opencosmo.dataset.state import DatasetState
 
 """
 A tale in 3 acts:
@@ -92,25 +90,15 @@ def create_idx(data, idx_name, offsets):
     return np.atleast_1d(idx)
 
 
-def build_lightcone_index(old_source: lc.Lightcone, new_source: lc.Lightcone):
-    index = np.zeros(len(new_source), dtype=np.int64)
-    offset = 0
-    rs = 0
-    for name, ds in old_source.items():
-        if name not in new_source.keys():
-            offset += len(ds)
-            continue
-        original_index = into_array(ds.index)
-        new_index = into_array(new_source[name].index)
-        _, index_into_original, index_into_new = np.intersect1d(
-            original_index, new_index, assume_unique=True, return_indices=True
-        )
-        index_into_original = index_into_original[np.argsort(index_into_new)]
+def _st():
+    """Lazy import of opencosmo.dataset.state to avoid a circular import.
 
-        index[rs : rs + len(index_into_original)] = index_into_original + offset
-        offset += len(ds)
-        rs += len(index_into_original)
-    return index
+    Same workaround as in structure.py — `collection` is loaded before
+    `dataset.state` finishes initializing.
+    """
+    import opencosmo.dataset.state as st
+
+    return st
 
 
 def make_links(keys, rename_galaxies=False):
@@ -142,10 +130,11 @@ def make_links(keys, rename_galaxies=False):
 
 
 def resort_datasets(
-    source: oc.Dataset | oc.Lightcone,
-    datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    source: DatasetState,
+    datasets: Mapping[str, DatasetState],
     columns: dict[str, list[str]],
 ):
+    st = _st()
     all_columns: list[str] = reduce(
         lambda acc, ds: acc + columns[ds], datasets.keys(), []
     )
@@ -153,8 +142,8 @@ def resort_datasets(
         filter(lambda name: "idx" in name or "size" in name, all_columns)
     )
     sort_column = next(filter(lambda c: "start" in c or "idx" in c, all_columns))
-    unsorted_meta_column = source.get_metadata(sort_column, ignore_sort=True)
-    sorted_meta_column = source.get_metadata(sort_column)
+    unsorted_meta_column = st.get_metadata(source, [sort_column], ignore_sort=True)
+    sorted_meta_column = st.get_metadata(source, [sort_column])
 
     argsort_meta_column = np.argsort(sorted_meta_column[sort_column])
 
@@ -166,12 +155,12 @@ def resort_datasets(
         )
     ]
 
-    meta = source.get_metadata(all_columns)
-    output = {}
+    meta = st.get_metadata(source, all_columns)
+    output: dict[str, DatasetState] = {}
     for name, dataset in datasets.items():
         if len(columns[name]) == 1:
             valid_rows = meta[columns[name][0]] >= 0
-            new_dataset = dataset.take_rows(sort_index[valid_rows])
+            new_dataset = st.take_rows(dataset, sort_index[valid_rows])
         else:
             size_column = [name for name in columns[name] if "size" in name]
             assert len(size_column) == 1
@@ -182,7 +171,7 @@ def resort_datasets(
             sizes = size_column_data[sort_index]
             valid = sizes > 0
             idx = (starts[valid], sizes[valid])
-            new_dataset = dataset.take_rows(idx)
+            new_dataset = st.take_rows(dataset, idx)
         output[name] = new_dataset
     return output
 
@@ -220,7 +209,7 @@ class LinkHandler:
         self,
         links,
         columns,
-        derived_from: Optional[oc.Dataset | oc.Lightcone],
+        derived_from: Optional[DatasetState],
     ):
         self.__derived_from = derived_from
         self.links = links
@@ -247,17 +236,18 @@ class LinkHandler:
 
     def prep_datasets(
         self,
-        source: oc.Dataset | oc.Lightcone,
-        datasets: dict[str, oc.Dataset | oc.Lightcone],
-    ):
+        source: DatasetState,
+        datasets: dict[str, DatasetState],
+    ) -> dict[str, DatasetState]:
         """
         Called once when a datasets are opened for the first time. Downstream
         versions always use rebuild_datsets
         """
+        st = _st()
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
-        meta = source.get_metadata(all_columns)
+        meta = st.get_metadata(source, all_columns)
         # Offsets are now baked into the metadata columns at construction time
         # (see build_lightcone_structure_collection in io.py), so no per-step
         # offset calculation is needed here.
@@ -265,10 +255,10 @@ class LinkHandler:
         new_datasets = datasets
 
         for name, index in indices.items():
-            new_datasets[name] = new_datasets[name].take_rows(index)
+            new_datasets[name] = st.take_rows(new_datasets[name], index)
         return new_datasets
 
-    def make_derived(self, source: oc.Dataset):
+    def make_derived(self, source: DatasetState) -> LinkHandler:
         """
         Because the library encourages performing several operations in a row before requesting data,
         it is a bad idea to re-build the datasets every time someone performs an operation. Instead,
@@ -283,8 +273,8 @@ class LinkHandler:
 
     def rebuild_datasets(
         self,
-        new_source: oc.Dataset | oc.Lightcone,
-        datasets: Mapping[str, oc.Dataset | oc.Lightcone | sc.StructureCollection],
+        new_source: DatasetState,
+        datasets: Mapping[str, DatasetState],
     ):
         """
         We have a few guarantees here:
@@ -299,27 +289,25 @@ class LinkHandler:
         return self.__rebuild_datasets(self.__derived_from, new_source, datasets)
 
     def __rebuild_datasets(self, derived_from, new_source, datasets):
-        if isinstance(derived_from, lc.Lightcone):
-            index_into_original = build_lightcone_index(derived_from, new_source)
-        else:
-            original_index = into_array(derived_from.index)
-            new_index = into_array(new_source.index)
+        st = _st()
+        original_index = into_array(derived_from.raw_index)
+        new_index = into_array(new_source.raw_index)
 
-            _, index_into_original, index_into_new = np.intersect1d(
-                original_index, new_index, assume_unique=True, return_indices=True
-            )
-            index_into_original = index_into_original[np.argsort(index_into_new)]
+        _, index_into_original, index_into_new = np.intersect1d(
+            original_index, new_index, assume_unique=True, return_indices=True
+        )
+        index_into_original = index_into_original[np.argsort(index_into_new)]
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
-        metadata = derived_from.get_metadata(all_columns)
-        new_datasets = {}
+        metadata = st.get_metadata(derived_from, all_columns)
+        new_datasets: dict[str, DatasetState] = {}
 
         for name, dataset in datasets.items():
             if len(self.columns[name]) == 1:
                 metadata_column = metadata[self.columns[name][0]]
                 new_datasets[name] = rebuild_row_index(
-                    new_source, dataset, metadata_column, index_into_original
+                    dataset, metadata_column, index_into_original
                 )
             else:
                 size_column = [name for name in self.columns[name] if "size" in name]
@@ -328,7 +316,6 @@ class LinkHandler:
                 size_column_data = metadata[size_column_name]
 
                 new_datasets[name] = rebuild_chunk_index(
-                    new_source,
                     dataset,
                     size_column_data.astype(np.int64),
                     index_into_original.astype(np.int64),
@@ -336,7 +323,9 @@ class LinkHandler:
         return new_datasets
 
     def resort(
-        self, source: oc.Dataset | oc.Lightcone, datasets: dict[str, oc.Dataset]
+        self,
+        source: DatasetState,
+        datasets: dict[str, DatasetState],
     ):
         """
         Data is always written in its original order, whether or not it has been sorted.
@@ -345,16 +334,14 @@ class LinkHandler:
         index from the original data.
         """
 
-        is_sorted = source.sorted_by is not None
-        if not is_sorted:
+        if source.sort_key is None:
             return datasets
 
         return resort_datasets(source, datasets, self.columns)
 
 
 def rebuild_row_index(
-    new_source: oc.Dataset,
-    dataset: oc.Dataset,
+    dataset: DatasetState,
     original_metadata_column: np.ndarray,
     index_into_original: np.ndarray,
 ):
@@ -364,12 +351,11 @@ def rebuild_row_index(
     index_to_take = index[index_into_original]
     index_to_take = index_to_take[index_to_take >= 0]
 
-    return dataset.take_rows(index_to_take)
+    return _st().take_rows(dataset, index_to_take)
 
 
 def rebuild_chunk_index(
-    new_source: oc.Dataset,
-    dataset: oc.Dataset,
+    dataset: DatasetState,
     original_size_column: np.ndarray,
     index_into_original: np.ndarray,
 ):
@@ -380,5 +366,4 @@ def rebuild_chunk_index(
     starts = chunk_boundaries[index_into_original[valid_rows]]
     sizes = original_size_column[index_into_original[valid_rows]]
 
-    ds = dataset.take_rows((starts, sizes))
-    return ds
+    return _st().take_rows(dataset, (starts, sizes))
