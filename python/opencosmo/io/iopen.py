@@ -554,11 +554,7 @@ def open_single_dataset(
         tree=tree,
     )
 
-    dataset = oc.Dataset(
-        header,
-        state,
-        tree=tree,
-    )
+    dataset = oc.Dataset(state)
     dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
     if header.file.data_type == "healpix_map":
         return __open_healpix_map(dataset, sim_region)

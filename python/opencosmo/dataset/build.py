@@ -61,7 +61,7 @@ def build_dataset_from_data(
         data_descriptions,
         tree=tree,
     )
-    return Dataset(header, new_state, tree=tree)
+    return Dataset(new_state)
 
 
 def make_in_memory_h5_file_from_data(

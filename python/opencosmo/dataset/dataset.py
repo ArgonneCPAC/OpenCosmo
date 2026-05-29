@@ -32,22 +32,25 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
-    from opencosmo.spatial.tree import Tree
 
 
 OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
 
 
 class Dataset:
-    def __init__(
-        self,
-        header: OpenCosmoHeader,
-        state: DatasetState,
-        tree: Optional[Tree] = None,
-    ):
-        self.__header = header
+    """
+    User-facing wrapper around a :class:`DatasetState`. ``Dataset`` only
+    sanitizes user input (validates formats, expands wildcards, normalizes
+    descriptions) and forwards to the canonical state functions in
+    :mod:`opencosmo.dataset.state`. The state is the single source of truth
+    for the header, region, spatial tree, and column data.
+
+    Collections hold ``DatasetState`` instances directly and only construct
+    a ``Dataset`` at the public API boundary.
+    """
+
+    def __init__(self, state: DatasetState):
         self.__state = state
-        self.__tree = tree
 
     def __repr__(self):
         """
@@ -68,10 +71,6 @@ class Dataset:
         head = f"OpenCosmo Dataset (length={length})\n"
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
-
-    @property
-    def index(self):
-        return self.__state.raw_index
 
     def __len__(self):
         return len(self.__state)
@@ -100,7 +99,7 @@ class Dataset:
         header: opencosmo.header.OpenCosmoHeader
 
         """
-        return self.__header
+        return self.__state.header
 
     @property
     def columns(self) -> list[str]:
@@ -112,10 +111,6 @@ class Dataset:
         columns: list[str]
         """
         return self.__state.columns
-
-    @property
-    def meta_columns(self) -> list[str]:
-        return self.__state.meta_columns
 
     @property
     def descriptions(self) -> dict[str, Optional[str]]:
@@ -157,7 +152,7 @@ class Dataset:
         -------
         cosmology: astropy.cosmology.Cosmology
         """
-        return self.__header.cosmology
+        return self.__state.header.cosmology
 
     @property
     def dtype(self) -> str:
@@ -168,7 +163,7 @@ class Dataset:
         -------
         dtype: str
         """
-        return str(self.__header.file.data_type)
+        return str(self.__state.header.file.data_type)
 
     @property
     def redshift(self) -> float | tuple[float, float] | None:
@@ -180,7 +175,7 @@ class Dataset:
         redshift: float
 
         """
-        return self.__header.file.redshift
+        return self.__state.header.file.redshift
 
     @property
     def region(self) -> Region:
@@ -207,7 +202,7 @@ class Dataset:
         -------
         parameters: Optional[opencosmo.dtypes.hacc.HaccSimulationParameters]
         """
-        return getattr(self.__header, "simulation", None)
+        return getattr(self.__state.header, "simulation", None)
 
     @property
     def sorted_by(self) -> Optional[str]:
@@ -219,10 +214,6 @@ class Dataset:
         column: Optional[str]
         """
         return self.__state.sort_key[0] if self.__state.sort_key is not None else None
-
-    @property
-    def tree(self) -> Optional[Tree]:
-        return self.__tree
 
     @property
     @deprecated(
@@ -241,15 +232,7 @@ class Dataset:
             The data in the dataset.
 
         """
-        # should rename this, dataset.data can get confusing
-        # Also the point is that there's MORE data than just the table
         return self.get_data("astropy")
-
-    def get_metadata(self, columns: str | list[str] = [], ignore_sort: bool = False):
-        if isinstance(columns, str):
-            columns = [columns]
-
-        return st.get_metadata(self.__state, columns, ignore_sort)
 
     def get_data(
         self,
@@ -338,9 +321,7 @@ class Dataset:
         AttributeError:
             If the dataset does not contain a spatial index
         """
-
-        new_state = st.bound(self.__state, region, select_by)
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(st.bound(self.__state, region, select_by))
 
     def evaluate(
         self,
@@ -437,7 +418,7 @@ class Dataset:
         )
         if not insert:
             return result
-        return Dataset(self.__header, result, self.__tree)
+        return Dataset(result)
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
@@ -461,8 +442,7 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        new_state = st.filter(self.__state, *masks)
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(st.filter(self.__state, *masks))
 
     def rows(
         self,
@@ -550,12 +530,7 @@ class Dataset:
             new_state = st.with_new_columns(new_state, {}, False, **derived_columns)
             all_columns.update(derived_columns.keys())
 
-        new_state = st.select(new_state, all_columns)
-        return Dataset(
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        return Dataset(st.select(new_state, all_columns))
 
     def drop(self, *columns: str | Iterable[str]) -> Dataset:
         """
@@ -587,12 +562,7 @@ class Dataset:
                 col_group = {col_group}
             all_columns.update(col_group)
 
-        new_state = st.select(self.__state, all_columns, drop=True)
-        return Dataset(
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        return Dataset(st.select(self.__state, all_columns, drop=True))
 
     def sort_by(self, column: Optional[str], invert: bool = False) -> Dataset:
         """
@@ -627,12 +597,7 @@ class Dataset:
 
 
         """
-        new_state = st.sort_by(self.__state, column, invert)
-        return Dataset(
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        return Dataset(st.sort_by(self.__state, column, invert))
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
@@ -674,8 +639,7 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        new_state = st.take(self.__state, n, at, mode)
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(st.take(self.__state, n, at, mode))
 
     def take_range(
         self, start: int, end: int, mode: Literal["local", "global"] = "local"
@@ -714,8 +678,7 @@ class Dataset:
             or if end is greater than start.
 
         """
-        new_state = st.take_range(self.__state, start, end, mode)
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(st.take_range(self.__state, start, end, mode))
 
     def take_rows(self, rows: np.ndarray | DataIndex):
         """
@@ -744,8 +707,7 @@ class Dataset:
                 "Row indices must be between 0 and the length of this dataset - 1!"
             )
 
-        new_state = st.take_rows(self.__state, rows)
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(st.take_rows(self.__state, rows))
 
     def with_new_columns(
         self,
@@ -802,10 +764,11 @@ class Dataset:
         """
         if isinstance(descriptions, str):
             descriptions = {key: descriptions for key in new_columns.keys()}
-        new_state = st.with_new_columns(
-            self.__state, descriptions, allow_overwrite, **new_columns
+        return Dataset(
+            st.with_new_columns(
+                self.__state, descriptions, allow_overwrite, **new_columns
+            )
         )
-        return Dataset(self.__header, new_state, self.__tree)
 
     def make_schema(
         self, with_header: bool = True, name: Optional[str] = None
@@ -888,10 +851,4 @@ class Dataset:
             The new dataset with the requested unit convention and/or conversions.
 
         """
-
-        new_state = st.with_units(self.__state, convention, conversions, columns)
-        return Dataset(
-            new_state.header,
-            new_state,
-            self.__tree,
-        )
+        return Dataset(st.with_units(self.__state, convention, conversions, columns))

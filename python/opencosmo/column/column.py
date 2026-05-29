@@ -916,7 +916,9 @@ class EvaluatedColumn:
         match self.__strategy:
             case EvaluateStrategy.VECTORIZE:
                 values = dict(
-                    st.get_data(st.take(selected, 1), format=self.__format, unpack=False)
+                    st.get_data(
+                        st.take(selected, 1), format=self.__format, unpack=False
+                    )
                 )
                 return self.__func(**values, **self.__kwargs)
 

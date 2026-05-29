@@ -107,7 +107,10 @@ def get_end_take_index(
 
 
 def get_range_take_index_mpi(
-    ds: DatasetState | Lightcone, sort_key: Optional[tuple[str, bool]], start: int, size: int
+    ds: DatasetState | Lightcone,
+    sort_key: Optional[tuple[str, bool]],
+    start: int,
+    size: int,
 ):
     comm = get_comm_world()
     assert comm is not None
