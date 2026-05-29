@@ -146,16 +146,18 @@ def sync_headers(datasets: list[ds.Dataset], redshift_range):
 
 
 def stack_lightcone_datasets_in_schema(
-    datasets: dict[str, list[ds.Dataset]],
+    datasets,
     name: Optional[str],
     redshift_range: Optional[tuple[float, float]],
     no_stack: bool = False,
 ):
+    import opencosmo.dataset.state as st
+
     n_datasets = sum(len(lst) for lst in datasets.values())
     if n_datasets == 1 and get_comm_world() is None:
         dataset_list = next(iter(datasets.values()))
 
-        schema = dataset_list[0].make_schema(name=name)
+        schema = st.make_schema(dataset_list[0], name=name)
         header = sync_headers(dataset_list, redshift_range)
         schema.children["header"] = header
         return {"data": schema}
@@ -172,12 +174,11 @@ def stack_lightcone_datasets_in_schema(
             get_stacked_lightcone_order([], -1)
             sync_headers(ds_list, None)
             continue
-        schemas = [ds.make_schema(name=name) for ds in ds_list]
+        schemas = [st.make_schema(d, name=name) for d in ds_list]
         index_names = list(schemas[0].children["index"].children.keys())
         index_names.sort()
         max_level = int(index_names[-1][-1])
 
-        assert all(isinstance(dataset, ds.Dataset) for dataset in ds_list)
         if no_stack:
             assert len(schemas) == 1
             schema_children[schema_name] = schemas[0]
@@ -277,7 +278,7 @@ def get_order_mpi(pixels, comm):
     return new_order[bounds[rank] : bounds[rank + 1]] - bounds[rank]
 
 
-def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth: int):
+def get_stacked_lightcone_order(datasets, max_index_depth: int):
     datasets = list(datasets)
     nside = 2**max_index_depth
     coordinates = list(map(find_coordinates_2d, datasets))

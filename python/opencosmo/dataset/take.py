@@ -44,11 +44,21 @@ def apply_sort_index(
     return np.sort(arr)
 
 
+def _select_column_numpy(ds, column: str) -> np.ndarray:
+    """Fetch one column as a plain numpy array; dispatches state vs. Lightcone."""
+    import opencosmo.dataset.state as st
+    from opencosmo.dataset.state import DatasetState as _State
+
+    if isinstance(ds, _State):
+        return st.get_data(st.select(ds, {column}), format="numpy", ignore_sort=True)
+    return ds.select(column).get_data("numpy", ignore_sort=True)
+
+
 def _get_sort_index(
     ds: DatasetState | Lightcone, sort_key: tuple[str, bool]
 ) -> np.ndarray:
     sort_col, sort_desc = sort_key
-    values = ds.select(sort_col).get_data("numpy", ignore_sort=True)
+    values = _select_column_numpy(ds, sort_col)
     assert isinstance(values, np.ndarray)
     if sort_desc:
         values = -values
@@ -175,7 +185,7 @@ def get_global_sort_order(ds: DatasetState | Lightcone, sort_key: tuple[str, boo
 
     assert sort_key is not None
     sort_col, sort_desc = sort_key
-    raw = ds.select(sort_col).get_data("numpy", ignore_sort=True)
+    raw = _select_column_numpy(ds, sort_col)
     local_values = np.asarray(
         raw.value if hasattr(raw, "value") else raw, dtype=np.float64
     )

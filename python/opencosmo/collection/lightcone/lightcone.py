@@ -53,12 +53,35 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset import Dataset
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
+
+
+def _st():
+    """Lazy import of opencosmo.dataset.state — same circular-import workaround
+    as in collection/structure (collection loads before dataset.state finishes
+    initializing).
+    """
+    import opencosmo.dataset.state as st
+
+    return st
+
+
+def _unwrap(value):
+    """Normalize a constructor value (Dataset or state or Lightcone) to its
+    underlying state/Lightcone form. Auto-unwrap is transitional until Step 4
+    has I/O return states directly.
+    """
+    if isinstance(value, oc.Dataset):
+        return value.state
+    return value
+
+
 
 
 class Lightcone(dict):
@@ -78,16 +101,17 @@ class Lightcone(dict):
 
     def __init__(
         self,
-        datasets: Mapping[Any, Dataset | Lightcone],
+        datasets: Mapping[Any, Dataset | DatasetState | Lightcone],
         z_range: Optional[tuple[float, float]] = None,
         hidden: Optional[set[str]] = None,
         sort_key: Optional[tuple[str, bool]] = None,
     ):
-        self.update(datasets)
+        normalized = {k: _unwrap(v) for k, v in datasets.items()}
+        self.update(normalized)
         z_range = (
             z_range
             if z_range is not None
-            else lcutils.get_redshift_range(list(datasets.values()))
+            else lcutils.get_redshift_range(list(self.values()))
         )
 
         columns: set[str] = reduce(
@@ -135,9 +159,13 @@ class Lightcone(dict):
         return self
 
     def __exit__(self, *exc_details):
+        st = _st()
         for dataset in self.values():
             try:
-                dataset.close()
+                if isinstance(dataset, Lightcone):
+                    dataset.__exit__(*exc_details)
+                else:
+                    st.exit_state(dataset)
             except ValueError:
                 continue
 
@@ -173,13 +201,21 @@ class Lightcone(dict):
     @property
     def meta_columns(self) -> list[str]:
         """
-        The names of the columns in this dataset.
+        The names of the metadata columns in this lightcone.
 
         Returns
         -------
         columns: list[str]
         """
         return next(iter(self.values())).meta_columns
+
+    @property
+    def sort_key(self) -> Optional[tuple[str, bool]]:
+        """
+        Mirror of DatasetState.sort_key so that collections holding either a
+        DatasetState or a Lightcone can read the sort key the same way.
+        """
+        return self.__sort_key
 
     @cached_property
     def descriptions(self) -> dict[str, Optional[str]]:
@@ -237,7 +273,7 @@ class Lightcone(dict):
         -------
         dtype: str
         """
-        return self.__header.file.data_type
+        return str(self.__header.file.data_type)
 
     @property
     def region(self) -> Region:
@@ -374,7 +410,13 @@ class Lightcone(dict):
         lightcone = fold(
             HookPoint.LightconeInstantiate, LightconeInstantiateCtx(self)
         ).lightcone
-        data = [ds.get_data(unpack=False) for ds in lightcone.values()]
+        st = _st()
+        data = []
+        for ds in lightcone.values():
+            if isinstance(ds, Lightcone):
+                data.append(ds.get_data(unpack=False))
+            else:
+                data.append(st.get_data(ds, unpack=False))
         data_with_length = [d for d in data if len(d) > 0]
         if len(data_with_length) == 0:
             return data[0]
@@ -405,7 +447,15 @@ class Lightcone(dict):
         return table
 
     def get_metadata(self, columns: str | list[str] = [], ignore_sort: bool = False):
-        data = [ds.get_metadata(columns) for ds in self.values()]
+        st = _st()
+        if isinstance(columns, str):
+            columns = [columns]
+        data = []
+        for ds in self.values():
+            if isinstance(ds, Lightcone):
+                data.append(ds.get_metadata(columns))
+            else:
+                data.append(st.get_metadata(ds, columns))
 
         output = {}
         for key in data[0].keys():
@@ -503,42 +553,37 @@ class Lightcone(dict):
 
         elif z_low == z_high:
             raise ValueError("Low and high values of the redshift range are the same!")
+        st = _st()
         new_datasets = {}
         for key, dataset in self.items():
             if not lcutils.is_in_range(dataset, z_low, z_high):
                 continue
-            new_dataset = dataset.filter(
-                oc.col("redshift") > z_low, oc.col("redshift") < z_high
-            )
+            masks = (oc.col("redshift") > z_low, oc.col("redshift") < z_high)
+            if isinstance(dataset, Lightcone):
+                new_dataset = dataset.filter(*masks)
+            else:
+                new_dataset = st.filter(dataset, *masks)
             if len(new_dataset) > 0:
                 new_datasets[key] = new_dataset
         return Lightcone(new_datasets, (z_low, z_high), self.__hidden, self.__sort_key)
 
-    def __map(
+    def _apply_per_dataset(
         self,
-        method,
-        *args,
+        fn: Callable[[Any], Any],
         hidden: Optional[set[str]] = None,
-        mapped_arguments: dict[str, dict[str, Any]] = {},
         construct: bool = True,
-        **kwargs,
     ):
         """
-        This type of collection will only ever be constructed if all the underlying
-        datasets have the same data type, so it is always safe to map operations
-        across all of them.
+        Apply ``fn`` to every sub-dataset (state or nested Lightcone) and
+        rebuild a Lightcone from the non-empty results. ``fn`` is responsible
+        for dispatching state vs. Lightcone correctly.
         """
-        output = {}
+        output: dict[Any, Any] = {}
+        zero_length_output: dict[Any, Any] = {}
         hidden = hidden if hidden is not None else self.__hidden
-        zero_length_output = {}
 
         for ds_name, dataset in self.items():
-            dataset_mapped_arguments = {
-                arg_name: args[ds_name] for arg_name, args in mapped_arguments.items()
-            }
-            new_ds = getattr(dataset, method)(
-                *args, **kwargs, **dataset_mapped_arguments
-            )
+            new_ds = fn(dataset)
             if len(new_ds) == 0:
                 zero_length_output[ds_name] = new_ds
                 continue
@@ -614,7 +659,14 @@ class Lightcone(dict):
         AttributeError:
             If the dataset does not contain a spatial index
         """
-        return self.__map("bound", region, select_by)
+        st = _st()
+
+        def _apply(ds):
+            if isinstance(ds, Lightcone):
+                return ds.bound(region, select_by)
+            return st.bound(ds, region, select_by)
+
+        return self._apply_per_dataset(_apply)
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
@@ -719,13 +771,14 @@ class Lightcone(dict):
             raise ValueError("Pixels must be a 1d array of positive integers")
         if pixels[0] < 0 or pixels[-1] >= hp.nside2npix(nside):
             raise ValueError("Pixels must be a 1d array of positive integers")
+        st = _st()
         output = {}
         for name, ds in self.items():
             if isinstance(ds, Lightcone):
                 output[name] = ds.pixel_search(pixels, nside)
                 continue
-            rows = ds.tree.project_on_index(level, ds.index, pixels)
-            output[name] = ds.take_rows(rows)
+            rows = ds.tree.project_on_index(level, ds.raw_index, pixels)
+            output[name] = st.take_rows(ds, rows)
         return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
 
     def evaluate(
@@ -787,6 +840,7 @@ class Lightcone(dict):
             The new lightcone dataset with the evaluated column(s)
         """
 
+        st = _st()
         mapped_kwargs = {}
         kwargs_names = list(evaluate_kwargs.keys())
         for name in kwargs_names:
@@ -810,45 +864,69 @@ class Lightcone(dict):
                 batch_size,
                 ds_kwargs,
             )
-            mapped_evaluated_columns = {
-                func.__name__: {
-                    name: evaluated_column.with_kwargs(
-                        **{
-                            argname: vals[name]
-                            for argname, vals in mapped_kwargs.items()
-                        }
-                    )
-                    for name in self.keys()
-                }
-            }
-            return self.__map(
-                "with_new_columns",
-                mapped_arguments=mapped_evaluated_columns,
-                construct=True,
-                allow_overwrite=allow_overwrite,
-            )
 
-        result = self.__map(
-            "evaluate",
-            func=func,
-            format=format,
-            vectorize=vectorize,
-            insert=insert,
-            mapped_arguments=mapped_kwargs,
-            batch_size=batch_size,
-            allow_overwrite=allow_overwrite,
-            construct=insert,
-            **evaluate_kwargs,
-        )
+            def _insert(ds, ds_key):
+                column = evaluated_column.with_kwargs(
+                    **{
+                        argname: vals[ds_key]
+                        for argname, vals in mapped_kwargs.items()
+                    }
+                )
+                if isinstance(ds, Lightcone):
+                    return ds.with_new_columns(
+                        allow_overwrite=allow_overwrite,
+                        **{func.__name__: column},
+                    )
+                return st.with_new_columns(
+                    ds, {}, allow_overwrite, **{func.__name__: column}
+                )
+
+            output: dict[Any, Any] = {}
+            zero: dict[Any, Any] = {}
+            for ds_key, dataset in self.items():
+                new_ds = _insert(dataset, ds_key)
+                if len(new_ds) == 0:
+                    zero[ds_key] = new_ds
+                else:
+                    output[ds_key] = new_ds
+            if not output:
+                output = zero
+            return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
+
+        result: dict[Any, Any] = {}
+        for ds_key, dataset in self.items():
+            ds_kwargs = evaluate_kwargs | {
+                argname: vals[ds_key] for argname, vals in mapped_kwargs.items()
+            }
+            if isinstance(dataset, Lightcone):
+                result[ds_key] = dataset.evaluate(
+                    func,
+                    vectorize=vectorize,
+                    insert=False,
+                    format=format,
+                    batch_size=batch_size,
+                    allow_overwrite=allow_overwrite,
+                    **ds_kwargs,
+                )
+            else:
+                result[ds_key] = st.evaluate(
+                    dataset,
+                    func,
+                    vectorize=vectorize,
+                    insert=False,
+                    format=format,
+                    batch_size=batch_size,
+                    allow_overwrite=allow_overwrite,
+                    **ds_kwargs,
+                )
         if next(iter(result.values())) is None:
             return
 
-        assert isinstance(result, dict)
         keys = next(iter(result.values())).keys()
-        output = {}
+        output_data = {}
         for key in keys:
-            output[key] = concat_chunks([r[key] for r in result.values()], format)
-        return output
+            output_data[key] = concat_chunks([r[key] for r in result.values()], format)
+        return output_data
 
     def filter(self, *masks: ColumnMask, **kwargs) -> Self:
         """
@@ -872,7 +950,14 @@ class Lightcone(dict):
             not in the dataset, or the  would return zero rows.
 
         """
-        return self.__map("filter", *masks, **kwargs)
+        st = _st()
+
+        def _apply(ds):
+            if isinstance(ds, Lightcone):
+                return ds.filter(*masks, **kwargs)
+            return st.filter(ds, *masks)
+
+        return self._apply_per_dataset(_apply)
 
     def rows(
         self, metadata_columns=[]
@@ -887,9 +972,14 @@ class Lightcone(dict):
         row : dict
             A dictionary of values for each row in the dataset with units.
         """
-        yield from chain.from_iterable(
-            v.rows(metadata_columns=metadata_columns) for v in self.values()
-        )
+        st = _st()
+
+        def _iter(v):
+            if isinstance(v, Lightcone):
+                return v.rows(metadata_columns=metadata_columns)
+            return st.iter_rows(v, metadata_columns=metadata_columns)
+
+        yield from chain.from_iterable(_iter(v) for v in self.values())
 
     def select(
         self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
@@ -947,7 +1037,7 @@ class Lightcone(dict):
             all_columns.update(col_group)
 
         hidden = self.__hidden
-        additional_columns = set()
+        additional_columns: set[str] = set()
 
         if "redshift" not in all_columns and "properties" in self.dtype:
             additional_columns.add("redshift")
@@ -957,15 +1047,21 @@ class Lightcone(dict):
             additional_columns.add(self.__sort_key[0])
             hidden = hidden.union({self.__sort_key[0]})
 
-        return self.__map(
-            "select",
-            all_columns,
-            additional_columns,
-            mapped_arguments={},
-            hidden=hidden,
-            construct=True,
-            **derived_columns,
-        )
+        st = _st()
+
+        def _apply(ds):
+            if isinstance(ds, Lightcone):
+                return ds.select(
+                    all_columns | additional_columns, **derived_columns
+                )
+            target = ds
+            cols = set(all_columns) | set(additional_columns)
+            if derived_columns:
+                target = st.with_new_columns(target, {}, False, **derived_columns)
+                cols.update(derived_columns.keys())
+            return st.select(target, cols)
+
+        return self._apply_per_dataset(_apply, hidden=hidden)
 
     def drop(self, *columns: str | Iterable[str]) -> Self:
         """
@@ -1138,9 +1234,18 @@ class Lightcone(dict):
     def __make_sort_index(self):
         if self.__sort_key is None:
             return None
-        data = np.concatenate(
-            [ds.select(self.__sort_key[0]).get_data("numpy") for ds in self.values()]
-        )
+        st = _st()
+        chunks = []
+        for ds in self.values():
+            if isinstance(ds, Lightcone):
+                chunks.append(ds.select(self.__sort_key[0]).get_data("numpy"))
+            else:
+                chunks.append(
+                    st.get_data(
+                        st.select(ds, {self.__sort_key[0]}), format="numpy"
+                    )
+                )
+        data = np.concatenate(chunks)
         if self.__sort_key[1]:
             data = -data
         return np.argsort(data)
@@ -1150,13 +1255,17 @@ class Lightcone(dict):
         Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorted.
         For internal use only.
         """
+        st = _st()
         sizes = np.fromiter((len(ds) for ds in self.values()), dtype=np.int64)
         starts = np.zeros_like(sizes)
         starts[1:] = np.cumsum(sizes)[:-1]
         projected = rebuild_by_ranges(rows, (starts, sizes))
         output = {}
         for (name, ds), index in zip(self.items(), projected):
-            output[name] = ds.take_rows(index)
+            if isinstance(ds, Lightcone):
+                output[name] = ds.take_rows(index)
+            else:
+                output[name] = st.take_rows(ds, index)
         if all(len(ds) == 0 for ds in output.values()):
             output = {"data": next(iter(output.values()))}
         else:
@@ -1218,13 +1327,26 @@ class Lightcone(dict):
         split_points = np.cumsum([len(ds) for ds in self.values()])
         split_points = np.insert(0, 0, split_points)[:-1]
         raw_split = {name: np.split(arr, split_points) for name, arr in raw.items()}
+        st = _st()
+        new_descriptions = (
+            {key: descriptions for key in columns.keys()}
+            if isinstance(descriptions, str)
+            else descriptions
+        )
         new_datasets = {}
         for i, (ds_name, ds) in enumerate(self.items()):
             raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
             columns_input = raw_columns | derived
-            new_dataset = ds.with_new_columns(
-                descriptions, allow_overwrite=allow_overwrite, **columns_input
-            )
+            if isinstance(ds, Lightcone):
+                new_dataset = ds.with_new_columns(
+                    new_descriptions,
+                    allow_overwrite=allow_overwrite,
+                    **columns_input,
+                )
+            else:
+                new_dataset = st.with_new_columns(
+                    ds, new_descriptions, allow_overwrite, **columns_input
+                )
             new_datasets[ds_name] = new_dataset
         return Lightcone(new_datasets, self.z_range, self.__hidden, self.__sort_key)
 
@@ -1328,9 +1450,11 @@ class Lightcone(dict):
         lightcone : Lightcone
             The new lightcone with the requested unit convention and/or conversions.
         """
-        return self.__map(
-            "with_units",
-            convention=convention,
-            conversions=conversions,
-            **columns,
-        )
+        st = _st()
+
+        def _apply(ds):
+            if isinstance(ds, Lightcone):
+                return ds.with_units(convention, conversions=conversions, **columns)
+            return st.with_units(ds, convention, conversions, columns)
+
+        return self._apply_per_dataset(_apply)

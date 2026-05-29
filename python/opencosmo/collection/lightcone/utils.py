@@ -6,13 +6,12 @@ import healpy as hp
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.dataset import dataset as ds
 
 if TYPE_CHECKING:
     from astropy.table import Table
 
 
-def get_redshift_range(datasets: Sequence[ds.Dataset | lc.Lightcone]):
+def get_redshift_range(datasets: Sequence):
     redshift_ranges = list(map(get_single_redshift_range, datasets))
     min_z = min(rr[0] for rr in redshift_ranges)
     max_z = max(rr[1] for rr in redshift_ranges)
@@ -20,7 +19,7 @@ def get_redshift_range(datasets: Sequence[ds.Dataset | lc.Lightcone]):
     return (min_z, max_z)
 
 
-def get_single_redshift_range(dataset: ds.Dataset | lc.Lightcone):
+def get_single_redshift_range(dataset):
     if isinstance(dataset, lc.Lightcone):
         return dataset.z_range
     redshift_range = dataset.header.lightcone["z_range"]
@@ -34,7 +33,7 @@ def get_single_redshift_range(dataset: ds.Dataset | lc.Lightcone):
     return (min_redshift, max_redshift)
 
 
-def is_in_range(dataset: ds.Dataset, z_low: float, z_high: float):
+def is_in_range(dataset, z_low: float, z_high: float):
     z_range = dataset.header.lightcone["z_range"]
     if z_range is None:
         z_range = get_single_redshift_range(dataset)
@@ -56,9 +55,15 @@ def sort_table(table: Table, column: str, invert: bool):
 def take_from_sorted(
     lightcone: lc.Lightcone, sort_by: str, invert: bool, n: int, at: str | int
 ):
-    column = np.concatenate(
-        [ds.select(sort_by).get_data("numpy") for ds in lightcone.values()]
-    )
+    import opencosmo.dataset.state as st
+
+    chunks = []
+    for d in lightcone.values():
+        if isinstance(d, lc.Lightcone):
+            chunks.append(d.select(sort_by).get_data("numpy"))
+        else:
+            chunks.append(st.get_data(st.select(d, {sort_by}), format="numpy"))
+    column = np.concatenate(chunks)
     if invert:
         column = -column
     sort_index = np.argsort(column)
@@ -87,7 +92,6 @@ def determine_max_level(lightcone: lc.Lightcone) -> Optional[int]:
         if isinstance(ds_, lc.Lightcone):
             ds_level = determine_max_level(ds_)
         else:
-            assert isinstance(ds_, ds.Dataset)
             ds_level = ds_.tree.max_level if ds_.tree is not None else None
         if ds_level is None:
             return None
@@ -117,13 +121,12 @@ def get_pixels(
             is_occupied[lightcone_pixels] = True
             continue
 
-        assert isinstance(ds_, ds.Dataset)
         tree = ds_.tree
         if tree is None:
             raise ValueError(
                 "One or more datasets in this lightcone does not have a spatial index!"
             )
         read_level = tree.max_level if tree.max_level < level else level
-        ds_pixels = tree.get_occupied_partitions(read_level, ds_.index)
+        ds_pixels = tree.get_occupied_partitions(read_level, ds_.raw_index)
         is_occupied[ds_pixels] = True
     return np.where(is_occupied)[0]
