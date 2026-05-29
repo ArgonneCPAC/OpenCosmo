@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Optional
 
 import healpy as hp
 import numpy as np
 
-from opencosmo import dataset as ds
 from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
+    from opencosmo import dataset as ds  # noqa: F401  (used in type hint below)
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
 

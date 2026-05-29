@@ -75,16 +75,22 @@ def do_first_evaluation(
 ):
     import opencosmo.dataset.state as st
     from opencosmo.dataset.formats import fetch_as_dict
+    from opencosmo.dataset.state import DatasetState as _State
+
+    def _take(ds, n, at="random"):
+        if isinstance(ds, _State):
+            return st.take(ds, n, at, "local")
+        return ds.take(n, at)
 
     eval_strategy = EvaluateStrategy(strategy)
     columns = list(dataset.columns)
     match eval_strategy:
         case EvaluateStrategy.VECTORIZE:
-            values = fetch_as_dict(st.take(dataset, 1), columns, format, unpack=False)
+            values = fetch_as_dict(_take(dataset, 1), columns, format, unpack=False)
             return func(**values, **kwargs), eval_strategy
 
         case EvaluateStrategy.ROW_WISE:
-            values = fetch_as_dict(st.take(dataset, 1), columns, format, unpack=False)
+            values = fetch_as_dict(_take(dataset, 1), columns, format, unpack=False)
             values = {name: container[0] for name, container in values.items()}
             return func(**values, **kwargs), eval_strategy
 
@@ -93,6 +99,6 @@ def do_first_evaluation(
             assert isinstance(index, tuple)
             first_chunk_size = index[1][0]
             first_chunk = fetch_as_dict(
-                st.take(dataset, first_chunk_size, at="start"), columns, format
+                _take(dataset, first_chunk_size, at="start"), columns, format
             )
             return func(**first_chunk, **kwargs), eval_strategy

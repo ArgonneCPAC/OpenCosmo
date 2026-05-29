@@ -121,7 +121,12 @@ def verify_for_lazy_evaluation(
         raise ValueError(
             f"Function expects columns {diff} which are not in the dataset"
         )
-    dataset = st.select(dataset, set(required_columns))
+    from opencosmo.dataset.state import DatasetState as _State
+
+    if isinstance(dataset, _State):
+        dataset = st.select(dataset, set(required_columns))
+    else:
+        dataset = dataset.select(*required_columns)
     if skip_evaluation_check:
         first_values = None
         eval_strategy = EvaluateStrategy(strategy)

@@ -92,7 +92,7 @@ def rebuild_top_host_idx(top_host_idx, index):
 
 def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
     index_array = into_array(new_index)
-    top_host_idx = st.get_data(st.select(dataset, {"top_host_idx"}))["top_host_idx"]
+    top_host_idx = st.get_data(st.select(dataset, {"top_host_idx"}))
     unique_in_sample = np.unique(top_host_idx[index_array])
 
     missing_hosts = np.setdiff1d(unique_in_sample, index_array)
@@ -142,6 +142,8 @@ def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
     when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.lightcone),
 )
 def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCtx:
+    from opencosmo.collection.lightcone.lightcone import Lightcone
+
     cs = 0
     output = {}
 
@@ -150,9 +152,21 @@ def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCt
         return top_host_idx
 
     for key, ds in ctx.lightcone.items():
-        output[key] = ds.evaluate(
-            _offset_top_host_idx, allow_overwrite=True, vectorize=True, offset=cs
-        )
+        if isinstance(ds, Lightcone):
+            output[key] = ds.evaluate(
+                _offset_top_host_idx,
+                allow_overwrite=True,
+                vectorize=True,
+                offset=cs,
+            )
+        else:
+            output[key] = st.evaluate(
+                ds,
+                _offset_top_host_idx,
+                allow_overwrite=True,
+                vectorize=True,
+                offset=cs,
+            )
         cs += len(ds)
 
     return dataclasses.replace(ctx, lightcone=output)  # type: ignore[arg-type]

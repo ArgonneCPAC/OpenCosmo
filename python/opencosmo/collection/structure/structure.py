@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     import astropy.units as u
 
     from opencosmo.column.column import ConstructedColumn
-    from opencosmo.dataset.state import DatasetState
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -42,9 +41,12 @@ if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region
 
 
-def _wrap_for_user(state: DatasetState) -> oc.Dataset:
-    """Wrap a state in a Dataset for user-facing returns."""
-    return oc.Dataset(state)
+def _wrap_for_user(value):
+    """Wrap a state in a Dataset for user-facing returns; Lightcones (and
+    anything else not a state) pass through unchanged."""
+    if isinstance(value, lc.Lightcone):
+        return value
+    return oc.Dataset(value)
 
 
 def _st():
@@ -59,22 +61,97 @@ def _st():
     return st
 
 
+# ---------------------------------------------------------------------------
+# Source-level dispatch helpers
+#
+# A StructureCollection's source can be either a DatasetState (snapshot
+# branch) or a Lightcone (lightcone branch). State operations live in
+# ``opencosmo.dataset.state`` as standalone functions; Lightcone exposes the
+# same operations as methods. These helpers wrap that small dispatch.
+# ---------------------------------------------------------------------------
+
+
+def _is_lightcone(value) -> bool:
+    return isinstance(value, lc.Lightcone)
+
+
+def _src_bound(source, region, select_by):
+    if _is_lightcone(source):
+        return source.bound(region, select_by)
+    return _st().bound(source, region, select_by)
+
+
+def _src_filter(source, *masks):
+    if _is_lightcone(source):
+        return source.filter(*masks)
+    return _st().filter(source, *masks)
+
+
+def _src_sort_by(source, column, invert):
+    if _is_lightcone(source):
+        return source.sort_by(column, invert=invert)
+    return _st().sort_by(source, column, invert)
+
+
+def _src_take(source, n, at, mode):
+    if _is_lightcone(source):
+        return source.take(n, at, mode)
+    return _st().take(source, n, at, mode)
+
+
+def _src_take_range(source, start, end, mode):
+    if _is_lightcone(source):
+        return source.take_range(start, end, mode)
+    return _st().take_range(source, start, end, mode)
+
+
+def _src_take_rows(source, rows):
+    if _is_lightcone(source):
+        return source.take_rows(rows)
+    return _st().take_rows(source, rows)
+
+
+def _src_with_new_columns(source, descriptions, allow_overwrite, **new_columns):
+    if _is_lightcone(source):
+        return source.with_new_columns(
+            descriptions=descriptions, allow_overwrite=allow_overwrite, **new_columns
+        )
+    return _st().with_new_columns(source, descriptions, allow_overwrite, **new_columns)
+
+
+def _src_evaluate(source, func, **kwargs):
+    if _is_lightcone(source):
+        return source.evaluate(func, **kwargs)
+    return _st().evaluate(source, func, **kwargs)
+
+
+def _src_make_schema(source, **kwargs):
+    if _is_lightcone(source):
+        return source.make_schema(**kwargs)
+    # state.make_schema doesn't know about Lightcone-only flags like no_stack.
+    kwargs.pop("no_stack", None)
+    return _st().make_schema(source, **kwargs)
+
+
 def filter_source_by_dataset(
-    dataset: DatasetState,
-    source: DatasetState,
+    dataset,
+    source,
     header: oc.header.OpenCosmoHeader,
     *masks,
-) -> DatasetState:
-    st = _st()
-    masked_dataset = st.filter(dataset, *masks)
+):
+    masked_dataset = _src_filter(dataset, *masks)
     linked_column: str
     if header.file.data_type == "halo_properties":
         linked_column = "fof_halo_tag"
     elif header.file.data_type == "galaxy_properties":
         linked_column = "gal_tag"
 
-    tag_values = st.get_data(st.select(masked_dataset, {linked_column}))
-    return st.filter(source, oc.col(linked_column).isin(tag_values))
+    if _is_lightcone(masked_dataset):
+        tag_values = masked_dataset.select(linked_column).get_data()
+    else:
+        st = _st()
+        tag_values = st.get_data(st.select(masked_dataset, {linked_column}))
+    return _src_filter(source, oc.col(linked_column).isin(tag_values))
 
 
 def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
@@ -187,9 +264,12 @@ class StructureCollection:
         else:
             dtype_str = ", ".join(keys[:-1]) + ", and " + keys[-1]
         header = f"Collection of {structure_type} {'on a lightcone ' if is_lightcone else ' '}with {dtype_str}\n"
-        source_repr = (
-            _wrap_for_user(self.__source).__repr__().split("\n", maxsplit=1)[1]
-        )
+        if _is_lightcone(self.__source):
+            source_repr = self.__source.__repr__().split("\n", maxsplit=1)[1]
+        else:
+            source_repr = (
+                _wrap_for_user(self.__source).__repr__().split("\n", maxsplit=1)[1]
+            )
 
         return header + source_repr
 
@@ -371,7 +451,7 @@ class StructureCollection:
             If the dataset does not contain a spatial index
         """
 
-        bounded = _st().bound(self.__source, region, select_by)
+        bounded = _src_bound(self.__source, region, select_by)
         new_handler = self.__handler.make_derived(self.__source)
         return StructureCollection(
             bounded,
@@ -813,7 +893,7 @@ class StructureCollection:
         """
 
         if dataset is None or dataset == self.__source_dtype:
-            result = _st().evaluate(
+            result = _src_evaluate(
                 self.__source,
                 func,
                 vectorize=vectorize,
@@ -844,7 +924,7 @@ class StructureCollection:
 
         if len(ds_path) == 1 and not is_collection:
             old_columns = list(ds.columns)
-            result = _st().evaluate(
+            result = _src_evaluate(
                 ds,
                 func,
                 vectorize=vectorize,
@@ -928,7 +1008,7 @@ class StructureCollection:
         if not masks:
             return self
         if not on_galaxies or self.__source_dtype == "galaxy_properties":
-            filtered = _st().filter(self.__source, *masks)
+            filtered = _src_filter(self.__source, *masks)
         elif "galaxy_properties" not in self.__datasets:
             raise ValueError("Dataset galaxy_properties not found in collection.")
         else:
@@ -1025,6 +1105,8 @@ class StructureCollection:
                 columns_set = {columns_arg}
             else:
                 columns_set = set(columns_arg)
+            if _is_lightcone(target):
+                return target.select(*columns_set, **derived)
             if derived:
                 target = st.with_new_columns(target, {}, False, **derived)
                 columns_set.update(derived.keys())
@@ -1108,9 +1190,14 @@ class StructureCollection:
                 return {columns_arg}
             return set(columns_arg)
 
+        def _drop_cols(target, columns_arg):
+            if _is_lightcone(target):
+                return target.drop(*_to_col_set(columns_arg))
+            return st.select(target, _to_col_set(columns_arg), drop=True)
+
         for dataset_name, columns in columns_to_drop.items():
             if dataset_name == self.__source_dtype:
-                new_source = st.select(self.__source, _to_col_set(columns), drop=True)
+                new_source = _drop_cols(self.__source, columns)
                 continue
 
             elif dataset_name not in self.__datasets:
@@ -1119,7 +1206,7 @@ class StructureCollection:
             if isinstance(new_ds, StructureCollection):
                 new_ds = new_ds.drop(**columns)
             else:
-                new_ds = st.select(new_ds, _to_col_set(columns), drop=True)
+                new_ds = _drop_cols(new_ds, columns)
 
             new_datasets[dataset_name] = new_ds
 
@@ -1155,7 +1242,7 @@ class StructureCollection:
 
         """
 
-        new_source = _st().sort_by(self.__source, column, invert)
+        new_source = _src_sort_by(self.__source, column, invert)
 
         return StructureCollection(
             new_source,
@@ -1250,6 +1337,10 @@ class StructureCollection:
             column_conversions = {
                 k: v for k, v in ds_conversions.items() if k != "conversions"
             }
+            if _is_lightcone(target):
+                return target.with_units(
+                    convention, conversions=inner_conversions, **column_conversions
+                )
             return st.with_units(
                 target, convention, inner_conversions, column_conversions
             )
@@ -1266,7 +1357,10 @@ class StructureCollection:
         for key, dataset in self.__datasets.items():
             ds_conversions = dataset_conversions.get(key, {})
             if convention is None and not ds_conversions:
-                new_datasets[key] = st.with_units(dataset, None, {}, {})
+                if _is_lightcone(dataset):
+                    new_datasets[key] = dataset.with_units()
+                else:
+                    new_datasets[key] = st.with_units(dataset, None, {}, {})
                 continue
             new_datasets[key] = _apply(dataset, ds_conversions)
 
@@ -1308,7 +1402,7 @@ class StructureCollection:
         StructureCollection
             A new collection with the structures taken from the original.
         """
-        new_source = _st().take(self.__source, n, at, mode)
+        new_source = _src_take(self.__source, n, at, mode)
         new_handler = self.__handler.make_derived(self.__source)
 
         return StructureCollection(
@@ -1355,7 +1449,7 @@ class StructureCollection:
             or if end is greater than start.
 
         """
-        new_source = _st().take_range(self.__source, start, end, mode)
+        new_source = _src_take_range(self.__source, start, end, mode)
         return StructureCollection(
             new_source,
             self.__datasets,
@@ -1384,7 +1478,7 @@ class StructureCollection:
             dataset.
 
         """
-        new_source = _st().take_rows(self.__source, rows)
+        new_source = _src_take_rows(self.__source, rows)
         return StructureCollection(
             new_source,
             self.__datasets,
@@ -1482,7 +1576,7 @@ class StructureCollection:
             descriptions = {key: descriptions for key in new_columns.keys()}
 
         if dataset == self.__source_dtype:
-            new_source = _st().with_new_columns(
+            new_source = _src_with_new_columns(
                 self.__source, descriptions, allow_overwrite, **new_columns
             )
             return StructureCollection(
@@ -1505,9 +1599,7 @@ class StructureCollection:
             raise ValueError(f"{dataset} is not a dataset!")
 
         old_columns = list(ds.columns)
-        new_ds = _st().with_new_columns(
-            ds, descriptions, allow_overwrite, **new_columns
-        )
+        new_ds = _src_with_new_columns(ds, descriptions, allow_overwrite, **new_columns)
         new_derived_columns = (
             set(new_ds.columns).difference(old_columns).difference(new_im_cols)
         )
@@ -1563,17 +1655,32 @@ class StructureCollection:
             name_parts = column.split(".")
             columns_to_collect[name_parts[0]][name_parts[1]] = []
         st = _st()
+
+        def _iter_rows(source):
+            if _is_lightcone(source):
+                yield from source.rows(metadata_columns=metadata_columns)
+            else:
+                yield from st.iter_rows(source, metadata_columns=metadata_columns)
+
         try:
-            for row in st.iter_rows(self.__source, metadata_columns=metadata_columns):
+            for row in _iter_rows(self.__source):
                 row = dict(row)
                 links = self.__handler.parse(row)
                 output: dict[str, Any] = {}
                 for name, index in links.items():
                     ilength = get_length(index)
-                    sliced = st.take_range(
-                        datasets[name], rs[name], rs[name] + ilength, "local"
-                    )
-                    output[name] = _wrap_for_user(sliced)
+                    ds = datasets[name]
+                    if isinstance(ds, StructureCollection):
+                        sliced = ds.take_range(rs[name], rs[name] + ilength)
+                        output[name] = sliced
+                    elif _is_lightcone(ds):
+                        sliced = ds.take_range(rs[name], rs[name] + ilength)
+                        output[name] = sliced
+                    else:
+                        sliced = st.take_range(
+                            ds, rs[name], rs[name] + ilength, "local"
+                        )
+                        output[name] = _wrap_for_user(sliced)
                     rs[name] += ilength
 
                 if not self.__hide_source:
@@ -1621,10 +1728,16 @@ class StructureCollection:
                     name: ds_target.descriptions[name] for name in ds_data.keys()
                 }
 
-                dropped = st.select(ds_target, set(ds_data.keys()), drop=True)
-                new_datasets[ds_name] = st.with_new_columns(
-                    dropped, descriptions, False, **ds_data
-                )
+                if _is_lightcone(ds_target):
+                    dropped = ds_target.drop(*set(ds_data.keys()))
+                    new_datasets[ds_name] = dropped.with_new_columns(
+                        descriptions, **ds_data
+                    )
+                else:
+                    dropped = st.select(ds_target, set(ds_data.keys()), drop=True)
+                    new_datasets[ds_name] = st.with_new_columns(
+                        dropped, descriptions, False, **ds_data
+                    )
             self.__datasets = new_datasets
         except GeneratorExit:
             pass
@@ -1684,10 +1797,12 @@ class StructureCollection:
     def make_schema(self, name: Optional[str] = None, **kwargs) -> Schema:
         children = {}
         source_name = self.__source_dtype
-        st = _st()
         datasets = self.__handler.resort(self.__source, self.__get_datasets())
+        schema_kwargs: dict[str, Any] = (
+            {"no_stack": True} if _is_lightcone(self.__source) else {}
+        )
 
-        source_schema = st.make_schema(self.__source)
+        source_schema = _src_make_schema(self.__source, **schema_kwargs)
         children[source_name] = sio.rebuild_data_linked(source_schema)
 
         for ds_name, dataset in datasets.items():
@@ -1696,7 +1811,7 @@ class StructureCollection:
             if isinstance(dataset, StructureCollection):
                 ds_schema = dataset.make_schema()
             else:
-                ds_schema = st.make_schema(dataset)
+                ds_schema = _src_make_schema(dataset, **schema_kwargs)
             if not isinstance(dataset, StructureCollection):
                 children[ds_name] = ds_schema
                 continue

@@ -7,6 +7,7 @@ import pyarrow.compute as pc
 import pytest
 
 import opencosmo as oc
+from opencosmo.dataset import state as st
 
 
 @pytest.fixture
@@ -319,9 +320,9 @@ def test_lightcone_evaluate_insert(lc_paths, format):
         _vectorized_func(format), vectorize=True, insert=True, format=format
     )
     for name in ds.keys():
-        data = ds[name].select("fof_px").get_data("numpy")
-        original = (
-            ds[name].select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")
+        data = st.get_data(st.select(ds[name], {"fof_px"}), "numpy")
+        original = st.get_data(
+            st.select(ds[name], {"fof_halo_mass", "fof_halo_com_vx"}), "numpy"
         )
         expected = original["fof_halo_mass"] * original["fof_halo_com_vx"]
         assert np.allclose(data, expected)

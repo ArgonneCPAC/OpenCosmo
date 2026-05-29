@@ -197,6 +197,8 @@ def test_open_write_with_synthetics(core_path_475, core_path_487, per_test_dir):
 def test_open_write_with_multiple_synthetics(
     core_path_475, core_path_487, per_test_dir
 ):
+    from opencosmo.dataset.state import DatasetState
+
     ds = oc.open(core_path_487, core_path_475, synth_cores=True)
     original_length = len(ds)
 
@@ -204,7 +206,7 @@ def test_open_write_with_multiple_synthetics(
 
     ds = oc.open(per_test_dir / "test.hdf5")
     assert set(ds.keys()) == {475, 487}
-    assert all(isinstance(dataset, oc.Dataset) for dataset in ds.values())
+    assert all(isinstance(dataset, DatasetState) for dataset in ds.values())
 
     assert len(ds) < original_length
 

@@ -1321,17 +1321,19 @@ def test_data_cached_after_objects(halo_paths):
 
 
 def test_modify_metadata_column(halo_paths):
+    import opencosmo.dataset.state as st
+
     ds = oc.open(*halo_paths)
-    galaxyproperties_start = ds["halo_properties"].get_metadata(
-        "galaxyproperties_start"
+    galaxyproperties_start = st.get_metadata(
+        ds["halo_properties"].state, ["galaxyproperties_start"]
     )
     updated_galprops = oc.col("galaxyproperties_start") + 1000
 
     ds = ds.with_new_columns(
         "halo_properties", galaxyproperties_start=updated_galprops, allow_overwrite=True
     )
-    updated_galaxyproperties_start = ds["halo_properties"].get_metadata(
-        "galaxyproperties_start"
+    updated_galaxyproperties_start = st.get_metadata(
+        ds["halo_properties"].state, ["galaxyproperties_start"]
     )
     assert np.all(
         (galaxyproperties_start["galaxyproperties_start"] + 1000)

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
 
 import numpy as np
 
+from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:
@@ -101,6 +102,72 @@ def _st():
     return st
 
 
+def build_lightcone_index(old_source, new_source):
+    """Map rows of ``new_source`` (a Lightcone of states) back to their
+    positions in the per-step concatenation of ``old_source`` (same shape).
+    """
+    index = np.zeros(len(new_source), dtype=np.int64)
+    offset = 0
+    rs = 0
+    for name, ds in old_source.items():
+        if name not in new_source.keys():
+            offset += len(ds)
+            continue
+        original_index = into_array(ds.raw_index)
+        new_index = into_array(new_source[name].raw_index)
+        _, index_into_original, index_into_new = np.intersect1d(
+            original_index, new_index, assume_unique=True, return_indices=True
+        )
+        index_into_original = index_into_original[np.argsort(index_into_new)]
+
+        index[rs : rs + len(index_into_original)] = index_into_original + offset
+        offset += len(ds)
+        rs += len(index_into_original)
+    return index
+
+
+def _take_rows(value, rows):
+    """Take rows on a state or nested StructureCollection. Structure
+    collections hold their own datasets, so they expose their own
+    ``take_rows`` method that does the right thing.
+    """
+    from opencosmo.collection.structure import structure as _sc
+    from opencosmo.dataset.state import DatasetState as _State
+
+    if isinstance(value, _State):
+        return _st().take_rows(value, rows)
+    if isinstance(value, (_sc.StructureCollection, lc.Lightcone)):
+        return value.take_rows(rows)
+    raise TypeError(f"Cannot take rows from value of type {type(value)!r}")
+
+
+def _get_metadata(source, columns, ignore_sort: bool = False):
+    """Get metadata from a state or a Lightcone of states.
+
+    For a Lightcone, iterate its sub-datasets, fetch each one's metadata, and
+    concatenate column-wise. This matches what ``Lightcone.get_metadata`` used
+    to do back when sub-datasets were ``Dataset`` instances exposing the same
+    method.
+    """
+    import numpy as _np
+
+    from opencosmo.collection.lightcone import lightcone as _lc
+    from opencosmo.dataset.state import DatasetState as _State
+
+    st = _st()
+    if isinstance(source, _State):
+        return st.get_metadata(source, list(columns), ignore_sort=ignore_sort)
+    if isinstance(source, _lc.Lightcone):
+        per_ds = [
+            _get_metadata(v, columns, ignore_sort=ignore_sort) for v in source.values()
+        ]
+        merged = {}
+        for key in per_ds[0].keys():
+            merged[key] = _np.concatenate([d[key] for d in per_ds])
+        return merged
+    raise TypeError(f"Cannot fetch metadata from value of type {type(source)!r}")
+
+
 def make_links(keys, rename_galaxies=False):
     starts = list(filter(lambda key: "start" in key, keys))
     sizes = list(filter(lambda key: "size" in key, keys))
@@ -142,8 +209,8 @@ def resort_datasets(
         filter(lambda name: "idx" in name or "size" in name, all_columns)
     )
     sort_column = next(filter(lambda c: "start" in c or "idx" in c, all_columns))
-    unsorted_meta_column = st.get_metadata(source, [sort_column], ignore_sort=True)
-    sorted_meta_column = st.get_metadata(source, [sort_column])
+    unsorted_meta_column = _get_metadata(source, [sort_column], ignore_sort=True)
+    sorted_meta_column = _get_metadata(source, [sort_column])
 
     argsort_meta_column = np.argsort(sorted_meta_column[sort_column])
 
@@ -155,12 +222,12 @@ def resort_datasets(
         )
     ]
 
-    meta = st.get_metadata(source, all_columns)
+    meta = _get_metadata(source, all_columns)
     output: dict[str, DatasetState] = {}
     for name, dataset in datasets.items():
         if len(columns[name]) == 1:
             valid_rows = meta[columns[name][0]] >= 0
-            new_dataset = st.take_rows(dataset, sort_index[valid_rows])
+            new_dataset = _take_rows(dataset, sort_index[valid_rows])
         else:
             size_column = [name for name in columns[name] if "size" in name]
             assert len(size_column) == 1
@@ -171,7 +238,7 @@ def resort_datasets(
             sizes = size_column_data[sort_index]
             valid = sizes > 0
             idx = (starts[valid], sizes[valid])
-            new_dataset = st.take_rows(dataset, idx)
+            new_dataset = _take_rows(dataset, idx)
         output[name] = new_dataset
     return output
 
@@ -243,11 +310,10 @@ class LinkHandler:
         Called once when a datasets are opened for the first time. Downstream
         versions always use rebuild_datsets
         """
-        st = _st()
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
-        meta = st.get_metadata(source, all_columns)
+        meta = _get_metadata(source, all_columns)
         # Offsets are now baked into the metadata columns at construction time
         # (see build_lightcone_structure_collection in io.py), so no per-step
         # offset calculation is needed here.
@@ -255,7 +321,7 @@ class LinkHandler:
         new_datasets = datasets
 
         for name, index in indices.items():
-            new_datasets[name] = st.take_rows(new_datasets[name], index)
+            new_datasets[name] = _take_rows(new_datasets[name], index)
         return new_datasets
 
     def make_derived(self, source: DatasetState) -> LinkHandler:
@@ -289,18 +355,22 @@ class LinkHandler:
         return self.__rebuild_datasets(self.__derived_from, new_source, datasets)
 
     def __rebuild_datasets(self, derived_from, new_source, datasets):
-        st = _st()
-        original_index = into_array(derived_from.raw_index)
-        new_index = into_array(new_source.raw_index)
+        from opencosmo.collection.lightcone import lightcone as _lc
 
-        _, index_into_original, index_into_new = np.intersect1d(
-            original_index, new_index, assume_unique=True, return_indices=True
-        )
-        index_into_original = index_into_original[np.argsort(index_into_new)]
+        if isinstance(derived_from, _lc.Lightcone):
+            index_into_original = build_lightcone_index(derived_from, new_source)
+        else:
+            original_index = into_array(derived_from.raw_index)
+            new_index = into_array(new_source.raw_index)
+
+            _, index_into_original, index_into_new = np.intersect1d(
+                original_index, new_index, assume_unique=True, return_indices=True
+            )
+            index_into_original = index_into_original[np.argsort(index_into_new)]
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
-        metadata = st.get_metadata(derived_from, all_columns)
+        metadata = _get_metadata(derived_from, all_columns)
         new_datasets: dict[str, DatasetState] = {}
 
         for name, dataset in datasets.items():
@@ -351,7 +421,7 @@ def rebuild_row_index(
     index_to_take = index[index_into_original]
     index_to_take = index_to_take[index_to_take >= 0]
 
-    return _st().take_rows(dataset, index_to_take)
+    return _take_rows(dataset, index_to_take)
 
 
 def rebuild_chunk_index(
@@ -366,4 +436,4 @@ def rebuild_chunk_index(
     starts = chunk_boundaries[index_into_original[valid_rows]]
     sizes = original_size_column[index_into_original[valid_rows]]
 
-    return _st().take_rows(dataset, (starts, sizes))
+    return _take_rows(dataset, (starts, sizes))

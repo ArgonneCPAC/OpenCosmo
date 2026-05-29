@@ -35,6 +35,7 @@ def _unwrap(value):
         return value.state
     return value
 
+
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
     from astropy.cosmology import Cosmology
@@ -1078,9 +1079,7 @@ class HealpixMap(dict):
             st = _st()
             data = np.concatenate(
                 [
-                    st.get_data(
-                        st.select(ds, {self.__ordered_by[0]}), format="numpy"
-                    )
+                    st.get_data(st.select(ds, {self.__ordered_by[0]}), format="numpy")
                     for ds in self.values()
                 ]
             )

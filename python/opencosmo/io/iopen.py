@@ -580,7 +580,9 @@ def __open_healpix_map(dataset: oc.Dataset, sim_region):
             nside=header.healpix_map["nside"],
         )
     elif isinstance(sim_region, FullSkyRegion) or header.healpix_map["full_sky"]:
-        sim_region = HealpixRegion(dataset.index, nside=header.healpix_map["nside"])
+        sim_region = HealpixRegion(
+            dataset.state.raw_index, nside=header.healpix_map["nside"]
+        )
 
     return occ.HealpixMap(
         {"data": dataset},

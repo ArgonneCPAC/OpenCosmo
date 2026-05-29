@@ -6,6 +6,7 @@ from astropy.cosmology import units as cu
 from numpy import random
 
 import opencosmo as oc
+from opencosmo.dataset import state as st
 
 
 @pytest.fixture
@@ -351,7 +352,7 @@ def test_lc_collection_mapped_kwargs(
     )
     for name, ds in result.items():
         assert np.all(
-            result[name].select("offset").get_data("numpy") == mapped_kwargs[name]
+            st.get_data(st.select(ds, {"offset"}), "numpy") == mapped_kwargs[name]
         )
 
 

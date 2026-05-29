@@ -58,14 +58,14 @@ def combine_adjacent_datasets_mpi(
 
 
 def combine_adjacent_datasets(
-    ordered_datasets: dict[str, ocds.Dataset] | dict[str, dict[str, ocds.Dataset]],
+    ordered_datasets,
     min_dataset_size: int,
     no_stack: bool,
 ):
-    is_single = isinstance(next(iter(ordered_datasets.values())), ocds.Dataset)
+    is_single = not isinstance(next(iter(ordered_datasets.values())), dict)
     datasets: dict[str, dict[str, ocds.Dataset]]
     if is_single:
-        assert all(isinstance(ds, ocds.Dataset) for ds in ordered_datasets.values())
+        assert all(not isinstance(ds, dict) for ds in ordered_datasets.values())
         datasets = {key: {"data": ds} for key, ds in ordered_datasets.items()}  # type: ignore
     else:
         assert all(isinstance(ds, dict) for ds in ordered_datasets.values())

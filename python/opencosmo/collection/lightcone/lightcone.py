@@ -82,8 +82,6 @@ def _unwrap(value):
     return value
 
 
-
-
 class Lightcone(dict):
     """
     A lightcone contains two or more datasets that are part of a lightcone. Typically
@@ -867,10 +865,7 @@ class Lightcone(dict):
 
             def _insert(ds, ds_key):
                 column = evaluated_column.with_kwargs(
-                    **{
-                        argname: vals[ds_key]
-                        for argname, vals in mapped_kwargs.items()
-                    }
+                    **{argname: vals[ds_key] for argname, vals in mapped_kwargs.items()}
                 )
                 if isinstance(ds, Lightcone):
                     return ds.with_new_columns(
@@ -1051,9 +1046,7 @@ class Lightcone(dict):
 
         def _apply(ds):
             if isinstance(ds, Lightcone):
-                return ds.select(
-                    all_columns | additional_columns, **derived_columns
-                )
+                return ds.select(all_columns | additional_columns, **derived_columns)
             target = ds
             cols = set(all_columns) | set(additional_columns)
             if derived_columns:
@@ -1241,9 +1234,7 @@ class Lightcone(dict):
                 chunks.append(ds.select(self.__sort_key[0]).get_data("numpy"))
             else:
                 chunks.append(
-                    st.get_data(
-                        st.select(ds, {self.__sort_key[0]}), format="numpy"
-                    )
+                    st.get_data(st.select(ds, {self.__sort_key[0]}), format="numpy")
                 )
         data = np.concatenate(chunks)
         if self.__sort_key[1]:
