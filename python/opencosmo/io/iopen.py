@@ -551,6 +551,7 @@ def open_single_dataset(
         open_kwargs,
         index,
         metadata_group,
+        tree=tree,
     )
 
     dataset = oc.Dataset(

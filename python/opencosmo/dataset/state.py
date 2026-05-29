@@ -3,7 +3,8 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Generator, Optional
+from typing import TYPE_CHECKING, Any, Callable, Generator, Literal, Optional
+from warnings import warn
 from weakref import finalize
 
 import astropy.units as u
@@ -17,8 +18,7 @@ from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
-from opencosmo.index import single_chunk
-from opencosmo.index.mask import into_array
+from opencosmo.index import empty, into_array, mask, project, single_chunk
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
     HookPoint,
@@ -35,16 +35,17 @@ from opencosmo.units.handler import (
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from astropy import table
-    from astropy.cosmology import Cosmology
-
-    from opencosmo.column.column import ConstructedColumn
+    from opencosmo.column.column import (
+        ColumnMask,
+        ConstructedColumn,
+    )
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
     from opencosmo.units.handler import UnitHandler
 
 
@@ -71,8 +72,15 @@ def sort_data(
 @dataclass(frozen=True)
 class DatasetState:
     """
-    Main state container for the Dataset. Functions for manipulating it can be found below. The dataclass
-    itself only exposes basic lookup operations.
+    Main state container for the Dataset. This holds the full backing state of
+    a dataset: data handler, cache, unit handler, header, region, spatial tree,
+    and derived-column producers.
+
+    The dataclass exposes only basic lookup properties. Manipulation is done
+    via the standalone functions in this module; each returns a new
+    ``DatasetState``. Sanitization of user-supplied arguments (wildcard
+    expansion, format strings, scale-factor lookup, etc.) happens in the
+    ``Dataset`` wrapper before reaching these functions.
     """
 
     producers: dict[UUID, ConstructedColumn]
@@ -85,10 +93,15 @@ class DatasetState:
     open_kwargs: dict[str, Any]
     sort_key: Optional[tuple[str, bool]]
     metadata_columns: frozenset[str]
+    tree: Optional[Tree] = None
 
     def __post_init__(self):
         self.cache.register_column_group(id(self), self.column_map)
         finalize(self, deregister_state, id(self), self.cache)
+
+    # ------------------------------------------------------------------
+    # Basic lookup properties
+    # ------------------------------------------------------------------
 
     @property
     def columns(self) -> list[str]:
@@ -150,6 +163,7 @@ def state_from_target(
     open_kwargs: dict[str, Any],
     index: Optional[DataIndex] = None,
     metadata_group: Optional[str] = None,
+    tree: Optional[Tree] = None,
 ) -> DatasetState:
     data_group = target["dataset_group"]
     if "load" in data_group.keys():
@@ -190,6 +204,7 @@ def state_from_target(
         open_kwargs=open_kwargs,
         sort_key=None,
         metadata_columns=meta_column_names,
+        tree=tree,
     )
 
 
@@ -202,6 +217,7 @@ def state_in_memory(
     open_kwargs: dict[str, Any],
     descriptions: Optional[dict[str, str]] = None,
     index: Optional[DataIndex] = None,
+    tree: Optional[Tree] = None,
 ) -> DatasetState:
     descriptions = descriptions or {}
 
@@ -237,11 +253,12 @@ def state_in_memory(
         open_kwargs=open_kwargs,
         sort_key=None,
         metadata_columns=frozenset(metadata_columns.keys()),
+        tree=tree,
     )
 
 
 # ---------------------------------------------------------------------------
-# Standalone functions (replace methods)
+# Standalone functions
 # ---------------------------------------------------------------------------
 
 
@@ -251,13 +268,57 @@ def exit_state(state: DatasetState, *exec_details):
 
 def get_data(
     state: DatasetState,
+    format: str = "astropy",
+    unpack: bool = True,
+    metadata_columns: list = [],
+    wrap_single: bool = False,
+    ignore_sort: bool = False,
+):
+    """
+    Materialize the data for ``state`` in the requested format.
+
+    Reads through the cache, applies pending derived/evaluated columns,
+    looks up the appropriate scale factor (in physical convention), and
+    converts the result into ``format``.
+    """
+    from opencosmo.dataset.formats import convert_data
+    from opencosmo.units.converters import get_scale_factor
+
+    if state.convention.value == "physical":
+        scale_factor = get_scale_factor(
+            state, state.header.cosmology, state.header.file.redshift
+        )
+        unit_kwargs = {"scale_factor": scale_factor}
+    else:
+        unit_kwargs = {}
+
+    data = _get_raw_data(
+        state,
+        ignore_sort=ignore_sort,
+        metadata_columns=metadata_columns,
+        unit_kwargs=unit_kwargs,
+    )
+    if unpack:
+        data = {
+            key: value[0]
+            if isinstance(value, np.ndarray) and len(value) == 1
+            else value
+            for key, value in data.items()
+        }
+
+    return convert_data(data, format, wrap_single=wrap_single)
+
+
+def _get_raw_data(
+    state: DatasetState,
     ignore_sort: bool = False,
     metadata_columns: list = [],
     unit_kwargs: dict = {},
 ) -> dict:
     """
-    Use a State to get the associated data. Most of the logic can be found in the
-    instantiate_dataset method.
+    Read raw data for ``state`` as a {name: numpy-or-Quantity} dict, with units
+    applied and (optionally) sorting applied. Used internally by ``get_data``
+    and by helpers that need pre-format-conversion data.
     """
     state = fold(HookPoint.DatasetInstantiate, DatasetInstantiateCtx(state)).state
     data = instantiate_dataset(
@@ -289,11 +350,22 @@ def get_data(
 def iter_rows(
     state: DatasetState,
     metadata_columns: list = [],
-    unit_kwargs: dict = {},
 ) -> Generator:
     """
-    Iterate over the rows of a given DatasetState
+    Iterate over the rows of a given DatasetState. The appropriate scale factor
+    (in physical convention) is applied so the yielded values match what
+    ``get_data`` would return.
     """
+    from opencosmo.units.converters import get_scale_factor
+
+    if state.convention.value == "physical":
+        scale_factor = get_scale_factor(
+            state, state.header.cosmology, state.header.file.redshift
+        )
+        unit_kwargs = {"scale_factor": scale_factor}
+    else:
+        unit_kwargs = {}
+
     derived_to_collect = (
         set(state.columns)
         .difference(state.cache.columns)
@@ -312,7 +384,7 @@ def iter_rows(
     try:
         for start, end in chunk_ranges:
             chunk = take_rows(state, single_chunk(start, end - start))
-            data = get_data(
+            data = _get_raw_data(
                 chunk, metadata_columns=metadata_columns, unit_kwargs=unit_kwargs
             )
             for name in derived_to_collect:
@@ -360,20 +432,20 @@ def get_metadata(
 
 def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
     """
-    Get metadata columns.
+    Build the write-time schema for this state. Includes the data columns, the
+    spatial-index tree (if present) filtered to match the current index, and
+    the header dump.
     """
     producers = list(state.producers.values())
     columns = set(state.column_map.keys()).difference(state.metadata_columns)
     derived_names = get_derived_column_names(producers, columns)
     if derived_names:
         selected = select(state, derived_names)
-        converted = with_units(
-            selected, state.unit_handler.base_convention, {}, {}, None, None
-        )
-        derived_data = get_data(converted, ignore_sort=True)
+        converted = with_units(selected, state.unit_handler.base_convention)
+        derived_data = _get_raw_data(converted, ignore_sort=True)
     else:
         derived_data = {}
-    return make_dataset_schema(
+    schema = make_dataset_schema(
         producers,
         state.raw_data_handler,
         state.cache,
@@ -384,6 +456,12 @@ def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
         derived_data,
         name,
     )
+
+    if state.tree is not None:
+        tree = state.tree.apply_index(state.raw_index)
+        schema.children["index"] = tree.make_schema()
+    schema.children["header"] = state.header.dump()
+    return schema
 
 
 def with_new_columns(
@@ -453,7 +531,7 @@ def sort_by(
 
 def get_sorted_index(state: DatasetState) -> np.ndarray | None:
     if state.sort_key is not None:
-        column = get_data(select(state, {state.sort_key[0]}), ignore_sort=True)[
+        column = _get_raw_data(select(state, {state.sort_key[0]}), ignore_sort=True)[
             state.sort_key[0]
         ]
         sorted_idx = np.argsort(column)
@@ -483,14 +561,13 @@ def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
 
 def with_units(
     state: DatasetState,
-    convention: Optional[str],
-    conversions: dict[u.Unit, u.Unit],
-    columns: dict[str, u.Unit],
-    cosmology: Cosmology,
-    redshift: float | table.Column,
+    convention: Optional[str] = None,
+    conversions: dict[u.Unit, u.Unit] = {},
+    columns: dict[str, u.Unit] = {},
 ) -> DatasetState:
     """
-    Update the units of a given state.
+    Update the units of a given state. If ``convention`` is set, the header
+    is also updated to reflect the new convention.
     """
     if convention is None:
         convention_ = state.unit_handler.current_convention
@@ -527,4 +604,155 @@ def with_units(
         ).intersection(state.columns)
         columns_to_drop = all_derived_names.union(state.raw_data_handler.columns)
         cache = state.cache.drop(columns_to_drop)
-    return dataclasses.replace(state, unit_handler=new_handler, cache=cache)
+
+    new_header = state.header
+    if convention is not None:
+        new_header = state.header.with_units(convention)
+    return dataclasses.replace(
+        state, unit_handler=new_handler, cache=cache, header=new_header
+    )
+
+
+# ---------------------------------------------------------------------------
+# Composite state operations (compose multiple primitives, no user-input
+# sanitization). Callers normalize their inputs before invoking these.
+# ---------------------------------------------------------------------------
+
+
+def take(
+    state: DatasetState,
+    n: int,
+    at: str = "random",
+    mode: Literal["local", "global"] = "local",
+) -> DatasetState:
+    from opencosmo.dataset.take import (
+        get_end_take_index,
+        get_random_take_index,
+    )
+
+    if at == "start":
+        return take_range(state, 0, n, mode)
+    elif at == "end":
+        take_index = get_end_take_index(n, state, state.sort_key, mode)
+        return take_rows(state, take_index)
+    elif at != "random":
+        raise ValueError(f"Unknown take type {at}")
+
+    row_indices = get_random_take_index(n, len(state), mode)
+    return take_rows(state, row_indices)
+
+
+def take_range(
+    state: DatasetState,
+    start: int,
+    end: int,
+    mode: Literal["local", "global"] = "local",
+) -> DatasetState:
+    from opencosmo.dataset.take import get_range_take_index
+
+    if start < 0 or end < 0:
+        raise ValueError("start and end must be positive.")
+    if end < start:
+        raise ValueError("end must be greater than start.")
+
+    take_index = get_range_take_index(state, state.sort_key, start, end - start, mode)
+    return take_rows(state, take_index)
+
+
+def filter(state: DatasetState, *masks: ColumnMask) -> DatasetState:
+    if not masks:
+        return state
+    bool_mask = np.ones(len(state), dtype=bool)
+    for m in masks:
+        bool_mask &= m.apply(state)
+    return take_rows(state, np.where(bool_mask)[0])
+
+
+def bound(
+    state: DatasetState,
+    region: Region,
+    select_by: Optional[str] = None,
+) -> DatasetState:
+    from opencosmo.spatial import check
+
+    if state.tree is None:
+        raise AttributeError(
+            "Your dataset does not contain a spatial index, "
+            "so spatial querying is not available"
+        )
+
+    if not state.header.file.is_lightcone:
+        columns = check.find_coordinates_3d(state, str(state.header.file.data_type))
+        check_region = region.into_base_convention(
+            state.unit_handler,  # type: ignore[arg-type]
+            columns,
+            state.convention,
+            {
+                "scale_factor": state.header.cosmology.scale_factor(
+                    state.header.file.redshift
+                ).value
+            },
+        )
+    else:
+        check_region = region
+
+    if not state.region.intersects(check_region):
+        return take_rows(state, empty())
+
+    if not state.region.contains(check_region):
+        warn(
+            "You're querying with a region that is not fully contained by the "
+            "region this dataset is in. This may result in unexpected behavior"
+        )
+
+    contained_index: DataIndex
+    intersects_index: DataIndex
+    contained_index, intersects_index = state.tree.query(check_region)
+
+    contained_index = project(state.raw_index, contained_index)
+    intersects_index = project(state.raw_index, intersects_index)
+
+    check_state = take_rows(state, intersects_index)
+    if not state.header.file.is_lightcone:
+        check_state = with_units(check_state, "scalefree")
+
+    if len(check_state) > 0:
+        index_mask = check.check_containment(
+            check_state, check_region, state.header.file
+        )
+        new_intersects_index = mask(intersects_index, index_mask)
+    else:
+        new_intersects_index = np.array([], dtype=np.int64)
+
+    new_index = np.sort(
+        np.concatenate([into_array(contained_index), into_array(new_intersects_index)])
+    )
+
+    return with_region(take_rows(state, new_index), check_region)
+
+
+def evaluate(
+    state: DatasetState,
+    func: Callable,
+    vectorize: bool = False,
+    insert: bool = True,
+    format: str = "astropy",
+    batch_size: int = -1,
+    allow_overwrite: bool = False,
+    **evaluate_kwargs,
+):
+    from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
+
+    evaluated_column = build_evaluated_column(
+        state, func, vectorize, insert, format, batch_size, evaluate_kwargs
+    )
+
+    if not insert:
+        return visit_dataset(evaluated_column, state, batch_size)
+
+    return with_new_columns(
+        state,
+        {},
+        allow_overwrite,
+        **{func.__name__: evaluated_column},
+    )

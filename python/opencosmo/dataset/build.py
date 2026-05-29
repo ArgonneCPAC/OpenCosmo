@@ -59,6 +59,7 @@ def build_dataset_from_data(
         region,
         {},
         data_descriptions,
+        tree=tree,
     )
     return Dataset(header, new_state, tree=tree)
 

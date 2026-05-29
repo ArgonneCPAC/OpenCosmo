@@ -9,7 +9,7 @@ from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
 if TYPE_CHECKING:
     from opencosmo.collection.lightcone import Lightcone
-    from opencosmo.dataset.dataset import Dataset
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex, IndexArray
 
 
@@ -44,7 +44,9 @@ def apply_sort_index(
     return np.sort(arr)
 
 
-def _get_sort_index(ds: Dataset | Lightcone, sort_key: tuple[str, bool]) -> np.ndarray:
+def _get_sort_index(
+    ds: DatasetState | Lightcone, sort_key: tuple[str, bool]
+) -> np.ndarray:
     sort_col, sort_desc = sort_key
     values = ds.select(sort_col).get_data("numpy", ignore_sort=True)
     assert isinstance(values, np.ndarray)
@@ -54,7 +56,7 @@ def _get_sort_index(ds: Dataset | Lightcone, sort_key: tuple[str, bool]) -> np.n
 
 
 def get_rows_take_index(
-    ds: Dataset | Lightcone, rows: DataIndex, sort_key: Optional[tuple[str, bool]]
+    ds: DatasetState | Lightcone, rows: DataIndex, sort_key: Optional[tuple[str, bool]]
 ) -> DataIndex:
     """Map user-provided logical (sorted-order) row positions to physical row positions."""
     if sort_key is None:
@@ -64,7 +66,7 @@ def get_rows_take_index(
 
 
 def get_range_take_index(
-    ds: Dataset | Lightcone,
+    ds: DatasetState | Lightcone,
     sort_key: Optional[tuple[str, bool]],
     start: int,
     size: int,
@@ -82,7 +84,7 @@ def get_range_take_index(
 
 def get_end_take_index(
     n: int,
-    ds: Dataset | Lightcone,
+    ds: DatasetState | Lightcone,
     sort_key: Optional[tuple[str, bool]],
     mode: Literal["local", "global"],
 ):
@@ -105,7 +107,7 @@ def get_end_take_index(
 
 
 def get_range_take_index_mpi(
-    ds: Dataset | Lightcone, sort_key: Optional[tuple[str, bool]], start: int, size: int
+    ds: DatasetState | Lightcone, sort_key: Optional[tuple[str, bool]], start: int, size: int
 ):
     comm = get_comm_world()
     assert comm is not None
@@ -164,7 +166,7 @@ def get_range_take_index_mpi(
     return single_chunk(local_start, local_end - local_start)
 
 
-def get_global_sort_order(ds: Dataset | Lightcone, sort_key: tuple[str, bool]):
+def get_global_sort_order(ds: DatasetState | Lightcone, sort_key: tuple[str, bool]):
     comm = get_comm_world()
     assert comm is not None
 

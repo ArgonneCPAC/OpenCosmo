@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     from astropy import table
 
-    from opencosmo import Dataset
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex
 
 Comparison = Callable[[float, float], bool]
@@ -909,36 +909,33 @@ class EvaluatedColumn:
             output = {next(iter(self.__produces)): output}
         return to_numpy_dict(output)
 
-    def evaluate_one(self, dataset: Dataset):
+    def evaluate_one(self, dataset: DatasetState):
+        import opencosmo.dataset.state as st
+
+        selected = st.select(dataset, set(self.__requires))
         match self.__strategy:
             case EvaluateStrategy.VECTORIZE:
-                values = (
-                    dataset.select(self.__requires)
-                    .take(1)
-                    .get_data(self.__format, unpack=False)
+                values = dict(
+                    st.get_data(st.take(selected, 1), format=self.__format, unpack=False)
                 )
-                values = dict(values)
                 return self.__func(**values, **self.__kwargs)
 
             case EvaluateStrategy.ROW_WISE:
-                values = (
-                    dataset.select(self.__requires)
-                    .take(1)
-                    .get_data(self.__format, unpack=True)
+                values = dict(
+                    st.get_data(st.take(selected, 1), format=self.__format, unpack=True)
                 )
-                values = dict(values)
                 return self.__func(**values, **self.__kwargs)
 
             case EvaluateStrategy.CHUNKED:
-                index = dataset.index
+                index = dataset.raw_index
                 assert isinstance(index, tuple)
                 first_chunk_size = index[1][0]
-                first_chunk = (
-                    dataset.select(self.__requires)
-                    .take(first_chunk_size)
-                    .get_data(self.__format)
+                first_chunk = dict(
+                    st.get_data(
+                        st.take(selected, first_chunk_size, at="start"),
+                        format=self.__format,
+                    )
                 )
-                first_chunk = dict(first_chunk)
                 return self.__func(**first_chunk, **self.__kwargs)
 
         pass
@@ -960,33 +957,29 @@ class ColumnMask:
         self.right = right
         self.operator = operator
 
-    def apply(self, ds: Dataset):
-        match self.left:
-            case Column():
-                left = ds.select(self.left.name).get_data()
-            case DerivedColumn():
-                left = ds.select(data=self.left).get_data()
-            case _:
-                left = self.left
+    def apply(self, ds: DatasetState):
+        import opencosmo.dataset.state as st
 
-        right_selected = False
-        match self.right:
-            case Column():
-                right = ds.select(self.right.name).get_data()
-                right_selected = True
-            case DerivedColumn():
-                right = ds.select(data=self.right).get_data()
-                right_selected = True
-            case _:
-                right = self.right
+        def _fetch(operand):
+            match operand:
+                case Column():
+                    return st.get_data(st.select(ds, {operand.name})), True
+                case DerivedColumn():
+                    with_derived = st.with_new_columns(ds, data=operand)
+                    return st.get_data(st.select(with_derived, {"data"})), True
+                case _:
+                    return operand, False
+
+        left, _ = _fetch(self.left)
+        right, right_selected = _fetch(self.right)
+
         if (
             isinstance(left, u.Quantity)
             and not isinstance(right, u.Quantity)
             and not right_selected
         ):
             return self.operator(left.value, right)
-        result = self.operator(left, right)
-        return result
+        return self.operator(left, right)
 
     def __and__(self, other: Self | CompoundColumnMask):
         return CompoundColumnMask(self, other, lambda left, right: left & right)
@@ -1019,7 +1012,7 @@ class CompoundColumnMask:
     def __or__(self, other: ColumnMask | Self):
         return CompoundColumnMask(self, other, lambda left, right: left | right)
 
-    def apply(self, ds: Dataset):
+    def apply(self, ds: DatasetState):
         left_mask = self.__left.apply(ds)
         right_mask = self.__right.apply(ds)
         return self.__op(left_mask, right_mask)

@@ -19,16 +19,8 @@ from deprecated.sphinx import deprecated
 
 import opencosmo.dataset.state as st
 from opencosmo.column import Column
-from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
-from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.dataset.take import (
-    get_end_take_index,
-    get_random_take_index,
-    get_range_take_index,
-)
-from opencosmo.index import empty, get_range, into_array, mask, project
-from opencosmo.spatial import check
-from opencosmo.units.converters import get_scale_factor
+from opencosmo.dataset.formats import verify_format
+from opencosmo.index import get_range
 
 if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
@@ -311,28 +303,14 @@ class Dataset:
             format = kwargs["output"]
 
         verify_format(format)
-
-        if self.__state.convention.value == "physical":
-            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
-            unit_kwargs = {"scale_factor": scale_factor}
-        else:
-            unit_kwargs = {}
-
-        data = st.get_data(
+        return st.get_data(
             self.__state,
-            unit_kwargs=unit_kwargs,
+            format=format,
+            unpack=unpack,
             metadata_columns=metadata_columns,
+            wrap_single=wrap_single,
             **kwargs,
-        )  # dict
-        if unpack:
-            data = {
-                key: value[0]
-                if isinstance(value, np.ndarray) and len(value) == 1
-                else value
-                for key, value in data.items()
-            }
-
-        return convert_data(data, format, wrap_single=wrap_single)
+        )
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -361,70 +339,7 @@ class Dataset:
             If the dataset does not contain a spatial index
         """
 
-        if self.__tree is None:
-            raise AttributeError(
-                "Your dataset does not contain a spatial index, "
-                "so spatial querying is not available"
-            )
-
-        if not self.header.file.is_lightcone:
-            columns = check.find_coordinates_3d(self, self.dtype)
-
-            check_region = region.into_base_convention(
-                self.__state.unit_handler,  # type: ignore[arg-type]
-                columns,
-                self.__state.convention,
-                {
-                    "scale_factor": self.cosmology.scale_factor(
-                        self.header.file.redshift
-                    ).value
-                },
-            )
-        else:
-            check_region = region
-
-        if not self.__state.region.intersects(check_region):
-            new_state = st.take_rows(self.__state, empty())
-            return Dataset(self.__header, new_state, self.__tree)
-
-        if not self.__state.region.contains(check_region):
-            warn(
-                "You're querying with a region that is not fully contained by the "
-                "region this dataset is in. This may result in unexpected behavior"
-            )
-
-        contained_index: DataIndex
-        intersects_index: DataIndex
-        contained_index, intersects_index = self.__tree.query(check_region)
-
-        contained_index = project(self.__state.raw_index, contained_index)
-        intersects_index = project(self.__state.raw_index, intersects_index)
-
-        check_state = st.take_rows(self.__state, intersects_index)
-        check_dataset = Dataset(
-            self.__header,
-            check_state,
-            self.__tree,
-        )
-        if not self.__header.file.is_lightcone:
-            check_dataset = check_dataset.with_units("scalefree")
-
-        if len(check_dataset) > 0:
-            index_mask = check.check_containment(
-                check_dataset, check_region, self.__header.file
-            )
-            new_intersects_index = mask(intersects_index, index_mask)
-        else:
-            new_intersects_index = np.array([], dtype=np.int64)
-
-        new_index = np.sort(
-            np.concatenate(
-                [into_array(contained_index), into_array(new_intersects_index)]
-            )
-        )
-
-        new_state = st.with_region(st.take_rows(self.__state, new_index), check_region)
-
+        new_state = st.bound(self.__state, region, select_by)
         return Dataset(self.__header, new_state, self.__tree)
 
     def evaluate(
@@ -510,19 +425,19 @@ class Dataset:
             The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
         verify_format(format)
-        evaluated_column = build_evaluated_column(
-            self, func, vectorize, insert, format, batch_size, evaluate_kwargs
-        )
-
-        if not insert:
-            output = visit_dataset(evaluated_column, self, batch_size)
-            return output
-
-        return self.with_new_columns(
-            descriptions={},
+        result = st.evaluate(
+            self.__state,
+            func,
+            vectorize=vectorize,
+            insert=insert,
+            format=format,
+            batch_size=batch_size,
             allow_overwrite=allow_overwrite,
-            **{func.__name__: evaluated_column},
+            **evaluate_kwargs,
         )
+        if not insert:
+            return result
+        return Dataset(self.__header, result, self.__tree)
 
     def filter(self, *masks: ColumnMask) -> Dataset:
         """
@@ -546,13 +461,7 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        if not masks:
-            return self
-        bool_mask = np.ones(len(self), dtype=bool)
-        for m in masks:
-            bool_mask &= m.apply(self)
-
-        new_state = st.take_rows(self.__state, np.where(bool_mask)[0])
+        new_state = st.filter(self.__state, *masks)
         return Dataset(self.__header, new_state, self.__tree)
 
     def rows(
@@ -577,13 +486,7 @@ class Dataset:
             A dictionary of values for each row in the dataset with units.
 
         """
-        if self.__state.convention.value == "physical":
-            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
-            unit_kwargs = {"scale_factor": scale_factor}
-        else:
-            unit_kwargs = {}
-
-        for row in st.iter_rows(self.__state, metadata_columns, unit_kwargs):
+        for row in st.iter_rows(self.__state, metadata_columns):
             output_data = row
             if not isinstance(output_data, dict):
                 output_data = {self.columns[0]: row}
@@ -771,16 +674,8 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        if at == "start":
-            return self.take_range(0, n, mode)
-        elif at == "end":
-            take_index = get_end_take_index(n, self, self.__state.sort_key, mode)
-            return self.take_rows(take_index)
-        elif at != "random":
-            raise ValueError(f"Unknown take type {at}")
-
-        row_indices = get_random_take_index(n, len(self), mode)
-        return self.take_rows(row_indices)
+        new_state = st.take(self.__state, n, at, mode)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def take_range(
         self, start: int, end: int, mode: Literal["local", "global"] = "local"
@@ -819,15 +714,8 @@ class Dataset:
             or if end is greater than start.
 
         """
-        if start < 0 or end < 0:
-            raise ValueError("start and end must be positive.")
-        if end < start:
-            raise ValueError("end must be greater than start.")
-
-        take_index = get_range_take_index(
-            self, self.__state.sort_key, start, end - start, mode
-        )
-        return self.take_rows(take_index)
+        new_state = st.take_range(self.__state, start, end, mode)
+        return Dataset(self.__header, new_state, self.__tree)
 
     def take_rows(self, rows: np.ndarray | DataIndex):
         """
@@ -934,16 +822,7 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        schema = st.make_schema(self.__state, name)
-
-        if self.__tree is not None:
-            tree = self.__tree.apply_index(self.__state.raw_index)
-            tree_schema = tree.make_schema()
-            schema.children["index"] = tree_schema
-        metadata = self.header.dump()
-        schema.children["header"] = metadata
-
-        return schema
+        return st.make_schema(self.__state, name)
 
     def with_units(
         self,
@@ -1010,21 +889,9 @@ class Dataset:
 
         """
 
-        new_state = st.with_units(
-            self.__state,
-            convention,
-            conversions,
-            columns,
-            self.cosmology,
-            self.redshift,
-        )
-        if convention is not None:
-            new_header = self.__header.with_units(convention)
-        else:
-            new_header = self.__header
-
+        new_state = st.with_units(self.__state, convention, conversions, columns)
         return Dataset(
-            new_header,
+            new_state.header,
             new_state,
             self.__tree,
         )

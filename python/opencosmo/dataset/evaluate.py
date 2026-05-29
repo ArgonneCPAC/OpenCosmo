@@ -7,12 +7,13 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable
 import numpy as np
 from astropy.units import Quantity
 
+import opencosmo.dataset.state as st
 from opencosmo.column.column import EvaluatedColumn
 from opencosmo.column.evaluate import EvaluateStrategy, do_first_evaluation
 from opencosmo.dataset.formats import concat_chunks, fetch_as_dict
 
 if TYPE_CHECKING:
-    from opencosmo import Dataset
+    from opencosmo.dataset.state import DatasetState
 
 """
 Although the user-facing name for this operation is "evaluate", the pattern 
@@ -56,20 +57,20 @@ def build_evaluated_column(
 
 def visit_dataset(
     column: EvaluatedColumn,
-    dataset: Dataset,
+    dataset: DatasetState,
     batch_size: int,
 ) -> dict[str, np.ndarray]:
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
     data = fetch_as_dict(dataset, column.requires_names, column.format)
-    output = column.evaluate(data, dataset.index)
+    output = column.evaluate(data, dataset.raw_index)
     if not isinstance(output, dict):
         assert len(column.produces) == 1
         output = {column.produces.pop(): output}
     return output
 
 
-def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
+def visit_dataset_batched(column: EvaluatedColumn, dataset: DatasetState):
     ranges = np.arange(0, len(dataset), column.batch_size)
     if ranges[-1] != len(dataset):
         ranges = np.append(ranges, len(dataset))
@@ -78,7 +79,7 @@ def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
 
     for start, end in np.lib.stride_tricks.sliding_window_view(ranges, 2):
         batch_data = fetch_as_dict(
-            dataset.take_range(start, end),
+            st.take_range(dataset, start, end),
             column.requires_names,
             column.format,
             unpack=False,
@@ -100,7 +101,7 @@ def verify_for_lazy_evaluation(
     strategy: str,
     format: str,
     evaluator_kwargs: dict[str, Any],
-    dataset: Dataset,
+    dataset: DatasetState,
     batch_size: int,
     allow_none=False,
     skip_evaluation_check=False,
@@ -120,7 +121,7 @@ def verify_for_lazy_evaluation(
         raise ValueError(
             f"Function expects columns {diff} which are not in the dataset"
         )
-    dataset = dataset.select(required_columns)
+    dataset = st.select(dataset, set(required_columns))
     if skip_evaluation_check:
         first_values = None
         eval_strategy = EvaluateStrategy(strategy)
