@@ -17,8 +17,8 @@ New Features
 - :py:meth:`take <opencosmo.Dataset.take>`, :py:meth:`take_range <opencosmo.Dataset.take_range>`, and their equivalents on :py:class:`Lightcone <opencosmo.Lightcone>` and :py:class:`StructureCollection <opencosmo.StructureCollection>` now accept a ``mode`` keyword argument. Setting ``mode="global"`` when running under MPI causes ``n`` (or ``start``/``end``) to be interpreted across all ranks combined rather than per-rank. When the dataset is sorted, ranks coordinate to select from the globally-sorted order, so ``ds.sort_by("fof_halo_mass").take(1000, mode="global")`` returns exactly the 1000 most massive halos distributed across all ranks. (#240)
 - :py:meth:`Dataset.filter <opencosmo.Dataset.filter>` now accepts masks created from expressions built from column arithmetic.
 - :py:meth:`get_data <opencosmo.Dataset.get_data>` now supports :code:`jax` as an output format.
-- Add the :py:meth:`Lightcone.get_pixels() <opencosmo.Lightcone.get_pixels()` to retrieve the healpix pixels covered by a lightcone.
-- Add the :py:meth:`Lightcone.query_pixels <opencosmo.Lightcone.query_pixels>` method to query a lightcone based on healpix pixels.
+- Add the :py:meth:`Lightcone.get_pixels <opencosmo.Lightcone.get_pixels>` to retrieve the healpix pixels covered by a lightcone.
+- Add the :py:meth:`Lightcone.pixel_search <opencosmo.Lightcone.pixel_search>` method to query a lightcone based on healpix pixels.
 - Added animate_halos function, which calls either "visualize_halo" or "halo_projection_array" in a loop to create an animated visualization of a given halo or set of halos.
 - All :code:`evaluate` methods (e.g. :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`) now support passing data to the function in any format supported by :py:meth:`get_data <opencosmo.Dataset.get_data>`.
 - Calls to :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` and :py:meth:`evaluate <opencosmo.Dataset.evaluate>` now accept an `allow_overwrite` flag. In this way you can "transform" a column by creating a derived column that depends on a column of the same name. The input will be the original column, and the output will be the new version.

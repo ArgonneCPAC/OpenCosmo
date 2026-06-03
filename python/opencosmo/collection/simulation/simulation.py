@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Iterable, Mapping, Optional, Self
+from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, Self
 
 from opencosmo.collection import structure as sc
 from opencosmo.dataset import Dataset
@@ -249,7 +249,9 @@ class SimulationCollection(dict):
         """
         return self.__map("drop", *args, **kwargs)
 
-    def take(self, n: int, at: str = "random") -> Self:
+    def take(
+        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+    ) -> Self:
         """
         Take a subest of rows from all datasets or collections in this collection.
         This method will delegate to the underlying method in
@@ -269,9 +271,11 @@ class SimulationCollection(dict):
             raise ValueError(
                 f"Not all datasets in this collection have at least {n} rows!"
             )
-        return self.__map("take", n, at)
+        return self.__map("take", n, at, mode=mode)
 
-    def take_range(self, start: int, end: int):
+    def take_range(
+        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+    ):
         """
         Take a range of rows from all datasets or collections in this collection.
         This method will fail if :code:`start` < 0, or any of the datasets are not at least
@@ -294,7 +298,7 @@ class SimulationCollection(dict):
             raise ValueError(
                 "The range must be between zero and the length of the shortest dataset"
             )
-        return self.__map("take_range", start, end)
+        return self.__map("take_range", start, end, mode=mode)
 
     def with_new_columns(
         self,
