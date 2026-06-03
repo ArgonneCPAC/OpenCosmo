@@ -267,10 +267,6 @@ class SimulationCollection(dict):
             The method to use to take rows. Must be one of "start", "end", "random".
 
         """
-        if any(len(ds) < n for ds in self.values()):
-            raise ValueError(
-                f"Not all datasets in this collection have at least {n} rows!"
-            )
         return self.__map("take", n, at, mode=mode)
 
     def take_range(
@@ -294,10 +290,6 @@ class SimulationCollection(dict):
             The new simulation collection with only the specified rows.
 
         """
-        if start < 0 or any(len(ds) < end for ds in self.values()):
-            raise ValueError(
-                "The range must be between zero and the length of the shortest dataset"
-            )
         return self.__map("take_range", start, end, mode=mode)
 
     def with_new_columns(
