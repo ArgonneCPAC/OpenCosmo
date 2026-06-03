@@ -1,10 +1,10 @@
-opencosmo 1.3.2 (2026-06-03)
+opencosmo 1.3.3 (2026-06-03)
 ============================
 
 Bugfixes
 --------
 
-- Fixed missing :code:`mode` argument on :py:meth:`SimulationCollection.take <opencosmo.SimulationCollection.take>` and :py:meth:`SimulationCollection.take_range <opencosmo.SimulationCollection.take_range>`
+- Remove checks in the SimulationCollection take operations and to keep behavior consistent with dataset.
 
 
 

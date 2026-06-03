@@ -1,1 +1,0 @@
-Remove checks in the SimulationCollection take operations and to keep behavior consistent with dataset.
