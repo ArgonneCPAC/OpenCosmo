@@ -1,1 +1,0 @@
-Fixed missing :code:`mode` argument on :py:meth:`SimulationCollection.take <opencosmo.SimulationCollection.take>` and :py:meth:`SimulationCollection.take_range <opencosmo.SimulationCollection.take_range>`
