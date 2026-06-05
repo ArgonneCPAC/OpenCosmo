@@ -156,6 +156,54 @@ def _sqrt(left: np.ndarray | u.Unit, right: None):
     return left**0.5
 
 
+def _mean(left: Any, right: None) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left
+    return np.mean(left)
+
+
+def _std(left: Any, right: None) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left
+    return np.std(left)
+
+
+def _var(left: Any, right: None) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left**2
+    return np.var(left)
+
+
+def _min(left: Any, right: None) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left
+    return np.min(left)
+
+
+def _max(left: Any, right: None) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left
+    return np.max(left)
+
+
+def _median(left: Any, right: None) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left
+    return np.median(left)
+
+
+def _sum(left: Any, right: None) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left
+    return np.sum(left)
+
+
+def _quantile(left: Any, right: None, q: float) -> Any:
+    if isinstance(left, u.UnitBase):
+        return left
+    return np.quantile(left, q)
+
+
 def _require_dimensionless(unit: u.UnitBase, func_name: str) -> None:
     if not unit.is_equivalent(u.dimensionless_unscaled):
         raise UnitsError(
@@ -277,7 +325,7 @@ class Column:
     @_require_scalar_quantity
     def __rmul__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | u.Quantity():
+            case int() | float() | DerivedScalarValue() | u.Quantity():
                 return self * other
             case _:
                 return NotImplemented
@@ -285,7 +333,7 @@ class Column:
     @_require_scalar_quantity
     def __mul__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | Column() | u.Quantity():
+            case int() | float() | Column() | DerivedScalarValue() | u.Quantity():
                 return DerivedColumn(self, other, op.mul)
             case _:
                 return NotImplemented
@@ -293,7 +341,7 @@ class Column:
     @_require_scalar_quantity
     def __rtruediv__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | u.Quantity():
+            case int() | float() | DerivedScalarValue() | u.Quantity():
                 return DerivedColumn(other, self, op.truediv)
             case _:
                 return NotImplemented
@@ -301,7 +349,7 @@ class Column:
     @_require_scalar_quantity
     def __truediv__(self, other: Any) -> DerivedColumn:
         match other:
-            case int() | float() | Column() | u.Quantity():
+            case int() | float() | Column() | DerivedScalarValue() | u.Quantity():
                 return DerivedColumn(self, other, op.truediv)
             case _:
                 return NotImplemented
@@ -316,14 +364,14 @@ class Column:
 
     def __add__(self, other: Any) -> DerivedColumn:
         match other:
-            case Column() | int() | float() | u.Quantity():
+            case Column() | DerivedScalarValue() | int() | float() | u.Quantity():
                 return DerivedColumn(self, other, op.add)
             case _:
                 return NotImplemented
 
     def __sub__(self, other: Any) -> DerivedColumn:
         match other:
-            case Column() | int() | float() | u.Quantity():
+            case Column() | DerivedScalarValue() | int() | float() | u.Quantity():
                 return DerivedColumn(self, other, op.sub)
             case _:
                 return NotImplemented
@@ -379,6 +427,57 @@ class Column:
         Both columns must be dimensionless.
         """
         return DerivedColumn(self, other, _arctan2)
+
+    def mean(self) -> DerivedScalarValue:
+        """
+        Reduce this column to its mean. The reduction runs over the rows
+        materialized at evaluation time, so applying a filter or :code:`bound`
+        before the expression that uses this scalar changes the result.
+        """
+        return DerivedScalarValue(self, None, _mean)
+
+    def std(self) -> DerivedScalarValue:
+        """
+        Reduce this column to its standard deviation.
+        """
+        return DerivedScalarValue(self, None, _std)
+
+    def var(self) -> DerivedScalarValue:
+        """
+        Reduce this column to its variance. The resulting scalar has units
+        equal to the column's units squared.
+        """
+        return DerivedScalarValue(self, None, _var)
+
+    def min(self) -> DerivedScalarValue:
+        """
+        Reduce this column to its minimum value.
+        """
+        return DerivedScalarValue(self, None, _min)
+
+    def max(self) -> DerivedScalarValue:
+        """
+        Reduce this column to its maximum value.
+        """
+        return DerivedScalarValue(self, None, _max)
+
+    def median(self) -> DerivedScalarValue:
+        """
+        Reduce this column to its median.
+        """
+        return DerivedScalarValue(self, None, _median)
+
+    def sum(self) -> DerivedScalarValue:
+        """
+        Reduce this column to its sum.
+        """
+        return DerivedScalarValue(self, None, _sum)
+
+    def quantile(self, q: float) -> DerivedScalarValue:
+        """
+        Reduce this column to the q-th quantile, where q is in [0, 1].
+        """
+        return DerivedScalarValue(self, None, partial(_quantile, q=q))
 
 
 class ConstructedColumn(Protocol):
@@ -483,6 +582,178 @@ class RawColumn:
         return data[self.__name]
 
 
+class DerivedScalarValue:
+    """
+    A scalar value derived from a column reduction (mean, std, quantile, ...) or
+    from arithmetic between other scalar values. Used inside column arithmetic to
+    express things like column normalization: :code:`(col - col.mean()) / col.std()`.
+
+    Reductions are computed over the rows that are materialized at evaluation time,
+    so applying a filter or :code:`bound` before the reduction changes the result.
+    """
+
+    def __init__(
+        self,
+        lhs: Any,
+        rhs: Any,
+        operation: Callable,
+    ):
+        self.lhs = lhs
+        self.rhs = rhs
+        self.operation = operation
+
+    def _traverse_names(self) -> set[str]:
+        vals: set[str] = set()
+        match self.lhs:
+            case Column():
+                vals.add(self.lhs.name)
+            case DerivedColumn() | DerivedScalarValue():
+                vals |= self.lhs._traverse_names()
+        match self.rhs:
+            case Column():
+                vals.add(self.rhs.name)
+            case DerivedColumn() | DerivedScalarValue():
+                vals |= self.rhs._traverse_names()
+        return vals
+
+    @property
+    def requires(self) -> set[str]:
+        return self._traverse_names()
+
+    def check_parent_existance(self, names: set[str]) -> bool:
+        match self.lhs:
+            case Column():
+                lhs_valid = self.lhs.name in names
+            case DerivedColumn() | DerivedScalarValue():
+                lhs_valid = self.lhs.check_parent_existance(names)
+            case _:
+                lhs_valid = True
+        match self.rhs:
+            case Column():
+                rhs_valid = self.rhs.name in names
+            case DerivedColumn() | DerivedScalarValue():
+                rhs_valid = self.rhs.check_parent_existance(names)
+            case _:
+                rhs_valid = True
+        return lhs_valid and rhs_valid
+
+    def get_units(self, units: dict[str, u.Unit]):
+        match self.lhs:
+            case Column():
+                lhs_unit = units[self.lhs.name]
+            case DerivedColumn() | DerivedScalarValue():
+                lhs_unit = self.lhs.get_units(units)
+            case u.Quantity():
+                lhs_unit = self.lhs.unit
+            case _:
+                lhs_unit = None
+        match self.rhs:
+            case Column():
+                rhs_unit = units[self.rhs.name]
+            case DerivedColumn() | DerivedScalarValue():
+                rhs_unit = self.rhs.get_units(units)
+            case u.Quantity():
+                rhs_unit = self.rhs.unit
+            case _:
+                rhs_unit = None
+
+        if self.operation in (op.sub, op.add):
+            if lhs_unit != rhs_unit:
+                raise UnitsError("Cannot add/subtract scalars with different units!")
+            return lhs_unit
+
+        match (lhs_unit, rhs_unit):
+            case (None, None):
+                return None
+            case (_, None):
+                if self.operation == op.pow:
+                    return self.operation(lhs_unit, self.rhs)
+                return self.operation(lhs_unit, 1)
+            case (None, _):
+                return self.operation(1, rhs_unit)
+            case (_, _):
+                return self.operation(lhs_unit, rhs_unit)
+
+    def evaluate(self, data: dict[str, np.ndarray]) -> Any:
+        match self.lhs:
+            case DerivedColumn() | DerivedScalarValue():
+                lhs = self.lhs.evaluate(data)
+            case Column():
+                lhs = data[self.lhs.name]
+            case _:
+                lhs = self.lhs
+        match self.rhs:
+            case DerivedColumn() | DerivedScalarValue():
+                rhs = self.rhs.evaluate(data)
+            case Column():
+                rhs = data[self.rhs.name]
+            case _:
+                rhs = self.rhs
+        return self.operation(lhs, rhs)
+
+    def _combine_on_left(self, other: Any, operation: Callable):
+        if isinstance(other, u.Quantity) and not other.isscalar:
+            raise ValueError(
+                f"Only scalar Quantity values can be used in column arithmetic, "
+                f"got shape {other.shape}"
+            )
+        match other:
+            case DerivedScalarValue() | int() | float() | u.Quantity():
+                return DerivedScalarValue(self, other, operation)
+            case Column() | DerivedColumn():
+                return DerivedColumn(self, other, operation)
+            case _:
+                return NotImplemented
+
+    def _combine_on_right(self, other: Any, operation: Callable):
+        if isinstance(other, u.Quantity) and not other.isscalar:
+            raise ValueError(
+                f"Only scalar Quantity values can be used in column arithmetic, "
+                f"got shape {other.shape}"
+            )
+        match other:
+            case DerivedScalarValue() | int() | float() | u.Quantity():
+                return DerivedScalarValue(other, self, operation)
+            case Column() | DerivedColumn():
+                return DerivedColumn(other, self, operation)
+            case _:
+                return NotImplemented
+
+    __mul__ = partialmethod(_combine_on_left, operation=op.mul)
+    __rmul__ = partialmethod(_combine_on_right, operation=op.mul)
+    __truediv__ = partialmethod(_combine_on_left, operation=op.truediv)
+    __rtruediv__ = partialmethod(_combine_on_right, operation=op.truediv)
+    __add__ = partialmethod(_combine_on_left, operation=op.add)
+    __radd__ = partialmethod(_combine_on_right, operation=op.add)
+    __sub__ = partialmethod(_combine_on_left, operation=op.sub)
+    __rsub__ = partialmethod(_combine_on_right, operation=op.sub)
+
+    def __pow__(self, other: Any):
+        match other:
+            case int() | float():
+                return DerivedScalarValue(self, other, op.pow)
+            case _:
+                return NotImplemented
+
+    def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+        return ColumnMask(self, other, op.eq)
+
+    def __ne__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+        return ColumnMask(self, other, op.ne)
+
+    def __gt__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.gt)
+
+    def __ge__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.ge)
+
+    def __lt__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.lt)
+
+    def __le__(self, other: float | u.Quantity) -> ColumnMask:
+        return ColumnMask(self, other, op.le)
+
+
 class DerivedColumn:
     """
     A derived column represents a combination of multiple columns that already exist in
@@ -555,12 +826,12 @@ class DerivedColumn:
         match self.lhs:
             case Column():
                 vals.add(self.lhs.name)
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 vals |= self.lhs._traverse_names()
         match self.rhs:
             case Column():
                 vals.add(self.rhs.name)
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 vals |= self.rhs._traverse_names()
         return vals
 
@@ -582,7 +853,7 @@ class DerivedColumn:
         match self.rhs:
             case Column():
                 rhs_valid = self.rhs.name in names
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 rhs_valid = self.rhs.check_parent_existance(names)
             case _:
                 rhs_valid = True
@@ -590,7 +861,7 @@ class DerivedColumn:
         match self.lhs:
             case Column():
                 lhs_valid = self.lhs.name in names
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 lhs_valid = self.lhs.check_parent_existance(names)
             case _:
                 lhs_valid = True
@@ -601,7 +872,7 @@ class DerivedColumn:
         match self.lhs:
             case Column():
                 lhs_unit = units[self.lhs.name]
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 lhs_unit = self.lhs.get_units(units)
             case u.Quantity():
                 lhs_unit = self.lhs.unit
@@ -610,7 +881,7 @@ class DerivedColumn:
         match self.rhs:
             case Column():
                 rhs_unit = units[self.rhs.name]
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 rhs_unit = self.rhs.get_units(units)
             case u.Quantity():
                 rhs_unit = self.rhs.unit
@@ -647,7 +918,14 @@ class DerivedColumn:
                 f"got shape {other.shape}"
             )
         match other:
-            case Column() | DerivedColumn() | int() | float() | u.Quantity():
+            case (
+                Column()
+                | DerivedColumn()
+                | DerivedScalarValue()
+                | int()
+                | float()
+                | u.Quantity()
+            ):
                 return DerivedColumn(self, other, operation)
             case _:
                 return NotImplemented
@@ -662,7 +940,14 @@ class DerivedColumn:
                 f"got shape {other.shape}"
             )
         match other:
-            case Column() | DerivedColumn() | int() | float() | u.Quantity():
+            case (
+                Column()
+                | DerivedColumn()
+                | DerivedScalarValue()
+                | int()
+                | float()
+                | u.Quantity()
+            ):
                 return DerivedColumn(other, self, operation)
             case _:
                 return NotImplemented
@@ -697,6 +982,30 @@ class DerivedColumn:
     def arctan2(self, other: ColumnOrScalar) -> DerivedColumn:
         return DerivedColumn(self, other, _arctan2)
 
+    def mean(self) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, _mean)
+
+    def std(self) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, _std)
+
+    def var(self) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, _var)
+
+    def min(self) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, _min)
+
+    def max(self) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, _max)
+
+    def median(self) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, _median)
+
+    def sum(self) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, _sum)
+
+    def quantile(self, q: float) -> DerivedScalarValue:
+        return DerivedScalarValue(self, None, partial(_quantile, q=q))
+
     def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
         return ColumnMask(self, other, op.eq)
 
@@ -722,14 +1031,14 @@ class DerivedColumn:
         lhs: Any
         rhs: Any
         match self.lhs:
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 lhs = self.lhs.evaluate(data)
             case Column():
                 lhs = data[self.lhs.name]
             case _:
                 lhs = self.lhs
         match self.rhs:
-            case DerivedColumn():
+            case DerivedColumn() | DerivedScalarValue():
                 rhs = self.rhs.evaluate(data)
             case Column():
                 rhs = data[self.rhs.name]
@@ -944,6 +1253,20 @@ class EvaluatedColumn:
         pass
 
 
+def _evaluate_scalar(scalar: DerivedScalarValue, ds: Dataset) -> Any:
+    """
+    Materialize the columns a DerivedScalarValue depends on and evaluate
+    the reduction against them. Pulls data via the astropy format so Quantity
+    units survive into the reduction.
+    """
+    required = scalar._traverse_names()
+    if not required:
+        return scalar.evaluate({})
+    table = ds.select(*required).get_data("astropy", unpack=False, wrap_single=True)
+    data = {name: table[name] for name in required}
+    return scalar.evaluate(data)
+
+
 class ColumnMask:
     """
     A mask is a class that represents a mask on a column. ColumnMasks evaluate
@@ -966,6 +1289,8 @@ class ColumnMask:
                 left = ds.select(self.left.name).get_data()
             case DerivedColumn():
                 left = ds.select(data=self.left).get_data()
+            case DerivedScalarValue():
+                left = _evaluate_scalar(self.left, ds)
             case _:
                 left = self.left
 
@@ -977,6 +1302,8 @@ class ColumnMask:
             case DerivedColumn():
                 right = ds.select(data=self.right).get_data()
                 right_selected = True
+            case DerivedScalarValue():
+                right = _evaluate_scalar(self.right, ds)
             case _:
                 right = self.right
         if (
