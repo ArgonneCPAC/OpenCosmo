@@ -263,3 +263,111 @@ def test_derived_log(properties_path):
         np.log10(data["fof_halo_mass"].value) == data["fof_halo_mass_dex"].value
     )
     assert u.DexUnit(data["fof_halo_mass"].unit) == data["fof_halo_mass_dex"].unit
+
+
+def test_derive_zscore(properties_path):
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    ds = ds.with_new_columns(zscore=(m - m.mean()) / m.std())
+    data = ds.select(("fof_halo_mass", "zscore")).get_data()
+    expected = (
+        data["fof_halo_mass"].value - np.mean(data["fof_halo_mass"].value)
+    ) / np.std(data["fof_halo_mass"].value)
+    assert np.all(np.isclose(data["zscore"].value, expected))
+    assert data["zscore"].unit == u.dimensionless_unscaled
+    assert np.isclose(np.mean(data["zscore"].value), 0.0, atol=1e-6)
+    assert np.isclose(np.std(data["zscore"].value), 1.0)
+
+
+def test_derive_min_max_scaling(properties_path):
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    ds = ds.with_new_columns(scaled=(m - m.min()) / (m.max() - m.min()))
+    scaled = ds.select("scaled").get_data()
+    assert np.isclose(scaled.min().value, 0.0)
+    assert np.isclose(scaled.max().value, 1.0)
+    assert scaled.unit == u.dimensionless_unscaled
+
+
+def test_derive_iqr_robust_scaling(properties_path):
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    iqr = m.quantile(0.75) - m.quantile(0.25)
+    ds = ds.with_new_columns(robust=(m - m.median()) / iqr)
+    data = ds.select(("fof_halo_mass", "robust")).get_data()
+    raw = data["fof_halo_mass"].value
+    expected = (raw - np.median(raw)) / (
+        np.quantile(raw, 0.75) - np.quantile(raw, 0.25)
+    )
+    assert np.all(np.isclose(data["robust"].value, expected))
+    assert np.isclose(np.median(data["robust"].value), 0.0)
+
+
+def test_derive_sum_normalization(properties_path):
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    ds = ds.with_new_columns(mass_fraction=m / m.sum())
+    data = ds.select(("fof_halo_mass", "mass_fraction")).get_data()
+    assert np.isclose(np.sum(data["mass_fraction"].value), 1.0)
+    assert data["mass_fraction"].unit == u.dimensionless_unscaled
+
+
+def test_derive_var_squares_units(properties_path):
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    ds = ds.with_new_columns(centered_sq=(m - m.mean()) ** 2 / m.var())
+    data = ds.select(("fof_halo_mass", "centered_sq")).get_data()
+    raw = data["fof_halo_mass"].value
+    expected = (raw - np.mean(raw)) ** 2 / np.var(raw)
+    assert np.all(np.isclose(data["centered_sq"].value, expected))
+    assert data["centered_sq"].unit == u.dimensionless_unscaled
+
+
+def test_derive_scalar_preserves_units(properties_path):
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    ds = ds.with_new_columns(centered=m - m.mean())
+    data = ds.select(("fof_halo_mass", "centered")).get_data()
+    assert data["centered"].unit == data["fof_halo_mass"].unit
+    expected = data["fof_halo_mass"].value - np.mean(data["fof_halo_mass"].value)
+    assert np.all(np.isclose(data["centered"].value, expected))
+
+
+def test_derive_scalar_on_derived_column(properties_path):
+    ds = oc.open(properties_path)
+    px = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    ds = ds.with_new_columns(px_norm=(px - px.mean()) / px.std())
+    data = ds.select(("fof_halo_mass", "fof_halo_com_vx", "px_norm")).get_data()
+    raw = data["fof_halo_mass"].value * data["fof_halo_com_vx"].value
+    expected = (raw - np.mean(raw)) / np.std(raw)
+    assert np.all(np.isclose(data["px_norm"].value, expected))
+    assert data["px_norm"].unit == u.dimensionless_unscaled
+
+
+def test_derive_scalar_reflects_prior_filter(properties_path):
+    """A reduction runs over the rows materialized at evaluation time, so a filter
+    applied before the with_new_columns call changes the resulting scalar."""
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    full_mean = float(np.mean(ds.select("fof_halo_mass").get_data().value))
+
+    filtered = ds.filter(m > 1e13)
+    raw_filtered = filtered.select("fof_halo_mass").get_data().value
+    expected_mean = float(np.mean(raw_filtered))
+    assert not np.isclose(full_mean, expected_mean)
+
+    filtered = filtered.with_new_columns(zscore=(m - m.mean()) / m.std())
+    data = filtered.select(("fof_halo_mass", "zscore")).get_data()
+    expected = (raw_filtered - expected_mean) / np.std(raw_filtered)
+    assert np.all(np.isclose(data["zscore"].value, expected))
+
+
+def test_derive_scalar_arithmetic_with_quantity(properties_path):
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    ds = ds.with_new_columns(shifted=m - (m.mean() + 1e10 * u.Msun))
+    data = ds.select(("fof_halo_mass", "shifted")).get_data()
+    raw = data["fof_halo_mass"]
+    expected = raw - (np.mean(raw) + 1e10 * u.Msun)
+    assert np.all(np.isclose(data["shifted"].value, expected.value))
+    assert data["shifted"].unit == raw.unit
