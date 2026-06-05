@@ -1,22 +1,10 @@
-opencosmo 1.2.5 (2026-04-15)
+opencosmo 1.3.3 (2026-06-03)
 ============================
 
 Bugfixes
 --------
 
-- Fix a bug that could cause column expressions to fail when they contain an astropy unit
-
-
-New Features
-------------
-
-- :py:func:`reduce <opencosmo.analysis.reduce>` now accepts a `plotting_function` argument, which allows production of a plot after reduction is performed.
-
-
-Improvements
-------------
-
-- Data handlers and cache are now protocol-based to allow for new backends
+- Remove checks in the SimulationCollection take operations and to keep behavior consistent with dataset.
 
 
 
