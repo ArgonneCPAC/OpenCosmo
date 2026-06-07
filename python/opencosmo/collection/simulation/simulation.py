@@ -324,7 +324,7 @@ class SimulationCollection(dict):
         allow_overwrite: bool, default = False
 
 
-        ** columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
+        ** columns : opencosmo.Column | np.ndarray | units.Quantity
             The new columns
         """
         if datasets is not None:

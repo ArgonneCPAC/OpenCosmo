@@ -155,7 +155,7 @@ def _apply_offset_corrections(
     Correct step-local _start and _idx metadata columns to be globally correct
     before stacking per-step source datasets into a Lightcone.
 
-    For _start columns: apply a lazy DerivedColumn offset (oc.col(name) + offset).
+    For _start columns: apply a lazy Column offset (oc.col(name) + offset).
     For _idx columns: apply the offset eagerly (only to non-negative values).
 
     targets_by_step keys may be either file-level group name prefixes (e.g.

@@ -18,7 +18,6 @@ from astropy.table import QTable  # type: ignore
 from deprecated.sphinx import deprecated
 
 import opencosmo.dataset.state as st
-from opencosmo.column import Column
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.dataset.take import (
@@ -33,7 +32,7 @@ from opencosmo.units.converters import get_scale_factor
 if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
 
-    from opencosmo.column.column import Column, ColumnMask, ConstructedColumn
+    from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset.state import DatasetState
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
@@ -623,7 +622,7 @@ class Dataset:
         *columns : str or list[str]
             The column or columns to select.
 
-        **derived_columns : DerivedColumn
+        **derived_columns : Column
             Any new derived columns that will be instantiated as part of the select
 
         Returns
@@ -863,7 +862,7 @@ class Dataset:
         self,
         descriptions: str | dict[str, str] = {},
         allow_overwrite: bool = False,
-        **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
+        **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
         Create a new dataset with additional columns. These new columns can be derived
@@ -903,7 +902,7 @@ class Dataset:
             If false, attempting to add a new column with the same name as an existing column will throw an error.
             If true, overwrites are allowed.
 
-        ** new_columns : opencosmo.DerivedColumn | np.ndarray | units.Quantity
+        ** new_columns : opencosmo.Column | np.ndarray | units.Quantity
             The new columns to add. The name of the argument is the name the column will take.
 
         Returns

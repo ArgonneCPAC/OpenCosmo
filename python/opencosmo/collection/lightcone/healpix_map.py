@@ -9,10 +9,11 @@ import astropy.units as u  # type: ignore
 import healpy as hp
 import healsparse as hsp
 import numpy as np
-from astropy.table import Column, vstack  # type: ignore
+from astropy.table import Column as AstroColumn  # type: ignore
+from astropy.table import vstack
 
 import opencosmo as oc
-from opencosmo.column.column import DerivedColumn
+from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
@@ -378,7 +379,7 @@ class HealpixMap(dict):
 
         if format == "healpix":
             npix = hp.nside2npix(self.nside)
-            if isinstance(table, (u.Quantity, Column)):
+            if isinstance(table, (u.Quantity, AstroColumn)):
                 vals = np.zeros(npix, dtype=np.float32)
                 vals[pixels] = table.value
                 storage = {"vals": vals}
@@ -865,7 +866,7 @@ class HealpixMap(dict):
         ----------
         *columns : str or list[str]
             The column or columns to select.
-        **derived_columns: DerivedColumn
+        **derived_columns: Column
             Any new derived columns that will be instantiated as part of the select
 
         Returns
@@ -1086,7 +1087,7 @@ class HealpixMap(dict):
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **columns: DerivedColumn | np.ndarray | u.Quantity,
+        **columns: Column | np.ndarray | u.Quantity,
     ):
         """
         Create a new map with additional columns. These new columns can be derived
@@ -1101,7 +1102,7 @@ class HealpixMap(dict):
             :py:attr:`HealpixMap.descriptions <opencosmo.HealpixMap.descriptions>`. If a dictionary,
             should have keys matching the column names.
 
-        ** columns : opencosmo.DerivedColumn | np.ndarray | u.quantity
+        ** columns : opencosmo.Column | np.ndarray | u.quantity
             The new columns
 
         Returns
@@ -1114,7 +1115,7 @@ class HealpixMap(dict):
         derived = {}
         raw = {}
         for name, column in columns.items():
-            if isinstance(column, DerivedColumn):
+            if isinstance(column, Column):
                 derived[name] = column
             elif len(column) != len(self):
                 raise ValueError(

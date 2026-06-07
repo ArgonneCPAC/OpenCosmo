@@ -1382,7 +1382,7 @@ class StructureCollection:
             :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
             should have keys matching the column names.
 
-        ** columns: opencosmo.DerivedColumn
+        ** columns: opencosmo.Column
             The new columns
 
         Returns

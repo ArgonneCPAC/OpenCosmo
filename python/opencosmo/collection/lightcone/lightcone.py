@@ -25,7 +25,7 @@ import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
-from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn
+from opencosmo.column.column import Column, EvaluatedColumn
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import concat_chunks, convert_data, verify_format
 from opencosmo.dataset.take import (
@@ -927,7 +927,7 @@ class Lightcone(dict):
         *columns : str or list[str]
             The column or columns to select.
 
-        **derived_columns : DerivedColumn
+        **derived_columns : Column
             Additional columns to create as part of the selection.
 
         Returns
@@ -1185,7 +1185,7 @@ class Lightcone(dict):
             :py:attr:`Lightcone.descriptions <opencosmo.Lighcone.descriptions>`. If a dictionary,
             should have keys matching the column names.
 
-        ** columns : opencosmo.DerivedColumn | np.ndarray | u.quantity
+        ** columns : opencosmo.Column | np.ndarray | u.quantity
             The new columns
 
         Returns
@@ -1197,7 +1197,7 @@ class Lightcone(dict):
         derived = {}
         raw = {}
         for name, column in columns.items():
-            if isinstance(column, (DerivedColumn, EvaluatedColumn, Column)):
+            if isinstance(column, (Column, EvaluatedColumn)):
                 derived[name] = column
 
             elif not isinstance(column, np.ndarray):
