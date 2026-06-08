@@ -438,6 +438,8 @@ def test_select_scalar_global_some_ranks_empty(input_path):
     result_min = high.select(mn=oc.col("fof_halo_mass").min(), mode="global").get_data()
     result_max = high.select(mx=oc.col("fof_halo_mass").max(), mode="global").get_data()
     expected = all_data[all_data > threshold]
+    print(result_min, expected)
+
     parallel_assert(
         np.isclose(result_min.value, np.min(expected)),
         f"rank {comm.Get_rank()}: global min with empty ranks {result_min.value} != {np.min(expected)}",

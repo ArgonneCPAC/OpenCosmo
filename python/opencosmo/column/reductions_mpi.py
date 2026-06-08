@@ -60,41 +60,39 @@ def evaluate_global_reduction(operation: Any, local_data: Any) -> Any:
             "Cannot compute reduction on a globally empty dataset (all ranks have 0 rows)."
         )
 
-    unit = local_data.unit if isinstance(local_data, u.Quantity) else None
+    local_unit = local_data.unit if isinstance(local_data, u.Quantity) else None
+    all_units = comm.allgather(local_unit)
+    unit = next((u for u in all_units if u is not None), None)
 
     if operation is _min or operation is _max:
         identity = np.inf if operation is _min else -np.inf
         mpi_op = get_mpi().MIN if operation is _min else get_mpi().MAX
-        local_value = operation(local_data, None) if local_n > 0 else identity
-        if unit is not None and local_n == 0:
-            local_value = local_value * unit
-        return _allreduce_quantity(local_value, mpi_op, comm)
+        if local_n > 0:
+            local_value = operation(local_data, None)
+        else:
+            local_value = identity * unit if unit is not None else identity
+        return comm.allreduce(local_value, op=mpi_op)
     if operation is _sum:
-        return _allreduce_quantity(operation(local_data, None), get_mpi().SUM, comm)
+        local_value = (
+            operation(local_data, None)
+            if local_n > 0
+            else (0.0 * unit if unit is not None else 0.0)
+        )
+        return comm.allreduce(local_value, op=get_mpi().SUM)
     if operation is _mean:
         # SUM(values) / SUM(counts), reusing the global count we already computed.
-        gs = _allreduce_quantity(np.sum(local_data), get_mpi().SUM, comm)
+        local_sum = (
+            np.sum(local_data)
+            if local_n > 0
+            else (0.0 * unit if unit is not None else 0.0)
+        )
+        gs = comm.allreduce(local_sum, op=get_mpi().SUM)
         return gs / global_n
     if operation in (_var, _std, _median) or (
         isinstance(operation, partial) and operation.func is _quantile
     ):
         return _gather_and_compute(operation, local_data, comm)
     raise NotImplementedError(f"Global reduction not implemented for {operation}")
-
-
-def _allreduce_quantity(value: Any, op: Any, comm: Any) -> Any:
-    """
-    Apply an allreduce to a value, handling astropy Quantities.
-
-    If the value is a Quantity, unwraps it, reduces the .value, then re-attaches
-    the unit. Otherwise, reduces directly.
-    """
-    if isinstance(value, u.Quantity):
-        raw = value.value
-        unit = value.unit
-        global_raw = comm.allreduce(raw, op=op)
-        return global_raw * unit
-    return comm.allreduce(value, op=op)
 
 
 def _gather_and_compute(operation: Any, local_data: Any, comm: Any) -> Any:
@@ -118,13 +116,14 @@ def _gather_and_compute(operation: Any, local_data: Any, comm: Any) -> Any:
     Any
         The global reduction result, with units preserved.
     """
-    # Unwrap Quantity if needed
-    is_quantity = isinstance(local_data, u.Quantity)
-    if is_quantity:
-        unit = local_data.unit
-        local_values = np.asarray(local_data.value, dtype=np.float64)
-    else:
-        local_values = np.asarray(local_data, dtype=np.float64)
+    local_unit = local_data.unit if isinstance(local_data, u.Quantity) else None
+    all_units = comm.allgather(local_unit)
+    unit = next((u for u in all_units if u is not None), None)
+
+    local_values = np.asarray(
+        local_data.value if isinstance(local_data, u.Quantity) else local_data,
+        dtype=np.float64,
+    )
 
     rank = comm.Get_rank()
     lengths = np.array(comm.allgather(len(local_values)), dtype=np.int64)
@@ -148,7 +147,7 @@ def _gather_and_compute(operation: Any, local_data: Any, comm: Any) -> Any:
     result = comm.bcast(result, root=0)
 
     # Re-attach units if needed
-    if is_quantity:
+    if unit is not None:
         result = result * unit
 
     return result
