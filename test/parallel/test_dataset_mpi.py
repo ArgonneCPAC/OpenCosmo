@@ -307,3 +307,122 @@ def test_take_range_global_sorted_inverted_end(input_path):
         np.all(all_selected <= threshold),
         "some selected values exceed the global n-th smallest threshold",
     )
+
+
+# ── select scalar global ──────────────────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_select_scalar_global_min_max(input_path):
+    """Global min/max equals min/max of the union of per-rank data."""
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # Get local reduction
+    local_min = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+    local_max = ds.select(max_mass=oc.col("fof_halo_mass").max()).get_data()
+
+    # Get global reduction
+    result = ds.select(
+        min_mass=oc.col("fof_halo_mass").min(),
+        max_mass=oc.col("fof_halo_mass").max(),
+        mode="global",
+    ).get_data()
+
+    # Gather all local min/max to verify correctness
+    all_local_mins = np.array(comm.allgather(float(local_min.value)), dtype=np.float64)
+    all_local_maxs = np.array(comm.allgather(float(local_max.value)), dtype=np.float64)
+
+    parallel_assert(
+        np.isclose(result["min_mass"].value, np.min(all_local_mins)),
+        f"rank {comm.Get_rank()}: global min {result['min_mass'].value} != "
+        f"union min {np.min(all_local_mins)}",
+    )
+    parallel_assert(
+        np.isclose(result["max_mass"].value, np.max(all_local_maxs)),
+        f"rank {comm.Get_rank()}: global max {result['max_mass'].value} != "
+        f"union max {np.max(all_local_maxs)}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_select_scalar_global_mean(input_path):
+    """Global mean matches the true mean (weighted by per-rank counts)."""
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # Get global mean via mode='global'
+    result = ds.select(
+        mean_mass=oc.col("fof_halo_mass").mean(),
+        mode="global",
+    ).get_data()
+
+    # Gather all local data to compute true global mean
+    local_data = ds.select("fof_halo_mass").get_data("numpy")
+    all_data = np.concatenate(comm.allgather(local_data))
+
+    expected_mean = np.mean(all_data)
+
+    parallel_assert(
+        np.isclose(result.value, expected_mean),
+        f"rank {comm.Get_rank()}: global mean {result.value} != "
+        f"true mean {expected_mean}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_select_scalar_global_median(input_path):
+    """Global median via gather/broadcast."""
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # Get global median via mode='global'
+    result = ds.select(
+        median_mass=oc.col("fof_halo_mass").median(),
+        mode="global",
+    ).get_data()
+
+    # Gather all local data to compute true global median
+    local_data = ds.select("fof_halo_mass").get_data("numpy")
+    all_data = np.concatenate(comm.allgather(local_data))
+
+    expected_median = np.median(all_data)
+
+    parallel_assert(
+        np.isclose(result.value, expected_median),
+        f"rank {comm.Get_rank()}: global median {result.value} != "
+        f"true median {expected_median}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_select_scalar_global_with_filter(input_path):
+    """mode='global' reduction reflects the filter across ranks."""
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # Filter to only high-mass halos
+    threshold = 1e13
+    filtered = ds.filter(oc.col("fof_halo_mass") > threshold)
+
+    # Get global min on the filtered dataset
+    result = filtered.select(
+        min_mass=oc.col("fof_halo_mass").min(),
+        mode="global",
+    ).get_data()
+
+    # Gather all filtered data to verify correctness
+    local_data = filtered.select("fof_halo_mass").get_data("numpy")
+    all_data = np.concatenate(comm.allgather(local_data))
+
+    if len(all_data) > 0:
+        expected_min = np.min(all_data)
+        parallel_assert(
+            np.isclose(result.value, expected_min),
+            f"rank {comm.Get_rank()}: global min on filtered {result.value} != "
+            f"true min {expected_min}",
+        )
+    else:
+        # If no data matches filter on any rank, the result should be well-defined
+        # (test just verifies it doesn't crash)
+        pass

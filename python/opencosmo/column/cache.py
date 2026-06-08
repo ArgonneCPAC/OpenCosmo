@@ -45,8 +45,6 @@ def finish(
 
 
 def check_length(cache: ColumnCache, data: dict[UUID, dict[str, np.ndarray]]):
-    print(data)
-
     lengths = {len(arr) for uuid_data in data.values() for arr in uuid_data.values()}
     if len(lengths) > 1:
         raise ValueError(

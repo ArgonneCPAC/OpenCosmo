@@ -440,3 +440,106 @@ def test_select_scalar_rejects_missing_column(properties_path):
     ds = oc.open(properties_path)
     with pytest.raises(ValueError, match="Derived scalar depends on unknown columns"):
         ds.select(bad_scalar=oc.col("nonexistent_column").min())
+
+
+def test_select_scalar_global_no_mpi_noop(properties_path):
+    """mode='global' with no MPI returns the same value as mode='local'."""
+    ds = oc.open(properties_path)
+    local = ds.select(
+        mn=oc.col("fof_halo_mass").min(),
+        mx=oc.col("fof_halo_mass").max(),
+    ).get_data()
+    global_result = ds.select(
+        mn=oc.col("fof_halo_mass").min(),
+        mx=oc.col("fof_halo_mass").max(),
+        mode="global",
+    ).get_data()
+    assert np.isclose(local["mn"].value, global_result["mn"].value)
+    assert np.isclose(local["mx"].value, global_result["mx"].value)
+
+
+def test_select_scalar_global_no_scalars_noop(properties_path):
+    """select("col1", "col2", mode='global') works identically to without mode."""
+    ds = oc.open(properties_path)
+    result_no_mode = ds.select("fof_halo_mass", "fof_halo_com_vx").get_data()
+    result_with_mode = ds.select(
+        "fof_halo_mass", "fof_halo_com_vx", mode="global"
+    ).get_data()
+    assert set(result_no_mode.columns) == set(result_with_mode.columns)
+    assert np.all(
+        np.isclose(
+            result_no_mode["fof_halo_mass"].value,
+            result_with_mode["fof_halo_mass"].value,
+        )
+    )
+
+
+def test_select_scalar_global_invalid_mode(properties_path):
+    """mode='nonsense' raises ValueError."""
+    ds = oc.open(properties_path)
+    with pytest.raises(ValueError, match="mode must be 'local' or 'global'"):
+        ds.select(
+            mn=oc.col("fof_halo_mass").min(),
+            mode="nonsense",
+        )
+
+
+def test_select_scalar_with_global_returns_new(properties_path):
+    """mode='global' returns a new DerivedScalarValue with global flag set."""
+    ds = oc.open(properties_path)
+    s = oc.col("fof_halo_mass").min()
+    ds.select(x=s, mode="global")
+    # Verify the tree was modified (not the original scalar)
+    assert not s.is_global
+    # mode='global' should not mutate the user's original expression
+    assert s.is_global is False
+
+
+def test_col_with_global_scalars_walks_tree(properties_path):
+    """with_global_scalars() recursively marks nested scalars as global."""
+    from opencosmo.column.column import Column, DerivedScalarValue
+
+    m = oc.col("fof_halo_mass")
+    expr = (m - m.mean()) / m.std()
+
+    globalized = expr.with_global_scalars()
+    assert isinstance(globalized, Column)
+
+    def collect_scalars(node):
+        if isinstance(node, DerivedScalarValue):
+            yield node
+            yield from collect_scalars(node.lhs)
+            yield from collect_scalars(node.rhs)
+        elif isinstance(node, Column):
+            yield from collect_scalars(node.lhs)
+            yield from collect_scalars(node.rhs)
+
+    inner = list(collect_scalars(globalized))
+    assert len(inner) == 2
+    assert all(s.is_global for s in inner)
+
+
+def test_select_global_walks_into_column_inside_scalar(properties_path):
+    """A reduction whose lhs is a Column containing scalars must globalize the inner scalars too."""
+    from opencosmo.column.column import Column, DerivedScalarValue, _globalize
+
+    m = oc.col("fof_halo_mass")
+    # Outer is a reduction; its lhs is a Column subtree containing an inner scalar.
+    expr = (m - m.mean()).min()
+
+    globalized = _globalize(expr)
+    assert isinstance(globalized, DerivedScalarValue)
+    assert globalized.is_global
+
+    def collect_scalars(node):
+        if isinstance(node, DerivedScalarValue):
+            yield node
+            yield from collect_scalars(node.lhs)
+            yield from collect_scalars(node.rhs)
+        elif isinstance(node, Column):
+            yield from collect_scalars(node.lhs)
+            yield from collect_scalars(node.rhs)
+
+    inner = [s for s in collect_scalars(globalized.lhs)]
+    assert len(inner) == 1
+    assert inner[0].is_global

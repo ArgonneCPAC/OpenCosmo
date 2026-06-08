@@ -601,6 +601,7 @@ class Dataset:
     def select(
         self,
         *columns: str | Iterable[str],
+        mode: str = "local",
         **derived_columns: ConstructedColumn | DerivedScalarValue,
     ) -> Dataset:
         """
@@ -628,6 +629,12 @@ class Dataset:
         *columns : str or list[str]
             The column or columns to select.
 
+        mode : str, "local" or "global", default = "local"
+            Controls how scalar reductions (e.g. ``oc.col("x").min()``) are computed
+            when running under MPI. With ``"global"``, scalars combine across all
+            ranks before being returned. Has no effect on plain column selections, on
+            expressions without scalar reductions, or when not running under MPI.
+
         **derived_columns : Column
             Any new derived columns that will be instantiated as part of the select
 
@@ -641,7 +648,10 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        from opencosmo.column.column import DerivedScalarValue
+        from opencosmo.column.column import DerivedScalarValue, _globalize
+
+        if mode not in ("local", "global"):
+            raise ValueError(f"mode must be 'local' or 'global', got {mode!r}")
 
         all_columns: set[str] = set()
         for col_group in columns:
@@ -662,6 +672,9 @@ class Dataset:
                 "Scalar selections cannot be mixed with column selections. "
                 "Call select() with only scalar kwargs, or only column selections."
             )
+
+        if mode == "global":
+            derived_columns = {k: _globalize(v) for k, v in derived_columns.items()}
 
         new_state = self.__state
         if derived_columns:

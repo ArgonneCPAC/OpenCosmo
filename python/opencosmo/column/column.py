@@ -210,6 +210,23 @@ class Column:
             _uuid=self.__uuid,
         )
 
+    def with_global_scalars(self) -> Column:
+        """
+        Return a new Column with every nested DerivedScalarValue marked global.
+        Does not mutate self.
+        """
+        new_lhs = _globalize(self.lhs)
+        new_rhs = _globalize(self.rhs)
+        return Column(
+            new_lhs,
+            new_rhs,
+            self.operation,
+            self.description,
+            self.name,
+            _dep_map=self.__dep_map,
+            _uuid=self.__uuid,
+        )
+
     def _traverse_names(self) -> set[str]:
         """Walk the expression tree and collect all Column leaf names."""
         vals: set[str] = set()
@@ -726,6 +743,7 @@ class DerivedScalarValue:
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = True,
         _uuid: UUID | None = None,
+        is_global: bool = False,
     ):
         self.lhs = lhs
         self.rhs = rhs
@@ -735,6 +753,7 @@ class DerivedScalarValue:
         self.__uuid = _uuid if _uuid is not None else uuid4()
         self.__dep_map: dict[str, UUID] | None = _dep_map
         self.__no_cache = no_cache
+        self.__is_global = is_global
 
     def _traverse_names(self) -> set[str]:
         vals: set[str] = set()
@@ -768,6 +787,10 @@ class DerivedScalarValue:
     def no_cache(self):
         return self.__no_cache
 
+    @property
+    def is_global(self) -> bool:
+        return self.__is_global
+
     def bind(self, name_to_uuid: dict[str, UUID]) -> DerivedScalarValue:
         """
         Resolve each dependency column name to the UUID of the producer that was
@@ -788,6 +811,25 @@ class DerivedScalarValue:
             _dep_map=dep_map,
             no_cache=self.__no_cache,
             _uuid=self.__uuid,
+            is_global=self.__is_global,
+        )
+
+    def with_global(self) -> DerivedScalarValue:
+        """
+        Return a new DerivedScalarValue marked as global, with the flag recursively
+        set on any nested DerivedScalarValue in lhs/rhs (including inside Column
+        subtrees). Does not mutate self.
+        """
+        return DerivedScalarValue(
+            _globalize(self.lhs),
+            _globalize(self.rhs),
+            self.operation,
+            description=self.description,
+            output_name=self.name,
+            _dep_map=self.__dep_map,
+            no_cache=self.__no_cache,
+            _uuid=self.__uuid,
+            is_global=True,
         )
 
     def __repr__(self):
@@ -853,6 +895,10 @@ class DerivedScalarValue:
                 rhs = self.rhs.evaluate(data)
             case _:
                 rhs = self.rhs
+        if self.__is_global and rhs is None:
+            from opencosmo.column.reductions_mpi import evaluate_global_reduction
+
+            return evaluate_global_reduction(self.operation, lhs)
         return self.operation(lhs, rhs)
 
     def _combine_on_left(self, other: Any, operation: Callable):
@@ -1218,3 +1264,15 @@ class CompoundColumnMask:
         left_mask = self.__left.apply(ds)
         right_mask = self.__right.apply(ds)
         return self.__op(left_mask, right_mask)
+
+
+def _globalize(node: Any) -> Any:
+    """
+    Helper to recursively mark DerivedScalarValue nodes as global within a tree.
+    Used by Column.with_global_scalars() and DerivedScalarValue.with_global().
+    """
+    if isinstance(node, DerivedScalarValue):
+        return node.with_global()
+    if isinstance(node, Column):
+        return node.with_global_scalars()
+    return node
