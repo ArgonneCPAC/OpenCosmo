@@ -53,22 +53,28 @@ def evaluate_global_reduction(operation: Any, local_data: Any) -> Any:
         # No MPI — global IS local
         return operation(local_data, None)
 
-    if operation is _min:
-        return _allreduce_quantity(operation(local_data, None), get_mpi().MIN, comm)
-    if operation is _max:
-        return _allreduce_quantity(operation(local_data, None), get_mpi().MAX, comm)
+    local_n = len(local_data)
+    global_n = comm.allreduce(local_n, op=get_mpi().SUM)
+    if global_n == 0:
+        raise ValueError(
+            "Cannot compute reduction on a globally empty dataset (all ranks have 0 rows)."
+        )
+
+    unit = local_data.unit if isinstance(local_data, u.Quantity) else None
+
+    if operation is _min or operation is _max:
+        identity = np.inf if operation is _min else -np.inf
+        mpi_op = get_mpi().MIN if operation is _min else get_mpi().MAX
+        local_value = operation(local_data, None) if local_n > 0 else identity
+        if unit is not None and local_n == 0:
+            local_value = local_value * unit
+        return _allreduce_quantity(local_value, mpi_op, comm)
     if operation is _sum:
         return _allreduce_quantity(operation(local_data, None), get_mpi().SUM, comm)
     if operation is _mean:
-        # SUM(values) / SUM(counts) — each rank contributes its local sum and count,
-        # combined with two SUM allreduces.
-        local_sum = (
-            local_data.sum() if hasattr(local_data, "sum") else np.sum(local_data)
-        )
-        local_n = len(local_data)
-        gs = _allreduce_quantity(local_sum, get_mpi().SUM, comm)
-        gn = comm.allreduce(local_n, op=get_mpi().SUM)
-        return gs / gn
+        # SUM(values) / SUM(counts), reusing the global count we already computed.
+        gs = _allreduce_quantity(np.sum(local_data), get_mpi().SUM, comm)
+        return gs / global_n
     if operation in (_var, _std, _median) or (
         isinstance(operation, partial) and operation.func is _quantile
     ):

@@ -415,14 +415,44 @@ def test_select_scalar_global_with_filter(input_path):
     local_data = filtered.select("fof_halo_mass").get_data("numpy")
     all_data = np.concatenate(comm.allgather(local_data))
 
-    if len(all_data) > 0:
-        expected_min = np.min(all_data)
-        parallel_assert(
-            np.isclose(result.value, expected_min),
-            f"rank {comm.Get_rank()}: global min on filtered {result.value} != "
-            f"true min {expected_min}",
-        )
-    else:
-        # If no data matches filter on any rank, the result should be well-defined
-        # (test just verifies it doesn't crash)
-        pass
+    expected_min = np.min(all_data)
+    parallel_assert(
+        np.isclose(result.value, expected_min),
+        f"rank {comm.Get_rank()}: global min on filtered {result.value} != "
+        f"true min {expected_min}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_select_scalar_global_some_ranks_empty(input_path):
+    """A global reduction must work when some ranks have 0 rows after filtering."""
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # Filter that lands all matching rows on rank 0 only.
+    local_data = ds.select("fof_halo_mass").get_data("numpy")
+    all_data = np.concatenate(comm.allgather(local_data))
+    threshold = float(np.partition(all_data, -2)[-2])  # second largest globally
+    high = ds.filter(oc.col("fof_halo_mass") > threshold)
+
+    result_min = high.select(mn=oc.col("fof_halo_mass").min(), mode="global").get_data()
+    result_max = high.select(mx=oc.col("fof_halo_mass").max(), mode="global").get_data()
+    expected = all_data[all_data > threshold]
+    parallel_assert(
+        np.isclose(result_min.value, np.min(expected)),
+        f"rank {comm.Get_rank()}: global min with empty ranks {result_min.value} != {np.min(expected)}",
+    )
+    parallel_assert(
+        np.isclose(result_max.value, np.max(expected)),
+        f"rank {comm.Get_rank()}: global max with empty ranks {result_max.value} != {np.max(expected)}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_select_scalar_global_all_empty_raises(input_path):
+    """Global reduction on a globally empty dataset raises ValueError."""
+    ds = oc.open(input_path)
+    empty = ds.filter(oc.col("fof_halo_mass") > 1e30)
+
+    with pytest.raises(ValueError, match="globally empty"):
+        empty.select(mn=oc.col("fof_halo_mass").min(), mode="global").get_data()
