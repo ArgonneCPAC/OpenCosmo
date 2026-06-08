@@ -371,3 +371,72 @@ def test_derive_scalar_arithmetic_with_quantity(properties_path):
     expected = raw - (np.mean(raw) + 1e10 * u.Msun)
     assert np.all(np.isclose(data["shifted"].value, expected.value))
     assert data["shifted"].unit == raw.unit
+
+
+def test_select_single_scalar(properties_path):
+    """A scalar selection returns the bare value when there's one scalar and wrap_single=False."""
+    ds = oc.open(properties_path)
+    result = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+    assert isinstance(result, u.Quantity)
+    assert result.unit == u.Msun
+    assert result > 0
+
+
+def test_select_multiple_scalars(properties_path):
+    """Multiple scalar selections return a dict."""
+    ds = oc.open(properties_path)
+    result = ds.select(
+        min_mass=oc.col("fof_halo_mass").min(),
+        max_mass=oc.col("fof_halo_mass").max(),
+    ).get_data()
+    assert isinstance(result, dict)
+    assert set(result.keys()) == {"min_mass", "max_mass"}
+    assert isinstance(result["min_mass"], u.Quantity)
+    assert isinstance(result["max_mass"], u.Quantity)
+    assert result["min_mass"] < result["max_mass"]
+
+
+def test_select_scalar_numpy_format(properties_path):
+    """The 'numpy' format works with scalar selections and strips units."""
+    ds = oc.open(properties_path)
+    result = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data(format="numpy")
+    assert not hasattr(result, "unit")
+    assert isinstance(result, (float, np.floating))
+
+
+def test_select_scalar_wrap_single(properties_path):
+    """wrap_single=True returns a dict even for a single scalar."""
+    ds = oc.open(properties_path)
+    result = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data(
+        wrap_single=True
+    )
+    assert isinstance(result, dict)
+    assert set(result.keys()) == {"min_mass"}
+    assert isinstance(result["min_mass"], u.Quantity)
+
+
+def test_select_scalar_reflects_filter(properties_path):
+    """Scalar selections reflect prior filter() calls."""
+    ds = oc.open(properties_path)
+    m = oc.col("fof_halo_mass")
+    full_min = ds.select(min_mass=m.min()).get_data()
+    filtered = ds.filter(m > 1e13)
+    filtered_min = filtered.select(min_mass=m.min()).get_data()
+    assert filtered_min > full_min
+
+
+def test_select_scalar_rejects_mixed(properties_path):
+    """Mixing scalar and column selections raises ValueError."""
+    ds = oc.open(properties_path)
+    with pytest.raises(
+        ValueError,
+        match="Scalar selections cannot be mixed with column selections",
+    ):
+        ds.select("fof_halo_mass", min_mass=oc.col("fof_halo_mass").min())
+
+
+def test_select_scalar_rejects_missing_column(properties_path):
+    """Scalar referencing a non-existent column raises ValueError."""
+    ds = oc.open(properties_path)
+    with pytest.raises(ValueError, match="Derived scalar depends on unknown columns"):
+        ds.select(bad_scalar=oc.col("nonexistent_column").min())

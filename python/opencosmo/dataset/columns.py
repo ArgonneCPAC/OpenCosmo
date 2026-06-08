@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING, Optional
 import astropy.units as u
 import numpy as np
 
-from opencosmo.column.column import Column, EvaluatedColumn, RawColumn
+from opencosmo.column.column import (
+    Column,
+    DerivedScalarValue,
+    EvaluatedColumn,
+    RawColumn,
+)
 from opencosmo.dataset.graph import validate_column_producers
 
 if TYPE_CHECKING:
@@ -63,6 +68,11 @@ def __categorize_columns(
     for colname, column in new_columns.items():
         match column:
             case Column():
+                column.name = colname
+                column.description = descriptions.get(colname, "None")
+                new_derived_columns.append(column)
+                new_column_names.extend(column.produces)
+            case DerivedScalarValue():
                 column.name = colname
                 column.description = descriptions.get(colname, "None")
                 new_derived_columns.append(column)

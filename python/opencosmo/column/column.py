@@ -719,12 +719,22 @@ class DerivedScalarValue:
     def __init__(
         self,
         lhs: ColumnOrScalar | DerivedScalarValue,
-        rhs: ColumnOrScalar | DerivedScalarValue,
+        rhs: ColumnOrScalar | DerivedScalarValue | None,
         operation: Callable,
+        description: Optional[str] = None,
+        output_name: Optional[str] = None,
+        _dep_map: dict[str, UUID] | None = None,
+        no_cache: bool = True,
+        _uuid: UUID | None = None,
     ):
         self.lhs = lhs
         self.rhs = rhs
         self.operation = operation
+        self.name = output_name
+        self.description = description if description is not None else "None"
+        self.__uuid = _uuid if _uuid is not None else uuid4()
+        self.__dep_map: dict[str, UUID] | None = _dep_map
+        self.__no_cache = no_cache
 
     def _traverse_names(self) -> set[str]:
         vals: set[str] = set()
@@ -735,8 +745,50 @@ class DerivedScalarValue:
         return vals
 
     @property
-    def requires(self) -> set[str]:
-        return self._traverse_names()
+    def uuid(self) -> UUID:
+        return self.__uuid
+
+    @property
+    def dep_map(self) -> dict[str, UUID] | None:
+        return self.__dep_map
+
+    @property
+    def requires(self) -> set[UUID]:
+        if self.__dep_map is None:
+            raise RuntimeError(
+                f"DerivedScalarValue '{self.name}' has not been bound yet."
+            )
+        return set(self.__dep_map.values())
+
+    @property
+    def produces(self):
+        return None if self.name is None else set([self.name])
+
+    @property
+    def no_cache(self):
+        return self.__no_cache
+
+    def bind(self, name_to_uuid: dict[str, UUID]) -> DerivedScalarValue:
+        """
+        Resolve each dependency column name to the UUID of the producer that was
+        producing it at the time this scalar was registered with a dataset.
+        Returns a new bound DerivedScalarValue; does not mutate this instance.
+        """
+        required_names = self._traverse_names()
+        if missing := required_names.difference(name_to_uuid):
+            raise ValueError(f"Derived scalar depends on unknown columns {missing}")
+
+        dep_map = {name: name_to_uuid[name] for name in self._traverse_names()}
+        return DerivedScalarValue(
+            self.lhs,
+            self.rhs,
+            self.operation,
+            self.description,
+            self.name,
+            _dep_map=dep_map,
+            no_cache=self.__no_cache,
+            _uuid=self.__uuid,
+        )
 
     def __repr__(self):
         op_str = render_op(self.operation)
@@ -790,7 +842,7 @@ class DerivedScalarValue:
             case (_, _):
                 return self.operation(lhs_unit, rhs_unit)
 
-    def evaluate(self, data: dict[str, np.ndarray]) -> Any:
+    def evaluate(self, data: dict[str, np.ndarray], *args) -> Any:
         match self.lhs:
             case Column() | DerivedScalarValue():
                 lhs = self.lhs.evaluate(data)
@@ -811,7 +863,9 @@ class DerivedScalarValue:
             )
         match other:
             case DerivedScalarValue() | int() | float() | u.Quantity():
-                return DerivedScalarValue(self, other, operation)
+                return DerivedScalarValue(
+                    self, other, operation, description=None, output_name=None
+                )
             case Column():
                 return Column(self, other, operation)
             case _:
@@ -825,7 +879,9 @@ class DerivedScalarValue:
             )
         match other:
             case DerivedScalarValue() | int() | float() | u.Quantity():
-                return DerivedScalarValue(other, self, operation)
+                return DerivedScalarValue(
+                    other, self, operation, description=None, output_name=None
+                )
             case Column():
                 return Column(other, self, operation)
             case _:

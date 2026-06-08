@@ -32,7 +32,11 @@ from opencosmo.units.converters import get_scale_factor
 if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
 
-    from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.column.column import (
+        ColumnMask,
+        ConstructedColumn,
+        DerivedScalarValue,
+    )
     from opencosmo.dataset.state import DatasetState
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
@@ -326,7 +330,7 @@ class Dataset:
         if unpack:
             data = {
                 key: value[0]
-                if isinstance(value, np.ndarray) and len(value) == 1
+                if isinstance(value, np.ndarray) and value.ndim > 0 and len(value) == 1
                 else value
                 for key, value in data.items()
             }
@@ -595,7 +599,9 @@ class Dataset:
             yield output_data
 
     def select(
-        self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
+        self,
+        *columns: str | Iterable[str],
+        **derived_columns: ConstructedColumn | DerivedScalarValue,
     ) -> Dataset:
         """
         Create a new dataset from a subset of columns in this dataset. This
@@ -635,18 +641,36 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
+        from opencosmo.column.column import DerivedScalarValue
+
         all_columns: set[str] = set()
         for col_group in columns:
             if isinstance(col_group, str):
                 col_group = {col_group}
             all_columns.update(col_group)
 
+        scalars: dict[str, DerivedScalarValue] = {}
+        non_scalars: dict[str, ConstructedColumn] = {}
+        for name, col in derived_columns.items():
+            if isinstance(col, DerivedScalarValue):
+                scalars[name] = col
+            else:
+                non_scalars[name] = col
+
+        if scalars and (all_columns or non_scalars):
+            raise ValueError(
+                "Scalar selections cannot be mixed with column selections. "
+                "Call select() with only scalar kwargs, or only column selections."
+            )
+
         new_state = self.__state
         if derived_columns:
             new_state = st.with_new_columns(new_state, {}, False, **derived_columns)
             all_columns.update(derived_columns.keys())
 
-        new_state = st.select(new_state, all_columns)
+        if all_columns:
+            new_state = st.select(new_state, all_columns)
+
         return Dataset(
             self.__header,
             new_state,
@@ -848,7 +872,6 @@ class Dataset:
             dataset.
 
         """
-
         row_range = get_range(rows)
         if row_range[0] < 0 or row_range[1] > len(self):
             raise ValueError(
