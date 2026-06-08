@@ -484,26 +484,27 @@ def test_select_scalar_global_invalid_mode(properties_path):
         )
 
 
-def test_select_scalar_with_global_returns_new(properties_path):
-    """mode='global' returns a new DerivedScalarValue with global flag set."""
+def test_select_scalar_with_global_does_not_mutate(properties_path):
+    """mode='global' must not mutate the user's original scalar expression."""
     ds = oc.open(properties_path)
     s = oc.col("fof_halo_mass").min()
+    assert s.reducer is None
     ds.select(x=s, mode="global")
-    # Verify the tree was modified (not the original scalar)
-    assert not s.is_global
-    # mode='global' should not mutate the user's original expression
-    assert s.is_global is False
+    # The user's original scalar should still have no reducer attached.
+    assert s.reducer is None
 
 
-def test_col_with_global_scalars_walks_tree(properties_path):
-    """with_global_scalars() recursively marks nested scalars as global."""
+def test_col_with_reducer_walks_tree(properties_path):
+    """with_reducer() recursively attaches the reducer to nested scalars."""
     from opencosmo.column.column import Column, DerivedScalarValue
+    from opencosmo.column.reducer import LocalReducer
 
     m = oc.col("fof_halo_mass")
     expr = (m - m.mean()) / m.std()
 
-    globalized = expr.with_global_scalars()
-    assert isinstance(globalized, Column)
+    reducer = LocalReducer()
+    rebound = expr.with_reducer(reducer)
+    assert isinstance(rebound, Column)
 
     def collect_scalars(node):
         if isinstance(node, DerivedScalarValue):
@@ -514,22 +515,24 @@ def test_col_with_global_scalars_walks_tree(properties_path):
             yield from collect_scalars(node.lhs)
             yield from collect_scalars(node.rhs)
 
-    inner = list(collect_scalars(globalized))
+    inner = list(collect_scalars(rebound))
     assert len(inner) == 2
-    assert all(s.is_global for s in inner)
+    assert all(s.reducer is reducer for s in inner)
 
 
-def test_select_global_walks_into_column_inside_scalar(properties_path):
-    """A reduction whose lhs is a Column containing scalars must globalize the inner scalars too."""
-    from opencosmo.column.column import Column, DerivedScalarValue, _globalize
+def test_with_reducer_walks_into_column_inside_scalar(properties_path):
+    """A reduction whose lhs is a Column containing scalars: with_reducer must attach to
+    both the outer reduction and the inner nested scalars."""
+    from opencosmo.column.column import Column, DerivedScalarValue
+    from opencosmo.column.reducer import LocalReducer
 
     m = oc.col("fof_halo_mass")
-    # Outer is a reduction; its lhs is a Column subtree containing an inner scalar.
     expr = (m - m.mean()).min()
 
-    globalized = _globalize(expr)
-    assert isinstance(globalized, DerivedScalarValue)
-    assert globalized.is_global
+    reducer = LocalReducer()
+    rebound = expr.with_reducer(reducer)
+    assert isinstance(rebound, DerivedScalarValue)
+    assert rebound.reducer is reducer
 
     def collect_scalars(node):
         if isinstance(node, DerivedScalarValue):
@@ -540,6 +543,6 @@ def test_select_global_walks_into_column_inside_scalar(properties_path):
             yield from collect_scalars(node.lhs)
             yield from collect_scalars(node.rhs)
 
-    inner = [s for s in collect_scalars(globalized.lhs)]
+    inner = [s for s in collect_scalars(rebound.lhs)]
     assert len(inner) == 1
-    assert inner[0].is_global
+    assert inner[0].reducer is reducer

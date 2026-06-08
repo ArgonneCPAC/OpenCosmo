@@ -574,3 +574,147 @@ def test_lightcone_stacking_nostack(
 def test_lightcone_structure_collection_open(structure_600):
     c = oc.open(*structure_600)
     assert isinstance(c, oc.StructureCollection)
+
+
+# ---------------------------------------------------------------------------
+# Lightcone-scoped derived scalars
+#
+# Scalars (col.mean(), col.min(), ...) in expressions registered against a
+# Lightcone must reduce across the WHOLE lightcone, not per-child. The
+# reduction is lazy: it sees the rows that remain after every prior
+# filter/take/with_redshift_range at the moment get_data is called.
+# ---------------------------------------------------------------------------
+
+
+def _global_raw(lc, name):
+    """Materialize a single raw child column across the whole lightcone."""
+    pieces = [child.select(name).get_data() for child in lc.values()]
+    return np.concatenate([np.asarray(p) for p in pieces])
+
+
+def test_lc_scope_global_zscore(haloproperties_600_path, haloproperties_601_path):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+    derived = lc.with_new_columns(zscore=(m - m.mean()) / m.std())
+    data = derived.get_data()
+
+    z = np.asarray(data["zscore"])
+    assert np.isclose(z.mean(), 0.0, atol=1e-6)
+    assert np.isclose(z.std(), 1.0, atol=1e-6)
+
+    raw = _global_raw(lc, "fof_halo_mass")
+    per_child_means = [
+        np.mean(np.asarray(child.select("fof_halo_mass").get_data()))
+        for child in lc.values()
+    ]
+    assert not np.isclose(
+        per_child_means[0], np.mean(raw), rtol=1e-6
+    ) or not np.isclose(per_child_means[1], np.mean(raw), rtol=1e-6), (
+        "Per-child means equal the global mean — fixture too uniform to detect the bug"
+    )
+
+
+def test_lc_scope_global_min_max_scaling(
+    haloproperties_600_path, haloproperties_601_path
+):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+    derived = lc.with_new_columns(scaled=(m - m.min()) / (m.max() - m.min()))
+    data = derived.get_data()
+
+    scaled = np.asarray(data["scaled"])
+    assert scaled.min() >= 0.0
+    assert scaled.max() <= 1.0
+    assert np.isclose(scaled.min(), 0.0, atol=1e-9)
+    assert np.isclose(scaled.max(), 1.0, atol=1e-9)
+
+
+@pytest.mark.xfail(
+    reason="Lightcone.select(x=col.min()) currently returns one value broadcast to N "
+    "rows instead of a single scalar. The reduction value is correct (global min "
+    "across all children), but the shape mirrors the vstacked row count rather than "
+    "collapsing the way Dataset.select does. Fix requires splitting scope producers "
+    "into scalar vs vector at get_data time.",
+    strict=True,
+)
+def test_lc_scope_scalar_select_is_global(
+    haloproperties_600_path, haloproperties_601_path
+):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    result = lc.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+    raw = _global_raw(lc, "fof_halo_mass")
+
+    assert isinstance(result, u.Quantity)
+    assert result.isscalar or result.shape == ()
+    assert np.isclose(float(result.value), float(np.min(raw)))
+
+
+def test_lc_scope_scalar_select_value_is_global(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """
+    Until the shape bug above is fixed, at least verify the *value* the lightcone
+    computes for a scope-only scalar selection is the global reduction, not
+    per-child. This guards the reducer/scope wiring even with the wrong shape.
+    """
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    result = lc.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+    raw = _global_raw(lc, "fof_halo_mass")
+    arr = np.asarray(result)
+    assert np.all(np.isclose(arr, float(np.min(raw))))
+
+
+def test_lc_scope_filter_against_global_mean(
+    haloproperties_600_path, haloproperties_601_path
+):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+    raw = _global_raw(lc, "fof_halo_mass")
+    threshold = float(np.mean(raw))
+
+    filtered = lc.filter(m > m.mean())
+    kept = np.asarray(filtered.select("fof_halo_mass").get_data())
+
+    expected = raw[raw > threshold]
+    assert len(kept) == len(expected)
+    assert np.isclose(np.sort(kept), np.sort(expected)).all()
+
+
+def test_lc_scope_lazy_across_redshift_range(
+    haloproperties_600_path, haloproperties_601_path
+):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+
+    z_low, z_high = lc.z_range
+    z_mid = (z_low + z_high) / 2
+    restricted = lc.with_redshift_range(z_low, z_mid)
+
+    raw_full = _global_raw(lc, "fof_halo_mass")
+    raw_restricted = _global_raw(restricted, "fof_halo_mass")
+    assert not np.isclose(np.mean(raw_full), np.mean(raw_restricted)), (
+        "Fixture redshift bins have equal means — can't prove laziness"
+    )
+
+    restricted_centered = restricted.with_new_columns(centered=m - m.mean()).get_data()
+    centered = np.asarray(restricted_centered["centered"])
+    expected = raw_restricted - np.mean(raw_restricted)
+    assert np.allclose(np.sort(centered), np.sort(expected), rtol=1e-6)
+
+
+def test_lc_scope_lazy_across_post_filter(
+    haloproperties_600_path, haloproperties_601_path
+):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+    raw = _global_raw(lc, "fof_halo_mass")
+    threshold = float(np.median(raw))
+
+    derived = lc.with_new_columns(centered=m - m.mean()).filter(m > threshold * u.Msun)
+    data = derived.get_data()
+
+    raw_kept = raw[raw > threshold]
+    expected_centered = raw_kept - np.mean(raw_kept)
+    centered = np.asarray(data["centered"])
+    assert len(centered) == len(expected_centered)
+    assert np.allclose(np.sort(centered), np.sort(expected_centered), rtol=1e-6)

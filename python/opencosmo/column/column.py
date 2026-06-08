@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from astropy import table
 
     from opencosmo import Dataset
+    from opencosmo.column.reducer import Reducer
     from opencosmo.index import DataIndex
 
 Comparison = Callable[[float, float], bool]
@@ -210,13 +211,13 @@ class Column:
             _uuid=self.__uuid,
         )
 
-    def with_global_scalars(self) -> Column:
+    def with_reducer(self, reducer: Reducer) -> Column:
         """
-        Return a new Column with every nested DerivedScalarValue marked global.
+        Return a new Column with the given reducer attached to all nested DerivedScalarValue nodes.
         Does not mutate self.
         """
-        new_lhs = _globalize(self.lhs)
-        new_rhs = _globalize(self.rhs)
+        new_lhs = _attach_reducer(self.lhs, reducer)
+        new_rhs = _attach_reducer(self.rhs, reducer)
         return Column(
             new_lhs,
             new_rhs,
@@ -743,7 +744,7 @@ class DerivedScalarValue:
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = True,
         _uuid: UUID | None = None,
-        is_global: bool = False,
+        reducer: Reducer | None = None,
     ):
         self.lhs = lhs
         self.rhs = rhs
@@ -753,7 +754,7 @@ class DerivedScalarValue:
         self.__uuid = _uuid if _uuid is not None else uuid4()
         self.__dep_map: dict[str, UUID] | None = _dep_map
         self.__no_cache = no_cache
-        self.__is_global = is_global
+        self.__reducer = reducer
 
     def _traverse_names(self) -> set[str]:
         vals: set[str] = set()
@@ -788,8 +789,28 @@ class DerivedScalarValue:
         return self.__no_cache
 
     @property
-    def is_global(self) -> bool:
-        return self.__is_global
+    def reducer(self) -> Reducer | None:
+        return self.__reducer
+
+    def with_reducer(self, reducer: Reducer) -> DerivedScalarValue:
+        """
+        Return a new DerivedScalarValue with the given reducer attached,
+        recursively attaching it to any nested DerivedScalarValue in lhs/rhs.
+        Does not mutate self.
+        """
+        new_lhs = _attach_reducer(self.lhs, reducer)
+        new_rhs = _attach_reducer(self.rhs, reducer)
+        return DerivedScalarValue(
+            new_lhs,
+            new_rhs,
+            self.operation,
+            description=self.description,
+            output_name=self.name,
+            _dep_map=self.__dep_map,
+            no_cache=self.__no_cache,
+            _uuid=self.__uuid,
+            reducer=reducer,
+        )
 
     def bind(self, name_to_uuid: dict[str, UUID]) -> DerivedScalarValue:
         """
@@ -811,25 +832,7 @@ class DerivedScalarValue:
             _dep_map=dep_map,
             no_cache=self.__no_cache,
             _uuid=self.__uuid,
-            is_global=self.__is_global,
-        )
-
-    def with_global(self) -> DerivedScalarValue:
-        """
-        Return a new DerivedScalarValue marked as global, with the flag recursively
-        set on any nested DerivedScalarValue in lhs/rhs (including inside Column
-        subtrees). Does not mutate self.
-        """
-        return DerivedScalarValue(
-            _globalize(self.lhs),
-            _globalize(self.rhs),
-            self.operation,
-            description=self.description,
-            output_name=self.name,
-            _dep_map=self.__dep_map,
-            no_cache=self.__no_cache,
-            _uuid=self.__uuid,
-            is_global=True,
+            reducer=self.__reducer,
         )
 
     def __repr__(self):
@@ -895,10 +898,13 @@ class DerivedScalarValue:
                 rhs = self.rhs.evaluate(data)
             case _:
                 rhs = self.rhs
-        if self.__is_global and rhs is None:
-            from opencosmo.column.reductions_mpi import evaluate_global_reduction
+        if rhs is None:
+            reducer = self.__reducer
+            if reducer is None:
+                from opencosmo.column.reducer import LocalReducer
 
-            return evaluate_global_reduction(self.operation, lhs)
+                reducer = LocalReducer()
+            return reducer.reduce(self.operation, lhs)
         return self.operation(lhs, rhs)
 
     def _combine_on_left(self, other: Any, operation: Callable):
@@ -1176,11 +1182,15 @@ def _evaluate_scalar(scalar: DerivedScalarValue, ds: Dataset) -> Any:
     """
     Materialize the columns a DerivedScalarValue depends on and evaluate
     the reduction against them. Pulls data via the astropy format so Quantity
-    units survive into the reduction.
+    units survive into the reduction. Attaches the default reducer (auto-MPI).
     """
+    from opencosmo.column.reducer import default_reducer
+
     required = scalar._traverse_names()
     if not required:
         return scalar.evaluate({})
+    reducer = default_reducer()
+    scalar = scalar.with_reducer(reducer) if scalar.reducer is None else scalar
     table = ds.select(*required).get_data("astropy", unpack=False, wrap_single=True)
     data = {name: table[name] for name in required}
     return scalar.evaluate(data)
@@ -1243,15 +1253,15 @@ class CompoundColumnMask:
         right: ColumnMask | Self,
         op: Callable[[np.ndarray, np.ndarray], np.ndarray],
     ):
-        self.__left = left
-        self.__right = right
-        self.__op = op
+        self.left = left
+        self.right = right
+        self.op = op
 
     @property
     def requires(self):
         columns = set()
-        columns |= self.__left.requires
-        columns |= self.__right.requires
+        columns |= self.left.requires
+        columns |= self.right.requires
         return columns
 
     def __and__(self, other: ColumnMask | Self):
@@ -1261,18 +1271,88 @@ class CompoundColumnMask:
         return CompoundColumnMask(self, other, lambda left, right: left | right)
 
     def apply(self, ds: Dataset):
-        left_mask = self.__left.apply(ds)
-        right_mask = self.__right.apply(ds)
-        return self.__op(left_mask, right_mask)
+        left_mask = self.left.apply(ds)
+        right_mask = self.right.apply(ds)
+        return self.op(left_mask, right_mask)
 
 
-def _globalize(node: Any) -> Any:
+def mask_contains_scalar(mask: ColumnMask | CompoundColumnMask) -> bool:
+    """True if any leaf of a mask tree references a DerivedScalarValue."""
+    if isinstance(mask, ColumnMask):
+        return isinstance(mask.left, DerivedScalarValue) or isinstance(
+            mask.right, DerivedScalarValue
+        )
+    if isinstance(mask, CompoundColumnMask):
+        return mask_contains_scalar(mask.left) or mask_contains_scalar(mask.right)
+    return False
+
+
+def resolve_mask_scalars(
+    mask: ColumnMask | CompoundColumnMask,
+    evaluator: Callable[[DerivedScalarValue], Any],
+) -> ColumnMask | CompoundColumnMask:
     """
-    Helper to recursively mark DerivedScalarValue nodes as global within a tree.
-    Used by Column.with_global_scalars() and DerivedScalarValue.with_global().
+    Return a new mask tree with every DerivedScalarValue leaf replaced by
+    evaluator(scalar). The shape of the tree is preserved.
+    """
+    if isinstance(mask, ColumnMask):
+        return ColumnMask(
+            substitute_scalars(mask.left, evaluator),
+            substitute_scalars(mask.right, evaluator),
+            mask.operator,
+        )
+    if isinstance(mask, CompoundColumnMask):
+        return CompoundColumnMask(
+            resolve_mask_scalars(mask.left, evaluator),
+            resolve_mask_scalars(mask.right, evaluator),
+            mask.op,
+        )
+    return mask
+
+
+def _attach_reducer(node: Any, reducer: Reducer) -> Any:
+    """
+    Helper to recursively attach a reducer to DerivedScalarValue nodes within a tree.
+    Used by DerivedScalarValue.with_reducer().
     """
     if isinstance(node, DerivedScalarValue):
-        return node.with_global()
+        return node.with_reducer(reducer)
     if isinstance(node, Column):
-        return node.with_global_scalars()
+        return node.with_reducer(reducer)
+    return node
+
+
+def _contains_scalar(node: Any) -> bool:
+    """
+    Walk the expression tree and check if any DerivedScalarValue is present.
+    """
+    if isinstance(node, DerivedScalarValue):
+        return True
+    if isinstance(node, Column):
+        if _contains_scalar(node.lhs) or _contains_scalar(node.rhs):
+            return True
+    return False
+
+
+def substitute_scalars(
+    node: Any, evaluator: Callable[[DerivedScalarValue], Any]
+) -> Any:
+    """
+    Walk and return a new tree with each DerivedScalarValue replaced by evaluator(scalar).
+    Used by Lightcone.filter() (eager substitution) and Lightcone.get_data() (lazy).
+    """
+    if isinstance(node, DerivedScalarValue):
+        return evaluator(node)
+    if isinstance(node, Column):
+        new_lhs = substitute_scalars(node.lhs, evaluator)
+        new_rhs = substitute_scalars(node.rhs, evaluator)
+        return Column(
+            new_lhs,
+            new_rhs,
+            node.operation,
+            node.description,
+            node.name,
+            _dep_map=node.dep_map,
+            _uuid=node.uuid,
+        )
     return node

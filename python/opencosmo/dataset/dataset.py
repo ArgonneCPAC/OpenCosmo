@@ -648,7 +648,9 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        from opencosmo.column.column import DerivedScalarValue, _globalize
+        from opencosmo.column.column import DerivedScalarValue
+        from opencosmo.column.reducer import LocalReducer, MpiReducer
+        from opencosmo.mpi import get_comm_world
 
         if mode not in ("local", "global"):
             raise ValueError(f"mode must be 'local' or 'global', got {mode!r}")
@@ -674,7 +676,12 @@ class Dataset:
             )
 
         if mode == "global":
-            derived_columns = {k: _globalize(v) for k, v in derived_columns.items()}
+            comm = get_comm_world()
+            reducer = MpiReducer(comm) if comm is not None else LocalReducer()
+            derived_columns = {
+                k: v.with_reducer(reducer) if isinstance(v, DerivedScalarValue) else v
+                for k, v in derived_columns.items()
+            }
 
         new_state = self.__state
         if derived_columns:
