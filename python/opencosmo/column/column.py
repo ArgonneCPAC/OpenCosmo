@@ -3,7 +3,7 @@ from __future__ import annotations
 import operator as op
 from copy import copy
 from functools import partial, partialmethod, wraps
-from inspect import signature
+from inspect import currentframe, signature
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -60,6 +60,10 @@ have no inputs.
 """
 
 
+def ident(col, _):
+    return col
+
+
 def col(name: str) -> Column:
     """
     Create a reference to a column with a given name. These references can be combined
@@ -77,7 +81,53 @@ def col(name: str) -> Column:
     For more advanced usage, see :doc:`cols`
 
     """
-    return Column(name, None, lambda col, _: col)
+    return Column(name, None, ident)
+
+
+def render_op(operation):
+    if isinstance(operation, partial):
+        operation = operation.func
+    match operation:
+        case op.mul:
+            return "*"
+        case op.truediv:
+            return "/"
+        case op.add:
+            return "+"
+        case op.sub:
+            return "-"
+        case op.pow:
+            return "**"
+        case f if f is _log10:
+            return "log10"
+        case f if f is _exp10:
+            return "exp10"
+        case f if f is _sqrt:
+            return "sqrt"
+        case f if f is _mean:
+            return "mean"
+        case f if f is _std:
+            return "std"
+        case f if f is _var:
+            return "var"
+        case f if f is _min:
+            return "min"
+        case f if f is _max:
+            return "max"
+        case f if f is _median:
+            return "median"
+        case f if f is _sum:
+            return "sum"
+        case f if f is _quantile:
+            return "quantile"
+        case f if f is _arcsin:
+            return "arcsin"
+        case f if f is _arccos:
+            return "arccos"
+        case f if f is _arctan2:
+            return "arctan2"
+        case _:
+            return None
 
 
 class Column:
@@ -116,6 +166,20 @@ class Column:
         self.__uuid = _uuid if _uuid is not None else uuid4()
         self.__dep_map: dict[str, UUID] | None = _dep_map
         self.__no_cache = no_cache
+
+    def __repr__(self):
+        caller = currentframe().f_back.f_code.co_qualname
+        if self.operation is ident:
+            return self.lhs
+        op_ = render_op(self.operation)
+        if self.rhs is None:
+            output = f"{op_}({self.lhs})"
+        else:
+            output = f"{self.lhs} {op_} {self.rhs}"
+
+        if caller != "Column.__repr__":
+            output = f"Column [ {output} ]"
+        return output
 
     @property
     def uuid(self) -> UUID:
@@ -673,6 +737,12 @@ class DerivedScalarValue:
     @property
     def requires(self) -> set[str]:
         return self._traverse_names()
+
+    def __repr__(self):
+        op_str = render_op(self.operation)
+        if self.rhs is None:
+            return f"{op_str}({self.lhs})"
+        return f"{self.lhs} {op_str} {self.rhs}"
 
     def check_parent_existance(self, names: set[str]) -> bool:
         match self.lhs:
