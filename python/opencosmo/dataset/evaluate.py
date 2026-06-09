@@ -61,7 +61,7 @@ def visit_dataset(
 ) -> dict[str, np.ndarray]:
     if column.batch_size > 0:
         return visit_dataset_batched(column, dataset)
-    data = fetch_as_dict(dataset, column.requires_names, column.format)
+    data = fetch_as_dict(dataset, column.requires_names, column.format, unpack=False)
     output = column.evaluate(data, dataset.index)
     if not isinstance(output, dict):
         assert len(column.produces) == 1
