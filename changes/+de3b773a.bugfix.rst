@@ -1,0 +1,1 @@
+Fix a bug that caused data to be fetched as single values rather than arrays in certain evaluation contexts.

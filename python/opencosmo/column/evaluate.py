@@ -92,6 +92,9 @@ def do_first_evaluation(
             assert isinstance(index, tuple)
             first_chunk_size = index[1][0]
             first_chunk = fetch_as_dict(
-                dataset.take(first_chunk_size, at="start"), columns, format
+                dataset.take(first_chunk_size, at="start"),
+                columns,
+                format,
+                unpack=False,
             )
             return func(**first_chunk, **kwargs), eval_strategy
