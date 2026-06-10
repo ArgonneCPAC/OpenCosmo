@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING, Optional
 import astropy.units as u
 import numpy as np
 
-from opencosmo.column.column import Column, DerivedColumn, EvaluatedColumn, RawColumn
+from opencosmo.column.column import (
+    Column,
+    DerivedScalarValue,
+    EvaluatedColumn,
+    RawColumn,
+)
 from opencosmo.dataset.graph import validate_column_producers
 
 if TYPE_CHECKING:
@@ -62,7 +67,12 @@ def __categorize_columns(
 
     for colname, column in new_columns.items():
         match column:
-            case DerivedColumn():
+            case Column():
+                column.name = colname
+                column.description = descriptions.get(colname, "None")
+                new_derived_columns.append(column)
+                new_column_names.extend(column.produces)
+            case DerivedScalarValue():
                 column.name = colname
                 column.description = descriptions.get(colname, "None")
                 new_derived_columns.append(column)
@@ -71,15 +81,6 @@ def __categorize_columns(
                 column.description = descriptions.get(colname, "None")
                 new_derived_columns.append(column)
                 new_column_names.extend(column.produces)
-            case Column():
-                producer = DerivedColumn(
-                    lhs=column,
-                    rhs=None,
-                    operation=lambda x, _: x,
-                    output_name=colname,
-                )
-                new_derived_columns.append(producer)
-                new_column_names.extend(producer.produces)
             case np.ndarray():
                 if len(column) != ds_length:
                     raise ValueError(

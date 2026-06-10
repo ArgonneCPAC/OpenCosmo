@@ -62,7 +62,9 @@ Important Caveats
 
 When a dataset is opened in an MPI context, the data is chunked across all ranks. :py:meth:`opencosmo.Dataset.take` operations will always operate on the data that is local to the given rank. For example, taking 100 rows at random on all ranks will actually take 100*N_ranks rows, distributed evenly across the ranks. Taking 100 rows with :code:`at = "start"` will take the first 100 rows on each rank.
 
-When calling :py:meth:`select <opencosmo.Dataset.select>` or :py:meth:`drop <opencosmo.Dataset.drop>`, it is important to be sure to always include the same columns on all ranks if you intend to write data. If you attempt to write data and some processes have different columns than other, the write will fail.
+When calling :py:meth:`select <opencosmo.Dataset.select>` or :py:meth:`drop <opencosmo.Dataset.drop>`, it is important to be sure to always include the same columns on all ranks if you intend to write data. If you attempt to write data and some processes have different columns than others, the write will fail.
+
+When retrieving scalar values via :py:meth:`select <opencosmo.Dataset.select>`, computing derived columns via :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`, or filtering via :py:meth:`filter <opencosmo.Dataset.filter>` in an MPI context, scalar reductions are combined across all ranks by default. To restrict the reduction to a single rank's local chunk, pass :code:`mode="local"` — see below.
 
 Spatial Queries
 ~~~~~~~~~~~~~~~
@@ -71,5 +73,48 @@ In OpenCosmo, raw data is ordered according to its location in the spatial index
 You can retrieve the region the local dataset is contained with in by calling :meth:`dataset.region <opencosmo.Dataset.region>`. One possible workflow is to perform different spatial queries for each rank depending on the region that is local to that rank.
 
 Currently OpenCosmo does not support sharing data across ranks, such as when a given spatial query crosses a rank boundary. This will be improved in the future.
+
+Global Scalar Reductions
+-------------------------
+
+When using :py:meth:`select <opencosmo.Dataset.select>` to compute scalar summary statistics (e.g. ``.min()``, ``.mean()``), the default behavior is :code:`mode="global"`, meaning the reduction is combined across all ranks before being returned. The same applies to scalar reductions used inside derived column expressions in :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` or inside filter expressions in :py:meth:`filter <opencosmo.Dataset.filter>`. This way, every rank ends up with the same scalar value, which is usually what you want.
+
+To restrict the reduction to each rank's own chunk of data — for per-rank statistics or when you intend to aggregate the results yourself — pass :code:`mode="local"`:
+
+.. code-block:: python
+
+   import opencosmo as oc
+
+   ds = oc.open("haloproperties.hdf5")
+
+   # All ranks receive the global minimum across the full dataset (default)
+   global_min = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+
+   # Each rank returns its local minimum independently
+   local_min = ds.select(
+       min_mass=oc.col("fof_halo_mass").min(),
+       mode="local",
+   ).get_data()
+
+Neither value of :code:`mode` has any effect when not running under MPI, or when the selection contains no scalar reductions.
+
+Note that for the operations ``std``, ``var``, ``median``, and ``quantile``, the global reduction works by gathering all per-rank data to rank 0, computing the reduction there, and broadcasting the result back. For very large datasets this may be memory-intensive on rank 0.
+
+The same :code:`mode` keyword is accepted by :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` and :py:meth:`filter <opencosmo.Dataset.filter>` for scalars nested inside column arithmetic:
+
+.. code-block:: python
+
+   m = oc.col("fof_halo_mass")
+
+   # Normalize each rank's data using the global mean and std (default)
+   ds = ds.with_new_columns(zscore=(m - m.mean()) / m.std())
+
+   # Filter against a globally-computed threshold so every rank uses the
+   # same mean (default)
+   ds = ds.filter(m > m.mean())
+
+   # Same operations using each rank's own scalar
+   ds = ds.with_new_columns(zscore=(m - m.mean()) / m.std(), mode="local")
+   ds = ds.filter(m > m.mean(), mode="local")
 
 

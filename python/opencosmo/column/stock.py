@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING, Callable, Iterable
 import astropy.units as u
 
 if TYPE_CHECKING:
-    from .column import Column, DerivedColumn
+    from .column import Column
 
 from .column import col
 
 
 def into_cols(func: Callable):
     @wraps(func)
-    def wrapper(*columns: str | Column | DerivedColumn, **kwargs):
+    def wrapper(*columns: str | Column, **kwargs):
         new_columns = tuple(
             map(
                 lambda colname: col(colname) if isinstance(colname, str) else colname,
@@ -64,8 +64,9 @@ def offset_3d(
     """
     delta_coords = tuple(
         map(
-            lambda label: col(f"{coord_name_a}_{label}")
-            - col(f"{coord_name_b}_{label}"),
+            lambda label: (
+                col(f"{coord_name_a}_{label}") - col(f"{coord_name_b}_{label}")
+            ),
             labels,
         )
     )
@@ -73,10 +74,10 @@ def offset_3d(
 
 
 @into_cols
-def add_mag_cols(*magnitudes: Column | DerivedColumn):
+def add_mag_cols(*magnitudes: Column):
     """
     Add together any number of magnitude columns to get a total magnitude. This function
-    takes in the names of the magnitude columns, and produces a DerivedColumn that can be
+    takes in the names of the magnitude columns, and produces a Column that can be
     passed into :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
 
     This function will never fail, but :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
@@ -94,13 +95,13 @@ def add_mag_cols(*magnitudes: Column | DerivedColumn):
 
     Parameters
     ----------
-    *magnitudes: str | Column | DerivedColumn
+    *magnitudes: str | Column | Column
         Any number of magnitude columns. You can pass in simple column names, columns constructred
         with :py:meth:`opencosmo.col`, or columns created from combinations of other columns
 
     Returns
     -------
-    new_column: DerivedColumn
+    new_column: Column
         A new derived column that can be passed into :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
     """
     if len(magnitudes) < 2:
@@ -117,10 +118,10 @@ def add_mag_cols(*magnitudes: Column | DerivedColumn):
 
 
 @into_cols
-def norm_cols(*columns: Column | DerivedColumn):
+def norm_cols(*columns: Column):
     """
     Get the euclidian norm of any number of columns. This function takes in the names
-    of the magnitude columns, and produces a DerivedColumn that can be passed into
+    of the magnitude columns, and produces a Column that can be passed into
     :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
 
     This function will never fail, but :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
@@ -128,13 +129,13 @@ def norm_cols(*columns: Column | DerivedColumn):
 
     Parameters
     ----------
-    *columns: str | Column | DerivedColumn
+    *columns: str | Column | Column
         Any number of columns. You can pass in simple column names, columns constructred
         with :py:meth:`opencosmo.col`, or columns created from combinations of other columns
 
     Returns
     -------
-    new_column: DerivedColumn
+    new_column: Column
         A new derived column that can be passed into :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
     """
     if len(columns) < 2:

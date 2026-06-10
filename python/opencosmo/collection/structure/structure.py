@@ -21,6 +21,7 @@ import opencosmo as oc
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
+from opencosmo.column.column import DerivedScalarValue
 from opencosmo.dataset.formats import verify_format
 from opencosmo.index.unary import get_length
 from opencosmo.io.schema import FileEntry, make_schema
@@ -46,8 +47,9 @@ def filter_source_by_dataset(
     source: oc.Dataset,
     header: oc.header.OpenCosmoHeader,
     *masks,
+    mode: str = "global",
 ) -> oc.Dataset:
-    masked_dataset = dataset.filter(*masks)
+    masked_dataset = dataset.filter(*masks, mode=mode)
     linked_column: str
     if header.file.data_type == "halo_properties":
         linked_column = "fof_halo_tag"
@@ -855,7 +857,9 @@ class StructureCollection:
             self.__derived_columns,
         )
 
-    def filter(self, *masks, on_galaxies: bool = False) -> StructureCollection:
+    def filter(
+        self, *masks, on_galaxies: bool = False, mode: str = "global"
+    ) -> StructureCollection:
         """
         Apply a filter to the halo or galaxy properties. Filters are constructed with
         :py:func:`opencosmo.col` and behave exactly as they would in
@@ -879,6 +883,12 @@ class StructureCollection:
         on_galaxies: bool, optional
             If True, the filter is applied to the galaxy properties dataset.
 
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions inside the masks are computed when
+            running under MPI. Defaults to ``"global"`` (cross-rank); pass
+            ``"local"`` for per-rank scalars. Forwarded to the underlying
+            ``Dataset.filter`` call.
+
         Returns
         -------
         StructureCollection
@@ -893,14 +903,18 @@ class StructureCollection:
         if not masks:
             return self
         if not on_galaxies or self.__source.dtype == "galaxy_properties":
-            filtered = self.__source.filter(*masks)
+            filtered = self.__source.filter(*masks, mode=mode)
         elif "galaxy_properties" not in self.__datasets:
             raise ValueError("Dataset galaxy_properties not found in collection.")
         else:
             galaxy_properties = self["galaxy_properties"]
             assert isinstance(galaxy_properties, oc.Dataset)
             filtered = filter_source_by_dataset(
-                galaxy_properties, self.__source, self.__source.header, *masks
+                galaxy_properties,
+                self.__source,
+                self.__source.header,
+                *masks,
+                mode=mode,
             )
 
         new_handler = self.__handler.make_derived(self.__source)
@@ -913,7 +927,9 @@ class StructureCollection:
         )
 
     def select(
-        self, **column_selections: str | Iterable[str] | dict
+        self,
+        mode: str = "global",
+        **column_selections: str | Iterable[str] | dict,
     ) -> StructureCollection:
         """
         Update a dataset in the collection collection to only include the
@@ -964,6 +980,12 @@ class StructureCollection:
 
         Parameters
         ----------
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions nested inside derived column
+            expressions are computed when running under MPI. Defaults to
+            ``"global"`` (cross-rank); pass ``"local"`` for per-rank scalars.
+            Forwarded to each underlying ``Dataset.select`` call.
+
         **column_selections : str | Iterable[str] | dict[str, Iterable[str]]
             The columns to select from a given dataset or sub-collection
 
@@ -994,9 +1016,13 @@ class StructureCollection:
             else:
                 arg = columns  # type: ignore
                 kwargs = {}
+            if any(isinstance(col, DerivedScalarValue) for col in kwargs.values()):
+                raise ValueError(
+                    f"Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[{dataset}].select(scalar_expression)`"
+                )
 
             if dataset == self.__source.header.file.data_type:
-                new_source = self.__source.select(arg, **kwargs)
+                new_source = self.__source.select(arg, mode=mode, **kwargs)
                 continue
 
             elif dataset not in self.__datasets:
@@ -1009,9 +1035,9 @@ class StructureCollection:
                     raise ValueError(
                         "When working with nested structure collections, the argument should be a dictionary!"
                     )
-                new_ds = new_ds.select(**arg)
+                new_ds = new_ds.select(mode=mode, **arg)
             else:
-                new_ds = new_ds.select(arg, **kwargs)
+                new_ds = new_ds.select(arg, mode=mode, **kwargs)
 
             new_datasets[dataset] = new_ds
 
@@ -1337,6 +1363,7 @@ class StructureCollection:
         dataset: str,
         descriptions: str | dict[str, str] = {},
         allow_overwrite: bool = False,
+        mode: str = "global",
         **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
@@ -1382,7 +1409,13 @@ class StructureCollection:
             :py:attr:`Dataset.descriptions <opencosmo.Dataset.descriptions>`. If a dictionary,
             should have keys matching the column names.
 
-        ** columns: opencosmo.DerivedColumn
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions nested inside derived column
+            expressions are computed when running under MPI. Defaults to
+            ``"global"`` (cross-rank); pass ``"local"`` for per-rank scalars.
+            Forwarded to the underlying ``Dataset.with_new_columns`` call.
+
+        ** columns: opencosmo.Column
             The new columns
 
         Returns
@@ -1395,6 +1428,10 @@ class StructureCollection:
         ValueError
             If the dataset is not found in this collection
         """
+        if any(isinstance(col, DerivedScalarValue) for col in new_columns.values()):
+            raise ValueError(
+                f"Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[{dataset}].select(scalar_expression)`"
+            )
         path = dataset.split(".")
         if len(path) > 1:
             collection_name = path[0]
@@ -1408,6 +1445,7 @@ class StructureCollection:
                 ".".join(path[1:]),
                 descriptions=descriptions,
                 allow_overwrite=allow_overwrite,
+                mode=mode,
                 **new_columns,
             )
             return StructureCollection(
@@ -1422,6 +1460,7 @@ class StructureCollection:
                 **new_columns,
                 descriptions=descriptions,
                 allow_overwrite=allow_overwrite,
+                mode=mode,
             )
             return StructureCollection(
                 new_source,
@@ -1443,7 +1482,10 @@ class StructureCollection:
             raise ValueError(f"{dataset} is not a dataset!")
 
         new_ds = ds.with_new_columns(
-            **new_columns, descriptions=descriptions, allow_overwrite=allow_overwrite
+            **new_columns,
+            descriptions=descriptions,
+            allow_overwrite=allow_overwrite,
+            mode=mode,
         )
         new_derived_columns = (
             set(new_ds.columns).difference(ds.columns).difference(new_im_cols)

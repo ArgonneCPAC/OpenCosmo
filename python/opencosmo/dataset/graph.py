@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import rustworkx as rx
 
@@ -65,6 +65,37 @@ def build_dependency_graph(
         graph.add_edges_from_no_data(new_edges)
 
     return graph
+
+
+def evaluate_producers(
+    producers: list[ConstructedColumn],
+    inputs: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Evaluate a list of producers in topological order against a flat
+    name-keyed input mapping, returning the produced columns by name.
+
+    Each producer reads its dependencies by name from ``inputs`` (extended
+    with what earlier producers in the graph have already produced). The
+    flat-mapping form is intentional: callers that don't carry a full
+    UUID-keyed cache (lightcone scope, ad-hoc evaluation against a
+    materialized table) can just hand over the columns they have.
+
+    Used by Lightcone.get_data to materialize scope-owned derived columns
+    against the vstacked per-child data.
+    """
+    graph = build_dependency_graph(producers)
+    outputs: dict[str, Any] = {}
+    for node_idx in rx.topological_sort(graph):
+        producer = graph[node_idx]
+        if isinstance(producer, RawColumn):
+            continue
+        all_data = {**inputs, **outputs}
+        result = producer.evaluate(all_data, None)
+        if not isinstance(result, dict):
+            result = {next(iter(producer.produces)): result}
+        outputs.update(result)
+    return outputs
 
 
 def get_derived_units(
