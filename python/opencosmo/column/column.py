@@ -1215,7 +1215,11 @@ class ColumnMask:
     def apply(self, ds: Dataset):
         match self.left:
             case Column():
-                left = ds.select(data=self.left).get_data()
+                if self.left.rhs is None and self.left.operation is ident:
+                    assert isinstance(self.left.lhs, str)
+                    left = ds.select(self.left.lhs).get_data()
+                else:
+                    left = ds.select(data=self.left).get_data()
             case DerivedScalarValue():
                 left = _evaluate_scalar(self.left, ds)
             case _:
@@ -1224,7 +1228,11 @@ class ColumnMask:
         right_selected = False
         match self.right:
             case Column():
-                right = ds.select(data=self.right).get_data()
+                assert isinstance(self.right.lhs, str)
+                if self.right.rhs is None and self.right.operation is ident:
+                    right = ds.select(self.right.lhs).get_data()
+                else:
+                    right = ds.select(data=self.right).get_data()
                 right_selected = True
             case DerivedScalarValue():
                 right = _evaluate_scalar(self.right, ds)
@@ -1331,6 +1339,20 @@ def _contains_scalar(node: Any) -> bool:
     if isinstance(node, Column):
         if _contains_scalar(node.lhs) or _contains_scalar(node.rhs):
             return True
+    return False
+
+
+def produces_scalar(node: Any) -> bool:
+    """
+    True if evaluating ``node`` against any column inputs collapses to a single
+    value (i.e. the top of the tree is a DerivedScalarValue reduction or scalar
+    arithmetic, never a Column op).
+
+    Differs from ``_contains_scalar``: ``col + col.mean()`` *contains* a scalar
+    but does not *produce* a scalar — the top is a Column.
+    """
+    if isinstance(node, DerivedScalarValue):
+        return True
     return False
 
 
