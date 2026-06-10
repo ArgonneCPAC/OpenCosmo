@@ -62,7 +62,9 @@ Important Caveats
 
 When a dataset is opened in an MPI context, the data is chunked across all ranks. :py:meth:`opencosmo.Dataset.take` operations will always operate on the data that is local to the given rank. For example, taking 100 rows at random on all ranks will actually take 100*N_ranks rows, distributed evenly across the ranks. Taking 100 rows with :code:`at = "start"` will take the first 100 rows on each rank.
 
-When calling :py:meth:`select <opencosmo.Dataset.select>` or :py:meth:`drop <opencosmo.Dataset.drop>`, it is important to be sure to always include the same columns on all ranks if you intend to write data. If you attempt to write data and some processes have different columns than other, the write will fail.
+When calling :py:meth:`select <opencosmo.Dataset.select>` or :py:meth:`drop <opencosmo.Dataset.drop>`, it is important to be sure to always include the same columns on all ranks if you intend to write data. If you attempt to write data and some processes have different columns than others, the write will fail.
+
+When retrieving scalar values via :py:meth:`select <opencosmo.Dataset.select>` in an MPI context, scalar reductions operate on the local chunk by default. To compute a scalar across all ranks, pass :code:`mode="global"` — see below.
 
 Spatial Queries
 ~~~~~~~~~~~~~~~
@@ -71,5 +73,39 @@ In OpenCosmo, raw data is ordered according to its location in the spatial index
 You can retrieve the region the local dataset is contained with in by calling :meth:`dataset.region <opencosmo.Dataset.region>`. One possible workflow is to perform different spatial queries for each rank depending on the region that is local to that rank.
 
 Currently OpenCosmo does not support sharing data across ranks, such as when a given spatial query crosses a rank boundary. This will be improved in the future.
+
+Global Scalar Reductions
+-------------------------
+
+When using :py:meth:`select <opencosmo.Dataset.select>` to compute scalar summary statistics (e.g. ``.min()``, ``.mean()``), the default behavior is :code:`mode="local"`, meaning each rank computes the reduction over only its own chunk of data. This is correct when you want per-rank statistics or when you are aggregating results yourself.
+
+To compute a scalar that reflects the **entire dataset across all ranks**, pass :code:`mode="global"`:
+
+.. code-block:: python
+
+   import opencosmo as oc
+
+   ds = oc.open("haloproperties.hdf5")
+
+   # Each rank returns its local minimum independently
+   local_min = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+
+   # All ranks receive the global minimum across the full dataset
+   global_min = ds.select(
+       min_mass=oc.col("fof_halo_mass").min(),
+       mode="global",
+   ).get_data()
+
+:code:`mode="global"` has no effect when not running under MPI, or when the selection contains no scalar reductions.
+
+Note that for the operationss ``std``, ``var``, ``median``, and ``quantile``, all per-rank data is gathered to rank 0, the reduction is computed there, and the result is broadcast back. For very large datasets this may be memory-intensive on rank 0.
+
+Note that :code:`mode="global"` also works in combination with scalar arithmetic:
+
+.. code-block:: python
+
+   m = oc.col("fof_halo_mass")
+   # Normalize each rank's data using the global mean and std
+   ds = ds.select("*", zscore=(m - m.mean()) / m.std(), mode="global")
 
 

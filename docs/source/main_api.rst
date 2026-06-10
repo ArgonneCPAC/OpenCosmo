@@ -4,12 +4,12 @@ Main Transformations API
 :code:`opencosmo` provides a simple but powerful API for transforming and querying datasets and collections. Both the main :py:class:`opencosmo.Dataset` type and the various collection types will have these transformations available., although the details of how they behave will differ slightly. Individual collection types may also have additional convinience methods based on their purpose, see :doc:`collections` for more info. The main transformations are:
 
 - :code:`with_units`: Change the unit convention of the dataset or collection.
-- :code:`filter`: Filter a dataset based on the value of one more more columns.
-- :code:`select`: Select a subset of columns from a dataset.
+- :code:`filter`: Filter a dataset based on the value of one or more columns.
+- :code:`select`: Select a subset of columns from a dataset, add derived columns, or retrieve scalar summary statistics.
 - :code:`take`: Select a subset of rows from a dataset.
-- :code:`sort_by`: Sort a dataset by one of its columns
+- :code:`sort_by`: Sort a dataset by one of its columns.
 - :code:`bound`: Limit a dataset or collection to a given spatial region.
-- :code:`with_new_columns`: Combine columns in a dataset into a new column with automatic unit handling.
+- :code:`with_new_columns`: Add derived columns to a dataset (see :code:`select` for the preferred approach).
 - :code:`evaluate`: Evaluate a computation over all the rows in a dataset or collection.
 
 Each of these transformations is returns a new dataset or collection with the transformations applied. Because transformations are applied lazily, chaining them together is efficient:
@@ -112,21 +112,24 @@ When you initially load a dataset, it always uses the "comoving" unit convention
 Adding Columns
 --------------
 
-You can add new columns to a given that are derived from pre-existing columns using the :meth:`oc.col` to construct new columns and passing them to :code:`with_new_columns`. The new columns will inherit the cosmological dependence of the columns they are created from, and can be used throughout the transformations API as usual. 
+You can add new columns derived from pre-existing columns using :meth:`oc.col` to construct column expressions. The preferred way to do this is with :code:`select`, passing ``"*"`` to retain all existing columns alongside the new ones. :code:`with_new_columns` is also available and behaves identically for this use case.
 
 .. code-block:: python
 
    ds = oc.open("haloproperties.hdf5")
 
-   fof_halo_vtotal = (oc.col("fof_halo_com_vx")**2 + oc.col("fof_halo_com_vy")**2 + ("fof_halo_com_vz")**2)**(0.5)
+   fof_halo_vtotal = (oc.col("fof_halo_com_vx")**2 + oc.col("fof_halo_com_vy")**2 + oc.col("fof_halo_com_vz")**2)**(0.5)
    fof_halo_com_p = oc.col("fof_halo_mass") * fof_halo_vtotal
 
-   ds = ds.with_new_columns(fof_halo_com_p = fof_halo_com_p)
+   # Preferred
+   ds = ds.select("*", fof_halo_com_p=fof_halo_com_p)
 
+   # Also works
+   ds = ds.with_new_columns(fof_halo_com_p=fof_halo_com_p)
 
 The dataset will now contain a "fof_halo_com_p" column that can be used for filtering and selections as usual. Because the column definition was created outside the dataset itself, it can be used across multiple datasets as needed.
 
-You can also simply pass values as a numpy array or astropy quantity:
+You can also pass values directly as a numpy array or astropy quantity:
 
 .. code-block:: python
 
@@ -134,9 +137,34 @@ You can also simply pass values as a numpy array or astropy quantity:
    import numpy as np
 
    random_angle = np.random.uniform(10, 50, len(ds))*u.arcmin
-   ds = ds.with_new_columns(angle = random_angle)
+   ds = ds.select("*", angle=random_angle)
 
-Columns can be added to collections as well, but there are some subtelties. See :doc:`collections` for more information.
+Columns can be added to collections as well, but there are some subtleties. See :doc:`collections` for more information.
+
+Retrieving Scalar Values
+------------------------
+
+In addition to adding columns, :code:`select` can compute and return scalar summary statistics over a dataset. Pass scalar expressions as keyword arguments — if only scalars are selected, ``get_data()`` returns the result directly rather than a table.
+
+.. code-block:: python
+
+   import opencosmo as oc
+
+   ds = oc.open("haloproperties.hdf5")
+
+   # Single scalar — get_data() returns an astropy Quantity
+   min_mass = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+
+   # Multiple scalars — get_data() returns a dict of Quantities
+   stats = ds.select(
+       min_mass=oc.col("fof_halo_mass").min(),
+       max_mass=oc.col("fof_halo_mass").max(),
+       mean_mass=oc.col("fof_halo_mass").mean(),
+   ).get_data()
+
+Scalar reductions respect any prior transformations: applying a :code:`filter` or :code:`bound` before the scalar selection will limit which rows are included in the reduction.
+
+Scalar selections cannot be mixed with column selections in a single call. For scalar reductions in an MPI context, see :doc:`mpi`. For a full description of the available reduction methods and normalization patterns, see :doc:`cols`.
 
 Filtering
 ---------
