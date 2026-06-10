@@ -148,5 +148,5 @@ def __prepare_collection(
 ) -> StructureCollection:
     collection = collection.with_datasets(list(spec.keys()))
     selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}
-    collection = collection.select(**selections)
+    collection = collection.select(**selections)  # type: ignore
     return collection

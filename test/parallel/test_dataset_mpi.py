@@ -319,8 +319,12 @@ def test_select_scalar_global_min_max(input_path):
     ds = oc.open(input_path)
 
     # Get local reduction
-    local_min = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
-    local_max = ds.select(max_mass=oc.col("fof_halo_mass").max()).get_data()
+    local_min = ds.select(
+        min_mass=oc.col("fof_halo_mass").min(), mode="local"
+    ).get_data()
+    local_max = ds.select(
+        max_mass=oc.col("fof_halo_mass").max(), mode="local"
+    ).get_data()
 
     # Get global reduction
     result = ds.select(

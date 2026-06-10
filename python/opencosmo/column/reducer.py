@@ -195,10 +195,18 @@ class MpiReducer:
         return result
 
 
-def default_reducer() -> Reducer:
+def default_reducer(mode: str) -> Reducer:
     """
-    Get the default reducer for the current context.
-    If MPI is available, returns MpiReducer(comm). Otherwise, returns LocalReducer.
+    Pick a reducer for the requested mode.
+
+    ``mode="local"`` always returns a :class:`LocalReducer`.
+    ``mode="global"`` returns an :class:`MpiReducer` bound to the world
+    communicator when running under MPI, and falls back to
+    :class:`LocalReducer` when MPI is unavailable.
     """
-    comm = get_comm_world()
-    return MpiReducer(comm) if comm is not None else LocalReducer()
+    if mode == "local":
+        return LocalReducer()
+    if mode == "global":
+        comm = get_comm_world()
+        return MpiReducer(comm) if comm is not None else LocalReducer()
+    raise ValueError(f"mode must be 'local' or 'global', got {mode!r}")

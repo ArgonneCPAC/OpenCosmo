@@ -527,7 +527,7 @@ class Dataset:
             **{func.__name__: evaluated_column},
         )
 
-    def filter(self, *masks: ColumnMask) -> Dataset:
+    def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
@@ -536,6 +536,15 @@ class Dataset:
         ----------
         *masks : Mask
             The masks to apply to dataset, constructed with :func:`opencosmo.col`
+
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions (e.g. ``oc.col("x").mean()``) used
+            inside the masks are computed when running under MPI. The default
+            ``"global"`` combines scalars across all ranks before the mask is
+            applied, so every rank filters against the same threshold. Pass
+            ``"local"`` to filter each rank against its own per-rank scalar.
+            Has no effect on masks without scalar reductions, or when not
+            running under MPI.
 
         Returns
         -------
@@ -549,8 +558,12 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
+        from opencosmo.column.reducer import default_reducer
+
         if not masks:
             return self
+        reducer = default_reducer(mode)
+        masks = tuple(m.with_reducer(reducer) for m in masks)
         bool_mask = np.ones(len(self), dtype=bool)
         for m in masks:
             bool_mask &= m.apply(self)
@@ -601,7 +614,7 @@ class Dataset:
     def select(
         self,
         *columns: str | Iterable[str],
-        mode: str = "local",
+        mode: str = "global",
         **derived_columns: ConstructedColumn | DerivedScalarValue,
     ) -> Dataset:
         """
@@ -629,11 +642,12 @@ class Dataset:
         *columns : str or list[str]
             The column or columns to select.
 
-        mode : str, "local" or "global", default = "local"
+        mode : str, "local" or "global", default = "global"
             Controls how scalar reductions (e.g. ``oc.col("x").min()``) are computed
-            when running under MPI. With ``"global"``, scalars combine across all
-            ranks before being returned. Has no effect on plain column selections, on
-            expressions without scalar reductions, or when not running under MPI.
+            when running under MPI. The default ``"global"`` combines scalars across
+            all ranks before being returned. Pass ``"local"`` to receive each rank's
+            per-rank scalar. Has no effect on plain column selections, on expressions
+            without scalar reductions, or when not running under MPI.
 
         **derived_columns : Column
             Any new derived columns that will be instantiated as part of the select
@@ -648,12 +662,8 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        from opencosmo.column.column import DerivedScalarValue
-        from opencosmo.column.reducer import LocalReducer, MpiReducer
-        from opencosmo.mpi import get_comm_world
-
-        if mode not in ("local", "global"):
-            raise ValueError(f"mode must be 'local' or 'global', got {mode!r}")
+        from opencosmo.column.column import Column, DerivedScalarValue
+        from opencosmo.column.reducer import default_reducer
 
         all_columns: set[str] = set()
         for col_group in columns:
@@ -675,13 +685,13 @@ class Dataset:
                 "Call select() with only scalar kwargs, or only column selections."
             )
 
-        if mode == "global":
-            comm = get_comm_world()
-            reducer = MpiReducer(comm) if comm is not None else LocalReducer()
-            derived_columns = {
-                k: v.with_reducer(reducer) if isinstance(v, DerivedScalarValue) else v
-                for k, v in derived_columns.items()
-            }
+        reducer = default_reducer(mode)
+        derived_columns = {
+            k: v.with_reducer(reducer)
+            if isinstance(v, (Column, DerivedScalarValue))
+            else v
+            for k, v in derived_columns.items()
+        }
 
         new_state = self.__state
         if derived_columns:
@@ -905,6 +915,7 @@ class Dataset:
         self,
         descriptions: str | dict[str, str] = {},
         allow_overwrite: bool = False,
+        mode: str = "global",
         **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
@@ -944,6 +955,13 @@ class Dataset:
         allow_overwrites : bool, default = False
             If false, attempting to add a new column with the same name as an existing column will throw an error.
             If true, overwrites are allowed.
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions (e.g. ``oc.col("x").mean()``) nested inside
+            derived column expressions are computed when running under MPI. The
+            default ``"global"`` combines scalars across all ranks before
+            substituting them into the column expression. Pass ``"local"`` to use
+            each rank's per-rank scalar. Has no effect on expressions without scalar
+            reductions, or when not running under MPI.
 
         ** new_columns : opencosmo.Column | np.ndarray | units.Quantity
             The new columns to add. The name of the argument is the name the column will take.
@@ -954,12 +972,18 @@ class Dataset:
             This dataset with the columns added
 
         """
-        from opencosmo.column.column import DerivedScalarValue
+        from opencosmo.column.column import Column, DerivedScalarValue
+        from opencosmo.column.reducer import default_reducer
 
         if any(isinstance(col, DerivedScalarValue) for col in new_columns.values()):
             raise ValueError(
                 "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
             )
+        reducer = default_reducer(mode)
+        new_columns = {
+            k: v.with_reducer(reducer) if isinstance(v, Column) else v
+            for k, v in new_columns.items()
+        }
         if isinstance(descriptions, str):
             descriptions = {key: descriptions for key in new_columns.keys()}
         new_state = st.with_new_columns(

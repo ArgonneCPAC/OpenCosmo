@@ -9,7 +9,7 @@ Main Transformations API
 - :code:`take`: Select a subset of rows from a dataset.
 - :code:`sort_by`: Sort a dataset by one of its columns.
 - :code:`bound`: Limit a dataset or collection to a given spatial region.
-- :code:`with_new_columns`: Add derived columns to a dataset (see :code:`select` for the preferred approach).
+- :code:`with_new_columns`: Add derived columns or arrays to a dataset
 - :code:`evaluate`: Evaluate a computation over all the rows in a dataset or collection.
 
 Each of these transformations is returns a new dataset or collection with the transformations applied. Because transformations are applied lazily, chaining them together is efficient:
@@ -200,6 +200,13 @@ Filters do not need to include units, however a filter with *incorrect* units wi
    # This will fail, because the masses are not in Msun / h
    min_mass_unitful = oc.col("fof_halo_mass") > 1e13 * u.Msun / cu.littleh
    ds = ds.filter(min_mass_unitful)
+
+Filter thresholds can also be derived from the data itself using scalar reductions:
+
+.. code-block:: python
+
+   m = oc.col("fof_halo_mass")
+   ds = ds.filter(m < m.mean())
 
 The behavior of filters on collections depends on the collection type. See the :doc:`collections` page for more information.
 

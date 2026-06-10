@@ -887,7 +887,7 @@ class Lightcone(dict):
             output[key] = concat_chunks([r[key] for r in result.values()], format)
         return output
 
-    def filter(self, *masks: ColumnMask, **kwargs) -> Self:
+    def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Self:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
@@ -896,6 +896,12 @@ class Lightcone(dict):
         ----------
         *masks : Mask
             The masks to apply to dataset, constructed with :func:`opencosmo.col`
+
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions (e.g. ``oc.col("x").mean()``) used
+            inside the masks are computed when running under MPI. Defaults to
+            ``"global"`` so every rank filters against the same cross-rank
+            scalar; pass ``"local"`` to use each rank's per-rank scalar.
 
         Returns
         -------
@@ -910,19 +916,19 @@ class Lightcone(dict):
 
         """
         new_masks = [
-            resolve_mask_scalars(mask, self.__scalar_evaluator())
+            resolve_mask_scalars(mask, self.__scalar_evaluator(mode))
             if mask_contains_scalar(mask)
             else mask
             for mask in masks
         ]
-        return self.__map("filter", *new_masks, **kwargs)
+        return self.__map("filter", *new_masks, mode=mode, **kwargs)
 
-    def __scalar_evaluator(self) -> Callable[[DerivedScalarValue], Any]:
+    def __scalar_evaluator(self, mode: str) -> Callable[[DerivedScalarValue], Any]:
         """
         Build a function that evaluates a single DerivedScalarValue against the
         current lightcone state. Used for eager resolution in filter masks.
         """
-        reducer = default_reducer()
+        reducer = default_reducer(mode)
 
         def evaluate(scalar: DerivedScalarValue) -> Any:
             scalar = scalar.with_reducer(reducer) if scalar.reducer is None else scalar
@@ -962,7 +968,10 @@ class Lightcone(dict):
         )
 
     def select(
-        self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
+        self,
+        *columns: str | Iterable[str],
+        mode: str = "global",
+        **derived_columns: ConstructedColumn,
     ) -> Self:
         """
 
@@ -997,6 +1006,11 @@ class Lightcone(dict):
         *columns : str or list[str]
             The column or columns to select.
 
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions inside derived column expressions
+            are computed when running under MPI. Defaults to ``"global"``
+            (cross-rank); pass ``"local"`` for per-rank scalars.
+
         **derived_columns : Column
             Additional columns to create as part of the selection.
 
@@ -1010,6 +1024,8 @@ class Lightcone(dict):
         ValueError
             If any of the required columns are not in the dataset.
         """
+        from opencosmo.column.column import Column
+
         all_columns: set[str] = set()
         for col_group in columns:
             if isinstance(col_group, str):
@@ -1031,6 +1047,14 @@ class Lightcone(dict):
                 "Scalar selections cannot be mixed with column selections. "
                 "Call select() with only scalar kwargs, or only column selections."
             )
+
+        reducer = default_reducer(mode)
+        derived_columns = {
+            k: v.with_reducer(reducer)
+            if isinstance(v, (Column, DerivedScalarValue))
+            else v
+            for k, v in derived_columns.items()
+        }
 
         raw_child_columns = set(next(iter(self.values())).columns)
         plan = self.__scope.plan_select(all_columns, derived_columns, raw_child_columns)
@@ -1054,6 +1078,7 @@ class Lightcone(dict):
             hidden=hidden,
             construct=True,
             scope=plan.new_scope,
+            mode=mode,
             **plan.child_scoped,
         )
 
@@ -1260,6 +1285,7 @@ class Lightcone(dict):
         self,
         descriptions: str | dict[str, str] = {},
         allow_overwrite: bool = False,
+        mode: str = "global",
         **columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
@@ -1277,6 +1303,11 @@ class Lightcone(dict):
             :py:attr:`Lightcone.descriptions <opencosmo.Lighcone.descriptions>`. If a dictionary,
             should have keys matching the column names.
 
+        mode : str, "local" or "global", default = "global"
+            Controls how scalar reductions nested inside derived column
+            expressions are computed when running under MPI. Defaults to
+            ``"global"`` (cross-rank); pass ``"local"`` for per-rank scalars.
+
         ** columns : opencosmo.Column | np.ndarray | u.quantity
             The new columns
 
@@ -1290,6 +1321,11 @@ class Lightcone(dict):
             raise ValueError(
                 "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
             )
+        reducer = default_reducer(mode)
+        columns = {
+            k: v.with_reducer(reducer) if isinstance(v, Column) else v
+            for k, v in columns.items()
+        }
         derived = {}
         raw = {}
         for name, column in columns.items():
@@ -1329,7 +1365,10 @@ class Lightcone(dict):
             raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
             columns_input = raw_columns | child_scoped
             new_dataset = ds.with_new_columns(
-                descriptions, allow_overwrite=allow_overwrite, **columns_input
+                descriptions,
+                allow_overwrite=allow_overwrite,
+                mode=mode,
+                **columns_input,
             )
             new_datasets[ds_name] = new_dataset
         return Lightcone(

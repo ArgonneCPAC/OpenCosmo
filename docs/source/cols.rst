@@ -215,10 +215,22 @@ Scalar reductions can be used directly in column arithmetic. This is useful for 
    iqr = m.quantile(0.75) - m.quantile(0.25)
    ds = ds.select("*", robust=(m - m.median()) / iqr)
 
+Scalars can also be used in filter expressions, allowing you to filter relative to a data-driven threshold:
+
+.. code-block:: python
+
+   m = oc.col("fof_halo_mass")
+
+   # Keep only halos below the mean mass
+   ds = ds.filter(m < m.mean())
+
+   # Keep halos within one standard deviation of the mean
+   ds = ds.filter(m > m.mean() - m.std(), m < m.mean() + m.std())
+
 The scalar is evaluated over the rows present in the dataset at the time ``get_data()`` is called, so any prior ``filter()`` or ``bound()`` calls will affect the result.
 
-Retrieving Scalar Values
-^^^^^^^^^^^^^^^^^^^^^^^^^
+Retrieving Scalar Values from Columns
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You can retrieve scalar quantities directly by passing only scalar expressions as keyword arguments to :py:meth:`select <opencosmo.Dataset.select>`:
 

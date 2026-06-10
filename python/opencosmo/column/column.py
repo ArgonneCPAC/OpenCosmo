@@ -1189,7 +1189,7 @@ def _evaluate_scalar(scalar: DerivedScalarValue, ds: Dataset) -> Any:
     required = scalar._traverse_names()
     if not required:
         return scalar.evaluate({})
-    reducer = default_reducer()
+    reducer = default_reducer("global")
     scalar = scalar.with_reducer(reducer) if scalar.reducer is None else scalar
     table = ds.select(*required).get_data("astropy", unpack=False, wrap_single=True)
     data = {name: table[name] for name in required}
@@ -1247,6 +1247,17 @@ class ColumnMask:
         result = self.operator(left, right)
         return result
 
+    def with_reducer(self, reducer: Reducer) -> ColumnMask:
+        """
+        Return a new ColumnMask with the given reducer attached to any nested
+        Column / DerivedScalarValue nodes. Does not mutate self.
+        """
+        return ColumnMask(
+            _attach_reducer(self.left, reducer),
+            _attach_reducer(self.right, reducer),
+            self.operator,
+        )
+
     def __and__(self, other: Self | CompoundColumnMask):
         return CompoundColumnMask(self, other, lambda left, right: left & right)
 
@@ -1282,6 +1293,18 @@ class CompoundColumnMask:
         left_mask = self.left.apply(ds)
         right_mask = self.right.apply(ds)
         return self.op(left_mask, right_mask)
+
+    def with_reducer(self, reducer: Reducer) -> CompoundColumnMask:
+        """
+        Return a new CompoundColumnMask with the given reducer attached
+        recursively to any nested Column / DerivedScalarValue nodes.
+        Does not mutate self.
+        """
+        return CompoundColumnMask(
+            self.left.with_reducer(reducer),
+            self.right.with_reducer(reducer),
+            self.op,
+        )
 
 
 def mask_contains_scalar(mask: ColumnMask | CompoundColumnMask) -> bool:
@@ -1321,7 +1344,7 @@ def resolve_mask_scalars(
 def _attach_reducer(node: Any, reducer: Reducer) -> Any:
     """
     Helper to recursively attach a reducer to DerivedScalarValue nodes within a tree.
-    Used by DerivedScalarValue.with_reducer().
+    Used by DerivedScalarValue.with_reducer() and ColumnMask.with_reducer().
     """
     if isinstance(node, DerivedScalarValue):
         return node.with_reducer(reducer)
