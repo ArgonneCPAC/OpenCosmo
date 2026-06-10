@@ -954,6 +954,12 @@ class Dataset:
             This dataset with the columns added
 
         """
+        from opencosmo.column.column import DerivedScalarValue
+
+        if any(isinstance(col, DerivedScalarValue) for col in new_columns.values()):
+            raise ValueError(
+                "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
+            )
         if isinstance(descriptions, str):
             descriptions = {key: descriptions for key in new_columns.keys()}
         new_state = st.with_new_columns(

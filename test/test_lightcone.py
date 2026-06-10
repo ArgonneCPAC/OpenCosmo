@@ -629,14 +629,6 @@ def test_lc_scope_global_min_max_scaling(
     assert np.isclose(scaled.max(), 1.0, atol=1e-9)
 
 
-@pytest.mark.xfail(
-    reason="Lightcone.select(x=col.min()) currently returns one value broadcast to N "
-    "rows instead of a single scalar. The reduction value is correct (global min "
-    "across all children), but the shape mirrors the vstacked row count rather than "
-    "collapsing the way Dataset.select does. Fix requires splitting scope producers "
-    "into scalar vs vector at get_data time.",
-    strict=True,
-)
 def test_lc_scope_scalar_select_is_global(
     haloproperties_600_path, haloproperties_601_path
 ):
@@ -653,15 +645,35 @@ def test_lc_scope_scalar_select_value_is_global(
     haloproperties_600_path, haloproperties_601_path
 ):
     """
-    Until the shape bug above is fixed, at least verify the *value* the lightcone
-    computes for a scope-only scalar selection is the global reduction, not
-    per-child. This guards the reducer/scope wiring even with the wrong shape.
+    Verify the *value* a scope-only scalar selection produces is the global
+    reduction across all children, not a per-child one. Guards the
+    reducer/scope wiring independently of the return shape.
     """
     lc = oc.open(haloproperties_600_path, haloproperties_601_path)
     result = lc.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
     raw = _global_raw(lc, "fof_halo_mass")
     arr = np.asarray(result)
     assert np.all(np.isclose(arr, float(np.min(raw))))
+
+
+def test_lc_scope_with_new_columns_rejects_bare_scalar(
+    haloproperties_600_path, haloproperties_601_path
+):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    # Should not raise — was previously a ValueError because the
+    # isinstance check at lightcone.py rejected DerivedScalarValue.
+    with pytest.raises(
+        ValueError, match="Scalar values cannot be added to an existing dataset"
+    ):
+        _ = lc.with_new_columns(min_mass=oc.col("fof_halo_mass").min())
+
+
+def test_lc_scope_select_rejects_mixed_scalar_and_column(
+    haloproperties_600_path, haloproperties_601_path
+):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    with pytest.raises(ValueError, match="Scalar selections cannot be mixed"):
+        lc.select("fof_halo_mass", min_mass=oc.col("fof_halo_mass").min())
 
 
 def test_lc_scope_filter_against_global_mean(

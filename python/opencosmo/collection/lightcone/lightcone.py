@@ -24,9 +24,11 @@ from deprecated import deprecated
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import utils as lcutils
+from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import (
     Column,
+    DerivedScalarValue,
     EvaluatedColumn,
     mask_contains_scalar,
     resolve_mask_scalars,
@@ -34,7 +36,6 @@ from opencosmo.column.column import (
 from opencosmo.column.reducer import default_reducer
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import concat_chunks, convert_data, verify_format
-from opencosmo.dataset.graph import evaluate_producers
 from opencosmo.dataset.take import (
     get_end_take_index,
     get_random_take_index,
@@ -61,7 +62,6 @@ if TYPE_CHECKING:
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
-        DerivedScalarValue,
     )
     from opencosmo.dataset import Dataset
     from opencosmo.dtypes.hacc import HaccSimulationParameters
@@ -407,13 +407,9 @@ class Lightcone(dict):
         else:
             vstacked = vstack(data_with_length, join_type="exact")
 
-        if self.__scope.names():
-            produced = evaluate_producers(
-                list(self.__scope.producers),
-                {name: vstacked[name] for name in vstacked.colnames},
-            )
-            for name, values in produced.items():
-                vstacked[name] = values
+        vstacked, scope_scalars = evaluate_scope(self.__scope, vstacked, unpack=unpack)
+        if scope_scalars is not None:
+            return convert_data(scope_scalars, format, wrap_single=wrap_single)
 
         if self.__sort_key is not None and not kwargs.get("ignore_sort", False):
             order = vstacked.argsort(self.__sort_key[0], reverse=self.__sort_key[1])
@@ -765,7 +761,9 @@ class Lightcone(dict):
                 continue
             rows = ds.tree.project_on_index(level, ds.index, pixels)
             output[name] = ds.take_rows(rows)
-        return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
+        return Lightcone(
+            output, self.z_range, self.__hidden, self.__sort_key, self.__scope
+        )
 
     def evaluate(
         self,
@@ -931,6 +929,13 @@ class Lightcone(dict):
             required = scalar._traverse_names()
             if not required:
                 return scalar.evaluate({})
+            # `required` is the set of raw child names this scalar reads, so
+            # self.select(*required) routes through the positional (child)
+            # path — partition_columns treats no derived_columns as
+            # all-child-scoped — and never re-enters the scope evaluator.
+            # If a future caller passes a scope-name in `required`, that
+            # would recurse through evaluate_scope; bypass via take_rows or
+            # a private _get_raw if that becomes possible.
             table = self.select(*required).get_data(
                 "astropy", unpack=False, wrap_single=True
             )
@@ -1012,6 +1017,22 @@ class Lightcone(dict):
             if isinstance(col_group, str):
                 col_group = {col_group}
             all_columns.update(col_group)
+
+        scalars = {
+            name: col
+            for name, col in derived_columns.items()
+            if isinstance(col, DerivedScalarValue)
+        }
+        non_scalars = {
+            name: col
+            for name, col in derived_columns.items()
+            if not isinstance(col, DerivedScalarValue)
+        }
+        if scalars and (all_columns or non_scalars):
+            raise ValueError(
+                "Scalar selections cannot be mixed with column selections. "
+                "Call select() with only scalar kwargs, or only column selections."
+            )
 
         raw_child_columns = set(next(iter(self.values())).columns)
         scoped, child_scoped = partition_columns(
@@ -1284,6 +1305,10 @@ class Lightcone(dict):
             This dataset with the columns added
 
         """
+        if any(isinstance(col, DerivedScalarValue) for col in columns.values()):
+            raise ValueError(
+                "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
+            )
         derived = {}
         raw = {}
         for name, column in columns.items():

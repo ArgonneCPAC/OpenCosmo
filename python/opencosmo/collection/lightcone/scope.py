@@ -162,6 +162,17 @@ class LightconeScope:
         """
         return {p.name for p in self.producers if isinstance(p, RawColumn)}
 
+    def scalar_names(self) -> set[str]:
+        """Names of scope-owned columns that evaluate to a scalar."""
+        from opencosmo.column.column import produces_scalar
+
+        return {
+            name
+            for producer in self.producers
+            for name in (producer.produces or set())
+            if name in self.column_map and produces_scalar(producer)
+        }
+
 
 def partition_columns(
     new_columns: dict[str, ConstructedColumn],
