@@ -1010,8 +1010,6 @@ class Lightcone(dict):
         ValueError
             If any of the required columns are not in the dataset.
         """
-        from opencosmo.collection.lightcone.scope import partition_columns
-
         all_columns: set[str] = set()
         for col_group in columns:
             if isinstance(col_group, str):
@@ -1035,27 +1033,10 @@ class Lightcone(dict):
             )
 
         raw_child_columns = set(next(iter(self.values())).columns)
-        scoped, child_scoped = partition_columns(
-            derived_columns,
-            raw_child_columns,
-            self.__scope,  # type: ignore
-        )
+        plan = self.__scope.plan_select(all_columns, derived_columns, raw_child_columns)
 
-        previous_scope_names = self.__scope.names()
-        kept_scope_names = (all_columns & previous_scope_names) | set(scoped.keys())
-        new_scope = self.__scope.select(kept_scope_names).add(
-            derived_columns, raw_child_columns
-        )
-
-        positional_child_selection = (
-            all_columns - previous_scope_names - set(scoped.keys())
-        )
-
-        hidden = set(self.__hidden)
-        scope_deps_to_inject = new_scope.required_child_columns()
-        hidden |= scope_deps_to_inject - positional_child_selection
-
-        additional_columns = set(scope_deps_to_inject)
+        hidden = set(self.__hidden) | plan.hidden_additions
+        additional_columns = set(plan.child_additional)
 
         if "redshift" not in all_columns and "properties" in self.dtype:
             additional_columns.add("redshift")
@@ -1067,13 +1048,13 @@ class Lightcone(dict):
 
         return self.__map(
             "select",
-            positional_child_selection,
+            plan.child_positional,
             additional_columns,
             mapped_arguments={},
             hidden=hidden,
             construct=True,
-            scope=new_scope,
-            **child_scoped,
+            scope=plan.new_scope,
+            **plan.child_scoped,
         )
 
     def drop(self, *columns: str | Iterable[str]) -> Self:

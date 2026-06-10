@@ -676,6 +676,19 @@ def test_lc_scope_select_rejects_mixed_scalar_and_column(
         lc.select("fof_halo_mass", min_mass=oc.col("fof_halo_mass").min())
 
 
+def test_lc_scope_producer_partition(haloproperties_600_path, haloproperties_601_path):
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+    derived = lc.with_new_columns(zscore=(m - m.mean()) / m.std())
+    scope = derived.scope
+    placeholder_ids = {id(p) for p in scope.placeholders}
+    derived_ids = {id(p) for p in scope.derived_producers}
+    all_ids = {id(p) for p in scope.producers}
+    assert len(placeholder_ids) >= 1
+    assert placeholder_ids.isdisjoint(derived_ids)
+    assert placeholder_ids | derived_ids == all_ids
+
+
 def test_lc_scope_filter_against_global_mean(
     haloproperties_600_path, haloproperties_601_path
 ):
@@ -730,3 +743,81 @@ def test_lc_scope_lazy_across_post_filter(
     centered = np.asarray(data["centered"])
     assert len(centered) == len(expected_centered)
     assert np.allclose(np.sort(centered), np.sort(expected_centered), rtol=1e-6)
+
+
+def test_lc_scope_with_sort_by(haloproperties_600_path, haloproperties_601_path):
+    """Scope survives sort_by; centered values follow the row reordering."""
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+    derived = lc.with_new_columns(centered=m - m.mean())
+    raw = _global_raw(lc, "fof_halo_mass")
+    expected = np.sort(raw - np.mean(raw))
+
+    data = derived.sort_by("fof_halo_mass").get_data()
+    centered = np.asarray(data["centered"])
+
+    assert len(centered) == len(expected)
+    assert np.allclose(centered, expected, rtol=1e-6)
+
+
+def test_lc_scope_with_units(haloproperties_600_path, haloproperties_601_path):
+    """Scope re-evaluates against the post-unit-conversion child data."""
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    pos = oc.col("fof_halo_center_x")
+    derived = lc.with_new_columns(centered=pos - pos.mean())
+
+    data_mpc = derived.get_data()
+    data_lyr = derived.with_units(None, {}, fof_halo_center_x=u.lyr).get_data()
+
+    centered_mpc = data_mpc["centered"]
+    centered_lyr = data_lyr["centered"]
+
+    assert centered_mpc.unit == u.Mpc
+    assert centered_lyr.unit == u.lyr
+
+    assert np.allclose(
+        np.sort(np.asarray(centered_lyr.to(u.Mpc))),
+        np.sort(np.asarray(centered_mpc)),
+        atol=1e-6,
+    )
+
+
+def test_lc_scope_chained_internal_dependency(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """A second with_new_columns can reference a name added by the first."""
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+    m = oc.col("fof_halo_mass")
+    raw = _global_raw(lc, "fof_halo_mass")
+
+    step1 = lc.with_new_columns(centered=m - m.mean())
+    step2 = step1.with_new_columns(scaled=oc.col("centered") / m.std())
+    data = step2.get_data()
+
+    expected_centered = raw - np.mean(raw)
+    expected_scaled = expected_centered / np.std(raw)
+    assert np.allclose(
+        np.sort(np.asarray(data["centered"])), np.sort(expected_centered), rtol=1e-6
+    )
+    assert np.allclose(
+        np.sort(np.asarray(data["scaled"])), np.sort(expected_scaled), rtol=1e-6
+    )
+
+
+@pytest.fixture
+def diffsky_core_path(diffsky_path):
+    return diffsky_path / "lj_487.hdf5"
+
+
+def test_lc_scope_nested_lightcone(diffsky_core_path):
+    """Scope mean spans both inner (cores + synth_cores) lightcones."""
+    lc = oc.open(diffsky_core_path, synth_cores=True)
+    m = oc.col("logsm_obs")
+
+    derived = lc.with_new_columns(centered=m - m.mean()).select("logsm_obs", "centered")
+    data = derived.get_data()
+
+    centered = np.asarray(data["centered"])
+    raw = np.asarray(data["logsm_obs"])
+    expected = raw - np.mean(raw)
+    assert np.allclose(np.sort(centered), np.sort(expected), rtol=1e-6)

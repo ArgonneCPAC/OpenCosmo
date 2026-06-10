@@ -42,14 +42,18 @@ def evaluate_scope(
     )
 
     scalar_names = scope.scalar_names()
-    output_names = scope.names()
+    derived_names = {
+        name
+        for producer in scope.derived_producers
+        for name in (producer.produces or set())
+    }
     scalar_outputs = {
         name: value for name, value in produced.items() if name in scalar_names
     }
     vector_outputs = {
         name: value
         for name, value in produced.items()
-        if name in output_names and name not in scalar_names
+        if name in derived_names and name not in scalar_names
     }
 
     if scalar_outputs and vector_outputs:

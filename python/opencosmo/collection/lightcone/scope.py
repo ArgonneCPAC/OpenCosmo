@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -10,6 +10,38 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from opencosmo.column.column import ConstructedColumn
+
+
+@dataclass(frozen=True)
+class SelectPlan:
+    """
+    The routing decision for one ``Lightcone.select(...)`` call. Returned by
+    ``LightconeScope.plan_select``; consumed by ``Lightcone.select`` to drive
+    the per-child ``select`` calls and construct the resulting scope.
+
+    Attributes
+    ----------
+    new_scope : LightconeScope
+        The scope to attach to the resulting lightcone.
+    child_positional : set[str]
+        Positional column names to forward to each child's ``select``.
+    child_additional : set[str]
+        Raw columns each child must read so the scope's dependencies can be
+        resolved at ``get_data`` time (a superset of ``child_positional``
+        when scope expressions read columns the user did not ask for).
+    child_scoped : dict[str, ConstructedColumn]
+        Derived kwargs that are *not* scope-owned and should be forwarded
+        to each child's ``select`` as derived columns.
+    hidden_additions : set[str]
+        Columns added solely to support scope evaluation; the lightcone
+        hides these from output.
+    """
+
+    new_scope: LightconeScope
+    child_positional: set[str]
+    child_additional: set[str]
+    child_scoped: dict[str, ConstructedColumn] = field(default_factory=dict)
+    hidden_additions: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -33,6 +65,28 @@ class LightconeScope:
     def names(self) -> set[str]:
         """Return the names of all scope-owned columns."""
         return set(self.column_map.keys())
+
+    @property
+    def derived_producers(self) -> tuple[ConstructedColumn, ...]:
+        """
+        Producers that own at least one name in ``column_map`` — the actual
+        scope-owned expressions a caller asked for. Excludes the synthetic
+        ``RawColumn`` placeholders carried for graph validation.
+        """
+        return tuple(
+            p
+            for p in self.producers
+            if any(name in self.column_map for name in (p.produces or ()))
+        )
+
+    @property
+    def placeholders(self) -> tuple[RawColumn, ...]:
+        """
+        Synthetic ``RawColumn`` nodes added so ``build_dependency_graph`` can
+        resolve scope expressions' UUID-keyed dependencies on raw child
+        columns. Not user-visible.
+        """
+        return tuple(p for p in self.producers if isinstance(p, RawColumn))
 
     def add(
         self,
@@ -67,9 +121,9 @@ class LightconeScope:
             return self
 
         existing_placeholders: dict[str, RawColumn] = {
-            p.name: p for p in self.producers if isinstance(p, RawColumn)
+            p.name: p for p in self.placeholders
         }
-        derived_producers = [p for p in self.producers if not isinstance(p, RawColumn)]
+        derived_producers = list(self.derived_producers)
 
         name_to_uuid: dict[str, UUID] = dict(self.column_map)
         for name, placeholder in existing_placeholders.items():
@@ -160,7 +214,56 @@ class LightconeScope:
         Return the union of every raw/child column that the scoped expressions read.
         These are the columns that must be present in each child for scope evaluation.
         """
-        return {p.name for p in self.producers if isinstance(p, RawColumn)}
+        return {p.name for p in self.placeholders}
+
+    def plan_select(
+        self,
+        positional: set[str],
+        derived_columns: dict[str, ConstructedColumn],
+        raw_child_columns: set[str],
+    ) -> SelectPlan:
+        """
+        Decide how to route a ``Lightcone.select(...)`` call: which derived
+        kwargs are scope-owned vs child-scoped, what the resulting scope
+        looks like, which positional columns hit the children directly, and
+        which extra raw columns each child must read (and then hide) so the
+        scope's dependencies can be resolved at evaluation time.
+
+        Parameters
+        ----------
+        positional : set[str]
+            Column names passed positionally to ``select``.
+        derived_columns : dict[str, ConstructedColumn]
+            Derived columns passed as kwargs to ``select``.
+        raw_child_columns : set[str]
+            Raw column names available on each child dataset.
+
+        Returns
+        -------
+        SelectPlan
+            The routing decision; see field docstrings on ``SelectPlan``.
+        """
+        scoped, child_scoped = partition_columns(
+            derived_columns, raw_child_columns, self
+        )
+
+        previous_scope_names = self.names()
+        kept_scope_names = (positional & previous_scope_names) | set(scoped.keys())
+        new_scope = self.select(kept_scope_names).add(
+            derived_columns, raw_child_columns
+        )
+
+        child_positional = positional - previous_scope_names - set(scoped.keys())
+        scope_deps = new_scope.required_child_columns()
+        hidden_additions = scope_deps - child_positional
+
+        return SelectPlan(
+            new_scope=new_scope,
+            child_positional=child_positional,
+            child_additional=set(scope_deps),
+            child_scoped=child_scoped,
+            hidden_additions=hidden_additions,
+        )
 
     def scalar_names(self) -> set[str]:
         """Names of scope-owned columns that evaluate to a scalar."""
@@ -168,9 +271,9 @@ class LightconeScope:
 
         return {
             name
-            for producer in self.producers
+            for producer in self.derived_producers
             for name in (producer.produces or set())
-            if name in self.column_map and produces_scalar(producer)
+            if produces_scalar(producer)
         }
 
 

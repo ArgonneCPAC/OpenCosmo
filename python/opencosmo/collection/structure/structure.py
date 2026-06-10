@@ -21,6 +21,7 @@ import opencosmo as oc
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
+from opencosmo.column.column import DerivedScalarValue
 from opencosmo.dataset.formats import verify_format
 from opencosmo.index.unary import get_length
 from opencosmo.io.schema import FileEntry, make_schema
@@ -994,6 +995,10 @@ class StructureCollection:
             else:
                 arg = columns  # type: ignore
                 kwargs = {}
+            if any(isinstance(col, DerivedScalarValue) for col in kwargs.values()):
+                raise ValueError(
+                    f"Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[{dataset}].select(scalar_expression)`"
+                )
 
             if dataset == self.__source.header.file.data_type:
                 new_source = self.__source.select(arg, **kwargs)
@@ -1395,6 +1400,10 @@ class StructureCollection:
         ValueError
             If the dataset is not found in this collection
         """
+        if any(isinstance(col, DerivedScalarValue) for col in new_columns.values()):
+            raise ValueError(
+                f"Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[{dataset}].select(scalar_expression)`"
+            )
         path = dataset.split(".")
         if len(path) > 1:
             collection_name = path[0]
