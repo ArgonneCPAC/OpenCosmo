@@ -23,6 +23,7 @@ dependencies = [
   "numpy>=2.0,<2.5",
   "click (>=8.2.1,<9.0.0)",
   "rustworkx>=0.17.1,<1.0",
+  "matplotlib>=3.10.8",
 ]
 
 [project.urls]
