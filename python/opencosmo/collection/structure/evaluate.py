@@ -115,6 +115,7 @@ def evaluate_into_dataset(
             )
         if not isinstance(output, dict):
             output = {function.__name__: output}
+
         if i == 0:
             if any(len(v) != expected_length for v in output.values()):
                 raise ValueError(
@@ -134,7 +135,7 @@ def __make_input(structure: dict, format: str = "astropy"):
         if isinstance(element, dict):
             values[name] = __make_input(element, format)
         elif isinstance(element, ds.Dataset):
-            data = element.get_data(format, wrap_single=True)
+            data = element.get_data(format, wrap_single=True, unpack=False)
             values[name] = data
         elif isinstance(element, Quantity) and format != "astropy":
             values[name] = element.value
