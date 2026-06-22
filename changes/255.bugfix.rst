@@ -1,0 +1,1 @@
+Fix a bug that could cause :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` to fail when a `dataset` argument was passed.
