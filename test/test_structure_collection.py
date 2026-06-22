@@ -55,6 +55,29 @@ def verify_halo(halo):
         assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
 
 
+def test_evaluate_into_galaxy_properties(halos_600_path, galaxies_600_path):
+    def offset(halo_properties, galaxy_properties):
+        dx = galaxy_properties["gal_com_x"] - halo_properties["fof_halo_center_x"]
+        dy = galaxy_properties["gal_com_y"] - halo_properties["fof_halo_center_y"]
+        dz = galaxy_properties["gal_com_z"] - halo_properties["fof_halo_center_z"]
+        dist2 = dx**2 + dy**2 + dz**2
+        dist = np.sqrt(dist2)
+        offset = dist / halo_properties["sod_halo_RVir"]  # divide by virial radius
+        return {"gal_offset": offset}
+
+    ds = oc.open(*halos_600_path, galaxies_600_path[0])
+    ds = ds.evaluate(
+        offset,
+        dataset="galaxy_properties",
+        insert=True,
+        format="numpy",
+        halo_properties=["fof_halo_center_*", "sod_halo_RVir"],
+        galaxy_properties=["gal_com_*"],
+    )
+    for halo in ds.halos():
+        _ = halo["galaxy_properties"].select("gal_offset").get_data()
+
+
 def test_open_lightcone_structure(halos_600_path, halos_601_path):
     ds = oc.open(*halos_600_path, *halos_601_path)
     for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10).halos():

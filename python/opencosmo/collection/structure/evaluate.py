@@ -106,6 +106,7 @@ def evaluate_into_dataset(
 ):
     per_column: dict[str, list] = {}
     for i, structure in enumerate(collection.objects()):
+        expected_length = len(structure[dataset])
         input_structure = __make_input(structure, format)
         output = function(**input_structure, **kwargs)
         if output is None and insert:
@@ -115,7 +116,6 @@ def evaluate_into_dataset(
         if not isinstance(output, dict):
             output = {function.__name__: output}
         if i == 0:
-            expected_length = len(input_structure[dataset])
             if any(len(v) != expected_length for v in output.values()):
                 raise ValueError(
                     "If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
