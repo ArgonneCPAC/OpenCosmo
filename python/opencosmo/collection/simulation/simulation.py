@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
+    from opencosmo.io.openers import TargetSummary
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
@@ -62,8 +63,50 @@ class SimulationCollection(dict):
         )
 
     @classmethod
+    def claim(cls, summary: TargetSummary) -> bool:
+        """Claim if this looks like a simulation collection.
+
+        SimulationCollection handles:
+        - Multiple datasets organized in groups across files
+        - Same data types across multiple top-level groups
+        - Not claimed by StructureCollection or Lightcone
+        """
+        if not summary.dataset_groups:
+            return False
+
+        if all(summary.is_lightcone):
+            return False
+
+        return True
+
+    @classmethod
     def open(cls, targets: list[FileTarget], **kwargs) -> Collection | Dataset:
-        raise NotImplementedError()
+        if len(targets) > 1:
+            raise NotImplementedError()
+
+        from opencosmo.io import iopen
+
+        target = targets[0]
+        datasets = {}
+
+        for group_name, group_targets in target["dataset_groups"].items():
+            if len(group_targets) == 1:
+                datasets[group_name] = iopen.open_single_dataset(
+                    group_targets[0], open_kwargs=kwargs
+                )
+            else:
+                file_target: FileTarget = {
+                    "dataset_targets": group_targets,
+                    "dataset_groups": {},
+                }
+                datasets[group_name] = sc.StructureCollection.open(
+                    [file_target], **kwargs
+                )
+
+        if len(datasets) == 1:
+            return next(iter(datasets.values()))
+
+        return cls(datasets)
 
     def make_schema(self) -> Schema:
         children = {}

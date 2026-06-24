@@ -14,6 +14,7 @@ def make_cosmology(parameters: "CosmologyParameters") -> cosmology.Cosmology:
             input_paremeters[argname] = getattr(parameters, argname)
         except AttributeError:
             continue
+    print(input_paremeters)
     return cosmology_type(**input_paremeters)
 
 

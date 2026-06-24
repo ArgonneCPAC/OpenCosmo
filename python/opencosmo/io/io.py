@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -47,12 +46,6 @@ else:
     4. Open all datasets individually
     5. Call the merge functionality for the appropriate collection.
     """
-
-
-class COLLECTION_TYPE(Enum):
-    LIGHTCONE = 0
-    STRUCTURE_COLLECTION = 1
-    SIMULATION_COLLECTION = 2
 
 
 def open(*files: str | Path, **open_kwargs: bool) -> oc.Dataset | collection.Collection:

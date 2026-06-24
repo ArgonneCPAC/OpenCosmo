@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
+    from opencosmo.io.openers import TargetSummary
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
@@ -170,6 +171,40 @@ class StructureCollection:
 
     def __len__(self):
         return len(self.__source)
+
+    @classmethod
+    def claim(cls, summary: TargetSummary) -> bool:
+        """Claim if this looks like a structure collection.
+
+        StructureCollection handles:
+        - halo_properties + galaxy_properties combination
+        - Properties with associated particles/profiles in flat datasets (not in groups)
+        - Multiple different data types under one parent
+        - Lightcone structure collections (properties on lightcone)
+        - Properties + particles/profiles from separate files
+        """
+        data_types = summary.data_types
+        has_properties = summary.has_properties
+
+        if not data_types:
+            return False
+
+        has_particles = any("particle" in dt for dt in data_types)
+        has_profiles = "halo_profiles" in data_types or "galaxy_profiles" in data_types
+
+        if data_types == {"halo_properties", "galaxy_properties"}:
+            return True
+
+        if has_particles and all(summary.is_lightcone):
+            return True
+
+        if has_properties and (has_particles or has_profiles):
+            return True
+
+        if summary.parent_group_count == 1 and len(data_types) > 1:
+            return True
+
+        return False
 
     @classmethod
     def open(

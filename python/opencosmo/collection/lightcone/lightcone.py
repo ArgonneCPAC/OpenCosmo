@@ -23,6 +23,7 @@ from deprecated import deprecated
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
+from opencosmo.collection.lightcone import scope as lcs
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
+    from opencosmo.io.openers import TargetSummary
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
 
@@ -93,10 +95,8 @@ class Lightcone(dict):
         z_range: Optional[tuple[float, float]] = None,
         hidden: Optional[set[str]] = None,
         sort_key: Optional[tuple[str, bool]] = None,
-        scope: Optional[Any] = None,
+        scope: Optional[lcs.LightconeScope] = None,
     ):
-        from opencosmo.collection.lightcone.scope import LightconeScope
-
         self.update(datasets)
         z_range = (
             z_range
@@ -115,7 +115,7 @@ class Lightcone(dict):
         if hidden is None:
             hidden = set()
         if scope is None:
-            scope = LightconeScope()
+            scope = lcs.LightconeScope()
 
         self.__hidden = hidden
         self.__sort_key = sort_key
@@ -465,6 +465,32 @@ class Lightcone(dict):
 
         """
         return self.get_data("astropy")
+
+    @classmethod
+    def claim(cls, summary: TargetSummary) -> bool:
+        """Claim if this looks like a lightcone collection.
+
+        Lightcone handles:
+        - Single data type with all datasets marked as lightcone
+        - Can have data_linked metadata but no particle/profile datasets
+        - Can be single or multiple files
+        """
+        if len(summary.data_types) != 1:
+            return False
+
+        if not all(summary.is_lightcone):
+            return False
+
+        has_particles = any("particle" in dt for dt in summary.data_types)
+        has_profiles = (
+            "halo_profiles" in summary.data_types
+            or "galaxy_profiles" in summary.data_types
+        )
+
+        if has_particles or has_profiles:
+            return False
+
+        return True
 
     @classmethod
     def open(cls, targets: list[FileTarget], **kwargs):
