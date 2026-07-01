@@ -6,12 +6,11 @@ import numpy as np
 import yt  # type: ignore
 import pyxsim # type: ignore
 from astropy.table import Table
-from pyxsim.source_models.sources import SourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
 
 if TYPE_CHECKING:
     from yt.data_objects.static_output import Dataset as YT_Dataset
-
+    from pyxsim.source_models.sources import SourceModel
     import opencosmo as oc
 
 # ---- define some constants ---- #
@@ -27,6 +26,7 @@ def create_yt_dataset(
     return_source_model: Optional[bool] = False,
     pyxsim_source_model: Optional[str] = "CIESourceModel",
     source_model_kwargs: Optional[Dict[str, Any]] = {},
+    make_line_source_fields_kwargs: Optional[Dict[str, Any]] = {},
 ) -> Union[YT_Dataset, Tuple[YT_Dataset, SourceModel]]:
     """
     Converts particle data to a `yt` dataset. Note that `yt`
@@ -64,6 +64,10 @@ def create_yt_dataset(
         These can include parameters like `emin`, `emax`, `nbins`, `abund_table`, etc.,
         to control the spectral resolution and emission model behavior. Available parameters
         vary between source model types (`docs <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html#>`_).
+    make_line_source_fields_kwargs : dict, optional
+        Dictionary for setting keyword arguments of pyxsim's `make_line_source_fields()` function (`ref <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/api/source_models.html#pyxsim.source_models.sources.SourceModel.make_line_source_fields#>`_). 
+        This is only relevent if `pyxsim_source_model=="LineSourceModel"`. The `ds` yt dataset parameter will be set internally by `create_yt_dataset()`, 
+        so `ds` should not be set to be set in this `make_line_source_fields_kwargs`.
 
     Returns
     -------
@@ -244,7 +248,7 @@ def create_yt_dataset(
             # populate yt dataset with xray fields
             if pyxsim_source_model == "LineSourceModel":
                 source.make_line_source_fields(
-                    ds, source_model_kwargs["e0"], line_width, line_name
+                    ds, **make_line_source_fields_kwargs,  
                 )
             else:
                 source.make_source_fields(
