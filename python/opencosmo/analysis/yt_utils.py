@@ -10,7 +10,7 @@ from unyt import unyt_array, unyt_quantity  # type: ignore
 
 if TYPE_CHECKING:
     from yt.data_objects.static_output import Dataset as YT_Dataset
-    from pyxsim.source_models.sources import SourceModel
+    from pyxsim.source_models.sources import SourceModel # type: ignore
     import opencosmo as oc
 
 # ---- define some constants ---- #
@@ -22,11 +22,11 @@ solar_metallicity = 0.012899  # value used internally in HACC
 
 def create_yt_dataset(
     data: Dict[str, oc.Dataset],
-    compute_xray_fields: Optional[bool] = False,
-    return_source_model: Optional[bool] = False,
-    pyxsim_source_model: Optional[str] = "CIESourceModel",
-    source_model_kwargs: Optional[Dict[str, Any]] = {},
-    make_line_source_fields_kwargs: Optional[Dict[str, Any]] = {},
+    compute_xray_fields: bool = False,
+    return_source_model: bool = False,
+    pyxsim_source_model: str = "CIESourceModel",
+    source_model_kwargs: Dict[str, Any] = {},
+    make_line_source_fields_kwargs: Dict[str, Any] = {},
 ) -> Union[YT_Dataset, Tuple[YT_Dataset, SourceModel]]:
     """
     Converts particle data to a `yt` dataset. Note that `yt`
@@ -66,7 +66,7 @@ def create_yt_dataset(
         vary between source model types (`docs <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html#>`_).
     make_line_source_fields_kwargs : dict, optional
         Dictionary for setting keyword arguments of pyxsim's `make_line_source_fields()` function (`ref <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/api/source_models.html#pyxsim.source_models.sources.SourceModel.make_line_source_fields#>`_). 
-        This is only relevent if `pyxsim_source_model=="LineSourceModel"`. The `ds` yt dataset parameter will be set internally by `create_yt_dataset()`, 
+        This is only relevent if ``pyxsim_source_model=="LineSourceModel"``. The `ds` yt dataset parameter will be set internally by `create_yt_dataset()`, 
         so `ds` should not be set to be set in this `make_line_source_fields_kwargs`.
 
     Returns
@@ -76,7 +76,7 @@ def create_yt_dataset(
         (e.g., X-ray luminosities) if requested.
 
     source_model : pyxsim.source_models.CIESourceModel, optional
-        Returned only if `return_source_model=True`.
+        Returned only if ``return_source_model==True``.
     """
 
     data_dict: Dict[

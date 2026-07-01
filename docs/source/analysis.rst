@@ -58,7 +58,7 @@ When ``compute_xray_fields=True``, the function internally creates a :class:`pyx
 - X-ray luminosity in a user-specified energy band
 - Any additional fields required for photon sampling (e.g., emission measure)
 
-Note that it is possible to use other source model types through this interface (e.g. `PowerLawSourceModel` or `LineSourceModel`); however, additional particle data columns will need to be derived to use this functionality. Model-specific configurations can be specified via the ``source_model_kwargs`` argument, which is forwarded directly to the source model's constructor. Common options include:
+Note that it is possible to use other source model types through this interface (e.g. ``PowerLawSourceModel`` or ``LineSourceModel``); however, additional particle data columns will need to be derived to use this functionality. Model-specific configurations can be specified via the ``source_model_kwargs`` argument, which is forwarded directly to the source model's constructor. Common options include:
 
 - ``emin`` (float): Minimum photon energy in keV (default: 0.1)
 - ``emax`` (float): Maximum photon energy in keV (default: 10.0)
@@ -66,9 +66,9 @@ Note that it is possible to use other source model types through this interface 
 - ``model`` (str): which emission model to use (default: "apec")
 
 For the full list of options and requirements, refer to pyxSIM's `documentation <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html>`_.
-If ``return_source_model=True``, the function will return a 2-tuple ``(ds, source_model)``, where ``source_model`` is the ``SourceModel`` instance. This allows further customization or photon generation using pyXSIM directly. Note that the ``compute_xray_fields`` functionality is provided for convenience, and that pyxSIM's functionality can be equivalently accessed by manually defining the source model and any required fields directly on the yt dataset. There are many examples of how to do this in the pyxSIM `cookbook <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/cookbook/index.html>`_. 
+If ``return_source_model=True``, the function will return a 2-tuple ``(ds, source_model)``, where ``source_model`` is the ``SourceModel`` instance. This allows further customization or photon generation using pyXSIM directly. Note that the ``compute_xray_fields`` option is provided for convenience, and that pyxSIM's functionality can be equivalently accessed by manually defining the source model and any required fields directly on the yt dataset. There are many examples of how to do this in the pyxSIM `cookbook <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/cookbook/index.html>`_. 
 
-We will now edit the code-block from before to compute X-ray luminosities using the `CIESourceModel`:
+We will now edit the code-block from before to compute X-ray luminosities using the ``CIESourceModel``:
 
 .. code-block:: python
 
@@ -104,7 +104,7 @@ The two primary functions for this purpose are:
 - :func:`opencosmo.analysis.visualize_halo` — a simple 2x2 panel plot for one halo
 - :func:`opencosmo.analysis.halo_projection_array` — a customizable grid of halos and fields
 
-These use yt under the hood, and are useful for visually inspecting halos with minimal input required. Animated versions of the visualizations outputted by either of these functions can be made using :func:`opencosmo.analysis.animate_halos`.
+These use yt under the hood, and are useful for visually inspecting halos with minimal input required. Animated versions of the visualizations outputted by either of these functions can be made using :func:`opencosmo.analysis.animate_halos`. Note that animated versions of any of these figures can be made with :func:`opencosmo.analysis.animate_halos`.
 
 
 Quick Projections
