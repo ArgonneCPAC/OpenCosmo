@@ -80,7 +80,9 @@ class SimulationCollection(dict):
         return True
 
     @classmethod
-    def open(cls, targets: list[FileTarget], **kwargs) -> Collection | Dataset:
+    def open(
+        cls, targets: list[FileTarget], with_mpi: bool, **kwargs
+    ) -> Collection | Dataset:
         if len(targets) > 1:
             raise NotImplementedError()
 
@@ -92,7 +94,7 @@ class SimulationCollection(dict):
         for group_name, group_targets in target["dataset_groups"].items():
             if len(group_targets) == 1:
                 datasets[group_name] = iopen.open_single_dataset(
-                    group_targets[0], open_kwargs=kwargs
+                    group_targets[0], with_mpi=with_mpi, open_kwargs=kwargs
                 )
             else:
                 file_target: FileTarget = {
@@ -100,7 +102,7 @@ class SimulationCollection(dict):
                     "dataset_groups": {},
                 }
                 datasets[group_name] = sc.StructureCollection.open(
-                    [file_target], **kwargs
+                    [file_target], with_mpi=with_mpi, **kwargs
                 )
 
         if len(datasets) == 1:

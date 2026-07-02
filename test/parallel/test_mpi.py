@@ -13,11 +13,11 @@ import mpi4py
 import numpy as np
 import pytest
 from mpi4py import MPI
+from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo.analysis import reduce
-from opencosmo.mpi import get_comm_world
 
 logger = getLogger()
 if h5py.get_config().mpi:

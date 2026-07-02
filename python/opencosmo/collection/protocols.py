@@ -30,7 +30,7 @@ class Collection(Protocol):
 
     @classmethod
     def open(
-        cls, targets: list[FileTarget], **kwargs
+        cls, targets: list[FileTarget], with_mpi: bool, **kwargs
     ) -> Union["Collection", Dataset]: ...
 
     def make_schema(self) -> Schema: ...

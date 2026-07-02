@@ -48,7 +48,9 @@ else:
     """
 
 
-def open(*files: str | Path, **open_kwargs: bool) -> oc.Dataset | collection.Collection:
+def open(
+    *files: str | Path, with_mpi: bool = True, **open_kwargs: bool
+) -> oc.Dataset | collection.Collection:
     """
     Open a dataset or data collection from one or more opencosmo files.
 
@@ -103,7 +105,7 @@ def open(*files: str | Path, **open_kwargs: bool) -> oc.Dataset | collection.Col
         file_list = list(files)
     file_list.sort()
     paths = [Path(fp) for fp in file_list]
-    return open_files(paths, open_kwargs)
+    return open_files(paths, with_mpi, open_kwargs)
 
     # For now the only way to open multiple files is with a StructureCollection
 

@@ -189,6 +189,16 @@ class StructureCollection:
         if not data_types:
             return False
 
+        # Named dataset_groups with no flat dataset_targets and non-lightcone datasets
+        # means a SimulationCollection whose steps happen to be StructureCollections.
+        # Yield so SimulationCollection.open can handle it (which calls us per group).
+        if (
+            summary.dataset_groups
+            and not summary.dataset_targets
+            and not any(summary.is_lightcone)
+        ):
+            return False
+
         has_particles = any("particle" in dt for dt in data_types)
         has_profiles = "halo_profiles" in data_types or "galaxy_profiles" in data_types
 
@@ -208,9 +218,9 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, targets: list[FileTarget], ignore_empty=True, **kwargs
+        cls, targets: list[FileTarget], with_mpi: bool, ignore_empty=True, **kwargs
     ) -> StructureCollection:
-        result = sio.build_structure_collection(targets, ignore_empty)
+        result = sio.build_structure_collection(targets, with_mpi, ignore_empty)
         return result
 
     @property

@@ -493,7 +493,7 @@ class Lightcone(dict):
         return True
 
     @classmethod
-    def open(cls, targets: list[FileTarget], **kwargs):
+    def open(cls, targets: list[FileTarget], with_mpi: bool, **kwargs):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
         dataset_targets = []
         for target in targets:
@@ -504,7 +504,7 @@ class Lightcone(dict):
             group_name = ds_target["dataset_group"].name.split("/")[-1]
             group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
             ds = iopen.open_single_dataset(
-                ds_target, bypass_lightcone=True, open_kwargs=kwargs
+                ds_target, with_mpi=with_mpi, bypass_lightcone=True, open_kwargs=kwargs
             )
             step = ds_target["header"].file.step
             if step is None:

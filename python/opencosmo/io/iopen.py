@@ -75,11 +75,13 @@ class _SingleDatasetOpener:
 
     @classmethod
     def open(
-        cls, targets: list[FileTarget], **kwargs: bool
+        cls, targets: list[FileTarget], with_mpi: bool, **kwargs: bool
     ) -> oc.Dataset | oc.collection.Collection:
         """Open a single dataset."""
         target = targets[0]
-        return open_single_dataset(target["dataset_targets"][0], open_kwargs=kwargs)
+        return open_single_dataset(
+            target["dataset_targets"][0], with_mpi=with_mpi, open_kwargs=kwargs
+        )
 
 
 def __get_openers() -> list[type]:
@@ -96,7 +98,7 @@ def __get_openers() -> list[type]:
     ]
 
 
-def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
+def open_files(paths: list[Path], with_mpi: bool, open_kwargs: dict[str, Any]):
     """
     Main back-end entry point for opening files.
     """
@@ -112,7 +114,7 @@ def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
 
     for opener_cls in __get_openers():
         if opener_cls.claim(summary):  # type: ignore[attr-defined]
-            return opener_cls.open(valid_targets, **open_kwargs)  # type: ignore[attr-defined]
+            return opener_cls.open(valid_targets, with_mpi, **open_kwargs)  # type: ignore[attr-defined]
 
     raise ValueError("Invalid combination of files")
 
@@ -292,7 +294,7 @@ def open_single_dataset(
     target: DatasetTarget,
     metadata_group: Optional[str] = None,
     bypass_lightcone: bool = False,
-    bypass_mpi: bool = False,
+    with_mpi: bool = True,
     open_kwargs: dict[str, Any] = {},
 ):
     header = target["header"]
@@ -331,7 +333,7 @@ def open_single_dataset(
     index: Optional[DataIndex] = None
     ds_length = len(next(iter(columns)))
 
-    if not bypass_mpi and (comm := get_comm_world()) is not None:
+    if with_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
         try:
             part = partition(comm, header, ds_group["index"], ds_group["data"], tree)

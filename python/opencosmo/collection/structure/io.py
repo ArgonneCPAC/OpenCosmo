@@ -59,7 +59,9 @@ def validate_linked_groups(groups: dict[str, h5py.Group]):
         raise ValueError("Structure collections must have more than one dataset")
 
 
-def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
+def build_structure_collection(
+    targets: list[FileTarget], with_mpi: bool, ignore_empty: bool
+):
     link_sources: dict[str, list[io.iopen.DatasetTarget]] = defaultdict(list)
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
         defaultdict(lambda: defaultdict(list))
@@ -74,11 +76,14 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
     for target in dataset_targets:
         if target["header"].file.data_type == "halo_properties":
             link_sources["halo_properties"].append(target)
+
         elif target["header"].file.data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
         elif str(target["header"].file.data_type).startswith("halo"):
             dataset = io.iopen.open_single_dataset(
-                target, bypass_lightcone=True, bypass_mpi=True
+                target,
+                bypass_lightcone=True,
+                with_mpi=False,
             )
             name_source = target["dataset_group"]
             if (
@@ -95,7 +100,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             link_targets["halo_properties"][name].append(dataset)
         elif str(target["header"].file.data_type).startswith("galaxy"):
             dataset = io.iopen.open_single_dataset(
-                target, bypass_lightcone=True, bypass_mpi=True
+                target, bypass_lightcone=True, with_mpi=False
             )
             name_source = target["dataset_group"]
             if (
@@ -120,7 +125,9 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
         or len(link_sources["galaxy_properties"]) > 1
     ):
         # Potentially a lightcone structure collection
-        return build_lightcone_structure_collection(link_sources, link_targets)
+        return build_lightcone_structure_collection(
+            link_sources, link_targets, with_mpi=with_mpi
+        )
 
     halo_properties_target = None
     galaxy_properties_target = None
@@ -144,6 +151,7 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
         galaxy_properties_target,
         input_link_targets,
         ignore_empty,
+        with_mpi=with_mpi,
     )
 
 
@@ -220,6 +228,7 @@ def _apply_offset_corrections(
 def build_lightcone_structure_collection(
     link_sources: dict[str, list[io.iopen.DatasetTarget]],
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
+    with_mpi: bool,
 ):
     found_redshift_steps: set[int] = set()
     for source_type, source_list in link_sources.items():
@@ -251,7 +260,7 @@ def build_lightcone_structure_collection(
                 t,
                 "data_linked",
                 bypass_lightcone=True,
-                bypass_mpi=len(link_sources.get("halo_properties", [])) > 0,
+                with_mpi=len(link_sources.get("halo_properties", [])) == 0 and with_mpi,
             )
             for t in link_sources["galaxy_properties"]
         ]
@@ -282,7 +291,9 @@ def build_lightcone_structure_collection(
 
     halo_source_list = link_sources["halo_properties"]
     halo_datasets = [
-        io.iopen.open_single_dataset(t, "data_linked", bypass_lightcone=True)
+        io.iopen.open_single_dataset(
+            t, "data_linked", with_mpi=with_mpi, bypass_lightcone=True
+        )
         for t in halo_source_list
     ]
     halo_source_by_step: dict[int, d.Dataset] = {}
@@ -330,6 +341,7 @@ def __build_structure_collection(
     galaxy_properties_target: Optional[io.iopen.DatasetTarget],
     link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]],
     ignore_empty: bool,
+    with_mpi: bool,
 ):
     if galaxy_properties_target is not None and "galaxy_properties" in link_targets:
         # Galaxy properties and galaxy particles
@@ -337,7 +349,7 @@ def __build_structure_collection(
             galaxy_properties_target,
             metadata_group="data_linked",
             bypass_lightcone=True,
-            bypass_mpi=halo_properties_target is not None,
+            with_mpi=halo_properties_target is None and with_mpi,
         )
         if ignore_empty and halo_properties_target is None:
             source_dataset = remove_empty(source_dataset)
@@ -357,13 +369,18 @@ def __build_structure_collection(
     ):
         # Halo properties and galaxy properties, but no galaxy particles
         galaxy_properties = io.iopen.open_single_dataset(
-            galaxy_properties_target, bypass_lightcone=True, bypass_mpi=True
+            galaxy_properties_target,
+            bypass_lightcone=True,
+            with_mpi=False,
         )
         link_targets["halo_properties"]["galaxy_properties"] = galaxy_properties
 
     if halo_properties_target is not None and link_targets["halo_properties"]:
         source_dataset = io.iopen.open_single_dataset(
-            halo_properties_target, metadata_group="data_linked", bypass_lightcone=True
+            halo_properties_target,
+            metadata_group="data_linked",
+            bypass_lightcone=True,
+            with_mpi=with_mpi,
         )
         if ignore_empty:
             source_dataset = remove_empty(source_dataset)
