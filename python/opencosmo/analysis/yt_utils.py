@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Tuple, Union
 
 import numpy as np
 import yt  # type: ignore
+import pyxsim # type: ignore
 from astropy.table import Table
-from pyxsim import CIESourceModel  # type: ignore
 from unyt import unyt_array, unyt_quantity  # type: ignore
 
 if TYPE_CHECKING:
     from yt.data_objects.static_output import Dataset as YT_Dataset
-
+    from pyxsim.source_models.sources import SourceModel # type: ignore
     import opencosmo as oc
 
 # ---- define some constants ---- #
@@ -22,10 +22,12 @@ solar_metallicity = 0.012899  # value used internally in HACC
 
 def create_yt_dataset(
     data: Dict[str, oc.Dataset],
-    compute_xray_fields: Optional[bool] = False,
-    return_source_model: Optional[bool] = False,
-    source_model_kwargs: Optional[Dict[str, Any]] = {},
-) -> Union[YT_Dataset, Tuple[YT_Dataset, CIESourceModel]]:
+    compute_xray_fields: bool = False,
+    return_source_model: bool = False,
+    pyxsim_source_model: str = "CIESourceModel",
+    source_model_kwargs: Dict[str, Any] = {},
+    make_line_source_fields_kwargs: Dict[str, Any] = {},
+) -> Union[YT_Dataset, Tuple[YT_Dataset, SourceModel]]:
     """
     Converts particle data to a `yt` dataset. Note that `yt`
     is generally developed with AMR codes in mind, but support for
@@ -42,17 +44,30 @@ def create_yt_dataset(
         A dictionary of particle datasets. Must include at least positions and masses.
     compute_xray_fields : bool, optional
         Whether or not to compute X-ray luminosities with `pyxsim`.
-        Uses `CIESourceModel`, which considers thermal emission from gas assuming
+        Uses `CIESourceModel` by default, which considers thermal emission from gas assuming
         collisional ionization equilibrium.
     return_source_model : bool, optional
         Whether or not to return the `pyxsim` source model for further interaction,
         such as computing additional luminosities in different frequency bands
         or generating synthetic observations.
+    pyxsim_source_model : str, optional
+        Which `SourceModel` to use for generating X-ray emission. See `pyxsim's` 
+        `documentation <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html#>`_ for options.
+        Some source models have required inputs, which can be set here using the `source_model_kwargs` parameter. 
+        If `CIESourceModel` is chosen, an emission measure field will be computed, and default values will be used for all source model parameters.
+        For other source models (e.g. `PowerLawSourceModel` or `LineSourceModel`), additional particle data columns
+        will need to be defined before calling this function. Alternatively, one could call `create_yt_dataset()` with
+        `compute_xray_fields=False` and manually define the additional fields and pyxsim source models using the 
+        obtained yt dataset. See pyxsim's `cookbook <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/cookbook/index.html#>`_ for examples.
     source_model_kwargs : dict, optional
-        Keyword arguments passed to the `CIESourceModel` constructor in `pyxsim`.
+        Keyword arguments passed to the source model constructor in `pyxsim`.
         These can include parameters like `emin`, `emax`, `nbins`, `abund_table`, etc.,
-        to control the spectral resolution and emission model behavior. If `None`,
-        default values will be used for all source model parameters.
+        to control the spectral resolution and emission model behavior. Available parameters
+        vary between source model types (`docs <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html#>`_).
+    make_line_source_fields_kwargs : dict, optional
+        Dictionary for setting keyword arguments of pyxsim's `make_line_source_fields()` function (`ref <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/api/source_models.html#pyxsim.source_models.sources.SourceModel.make_line_source_fields#>`_). 
+        This is only relevent if ``pyxsim_source_model=="LineSourceModel"``. The `ds` yt dataset parameter will be set internally by `create_yt_dataset()`, 
+        so `ds` should not be set to be set in this `make_line_source_fields_kwargs`.
 
     Returns
     -------
@@ -61,7 +76,7 @@ def create_yt_dataset(
         (e.g., X-ray luminosities) if requested.
 
     source_model : pyxsim.source_models.CIESourceModel, optional
-        Returned only if `return_source_model=True`.
+        Returned only if ``return_source_model==True``.
     """
 
     data_dict: Dict[
@@ -203,38 +218,42 @@ def create_yt_dataset(
             # This calls CIESourceModel, which assumes ionization equilibrium.
             # User can define custom parameters
 
-            ds.add_field(
-                ("gas", "emission_measure"),
-                function=_emission_measure,
-                units="cm**-3",
-                sampling_type="particle",
-            )
-
-            default_kwargs = {
-                "model": "apec",
-                "emin": 0.1,  # keV
-                "emax": 10.0,  # keV
-                "nbins": 1000,
-                "Zmet": ("gas", "metallicity"),  # Zsun
-                "temperature_field": ("gas", "temperature"),
-                "emission_measure_field": ("gas", "emission_measure"),
-                "h_fraction": "xh",
-            }
-
-            if source_model_kwargs is None:
-                source_model_kwargs = {}
+            if pyxsim_source_model == "CIESourceModel":
+                ds.add_field(
+                    ("gas", "emission_measure"),
+                    function=_emission_measure,
+                    units="cm**-3",
+                    sampling_type="particle",
+                )
+                default_kwargs = {
+                    "model": "apec",
+                    "emin": 0.1,  # keV
+                    "emax": 10.0,  # keV
+                    "nbins": 1000,
+                    "Zmet": ("gas", "metallicity"),  # Zsun
+                    "temperature_field": ("gas", "temperature"),
+                    "emission_measure_field": ("gas", "emission_measure"),
+                    "h_fraction": "xh",
+                }
+            else:
+                default_kwargs = {}
 
             # update with user-defined settings
             source_model_kwargs = {**default_kwargs, **source_model_kwargs}
 
             # define xray source model (
             # NOTE: this will download a few fits files needed for the analysis)
-            source = CIESourceModel(**source_model_kwargs)
+            source = getattr(pyxsim, pyxsim_source_model)(**source_model_kwargs)
 
             # populate yt dataset with xray fields
-            source.make_source_fields(
-                ds, source_model_kwargs["emin"], source_model_kwargs["emax"]
-            )
+            if pyxsim_source_model == "LineSourceModel":
+                source.make_line_source_fields(
+                    ds, **make_line_source_fields_kwargs,  
+                )
+            else:
+                source.make_source_fields(
+                    ds, source_model_kwargs["emin"], source_model_kwargs["emax"]
+                )
 
             if return_source_model:
                 return ds, source

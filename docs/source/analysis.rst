@@ -52,24 +52,23 @@ Simulating X-ray Emission with pyXSIM
 
 To include synthetic X-ray emissivity and luminosity fields from gas particles in your yt dataset, you can enable the ``compute_xray_fields`` flag when calling :func:`opencosmo.analysis.create_yt_dataset`. This integrates with `pyXSIM <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/>`_, a toolkit for generating synthetic X-ray observations from simulation data.
 
-When ``compute_xray_fields=True``, the function internally creates a :class:`pyxsim.CIESourceModel` using the particle data and attaches the following derived fields to the `yt` dataset:
+When ``compute_xray_fields=True``, the function internally creates a :class:`pyxsim.SourceModel` using the particle data. By default, this creates a :class:`pyxsim.CIESourceModel` object and attaches the following derived fields to the `yt` dataset:
 
 - X-ray emissivity per particle
 - X-ray luminosity in a user-specified energy band
 - Any additional fields required for photon sampling (e.g., emission measure)
 
-You can also pass model-specific configurations via the ``source_model_kwargs`` argument, which is forwarded directly to the :class:`pyxsim.CIESourceModel` constructor. Common options include:
+Note that it is possible to use other source model types through this interface (e.g. ``PowerLawSourceModel`` or ``LineSourceModel``); however, additional particle data columns will need to be derived to use this functionality. Model-specific configurations can be specified via the ``source_model_kwargs`` argument, which is forwarded directly to the source model's constructor. Common options include:
 
 - ``emin`` (float): Minimum photon energy in keV (default: 0.1)
 - ``emax`` (float): Maximum photon energy in keV (default: 10.0)
 - ``nbins`` (int): Number of bins across the energy band (default: 1000)
 - ``model`` (str): which emission model to use (default: "apec")
 
-For the full list of options, see `CIESourceModel <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/api/source_models.html#pyxsim.source_models.thermal_sources.CIESourceModel>`_.
+For the full list of options and requirements, refer to pyxSIM's `documentation <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html>`_.
+If ``return_source_model=True``, the function will return a 2-tuple ``(ds, source_model)``, where ``source_model`` is the ``SourceModel`` instance. This allows further customization or photon generation using pyXSIM directly. Note that the ``compute_xray_fields`` option is provided for convenience, and that pyxSIM's functionality can be equivalently accessed by manually defining the source model and any required fields directly on the yt dataset. There are many examples of how to do this in the pyxSIM `cookbook <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/cookbook/index.html>`_. 
 
-If ``return_source_model=True``, the function will return a 2-tuple ``(ds, source_model)``, where ``source_model`` is the ``CIESourceModel`` instance. This allows further customization or photon generation using pyXSIM directly.
-
-We will now edit the code-block from before to compute X-ray luminosities:
+We will now edit the code-block from before to compute X-ray luminosities using the ``CIESourceModel``:
 
 .. code-block:: python
 
@@ -105,7 +104,7 @@ The two primary functions for this purpose are:
 - :func:`opencosmo.analysis.visualize_halo` — a simple 2x2 panel plot for one halo
 - :func:`opencosmo.analysis.halo_projection_array` — a customizable grid of halos and fields
 
-These use yt under the hood, and are useful for visually inspecting halos with minimal input required. Animated versions of the visualizations outputted by either of these functions can be made using :func:`opencosmo.analysis.animate_halos`.
+These use yt under the hood, and are useful for visually inspecting halos with minimal input required. Animated versions of the visualizations outputted by either of these functions can be made using :func:`opencosmo.analysis.animate_halos`. Note that animated versions of any of these figures can be made with :func:`opencosmo.analysis.animate_halos`.
 
 
 Quick Projections
