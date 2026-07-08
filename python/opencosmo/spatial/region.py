@@ -194,7 +194,9 @@ class SkyboxRegion:
         cos_dec = min(np.cos(np.radians(dec0)), np.cos(np.radians(dec1)))
         margin = np.degrees(max_pixrad(nside)) / max(cos_dec, 1e-6)
         keep = (strip_ra >= ra0 - margin) & (strip_ra <= ra1 + margin)
-        return strip[keep]
+        # query_strip does not return pixels in ascending order; downstream index
+        # projection requires the intersection pixels to be sorted.
+        return np.sort(strip[keep])
 
     def into_base_convention(self, *args, **kwargs):
         return self
