@@ -5,7 +5,13 @@ from typing import TYPE_CHECKING, Any, Iterable, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from healpy import ang2vec, query_disc, query_polygon  # type: ignore
+from healpy import (  # type: ignore
+    ang2vec,
+    max_pixrad,
+    pix2ang,
+    query_disc,
+    query_strip,
+)
 
 from opencosmo.index import get_length, into_array
 from opencosmo.spatial.models import (
@@ -154,9 +160,6 @@ class SkyboxRegion:
             min(p1.dec.deg, p2.dec.deg),
             max(p1.dec.deg, p2.dec.deg),
         )
-        ra = np.array([p1.ra.deg, p1.ra.deg, p2.ra.deg, p2.ra.deg])
-        dec = np.array([p1.dec.deg, p2.dec.deg, p2.dec.deg, p1.dec.deg])
-        self.__vec = ang2vec(ra, dec, lonlat=True)
 
     def __repr__(self):
         ra0, ra1 = self.__ra_bounds
@@ -174,7 +177,24 @@ class SkyboxRegion:
         return self.__dec_bounds
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
-        return query_polygon(nside, self.__vec, inclusive=True, nest=nest)
+        # A skybox is bounded by lines of constant declination, not the great
+        # circles that query_polygon draws between corners. A great circle
+        # between two equal-declination corners bows toward the nearer pole, so
+        # query_polygon would omit pixels along the box's lower-declination edge.
+        # Instead, select the full declination band with query_strip and then
+        # restrict to the RA bounds.
+        ra0, ra1 = self.__ra_bounds
+        dec0, dec1 = self.__dec_bounds
+        theta1 = np.radians(90.0 - dec1)
+        theta2 = np.radians(90.0 - dec0)
+        strip = query_strip(nside, theta1, theta2, inclusive=True, nest=nest)
+        strip_ra, _ = pix2ang(nside, strip, lonlat=True, nest=nest)
+        # Widen the RA window by one pixel radius (corrected for declination) so
+        # pixels straddling the RA edges are treated as intersecting.
+        cos_dec = min(np.cos(np.radians(dec0)), np.cos(np.radians(dec1)))
+        margin = np.degrees(max_pixrad(nside)) / max(cos_dec, 1e-6)
+        keep = (strip_ra >= ra0 - margin) & (strip_ra <= ra1 + margin)
+        return strip[keep]
 
     def into_base_convention(self, *args, **kwargs):
         return self
