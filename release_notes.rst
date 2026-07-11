@@ -1,10 +1,10 @@
-opencosmo 1.3.4 (2026-06-09)
+opencosmo 1.3.6 (2026-07-08)
 ============================
 
 Bugfixes
 --------
 
-- Fix a bug that caused data to be fetched as single values rather than arrays in certain evaluation contexts.
+- Fix a bug that could cause :py:meth:`box_search <opencosmo.Lightcone.box_search>` to exclude objects near the declination limit that should be included.
 
 
 
