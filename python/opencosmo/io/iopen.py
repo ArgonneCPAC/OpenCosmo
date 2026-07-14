@@ -147,21 +147,27 @@ def __open_single_file(
             # Structure collection
             return occ.StructureCollection.open([target], **open_kwargs)
     elif target["dataset_groups"]:
-        # Sometimes, lightcones have multiple datasets per slice
-        if all(
-            group_type == FileType.LIGHTCONE
-            for group_type in target["dataset_group_types"].values()
-        ):
-            return occ.Lightcone.open([target])
-
-        # Lightcone structure collection
-        elif (
+        # A lightcone structure collection has a halo_properties or
+        # galaxy_properties group alongside its linked datasets. A plain
+        # lightcone of a single properties type is stored as a dataset_target
+        # rather than a dataset_group, so the presence of a properties group
+        # here unambiguously marks a structure collection. This must be checked
+        # before the plain-lightcone case below, since every group in a
+        # halo_properties + galaxy_properties collection is lightcone-typed.
+        if (
             target["dataset_group_types"].get("halo_properties") == FileType.LIGHTCONE
             or target["dataset_group_types"].get("galaxy_properties")
             == FileType.LIGHTCONE
         ):
             result = sc.StructureCollection.open([target], **open_kwargs)
             return result
+
+        # Sometimes, lightcones have multiple datasets per slice
+        elif all(
+            group_type == FileType.LIGHTCONE
+            for group_type in target["dataset_group_types"].values()
+        ):
+            return occ.Lightcone.open([target])
 
         datasets = {
             name: __open_dataset_targets_for_sim_collection(

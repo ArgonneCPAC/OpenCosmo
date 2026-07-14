@@ -1,1 +1,1 @@
-Fix a bug that prevented opening lightcone structure collections built from halo properties combined with halo profiles or with galaxy properties (without galaxy particles).
+Fix several bugs affecting lightcone structure collections. Collections built from halo properties combined with halo profiles, or with galaxy properties (without galaxy particles), can now be opened. Writing a halo properties + galaxy properties collection and reopening it now correctly produces a structure collection rather than a plain lightcone.
