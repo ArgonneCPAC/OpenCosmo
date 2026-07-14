@@ -1,0 +1,1 @@
+Fix a bug that prevented opening lightcone structure collections built from halo properties combined with halo profiles or with galaxy properties (without galaxy particles).

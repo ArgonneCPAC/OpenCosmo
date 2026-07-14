@@ -241,9 +241,13 @@ def build_lightcone_structure_collection(
                 raise ValueError(
                     "All datasets must have the same set of redshift steps!"
                 )
-    if (
-        len(link_sources.get("galaxy_properties", [])) > 0
-        and "galaxy_properties" in link_targets
+    # NOTE: link_targets is a defaultdict, so accessing link_targets[source_type]
+    # in the validation loop above may have created an empty "galaxy_properties"
+    # entry. Use a truthy check (non-empty dict) rather than `in` so that the
+    # "galaxy properties but no galaxy particles" case does not fall into the
+    # galaxy-particles branch below.
+    if len(link_sources.get("galaxy_properties", [])) > 0 and link_targets.get(
+        "galaxy_properties"
     ):
         # Galaxy properties and galaxy particles
         galaxy_datasets = [
@@ -279,6 +283,18 @@ def build_lightcone_structure_collection(
             link_targets["halo_properties"]["galaxy_properties"] = collection  # type: ignore[assignment]
         else:
             return collection
+
+    elif (
+        len(link_sources.get("halo_properties", [])) > 0
+        and len(link_sources.get("galaxy_properties", [])) > 0
+    ):
+        # Halo properties and galaxy properties, but no galaxy particles. Attach
+        # the galaxy properties as a plain per-step linked dataset under the
+        # halos, exactly like halo profiles.
+        link_targets["halo_properties"]["galaxy_properties"] = [
+            io.iopen.open_single_dataset(t, bypass_lightcone=True, bypass_mpi=True)
+            for t in link_sources["galaxy_properties"]
+        ]
 
     halo_source_list = link_sources["halo_properties"]
     halo_datasets = [
