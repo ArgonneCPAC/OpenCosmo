@@ -85,6 +85,7 @@ def write_parallel(file: Path, file_schema: Schema):
     group = comm.Get_group()
     new_group = group.Incl(has_data)
     new_comm = comm.Create(new_group)
+    group.Free()
     if new_comm == MPI.COMM_NULL:
         return cleanup_mpi(comm, new_comm, new_group)
 
@@ -161,13 +162,20 @@ def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
         has_child = comm.allgather(child_name in schema.children)
         if all(has_child):
             new_comm = comm
+            new_group = None
         else:
             ranks_to_include = [i for i in range(len(has_child)) if has_child[i]]
             group = comm.Get_group()
             new_group = group.Incl(ranks_to_include)
             new_comm = comm.Create(new_group)
+            group.Free()
         if child_name in schema.children:
             verify_schemas(schema.children[child_name], new_comm)
+        # Free only the sub-communicator/group we created; never the parent comm.
+        if new_group is not None:
+            if new_comm != MPI.COMM_NULL:
+                new_comm.Free()
+            new_group.Free()
 
 
 def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
@@ -269,6 +277,7 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
         participating = comm.allgather(colwriter is not None)
         if all(participating):
             new_comm = comm
+            new_group = None
         else:
             participating_ranks = [
                 i for i in range(len(participating)) if participating[i]
@@ -276,22 +285,31 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
             group = comm.Get_group()
             new_group = group.Incl(participating_ranks)
             new_comm = comm.Create(new_group)
-        if colwriter is None:
-            continue
+            group.Free()
 
-        has_update = new_comm.allgather(
-            colwriter is not None and colwriter.has_transformation
-        )
-        if any(has_update) and not all(has_update):
-            raise ValueError("Update was not consistent across ranks!")
-        elif not any(has_update):
-            continue
-        assert colwriter is not None
-        data = colwriter.get_data(new_comm)
-        new_writer = ColumnWriter.from_numpy_array(
-            data, colwriter.combine_strategy, colwriter.attrs
-        )
-        schema.columns[cn] = new_writer
+        try:
+            if colwriter is None:
+                continue
+
+            has_update = new_comm.allgather(
+                colwriter is not None and colwriter.has_transformation
+            )
+            if any(has_update) and not all(has_update):
+                raise ValueError("Update was not consistent across ranks!")
+            elif not any(has_update):
+                continue
+            assert colwriter is not None
+            data = colwriter.get_data(new_comm)
+            new_writer = ColumnWriter.from_numpy_array(
+                data, colwriter.combine_strategy, colwriter.attrs
+            )
+            schema.columns[cn] = new_writer
+        finally:
+            # Free only the sub-communicator/group we created; never the parent.
+            if new_group is not None:
+                if new_comm != MPI.COMM_NULL:
+                    new_comm.Free()
+                new_group.Free()
 
     child_names = get_all_keys(schema.children, comm)
     for cn in child_names:
@@ -455,7 +473,9 @@ def __write_column(
         group = comm.Get_group()
         new_group = group.Incl(participating_ranks)
         new_comm = comm.Create(new_group)
+        group.Free()
     else:
+        new_group = None
         new_comm = None
 
     match strategy:
@@ -480,9 +500,12 @@ def __write_column(
                 data += ds[:]
                 ds[:] = data
 
+    # Free only the sub-communicator/group we created; never the parent comm.
+    # Ranks excluded from the sub-communicator get COMM_NULL (which must not be
+    # freed) but still own a group handle that must be released.
     if new_comm is not None and new_comm != MPI.COMM_NULL:
-        assert new_group is not None
         new_comm.Free()
+    if new_group is not None:
         new_group.Free()
     if comm is not None:
         comm.Barrier()
