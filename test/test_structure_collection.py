@@ -231,6 +231,57 @@ def test_write_lightcone_structure_combinations(
     verify_collection_links(reopened)
 
 
+def test_lightcone_ignore_empty(lightcone_files):
+    """
+    On a lightcone structure collection, ignore_empty (the default) should drop
+    halos that are empty in the opened linked datasets, considering only the
+    datasets that were actually opened. ignore_empty=False keeps every halo.
+    """
+    paths = [
+        p
+        for component in ("halo_properties", "halo_profiles", "galaxy_properties")
+        for p in lightcone_files[component]
+    ]
+
+    kept_all = oc.open(*paths, ignore_empty=False)
+    kept_nonempty = oc.open(*paths)
+
+    # Compute the expected kept set: halos with both a profile and a galaxy,
+    # since both datasets were opened.
+    metadata = kept_all["halo_properties"].get_metadata()
+    has_profile = metadata["sod_profile_idx"] != -1
+    has_galaxy = metadata["galaxyproperties_size"] != 0
+    expected = int((has_profile & has_galaxy).sum())
+
+    assert len(kept_nonempty) == expected
+    assert len(kept_nonempty) < len(kept_all)
+
+    # Every remaining halo must actually have both links populated.
+    for halo in kept_nonempty.take(20).halos():
+        assert "halo_profiles" in halo and len(halo["halo_profiles"]) > 0
+        assert "galaxy_properties" in halo and len(halo["galaxy_properties"]) > 0
+
+
+def test_lightcone_ignore_empty_only_considers_opened(lightcone_files):
+    """
+    Halos empty in an unopened dataset must not be dropped. Opening only halo
+    profiles should keep every halo that has a profile, regardless of whether
+    those halos have particles or galaxies (which are not opened here).
+    """
+    paths = [
+        p
+        for component in ("halo_properties", "halo_profiles")
+        for p in lightcone_files[component]
+    ]
+    collection = oc.open(*paths)
+
+    metadata = oc.open(*paths, ignore_empty=False)["halo_properties"].get_metadata()
+    expected = int((metadata["sod_profile_idx"] != -1).sum())
+
+    assert len(collection) == expected
+    assert len(collection["halo_profiles"]) == expected
+
+
 def test_evaluate_into_galaxy_properties(halos_600_path, galaxies_600_path):
     def offset(halo_properties, galaxy_properties):
         dx = galaxy_properties["gal_com_x"] - halo_properties["fof_halo_center_x"]

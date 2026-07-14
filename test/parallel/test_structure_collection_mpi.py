@@ -255,9 +255,10 @@ def test_write_lightcone_structure_combinations(
 
     # Every linked dataset must survive the write unchanged, including sparse
     # idx-based links like halo profiles. Lengths are compared globally since
-    # each rank holds only its partition.
+    # each rank holds only its partition. Iterate in a deterministic (sorted)
+    # order so the collective allgather calls line up across ranks.
     comm = get_comm_world()
-    for name in expected_keys:
+    for name in sorted(expected_keys):
         if name in ("halo_properties", "galaxy_properties", "galaxies"):
             continue
         reopened_total = sum(comm.allgather(len(reopened[name])))
