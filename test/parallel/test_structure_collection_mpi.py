@@ -72,6 +72,83 @@ def per_test_dir(
             shutil.rmtree(path, ignore_errors=True)
 
 
+@pytest.fixture
+def lightcone_files(lightcone_path):
+    """Map a component name to the per-step files that provide it."""
+
+    def files(stem):
+        return [
+            lightcone_path / step / f"{stem}.hdf5" for step in ("step_600", "step_601")
+        ]
+
+    return {
+        "halo_properties": files("haloproperties"),
+        "halo_particles": files("haloparticles"),
+        "halo_profiles": files("haloprofiles"),
+        "galaxy_properties": files("galaxyproperties"),
+        "galaxy_particles": files("galaxyparticles"),
+    }
+
+
+# Each entry is the set of components combined into a lightcone structure
+# collection and the dataset keys we expect the resulting collection to expose.
+LIGHTCONE_COMBINATIONS = {
+    "halo_particles": (
+        ["halo_properties", "halo_particles"],
+        {
+            "agn_particles",
+            "dm_particles",
+            "gas_particles",
+            "star_particles",
+            "halo_properties",
+        },
+    ),
+    "halo_profiles": (
+        ["halo_properties", "halo_profiles"],
+        {"halo_profiles", "halo_properties"},
+    ),
+    "halo_particles_profiles": (
+        ["halo_properties", "halo_particles", "halo_profiles"],
+        {
+            "agn_particles",
+            "dm_particles",
+            "gas_particles",
+            "star_particles",
+            "halo_profiles",
+            "halo_properties",
+        },
+    ),
+    "halo_particles_profiles_galaxy_properties": (
+        ["halo_properties", "halo_particles", "halo_profiles", "galaxy_properties"],
+        {
+            "agn_particles",
+            "dm_particles",
+            "gas_particles",
+            "star_particles",
+            "halo_profiles",
+            "galaxy_properties",
+            "halo_properties",
+        },
+    ),
+    "halo_galaxy_properties": (
+        ["halo_properties", "galaxy_properties"],
+        {"galaxy_properties", "halo_properties"},
+    ),
+    "halo_galaxy_properties_particles": (
+        ["halo_properties", "galaxy_properties", "galaxy_particles"],
+        {"galaxies", "halo_properties"},
+    ),
+    "galaxy_properties_particles": (
+        ["galaxy_properties", "galaxy_particles"],
+        {"star_particles", "galaxy_properties"},
+    ),
+}
+
+COMBINATION_PARAMS = [
+    pytest.param(c, k, id=name) for name, (c, k) in LIGHTCONE_COMBINATIONS.items()
+]
+
+
 def verify_halo(halo):
     gravity_particle_tags = (
         halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
@@ -93,17 +170,75 @@ def verify_halo(halo):
         assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
 
 
-@pytest.mark.parallel(nprocs=4)
-def test_open_lightcone_structure_with_galaxies(
-    halos_600_path, galaxies_600_path, halos_601_path, galaxies_601_path
-):
-    ds = oc.open(
-        *halos_600_path, *galaxies_600_path, *halos_601_path, *galaxies_601_path
-    )
-    ds = ds.filter(oc.col("sod_halo_mass") > 1e14).take(10)
+def verify_structure_links(structure):
+    """Verify every linked dataset in a structure points back to its host."""
+    host_tag = structure["halo_properties"]["fof_halo_tag"]
+    for name, linked in structure.items():
+        if name == "halo_properties":
+            continue
+        if name == "halo_profiles":
+            tags = linked.select("fof_halo_bin_tag").get_data("numpy")
+            assert np.all(tags == host_tag)
+        elif name == "galaxy_properties":
+            tags = linked.select("fof_halo_tag").get_data("numpy")
+            assert np.all(tags == host_tag)
+        elif name == "galaxies":
+            for galaxy in linked.galaxies():
+                assert galaxy["galaxy_properties"]["fof_halo_tag"] == host_tag
+        elif "particles" in name:
+            tags = linked.select("fof_halo_tag").get_data("numpy")
+            assert np.all(tags == host_tag)
 
-    for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10).halos():
-        verify_halo(halo)
+
+def verify_collection_links(collection, n=10):
+    """Verify links across a structure collection of halos or galaxies."""
+    if "halo_properties" in collection.keys():
+        subset = collection.filter(oc.col("sod_halo_mass") > 1e13).take(n)
+        for structure in subset.halos():
+            verify_structure_links(structure)
+    else:
+        for galaxy in collection.take(50).galaxies():
+            if "star_particles" not in galaxy:
+                continue
+            tags = galaxy["star_particles"].select("gal_tag").get_data("numpy")
+            assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("components,expected_keys", COMBINATION_PARAMS)
+def test_open_lightcone_structure_combinations(
+    lightcone_files, components, expected_keys
+):
+    paths = [p for component in components for p in lightcone_files[component]]
+    collection = oc.open(*paths)
+
+    assert isinstance(collection, oc.StructureCollection)
+    assert set(collection.keys()) == expected_keys
+
+    verify_collection_links(collection)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("components,expected_keys", COMBINATION_PARAMS)
+def test_write_lightcone_structure_combinations(
+    lightcone_files, components, expected_keys, per_test_dir
+):
+    paths = [p for component in components for p in lightcone_files[component]]
+    collection = oc.open(*paths)
+    # Reduce to a manageable subset before writing (the common usage pattern).
+    if "halo_properties" in collection.keys():
+        collection = collection.filter(oc.col("fof_halo_mass") > 1e14).take(1000)
+    else:
+        collection = collection.take(1000)
+
+    output = per_test_dir / "collection.hdf5"
+    oc.write(output, collection)
+    reopened = oc.open(output)
+
+    assert isinstance(reopened, oc.StructureCollection)
+    assert set(reopened.keys()) == expected_keys
+
+    verify_collection_links(reopened)
 
 
 @pytest.mark.parallel(nprocs=4)

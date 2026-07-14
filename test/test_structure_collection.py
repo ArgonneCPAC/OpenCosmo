@@ -148,21 +148,10 @@ def verify_structure_links(structure):
             assert np.all(tags == host_tag)
 
 
-@pytest.mark.parametrize(
-    "components,expected_keys",
-    [pytest.param(c, k, id=name) for name, (c, k) in LIGHTCONE_COMBINATIONS.items()],
-)
-def test_open_lightcone_structure_combinations(
-    lightcone_files, components, expected_keys
-):
-    paths = [p for component in components for p in lightcone_files[component]]
-    collection = oc.open(*paths)
-
-    assert isinstance(collection, oc.StructureCollection)
-    assert set(collection.keys()) == expected_keys
-
-    if "halo_properties" in expected_keys:
-        subset = collection.filter(oc.col("sod_halo_mass") > 1e13).take(10)
+def verify_collection_links(collection, n=10):
+    """Verify links across a structure collection of halos or galaxies."""
+    if "halo_properties" in collection.keys():
+        subset = collection.filter(oc.col("sod_halo_mass") > 1e13).take(n)
         n_checked = 0
         for structure in subset.halos():
             verify_structure_links(structure)
@@ -178,6 +167,46 @@ def test_open_lightcone_structure_combinations(
             assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
             n_checked += 1
         assert n_checked > 0
+
+
+COMBINATION_PARAMS = [
+    pytest.param(c, k, id=name) for name, (c, k) in LIGHTCONE_COMBINATIONS.items()
+]
+
+
+@pytest.mark.parametrize("components,expected_keys", COMBINATION_PARAMS)
+def test_open_lightcone_structure_combinations(
+    lightcone_files, components, expected_keys
+):
+    paths = [p for component in components for p in lightcone_files[component]]
+    collection = oc.open(*paths)
+
+    assert isinstance(collection, oc.StructureCollection)
+    assert set(collection.keys()) == expected_keys
+
+    verify_collection_links(collection)
+
+
+@pytest.mark.parametrize("components,expected_keys", COMBINATION_PARAMS)
+def test_write_lightcone_structure_combinations(
+    lightcone_files, components, expected_keys, tmp_path
+):
+    paths = [p for component in components for p in lightcone_files[component]]
+    collection = oc.open(*paths)
+    # Reduce to a manageable subset before writing (the common usage pattern).
+    if "halo_properties" in collection.keys():
+        collection = collection.filter(oc.col("fof_halo_mass") > 1e14).take(1000)
+    else:
+        collection = collection.take(1000)
+
+    output = tmp_path / "collection.hdf5"
+    oc.write(output, collection)
+    reopened = oc.open(output)
+
+    assert isinstance(reopened, oc.StructureCollection)
+    assert set(reopened.keys()) == expected_keys
+
+    verify_collection_links(reopened)
 
 
 def test_evaluate_into_galaxy_properties(halos_600_path, galaxies_600_path):
@@ -201,60 +230,6 @@ def test_evaluate_into_galaxy_properties(halos_600_path, galaxies_600_path):
     )
     for halo in ds.halos():
         _ = halo["galaxy_properties"].select("gal_offset").get_data()
-
-
-def test_open_lightcone_structure(halos_600_path, halos_601_path):
-    ds = oc.open(*halos_600_path, *halos_601_path)
-    for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10).halos():
-        gravity_particle_tags = (
-            halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
-        )
-        assert np.all(gravity_particle_tags == halo["halo_properties"]["fof_halo_tag"])
-        halo_bin_tags = (
-            halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
-        )
-        assert np.all(halo_bin_tags == halo["halo_properties"]["fof_halo_tag"])
-
-
-def test_open_lightcone_galaxy_structure_collection(
-    galaxies_600_path,
-    galaxies_601_path,
-):
-    ds = oc.open(*galaxies_600_path, *galaxies_601_path)
-    for galaxy in ds.take(100).galaxies():
-        if "star_particles" not in galaxy:
-            continue
-        tags = galaxy["star_particles"].select("gal_tag").get_data("numpy")
-        assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
-
-
-def test_open_lightcone_structure_with_galaxies(
-    halos_600_path, galaxies_600_path, halos_601_path, galaxies_601_path
-):
-    ds = oc.open(
-        *halos_600_path, *galaxies_600_path, *halos_601_path, *galaxies_601_path
-    )
-    ds = ds.filter(oc.col("sod_halo_mass") > 1e14).take(10)
-
-    for halo in ds.filter(oc.col("sod_halo_mass") > 1e14).take(10).halos():
-        gravity_particle_tags = (
-            halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
-        )
-        assert np.all(gravity_particle_tags == halo["halo_properties"]["fof_halo_tag"])
-        halo_bin_tags = (
-            halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
-        )
-        assert np.all(halo_bin_tags == halo["halo_properties"]["fof_halo_tag"])
-        for galaxy in halo["galaxies"].galaxies():
-            assert (
-                galaxy["galaxy_properties"]["fof_halo_tag"]
-                == halo["halo_properties"]["fof_halo_tag"]
-            )
-
-            if "star_particles" not in galaxy:
-                continue
-            tags = galaxy["star_particles"].select("gal_tag").get_data("numpy")
-            assert np.all(tags == galaxy["galaxy_properties"]["gal_tag"])
 
 
 def test_write_lightcone_structure(halos_600_path, halos_601_path, tmp_path):
