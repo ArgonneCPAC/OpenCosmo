@@ -1,10 +1,11 @@
-opencosmo 1.3.6 (2026-07-08)
+opencosmo 1.3.7 (2026-07-14)
 ============================
 
 Bugfixes
 --------
 
-- Fix a bug that could cause :py:meth:`box_search <opencosmo.Lightcone.box_search>` to exclude objects near the declination limit that should be included.
+- Fix several bugs affecting lightcone structure collections. Collections built from halo properties combined with halo profiles, or with galaxy properties (without galaxy particles), can now be opened. Writing a halo properties + galaxy properties collection and reopening it now correctly produces a structure collection rather than a plain lightcone. Sparse idx-based links (such as halo profiles, which only exist for a subset of halos) are now written correctly, so writing and reopening a collection containing halo profiles no longer fails or corrupts the links. The ``ignore_empty`` option now takes effect on lightcone structure collections, and only considers the linked datasets that were actually opened, so structures are no longer dropped based on links the user did not request. (#259)
+- Fix a bug that could cause MPI writes to crash due to a failure to clean up subcommunicators
 
 
 
