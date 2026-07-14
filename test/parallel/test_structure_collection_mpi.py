@@ -149,6 +149,26 @@ COMBINATION_PARAMS = [
 ]
 
 
+def reduce_for_write(collection, components):
+    """Reduce a collection to a manageable size before writing.
+
+    Particles only exist for halos above ~10**13.5, so filtering particle
+    collections by mass loses no linked data while keeping the write small.
+    Collections without particles (e.g. halo profiles, which only exist for a
+    sparse subset of halos) are written in full so that the sparse idx-based
+    links are exercised -- a mass filter would keep only massive halos, which
+    all have profiles, and would hide bugs in how sparse links are written.
+    """
+    if "halo_properties" not in collection.keys():
+        # Galaxy-only collection: no sparse profile links to preserve, so a
+        # plain subset keeps the write small.
+        return collection.take(1000)
+    has_particles = any("particles" in component for component in components)
+    if has_particles:
+        return collection.filter(oc.col("fof_halo_mass") > 10**13.5)
+    return collection
+
+
 def verify_halo(halo):
     gravity_particle_tags = (
         halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
@@ -224,12 +244,7 @@ def test_write_lightcone_structure_combinations(
     lightcone_files, components, expected_keys, per_test_dir
 ):
     paths = [p for component in components for p in lightcone_files[component]]
-    collection = oc.open(*paths)
-    # Reduce to a manageable subset before writing (the common usage pattern).
-    if "halo_properties" in collection.keys():
-        collection = collection.filter(oc.col("fof_halo_mass") > 1e14).take(1000)
-    else:
-        collection = collection.take(1000)
+    collection = reduce_for_write(oc.open(*paths), components)
 
     output = per_test_dir / "collection.hdf5"
     oc.write(output, collection)
@@ -237,6 +252,17 @@ def test_write_lightcone_structure_combinations(
 
     assert isinstance(reopened, oc.StructureCollection)
     assert set(reopened.keys()) == expected_keys
+
+    # Every linked dataset must survive the write unchanged, including sparse
+    # idx-based links like halo profiles. Lengths are compared globally since
+    # each rank holds only its partition.
+    comm = get_comm_world()
+    for name in expected_keys:
+        if name in ("halo_properties", "galaxy_properties", "galaxies"):
+            continue
+        reopened_total = sum(comm.allgather(len(reopened[name])))
+        original_total = sum(comm.allgather(len(collection[name])))
+        assert reopened_total == original_total
 
     verify_collection_links(reopened)
 

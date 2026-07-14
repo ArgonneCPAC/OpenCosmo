@@ -174,6 +174,26 @@ COMBINATION_PARAMS = [
 ]
 
 
+def reduce_for_write(collection, components):
+    """Reduce a collection to a manageable size before writing.
+
+    Particles only exist for halos above ~10**13.5, so filtering particle
+    collections by mass loses no linked data while keeping the write small.
+    Collections without particles (e.g. halo profiles, which only exist for a
+    sparse subset of halos) are written in full so that the sparse idx-based
+    links are exercised -- a mass filter would keep only massive halos, which
+    all have profiles, and would hide bugs in how sparse links are written.
+    """
+    if "halo_properties" not in collection.keys():
+        # Galaxy-only collection: no sparse profile links to preserve, so a
+        # plain subset keeps the write small.
+        return collection.take(1000)
+    has_particles = any("particles" in component for component in components)
+    if has_particles:
+        return collection.filter(oc.col("fof_halo_mass") > 10**13.5)
+    return collection
+
+
 @pytest.mark.parametrize("components,expected_keys", COMBINATION_PARAMS)
 def test_open_lightcone_structure_combinations(
     lightcone_files, components, expected_keys
@@ -192,12 +212,7 @@ def test_write_lightcone_structure_combinations(
     lightcone_files, components, expected_keys, tmp_path
 ):
     paths = [p for component in components for p in lightcone_files[component]]
-    collection = oc.open(*paths)
-    # Reduce to a manageable subset before writing (the common usage pattern).
-    if "halo_properties" in collection.keys():
-        collection = collection.filter(oc.col("fof_halo_mass") > 1e14).take(1000)
-    else:
-        collection = collection.take(1000)
+    collection = reduce_for_write(oc.open(*paths), components)
 
     output = tmp_path / "collection.hdf5"
     oc.write(output, collection)
@@ -205,6 +220,13 @@ def test_write_lightcone_structure_combinations(
 
     assert isinstance(reopened, oc.StructureCollection)
     assert set(reopened.keys()) == expected_keys
+
+    # Every linked dataset must survive the write unchanged, including sparse
+    # idx-based links like halo profiles.
+    for name in expected_keys:
+        if name in ("halo_properties", "galaxy_properties", "galaxies"):
+            continue
+        assert len(reopened[name]) == len(collection[name])
 
     verify_collection_links(reopened)
 
