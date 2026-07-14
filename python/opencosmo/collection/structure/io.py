@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from functools import partial
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Mapping, Optional, TypeGuard
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional, TypeGuard
 
 import numpy as np
 
@@ -12,7 +12,7 @@ from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import structure as sc
-from opencosmo.collection.structure.handler import LINK_ALIASES
+from opencosmo.collection.structure.handler import LINK_ALIASES, make_links
 
 if TYPE_CHECKING:
     import h5py
@@ -26,10 +26,40 @@ ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
 }
 
 
-def remove_empty(dataset):
+def remove_empty(dataset, opened_datasets: Optional[Iterable[str]] = None):
+    """
+    Drop structures that are empty in the linked datasets that were actually
+    opened. When a user opens, say, particles and profiles together, they should
+    be able to assume every structure has both -- the source data keeps particles
+    and profiles separately, and this reproduces that "all present" guarantee. The
+    ignore_empty flag on open() exists to override it.
+
+    Only the link columns belonging to opened datasets are considered. The source
+    metadata always carries link columns for every data type in the file (e.g.
+    galaxy or particle links), so restricting to opened datasets avoids dropping
+    structures based on links the user never asked for.
+    """
     metadata = dataset.get_metadata()
+    _, columns_by_dataset = make_links(metadata.keys(), rename_galaxies=True)
+
+    if opened_datasets is not None:
+        # A nested galaxy collection is exposed as "galaxies" but keyed as
+        # "galaxy_properties" in the link targets; treat them as the same link.
+        opened = {
+            "galaxies" if name == "galaxy_properties" else name
+            for name in opened_datasets
+        }
+        columns_by_dataset = {
+            name: cols for name, cols in columns_by_dataset.items() if name in opened
+        }
+
+    relevant_columns = [col for cols in columns_by_dataset.values() for col in cols]
+    if not relevant_columns:
+        return dataset
+
     mask = np.ones(len(dataset), dtype=bool)
-    for name, col in metadata.items():
+    for name in relevant_columns:
+        col = metadata[name]
         if "size" in name:
             mask &= col != 0
         elif "idx" in name:
@@ -112,7 +142,8 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             link_targets["galaxy_properties"][name].append(dataset)
         else:
             raise ValueError(
-                f"Unknown data type for structure collection {target['header'].data_type}"
+                "Unknown data type for structure collection "
+                f"{target['header'].file.data_type}"
             )
 
     if (
@@ -120,7 +151,9 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
         or len(link_sources["galaxy_properties"]) > 1
     ):
         # Potentially a lightcone structure collection
-        return build_lightcone_structure_collection(link_sources, link_targets)
+        return build_lightcone_structure_collection(
+            link_sources, link_targets, ignore_empty
+        )
 
     halo_properties_target = None
     galaxy_properties_target = None
@@ -220,6 +253,7 @@ def _apply_offset_corrections(
 def build_lightcone_structure_collection(
     link_sources: dict[str, list[io.iopen.DatasetTarget]],
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
+    ignore_empty: bool = True,
 ):
     found_redshift_steps: set[int] = set()
     for source_type, source_list in link_sources.items():
@@ -241,9 +275,13 @@ def build_lightcone_structure_collection(
                 raise ValueError(
                     "All datasets must have the same set of redshift steps!"
                 )
-    if (
-        len(link_sources.get("galaxy_properties", [])) > 0
-        and "galaxy_properties" in link_targets
+    # NOTE: link_targets is a defaultdict, so accessing link_targets[source_type]
+    # in the validation loop above may have created an empty "galaxy_properties"
+    # entry. Use a truthy check (non-empty dict) rather than `in` so that the
+    # "galaxy properties but no galaxy particles" case does not fall into the
+    # galaxy-particles branch below.
+    if len(link_sources.get("galaxy_properties", [])) > 0 and link_targets.get(
+        "galaxy_properties"
     ):
         # Galaxy properties and galaxy particles
         galaxy_datasets = [
@@ -274,11 +312,29 @@ def build_lightcone_structure_collection(
             galaxy_target_datasets[target_type] = lc.Lightcone.from_datasets(
                 {ds.header.file.step: ds for ds in targets}  # type: ignore
             )
-        collection = sc.StructureCollection(galaxy_lightcone, galaxy_target_datasets)
         if len(link_sources.get("halo_properties", [])) > 0:
+            collection = sc.StructureCollection(
+                galaxy_lightcone, galaxy_target_datasets
+            )
             link_targets["halo_properties"]["galaxy_properties"] = collection  # type: ignore[assignment]
         else:
-            return collection
+            if ignore_empty:
+                galaxy_lightcone = remove_empty(
+                    galaxy_lightcone, galaxy_target_datasets.keys()
+                )
+            return sc.StructureCollection(galaxy_lightcone, galaxy_target_datasets)
+
+    elif (
+        len(link_sources.get("halo_properties", [])) > 0
+        and len(link_sources.get("galaxy_properties", [])) > 0
+    ):
+        # Halo properties and galaxy properties, but no galaxy particles. Attach
+        # the galaxy properties as a plain per-step linked dataset under the
+        # halos, exactly like halo profiles.
+        link_targets["halo_properties"]["galaxy_properties"] = [
+            io.iopen.open_single_dataset(t, bypass_lightcone=True, bypass_mpi=True)
+            for t in link_sources["galaxy_properties"]
+        ]
 
     halo_source_list = link_sources["halo_properties"]
     halo_datasets = [
@@ -322,6 +378,8 @@ def build_lightcone_structure_collection(
             output_targets_of_type[ds.header.file.step] = ds
 
         output_targets[target_type] = lc.Lightcone.from_datasets(output_targets_of_type)
+    if ignore_empty:
+        source_lightcone = remove_empty(source_lightcone, output_targets.keys())
     return sc.StructureCollection(source_lightcone, output_targets)
 
 
@@ -340,7 +398,9 @@ def __build_structure_collection(
             bypass_mpi=halo_properties_target is not None,
         )
         if ignore_empty and halo_properties_target is None:
-            source_dataset = remove_empty(source_dataset)
+            source_dataset = remove_empty(
+                source_dataset, link_targets["galaxy_properties"].keys()
+            )
         collection = sc.StructureCollection(
             source_dataset,
             link_targets["galaxy_properties"],
@@ -366,7 +426,9 @@ def __build_structure_collection(
             halo_properties_target, metadata_group="data_linked", bypass_lightcone=True
         )
         if ignore_empty:
-            source_dataset = remove_empty(source_dataset)
+            source_dataset = remove_empty(
+                source_dataset, link_targets["halo_properties"].keys()
+            )
 
         return sc.StructureCollection(
             source_dataset,
@@ -375,12 +437,22 @@ def __build_structure_collection(
 
 
 def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+    # An idx metadata column links each structure to at most one row in a target
+    # dataset, using -1 to mark structures with no linked row (e.g. halos without
+    # a profile). The target dataset is written containing only the linked rows,
+    # in structure order, so the rewritten idx must give each linked structure a
+    # contiguous 0-based index while preserving the -1 sentinels. Under MPI the
+    # target is concatenated across ranks, so each rank offsets its indices by the
+    # number of linked rows on the ranks before it.
+    valid = data >= 0
+    n_valid = int(valid.sum())
     if comm is None:
-        return np.arange(len(data))
-    lengths = comm.allgather(len(data))
-    offsets = np.insert(np.cumsum(lengths), 0, 0)
-    offset = offsets[comm.Get_rank()]
-    result = np.arange(offset, offset + len(data))
+        offset = 0
+    else:
+        counts = comm.allgather(n_valid)
+        offset = int(np.sum(counts[: comm.Get_rank()]))
+    result = np.full(len(data), -1, dtype=np.int64)
+    result[valid] = np.arange(offset, offset + n_valid)
     return result
 
 

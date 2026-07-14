@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from enum import Enum
-from functools import partial
+from functools import partial, reduce
 from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
 import h5py
@@ -147,21 +147,27 @@ def __open_single_file(
             # Structure collection
             return occ.StructureCollection.open([target], **open_kwargs)
     elif target["dataset_groups"]:
-        # Sometimes, lightcones have multiple datasets per slice
-        if all(
-            group_type == FileType.LIGHTCONE
-            for group_type in target["dataset_group_types"].values()
-        ):
-            return occ.Lightcone.open([target])
-
-        # Lightcone structure collection
-        elif (
+        # A lightcone structure collection has a halo_properties or
+        # galaxy_properties group alongside its linked datasets. A plain
+        # lightcone of a single properties type is stored as a dataset_target
+        # rather than a dataset_group, so the presence of a properties group
+        # here unambiguously marks a structure collection. This must be checked
+        # before the plain-lightcone case below, since every group in a
+        # halo_properties + galaxy_properties collection is lightcone-typed.
+        if (
             target["dataset_group_types"].get("halo_properties") == FileType.LIGHTCONE
             or target["dataset_group_types"].get("galaxy_properties")
             == FileType.LIGHTCONE
         ):
             result = sc.StructureCollection.open([target], **open_kwargs)
             return result
+
+        # Sometimes, lightcones have multiple datasets per slice
+        elif all(
+            group_type == FileType.LIGHTCONE
+            for group_type in target["dataset_group_types"].values()
+        ):
+            return occ.Lightcone.open([target])
 
         datasets = {
             name: __open_dataset_targets_for_sim_collection(
@@ -226,7 +232,7 @@ def __determine_multi_file_collection_type(targets: list[FileTarget]):
         ]:
             raise ValueError("Invalid combination of files!")
         if (
-            file_type == FileType.DATASET
+            file_type in (FileType.DATASET, FileType.LIGHTCONE)
             and target["dataset_targets"][0]["header"].file.data_type == "halo_profiles"
         ):
             particles_or_profiles.append(target)
@@ -268,7 +274,7 @@ def __get_collection_type_from_categorized_lists(
         case (True, True, False, False):
             return occ.StructureCollection
         case (False, False, True, False):
-            return occ.Lightcone
+            return __identify_lightcone_type(lightcones)
         case (True, False, False, False):
             return __get_multi_dataset_type(properties)
         case (False, False, False, True):
@@ -279,6 +285,28 @@ def __get_collection_type_from_categorized_lists(
             return occ.StructureCollection
         case _:
             raise ValueError("Invalid combination of files")
+
+
+def __identify_lightcone_type(lightcone_targets):
+    dataset_types = reduce(
+        lambda acc, t: (
+            acc
+            + [dt["header"].file.data_type for dt in t["dataset_targets"]]
+            + [
+                dt["header"].file.data_type
+                for datasets in t["dataset_groups"].values()
+                for dt in datasets
+            ]
+        ),
+        lightcone_targets,
+        [],
+    )
+
+    dataset_types = set(dataset_types)
+    if len(dataset_types) == 1:
+        return occ.Lightcone
+    else:
+        return occ.StructureCollection
 
 
 def __get_multi_dataset_type(file_targets: list[FileTarget]):
