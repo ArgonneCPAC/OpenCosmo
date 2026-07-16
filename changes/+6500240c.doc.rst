@@ -1,0 +1,1 @@
+Update installation docs to correctly indicate requirement of python 3.12+

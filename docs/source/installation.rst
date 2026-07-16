@@ -1,17 +1,17 @@
 Installation
 ============
 
-The OpenCosmo library is available for Python 3.11 and later on Linux and MacOS (and Windows via `WSL <https://learn.microsoft.com/en-us/windows/wsl/setup/environment>`_). It can be installed with :code:`pip`:
+The OpenCosmo library is available for Python 3.12 and later on Linux and MacOS (and Windows via `WSL <https://learn.microsoft.com/en-us/windows/wsl/setup/environment>`_). It can be installed with :code:`pip`:
 
 .. code-block:: bash
 
    pip install opencosmo
 
-There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing :code:`opencosmo` into a virtual environment. If you're using `Conda <https://docs.conda.io/projects/conda/en/stable/:code:user-guide/getting-started.html>`_ you can create a new environment and install :code:`opencosmo` into it automatically:
+There's a good chance the default version of Python on your system is less than 3.12. Whether or not this is the case, we recommend installing :code:`opencosmo` into a virtual environment. If you're using `Conda <https://docs.conda.io/projects/conda/en/stable/:code:user-guide/getting-started.html>`_ you can create a new environment and install :code:`opencosmo` into it automatically:
 
 .. code-block:: bash
 
-   conda create -n opencosmo_env python=3.11 conda-forge::opencosmo
+   conda create -n opencosmo_env python=3.12 conda-forge::opencosmo
 
 
 or, if you already have a virtual environment you'd like to use:
@@ -39,7 +39,7 @@ If you are interested in the tools in the :doc:`analysis <analysis>` module, the
 Installing with MPI Support
 ---------------------------
 
-**Warning: There is currently a buggy interaction between h5py and mpi4py that will cause installing h5py in parallel mode to fail with version of python <=3.12. For now, you should use python 3.13 if you want to perform parallel writes.**
+**Warning: There is currently a buggy interaction between h5py and mpi4py that will cause installing h5py in parallel mode to fail with python==3.12. For now, you should use python 3.13+ if you want to perform parallel writes.**
 
 :code:`opencosmo` can leverage MPI to distribute analysis on a very large dataset across multiple cores or nodes. You simply need to install the :code:`mpi4py` package:
 
