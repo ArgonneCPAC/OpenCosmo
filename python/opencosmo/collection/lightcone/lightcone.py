@@ -1275,7 +1275,6 @@ class Lightcone(dict):
         if all(len(ds) == 0 for ds in output.values()):
             key = next(iter(output.keys()))
             output = {key: output[key]}
-
         else:
             output = {key: ds for key, ds in output.items() if len(ds) > 0}
 
