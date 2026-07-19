@@ -7,7 +7,7 @@ import h5py
 import numpy as np
 
 from opencosmo.io.schema import FileEntry, Schema, make_schema
-from opencosmo.io.verify import ZeroLengthError, verify_file
+from opencosmo.io.verify import schema_data_length, verify_structure
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.mpi import MPI, get_comm_world
 
@@ -68,13 +68,17 @@ def write_parallel(file: Path, file_schema: Schema):
         raise ValueError("Different ranks recieved a different path to output to!")
 
     try:
-        verify_file(file_schema)  # Initial verification
-        results = comm.allgather(CombineState.VALID)
+        verify_structure(file_schema)  # Tier 1: structural correctness
+        # Tier 2: does this rank actually contribute any rows?
+        state = (
+            CombineState.VALID
+            if schema_data_length(file_schema) > 0
+            else CombineState.ZERO_LENGTH
+        )
+        results = comm.allgather(state)
     except ValueError:
         results = comm.allgather(CombineState.INVALID)
         raise
-    except ZeroLengthError:
-        results = comm.allgather(CombineState.ZERO_LENGTH)
     if any(rs == CombineState.INVALID for rs in results):
         raise ValueError("One or more ranks recieved invalid schemas!")
 

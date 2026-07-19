@@ -1,0 +1,1 @@
+Fix a bug that could cause writes of sparse lightcone structure collections to fail in MPI environments.

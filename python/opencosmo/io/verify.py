@@ -8,17 +8,26 @@ if TYPE_CHECKING:
     from .schema import Schema
 
 
-""" 
-Verification is just a check to make sure that the data going into the file is valid. It is intentionally centralized,
-such that if you create a new data type and implement "make_schema" it will fail at this step until you add verification.
+"""
+Verification is split into two independent tiers, each with its own return channel:
+
+1. ``verify_structure`` checks that a schema is *well-formed*. It raises
+   ``ValueError`` on genuine corruption and never inspects row counts, so a
+   zero-length dataset (or an empty lightcone partition) is structurally valid.
+2. ``schema_data_length`` reports how many data rows *this rank* actually
+   contributes. It is a pure, local computation that never raises.
+
+Keeping the two concerns separate is what lets an MPI write distinguish a rank
+that holds no data (excluded from the write) from a rank whose schema is broken
+(a hard error), without one empty sub-group poisoning the whole rank.
+
+Verification is intentionally centralized, such that if you create a new data
+type and implement "make_schema" it will fail at this step until you add
+verification.
 """
 
 
-class ZeroLengthError(Exception):
-    pass
-
-
-def verify_file(
+def verify_structure(
     schema: Schema,
 ):
     match schema.type:
@@ -41,12 +50,44 @@ def verify_file(
             raise ValueError("Unknown file structure!")
 
 
-def verify_column_group(schema: Schema, require_data: bool = False):
+def data_group_length(schema: Schema) -> int:
+    """
+    Number of rows in a node's direct "data" group, or 0 if it has none.
+    """
+    if "data" not in schema.children:
+        return 0
+    column = next(iter(schema.children["data"].columns.values()), None)
+    return 0 if column is None else column.shape[0]
+
+
+def schema_data_length(schema: Schema) -> int:
+    """
+    Total number of data rows this rank will contribute for a schema. Purely
+    local: MPI callers combine the per-rank totals themselves. Container nodes
+    sum their children; the default arm returns 0 so recursion never descends
+    into index/header/data_linked groups.
+    """
+    match schema.type:
+        case FileEntry.DATASET | FileEntry.HEALPIX_MAP:
+            return data_group_length(schema)
+        case FileEntry.LIGHTCONE:
+            if "data" in schema.children:  # single-dataset lightcone
+                return data_group_length(schema)
+            return sum(schema_data_length(c) for c in schema.children.values())
+        case FileEntry.STRUCTURE_COLLECTION | FileEntry.SIMULATION_COLLECTION:
+            return sum(schema_data_length(c) for c in schema.children.values())
+        case _:
+            return 0
+
+
+def verify_column_group(schema: Schema):
     """
     Verify that a given data group is valid. This requires that:
     1. All column writers have the same length
     2. All columns have the same combine strategy
     3. All columns are in the same group
+
+    Note this is a structural check only: a zero-length group is valid.
     """
     column_names = set()
     group_names = set()
@@ -69,8 +110,7 @@ def verify_column_group(schema: Schema, require_data: bool = False):
         raise ValueError(
             "Columns within a single group should always have the same length!"
         )
-    elif (group_length := all_column_lengths.pop()) == 0 and require_data:
-        raise ZeroLengthError
+    group_length = all_column_lengths.pop()
 
     if len(column_strategies) != 1:
         raise ValueError(
@@ -101,9 +141,7 @@ def verify_dataset_data(schema: Schema, has_index=True):
         if name not in ["data", "index"] and child.type == FileEntry.COLUMNS
     ]
 
-    _, data_length, data_combine_strategy = verify_column_group(
-        schema.children["data"], require_data=True
-    )
+    _, data_length, data_combine_strategy = verify_column_group(schema.children["data"])
     if has_index:
         for child in schema.children["index"].children.values():
             verify_column_group(child)
@@ -121,10 +159,13 @@ def verify_lightcone_collection_schema(schema: Schema):
     can also technically be a lighcone collection, if is_lightcone is
     set to true in its header. Mostly just delegates to underlying
     dataset checks.
+
+    A lightcone with no children is structurally valid: it is how an empty
+    partition (a rank that received none of the sampled structures) is
+    represented. Whether it actually has data is decided by
+    ``schema_data_length``, not here.
     """
-    if len(schema.children) < 1:
-        raise ValueError("Expect at least one lightcone child!")
-    elif "data" in schema.children:
+    if "data" in schema.children:
         # Single-dataset lightcone
         return verify_dataset_data(schema)
     for key, child_schema in schema.children.items():
