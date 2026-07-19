@@ -1,10 +1,10 @@
-opencosmo 1.3.8 (2026-07-16)
+opencosmo 1.3.9 (2026-07-19)
 ============================
 
-Documentation
--------------
+Bugfixes
+--------
 
-- Update installation docs to correctly indicate requirement of python 3.12+
+- Fix a bug that could cause writes of sparse lightcone structure collections to fail in MPI environments.
 
 
 
