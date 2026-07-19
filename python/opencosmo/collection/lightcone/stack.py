@@ -154,11 +154,12 @@ def stack_lightcone_datasets_in_schema(
     n_datasets = sum(len(lst) for lst in datasets.values())
     if n_datasets == 1 and get_comm_world() is None:
         dataset_list = next(iter(datasets.values()))
+        dataset_name = next(iter(datasets.keys()))
 
         schema = dataset_list[0].make_schema(name=name)
         header = sync_headers(dataset_list, redshift_range)
         schema.children["header"] = header
-        return {"data": schema}
+        return {dataset_name: schema}
 
     schema_children = {}
     ds_groups = get_all_keys(datasets, get_comm_world())
