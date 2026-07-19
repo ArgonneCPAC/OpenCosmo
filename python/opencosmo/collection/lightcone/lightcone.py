@@ -1158,9 +1158,11 @@ class Lightcone(dict):
         for (name, ds), index in zip(self.items(), projected):
             output[name] = ds.take_rows(index)
         if all(len(ds) == 0 for ds in output.values()):
-            output = {"data": next(iter(output.values()))}
+            key = next(iter(output.keys()))
+            output = {key: output[key]}
+
         else:
-            output = {name: ds for name, ds in output.items() if len(ds) != 0}
+            output = {key: ds for key, ds in output.items() if len(ds) > 0}
 
         return Lightcone(output, self.z_range, self.__hidden, self.__sort_key)
 
