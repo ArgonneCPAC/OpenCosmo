@@ -171,8 +171,8 @@ def get_global_sort_order(ds: Dataset | Lightcone, sort_key: tuple[str, bool]):
     assert sort_key is not None
     sort_col, sort_desc = sort_key
     raw = ds.select(sort_col).get_data("numpy", ignore_sort=True)
-    local_values = np.asarray(
-        raw.value if hasattr(raw, "value") else raw, dtype=np.float64
+    local_values = np.atleast_1d(
+        np.asarray(raw.value if hasattr(raw, "value") else raw, dtype=np.float64)
     )
 
     lengths = np.array(comm.allgather(len(local_values)), dtype=np.int64)
