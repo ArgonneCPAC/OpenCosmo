@@ -149,9 +149,6 @@ def resort_datasets(
     all_columns: list[str] = reduce(
         lambda acc, ds: acc + columns[ds], datasets.keys(), []
     )
-    all_columns = list(
-        filter(lambda name: "idx" in name or "size" in name, all_columns)
-    )
     sort_column = next(filter(lambda c: "start" in c or "idx" in c, all_columns))
     unsorted_meta_column = source.get_metadata(sort_column, ignore_sort=True)
     sorted_meta_column = source.get_metadata(sort_column)
