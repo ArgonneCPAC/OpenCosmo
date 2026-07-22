@@ -17,6 +17,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
 
    installation
    first_steps
+   citation
 
 
 .. toctree::
