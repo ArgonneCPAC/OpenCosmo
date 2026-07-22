@@ -253,7 +253,7 @@ pub(crate) mod index {
                 ));
             }
             let mut chunk_index = find_chunk(&prefix, tstart);
-            let mut cs = prefix[chunk_index];
+            let cs = prefix[chunk_index];
             let mut start_in_chunk = tstart - cs;
             let mut chunk_taken = 0i64;
 
