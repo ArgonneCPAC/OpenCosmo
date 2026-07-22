@@ -273,7 +273,6 @@ pub(crate) mod index {
                 if chunk_completed {
                     break;
                 }
-                cs += size[chunk_index];
                 chunk_index += 1;
                 start_in_chunk = 0;
             }
