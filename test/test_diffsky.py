@@ -194,6 +194,20 @@ def test_open_write_with_synthetics(core_path_475, core_path_487, per_test_dir):
     )
 
 
+def test_write_after_drop_top_host(core_path_475, core_path_487, per_test_dir):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = ds.select("ra", "dec", "lsst*")
+    oc.write(per_test_dir / "test.hdf5", ds, _min_size=10_000)
+
+
+def test_write_after_drop_ra_dec(core_path_475, core_path_487, per_test_dir):
+    ds = oc.open(core_path_487, core_path_475, synth_cores=True)
+    ds = ds.select("lsst*")
+    oc.write(per_test_dir / "test.hdf5", ds, _min_size=10_000)
+    ds_new = oc.open(per_test_dir / "test.hdf5")
+    assert "ra" in ds_new.columns and "dec" in ds_new.columns
+
+
 def test_open_write_with_multiple_synthetics(
     core_path_475, core_path_487, per_test_dir
 ):

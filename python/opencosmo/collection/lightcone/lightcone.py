@@ -946,16 +946,18 @@ class Lightcone(dict):
                 col_group = {col_group}
             all_columns.update(col_group)
 
-        hidden = self.__hidden
         additional_columns = set()
 
-        if "redshift" not in all_columns and "properties" in self.dtype:
-            additional_columns.add("redshift")
-            hidden = hidden.union({"redshift"})
+        # Some columns must be retained even when the user does not ask for them,
+        # otherwise the lightcone cannot be written. They are kept but hidden.
+        underlying_columns = set(next(iter(self.values())).columns)
+        required = lcutils.get_required_columns(underlying_columns, self.dtype)
+        if self.__sort_key is not None:
+            required.add(self.__sort_key[0])
 
-        if self.__sort_key is not None and self.__sort_key[0] not in all_columns:
-            additional_columns.add(self.__sort_key[0])
-            hidden = hidden.union({self.__sort_key[0]})
+        required_extras = required.difference(all_columns)
+        additional_columns |= required_extras
+        hidden = self.__hidden.union(required_extras)
 
         return self.__map(
             "select",
