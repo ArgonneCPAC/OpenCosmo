@@ -12,6 +12,36 @@ if TYPE_CHECKING:
     from astropy.table import Table
 
 
+def get_required_columns(columns: set[str], dtype: str) -> set[str]:
+    """
+    Columns that must be retained (even if hidden) for a lightcone to be written
+    correctly, given the columns available in the underlying datasets.
+
+    "redshift" is needed because lightcones are stacked by redshift, and the
+    angular coordinates (ra/dec, or theta/phi) are needed because stacking
+    pixelizes rows by their sky position at write time.
+
+    Particles and profiles are excluded: their redshift and coordinates are
+    handled at the structure-collection level, mirroring the open-time hooks.
+    """
+    if "particles" in dtype or "profiles" in dtype:
+        return set()
+
+    required: set[str] = set()
+
+    if "redshift" in columns:
+        required.add("redshift")
+
+    # Angular coordinates are required for stacking. Prefer ra/dec, but fall back
+    # to theta/phi if that is all the dataset carries.
+    if {"ra", "dec"}.issubset(columns):
+        required.update({"ra", "dec"})
+    elif {"theta", "phi"}.issubset(columns):
+        required.update({"theta", "phi"})
+
+    return required
+
+
 def get_redshift_range(datasets: Sequence[ds.Dataset | lc.Lightcone]):
     redshift_ranges = list(map(get_single_redshift_range, datasets))
     min_z = min(rr[0] for rr in redshift_ranges)
