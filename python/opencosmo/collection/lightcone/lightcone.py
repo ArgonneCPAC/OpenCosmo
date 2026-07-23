@@ -1060,15 +1060,17 @@ class Lightcone(dict):
         plan = self.__scope.plan_select(all_columns, derived_columns, raw_child_columns)
 
         hidden = set(self.__hidden) | plan.hidden_additions
-        additional_columns = set(plan.child_additional)
 
-        if "redshift" not in all_columns and "properties" in self.dtype:
-            additional_columns.add("redshift")
-            hidden.add("redshift")
+        # Some columns must be retained even when the user does not ask for them,
+        # otherwise the lightcone cannot be written. They are kept but hidden.
+        underlying_columns = set(next(iter(self.values())).columns)
+        required = lcutils.get_required_columns(underlying_columns, self.dtype)
+        if self.__sort_key is not None:
+            required.add(self.__sort_key[0])
 
-        if self.__sort_key is not None and self.__sort_key[0] not in all_columns:
-            additional_columns.add(self.__sort_key[0])
-            hidden.add(self.__sort_key[0])
+        required_extras = required.difference(all_columns)
+        hidden = self.__hidden.union(required_extras)
+        additional_columns = set(plan.child_additional).union(required_extras)
 
         return self.__map(
             "select",
