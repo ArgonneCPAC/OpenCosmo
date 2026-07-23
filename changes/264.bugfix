@@ -1,0 +1,1 @@
+Fixed a `KeyError` when writing a dataset after dropping a derived column, such as `top_host_idx` in diffsky data.
