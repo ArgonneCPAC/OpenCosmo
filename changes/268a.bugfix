@@ -1,1 +1,0 @@
-Fixed a failure when writing a lightcone after dropping its angular coordinate columns (`ra`/`dec` or `theta`/`phi`). 
