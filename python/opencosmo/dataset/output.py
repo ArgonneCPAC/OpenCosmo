@@ -44,8 +44,10 @@ def build_derived_writers(
 ) -> None:
     """Add ColumnWriter entries to data_schema for each non-raw, non-cached producer."""
     for producer in producers:
-        if isinstance(producer, RawColumn) or producer.produces.issubset(
-            cached_data_schema.columns.keys()
+        if (
+            isinstance(producer, RawColumn)
+            or producer.produces.issubset(cached_data_schema.columns.keys())
+            or not producer.produces.issubset(derived_data.keys())
         ):
             continue
         coldata = {name: derived_data[name] for name in producer.produces}
