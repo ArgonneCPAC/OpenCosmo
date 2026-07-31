@@ -127,15 +127,26 @@ def __make_group_map(group: h5py.File | h5py.Group, prefix: str = ""):
     return index
 
 
-def __make_file_target(path: Path, open_kwargs: dict[str, Any]) -> Optional[FileTarget]:
+def __make_file_target(
+    path: Path, open_kwargs: dict[str, Any], broadcast: bool = True
+) -> Optional[FileTarget]:
     """
     Search through the file for any valid datasets or dataset groups. For groups,
     identify the group types. Datasets with load conditions that are not
     met will be discarded.
+
+    ``broadcast`` controls how headers are read. In the default (spatial) path
+    every rank opens the same file, so reading the header once on rank 0 and
+    broadcasting it is a valid optimization. In the redshift-split path each rank
+    opens a *different* file, so the header must be read locally on each rank
+    (``broadcast=False``) — otherwise every rank would receive rank 0's header
+    (and thus rank 0's redshift step).
     """
     file = h5py.File(path)
     group_map = __make_group_map(file)
-    dataset_targets, group_targets = __find_all_datasets(group_map, open_kwargs)
+    dataset_targets, group_targets = __find_all_datasets(
+        group_map, open_kwargs, broadcast=broadcast
+    )
     if not dataset_targets and not group_targets:
         return None
     group_types = __identify_group_types(dataset_targets, group_targets)
@@ -158,7 +169,7 @@ def __open_files_redshift_split(plan, open_kwargs: dict[str, Any]) -> occ.Lightc
 
     if my_paths:
         # Non-empty rank: open assigned files
-        func = partial(__make_file_target, open_kwargs=open_kwargs)
+        func = partial(__make_file_target, open_kwargs=open_kwargs, broadcast=False)
         my_targets = [t for t in map(func, my_paths) if t is not None]
         if not my_targets:
             raise ValueError(
@@ -166,7 +177,7 @@ def __open_files_redshift_split(plan, open_kwargs: dict[str, Any]) -> occ.Lightc
             )
     else:
         # Empty rank: open reference file with zero-length index
-        func = partial(__make_file_target, open_kwargs=open_kwargs)
+        func = partial(__make_file_target, open_kwargs=open_kwargs, broadcast=False)
         ref_target = func(plan.reference_path)
         if ref_target is None:
             raise ValueError(
@@ -427,7 +438,9 @@ def __find_all_headers(file_map: dict):
 
 
 def __find_all_datasets(
-    file_map: dict[str, h5py.File | h5py.Group | h5py.Dataset], open_kwargs
+    file_map: dict[str, h5py.File | h5py.Group | h5py.Dataset],
+    open_kwargs,
+    broadcast: bool = True,
 ) -> tuple[list[DatasetTarget], dict[str, list[DatasetTarget]]]:
     """
     Search through a file and locate all the datasets. Each dataset is identified
@@ -449,9 +462,12 @@ def __find_all_datasets(
             f"The file at {next(iter(file_map.values())).file.filename}, does not appear to be an OpenCosmoFile"
         )
 
+    # In the redshift-split path each rank opens a different file, so headers
+    # must be read locally rather than broadcast from rank 0 (see __make_file_target).
+    read_header_fn = read_header if broadcast else read_header.__wrapped__  # type: ignore[attr-defined]
     all_file_headers: list[OpenCosmoHeader] = list(
         map(
-            lambda header_group: read_header(file_map[header_group].parent),
+            lambda header_group: read_header_fn(file_map[header_group].parent),
             known_headers,
         )
     )

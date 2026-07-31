@@ -67,15 +67,26 @@ def plan_redshift_distribution(
     rank = comm.Get_rank() if comm else 0
     nranks = comm.Get_size() if comm else 1
 
-    plan = None
+    # Rank 0 is the only rank that sees every file, so it does the planning and
+    # compatibility verification. It must NOT raise directly: the other ranks are
+    # blocked in the bcast below, and a bare raise on rank 0 would deadlock them.
+    # Instead capture any error, broadcast it, and have every rank re-raise it in
+    # lockstep so the failure is collective.
+    result: DistributionPlan | ValueError | None = None
     if rank == 0:
-        plan = __compute_redshift_distribution_plan(paths, nranks)
+        try:
+            result = __compute_redshift_distribution_plan(paths, nranks)
+        except ValueError as e:
+            result = e
 
-    # Broadcast the plan (or None) to all ranks
+    # Broadcast the plan (None sentinel for fallback, or a ValueError) to all ranks.
     if comm:
-        plan = comm.bcast(plan, root=0)
+        result = comm.bcast(result, root=0)
 
-    return plan
+    if isinstance(result, ValueError):
+        raise result
+
+    return result
 
 
 def __compute_redshift_distribution_plan(

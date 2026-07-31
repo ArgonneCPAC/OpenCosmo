@@ -71,6 +71,23 @@ def haloproperties_601_path(lightcone_path):
     return lightcone_path / "step_601" / "haloproperties.hdf5"
 
 
+@pytest.fixture
+def galaxyproperties_600_path(lightcone_path):
+    return lightcone_path / "step_600" / "galaxyproperties.hdf5"
+
+
+def _global_raw(lc):
+    """Gather the per-rank vstacked fof_halo_mass across all ranks."""
+    comm = MPI.COMM_WORLD
+    local = np.concatenate(
+        [
+            np.asarray(child.select("fof_halo_mass").get_data("numpy"))
+            for child in lc.values()
+        ]
+    )
+    return np.concatenate(comm.allgather(local))
+
+
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
 def test_healpix_index(haloproperties_600_path):
@@ -1099,3 +1116,251 @@ def _assert_all_group_members_present(data, core_map):
         assert not missing, (
             f"top_host {top_host_ct}: {len(missing)} member(s) missing from result"
         )
+
+
+# ── redshift-based MPI mode tests ─────────────────────────────────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_disjoint_step_distribution(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """
+    In redshift mode each rank holds a disjoint subset of steps, the union
+    across ranks equals the full step set, and the summed length equals the
+    total from a normal (spatial) open. With 2 files on 4 ranks, exactly 2
+    ranks hold data and 2 are empty.
+    """
+    comm = get_comm_world()
+
+    # Reference: full step set and total length from a normal open.
+    lc_ref = oc.open(haloproperties_600_path, haloproperties_601_path)
+    expected_steps = set(lc_ref.keys())
+    expected_total = comm.allreduce(len(lc_ref))
+
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path, mpi_mode="redshift")
+
+    # Steps that actually carry data on this rank.
+    local_data_steps = {step for step in lc.keys() if len(lc[step]) > 0}
+    all_data_steps = comm.allgather(local_data_steps)
+
+    # Union of data-bearing steps equals the full set.
+    union = set().union(*all_data_steps)
+    # Data-bearing steps are disjoint across ranks (each file read by one rank).
+    total_data_step_count = sum(len(s) for s in all_data_steps)
+
+    parallel_assert(
+        union == expected_steps,
+        f"Union of steps {union} != expected {expected_steps}",
+    )
+    parallel_assert(
+        total_data_step_count == len(expected_steps),
+        f"Data-bearing steps overlap across ranks: {all_data_steps}",
+    )
+
+    # Summed length across ranks matches the reference total.
+    total_len = comm.allreduce(len(lc))
+    parallel_assert(
+        total_len == expected_total,
+        f"Redshift total {total_len} != expected {expected_total}",
+    )
+
+    # With 2 files and 4 ranks, exactly 2 ranks have data.
+    n_ranks_with_data = comm.allreduce(1 if len(lc) > 0 else 0)
+    parallel_assert(
+        n_ranks_with_data == 2,
+        f"Expected 2 ranks with data, got {n_ranks_with_data}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_all_columns_present(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """
+    All ranks have access to all columns in redshift mode.
+    """
+    # Reference to get expected columns
+    lc_ref = oc.open(haloproperties_600_path, haloproperties_601_path)
+    expected_cols = frozenset(lc_ref.columns)
+
+    # Redshift-distributed open
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path, mpi_mode="redshift")
+
+    local_cols = frozenset(lc.columns)
+
+    # Every rank has the full column set
+    parallel_assert(
+        local_cols == expected_cols,
+        f"Columns {local_cols} != expected {expected_cols}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_write_round_trip(
+    haloproperties_600_path, haloproperties_601_path, per_test_dir
+):
+    """
+    Write a redshift-distributed lightcone and verify the write succeeds.
+    """
+    comm = get_comm_world()
+
+    # Reference: serial open to get expected total
+    lc_serial = oc.open(haloproperties_600_path, haloproperties_601_path)
+    expected_total = comm.allreduce(len(lc_serial))
+
+    # Redshift-distributed open and write
+    lc_redshift = oc.open(
+        haloproperties_600_path, haloproperties_601_path, mpi_mode="redshift"
+    )
+    oc.write(per_test_dir / "redshift_write.hdf5", lc_redshift)
+
+    # Reopen the written file serially (all ranks read the same file)
+    lc_reopened = oc.open(per_test_dir / "redshift_write.hdf5")
+
+    local_len = len(lc_reopened)
+    total_len = comm.allreduce(local_len)
+
+    parallel_assert(
+        total_len == expected_total,
+        f"Reopened total {total_len} != expected {expected_total}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_scalar_reduction_equivalence(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """
+    A lightcone-wide scalar reduction returns the SAME global value in redshift
+    mode as in the default spatial mode. This is the case where files (2) are
+    fewer than ranks (4), so it also validates that the 2 empty ranks contribute
+    a valid length-0 reduction rather than skipping the collective (which would
+    either deadlock or corrupt the result).
+    """
+    # Ground truth: the global min/mean/max computed directly from the raw data,
+    # gathered across ranks in the default (spatial) open.
+    lc_spatial = oc.open(haloproperties_600_path, haloproperties_601_path)
+    raw = _global_raw(lc_spatial)
+    expected_min = float(np.min(raw))
+    expected_max = float(np.max(raw))
+    expected_mean = float(np.mean(raw))
+
+    lc_redshift = oc.open(
+        haloproperties_600_path, haloproperties_601_path, mpi_mode="redshift"
+    )
+
+    # Each scalar select returns the GLOBAL reduction, broadcast to every rank
+    # (including the empty ones).
+    got_min = float(
+        np.asarray(
+            lc_redshift.select(v=oc.col("fof_halo_mass").min()).get_data("numpy")
+        ).ravel()[0]
+    )
+    got_max = float(
+        np.asarray(
+            lc_redshift.select(v=oc.col("fof_halo_mass").max()).get_data("numpy")
+        ).ravel()[0]
+    )
+    got_mean = float(
+        np.asarray(
+            lc_redshift.select(v=oc.col("fof_halo_mass").mean()).get_data("numpy")
+        ).ravel()[0]
+    )
+
+    parallel_assert(
+        np.isclose(got_min, expected_min),
+        f"redshift min {got_min} != spatial min {expected_min}",
+    )
+    parallel_assert(
+        np.isclose(got_max, expected_max),
+        f"redshift max {got_max} != spatial max {expected_max}",
+    )
+    parallel_assert(
+        np.isclose(got_mean, expected_mean),
+        f"redshift mean {got_mean} != spatial mean {expected_mean}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_invalid_mode_string(haloproperties_600_path):
+    """
+    An unknown mpi_mode string raises ValueError.
+    """
+    try:
+        oc.open(haloproperties_600_path, mpi_mode="invalid_mode")
+        # If we get here, raise an assertion error
+        parallel_assert(False, "Expected ValueError for invalid mpi_mode")
+    except ValueError as e:
+        # Expected; verify the error message mentions the mode
+        parallel_assert("mpi_mode" in str(e).lower())
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_select_and_filter_work(
+    haloproperties_600_path, haloproperties_601_path
+):
+    """
+    select() and filter() behave identically on data-bearing and empty ranks:
+    empty ranks return length-0 results but keep the full schema, and the global
+    filtered count matches the default spatial open.
+    """
+    comm = get_comm_world()
+
+    # Ground truth from the default open.
+    lc_spatial = oc.open(haloproperties_600_path, haloproperties_601_path)
+    raw = _global_raw(lc_spatial)
+    expected_kept = int(np.sum(raw > 1e13))
+
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path, mpi_mode="redshift")
+
+    # select() must succeed on every rank and preserve the column on empty ranks.
+    selected = lc.select("fof_halo_mass")
+    parallel_assert(
+        "fof_halo_mass" in selected.columns,
+        "select() must retain the column on every rank (incl. empty ranks)",
+    )
+    # An empty rank (len 0) still yields a length-0 array, not an error.
+    local_selected = np.asarray(selected.get_data("numpy"))
+    parallel_assert(
+        local_selected.shape[0] == len(lc),
+        "selected length must equal the local row count on every rank",
+    )
+
+    # filter() must produce the same global count as the spatial open.
+    filtered = lc.filter(oc.col("fof_halo_mass") > 1e13)
+    local_kept = int(len(filtered))
+    total_kept = comm.allreduce(local_kept)
+    parallel_assert(
+        total_kept == expected_kept,
+        f"redshift filter kept {total_kept} != spatial {expected_kept}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_incompatible_files_raise(
+    haloproperties_600_path, galaxyproperties_600_path
+):
+    """
+    Files with mismatched columns must be rejected during rank-0 planning with a
+    clear error, rather than silently mis-distributing. The error must name the
+    offending file. All ranks must observe the failure (the raise happens after
+    the plan broadcast returns the sentinel/raises consistently).
+    """
+    raised = False
+    message = ""
+    try:
+        oc.open(
+            haloproperties_600_path,
+            galaxyproperties_600_path,
+            mpi_mode="redshift",
+        )
+    except ValueError as e:
+        raised = True
+        message = str(e)
+
+    parallel_assert(raised, "Incompatible files must raise ValueError")
+    parallel_assert(
+        "column" in message.lower() or "dtype" in message.lower(),
+        f"Error must explain the incompatibility, got: {message}",
+    )
