@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 import h5py
-import numpy as np
 
 from opencosmo.header import read_header
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import numpy as np
 
     from opencosmo.mpi import MPI
 
@@ -32,6 +33,74 @@ class DistributionPlan:
     reference_path: Path
 
 
+def partition_contiguous(weights: list[int], k: int) -> list[list[int]]:
+    """
+    Split a sequence of ``weights`` into ``k`` *contiguous* groups, minimizing the
+    largest group sum (the classic linear-partition problem, solved optimally with
+    dynamic programming).
+
+    This is what makes each rank receive one contiguous run of redshift steps of
+    roughly equal data volume, rather than an arbitrary scatter of steps that
+    merely happen to balance the row counts.
+
+    Parameters
+    ----------
+    weights : list[int]
+        Per-item weights, in the order the items must stay in (redshift order).
+    k : int
+        Number of contiguous groups (ranks) to produce.
+
+    Returns
+    -------
+    list[list[int]]
+        ``k`` lists of item indices. Each inner list is a contiguous, ascending
+        run of indices; concatenating them in order reproduces ``range(len(weights))``.
+        When there are fewer items than groups, the surplus trailing groups are empty.
+    """
+    if k <= 0:
+        raise ValueError("Number of groups must be positive")
+
+    n = len(weights)
+    if n == 0:
+        return [[] for _ in range(k)]
+    if k >= n:
+        # One item per group for the first n groups; the rest are empty.
+        return [[i] for i in range(n)] + [[] for _ in range(k - n)]
+
+    prefix = [0] * (n + 1)
+    for i in range(n):
+        prefix[i + 1] = prefix[i] + weights[i]
+
+    # dp[j][i] = minimal achievable max-group-sum when splitting the first i items
+    # into j contiguous groups. split[j][i] records where the last group starts.
+    inf = float("inf")
+    dp: list[list[float]] = [[inf] * (n + 1) for _ in range(k + 1)]
+    split: list[list[int]] = [[0] * (n + 1) for _ in range(k + 1)]
+    for i in range(1, n + 1):
+        dp[1][i] = prefix[i]
+    for j in range(2, k + 1):
+        # Need at least j items to form j non-empty groups.
+        for i in range(j, n + 1):
+            best = inf
+            best_m = j - 1
+            for m in range(j - 1, i):  # last group covers items [m, i)
+                candidate = max(dp[j - 1][m], prefix[i] - prefix[m])
+                if candidate < best:
+                    best = candidate
+                    best_m = m
+            dp[j][i] = best
+            split[j][i] = best_m
+
+    groups: list[list[int]] = []
+    i = n
+    for j in range(k, 0, -1):
+        m = split[j][i] if j > 1 else 0
+        groups.append(list(range(m, i)))
+        i = m
+    groups.reverse()
+    return groups
+
+
 def plan_redshift_distribution(
     paths: list["Path"], comm: Optional["MPI.Comm"]
 ) -> Optional[DistributionPlan]:
@@ -47,9 +116,10 @@ def plan_redshift_distribution(
     - All files must share the same column names, dtypes, and data_type.
     - Detects nested lightcones (multiple dataset types per step).
 
-    Uses greedy longest-processing-time bin-packing to assign files to ranks.
-    Keeps same-step files together; for structure-collections, keeps linked datasets
-    with their parent.
+    Splits the redshift-ordered steps into contiguous chunks of roughly-equal row
+    count (optimal linear partition), so each rank owns one continuous redshift
+    range. Keeps same-step files together; for structure-collections, keeps linked
+    datasets with their parent.
 
     Parameters
     ----------
@@ -164,24 +234,26 @@ def __compute_redshift_distribution_plan(
             # Nested lightcone detected: fallback to spatial distribution
             return None
 
-    # Build flat list of (path, row_count) pairs, maintaining step grouping
-    files_to_distribute: list[tuple["Path", int, int | None]] = []
-    for step in sorted(file_info.keys(), key=lambda x: (x is None, x)):  # type: ignore
-        for path, row_count, _ in file_info[step]:
-            files_to_distribute.append((path, row_count, step))
+    # Order steps by redshift (the step index is monotonic in redshift). Each step
+    # becomes one indivisible unit whose weight is the total rows across all of its
+    # files, and whose paths (properties + any linked particles/profiles) travel
+    # together to the same rank.
+    ordered_steps = sorted(file_info.keys(), key=lambda x: (x is None, x))  # type: ignore
+    step_paths: list[list["Path"]] = []
+    step_weights: list[int] = []
+    for step in ordered_steps:
+        step_paths.append([path for path, _, _ in file_info[step]])
+        step_weights.append(sum(row_count for _, row_count, _ in file_info[step]))
 
-    # Greedy bin-packing by row count (descending)
-    files_to_distribute.sort(key=lambda x: x[1], reverse=True)
-
-    # Initialize rank bins with total row count
-    rank_totals: list[int] = [0] * nranks
-    rank_files: list[list["Path"]] = [[] for _ in range(nranks)]
-
-    for path, row_count, step in files_to_distribute:
-        # Assign to rank with least total rows
-        min_rank = np.argmin(rank_totals)
-        rank_files[min_rank].append(path)
-        rank_totals[min_rank] += row_count
+    # Split the ordered steps into nranks CONTIGUOUS chunks of roughly-equal row
+    # count, so each rank owns one continuous redshift range.
+    step_groups = partition_contiguous(step_weights, nranks)
+    rank_files: list[list["Path"]] = []
+    for group in step_groups:
+        files_for_rank: list["Path"] = []
+        for step_idx in group:
+            files_for_rank.extend(step_paths[step_idx])
+        rank_files.append(files_for_rank)
 
     # Choose reference path (smallest file)
     reference_path = min(paths, key=lambda p: __get_file_row_count(p))

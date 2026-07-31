@@ -35,7 +35,7 @@ For lightcones you can instead distribute whole files across ranks by passing :c
 
    lc = oc.open("step_600.hdf5", "step_601.hdf5", "step_602.hdf5", mpi_mode="redshift")
 
-In this mode :code:`opencosmo` balances the files across ranks by data volume, and each file is opened by exactly one rank. The rest of the API is unchanged: all operations still act on the local rank's data, scalar reductions are still combined globally, and :py:meth:`oc.write <opencosmo.write>` still coordinates across ranks to produce a single combined lightcone.
+In this mode :code:`opencosmo` splits the redshift-ordered steps into contiguous chunks of roughly-equal data volume and assigns one chunk to each rank, so each rank owns a continuous redshift range and each file is opened by exactly one rank. (Low-redshift steps typically contain far fewer objects than high-redshift ones, so the chunk boundaries are chosen by row count rather than by an equal number of steps.) The rest of the API is unchanged: all operations still act on the local rank's data, scalar reductions are still combined globally, and :py:meth:`oc.write <opencosmo.write>` still coordinates across ranks to produce a single combined lightcone.
 
 If there are fewer files than ranks, the surplus ranks hold a full-schema, zero-length dataset — every column, unit, and redshift range is still available on those ranks, so :code:`select`, :code:`filter`, and scalar reductions behave identically everywhere. Nested (Diffsky step-then-type) lightcones are not redshift-split in the current release; passing :code:`mpi_mode="redshift"` for them silently falls back to spatial distribution. Without an MPI communicator the argument is a no-op.
 

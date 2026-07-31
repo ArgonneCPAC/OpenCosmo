@@ -89,6 +89,24 @@ def open_files(
 
         mpi_mode = MpiMode.SPATIAL
 
+    # Redshift-split path: consult the planner FIRST, before building any file
+    # targets. In spatial mode every rank calls __make_file_target on every path,
+    # which reads metadata from every file on every rank — for a many-file
+    # lightcone under many ranks that is an enormous, redundant metadata storm.
+    # In redshift mode only rank 0 reads all the headers (inside the planner);
+    # each rank then builds targets solely for the files assigned to it.
+    if mpi_mode.value == "redshift" and get_comm_world() is not None and len(paths) > 1:
+        from opencosmo.collection.lightcone.distribute import (
+            plan_redshift_distribution,
+        )
+
+        comm = get_comm_world()
+        plan = plan_redshift_distribution(paths, comm)
+
+        # If plan is None, the files are a nested lightcone; fall back to spatial.
+        if plan is not None:
+            return __open_files_redshift_split(plan, open_kwargs)
+
     func = partial(__make_file_target, open_kwargs=open_kwargs)
     targets = map(func, paths)
 
@@ -97,20 +115,6 @@ def open_files(
         raise ValueError("No valid datasets found!")
 
     if len(valid_targets) > 1:
-        # Try redshift-split path if requested and conditions are met
-        if mpi_mode.value == "redshift" and get_comm_world() is not None:
-            from opencosmo.collection.lightcone.distribute import (
-                plan_redshift_distribution,
-            )
-
-            comm = get_comm_world()
-            plan = plan_redshift_distribution(paths, comm)
-
-            # If plan is None, fallback to spatial mode
-            if plan is not None:
-                return __open_files_redshift_split(plan, open_kwargs)
-
-        # Spatial mode (default or fallback)
         collection_type = __determine_multi_file_collection_type(valid_targets)
         return collection_type.open(valid_targets, **open_kwargs)
 
