@@ -45,6 +45,7 @@ from opencosmo.dataset.take import (
 from opencosmo.index import get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import (
     HookPoint,
     LightconeInstantiateCtx,
@@ -467,7 +468,13 @@ class Lightcone(dict):
         return self.get_data("astropy")
 
     @classmethod
-    def open(cls, targets: list[FileTarget], **kwargs):
+    def open(
+        cls,
+        targets: list[FileTarget],
+        redshift_split: bool = False,
+        empty: bool = False,
+        **kwargs,
+    ):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
         dataset_targets = []
         for target in targets:
@@ -477,9 +484,24 @@ class Lightcone(dict):
         for i, ds_target in enumerate(dataset_targets):
             group_name = ds_target["dataset_group"].name.split("/")[-1]
             group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
-            ds = iopen.open_single_dataset(
-                ds_target, bypass_lightcone=True, open_kwargs=kwargs
-            )
+
+            # For redshift-split opens, pass bypass_mpi=True to read whole file on owning rank
+            # For empty ranks, pass index_override with zero-length index
+            from opencosmo.index.build import empty as make_empty_index
+
+            open_kwargs = dict(kwargs)
+            if redshift_split:
+                ds = iopen.open_single_dataset(
+                    ds_target,
+                    bypass_lightcone=True,
+                    bypass_mpi=True,
+                    open_kwargs=open_kwargs,
+                    index_override=make_empty_index() if empty else None,
+                )
+            else:
+                ds = iopen.open_single_dataset(
+                    ds_target, bypass_lightcone=True, open_kwargs=open_kwargs
+                )
             step = ds_target["header"].file.step
             if step is None:
                 step = i
@@ -591,6 +613,8 @@ class Lightcone(dict):
     def make_schema(
         self, name: str = "", _min_size=100_000, no_stack: bool = False
     ) -> Schema:
+        from opencosmo.io.mpi import get_all_keys
+
         datasets = lcio.order_by_redshift_range(self)
         for key in datasets:
             if isinstance(datasets[key], Lightcone):
@@ -600,7 +624,13 @@ class Lightcone(dict):
         )
         children = {}
 
-        for step, datasets in output_datasets.items():
+        # Use get_all_keys to iterate over the union of steps across all ranks
+        # This ensures every rank calls stack_lightcone_datasets_in_schema the same
+        # number of times in the same order, preventing MPI deadlock
+        all_steps = get_all_keys(output_datasets, get_comm_world())
+
+        for step in all_steps:
+            datasets = output_datasets.get(step, {})
             if len(datasets) == 0:
                 stack_lightcone_datasets_in_schema(datasets, None, None, no_stack)
                 continue

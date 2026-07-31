@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.io.io import MpiMode
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -74,10 +75,19 @@ class FileTarget(TypedDict):
     dataset_groups: dict[str, list[DatasetTarget]]
 
 
-def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
+def open_files(
+    paths: list[Path],
+    open_kwargs: dict[str, Any],
+    mpi_mode: "MpiMode | None" = None,
+) -> oc.Dataset | oc.collection.Collection:
     """
     Main back-end entry point for opening files.
     """
+    # Default to SPATIAL mode if not provided
+    if mpi_mode is None:
+        from opencosmo.io.io import MpiMode
+
+        mpi_mode = MpiMode.SPATIAL
 
     func = partial(__make_file_target, open_kwargs=open_kwargs)
     targets = map(func, paths)
@@ -87,6 +97,20 @@ def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
         raise ValueError("No valid datasets found!")
 
     if len(valid_targets) > 1:
+        # Try redshift-split path if requested and conditions are met
+        if mpi_mode.value == "redshift" and get_comm_world() is not None:
+            from opencosmo.collection.lightcone.distribute import (
+                plan_redshift_distribution,
+            )
+
+            comm = get_comm_world()
+            plan = plan_redshift_distribution(paths, comm)
+
+            # If plan is None, fallback to spatial mode
+            if plan is not None:
+                return __open_files_redshift_split(plan, open_kwargs)
+
+        # Spatial mode (default or fallback)
         collection_type = __determine_multi_file_collection_type(valid_targets)
         return collection_type.open(valid_targets, **open_kwargs)
 
@@ -119,6 +143,40 @@ def __make_file_target(path: Path, open_kwargs: dict[str, Any]) -> Optional[File
         dataset_group_types=group_types,
         dataset_targets=dataset_targets,
         dataset_groups=group_targets,
+    )
+
+
+def __open_files_redshift_split(plan, open_kwargs: dict[str, Any]) -> occ.Lightcone:
+    """
+    Open a multi-file lightcone using redshift-based MPI distribution.
+    Each rank opens its assigned files whole (no spatial partitioning).
+    Empty ranks open a reference file with a zero-length index.
+    """
+    comm = get_comm_world()
+    rank = comm.Get_rank() if comm else 0
+    my_paths = plan.paths[rank]
+
+    if my_paths:
+        # Non-empty rank: open assigned files
+        func = partial(__make_file_target, open_kwargs=open_kwargs)
+        my_targets = [t for t in map(func, my_paths) if t is not None]
+        if not my_targets:
+            raise ValueError(
+                f"Rank {rank} received no valid datasets from assigned files"
+            )
+    else:
+        # Empty rank: open reference file with zero-length index
+        func = partial(__make_file_target, open_kwargs=open_kwargs)
+        ref_target = func(plan.reference_path)
+        if ref_target is None:
+            raise ValueError(
+                f"Rank {rank} could not open reference file {plan.reference_path}"
+            )
+        my_targets = [ref_target]
+
+    # Open datasets with redshift_split flag
+    return occ.Lightcone.open(
+        my_targets, redshift_split=True, empty=(not my_paths), **open_kwargs
     )
 
 
@@ -515,6 +573,7 @@ def open_single_dataset(
     bypass_lightcone: bool = False,
     bypass_mpi: bool = False,
     open_kwargs: dict[str, Any] = {},
+    index_override: Optional[DataIndex] = None,
 ):
     header = target["header"]
     ds_group = target["dataset_group"]
@@ -552,7 +611,10 @@ def open_single_dataset(
     index: Optional[DataIndex] = None
     ds_length = len(next(iter(columns)))
 
-    if not bypass_mpi and (comm := get_comm_world()) is not None:
+    # Use index_override if provided (e.g., for empty ranks in redshift-split)
+    if index_override is not None:
+        index = index_override
+    elif not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
         try:
             part = partition(comm, header, ds_group["index"], ds_group["data"], tree)
