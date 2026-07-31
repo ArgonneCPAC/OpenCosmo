@@ -108,8 +108,17 @@ def open(
 
     mpi_mode: str, default = "spatial"
         MPI decomposition mode for lightcone opens. One of:
-        - "spatial": every rank opens every file and partitions data spatially (default)
-        - "redshift": distribute files across ranks by redshift step (lightcone-only, requires MPI)
+
+        - "spatial": every rank opens every file and partitions data spatially
+          (default; unchanged behavior).
+        - "redshift": distribute lightcone files across ranks by data volume so
+          each file is opened by exactly one rank. Ranks that receive no files
+          still hold a full-schema, zero-length dataset, so ``select``/``filter``
+          and scalar reductions behave identically on every rank. Nested
+          (Diffsky step-then-type) lightcones fall back to spatial distribution.
+
+        With no MPI communicator, ``mpi_mode`` is a no-op and files open normally
+        on the single process.
 
     **open_kwargs: bool
         True/False flags that can be used to only load certain datasets from

@@ -23,6 +23,22 @@ Once you have opened data, the APIs are the same as if you were operating withou
 
 You do not need to do anything special to write data in parallel. Simply call :py:meth:`oc.write <opencosmo.write>` from all processes at the same time. :code:`opencosmo` will automatically coordinate between processes to write your file. However when working with large datasets and/or many MPI ranks, we strongly recommend installing a copy of HDF5 with parallel support. Parallel hdf5 allows multiple ranks to write data simultaneously, which will significantly decrease the amount of time required to write the data. See :doc:`installation` for details on how to install a parallel version of hdf5 on your system.
 
+Distributing Lightcones by Redshift
+-----------------------------------
+The default spatial chunking has every rank open every file. A lightcone is stored as one file per redshift step, and a lightcone may contain a hundred or more of them, so with many ranks this produces an enormous amount of redundant filesystem metadata traffic — each of the N files is opened N_ranks times.
+
+For lightcones you can instead distribute whole files across ranks by passing :code:`mpi_mode="redshift"` to :py:meth:`open <opencosmo.open>`:
+
+.. code-block:: python
+
+   import opencosmo as oc
+
+   lc = oc.open("step_600.hdf5", "step_601.hdf5", "step_602.hdf5", mpi_mode="redshift")
+
+In this mode :code:`opencosmo` balances the files across ranks by data volume, and each file is opened by exactly one rank. The rest of the API is unchanged: all operations still act on the local rank's data, scalar reductions are still combined globally, and :py:meth:`oc.write <opencosmo.write>` still coordinates across ranks to produce a single combined lightcone.
+
+If there are fewer files than ranks, the surplus ranks hold a full-schema, zero-length dataset — every column, unit, and redshift range is still available on those ranks, so :code:`select`, :code:`filter`, and scalar reductions behave identically everywhere. Nested (Diffsky step-then-type) lightcones are not redshift-split in the current release; passing :code:`mpi_mode="redshift"` for them silently falls back to spatial distribution. Without an MPI communicator the argument is a no-op.
+
 Combining Results Across Processes with :code:`reduce`:
 -------------------------------------------------------
 :code:`opencosmo` contains convinience functions for combining the results of a computation across ranks. The :meth:`reduce <opencosmo.analysis.reduce>` function allows you to sum, multiply, or average results from several different processes into a single result. For example, suppose you are working with a very large simulation using MPI and you want to compute the halo mass function across the entire simulation:
