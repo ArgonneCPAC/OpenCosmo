@@ -93,9 +93,16 @@ def __compute_redshift_distribution_plan(
     all_dtypes: list[np.dtype] | None = None
     data_type_set: set[str] = set()
 
+    # read_header is decorated with @broadcast_read, which fires a world-comm
+    # bcast on EVERY call. Since this planner runs inside a rank-0-only block,
+    # that stray collective would desynchronize the ranks (rank 0 issues N
+    # header-bcasts, other ranks issue none, and the plan bcast pairs with the
+    # wrong send). Call the undecorated inner function to read locally instead.
+    read_header_local = read_header.__wrapped__  # type: ignore[attr-defined]
+
     for path in paths:
         with h5py.File(path, "r") as f:
-            header = read_header(f)
+            header = read_header_local(f)
 
             # Verify it's a lightcone
             if not header.file.is_lightcone:
