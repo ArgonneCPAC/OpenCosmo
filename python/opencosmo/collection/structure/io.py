@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     import h5py
     from mpi4py import MPI
 
+    from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
 
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
@@ -89,7 +90,12 @@ def validate_linked_groups(groups: dict[str, h5py.Group]):
         raise ValueError("Structure collections must have more than one dataset")
 
 
-def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
+def build_structure_collection(
+    targets: list[FileTarget],
+    ignore_empty: bool,
+    redshift_split: bool = False,
+    index_override: Optional[DataIndex] = None,
+):
     link_sources: dict[str, list[io.iopen.DatasetTarget]] = defaultdict(list)
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
         defaultdict(lambda: defaultdict(list))
@@ -108,7 +114,10 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             link_sources["galaxy_properties"].append(target)
         elif str(target["header"].file.data_type).startswith("halo"):
             dataset = io.iopen.open_single_dataset(
-                target, bypass_lightcone=True, bypass_mpi=True
+                target,
+                bypass_lightcone=True,
+                bypass_mpi=True,
+                index_override=index_override,
             )
             name_source = target["dataset_group"]
             if (
@@ -125,7 +134,10 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             link_targets["halo_properties"][name].append(dataset)
         elif str(target["header"].file.data_type).startswith("galaxy"):
             dataset = io.iopen.open_single_dataset(
-                target, bypass_lightcone=True, bypass_mpi=True
+                target,
+                bypass_lightcone=True,
+                bypass_mpi=True,
+                index_override=index_override,
             )
             name_source = target["dataset_group"]
             if (
@@ -147,12 +159,20 @@ def build_structure_collection(targets: list[FileTarget], ignore_empty: bool):
             )
 
     if (
-        len(link_sources["halo_properties"]) > 1
+        redshift_split
+        or len(link_sources["halo_properties"]) > 1
         or len(link_sources["galaxy_properties"]) > 1
     ):
-        # Potentially a lightcone structure collection
+        # Lightcone structure collection. Under redshift-split we ALWAYS route here,
+        # even when this rank holds a single step (one source per type), so every
+        # rank builds the same collection kind and stays MPI-lockstep on the write
+        # path.
         return build_lightcone_structure_collection(
-            link_sources, link_targets, ignore_empty
+            link_sources,
+            link_targets,
+            ignore_empty,
+            redshift_split=redshift_split,
+            index_override=index_override,
         )
 
     halo_properties_target = None
@@ -254,6 +274,8 @@ def build_lightcone_structure_collection(
     link_sources: dict[str, list[io.iopen.DatasetTarget]],
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
     ignore_empty: bool = True,
+    redshift_split: bool = False,
+    index_override: Optional[DataIndex] = None,
 ):
     found_redshift_steps: set[int] = set()
     for source_type, source_list in link_sources.items():
@@ -289,7 +311,9 @@ def build_lightcone_structure_collection(
                 t,
                 "data_linked",
                 bypass_lightcone=True,
-                bypass_mpi=len(link_sources.get("halo_properties", [])) > 0,
+                bypass_mpi=redshift_split
+                or len(link_sources.get("halo_properties", [])) > 0,
+                index_override=index_override,
             )
             for t in link_sources["galaxy_properties"]
         ]
@@ -332,13 +356,24 @@ def build_lightcone_structure_collection(
         # the galaxy properties as a plain per-step linked dataset under the
         # halos, exactly like halo profiles.
         link_targets["halo_properties"]["galaxy_properties"] = [
-            io.iopen.open_single_dataset(t, bypass_lightcone=True, bypass_mpi=True)
+            io.iopen.open_single_dataset(
+                t,
+                bypass_lightcone=True,
+                bypass_mpi=True,
+                index_override=index_override,
+            )
             for t in link_sources["galaxy_properties"]
         ]
 
     halo_source_list = link_sources["halo_properties"]
     halo_datasets = [
-        io.iopen.open_single_dataset(t, "data_linked", bypass_lightcone=True)
+        io.iopen.open_single_dataset(
+            t,
+            "data_linked",
+            bypass_lightcone=True,
+            bypass_mpi=redshift_split,
+            index_override=index_override,
+        )
         for t in halo_source_list
     ]
     halo_source_by_step: dict[int, d.Dataset] = {}
@@ -367,7 +402,12 @@ def build_lightcone_structure_collection(
     source_lightcone = lc.Lightcone.from_datasets(halo_source_by_step)
 
     output_targets = {}
-    for target_type, targets in link_targets["halo_properties"].items():
+    # Iterate the linked type names in a deterministic (sorted) order so that
+    # StructureCollection.make_schema's local, union-free iteration produces the
+    # same child ordering on every rank under redshift-split -- defensive lockstep
+    # for the mixed-type write path.
+    for target_type in sorted(link_targets["halo_properties"].keys()):
+        targets = link_targets["halo_properties"][target_type]
         if isinstance(targets, (d.Dataset, sc.StructureCollection)):
             output_targets[target_type] = targets
             continue

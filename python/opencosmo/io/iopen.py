@@ -161,35 +161,31 @@ def __make_file_target(
     )
 
 
-def __open_files_redshift_split(plan, open_kwargs: dict[str, Any]) -> occ.Lightcone:
+def __open_files_redshift_split(
+    plan, open_kwargs: dict[str, Any]
+) -> occ.Lightcone | sc.StructureCollection:
     """
     Open a multi-file lightcone using redshift-based MPI distribution.
     Each rank opens its assigned files whole (no spatial partitioning).
-    Empty ranks open a reference file with a zero-length index.
+    Empty ranks open a reference *step* (all of its linked files) with a
+    zero-length index, so they build the same collection kind as busy ranks.
     """
     comm = get_comm_world()
     rank = comm.Get_rank() if comm else 0
     my_paths = plan.paths[rank]
 
-    if my_paths:
-        # Non-empty rank: open assigned files
-        func = partial(__make_file_target, open_kwargs=open_kwargs, broadcast=False)
-        my_targets = [t for t in map(func, my_paths) if t is not None]
-        if not my_targets:
-            raise ValueError(
-                f"Rank {rank} received no valid datasets from assigned files"
-            )
-    else:
-        # Empty rank: open reference file with zero-length index
-        func = partial(__make_file_target, open_kwargs=open_kwargs, broadcast=False)
-        ref_target = func(plan.reference_path)
-        if ref_target is None:
-            raise ValueError(
-                f"Rank {rank} could not open reference file {plan.reference_path}"
-            )
-        my_targets = [ref_target]
+    # Empty ranks open the whole reference step (a single file is not a valid
+    # structure collection); busy ranks open their assigned files.
+    paths_to_open = my_paths if my_paths else plan.reference_paths
+    func = partial(__make_file_target, open_kwargs=open_kwargs, broadcast=False)
+    my_targets = [t for t in map(func, paths_to_open) if t is not None]
+    if not my_targets:
+        raise ValueError(f"Rank {rank} received no valid datasets from assigned files")
 
-    # Open datasets with redshift_split flag
+    if plan.is_structure_collection:
+        return sc.StructureCollection.open(
+            my_targets, redshift_split=True, empty=(not my_paths), **open_kwargs
+        )
     return occ.Lightcone.open(
         my_targets, redshift_split=True, empty=(not my_paths), **open_kwargs
     )

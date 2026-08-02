@@ -76,6 +76,34 @@ def galaxyproperties_600_path(lightcone_path):
     return lightcone_path / "step_600" / "galaxyproperties.hdf5"
 
 
+@pytest.fixture
+def halo_sc_files(lightcone_path):
+    """
+    All files of a two-step halo lightcone structure collection
+    (haloproperties + haloparticles + haloprofiles for step_600 and step_601).
+    """
+    stems = ("haloproperties", "haloparticles", "haloprofiles")
+    return [
+        lightcone_path / step / f"{stem}.hdf5"
+        for step in ("step_600", "step_601")
+        for stem in stems
+    ]
+
+
+@pytest.fixture
+def halo_sc_files_single_step(lightcone_path):
+    """All files of a single-step halo lightcone structure collection (step_600)."""
+    stems = ("haloproperties", "haloparticles", "haloprofiles")
+    return [lightcone_path / "step_600" / f"{stem}.hdf5" for stem in stems]
+
+
+def _global_sc_source_raw(sc, column="fof_halo_mass"):
+    """Gather a source (halo_properties) column across all ranks for an SC."""
+    comm = MPI.COMM_WORLD
+    local = np.asarray(sc["halo_properties"].select(column).get_data("numpy"))
+    return np.concatenate(comm.allgather(local))
+
+
 def _global_raw(lc):
     """Gather the per-rank vstacked fof_halo_mass across all ranks."""
     comm = MPI.COMM_WORLD
@@ -1338,29 +1366,245 @@ def test_redshift_mpi_select_and_filter_work(
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_redshift_mpi_incompatible_files_raise(
-    haloproperties_600_path, galaxyproperties_600_path
-):
+def test_redshift_mpi_inconsistent_steps_raise(haloproperties_600_path, lightcone_path):
     """
-    Files with mismatched columns must be rejected during rank-0 planning with a
-    clear error, rather than silently mis-distributing. The error must name the
-    offending file. All ranks must observe the failure (the raise happens after
-    the plan broadcast returns the sentinel/raises consistently).
+    A lightcone structure collection whose steps do not share the same set of
+    linked file types must be rejected during rank-0 planning with a clear error,
+    rather than silently mis-distributing. All ranks must observe the failure (the
+    raise happens after the plan broadcast, in lockstep).
+
+    Here step_600 is a full halo SC (properties + particles + profiles) while
+    step_601 provides only properties -> inconsistent data_type sets across steps.
     """
+    files = [
+        lightcone_path / "step_600" / "haloproperties.hdf5",
+        lightcone_path / "step_600" / "haloparticles.hdf5",
+        lightcone_path / "step_600" / "haloprofiles.hdf5",
+        lightcone_path / "step_601" / "haloproperties.hdf5",
+    ]
+
     raised = False
     message = ""
     try:
-        oc.open(
-            haloproperties_600_path,
-            galaxyproperties_600_path,
-            mpi_mode="redshift",
-        )
+        oc.open(*files, mpi_mode="redshift")
     except ValueError as e:
         raised = True
         message = str(e)
 
-    parallel_assert(raised, "Incompatible files must raise ValueError")
+    parallel_assert(raised, "Inconsistent SC steps must raise ValueError")
     parallel_assert(
-        "column" in message.lower() or "dtype" in message.lower(),
-        f"Error must explain the incompatibility, got: {message}",
+        "data_type" in message.lower() or "step" in message.lower(),
+        f"Error must explain the inconsistency, got: {message}",
     )
+
+
+# ── redshift-based MPI mode: lightcone structure collections ──────────────
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_sc_disjoint_step_distribution(halo_sc_files):
+    """
+    A lightcone structure collection opened in redshift mode yields a
+    StructureCollection on every rank whose source is a Lightcone. Steps carry
+    data on disjoint ranks, and their union equals the full step set. With 2 steps
+    on 4 ranks, exactly 2 ranks hold data and 2 are empty (full-schema, len 0).
+    """
+    from opencosmo.collection.lightcone import lightcone as lc
+    from opencosmo.collection.structure import structure as sc
+
+    comm = get_comm_world()
+
+    # Reference: full step set and total source length from a normal (spatial) open.
+    ref = oc.open(*halo_sc_files)
+    parallel_assert(isinstance(ref, sc.StructureCollection))
+    expected_steps = set(ref["halo_properties"].keys())
+    expected_total = comm.allreduce(len(ref))
+
+    result = oc.open(*halo_sc_files, mpi_mode="redshift")
+
+    parallel_assert(
+        isinstance(result, sc.StructureCollection),
+        f"Expected StructureCollection, got {type(result).__name__}",
+    )
+    source = result["halo_properties"]
+    parallel_assert(
+        isinstance(source, lc.Lightcone),
+        f"SC source must be a Lightcone, got {type(source).__name__}",
+    )
+
+    # Steps carrying data on this rank.
+    local_data_steps = {step for step in source.keys() if len(source[step]) > 0}
+    all_data_steps = comm.allgather(local_data_steps)
+    union = set().union(*all_data_steps)
+    total_data_step_count = sum(len(s) for s in all_data_steps)
+
+    parallel_assert(
+        union == expected_steps,
+        f"Union of steps {union} != expected {expected_steps}",
+    )
+    parallel_assert(
+        total_data_step_count == len(expected_steps),
+        f"Data-bearing steps overlap across ranks: {all_data_steps}",
+    )
+
+    total_len = comm.allreduce(len(result))
+    parallel_assert(
+        total_len == expected_total,
+        f"Redshift SC total {total_len} != expected {expected_total}",
+    )
+
+    n_ranks_with_data = comm.allreduce(1 if len(result) > 0 else 0)
+    parallel_assert(
+        n_ranks_with_data == 2,
+        f"Expected 2 ranks with data, got {n_ranks_with_data}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_sc_linked_colocation(halo_sc_files):
+    """
+    .halos() iteration on the redshift-distributed SC yields structures whose
+    linked particles/profiles live on the owning rank (linked co-location). Empty
+    ranks simply iterate zero structures.
+    """
+    result = oc.open(*halo_sc_files, mpi_mode="redshift")
+
+    # Accumulate results LOCALLY. parallel_assert is a collective, so it must be
+    # called the same number of times on every rank -- calling it inside the
+    # per-halo loop would desync data-bearing ranks from the empty ranks (which
+    # iterate zero structures).
+    n_halos = 0
+    linked_ok = True
+    for halo in result.halos():
+        n_halos += 1
+        host_tag = halo["halo_properties"]["fof_halo_tag"]
+        dm_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
+        profile_tags = (
+            halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
+        )
+        if not (np.all(dm_tags == host_tag) and np.all(profile_tags == host_tag)):
+            linked_ok = False
+
+    comm = get_comm_world()
+    all_ok = all(comm.allgather(linked_ok))
+    parallel_assert(all_ok, "linked particles/profiles must belong to their host halo")
+
+    # Total structures iterated across ranks equals the collection length.
+    total_iterated = comm.allreduce(n_halos)
+    total_len = comm.allreduce(len(result))
+    parallel_assert(
+        total_iterated == total_len,
+        f"Iterated {total_iterated} halos != collection length {total_len}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_sc_reduction_equivalence(halo_sc_files):
+    """
+    A scalar reduction over the SC source returns the same global value in
+    redshift mode as in the default spatial mode, including the length-0
+    contribution from the 2 empty ranks.
+    """
+    spatial = oc.open(*halo_sc_files)
+    raw = _global_sc_source_raw(spatial, "fof_halo_mass")
+    expected_mean = float(np.mean(raw))
+    expected_min = float(np.min(raw))
+    expected_max = float(np.max(raw))
+
+    result = oc.open(*halo_sc_files, mpi_mode="redshift")
+    source = result["halo_properties"]
+
+    got_mean = float(
+        np.asarray(
+            source.select(v=oc.col("fof_halo_mass").mean()).get_data("numpy")
+        ).ravel()[0]
+    )
+    got_min = float(
+        np.asarray(
+            source.select(v=oc.col("fof_halo_mass").min()).get_data("numpy")
+        ).ravel()[0]
+    )
+    got_max = float(
+        np.asarray(
+            source.select(v=oc.col("fof_halo_mass").max()).get_data("numpy")
+        ).ravel()[0]
+    )
+
+    parallel_assert(
+        np.isclose(got_mean, expected_mean),
+        f"redshift SC mean {got_mean} != spatial {expected_mean}",
+    )
+    parallel_assert(
+        np.isclose(got_min, expected_min),
+        f"redshift SC min {got_min} != spatial {expected_min}",
+    )
+    parallel_assert(
+        np.isclose(got_max, expected_max),
+        f"redshift SC max {got_max} != spatial {expected_max}",
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_sc_write_round_trip(halo_sc_files, per_test_dir):
+    """
+    Writing a redshift-distributed SC and reopening it serially preserves the row
+    count and the linked structure (exercises the mixed-type make_schema on the
+    write path, including the empty-rank contributions).
+    """
+    comm = get_comm_world()
+
+    serial = oc.open(*halo_sc_files)
+    expected_total = comm.allreduce(len(serial))
+
+    result = oc.open(*halo_sc_files, mpi_mode="redshift")
+    oc.write(per_test_dir / "redshift_sc.hdf5", result)
+    comm.Barrier()
+
+    reopened = oc.open(per_test_dir / "redshift_sc.hdf5")
+    total_len = comm.allreduce(len(reopened))
+
+    parallel_assert(
+        total_len == expected_total,
+        f"Reopened SC total {total_len} != expected {expected_total}",
+    )
+
+    # Linked datasets survive the round trip: iterating halos still exposes
+    # co-located particles/profiles that point back to their host. Accumulate
+    # locally, then assert collectively once (see linked-colocation test).
+    linked_ok = True
+    for halo in reopened.halos():
+        host_tag = halo["halo_properties"]["fof_halo_tag"]
+        dm_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
+        if not np.all(dm_tags == host_tag):
+            linked_ok = False
+
+    all_ok = all(comm.allgather(linked_ok))
+    parallel_assert(
+        all_ok, "linked dm_particles lost their host after write round trip"
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_sc_surplus_ranks_single_step(halo_sc_files_single_step):
+    """
+    A single-step SC under 4 ranks: one rank holds all the data and the other
+    three build a full-schema, zero-length SC. The write still succeeds and
+    reopens to the same total.
+    """
+    comm = get_comm_world()
+
+    serial = oc.open(*halo_sc_files_single_step)
+    expected_total = comm.allreduce(len(serial))
+
+    result = oc.open(*halo_sc_files_single_step, mpi_mode="redshift")
+
+    # Every rank builds a full-schema SC; only one carries rows.
+    parallel_assert("fof_halo_mass" in result.properties)
+    n_ranks_with_data = comm.allreduce(1 if len(result) > 0 else 0)
+    parallel_assert(
+        n_ranks_with_data == 1,
+        f"Expected exactly 1 rank with data, got {n_ranks_with_data}",
+    )
+
+    total_len = comm.allreduce(len(result))
+    parallel_assert(total_len == expected_total)

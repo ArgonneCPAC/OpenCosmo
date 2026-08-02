@@ -25,12 +25,20 @@ class DistributionPlan:
     paths : list[list[Path]]
         Per-rank list of assigned file paths. Index is rank, value is list of paths
         that rank should open. Some ranks may have empty lists.
-    reference_path : Path
-        A single file to open on empty ranks (provides schema reference).
+    reference_paths : list[Path]
+        All files of one representative (lightest) step. Empty ranks open this whole
+        step so that they can build the same collection kind as the busy ranks
+        (a single file is not a valid structure collection).
+    is_structure_collection : bool
+        True when each step is described by several linked files (a properties file
+        containing a ``/data_linked`` group plus its linked particles/profiles), so
+        the open path must build a ``StructureCollection`` rather than a plain
+        ``Lightcone``.
     """
 
     paths: list[list[Path]]
-    reference_path: Path
+    reference_paths: list[Path]
+    is_structure_collection: bool
 
 
 def partition_contiguous(weights: list[int], k: int) -> list[list[int]]:
@@ -108,13 +116,15 @@ def plan_redshift_distribution(
     Plan a redshift-based distribution of lightcone files across MPI ranks.
 
     Computed on rank 0 only, then broadcast to all ranks. Returns None (fallback
-    sentinel) if the files are nested lightcones (multiple types per step),
-    in which case the caller should fall back to spatial distribution.
+    sentinel) if the layout is a nested Diffsky-style lightcone (CASE B), in which
+    case the caller should fall back to spatial distribution.
 
     Performs compatibility verification on rank 0:
     - Every file must be a lightcone (is_lightcone=True).
-    - All files must share the same column names, dtypes, and data_type.
-    - Detects nested lightcones (multiple dataset types per step).
+    - Files of a given data_type must share column names and dtypes across steps;
+      different data_types may differ (structure-collection files intentionally do).
+    - Classifies the layout as a plain lightcone or a lightcone structure
+      collection (CASE A), or falls back (None) for anything else.
 
     Splits the redshift-ordered steps into contiguous chunks of roughly-equal row
     count (optimal linear partition), so each rank owns one continuous redshift
@@ -168,11 +178,15 @@ def __compute_redshift_distribution_plan(
     if not paths:
         raise ValueError("No paths provided for distribution planning")
 
-    # Read metadata from each file and group by step
-    file_info: dict[int | None, list[tuple["Path", int, str]]] = {}
-    all_columns: set[str] | None = None
-    all_dtypes: list[np.dtype] | None = None
-    data_type_set: set[str] = set()
+    # Per-file metadata, grouped by step. Each entry carries the path, the row
+    # count of its top-level /data (0 for particle/profile files that only have
+    # linked groups), its data_type, and whether it is a properties file holding a
+    # /data_linked group (the reliable on-disk signal for CASE A).
+    file_info: dict[int | None, list[tuple["Path", int, str, bool]]] = {}
+    # Per-data_type column signature, so different linked types may differ from one
+    # another but must be self-consistent across steps.
+    columns_by_type: dict[str, set[str]] = {}
+    dtypes_by_type: dict[str, list[np.dtype]] = {}
 
     # read_header is decorated with @broadcast_read, which fires a world-comm
     # bcast on EVERY call. Since this planner runs inside a rank-0-only block,
@@ -194,45 +208,50 @@ def __compute_redshift_distribution_plan(
 
             step: int | None = header.file.step
             data_type = header.file.data_type
-            data_type_set.add(data_type)
 
             # Collect column info from /data and linked groups
             columns_and_dtypes = __get_columns_info(f)
-            cols = list(columns_and_dtypes.keys())
+            cols = set(columns_and_dtypes.keys())
             dtypes = list(columns_and_dtypes.values())
 
-            if all_columns is None:
-                all_columns = set(cols)
-            if all_dtypes is None:
-                all_dtypes = dtypes
+            # Per-data_type compatibility: files of the same type must share
+            # columns and dtypes across steps, but different types may differ.
+            if data_type not in columns_by_type:
+                columns_by_type[data_type] = cols
+                dtypes_by_type[data_type] = dtypes
+            else:
+                if cols != columns_by_type[data_type]:
+                    raise ValueError(
+                        f"File {path} has different columns than previous "
+                        f"'{data_type}' files. Expected "
+                        f"{sorted(columns_by_type[data_type])}, got {sorted(cols)}. "
+                        "All lightcone files of a given data type must have "
+                        "identical columns."
+                    )
+                if dtypes != dtypes_by_type[data_type]:
+                    raise ValueError(
+                        f"File {path} has different column dtypes than previous "
+                        f"'{data_type}' files. All lightcone files of a given data "
+                        "type must have identical column dtypes."
+                    )
 
-            # Verify columns match
-            if set(cols) != all_columns:
-                raise ValueError(
-                    f"File {path} has different columns than previous files. "
-                    f"Expected {sorted(all_columns)}, got {sorted(cols)}. "
-                    "All lightcone files must have identical columns."
-                )
-            if dtypes != all_dtypes:
-                raise ValueError(
-                    f"File {path} has different column dtypes than previous files. "
-                    "All lightcone files must have identical column dtypes."
-                )
+            # Row count from top-level /data (0 for files that only carry linked
+            # groups, e.g. particles/profiles).
+            row_count = __get_data_row_count(f)
 
-            # Get row count from first column
-            first_col_key = next(iter(columns_and_dtypes.keys()))
-            row_count = __get_row_count(f, first_col_key)
+            is_properties_link = (
+                data_type in ("halo_properties", "galaxy_properties")
+                and "data_linked" in f
+            )
 
-            if step not in file_info:
-                file_info[step] = []
-            file_info[step].append((path, row_count, data_type))
+            file_info.setdefault(step, []).append(
+                (path, row_count, data_type, is_properties_link)
+            )
 
-    # Detect nested lightcones (multiple types per step)
-    for step, file_list in file_info.items():
-        types_in_step = set(data_type for _, _, data_type in file_list)
-        if len(types_in_step) > 1:
-            # Nested lightcone detected: fallback to spatial distribution
-            return None
+    is_structure_collection = __determine_collection_kind(file_info)
+    if is_structure_collection is None:
+        # CASE B (e.g. nested Diffsky step->type lightcone): fall back to spatial.
+        return None
 
     # Order steps by redshift (the step index is monotonic in redshift). Each step
     # becomes one indivisible unit whose weight is the total rows across all of its
@@ -242,8 +261,8 @@ def __compute_redshift_distribution_plan(
     step_paths: list[list["Path"]] = []
     step_weights: list[int] = []
     for step in ordered_steps:
-        step_paths.append([path for path, _, _ in file_info[step]])
-        step_weights.append(sum(row_count for _, row_count, _ in file_info[step]))
+        step_paths.append([path for path, _, _, _ in file_info[step]])
+        step_weights.append(sum(rc for _, rc, _, _ in file_info[step]))
 
     # Split the ordered steps into nranks CONTIGUOUS chunks of roughly-equal row
     # count, so each rank owns one continuous redshift range.
@@ -255,12 +274,74 @@ def __compute_redshift_distribution_plan(
             files_for_rank.extend(step_paths[step_idx])
         rank_files.append(files_for_rank)
 
-    # Choose reference path (smallest file)
-    reference_path = min(paths, key=lambda p: __get_file_row_count(p))
+    # Reference = all files of the lightest step. Empty ranks open this whole step
+    # so they can build the same collection kind as the busy ranks.
+    lightest = min(range(len(step_weights)), key=lambda i: step_weights[i])
+    reference_paths = list(step_paths[lightest])
 
     return DistributionPlan(
-        paths=[list(rf) for rf in rank_files], reference_path=reference_path
+        paths=[list(rf) for rf in rank_files],
+        reference_paths=reference_paths,
+        is_structure_collection=is_structure_collection,
     )
+
+
+def __determine_collection_kind(
+    file_info: dict[int | None, list[tuple["Path", int, str, bool]]],
+) -> Optional[bool]:
+    """
+    Classify the on-disk layout from the per-step file metadata.
+
+    Returns
+    -------
+    False
+        Plain lightcone: every step has exactly one file of a single, consistent
+        data_type.
+    True
+        Structure collection (CASE A): each step has a properties file containing a
+        /data_linked group plus one or more linked types; every step shares the same
+        set of data_types.
+    None
+        Fallback (CASE B and anything else): the caller should use spatial
+        distribution.
+
+    Raises
+    ------
+    ValueError
+        If the layout looks like a structure collection but is inconsistent across
+        steps (missing properties file, or differing data_type sets).
+    """
+    # Plain lightcone: one file per step, all the same data_type.
+    single_file = all(len(files) == 1 for files in file_info.values())
+    single_type = (
+        len({dt for files in file_info.values() for _, _, dt, _ in files}) == 1
+    )
+    if single_file and single_type:
+        return False
+
+    # Structure collection: multiple files per step, one of which is a
+    # properties-with-data_linked file. Require every step to look the same.
+    any_properties_link = any(
+        is_link for files in file_info.values() for _, _, _, is_link in files
+    )
+    if not any_properties_link:
+        # Multiple files/types per step but no properties link -> CASE B / unknown.
+        return None
+
+    type_sets = {frozenset(dt for _, _, dt, _ in files) for files in file_info.values()}
+    if len(type_sets) != 1:
+        raise ValueError(
+            "Lightcone structure collection steps have inconsistent data_type sets: "
+            f"{sorted(sorted(ts) for ts in type_sets)}. Every step must contain the "
+            "same set of linked file types."
+        )
+    for step, files in file_info.items():
+        if not any(is_link for _, _, _, is_link in files):
+            raise ValueError(
+                f"Lightcone structure collection step {step} has no properties file "
+                "with a /data_linked group."
+            )
+    return True
 
 
 def __get_columns_info(file: h5py.File) -> dict[str, np.dtype]:
@@ -290,28 +371,14 @@ def __get_columns_info(file: h5py.File) -> dict[str, np.dtype]:
     return columns
 
 
-def __get_row_count(file: h5py.File, column_key: str) -> int:
+def __get_data_row_count(file: h5py.File) -> int:
     """
-    Get the row count from a single column dataset.
-    column_key is like "/data/mass" or "/halo_properties/data/mass".
+    Row count of the top-level /data group, or 0 if the file has none (particle and
+    profile files carry only linked groups). This is a per-file weight proxy; the
+    planner sums it across a step's files for the total-volume estimate.
     """
-    # Strip leading / and navigate
-    parts = column_key.lstrip("/").split("/")
-    obj = file
-    for part in parts:
-        obj = obj[part]
-    return obj.shape[0]
-
-
-def __get_file_row_count(path: "Path") -> int:
-    """
-    Get the total row count from a file (sum of all data groups).
-    """
-    total = 0
-    with h5py.File(path, "r") as f:
-        # Main /data group
-        if "/data" in f:
-            first_col = next(iter(f["/data"].values()), None)
-            if first_col is not None:
-                total += first_col.shape[0]
-    return total
+    if "/data" in file:
+        first_col = next(iter(file["/data"].values()), None)
+        if first_col is not None:
+            return first_col.shape[0]
+    return 0
