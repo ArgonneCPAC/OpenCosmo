@@ -1608,3 +1608,38 @@ def test_redshift_mpi_sc_surplus_ranks_single_step(halo_sc_files_single_step):
 
     total_len = comm.allreduce(len(result))
     parallel_assert(total_len == expected_total)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redshift_mpi_halo_galaxy_sc_surplus_ranks(
+    haloproperties_600_path, galaxyproperties_600_path
+):
+    """
+    A halo+galaxy-properties SC (galaxy properties attached as a plain linked
+    dataset) opened over more ranks than steps. The galaxy source derives its
+    redshift from the comoving distance, and on the surplus zero-length ranks
+    that derivation must not invoke astropy's z_at_value solver (which raises on
+    empty input). Every rank builds a full-schema SC exposing the galaxy link.
+    """
+    comm = get_comm_world()
+
+    serial = oc.open(haloproperties_600_path, galaxyproperties_600_path)
+    expected_total = comm.allreduce(len(serial))
+
+    result = oc.open(
+        haloproperties_600_path, galaxyproperties_600_path, mpi_mode="redshift"
+    )
+
+    # Full schema on every rank, including the galaxy link whose empty-rank
+    # redshift derivation used to crash.
+    parallel_assert("fof_halo_mass" in result.properties)
+    parallel_assert("galaxy_properties" in result.keys())
+
+    n_ranks_with_data = comm.allreduce(1 if len(result) > 0 else 0)
+    parallel_assert(
+        n_ranks_with_data == 1,
+        f"Expected exactly 1 rank with data, got {n_ranks_with_data}",
+    )
+
+    total_len = comm.allreduce(len(result))
+    parallel_assert(total_len == expected_total)
