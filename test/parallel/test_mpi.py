@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import shutil
 from collections import defaultdict
 from functools import reduce as ftr
 from logging import getLogger
@@ -13,11 +11,11 @@ import mpi4py
 import numpy as np
 import pytest
 from mpi4py import MPI
+from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo.analysis import reduce
-from opencosmo.mpi import get_comm_world
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -28,39 +26,6 @@ else:
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
-
-
-@pytest.fixture
-def per_test_dir(
-    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
-):
-    """
-    Creates a unique directory for each test and deletes it after the test finishes.
-
-    Uses tmp_path_factory so you can control base temp location via pytest's
-    tempdir handling, and also so it can be used from broader-scoped fixtures
-    if needed.
-    """
-    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
-    nodeid = (
-        request.node.nodeid.replace("/", "_")
-        .replace("::", "__")
-        .replace("[", "_")
-        .replace("]", "_")
-    )
-
-    path = tmp_path_factory.mktemp(nodeid)
-    comm = MPI.COMM_WORLD
-    path_to_return = comm.bcast(path)
-
-    try:
-        yield path_to_return
-    finally:
-        # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS:
-            shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture
@@ -697,7 +662,6 @@ def test_simcollection_structure_write(
 
     collection_written = oc.open(temporary_path)
 
-    shutil.copy(temporary_path, "output.hdf5")
     for ds_name, ds in collection_written.items():
         assert np.all(
             ds["halo_properties"].get_data()

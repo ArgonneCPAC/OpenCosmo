@@ -1,14 +1,8 @@
-import os
-import shutil
-
 import numpy as np
 import pytest
-from mpi4py import MPI
 from opencosmo.mpi import get_comm_world
 
 import opencosmo as oc
-
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
 @pytest.fixture
@@ -39,37 +33,6 @@ def galaxies_601_path(lightcone_path):
     properties = lightcone_path / "step_601" / "galaxyproperties.hdf5"
     particles = lightcone_path / "step_601" / "galaxyparticles.hdf5"
     return [properties, particles]
-
-
-@pytest.fixture
-def per_test_dir(
-    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
-):
-    """
-    Creates a unique directory for each test and deletes it after the test finishes.
-
-    Uses tmp_path_factory so you can control base temp location via pytest's
-    tempdir handling, and also so it can be used from broader-scoped fixtures
-    if needed.
-    """
-    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
-    nodeid = (
-        request.node.nodeid.replace("/", "_")
-        .replace("::", "__")
-        .replace("[", "_")
-        .replace("]", "_")
-    )
-
-    path = tmp_path_factory.mktemp(nodeid)
-    comm = MPI.COMM_WORLD
-    path_to_return = comm.bcast(path)
-
-    try:
-        yield path_to_return
-    finally:
-        # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS:
-            shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture
