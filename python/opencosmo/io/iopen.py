@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.io.io import MpiMode
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -74,10 +75,37 @@ class FileTarget(TypedDict):
     dataset_groups: dict[str, list[DatasetTarget]]
 
 
-def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
+def open_files(
+    paths: list[Path],
+    open_kwargs: dict[str, Any],
+    mpi_mode: "MpiMode | None" = None,
+) -> oc.Dataset | oc.collection.Collection:
     """
     Main back-end entry point for opening files.
     """
+    # Default to SPATIAL mode if not provided
+    if mpi_mode is None:
+        from opencosmo.io.io import MpiMode
+
+        mpi_mode = MpiMode.SPATIAL
+
+    # Redshift-split path: consult the planner FIRST, before building any file
+    # targets. In spatial mode every rank calls __make_file_target on every path,
+    # which reads metadata from every file on every rank — for a many-file
+    # lightcone under many ranks that is an enormous, redundant metadata storm.
+    # In redshift mode only rank 0 reads all the headers (inside the planner);
+    # each rank then builds targets solely for the files assigned to it.
+    if mpi_mode.value == "redshift" and get_comm_world() is not None and len(paths) > 1:
+        from opencosmo.collection.lightcone.distribute import (
+            plan_redshift_distribution,
+        )
+
+        comm = get_comm_world()
+        plan = plan_redshift_distribution(paths, comm)
+
+        # If plan is None, the files are a nested lightcone; fall back to spatial.
+        if plan is not None:
+            return __open_files_redshift_split(plan, open_kwargs)
 
     func = partial(__make_file_target, open_kwargs=open_kwargs)
     targets = map(func, paths)
@@ -103,15 +131,26 @@ def __make_group_map(group: h5py.File | h5py.Group, prefix: str = ""):
     return index
 
 
-def __make_file_target(path: Path, open_kwargs: dict[str, Any]) -> Optional[FileTarget]:
+def __make_file_target(
+    path: Path, open_kwargs: dict[str, Any], broadcast: bool = True
+) -> Optional[FileTarget]:
     """
     Search through the file for any valid datasets or dataset groups. For groups,
     identify the group types. Datasets with load conditions that are not
     met will be discarded.
+
+    ``broadcast`` controls how headers are read. In the default (spatial) path
+    every rank opens the same file, so reading the header once on rank 0 and
+    broadcasting it is a valid optimization. In the redshift-split path each rank
+    opens a *different* file, so the header must be read locally on each rank
+    (``broadcast=False``) — otherwise every rank would receive rank 0's header
+    (and thus rank 0's redshift step).
     """
     file = h5py.File(path)
     group_map = __make_group_map(file)
-    dataset_targets, group_targets = __find_all_datasets(group_map, open_kwargs)
+    dataset_targets, group_targets = __find_all_datasets(
+        group_map, open_kwargs, broadcast=broadcast
+    )
     if not dataset_targets and not group_targets:
         return None
     group_types = __identify_group_types(dataset_targets, group_targets)
@@ -119,6 +158,36 @@ def __make_file_target(path: Path, open_kwargs: dict[str, Any]) -> Optional[File
         dataset_group_types=group_types,
         dataset_targets=dataset_targets,
         dataset_groups=group_targets,
+    )
+
+
+def __open_files_redshift_split(
+    plan, open_kwargs: dict[str, Any]
+) -> occ.Lightcone | sc.StructureCollection:
+    """
+    Open a multi-file lightcone using redshift-based MPI distribution.
+    Each rank opens its assigned files whole (no spatial partitioning).
+    Empty ranks open a reference *step* (all of its linked files) with a
+    zero-length index, so they build the same collection kind as busy ranks.
+    """
+    comm = get_comm_world()
+    rank = comm.Get_rank() if comm else 0
+    my_paths = plan.paths[rank]
+
+    # Empty ranks open the whole reference step (a single file is not a valid
+    # structure collection); busy ranks open their assigned files.
+    paths_to_open = my_paths if my_paths else plan.reference_paths
+    func = partial(__make_file_target, open_kwargs=open_kwargs, broadcast=False)
+    my_targets = [t for t in map(func, paths_to_open) if t is not None]
+    if not my_targets:
+        raise ValueError(f"Rank {rank} received no valid datasets from assigned files")
+
+    if plan.is_structure_collection:
+        return sc.StructureCollection.open(
+            my_targets, redshift_split=True, empty=(not my_paths), **open_kwargs
+        )
+    return occ.Lightcone.open(
+        my_targets, redshift_split=True, empty=(not my_paths), **open_kwargs
     )
 
 
@@ -369,7 +438,9 @@ def __find_all_headers(file_map: dict):
 
 
 def __find_all_datasets(
-    file_map: dict[str, h5py.File | h5py.Group | h5py.Dataset], open_kwargs
+    file_map: dict[str, h5py.File | h5py.Group | h5py.Dataset],
+    open_kwargs,
+    broadcast: bool = True,
 ) -> tuple[list[DatasetTarget], dict[str, list[DatasetTarget]]]:
     """
     Search through a file and locate all the datasets. Each dataset is identified
@@ -391,9 +462,12 @@ def __find_all_datasets(
             f"The file at {next(iter(file_map.values())).file.filename}, does not appear to be an OpenCosmoFile"
         )
 
+    # In the redshift-split path each rank opens a different file, so headers
+    # must be read locally rather than broadcast from rank 0 (see __make_file_target).
+    read_header_fn = read_header if broadcast else read_header.__wrapped__  # type: ignore[attr-defined]
     all_file_headers: list[OpenCosmoHeader] = list(
         map(
-            lambda header_group: read_header(file_map[header_group].parent),
+            lambda header_group: read_header_fn(file_map[header_group].parent),
             known_headers,
         )
     )
@@ -515,6 +589,7 @@ def open_single_dataset(
     bypass_lightcone: bool = False,
     bypass_mpi: bool = False,
     open_kwargs: dict[str, Any] = {},
+    index_override: Optional[DataIndex] = None,
 ):
     header = target["header"]
     ds_group = target["dataset_group"]
@@ -552,7 +627,10 @@ def open_single_dataset(
     index: Optional[DataIndex] = None
     ds_length = len(next(iter(columns)))
 
-    if not bypass_mpi and (comm := get_comm_world()) is not None:
+    # Use index_override if provided (e.g., for empty ranks in redshift-split)
+    if index_override is not None:
+        index = index_override
+    elif not bypass_mpi and (comm := get_comm_world()) is not None:
         assert partition is not None
         try:
             part = partition(comm, header, ds_group["index"], ds_group["data"], tree)

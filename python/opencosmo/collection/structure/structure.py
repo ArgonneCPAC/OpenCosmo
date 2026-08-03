@@ -173,9 +173,22 @@ class StructureCollection:
 
     @classmethod
     def open(
-        cls, targets: list[FileTarget], ignore_empty=True, **kwargs
+        cls,
+        targets: list[FileTarget],
+        ignore_empty=True,
+        redshift_split: bool = False,
+        empty: bool = False,
+        **kwargs,
     ) -> StructureCollection:
-        result = sio.build_structure_collection(targets, ignore_empty)
+        from opencosmo.index.build import empty as make_empty_index
+
+        index_override = make_empty_index() if empty else None
+        result = sio.build_structure_collection(
+            targets,
+            ignore_empty,
+            redshift_split=redshift_split,
+            index_override=index_override,
+        )
         return result
 
     @property
