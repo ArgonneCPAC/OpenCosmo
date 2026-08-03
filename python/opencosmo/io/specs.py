@@ -1,0 +1,311 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+from opencosmo.io.discover import (
+    FileLayout,
+    group_data_type,
+    has_linked_targets,
+    is_healpix_map_group,
+    is_lightcone_group,
+    is_properties_group,
+)
+
+if TYPE_CHECKING:
+    import opencosmo as oc
+    from opencosmo.io.discover import GroupLayout
+    from opencosmo.io.iopen import FileTarget
+
+"""
+Spec registry for opening OpenCosmo files.
+
+Each file/collection *type* is described by one self-contained FileSpec that knows
+only how to recognise itself (``matches``), sanity-check itself (``verify``) and turn
+rehydrated targets into an object (``build_from_targets``). Opening a file is CORE
+logic, not an extension point, so this registry deliberately does NOT use the plugin
+hook system (opencosmo.plugins) — it is a plain module-level ordered tuple, and
+dispatch is a plain ``match_spec(layouts)`` that returns the first spec whose
+``matches()`` is true. Precedence is the order of the SPECS tuple, auditable in one
+place.
+
+A spec is stateless and does not orchestrate distribution or building — that is the
+caller's job (``open_files``), which calls the free functions ``plan.distribute`` and
+``plan.build_from_assignment`` directly, passing the matched spec as the builder.
+
+Composition across simulations is not a spec either. A file (or file set) with more
+than one governing header scope — one ``/header`` per simulation, e.g.
+``/scidac1/header``, ``/scidac2/header`` — is a SimulationCollection of per-scope
+children. ``group_by_scope`` splits the layouts by scope; the caller builds each
+scope through the ordinary single-scope path and wraps the results. Every spec
+therefore only ever sees a single-scope layout.
+"""
+
+
+def _all_groups(layouts: tuple[FileLayout, ...]) -> list[GroupLayout]:
+    """Flatten all GroupLayouts from non-errored files (path-sorted order preserved)."""
+    return [g for fl in layouts if fl.error is None for g in fl.groups]
+
+
+def group_by_scope(
+    layouts: tuple[FileLayout, ...],
+) -> dict[str, tuple[FileLayout, ...]]:
+    """Group discovered layouts by governing header scope.
+
+    Returns an ordered mapping ``scope_name -> sub-layouts``, where each sub-layout is
+    a FileLayout whose groups are filtered to that scope. A file with a single header
+    scope yields one entry (``"/"``); a nested simulation-collection file (headers at
+    ``/scidac1/header``, ``/scidac2/header``, ...) yields one entry per simulation.
+    The caller builds each scope independently and, when there is more than one, wraps
+    the results in a SimulationCollection. Because each returned sub-layout has exactly
+    one scope, ``match_spec`` only ever dispatches on single-scope layouts.
+
+    Errored files are skipped; callers raise on ``FileLayout.error`` before grouping.
+    """
+    by_scope: dict[str, list[FileLayout]] = {}
+    for fl in layouts:
+        if fl.error is not None:
+            continue
+        scope_groups: dict[str, list[GroupLayout]] = {}
+        for g in fl.groups:
+            scope_groups.setdefault(g.header_path, []).append(g)
+        for header_path, gs in scope_groups.items():
+            scope_name = header_path.rsplit("/header", 1)[0].lstrip("/") or "/"
+            sub_fl = FileLayout(path=fl.path, groups=tuple(gs), error=None)
+            by_scope.setdefault(scope_name, []).append(sub_fl)
+    return {name: tuple(by_scope[name]) for name in sorted(by_scope)}
+
+
+def _build_single_dataset(
+    targets: list[FileTarget], open_kwargs: dict[str, Any]
+) -> oc.Dataset | oc.collection.Collection:
+    """Build one dataset from a single-target file list.
+
+    Shared by DatasetSpec and HealpixMapSpec: open_single_dataset already routes a
+    healpix_map header to __open_healpix_map and a lightcone header to
+    Lightcone.from_datasets internally, so both specs need only this one call.
+    """
+    from opencosmo.io.iopen import open_single_dataset
+
+    return open_single_dataset(
+        targets[0]["dataset_targets"][0], open_kwargs=open_kwargs
+    )
+
+
+def _verify_columns_consistent_per_datatype(layouts: tuple[FileLayout, ...]) -> None:
+    """Verify all groups sharing a data_type have identical column names and dtypes.
+
+    Different data_types may differ (structure-collection files intentionally do);
+    files of the same data_type must match across steps. Raises ValueError on
+    mismatch. Column names/dtypes are already path-sorted in GroupLayout, so the
+    comparison is order-stable.
+    """
+    by_type: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
+    for g in _all_groups(layouts):
+        dt = group_data_type(g)
+        sig = (g.column_names, g.column_dtypes)
+        if dt not in by_type:
+            by_type[dt] = sig
+        elif by_type[dt] != sig:
+            raise ValueError(
+                f"Inconsistent columns for data_type '{dt}': {by_type[dt]} vs "
+                f"{sig}. All files of a given data type must have identical column "
+                "names and dtypes."
+            )
+
+
+def _verify_structure_collection_consistency(layouts: tuple[FileLayout, ...]) -> None:
+    """Verify a structure collection is consistent across redshift steps.
+
+    Ports the raises from the old __determine_collection_kind: every step must have
+    an identical data_type set, and every step must contain a properties group with
+    a /data_linked group. Single-step (snapshot) collections trivially pass. Raises
+    ValueError otherwise.
+    """
+    by_step: dict[int | None, list[GroupLayout]] = {}
+    for g in _all_groups(layouts):
+        by_step.setdefault(g.header.file.step, []).append(g)
+
+    type_sets = {frozenset(group_data_type(g) for g in gs) for gs in by_step.values()}
+    if len(type_sets) > 1:
+        raise ValueError(
+            "Structure collection steps have inconsistent data_type sets: "
+            f"{sorted(sorted(ts) for ts in type_sets)}. Every step must contain the "
+            "same set of data types."
+        )
+    for step, gs in by_step.items():
+        if not any(is_properties_group(g) and has_linked_targets(g) for g in gs):
+            raise ValueError(
+                f"Structure collection step {step} has no properties group with a "
+                "/data_linked group."
+            )
+
+
+@runtime_checkable
+class FileSpec(Protocol):
+    """Contract for a single file/collection type in the open registry.
+
+    Specs are stateless and describe only what varies per type. Distribution and
+    building are handled by the caller via the plan.py free functions (the spec is
+    passed to ``plan.build_from_assignment`` as the builder, which calls back into
+    ``build_from_targets``).
+    """
+
+    name: str
+
+    def matches(self, layouts: tuple[FileLayout, ...]) -> bool: ...
+
+    def verify(self, layouts: tuple[FileLayout, ...]) -> None: ...
+
+    def build_from_targets(
+        self,
+        targets: list[FileTarget],
+        *,
+        redshift_split: bool,
+        empty: bool,
+        open_kwargs: dict[str, Any],
+    ) -> oc.Dataset | oc.collection.Collection: ...
+
+
+class StructureCollectionSpec:
+    """Properties group + /data_linked + >=1 linked type present.
+
+    Catches the lightcone structure collection too (LightconeSpec requires a single
+    data_type, which a structure collection never has), so this spec is registered
+    before LightconeSpec.
+    """
+
+    name = "structure_collection"
+
+    def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
+        groups = _all_groups(layouts)
+        # A properties file carrying /data_linked is necessary but not sufficient:
+        # a lone properties file (or several properties files of one type across
+        # redshift steps) references links whose children are not in the open set,
+        # so it opens as a Dataset/Lightcone, not a structure collection. The
+        # collection only exists once >=1 linked child type is actually present,
+        # i.e. more than one distinct data_type is opened together (matching the
+        # old properties + particles/profiles categorization).
+        has_properties_link = any(
+            is_properties_group(g) and has_linked_targets(g) for g in groups
+        )
+        n_data_types = len({group_data_type(g) for g in groups})
+        return has_properties_link and n_data_types > 1
+
+    def verify(self, layouts: tuple[FileLayout, ...]) -> None:
+        _verify_columns_consistent_per_datatype(layouts)
+        _verify_structure_collection_consistency(layouts)
+
+    def build_from_targets(
+        self,
+        targets: list[FileTarget],
+        *,
+        redshift_split: bool,
+        empty: bool,
+        open_kwargs: dict[str, Any],
+    ) -> oc.Dataset | oc.collection.Collection:
+        from opencosmo import collection as occ
+
+        return occ.StructureCollection.open(
+            targets, redshift_split=redshift_split, empty=empty, **open_kwargs
+        )
+
+
+class HealpixMapSpec:
+    """A single healpix_map group. Shares the single-dataset build with DatasetSpec.
+
+    open_single_dataset routes a healpix_map header to __open_healpix_map internally;
+    this is a distinct spec purely for the match signal and documentation.
+    """
+
+    name = "healpix_map"
+
+    def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
+        groups = _all_groups(layouts)
+        return len(groups) == 1 and is_healpix_map_group(groups[0])
+
+    def verify(self, layouts: tuple[FileLayout, ...]) -> None:
+        return None
+
+    def build_from_targets(
+        self,
+        targets: list[FileTarget],
+        *,
+        redshift_split: bool,
+        empty: bool,
+        open_kwargs: dict[str, Any],
+    ) -> oc.Dataset | oc.collection.Collection:
+        return _build_single_dataset(targets, open_kwargs)
+
+
+class LightconeSpec:
+    """>=1 group, all is_lightcone, a single data_type."""
+
+    name = "lightcone"
+
+    def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
+        groups = _all_groups(layouts)
+        if not groups or not all(is_lightcone_group(g) for g in groups):
+            return False
+        return len({group_data_type(g) for g in groups}) == 1
+
+    def verify(self, layouts: tuple[FileLayout, ...]) -> None:
+        _verify_columns_consistent_per_datatype(layouts)
+
+    def build_from_targets(
+        self,
+        targets: list[FileTarget],
+        *,
+        redshift_split: bool,
+        empty: bool,
+        open_kwargs: dict[str, Any],
+    ) -> oc.Dataset | oc.collection.Collection:
+        from opencosmo import collection as occ
+
+        return occ.Lightcone.open(
+            targets, redshift_split=redshift_split, empty=empty, **open_kwargs
+        )
+
+
+class DatasetSpec:
+    """A single non-lightcone, non-healpix group -> plain Dataset."""
+
+    name = "dataset"
+
+    def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
+        groups = _all_groups(layouts)
+        if len(groups) != 1:
+            return False
+        g = groups[0]
+        return not is_lightcone_group(g) and not is_healpix_map_group(g)
+
+    def verify(self, layouts: tuple[FileLayout, ...]) -> None:
+        return None
+
+    def build_from_targets(
+        self,
+        targets: list[FileTarget],
+        *,
+        redshift_split: bool,
+        empty: bool,
+        open_kwargs: dict[str, Any],
+    ) -> oc.Dataset | oc.collection.Collection:
+        return _build_single_dataset(targets, open_kwargs)
+
+
+SPECS: tuple[FileSpec, ...] = (
+    StructureCollectionSpec(),
+    HealpixMapSpec(),
+    LightconeSpec(),
+    DatasetSpec(),
+)
+
+
+def match_spec(layouts: tuple[FileLayout, ...]) -> FileSpec | None:
+    """Return the first spec whose matches() is true for a single-scope layout, or None.
+
+    Precedence is the order of SPECS (most-constrained first), reproducing the old
+    query() 'first registration whose predicate is true wins' semantics. Callers pass
+    a single-scope layout (see ``group_by_scope``); a multi-scope layout is a
+    SimulationCollection and is decomposed before dispatch.
+    """
+    return next((s for s in SPECS if s.matches(layouts)), None)
