@@ -1,0 +1,1 @@
+Significant rewrite of the logic underpinning `open` to improve readability and extensability, and minimize the number of metadata reads in highly parallel environment. User-facing interface is unchanged.
