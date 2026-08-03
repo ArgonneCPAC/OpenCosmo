@@ -176,20 +176,16 @@ class StructureCollection:
         cls,
         targets: list[FileTarget],
         ignore_empty=True,
-        redshift_split: bool = False,
-        empty: bool = False,
+        index_kind: str = "none",
+        is_empty_ref: bool = False,
         **kwargs,
     ) -> StructureCollection:
-        from opencosmo.index.build import empty as make_empty_index
-
-        index_override = make_empty_index() if empty else None
-        result = sio.build_structure_collection(
+        return sio.build_structure_collection(
             targets,
             ignore_empty,
-            redshift_split=redshift_split,
-            index_override=index_override,
+            index_kind=index_kind,
+            is_empty_ref=is_empty_ref,
         )
-        return result
 
     @property
     def dtype(self):

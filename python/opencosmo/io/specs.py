@@ -39,6 +39,10 @@ than one governing header scope — one ``/header`` per simulation, e.g.
 children. ``group_by_scope`` splits the layouts by scope; the caller builds each
 scope through the ordinary single-scope path and wraps the results. Every spec
 therefore only ever sees a single-scope layout.
+
+For plain Datasets and HealpixMaps, _build_single_dataset wraps the result of
+open_dataset (which returns a raw Dataset) into a HealpixMap if needed after
+open_dataset returns.
 """
 
 
@@ -134,15 +138,22 @@ def _build_single_dataset(
 ) -> oc.Dataset | oc.collection.Collection:
     """Build one dataset from a single-target file list.
 
-    Shared by DatasetSpec and HealpixMapSpec: open_single_dataset already routes a
-    healpix_map header to __open_healpix_map and a lightcone header to
-    Lightcone.from_datasets internally, so both specs need only this one call.
+    Shared by DatasetSpec and HealpixMapSpec. open_dataset returns a raw Dataset;
+    a healpix_map header is then wrapped into a HealpixMap here (DatasetSpec only
+    ever matches plain non-lightcone, non-healpix groups, so its build passes the
+    Dataset straight through). The single-dataset open is always spatially
+    partitioned — serial opens (comm is None) fall through to no restriction inside
+    the spatial spec.
     """
-    from opencosmo.io.iopen import open_single_dataset
+    from opencosmo.io.index_spec import spatial
+    from opencosmo.io.iopen import _open_healpix_map, open_dataset
 
-    return open_single_dataset(
-        targets[0]["dataset_targets"][0], open_kwargs=open_kwargs
+    ds = open_dataset(
+        targets[0]["dataset_targets"][0], spatial, open_kwargs=open_kwargs
     )
+    if ds.header.file.data_type == "healpix_map":
+        return _open_healpix_map(ds, ds.region)
+    return ds
 
 
 def _verify_columns_consistent_per_dataset(layouts: tuple[FileLayout, ...]) -> None:
@@ -220,8 +231,8 @@ class FileSpec(Protocol):
         self,
         targets: list[FileTarget],
         *,
-        redshift_split: bool,
-        empty: bool,
+        index_kind: str,
+        is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> oc.Dataset | oc.collection.Collection: ...
 
@@ -259,22 +270,23 @@ class StructureCollectionSpec:
         self,
         targets: list[FileTarget],
         *,
-        redshift_split: bool,
-        empty: bool,
+        index_kind: str,
+        is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> oc.Dataset | oc.collection.Collection:
         from opencosmo import collection as occ
 
         return occ.StructureCollection.open(
-            targets, redshift_split=redshift_split, empty=empty, **open_kwargs
+            targets, index_kind=index_kind, is_empty_ref=is_empty_ref, **open_kwargs
         )
 
 
 class HealpixMapSpec:
     """A single healpix_map group. Shares the single-dataset build with DatasetSpec.
 
-    open_single_dataset routes a healpix_map header to __open_healpix_map internally;
-    this is a distinct spec purely for the match signal and documentation.
+    _build_single_dataset wraps a healpix_map header to a HealpixMap after
+    open_dataset returns a raw Dataset; this is a distinct spec purely for the
+    match signal and documentation.
     """
 
     name = "healpix_map"
@@ -290,8 +302,8 @@ class HealpixMapSpec:
         self,
         targets: list[FileTarget],
         *,
-        redshift_split: bool,
-        empty: bool,
+        index_kind: str,
+        is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> oc.Dataset | oc.collection.Collection:
         return _build_single_dataset(targets, open_kwargs)
@@ -315,14 +327,14 @@ class LightconeSpec:
         self,
         targets: list[FileTarget],
         *,
-        redshift_split: bool,
-        empty: bool,
+        index_kind: str,
+        is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> oc.Dataset | oc.collection.Collection:
         from opencosmo import collection as occ
 
         return occ.Lightcone.open(
-            targets, redshift_split=redshift_split, empty=empty, **open_kwargs
+            targets, index_kind=index_kind, is_empty_ref=is_empty_ref, **open_kwargs
         )
 
 
@@ -345,8 +357,8 @@ class DatasetSpec:
         self,
         targets: list[FileTarget],
         *,
-        redshift_split: bool,
-        empty: bool,
+        index_kind: str,
+        is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> oc.Dataset | oc.collection.Collection:
         return _build_single_dataset(targets, open_kwargs)

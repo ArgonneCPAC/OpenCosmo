@@ -9,9 +9,7 @@ import numpy as np
 import opencosmo as oc
 from opencosmo import collection as occ
 from opencosmo.dataset import state as st
-from opencosmo.dataset.mpi import partition
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index.build import empty, from_range
 from opencosmo.io import plan
 from opencosmo.io.discover import discover_all, is_particle_group
 from opencosmo.io.specs import group_by_scope, match_spec
@@ -29,7 +27,7 @@ if TYPE_CHECKING:
     import h5py
 
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.index import DataIndex
+    from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.io import MpiMode
 
 """
@@ -151,14 +149,13 @@ def open_files(
     return occ.SimulationCollection(children)
 
 
-def open_single_dataset(
+def open_dataset(
     target: DatasetTarget,
+    index: "IndexSpec",
+    *,
     metadata_group: Optional[str] = None,
-    bypass_lightcone: bool = False,
-    bypass_mpi: bool = False,
     open_kwargs: dict[str, Any] = {},
-    index_override: Optional[DataIndex] = None,
-):
+) -> oc.Dataset:
     header = target["header"]
     ds_group = target["dataset_group"]
     columns = target["columns"]
@@ -192,38 +189,16 @@ def open_single_dataset(
         p2 = tuple(header.simulation["box_size"].value for _ in range(3))
         sim_region = oc.make_box(p1, p2)
 
-    index: Optional[DataIndex] = None
     ds_length = len(next(iter(columns)))
-
-    # Use index_override if provided (e.g., for empty ranks in redshift-split)
-    if index_override is not None:
-        index = index_override
-    elif not bypass_mpi and (comm := get_comm_world()) is not None:
-        assert partition is not None
-        try:
-            part = partition(comm, header, ds_group["index"], ds_group["data"], tree)
-            if part is None:
-                index = empty()
-            else:
-                index = part.idx
-                sim_region = part.region if part.region is not None else sim_region
-            if header.file.is_lightcone:
-                sim_region = __expand_lightcone_region(sim_region, tree)
-
-        except KeyError:
-            n_ranks = comm.Get_size()
-            n_per = ds_length // n_ranks
-            chunk_boundaries = [i * n_per for i in range(n_ranks + 1)]
-            chunk_boundaries[-1] = ds_length
-            rank = comm.Get_rank()
-            index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
+    comm = get_comm_world()
+    data_index, sim_region = index(comm, header, ds_group, tree, ds_length, sim_region)
 
     state = st.state_from_target(
         target,
         UnitConvention.COMOVING,
         sim_region,
         open_kwargs,
-        index,
+        data_index,
         metadata_group,
     )
 
@@ -233,17 +208,10 @@ def open_single_dataset(
         tree=tree,
     )
     dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
-    if header.file.data_type == "healpix_map":
-        return __open_healpix_map(dataset, sim_region)
-    elif header.file.is_lightcone and not bypass_lightcone:
-        return occ.Lightcone.from_datasets(
-            {0: dataset}, header.lightcone["z_range"], **open_kwargs
-        )
-
     return dataset
 
 
-def __open_healpix_map(dataset: oc.Dataset, sim_region):
+def _open_healpix_map(dataset: oc.Dataset, sim_region):
     header = dataset.header
     if (comm := get_comm_world()) is not None and isinstance(
         sim_region, HealpixRegion
@@ -270,7 +238,7 @@ def __open_healpix_map(dataset: oc.Dataset, sim_region):
     )
 
 
-def __expand_lightcone_region(region, tree):
+def _expand_lightcone_region(region, tree):
     pixels = region.pixels
     npix_ratio = hp.nside2npix(2**tree.max_level) // hp.nside2npix(region.nside)
     pixels = pixels[:, None] * npix_ratio + np.arange(npix_ratio)

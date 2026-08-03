@@ -228,7 +228,7 @@ class SpecBuilder(Protocol):
 
     Each FileSpec subclass knows how to build a Dataset or Collection from
     a list of FileTargets. The spec is responsible for routing to the appropriate
-    builder (open_single_dataset, Lightcone.open, StructureCollection.open) with
+    builder (open_dataset, Lightcone.open, StructureCollection.open) with
     the correct set of targets for that collection type.
     """
 
@@ -236,8 +236,8 @@ class SpecBuilder(Protocol):
         self,
         targets: list[FileTarget],
         *,
-        redshift_split: bool,
-        empty: bool,
+        index_kind: str,
+        is_empty_ref: bool,
         open_kwargs: dict[str, Any],
     ) -> oc.Dataset | oc.collection.Collection: ...
 
@@ -364,13 +364,10 @@ def build_from_assignment(
     if not file_targets:
         return None
 
-    # Step B: Derive kwargs from Assignment and delegate to spec.
-    redshift_split = assignment.index_kind == "redshift_step"
-    empty = assignment.is_empty_ref
-
+    # Step B: Pass Assignment fields through to spec builder.
     return matched_spec.build_from_targets(
         file_targets,
-        redshift_split=redshift_split,
-        empty=empty,
+        index_kind=assignment.index_kind,
+        is_empty_ref=assignment.is_empty_ref,
         open_kwargs=open_kwargs,
     )
