@@ -1,0 +1,1 @@
+Opening particle data on its own (e.g. ``oc.open("haloparticles.hdf5")``) now raises a clear ``ValueError`` instead of silently returning a bogus ``SimulationCollection``. Particle datasets must be opened together with the properties dataset that links to them, as a ``StructureCollection``.

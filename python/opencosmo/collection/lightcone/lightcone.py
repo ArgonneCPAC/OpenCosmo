@@ -44,6 +44,7 @@ from opencosmo.dataset.take import (
 )
 from opencosmo.index import get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
+from opencosmo.io.index_spec import index_spec_for
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import (
@@ -471,8 +472,8 @@ class Lightcone(dict):
     def open(
         cls,
         targets: list[FileTarget],
-        redshift_split: bool = False,
-        empty: bool = False,
+        index_kind: str = "none",
+        is_empty_ref: bool = False,
         **kwargs,
     ):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
@@ -485,23 +486,12 @@ class Lightcone(dict):
             group_name = ds_target["dataset_group"].name.split("/")[-1]
             group_name = group_name.lstrip(f"{ds_target['header'].file.step}_")
 
-            # For redshift-split opens, pass bypass_mpi=True to read whole file on owning rank
-            # For empty ranks, pass index_override with zero-length index
-            from opencosmo.index.build import empty as make_empty_index
-
             open_kwargs = dict(kwargs)
-            if redshift_split:
-                ds = iopen.open_single_dataset(
-                    ds_target,
-                    bypass_lightcone=True,
-                    bypass_mpi=True,
-                    open_kwargs=open_kwargs,
-                    index_override=make_empty_index() if empty else None,
-                )
-            else:
-                ds = iopen.open_single_dataset(
-                    ds_target, bypass_lightcone=True, open_kwargs=open_kwargs
-                )
+            ds = iopen.open_dataset(
+                ds_target,
+                index_spec_for(index_kind, is_empty_ref, is_source=True),
+                open_kwargs=open_kwargs,
+            )
             step = ds_target["header"].file.step
             if step is None:
                 step = i

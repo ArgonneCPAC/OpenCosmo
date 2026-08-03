@@ -1,6 +1,3 @@
-import os
-import shutil
-
 import astropy.units as u
 import h5py
 import numpy as np
@@ -12,43 +9,6 @@ from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
-
-
-@pytest.fixture
-def per_test_dir(
-    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
-):
-    """
-    Creates a unique directory for each test and deletes it after the test finishes.
-
-    Uses tmp_path_factory so you can control base temp location via pytest's
-    tempdir handling, and also so it can be used from broader-scoped fixtures
-    if needed.
-    """
-    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
-    nodeid = (
-        request.node.nodeid.replace("/", "_")
-        .replace("::", "__")
-        .replace("[", "_")
-        .replace("]", "_")
-    )
-
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    if rank == 0:
-        path = tmp_path_factory.mktemp(nodeid)
-    else:
-        path = None
-    path_to_return = comm.bcast(path)
-
-    try:
-        yield path_to_return
-    finally:
-        # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS and rank == 0:
-            shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture
@@ -373,9 +333,7 @@ class Counter:
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_lc_collection_batched(
-    haloproperties_600_path, haloproperties_601_path, tmp_path
-):
+def test_lc_collection_batched(haloproperties_600_path, haloproperties_601_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     batch_size = 1000
 
@@ -406,9 +364,7 @@ def test_lc_collection_batched(
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_lc_collection_batched_lazy(
-    haloproperties_600_path, haloproperties_601_path, tmp_path
-):
+def test_lc_collection_batched_lazy(haloproperties_600_path, haloproperties_601_path):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path)
     batch_size = 1000
 
