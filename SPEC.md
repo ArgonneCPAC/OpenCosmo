@@ -39,7 +39,7 @@ A plain-text description of the column may be provided as a "description" attrib
 
 ### header
 
-If a file contains a single OpenCosmo dataset, it must also contain a header. A file with multiple OpenCosmo datasets may or may not include a header in each of the OpenCosmo datasets individually. See below for more information.
+If a file contains a single OpenCosmo dataset, it must also contain a header. A file with multiple OpenCosmo datasets may or may not include a header in each of the OpenCosmo datasets individually. See "The Header" below for the full contents and the "nearest enclosing header" resolution rule.
 
 ### index
 
@@ -84,18 +84,96 @@ A single file may contain multiple OpenCosmo Datasets partitioned into groups. F
     /data
     /data_linked
     /index
+    /header
 /halo_particles
     /data
     /index
+    /header
 /header
 ```
 
-Note the presence of the "header" group, which will be discussed below. The "halo_properties" group contains a "data_linked" group which allows the toolkit to associate rows in "halo_properties" to rows in "halo_particles."
+The "halo_properties" group contains a "data_linked" group which allows the toolkit to associate rows in "halo_properties" to rows in "halo_particles."
+
 
 ## The Header
 
-The "header" group contains information about the file and the OpenCosmo datasets it contains. In general, this header will be mostly identical for any set of OpenCosmo datasets which are drawn from a single simulation (more documentation to come)...
+The "header" group contains information about the file and the OpenCosmo datasets it governs: cosmology, simulation parameters, and a `file` block of per-dataset metadata. The library reads it into an `OpenCosmoHeader` (`python/opencosmo/header.py`) whose `file` field is a `FileParameters` model (`python/opencosmo/dtypes/file.py`). The fields that drive file identification are:
+
+- **`data_type`** — one of `galaxy_properties`, `galaxy_particles`, `halo_properties`, `halo_profiles`, `halo_particles`, `synthetic_galaxies`, `healpix_map`. (`diffsky_fits` is normalized to `synthetic_galaxies` on read.)
+- **`is_lightcone`** — `True` when the dataset covers a lightcone (2D sky) rather than a 3D snapshot volume.
+- **`step`** — the redshift step for stacked/redshift-split data; `None` for a single-step snapshot.
+- **`redshift`**, **`region`**, **`unit_convention`** — additional per-dataset metadata.
+
+### Nearest enclosing header
+
+A header at `/header` governs the root scope `/`; a header at `/scidac1/header` governs the `/scidac1` scope. The governing header of any `/data` group is the **nearest enclosing header** — the deepest header whose group is an ancestor of that `/data` group, walking up the group's own ancestry. A file that stores one header per dataset (a structure collection: `/halo_properties/header`, `/halo_particles/header`, ...) and a file with a single top-level `/header` both resolve correctly under this rule.
+
+Identification never depends on header *content* equality. Two independent simulations may legitimately share identical cosmology and simulation parameters; scopes are told apart by their in-file group path (`header_path`), not by comparing header values.
 
 
+## File and Collection Types
 
+`opencosmo.open()` inspects file metadata (a "layout" — see `python/opencosmo/io/discover.py`) and dispatches to one of the types below. Single-file datasets and collections are recognized by a small registry of **specs** in `python/opencosmo/io/specs.py`; the four spec names are `dataset`, `healpix_map`, `lightcone`, and `structure_collection`. A simulation collection is not a spec — it is recognized structurally (see below) and assembled from per-scope children.
 
+Identification uses only metadata-derived signals — never live reads of column values:
+
+- `data_type` — the header field above.
+- `is_lightcone` — the header field above.
+- presence of a `/data_linked` group carrying link targets.
+- whether a group is a "properties" group (`data_type` in `halo_properties` / `galaxy_properties`).
+- the number of distinct governing header scopes / top-level containers across the open set.
+
+Specs are tried in a fixed precedence order (most-constrained first): `structure_collection`, `healpix_map`, `lightcone`, `dataset`. The first whose match predicate is true wins. This order matters — a structure collection would also satisfy weaker predicates, so it is tested first.
+
+### dataset (`dataset` spec)
+
+A single OpenCosmo dataset. **Signal:** exactly one `/data` group, and that group is neither a lightcone (`is_lightcone` false) nor a healpix map (`data_type != "healpix_map"`). Opens as a `Dataset`.
+
+A lone properties file that carries `/data_linked` still opens as a `dataset` (or a `lightcone`), not a structure collection: its links reference child datasets that are not present in the open set. The collection only comes into being once a linked child type is opened alongside it.
+
+### healpix map (`healpix_map` spec)
+
+A full-sky or partial-sky HEALPix map. **Signal:** exactly one `/data` group whose `data_type == "healpix_map"`. Opens as a `HealpixMap`. Its `/index` group uses `index_type == "healpix"` with nested pixel ordering.
+
+### lightcone (`lightcone` spec)
+
+Sky-coverage data indexed by HEALPix pixels, optionally split across redshift steps. **Signal:** one or more `/data` groups, **all** with `is_lightcone` true, and **all** sharing a single `data_type`. Opens as a `Lightcone`.
+
+The single-`data_type` requirement is what distinguishes a lightcone from a lightcone *structure* collection: a structure collection always carries more than one `data_type`, so it is caught by the earlier `structure_collection` spec before this one is reached.
+
+A redshift-split lightcone writes each step under a `<step>_<name>` subgroup (e.g. `/halo_properties/600_data`). These step subgroups are collapsed to one logical dataset during identification, so many steps of one dataset are not mistaken for many independent datasets.
+
+### structure collection (`structure_collection` spec)
+
+Parent–child datasets linked via `/data_linked` — e.g. halo properties plus halo particles/profiles. **Signal:** at least one properties group (`data_type` in `halo_properties`/`galaxy_properties`) that carries a `/data_linked` group, **and** more than one distinct `data_type` present in the open set. Opens as a `StructureCollection`.
+
+The "more than one `data_type`" requirement ensures at least one linked *child* type is actually being opened; a properties file on its own opens as a plain dataset (see above). Across redshift steps, a structure collection must present an identical set of `data_type`s at every step, and every step must contain a properties-with-`/data_linked` group; these are verified structurally (cross-file), without reading link indices or row counts.
+
+### simulation collection (structural, not a spec)
+
+Multiple independent datasets or collections from one or more simulations, e.g. snapshots across redshifts, or two simulations (`/scidac1/...`, `/scidac2/...`) in one file. This is **not** a spec: `group_by_scope` (`python/opencosmo/io/specs.py`) detects it and splits the layout into one single-scope sub-layout per simulation.
+
+**Signal:** the open set does not resolve to a single spec across all its groups, *or* its datasets are nested under more than one top-level container. Either case is split by top-level container; each resulting scope is matched and built through the ordinary single-scope path above, and the children are wrapped in a `SimulationCollection`. (A `SimulationCollection` is therefore only ever *assembled* from already-built children — it is never opened through a spec builder.)
+
+A nested simulation collection of structure collections looks like this on disk (one header per simulation scope, and within each scope the ordinary structure-collection layout):
+
+```text
+/scidac1
+    /header
+    /halo_properties
+        /data
+        /data_linked
+        /index
+    /halo_particles
+        /data
+        /index
+/scidac2
+    /header
+    /halo_properties
+        /data
+        /data_linked
+        /index
+    /halo_particles
+        /data
+        /index
+```
