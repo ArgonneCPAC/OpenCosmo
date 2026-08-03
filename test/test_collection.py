@@ -137,6 +137,14 @@ def test_link_particles_only(halo_paths):
         assert "particles" in key or key == "halo_properties"
 
 
+def test_open_particles_only_fails(halo_paths):
+    # Particles carry a *_particles data_type and only make sense linked to their
+    # properties dataset. Opening them alone previously produced a bogus
+    # SimulationCollection; it must now raise.
+    with pytest.raises(ValueError):
+        oc.open(halo_paths[1])
+
+
 def test_link_profiles_only(halo_paths):
     collection = oc.open(halo_paths[0], halo_paths[2])
     assert isinstance(collection, oc.StructureCollection)

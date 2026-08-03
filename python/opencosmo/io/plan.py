@@ -247,7 +247,7 @@ def build_from_assignment(
     layouts: tuple[FileLayout, ...],
     matched_spec: SpecBuilder,
     open_kwargs: dict[str, Any],
-) -> oc.Dataset | oc.collection.Collection:
+) -> oc.Dataset | oc.collection.Collection | None:
     """
     Reopen only this rank's files and rehydrate FileTargets from live handles.
 
@@ -272,8 +272,9 @@ def build_from_assignment(
 
     Returns
     -------
-    oc.Dataset | oc.collection.Collection
-        The built collection or dataset.
+    oc.Dataset | oc.collection.Collection | None
+        The built collection or dataset, or None if this scope was entirely
+        filtered out by load/if conditions.
     """
     import h5py
 
@@ -306,7 +307,13 @@ def build_from_assignment(
         # to re-walk the file to rediscover what discovery already found.
         f = h5py.File(layout.path, "r")
 
+        # Every group in the file becomes one DatasetTarget in dataset_targets;
+        # dataset_groups stays empty. Both builders (build_structure_collection,
+        # Lightcone.open) flatten dataset_targets and dataset_groups into a single
+        # list, so there is nothing to gain from pre-bucketing — the group's own
+        # path/data_type already carries the identity the builders key on.
         dataset_targets: list[DatasetTarget] = []
+
         for group in layout.groups:
             # rstrip("/") maps the root group "/" to "", so both the root and
             # named groups build their child paths the same way ("" -> "/data",
@@ -314,12 +321,25 @@ def build_from_assignment(
             prefix = group.path.rstrip("/")
             data_path = f"{prefix}/data"
             index_path = f"{prefix}/index"
+            data_linked_path = f"{prefix}/data_linked"
+
+            # Columns are the /data datasets plus, when present, the /data_linked
+            # datasets. The link columns (<target>_start/_size/_idx) live under
+            # /data_linked and must reach the handler for a structure collection's
+            # links to resolve — the old __find_datasets_under_group swept them in
+            # the same way (everything under the group except header and index).
+            columns_list = [f[f"{data_path}/{name}"] for name in group.column_names]
+            if data_linked_path in f:
+                data_linked_group = f[data_linked_path]
+                for name in data_linked_group.keys():
+                    if isinstance(data_linked_group[name], h5py.Dataset):
+                        columns_list.append(data_linked_group[name])
 
             target: DatasetTarget = DatasetTarget(
                 header=group.header,
                 # dataset_group is the parent of /data, i.e. the group at group.path.
                 dataset_group=f[group.path],
-                columns=[f[f"{data_path}/{name}"] for name in group.column_names],
+                columns=columns_list,
                 spatial_index=f[index_path] if group.has_index else None,
             )
 
@@ -336,6 +356,13 @@ def build_from_assignment(
                     dataset_groups={},
                 )
             )
+
+    # Every target in this scope was filtered out by load/if conditions (the whole
+    # scope is gated behind an open flag the user did not pass). There is nothing to
+    # build; the orchestrator drops this scope. This is deterministic across ranks
+    # (same open_kwargs everywhere), so it stays collective-safe.
+    if not file_targets:
+        return None
 
     # Step B: Derive kwargs from Assignment and delegate to spec.
     redshift_split = assignment.index_kind == "redshift_step"

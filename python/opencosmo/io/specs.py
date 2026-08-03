@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from opencosmo.io.discover import (
@@ -46,30 +47,83 @@ def _all_groups(layouts: tuple[FileLayout, ...]) -> list[GroupLayout]:
     return [g for fl in layouts if fl.error is None for g in fl.groups]
 
 
+def _strip_step_segment(path: str) -> str:
+    """Drop a trailing redshift-step segment from a group path.
+
+    A redshift-split lightcone is written with each step under a ``<step>_<name>``
+    subgroup (``f"{step}_{name}"`` in the writer): the serial path yields
+    ``/halo_properties/600_data``, the stacked/MPI path ``/halo_properties/600_600``.
+    Either way the segment begins with ``<digits>_`` — and no dataset or simulation
+    scope name begins with a digit — so that prefix unambiguously marks a step level.
+    The logical dataset is one level up, so collapse it: all steps of a dataset then
+    share a container and the collection is not mistaken for many independent ones.
+    """
+    parent, _, last = path.rpartition("/")
+    if re.fullmatch(r"\d+_\w+", last):
+        return parent or "/"
+    return path
+
+
+def _group_parent(path: str) -> str:
+    """Parent container of a group's logical dataset.
+
+    Collapses the ``<step>_data`` level first (see ``_strip_step_segment``) so a
+    redshift-split lightcone dataset resolves to one container. Examples:
+    ``/scidac1/halo_properties -> /scidac1``, ``/halo_properties -> /``,
+    ``/halo_properties/600_data -> /`` (step collapsed), ``/ -> /``.
+    """
+    return _strip_step_segment(path).rsplit("/", 1)[0] or "/"
+
+
+def _top_container(path: str) -> str:
+    """First path segment — the simulation-collection bucket key.
+
+    ``/scidac1/halo_properties -> scidac1``, ``/scidac1 -> scidac1``, ``/ -> /``.
+    """
+    return path.strip("/").split("/")[0] or "/"
+
+
 def group_by_scope(
     layouts: tuple[FileLayout, ...],
 ) -> dict[str, tuple[FileLayout, ...]]:
-    """Group discovered layouts by governing header scope.
+    """Group discovered layouts into one scope per independent simulation.
 
-    Returns an ordered mapping ``scope_name -> sub-layouts``, where each sub-layout is
-    a FileLayout whose groups are filtered to that scope. A file with a single header
-    scope yields one entry (``"/"``); a nested simulation-collection file (headers at
-    ``/scidac1/header``, ``/scidac2/header``, ...) yields one entry per simulation.
-    The caller builds each scope independently and, when there is more than one, wraps
-    the results in a SimulationCollection. Because each returned sub-layout has exactly
-    one scope, ``match_spec`` only ever dispatches on single-scope layouts.
+    Returns an ordered mapping ``scope_name -> sub-layouts``. Most opens are a single
+    scope (``"/"``): the caller returns that object directly. A SimulationCollection is
+    the multi-scope case, and the caller wraps the per-scope children.
+
+    The decision reproduces the old ``__get_collection_dataset_groups`` rule. A set of
+    groups is ONE collection when it both matches a single spec (dataset / healpix /
+    lightcone / structure collection) AND every dataset lives under the same parent
+    container. Crucially, matching does NOT depend on header layout: a structure
+    collection written to disk stores one header per dataset
+    (``/halo_properties/header``, ``/dm_particles/header``, ...) yet is a single
+    collection, so keying on ``header_path`` (as an earlier design did) would wrongly
+    shatter it into a SimulationCollection.
+
+    It is a SimulationCollection when either no single spec matches the whole layout
+    (independent same-type datasets, e.g. ``/scidac1`` + ``/scidac2``, both
+    ``halo_properties``) or the datasets are nested under more than one container
+    (``/scidac1/*`` + ``/scidac2/*``, each an independent structure collection). Both
+    are split by top-level container so each simulation is matched and built on its own.
 
     Errored files are skipped; callers raise on ``FileLayout.error`` before grouping.
     """
+    non_errored = tuple(fl for fl in layouts if fl.error is None)
+    all_groups = _all_groups(non_errored)
+    if not all_groups:
+        return {}
+
+    parents = {_group_parent(g.path) for g in all_groups}
+    if len(parents) == 1 and match_spec(non_errored) is not None:
+        return {"/": non_errored}
+
     by_scope: dict[str, list[FileLayout]] = {}
-    for fl in layouts:
-        if fl.error is not None:
-            continue
+    for fl in non_errored:
         scope_groups: dict[str, list[GroupLayout]] = {}
         for g in fl.groups:
-            scope_groups.setdefault(g.header_path, []).append(g)
-        for header_path, gs in scope_groups.items():
-            scope_name = header_path.rsplit("/header", 1)[0].lstrip("/") or "/"
+            scope_groups.setdefault(_top_container(g.path), []).append(g)
+        for scope_name, gs in scope_groups.items():
             sub_fl = FileLayout(path=fl.path, groups=tuple(gs), error=None)
             by_scope.setdefault(scope_name, []).append(sub_fl)
     return {name: tuple(by_scope[name]) for name in sorted(by_scope)}
@@ -91,25 +145,31 @@ def _build_single_dataset(
     )
 
 
-def _verify_columns_consistent_per_datatype(layouts: tuple[FileLayout, ...]) -> None:
-    """Verify all groups sharing a data_type have identical column names and dtypes.
+def _verify_columns_consistent_per_dataset(layouts: tuple[FileLayout, ...]) -> None:
+    """Verify each logical dataset has identical column names and dtypes across files.
 
-    Different data_types may differ (structure-collection files intentionally do);
-    files of the same data_type must match across steps. Raises ValueError on
-    mismatch. Column names/dtypes are already path-sorted in GroupLayout, so the
-    comparison is order-stable.
+    A logical dataset is identified by ``(data_type, group_path)``, not by ``data_type``
+    alone: a single file's ``data_type`` (from its header) is shared by every group in
+    it, so several distinct datasets can carry the same ``data_type``. For example a
+    ``halo_particles`` file holds ``/dm_particles``, ``/star_particles``, ``/gas_particles``,
+    ``/agn_particles`` — all ``data_type == "halo_particles"`` but with legitimately
+    different columns. Conversely ``halo_properties`` and ``halo_profiles`` both sit at
+    path ``/`` and are told apart by ``data_type``. Only the ``(data_type, path)`` pair is
+    unique per file, so it is the right identity: the same dataset must match across
+    redshift steps, while different datasets are free to differ. Column names/dtypes are
+    already path-sorted in GroupLayout, so the comparison is order-stable.
     """
-    by_type: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
+    by_dataset: dict[tuple[str, str], tuple[tuple[str, ...], tuple[str, ...]]] = {}
     for g in _all_groups(layouts):
-        dt = group_data_type(g)
+        key = (group_data_type(g), g.path)
         sig = (g.column_names, g.column_dtypes)
-        if dt not in by_type:
-            by_type[dt] = sig
-        elif by_type[dt] != sig:
+        if key not in by_dataset:
+            by_dataset[key] = sig
+        elif by_dataset[key] != sig:
             raise ValueError(
-                f"Inconsistent columns for data_type '{dt}': {by_type[dt]} vs "
-                f"{sig}. All files of a given data type must have identical column "
-                "names and dtypes."
+                f"Inconsistent columns for dataset {key}: {by_dataset[key]} vs "
+                f"{sig}. Every file holding a given dataset must have identical "
+                "column names and dtypes."
             )
 
 
@@ -192,7 +252,7 @@ class StructureCollectionSpec:
         return has_properties_link and n_data_types > 1
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
-        _verify_columns_consistent_per_datatype(layouts)
+        _verify_columns_consistent_per_dataset(layouts)
         _verify_structure_collection_consistency(layouts)
 
     def build_from_targets(
@@ -249,7 +309,7 @@ class LightconeSpec:
         return len({group_data_type(g) for g in groups}) == 1
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
-        _verify_columns_consistent_per_datatype(layouts)
+        _verify_columns_consistent_per_dataset(layouts)
 
     def build_from_targets(
         self,
