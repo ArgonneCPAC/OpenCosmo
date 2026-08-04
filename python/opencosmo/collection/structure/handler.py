@@ -9,6 +9,7 @@ import numpy as np
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import structure as sc
 from opencosmo.index import into_array, offset
+from opencosmo.index.build import empty
 
 if TYPE_CHECKING:
     import opencosmo as oc
@@ -198,18 +199,26 @@ def apply_step_indices(
     StructureCollection distinction is handled.
 
     - For a Lightcone target, each step is filtered independently with its own
-      step-local index and the surviving steps are reassembled.
+      step-local index and the steps are reassembled.
     - For a nested StructureCollection target (galaxies), the step-local indices
       are offset by the cumulative per-step source lengths into a single global
       index and applied in one ``take_rows`` call. The per-step source lengths
       come from the SC's own source Lightcone, so no particle-scale metadata is
       stacked.
+
+    ``per_step_index`` is always keyed by the steps of the source that produced
+    it, and a ``None`` value means "this step contributes no linked rows". Such a
+    step is kept with an empty index rather than dropped, so a target lightcone
+    always carries exactly the source's step set. Dropping them would let a
+    source whose steps all contribute nothing -- an MPI rank holding the empty
+    reference step, or a filter that matched no structures -- produce a
+    Lightcone with no datasets at all, which cannot compute its own redshift
+    range.
     """
     if isinstance(target, lc.Lightcone):
         new_datasets = {
-            step: target[step].take_rows(index)
+            step: target[step].take_rows(index if index is not None else empty())
             for step, index in per_step_index.items()
-            if index is not None
         }
         return lc.Lightcone.from_datasets(new_datasets)
 
