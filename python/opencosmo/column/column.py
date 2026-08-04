@@ -688,6 +688,7 @@ class RawColumn:
             alias=self.__alias,
             _dep_uuid=dep_uuid,
             _uuid=self.__uuid,
+            no_cache=self.__no_cache,
         )
 
     @property
@@ -712,7 +713,7 @@ class RawColumn:
 
     @property
     def no_cache(self):
-        return self.no_cache
+        return self.__no_cache
 
     @property
     def alias(self) -> str | None:
