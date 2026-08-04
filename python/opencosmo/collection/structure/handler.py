@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.index import into_array
+from opencosmo.collection.structure import structure as sc
+from opencosmo.index import into_array, offset
 
 if TYPE_CHECKING:
     import opencosmo as oc
-    from opencosmo.collection.structure import structure as sc
+    from opencosmo.index import DataIndex
 
 """
 A tale in 3 acts:
@@ -184,6 +185,75 @@ def resort_datasets(
     return output
 
 
+def apply_step_indices(
+    target: oc.Lightcone | oc.StructureCollection,
+    per_step_index: dict[Any, Optional[DataIndex]],
+):
+    """
+    Given a target and a mapping of step -> step-local take index, produce the
+    filtered target. This is the single point where the Lightcone-vs-nested-
+    StructureCollection distinction is handled.
+
+    - For a Lightcone target, each step is filtered independently with its own
+      step-local index and the surviving steps are reassembled.
+    - For a nested StructureCollection target (galaxies), the step-local indices
+      are offset by the cumulative per-step source lengths into a single global
+      index and applied in one ``take_rows`` call. The per-step source lengths
+      come from the SC's own source Lightcone, so no particle-scale metadata is
+      stacked.
+    """
+    if isinstance(target, lc.Lightcone):
+        new_datasets = {
+            step: target[step].take_rows(index)
+            for step, index in per_step_index.items()
+            if index is not None
+        }
+        return lc.Lightcone.from_datasets(new_datasets)
+
+    assert isinstance(target, sc.StructureCollection)
+    source = target[str(target.header.file.data_type)]
+    assert isinstance(source, lc.Lightcone)
+    pieces: list[np.ndarray] = []
+    running = 0
+    for step, step_source in source.items():
+        index = per_step_index.get(step)
+        if index is not None:
+            pieces.append(into_array(offset(index, running)))
+        running += len(step_source)
+    global_index = np.concatenate(pieces) if pieces else np.array([], dtype=np.int64)
+    return target.take_rows(global_index)
+
+
+def resolve_links_per_step(
+    source: oc.Lightcone,
+    datasets: Mapping[str, Any],
+    links,
+    columns,
+):
+    new_datasets = {}
+    for name, target in datasets.items():
+        link = links[name]
+        cols = columns[name]
+        per_step_index: dict[Any, Optional[DataIndex]] = {}
+        for step, step_source in source.items():
+            raw_index = step_source.get_metadata(cols)
+            per_step_index[step] = link(raw_index, offsets=None)
+        new_datasets[name] = apply_step_indices(target, per_step_index)
+    return new_datasets
+
+
+def rebuild_links_per_step(
+    derived_from: oc.Lightcone, new_source: oc.Lightcone, datasets, links, columns
+):
+    for step, new_step_source in new_source.items():
+        original_index = into_array(derived_from[step].index)
+        new_index = into_array(new_step_source.index)
+        _, index_into_original, index_into_new = np.intersect1d(
+            original_index, new_index, assume_unique=True, return_indices=True
+        )
+        index_into_original = index_into_original[np.argsort(index_into_new)]
+
+
 class LinkHandler:
     """
     This needs some explanation. We break the "don't mutate state" rule pretty hard here.
@@ -251,10 +321,13 @@ class LinkHandler:
         Called once when a datasets are opened for the first time. Downstream
         versions always use rebuild_datsets
         """
+        if isinstance(source, lc.Lightcone):
+            return resolve_links_per_step(source, datasets, self.links, self.columns)
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
         meta = source.get_metadata(all_columns)
+
         # Offsets are now baked into the metadata columns at construction time
         # (see build_lightcone_structure_collection in io.py), so no per-step
         # offset calculation is needed here.
