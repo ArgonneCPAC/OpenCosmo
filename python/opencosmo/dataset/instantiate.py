@@ -138,7 +138,8 @@ def __cache_raw_columns(
     }
     converted_by_uuid = unit_handler.apply_unit_conversions(raw_by_uuid, unit_kwargs)
 
-    cacheable = set(working_columns.values())
+    no_cache_uuids = {col.uuid for col in raw_columns if col.no_cache}
+    cacheable = set(working_columns.values()) - no_cache_uuids
     cache.add_data(
         {uuid: data for uuid, data in raw_by_uuid.items() if uuid in cacheable},
         {},

@@ -654,12 +654,21 @@ class ConstructedColumn(Protocol):
 
 
 class RawColumn:
-    def __init__(self, name, description, alias=None, _dep_uuid=None, _uuid=None):
+    def __init__(
+        self,
+        name,
+        description,
+        alias=None,
+        _dep_uuid=None,
+        _uuid=None,
+        no_cache: bool = False,
+    ):
         self.__name = name
         self.__description = description
         self.__alias = alias
         self.__uuid = _uuid if _uuid is not None else uuid4()
         self.__dep_uuid: UUID | None = _dep_uuid
+        self.__no_cache = no_cache
 
     @property
     def uuid(self) -> UUID:
@@ -679,6 +688,7 @@ class RawColumn:
             alias=self.__alias,
             _dep_uuid=dep_uuid,
             _uuid=self.__uuid,
+            no_cache=self.__no_cache,
         )
 
     @property
@@ -703,7 +713,7 @@ class RawColumn:
 
     @property
     def no_cache(self):
-        return False
+        return self.__no_cache
 
     @property
     def alias(self) -> str | None:

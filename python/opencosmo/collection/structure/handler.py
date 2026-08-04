@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from functools import partial, reduce
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional, cast
 
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.index import into_array
+from opencosmo.collection.structure import structure as sc
+from opencosmo.index import into_array, offset
+from opencosmo.index.build import empty
 
 if TYPE_CHECKING:
     import opencosmo as oc
-    from opencosmo.collection.structure import structure as sc
+    from opencosmo.index import DataIndex
 
 """
 A tale in 3 acts:
@@ -92,27 +95,6 @@ def create_idx(data, idx_name, offsets):
     return np.atleast_1d(idx)
 
 
-def build_lightcone_index(old_source: lc.Lightcone, new_source: lc.Lightcone):
-    index = np.zeros(len(new_source), dtype=np.int64)
-    offset = 0
-    rs = 0
-    for name, ds in old_source.items():
-        if name not in new_source.keys():
-            offset += len(ds)
-            continue
-        original_index = into_array(ds.index)
-        new_index = into_array(new_source[name].index)
-        _, index_into_original, index_into_new = np.intersect1d(
-            original_index, new_index, assume_unique=True, return_indices=True
-        )
-        index_into_original = index_into_original[np.argsort(index_into_new)]
-
-        index[rs : rs + len(index_into_original)] = index_into_original + offset
-        offset += len(ds)
-        rs += len(index_into_original)
-    return index
-
-
 def make_links(keys, rename_galaxies=False):
     starts = list(filter(lambda key: "start" in key, keys))
     sizes = list(filter(lambda key: "size" in key, keys))
@@ -141,6 +123,53 @@ def make_links(keys, rename_galaxies=False):
     return output, columns
 
 
+def compute_sort_index(
+    source: oc.Dataset | oc.Lightcone, sort_column: str
+) -> np.ndarray:
+    """
+    Build the index that maps each row of ``source`` in its original (file) order
+    to its position in the current sorted order. Applying this index to a linked
+    dataset that was rebuilt in sorted order restores the original file order,
+    which is how linked data must be written to preserve the spatial index.
+    """
+    unsorted_meta_column = source.get_metadata(sort_column, ignore_sort=True)
+    sorted_meta_column = source.get_metadata(sort_column)
+
+    argsort_meta_column = np.argsort(sorted_meta_column[sort_column])
+
+    return argsort_meta_column[
+        np.searchsorted(
+            sorted_meta_column[sort_column],
+            unsorted_meta_column[sort_column],
+            sorter=argsort_meta_column,
+        )
+    ]
+
+
+def compute_resort_index(
+    cols: list[str],
+    metadata: dict[str, np.ndarray],
+    sort_index: np.ndarray,
+) -> DataIndex:
+    """
+    Given a source's link metadata and the sort index from ``compute_sort_index``,
+    build the take index that reorders a rebuilt (sorted-order) linked dataset back
+    into the source's original file order.
+    """
+    if len(cols) == 1:
+        valid_rows = metadata[cols[0]] >= 0
+        return sort_index[valid_rows]
+    size_column = [c for c in cols if "size" in c]
+    assert len(size_column) == 1
+    size_column_data = metadata[size_column[0]].astype(np.int64)
+    chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=np.int64)
+    _ = np.cumsum(size_column_data, out=chunk_boundaries[1:])
+    starts = chunk_boundaries[sort_index]
+    sizes = size_column_data[sort_index]
+    valid = sizes > 0
+    return (starts[valid], sizes[valid])
+
+
 def resort_datasets(
     source: oc.Dataset | oc.Lightcone,
     datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
@@ -150,38 +179,180 @@ def resort_datasets(
         lambda acc, ds: acc + columns[ds], datasets.keys(), []
     )
     sort_column = next(filter(lambda c: "start" in c or "idx" in c, all_columns))
-    unsorted_meta_column = source.get_metadata(sort_column, ignore_sort=True)
-    sorted_meta_column = source.get_metadata(sort_column)
-
-    argsort_meta_column = np.argsort(sorted_meta_column[sort_column])
-
-    sort_index = argsort_meta_column[
-        np.searchsorted(
-            sorted_meta_column[sort_column],
-            unsorted_meta_column[sort_column],
-            sorter=argsort_meta_column,
-        )
-    ]
+    sort_index = compute_sort_index(source, sort_column)
 
     meta = source.get_metadata(all_columns)
     output = {}
     for name, dataset in datasets.items():
-        if len(columns[name]) == 1:
-            valid_rows = meta[columns[name][0]] >= 0
-            new_dataset = dataset.take_rows(sort_index[valid_rows])
-        else:
-            size_column = [name for name in columns[name] if "size" in name]
-            assert len(size_column) == 1
-            size_column_data = meta[size_column[0]].astype(np.int64)
-            chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=np.int64)
-            _ = np.cumsum(size_column_data, out=chunk_boundaries[1:])
-            starts = chunk_boundaries[sort_index]
-            sizes = size_column_data[sort_index]
-            valid = sizes > 0
-            idx = (starts[valid], sizes[valid])
-            new_dataset = dataset.take_rows(idx)
-        output[name] = new_dataset
+        index = compute_resort_index(columns[name], meta, sort_index)
+        output[name] = dataset.take_rows(index)
     return output
+
+
+def apply_step_indices(
+    target: oc.Lightcone | oc.StructureCollection,
+    per_step_index: dict[Any, Optional[DataIndex]],
+):
+    """
+    Given a target and a mapping of step -> step-local take index, produce the
+    filtered target. This is the single point where the Lightcone-vs-nested-
+    StructureCollection distinction is handled.
+
+    - For a Lightcone target, each step is filtered independently with its own
+      step-local index and the steps are reassembled.
+    - For a nested StructureCollection target (galaxies), the step-local indices
+      are offset by the cumulative per-step source lengths into a single global
+      index and applied in one ``take_rows`` call. The per-step source lengths
+      come from the SC's own source Lightcone, so no particle-scale metadata is
+      stacked.
+
+    ``per_step_index`` is always keyed by the steps of the source that produced
+    it, and a ``None`` value means "this step contributes no linked rows". Such a
+    step is kept with an empty index rather than dropped, so a target lightcone
+    always carries exactly the source's step set. Dropping them would let a
+    source whose steps all contribute nothing -- an MPI rank holding the empty
+    reference step, or a filter that matched no structures -- produce a
+    Lightcone with no datasets at all, which cannot compute its own redshift
+    range.
+    """
+    if isinstance(target, lc.Lightcone):
+        new_datasets = {
+            step: target[step].take_rows(index if index is not None else empty())
+            for step, index in per_step_index.items()
+        }
+        return lc.Lightcone.from_datasets(new_datasets)
+
+    assert isinstance(target, sc.StructureCollection)
+    source = target[str(target.header.file.data_type)]
+    assert isinstance(source, lc.Lightcone)
+    pieces: list[np.ndarray] = []
+    running = 0
+    for step, step_source in source.items():
+        index = per_step_index.get(step)
+        if index is not None:
+            pieces.append(into_array(offset(index, running)))
+        running += len(step_source)
+    global_index = np.concatenate(pieces) if pieces else np.array([], dtype=np.int64)
+    return target.take_rows(global_index)
+
+
+def resolve_links_per_step(
+    source: oc.Lightcone,
+    datasets: Mapping[str, Any],
+    links,
+    columns,
+):
+    new_datasets = {}
+    for name, target in datasets.items():
+        link = links[name]
+        cols = columns[name]
+        per_step_index: dict[Any, Optional[DataIndex]] = {}
+        for step, step_source in source.items():
+            raw_index = step_source.get_metadata(cols)
+            per_step_index[step] = link(raw_index, offsets=None)
+        new_datasets[name] = apply_step_indices(target, per_step_index)
+    return new_datasets
+
+
+def compute_rebuild_index(
+    cols: list[str],
+    metadata: dict[str, np.ndarray],
+    index_into_original: np.ndarray,
+) -> DataIndex:
+    """
+    Compute the step-local (or dataset-local) take index that maps a filtered
+    source back onto one of its linked datasets, given the source's link metadata
+    and the positions of the surviving source rows (``index_into_original``).
+    """
+    if len(cols) == 1:
+        return rebuild_row_index(metadata[cols[0]], index_into_original)
+    size_column = [c for c in cols if "size" in c]
+    assert len(size_column) == 1
+    return rebuild_chunk_index(
+        metadata[size_column[0]].astype(np.int64),
+        index_into_original.astype(np.int64),
+    )
+
+
+def _none_if_empty(index: DataIndex) -> Optional[DataIndex]:
+    if isinstance(index, tuple):
+        return index if len(index[0]) else None
+    return index if len(index) else None
+
+
+def rebuild_links_per_step(
+    derived_from: oc.Lightcone,
+    new_source: oc.Lightcone,
+    datasets: Mapping[str, oc.Lightcone | sc.StructureCollection],
+    columns: dict[str, list[str]],
+):
+    """
+    Per-step version of ``LinkHandler.__rebuild_datasets`` for lightcone sources.
+
+    For each step present in the filtered ``new_source``, compute the positions of
+    the surviving rows within the original step (per-step ``intersect1d``), read
+    only that step's link metadata, and build a step-local take index. The per-step indices are then reassembled via
+    ``apply_step_indices``, so nested-galaxy StructureCollection targets are handled
+    without stacking metadata. Empty steps become ``None`` so they are dropped,
+    matching ``resolve_links_per_step`` and avoiding a lookup into a step that a
+    prior resolve already dropped from the target.
+    """
+    all_columns: list[str] = reduce(
+        lambda acc, ds: acc + columns[ds], datasets.keys(), []
+    )
+    per_step_index: dict[str, dict[Any, Optional[DataIndex]]] = defaultdict(dict)
+    for step, new_step_source in new_source.items():
+        old_step_source = derived_from[step]
+        original_index = into_array(old_step_source.index)
+        new_index = into_array(new_step_source.index)
+        _, index_into_original, index_into_new = np.intersect1d(
+            original_index, new_index, assume_unique=True, return_indices=True
+        )
+        index_into_original = index_into_original[np.argsort(index_into_new)]
+        old_step_metadata = old_step_source.get_metadata(all_columns)
+        for name in datasets:
+            index = compute_rebuild_index(
+                columns[name], old_step_metadata, index_into_original
+            )
+            per_step_index[name][step] = _none_if_empty(index)
+    return {
+        name: apply_step_indices(target, per_step_index[name])
+        for name, target in datasets.items()
+    }
+
+
+def resort_datasets_per_step(
+    source: oc.Lightcone,
+    datasets: Mapping[str, oc.Lightcone | sc.StructureCollection],
+    columns: dict[str, list[str]],
+):
+    """
+    Per-step version of ``resort_datasets`` for lightcone sources.
+
+    Linked datasets are always written in the source's original (file) order to
+    preserve the spatial index, even when the source has been sorted. A sorted
+    lightcone's per-step member Datasets are never themselves reordered — the sort
+    is a cross-step view — so the metadata written per step is step-local file
+    order, and the rebuilt targets are already step-local. Computing the resort
+    index per step (rather than over stacked metadata) keeps the linked take index
+    step-local, so ``apply_step_indices`` can reassemble without the step-local
+    ``_start`` values from different steps colliding.
+    """
+    all_columns: list[str] = reduce(
+        lambda acc, ds: acc + columns[ds], datasets.keys(), []
+    )
+    sort_column = next(filter(lambda c: "start" in c or "idx" in c, all_columns))
+    per_step_index: dict[str, dict[Any, Optional[DataIndex]]] = defaultdict(dict)
+    for step, step_source in source.items():
+        sort_index = compute_sort_index(step_source, sort_column)
+        step_metadata = step_source.get_metadata(all_columns)
+        for name in datasets:
+            index = compute_resort_index(columns[name], step_metadata, sort_index)
+            per_step_index[name][step] = _none_if_empty(index)
+    return {
+        name: apply_step_indices(target, per_step_index[name])
+        for name, target in datasets.items()
+    }
 
 
 class LinkHandler:
@@ -251,10 +422,13 @@ class LinkHandler:
         Called once when a datasets are opened for the first time. Downstream
         versions always use rebuild_datsets
         """
+        if isinstance(source, lc.Lightcone):
+            return resolve_links_per_step(source, datasets, self.links, self.columns)
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
         meta = source.get_metadata(all_columns)
+
         # Offsets are now baked into the metadata columns at construction time
         # (see build_lightcone_structure_collection in io.py), so no per-step
         # offset calculation is needed here.
@@ -297,15 +471,17 @@ class LinkHandler:
 
     def __rebuild_datasets(self, derived_from, new_source, datasets):
         if isinstance(derived_from, lc.Lightcone):
-            index_into_original = build_lightcone_index(derived_from, new_source)
-        else:
-            original_index = into_array(derived_from.index)
-            new_index = into_array(new_source.index)
-
-            _, index_into_original, index_into_new = np.intersect1d(
-                original_index, new_index, assume_unique=True, return_indices=True
+            return rebuild_links_per_step(
+                derived_from, new_source, datasets, self.columns
             )
-            index_into_original = index_into_original[np.argsort(index_into_new)]
+
+        original_index = into_array(derived_from.index)
+        new_index = into_array(new_source.index)
+
+        _, index_into_original, index_into_new = np.intersect1d(
+            original_index, new_index, assume_unique=True, return_indices=True
+        )
+        index_into_original = index_into_original[np.argsort(index_into_new)]
         all_columns: list[str] = reduce(
             lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
         )
@@ -313,27 +489,16 @@ class LinkHandler:
         new_datasets = {}
 
         for name, dataset in datasets.items():
-            if len(self.columns[name]) == 1:
-                metadata_column = metadata[self.columns[name][0]]
-                new_datasets[name] = rebuild_row_index(
-                    new_source, dataset, metadata_column, index_into_original
-                )
-            else:
-                size_column = [name for name in self.columns[name] if "size" in name]
-                assert len(size_column) == 1
-                size_column_name = size_column[0]
-                size_column_data = metadata[size_column_name]
-
-                new_datasets[name] = rebuild_chunk_index(
-                    new_source,
-                    dataset,
-                    size_column_data.astype(np.int64),
-                    index_into_original.astype(np.int64),
-                )
+            index = compute_rebuild_index(
+                self.columns[name], metadata, index_into_original
+            )
+            new_datasets[name] = dataset.take_rows(index)
         return new_datasets
 
     def resort(
-        self, source: oc.Dataset | oc.Lightcone, datasets: dict[str, oc.Dataset]
+        self,
+        source: oc.Dataset | oc.Lightcone,
+        datasets: dict[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
     ):
         """
         Data is always written in its original order, whether or not it has been sorted.
@@ -346,30 +511,34 @@ class LinkHandler:
         if not is_sorted:
             return datasets
 
+        if isinstance(source, lc.Lightcone):
+            # A lightcone source's linked targets are always Lightcones or nested
+            # StructureCollections, never plain Datasets.
+            lc_datasets = cast(
+                "Mapping[str, oc.Lightcone | sc.StructureCollection]", datasets
+            )
+            return resort_datasets_per_step(source, lc_datasets, self.columns)
+
         return resort_datasets(source, datasets, self.columns)
 
 
 def rebuild_row_index(
-    new_source: oc.Dataset,
-    dataset: oc.Dataset,
     original_metadata_column: np.ndarray,
     index_into_original: np.ndarray,
-):
+) -> np.ndarray:
     valid_rows = original_metadata_column >= 0
     index = np.full(len(original_metadata_column), -1, dtype=np.int64)
     index[valid_rows] = np.arange(0, sum(valid_rows))
     index_to_take = index[index_into_original]
     index_to_take = index_to_take[index_to_take >= 0]
 
-    return dataset.take_rows(index_to_take)
+    return index_to_take
 
 
 def rebuild_chunk_index(
-    new_source: oc.Dataset,
-    dataset: oc.Dataset,
     original_size_column: np.ndarray,
     index_into_original: np.ndarray,
-):
+) -> tuple[np.ndarray, np.ndarray]:
     chunk_boundaries = np.zeros(len(original_size_column) + 1, dtype=np.int64)
     _ = np.cumsum(original_size_column, out=chunk_boundaries[1:])
     valid_rows = original_size_column[index_into_original] > 0
@@ -377,5 +546,4 @@ def rebuild_chunk_index(
     starts = chunk_boundaries[index_into_original[valid_rows]]
     sizes = original_size_column[index_into_original[valid_rows]]
 
-    ds = dataset.take_rows((starts, sizes))
-    return ds
+    return (starts, sizes)

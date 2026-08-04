@@ -1,0 +1,1 @@
+Optimizes logic for building and re-building datasets when working with :py:class:`StructureCollection <opencosmo.StructureCollection>`s that contain :py:class:`Lightcone <opencosmo.Lightcones>` to avoid potential memory overloading issues.

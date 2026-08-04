@@ -3,16 +3,15 @@ from __future__ import annotations
 from collections import defaultdict
 from functools import partial
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional, TypeGuard
+from typing import TYPE_CHECKING, Any, Iterable, Optional, TypeGuard
 
 import numpy as np
 
-import opencosmo as oc
 from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import structure as sc
-from opencosmo.collection.structure.handler import LINK_ALIASES, make_links
+from opencosmo.collection.structure.handler import make_links
 from opencosmo.io.index_spec import index_spec_for
 
 if TYPE_CHECKING:
@@ -196,76 +195,6 @@ def build_structure_collection(
     )
 
 
-def _apply_offset_corrections(
-    source_by_step: Mapping[int, d.Dataset],
-    targets_by_step: Mapping[str, Mapping[int, d.Dataset | sc.StructureCollection]],
-) -> dict[int, d.Dataset]:
-    """
-    Correct step-local _start and _idx metadata columns to be globally correct
-    before stacking per-step source datasets into a Lightcone.
-
-    For _start columns: apply a lazy Column offset (oc.col(name) + offset).
-    For _idx columns: apply the offset eagerly (only to non-negative values).
-
-    targets_by_step keys may be either file-level group name prefixes (e.g.
-    "sodbighaloparticles_dm_particles") or alias values (e.g. "galaxy_properties").
-    Column names always use file-level prefixes (e.g. "sodbighaloparticles_dm_particles_start"),
-    so we match via direct lookup then fall back to a LINK_ALIASES alias lookup.
-    """
-    steps = sorted(source_by_step)
-
-    type_step_offset: dict[str, dict[int, int]] = {}
-    for target_type, step_map in targets_by_step.items():
-        cumulative = 0
-        per_step: dict[int, int] = {}
-        for step in steps:
-            per_step[step] = cumulative
-            ds = step_map.get(step)
-            if ds is not None:
-                cumulative += len(ds)
-        type_step_offset[target_type] = per_step
-
-    corrected: dict[int, d.Dataset] = {}
-    for step in steps:
-        step_ds = source_by_step[step]
-        meta_cols = set(step_ds.meta_columns)
-        updates: dict = {}
-
-        for col in meta_cols:
-            if col.endswith("_start"):
-                prefix = col[:-6]
-                is_idx = False
-            elif col.endswith("_idx"):
-                prefix = col[:-4]
-                is_idx = True
-            else:
-                continue
-
-            # Try direct match (target_type key == file-level prefix), then
-            # fall back to alias lookup for cases like "galaxyproperties" -> "galaxy_properties".
-            offset = None
-            if prefix in type_step_offset:
-                offset = type_step_offset[prefix][step]
-            elif prefix in LINK_ALIASES and LINK_ALIASES[prefix] in type_step_offset:
-                offset = type_step_offset[LINK_ALIASES[prefix]][step]
-
-            if not offset:
-                continue
-
-            if is_idx:
-                arr = step_ds.get_metadata([col])[col].copy()
-                arr[arr >= 0] += offset
-                updates[col] = arr
-            else:
-                updates[col] = oc.col(col) + offset
-
-        if updates:
-            step_ds = step_ds.with_new_columns(allow_overwrite=True, **updates)
-        corrected[step] = step_ds
-
-    return corrected
-
-
 def build_lightcone_structure_collection(
     link_sources: dict[str, list[io.iopen.DatasetTarget]],
     link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
@@ -315,15 +244,6 @@ def build_lightcone_structure_collection(
         for ds in galaxy_datasets:
             assert ds.header.file.step is not None
             galaxy_source_by_step[ds.header.file.step] = ds
-        galaxy_targets_by_step: dict[
-            str, Mapping[int, d.Dataset | sc.StructureCollection]
-        ] = {
-            target_type: {ds.header.file.step: ds for ds in targets}  # type: ignore[misc]
-            for target_type, targets in link_targets["galaxy_properties"].items()
-        }
-        galaxy_source_by_step = _apply_offset_corrections(
-            galaxy_source_by_step, galaxy_targets_by_step
-        )
         galaxy_lightcone = lc.Lightcone.from_datasets(galaxy_source_by_step)
         galaxy_target_datasets = {}
         for target_type, targets in link_targets["galaxy_properties"].items():
@@ -369,25 +289,6 @@ def build_lightcone_structure_collection(
     for ds in halo_datasets:
         assert ds.header.file.step is not None
         halo_source_by_step[ds.header.file.step] = ds
-    halo_targets_by_step: dict[str, dict[int, d.Dataset]] = {}
-    for target_type, targets in link_targets["halo_properties"].items():
-        if isinstance(targets, sc.StructureCollection):
-            # For a nested SC (e.g. galaxies), target_type is its source dtype
-            # ("galaxy_properties"), so targets[target_type] returns the source
-            # Lightcone, giving us per-step sizes for offset accounting.
-            inner_lc = targets[target_type]
-            assert isinstance(inner_lc, lc.Lightcone)
-            halo_targets_by_step[target_type] = dict(inner_lc)
-        elif isinstance(targets, list):
-            step_map: dict[int, d.Dataset] = {}
-            for linked_ds in targets:
-                assert isinstance(linked_ds, d.Dataset)
-                assert linked_ds.header.file.step is not None
-                step_map[linked_ds.header.file.step] = linked_ds
-            halo_targets_by_step[target_type] = step_map
-    halo_source_by_step = _apply_offset_corrections(
-        halo_source_by_step, halo_targets_by_step
-    )
     source_lightcone = lc.Lightcone.from_datasets(halo_source_by_step)
 
     output_targets = {}

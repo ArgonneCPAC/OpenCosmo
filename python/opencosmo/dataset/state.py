@@ -174,7 +174,10 @@ def state_from_target(
     descriptions = handler.descriptions
 
     raw_producers = [
-        RawColumn(cname, descriptions.get(cname, "None")) for cname in handler.columns
+        RawColumn(
+            cname, descriptions.get(cname, "None"), no_cache=cname in meta_column_names
+        )
+        for cname in handler.columns
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
     producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
