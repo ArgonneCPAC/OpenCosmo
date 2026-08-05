@@ -59,6 +59,25 @@ class DatasetMatchSet:
     primary_maps: dict[UUID, H5pyIndex]
     aux_maps: dict[tuple[UUID, UUID], tuple[H5pyIndex, H5pyIndex]]
 
+    @property
+    def endpoints(self) -> "frozenset[UUID]":
+        """Every UUID that survived the availability filter and is actually routable.
+
+        Contrast with ``MapLayout.endpoints``, which lists every UUID the map file
+        *mentions* on disk (pre-filter).  This property lists only those that passed
+        the availability check in ``read_match_set`` and are therefore present in the
+        open set.
+
+        ``reference_source`` is included even when the reference dataset was not
+        opened.  That is harmless: it cannot equal any opened dataset's UUID, so it
+        never falsely satisfies a coverage check.
+        """
+        return frozenset(
+            {self.reference_source}
+            | set(self.primary_maps)
+            | {u for pair in self.aux_maps for u in pair}
+        )
+
 
 def get_mapping(
     match_set: DatasetMatchSet, source: UUID, target: UUID, index: DataIndex

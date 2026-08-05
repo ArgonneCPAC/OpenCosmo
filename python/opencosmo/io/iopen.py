@@ -164,7 +164,13 @@ def open_files(
     if not children:
         raise ValueError("No valid datasets found!")
 
-    match_set = _resolve_match_set(map_layouts, children)
+    # Build the uuid->Dataset index once; it is reused by both _resolve_match_set
+    # and the connectivity check below.
+    available: dict[UUID, oc.Dataset] = {}
+    for child in children.values():
+        _collect_by_uuid(child, available)
+
+    match_set = _resolve_match_set(map_layouts, available)
 
     # --- Cross-simulation connectivity check ---
     #
@@ -184,31 +190,20 @@ def open_files(
     ]
 
     if len(root_scope_names) > 1:
-        # Compute the set of dataset UUIDs that the mapping file connects.
-        # Including an unopened reference_source is harmless: it cannot equal any
-        # opened scope's UUID, so it never falsely satisfies the coverage check.
-        # After step 3, primary_maps already contains only entries that can route.
-        endpoints: set[UUID] = (
-            set()
-            if match_set is None
-            else (
-                {match_set.reference_source}
-                | set(match_set.primary_maps)
-                | {u for pair in match_set.aux_maps for u in pair}
-            )
+        # The set of UUIDs the mapping file connects (post-availability-filter).
+        # See DatasetMatchSet.endpoints for why reference_source is included even
+        # when that dataset was not opened.
+        endpoints: frozenset[UUID] = (
+            frozenset() if match_set is None else match_set.endpoints
         )
 
-        # Every root-origin scope must contain at least one GroupLayout whose uuid
-        # appears in endpoints.  Legacy files (uuid=None) can never appear in
-        # endpoints and therefore correctly fail this check with the same message.
+        # Every root-origin scope must contain at least one UUID that appears in
+        # endpoints.  _collect_by_uuid already excludes uuid-less datasets, so the
+        # per-scope UUID set comes straight out of it applied to children[name].
         unconnected = [
             name
             for name in root_scope_names
-            if not any(
-                g.uuid is not None and g.uuid in endpoints
-                for fl in scopes[name]
-                for g in fl.groups
-            )
+            if not _scope_uuids(children[name]) & endpoints
         ]
         if unconnected:
             raise ValueError(
@@ -248,17 +243,35 @@ def _collect_by_uuid(
             _collect_by_uuid(child, into)
 
 
+def _scope_uuids(obj: oc.Dataset | oc.collection.Collection) -> frozenset[UUID]:
+    """Return the frozenset of UUIDs reachable from ``obj`` via ``_collect_by_uuid``."""
+    into: dict[UUID, oc.Dataset] = {}
+    _collect_by_uuid(obj, into)
+    return frozenset(into)
+
+
 def _resolve_match_set(
     map_layouts: list[FileLayout],
-    children: dict[str, oc.Dataset | oc.collection.Collection],
+    available: dict[UUID, oc.Dataset],
 ) -> DatasetMatchSet | None:
     """
     Resolve discovered mapping files against the datasets actually opened.
+
+    ``available`` is the uuid->Dataset index built by the caller; this function does
+    not rebuild it.
 
     Only slots whose endpoints are all present survive, so one suite-wide mapping
     file can be opened against any subset of its simulations. Files are opened
     without a context manager and their handles deliberately outlive this call: the
     match set slices them lazily, exactly as build_from_assignment does for data.
+
+    Pre-filtering with ``MapLayout.endpoints`` avoids opening files that cannot
+    possibly resolve: a file is skipped entirely when none of its maps mention any
+    available UUID. Files that are opened but yield no resolving map have their
+    handle closed before moving on.
+
+    First resolvable map wins. Multiple connecting map files are not merged — that
+    is a real design decision, not a cleanup omission.
 
     This is pure computation over the layouts every rank already holds plus local
     file opens, so it introduces no collective and cannot diverge across ranks.
@@ -270,18 +283,35 @@ def _resolve_match_set(
 
     from opencosmo.mapping.read import read_match_set
 
-    available: dict[UUID, oc.Dataset] = {}
-    for child in children.values():
-        _collect_by_uuid(child, available)
+    available_uuids: set[UUID] = set(available)
 
     for layout in map_layouts:
+        # Pre-filter: skip this file entirely if no map it carries mentions any
+        # available UUID.  endpoints is a necessary-but-not-sufficient condition —
+        # read_match_set may still return None for a file that passes (e.g. exactly
+        # one primary target available with the reference absent).
+        if not any(
+            map_layout.endpoints & available_uuids for map_layout in layout.maps
+        ):
+            continue
+
         f = h5py.File(layout.path, "r")
+        winner = None
         for map_layout in layout.maps:
             group = f[map_layout.path]
             assert isinstance(group, h5py.Group)
-            match_set = read_match_set(group, set(available))
+            match_set = read_match_set(group, map_layout, available_uuids)
             if match_set is not None:
-                return match_set
+                winner = match_set
+                break
+
+        if winner is not None:
+            # Leave this file's handle open: the match set slices it lazily.
+            # First resolvable map wins; multiple connecting map files are not merged.
+            return winner
+
+        # No map in this file resolved — close the handle rather than leaking it.
+        f.close()
 
     return None
 

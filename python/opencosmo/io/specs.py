@@ -106,7 +106,8 @@ def _scope_key(g: GroupLayout, file_path: Path) -> str:
         return top
     try:
         return g.header.simulation["name"]
-    except (AttributeError, KeyError):
+    except (AttributeError, KeyError) as e:
+        print(e)
         raise ValueError(
             f"{file_path}: opening datasets from different simulations together is "
             "only supported for HACC data carrying a header/simulation 'name' "

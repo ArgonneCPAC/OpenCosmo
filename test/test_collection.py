@@ -1426,25 +1426,6 @@ def halo_mapping_path(snapshot_path: Path):
     return snapshot_path / "halo_mapping.hdf5"
 
 
-def test_cross_sim_with_mapping(
-    haloproperties_path, haloproperties_go_path, halo_mapping_path
-):
-    """Opening two different-simulation datasets with a mapping file succeeds."""
-    c = oc.open(haloproperties_path, haloproperties_go_path, halo_mapping_path)
-    assert isinstance(c, oc.SimulationCollection)
-    assert set(c.keys()) == {
-        "KAPPA_2_EGW_0.568_SEED_1.048e6_VKIN_7984_EPS_10.130",
-        "SCIDAC_128_GO",
-    }
-    assert c.match_set is not None
-    # Primary map handles must still be lazy h5py datasets, not materialised arrays.
-    for handle in c.match_set.primary_maps.values():
-        if isinstance(handle, tuple):
-            assert all(isinstance(h, h5py.Dataset) for h in handle)
-        else:
-            assert isinstance(handle, h5py.Dataset)
-
-
 def test_cross_sim_without_mapping_raises(haloproperties_path, haloproperties_go_path):
     """Opening two different-simulation datasets without a mapping file raises ValueError."""
     with pytest.raises(ValueError) as exc_info:

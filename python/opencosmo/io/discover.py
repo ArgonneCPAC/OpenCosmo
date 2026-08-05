@@ -54,36 +54,42 @@ class GroupLayout:
 class MapLayout:
     """Frozen layout of a /map group for dataset mapping.
 
-    Records only the endpoints — which datasets this map can connect. Whether a
-    given slot is simple (an ``index``) or chunked (a ``start``+``size`` pair) is
-    deliberately not recorded: the reader resolves that from the live group when it
-    builds the DatasetMatchSet, so storing it here would put the same fact in two
-    places and let them disagree. Discovery still walks into every slot to confirm
-    it is one shape or the other, but it keeps only the verdict, not the shape.
+    Records the endpoints (which datasets this map can connect) and the verbatim
+    on-disk slot names needed to re-open them. Whether a given slot is simple (an
+    ``index``) or chunked (a ``start``+``size`` pair) is deliberately not recorded:
+    the reader resolves that from the live group when it builds the DatasetMatchSet,
+    so storing it here would put the same fact in two places and let them disagree.
+    Discovery still walks into every slot to confirm it is one shape or the other,
+    but it keeps only the verdict, not the shape.
     """
 
     path: str
     """In-file path of the /map group, e.g. "/map"."""
 
-    format_version: int
-    """Format version attribute from the /map group."""
-
     reference: UUID
     """UUID of the reference dataset, from the /map group's 'reference' attribute."""
 
-    primary_targets: tuple[UUID, ...]
-    """Sorted target UUIDs under /primary — the reference->target maps."""
+    primary_slots: tuple[tuple[str, UUID], ...]
+    """Sorted (on-disk slot name, target UUID) pairs under /primary — the reference->target maps.
 
-    aux_pairs: tuple[tuple[UUID, UUID], ...]
-    """Sorted (uuid_a, uuid_b) endpoint pairs under /auxiliary."""
+    The slot name is kept verbatim because nothing in this repo writes maps, so the
+    on-disk spelling of a UUID is not guaranteed to match ``str(UUID)``. The reader
+    indexes back into the live group by name; it must never reconstruct one.
+    """
+
+    aux_slots: tuple[tuple[str, UUID, UUID], ...]
+    """Sorted (on-disk slot name, uuid_a, uuid_b) triples under /auxiliary.
+
+    Name kept verbatim for the same reason as ``primary_slots``.
+    """
 
     @property
     def endpoints(self) -> frozenset[UUID]:
         """Every dataset UUID this map mentions, reference included."""
         return frozenset(
             (self.reference,)
-            + self.primary_targets
-            + tuple(u for pair in self.aux_pairs for u in pair)
+            + tuple(target for _, target in self.primary_slots)
+            + tuple(u for _, uuid_a, uuid_b in self.aux_slots for u in (uuid_a, uuid_b))
         )
 
 
@@ -201,14 +207,17 @@ def _read_map_layout(
             f"Malformed map at {map_path}: missing or invalid 'reference' attribute"
         )
 
-    format_version = attrs.get("format_version")
-    if format_version is None:
+    # Validate format_version presence as a structural check that this /map group is
+    # really a map — the value itself is not stored, since nothing in this repo reads it.
+    if attrs.get("format_version") is None:
         raise ValueError(
             f"Malformed map at {map_path}: missing 'format_version' attribute"
         )
 
     # /primary/<target_uuid> — the reference->target maps.
-    primary_targets: list[UUID] = []
+    # Slot names are kept verbatim: on-disk UUID spelling is not guaranteed to match
+    # str(UUID), so the reader must index back by the recorded name, never reconstruct.
+    primary_slots: list[tuple[str, UUID]] = []
     if isinstance(primary_group := map_group.get("primary"), h5py.Group):
         for name, slot in primary_group.items():
             where = f"{map_path}/primary/{name}"
@@ -218,10 +227,11 @@ def _read_map_layout(
             if not isinstance(slot, h5py.Group):
                 raise ValueError(f"{where}: expected a group")
             _verify_slot(slot, where)
-            primary_targets.append(target)
+            primary_slots.append((name, target))
 
     # /auxiliary/<uuid_a>__<uuid_b> — pairs that do not route through the reference.
-    aux_pairs: list[tuple[UUID, UUID]] = []
+    # Slot names are kept verbatim for the same reason as primary_slots.
+    aux_slots: list[tuple[str, UUID, UUID]] = []
     if isinstance(aux_group := map_group.get("auxiliary"), h5py.Group):
         for name, pair in aux_group.items():
             where = f"{map_path}/auxiliary/{name}"
@@ -240,15 +250,14 @@ def _read_map_layout(
                     raise ValueError(f"{where}: missing '{side}' group")
                 _verify_slot(slot, f"{where}/{side}")
 
-            aux_pairs.append((uuid_a, uuid_b))
+            aux_slots.append((name, uuid_a, uuid_b))
 
     return MapLayout(
         path=map_path,
-        format_version=int(format_version),
         reference=reference,
         # Sorted so every rank builds a byte-identical layout.
-        primary_targets=tuple(sorted(primary_targets)),
-        aux_pairs=tuple(sorted(aux_pairs)),
+        primary_slots=tuple(sorted(primary_slots)),
+        aux_slots=tuple(sorted(aux_slots)),
     )
 
 

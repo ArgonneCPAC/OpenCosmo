@@ -39,9 +39,9 @@ class _FakeHeader:
         self._simulation_name = simulation_name
 
     @property
-    def simulation_info(self) -> dict[str, str]:
+    def simulation(self) -> dict[str, str]:
         if self._simulation_name is None:
-            raise AttributeError("simulation_info")
+            raise AttributeError("simulation")
         return {"name": self._simulation_name}
 
 
