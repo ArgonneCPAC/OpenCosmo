@@ -82,21 +82,6 @@ class SimulationCollection(dict):
             children[name] = dataset.make_schema()
         return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
 
-    @property
-    def match_set(self) -> "DatasetMatchSet | None":
-        """
-        The dataset mapping set for this collection, if available.
-
-        The match set defines row-level mappings between datasets in different
-        simulations. It is populated when a mapping file is opened alongside
-        multiple simulations.
-
-        Returns
-        -------
-        match_set: DatasetMatchSet | None
-        """
-        return self._match_set
-
     def __map(
         self,
         method,
