@@ -1,6 +1,13 @@
 import numpy as np
 
-from .build import concatenate, empty, from_size, from_start_size_group, single_chunk
+from .build import (
+    concatenate,
+    empty,
+    from_size,
+    from_start_size_group,
+    single_chunk,
+    zeros,
+)
 from .get import get_data
 from .in_range import n_in_range
 from .mask import into_array, mask
@@ -38,4 +45,5 @@ __all__ = [
     "rebuild_by_ranges",
     "reindex_column",
     "offset",
+    "zeros",
 ]

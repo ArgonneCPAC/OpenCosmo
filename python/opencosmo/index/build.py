@@ -24,6 +24,10 @@ def empty() -> ChunkedIndex:
     return (np.array([], dtype=np.int64), np.array([], dtype=np.int64))
 
 
+def zeros(length: int) -> SimpleIndex:
+    return np.zeros(length, dtype=np.int64)
+
+
 def from_range(start: int, end: int) -> ChunkedIndex:
     size = end - start
     return (np.array([start], dtype=np.int64), np.array([size], np.int64))
