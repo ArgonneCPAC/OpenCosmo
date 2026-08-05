@@ -339,6 +339,7 @@ def build_from_assignment(
                 header=group.header,
                 # dataset_group is the parent of /data, i.e. the group at group.path.
                 dataset_group=f[group.path],
+                uuid=group.uuid,
                 columns=columns_list,
                 spatial_index=f[index_path] if group.has_index else None,
             )

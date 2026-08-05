@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
+from uuid import UUID
 
 import h5py
+import numpy as np
 
 from opencosmo.header import read_header
 
@@ -43,6 +45,47 @@ class GroupLayout:
     linked_target_names: tuple[str, ...]
     """Sorted tuple of linked target name prefixes (from /data_linked _start/_size suffixes)."""
 
+    uuid: UUID | None = None
+    """UUID for dataset, used in linking. Absent on files written before dataset
+    identity existed, which simply cannot participate in a mapping."""
+
+
+@dataclass(frozen=True)
+class MapLayout:
+    """Frozen layout of a /map group for dataset mapping.
+
+    Records only the endpoints — which datasets this map can connect. Whether a
+    given slot is simple (an ``index``) or chunked (a ``start``+``size`` pair) is
+    deliberately not recorded: the reader resolves that from the live group when it
+    builds the DatasetMatchSet, so storing it here would put the same fact in two
+    places and let them disagree. Discovery still walks into every slot to confirm
+    it is one shape or the other, but it keeps only the verdict, not the shape.
+    """
+
+    path: str
+    """In-file path of the /map group, e.g. "/map"."""
+
+    format_version: int
+    """Format version attribute from the /map group."""
+
+    reference: UUID
+    """UUID of the reference dataset, from the /map group's 'reference' attribute."""
+
+    primary_targets: tuple[UUID, ...]
+    """Sorted target UUIDs under /primary — the reference->target maps."""
+
+    aux_pairs: tuple[tuple[UUID, UUID], ...]
+    """Sorted (uuid_a, uuid_b) endpoint pairs under /auxiliary."""
+
+    @property
+    def endpoints(self) -> frozenset[UUID]:
+        """Every dataset UUID this map mentions, reference included."""
+        return frozenset(
+            (self.reference,)
+            + self.primary_targets
+            + tuple(u for pair in self.aux_pairs for u in pair)
+        )
+
 
 @dataclass(frozen=True)
 class FileLayout:
@@ -56,6 +99,9 @@ class FileLayout:
 
     error: Optional[str] = None
     """Error message if discovery failed, None if successful."""
+
+    maps: tuple[MapLayout, ...] = ()
+    """Sorted tuple of MapLayout objects found in this file."""
 
 
 def _make_group_map(
@@ -87,6 +133,125 @@ def _iter_ancestors(group_path: str) -> Iterator[str]:
         yield group_path
 
 
+def _coerce_to_uuid(value: str | bytes | np.bytes_ | UUID | None) -> UUID | None:
+    """
+    Coerce a value to UUID, handling multiple input formats.
+
+    Returns None if the value is None, not a UUID-like type, or unparseable.
+    """
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    if isinstance(value, (bytes, np.bytes_)):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        try:
+            return UUID(value)
+        except (ValueError, AttributeError):
+            return None
+    return None
+
+
+def _verify_slot(slot_group: h5py.Group, where: str) -> None:
+    """
+    Check that one map slot is well formed, keeping nothing.
+
+    A slot is either simple (an ``index`` dataset) or chunked (a ``start``+``size``
+    pair). That is the whole variation, and it is expressed here once so /primary and
+    /auxiliary are checked the same way. The reader re-resolves which shape a slot has
+    from the live group, so there is nothing here worth carrying in the layout — the
+    point of the walk is to turn a malformed slot into ``FileLayout.error`` during
+    discovery rather than a raise inside a later collective. Raises ValueError; the
+    caller in ``discover_file`` converts it.
+    """
+    keys = set(slot_group.keys())
+    names: tuple[str, ...]
+
+    if "index" in keys:
+        names = ("index",)
+    elif "start" in keys and "size" in keys:
+        names = ("start", "size")
+    else:
+        raise ValueError(
+            f"{where}: slot has neither 'index' nor 'start'+'size' ({sorted(keys)})"
+        )
+
+    if not all(isinstance(slot_group[name], h5py.Dataset) for name in names):
+        raise ValueError(f"{where}: {'/'.join(names)} is not a dataset")
+
+
+def _read_map_layout(
+    map_path: str,
+    map_group: h5py.Group,
+) -> MapLayout:
+    """
+    Resolve one /map group into a frozen MapLayout.
+
+    Reads attrs, names, and shapes only — never column values — so discovery stays
+    within its existing single-allgather budget. Raises ValueError on any malformed
+    structure; ``discover_file`` turns that into ``FileLayout.error`` rather than
+    letting it escape, since discovery runs inside a collective.
+    """
+    attrs = dict(map_group.attrs)
+
+    reference = _coerce_to_uuid(attrs.get("reference"))
+    if reference is None:
+        raise ValueError(
+            f"Malformed map at {map_path}: missing or invalid 'reference' attribute"
+        )
+
+    format_version = attrs.get("format_version")
+    if format_version is None:
+        raise ValueError(
+            f"Malformed map at {map_path}: missing 'format_version' attribute"
+        )
+
+    # /primary/<target_uuid> — the reference->target maps.
+    primary_targets: list[UUID] = []
+    if isinstance(primary_group := map_group.get("primary"), h5py.Group):
+        for name, slot in primary_group.items():
+            where = f"{map_path}/primary/{name}"
+            target = _coerce_to_uuid(name)
+            if target is None:
+                raise ValueError(f"{where}: group name is not a UUID")
+            if not isinstance(slot, h5py.Group):
+                raise ValueError(f"{where}: expected a group")
+            _verify_slot(slot, where)
+            primary_targets.append(target)
+
+    # /auxiliary/<uuid_a>__<uuid_b> — pairs that do not route through the reference.
+    aux_pairs: list[tuple[UUID, UUID]] = []
+    if isinstance(aux_group := map_group.get("auxiliary"), h5py.Group):
+        for name, pair in aux_group.items():
+            where = f"{map_path}/auxiliary/{name}"
+            # UUID hex never contains "__", so the separator is unambiguous.
+            parts = name.split("__")
+            if len(parts) != 2:
+                raise ValueError(f"{where}: name is not '<uuid_a>__<uuid_b>'")
+            uuid_a, uuid_b = (_coerce_to_uuid(p) for p in parts)
+            if uuid_a is None or uuid_b is None:
+                raise ValueError(f"{where}: endpoint names are not UUIDs")
+            if not isinstance(pair, h5py.Group):
+                raise ValueError(f"{where}: expected a group")
+
+            for side in ("source", "target"):
+                if not isinstance(slot := pair.get(side), h5py.Group):
+                    raise ValueError(f"{where}: missing '{side}' group")
+                _verify_slot(slot, f"{where}/{side}")
+
+            aux_pairs.append((uuid_a, uuid_b))
+
+    return MapLayout(
+        path=map_path,
+        format_version=int(format_version),
+        reference=reference,
+        # Sorted so every rank builds a byte-identical layout.
+        primary_targets=tuple(sorted(primary_targets)),
+        aux_pairs=tuple(sorted(aux_pairs)),
+    )
+
+
 def discover_file(path: Path) -> FileLayout:
     """
     Walk a file once and produce a frozen, picklable layout with no live h5py handles.
@@ -94,17 +259,20 @@ def discover_file(path: Path) -> FileLayout:
     Reuses the walk logic from iopen's __make_group_map. Steps:
     1. Open with h5py.File(path, "r") in a with block.
     2. Build the group map.
-    3. Find every /header group and every /data group.
+    3. Find every /header group, every /data group, and every /map group.
     4. Read each header once, locally, via read_header.__wrapped__ (no world-comm
        broadcast), keyed by the group scope it governs.
     5. For each /data group, resolve its governing header as the nearest enclosing
        scope on the group's own ancestry.
     6. Extract column metadata (names, dtypes, row_count) for each group.
     7. Check for /index and /data_linked groups.
-    8. Sort groups by path for determinism.
+    8. Parse /map groups and extract mapping layouts.
+    9. Sort groups and maps by path for determinism.
 
-    On any structural failure (file not an OpenCosmo file, malformed header, missing /data),
-    return FileLayout(path=path, groups=(), error=<message>) — never raise.
+    Validity rule: a file is valid if it has (headers AND data) OR it has maps.
+    A file with neither returns an error.
+
+    On any structural failure, return FileLayout(path=path, groups=(), error=<message>) — never raise.
     """
     try:
         with h5py.File(path, "r") as f:
@@ -113,22 +281,42 @@ def discover_file(path: Path) -> FileLayout:
             # Find all header and data groups.
             header_groups = sorted([k for k in file_map.keys() if k.endswith("header")])
             data_groups = sorted([k for k in file_map.keys() if k.endswith("/data")])
+            map_groups = sorted([k for k in file_map.keys() if k.endswith("/map")])
 
-            if not header_groups:
-                return FileLayout(
-                    path=path, groups=(), error="No header groups found in file"
-                )
+            # Maps are parsed first: a mapping file has no header and no data, so
+            # its validity cannot be decided until we know whether it carries maps.
+            map_layouts: list[MapLayout] = []
+            for map_path in map_groups:
+                map_group = file_map[map_path]
+                if not isinstance(map_group, h5py.Group):
+                    continue
+                try:
+                    map_layouts.append(_read_map_layout(map_path, map_group))
+                except ValueError as e:
+                    return FileLayout(path=path, groups=(), error=str(e))
 
-            if not data_groups:
-                return FileLayout(
-                    path=path, groups=(), error="No data groups found in file"
-                )
+            maps = tuple(sorted(map_layouts, key=lambda m: m.path))
 
-            # Read every header exactly once, keyed by the group scope it governs.
-            # A header at "/scidac1/header" governs the "/scidac1" scope; the root
-            # "/header" governs "/". A data group's governing header is then the
-            # nearest of these scopes on its own ancestry — no rescan of all headers,
-            # and a header shared by several data groups is parsed a single time.
+            # A file is valid if it carries header+data or if it carries maps. A
+            # mapping file has neither header nor data — it is not owned by any
+            # simulation — so the old "must have both" rule is widened rather than
+            # replaced: a file with neither still errors exactly as it did before.
+            if not maps:
+                if not header_groups:
+                    return FileLayout(
+                        path=path, groups=(), error="No header groups found in file"
+                    )
+                if not data_groups:
+                    return FileLayout(
+                        path=path, groups=(), error="No data groups found in file"
+                    )
+
+            # A pure mapping file stops here: there are no headers to read and no
+            # data groups to describe.
+            if not header_groups or not data_groups:
+                return FileLayout(path=path, groups=(), maps=maps)
+
+            # Otherwise, process headers and data groups as usual.
             read_header_local = read_header.__wrapped__  # type: ignore[attr-defined]
             scope_to_header: dict[str, tuple[str, OpenCosmoHeader]] = {}
             for header_path in header_groups:
@@ -148,8 +336,6 @@ def discover_file(path: Path) -> FileLayout:
                 group_path = data_path.rsplit("/data", 1)[0] or "/"
 
                 # Governing header = nearest enclosing scope on this group's ancestry.
-                # The root scope "/" is an ancestor of every group, so a valid file
-                # with a top-level header always resolves.
                 governing_scope = next(
                     (a for a in _iter_ancestors(group_path) if a in scope_to_header),
                     None,
@@ -208,12 +394,16 @@ def discover_file(path: Path) -> FileLayout:
                                 linked_target_names_set.add(target_name)
 
                 linked_target_names = tuple(sorted(linked_target_names_set))
+                group_attrs = dict(file_map[data_path].attrs)
+                group_uuid_raw = group_attrs.get("main_uuid")
+                group_uuid = _coerce_to_uuid(group_uuid_raw)
 
                 group_layouts.append(
                     GroupLayout(
                         path=group_path,
                         header_path=governing_header_path,
                         header=header,
+                        uuid=group_uuid,
                         column_names=column_names,
                         column_dtypes=column_dtypes,
                         row_count=row_count,
@@ -222,9 +412,9 @@ def discover_file(path: Path) -> FileLayout:
                     )
                 )
 
-            # Sort groups by path for determinism.
+            # Sort groups and maps by path for determinism.
             sorted_groups = tuple(sorted(group_layouts, key=lambda g: g.path))
-            return FileLayout(path=path, groups=sorted_groups)
+            return FileLayout(path=path, groups=sorted_groups, maps=maps)
 
     except Exception as e:
         return FileLayout(path=path, groups=(), error=str(e))
@@ -289,6 +479,11 @@ def is_particle_group(group: GroupLayout) -> bool:
 def is_properties_group(group: GroupLayout) -> bool:
     """Return True if the group's data_type is halo_properties or galaxy_properties."""
     return group_data_type(group) in ("halo_properties", "galaxy_properties")
+
+
+def has_maps(layout: FileLayout) -> bool:
+    """Return True if the file layout contains any map groups."""
+    return len(layout.maps) > 0
 
 
 def header_scopes(

@@ -13,6 +13,8 @@ from opencosmo.io.discover import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import opencosmo as oc
     from opencosmo.io.discover import GroupLayout
     from opencosmo.io.iopen import FileTarget
@@ -87,6 +89,31 @@ def _top_container(path: str) -> str:
     return path.strip("/").split("/")[0] or "/"
 
 
+def _scope_key(g: GroupLayout, file_path: Path) -> str:
+    """Bucket key for a group in the multi-scope branch of group_by_scope.
+
+    Nested groups key on their top-level container (``/scidac1/... -> scidac1``).
+    Root groups (``/...``) all share the container ``"/"``, so they key on the
+    simulation name from the header instead — otherwise two independent root
+    datasets from two simulations would collapse into one unmatchable scope.
+
+    Raises ``ValueError`` if the group is at the root and the header carries no
+    ``simulation_info`` block (i.e. no ``header/simulation`` ``name`` attribute on
+    disk), naming ``file_path`` in the message.
+    """
+    top = _top_container(g.path)
+    if top != "/":
+        return top
+    try:
+        return g.header.simulation["name"]
+    except (AttributeError, KeyError):
+        raise ValueError(
+            f"{file_path}: opening datasets from different simulations together is "
+            "only supported for HACC data carrying a header/simulation 'name' "
+            "attribute."
+        ) from None
+
+
 def group_by_scope(
     layouts: tuple[FileLayout, ...],
 ) -> dict[str, tuple[FileLayout, ...]]:
@@ -111,6 +138,16 @@ def group_by_scope(
     (``/scidac1/*`` + ``/scidac2/*``, each an independent structure collection). Both
     are split by top-level container so each simulation is matched and built on its own.
 
+    For root groups (path ``"/"``), the bucket key is the simulation name read from
+    ``header.simulation["name"]`` rather than ``"/"`` — otherwise two independent
+    root datasets from two different simulations would collapse into a single scope that
+    no spec can match. Raises ``ValueError`` if a root group's header has no
+    ``simulation_info`` block, or if two **root** groups from **different** file paths
+    resolve to the same simulation name (same-simulation datasets must form a structure
+    collection or be opened separately). Nested groups (keyed by container name) may be
+    contributed by any number of files — that is how a multi-file nested collection is
+    expressed — so the collision check does not apply to them.
+
     Errored files are skipped; callers raise on ``FileLayout.error`` before grouping.
     """
     non_errored = tuple(fl for fl in layouts if fl.error is None)
@@ -122,12 +159,36 @@ def group_by_scope(
     if len(parents) == 1 and match_spec(non_errored) is not None:
         return {"/": non_errored}
 
+    # Track which file path first claimed each root-derived simulation-name scope so
+    # we can detect collisions from *different* files.  Nested groups (keyed by
+    # container name) are intentionally excluded: multiple files sharing a container
+    # name is how a multi-file nested collection is expressed.
+    scope_first_path: dict[str, Path] = {}
     by_scope: dict[str, list[FileLayout]] = {}
     for fl in non_errored:
         scope_groups: dict[str, list[GroupLayout]] = {}
+        scope_is_root: dict[str, bool] = {}
         for g in fl.groups:
-            scope_groups.setdefault(_top_container(g.path), []).append(g)
+            top = _top_container(g.path)
+            is_root = top == "/"
+            key = _scope_key(g, fl.path)
+            scope_groups.setdefault(key, []).append(g)
+            scope_is_root[key] = is_root
         for scope_name, gs in scope_groups.items():
+            # Collision check: two *different* files claiming the same root-derived
+            # simulation-name scope.  Only applies to root groups.
+            if scope_is_root[scope_name]:
+                if (
+                    scope_name in scope_first_path
+                    and scope_first_path[scope_name] != fl.path
+                ):
+                    first = scope_first_path[scope_name]
+                    raise ValueError(
+                        f"{first} and {fl.path} both come from simulation "
+                        f"'{scope_name}'. Datasets from the same simulation must form "
+                        "a structure collection or be opened separately."
+                    )
+                scope_first_path.setdefault(scope_name, fl.path)
             sub_fl = FileLayout(path=fl.path, groups=tuple(gs), error=None)
             by_scope.setdefault(scope_name, []).append(sub_fl)
     return {name: tuple(by_scope[name]) for name in sorted(by_scope)}

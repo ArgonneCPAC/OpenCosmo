@@ -1399,3 +1399,85 @@ def test_modify_metadata_column(halo_paths):
     )
     assert "galaxyproperties_start" not in ds["halo_properties"].columns
     assert "galaxyproperties_start" not in ds["halo_properties"].get_data("numpy")
+
+
+# ---------------------------------------------------------------------------
+# Cross-simulation connectivity tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def haloproperties_go_path(snapshot_path: Path):
+    return snapshot_path / "haloproperties_go.hdf5"
+
+
+@pytest.fixture
+def haloproperties_path(snapshot_path: Path):
+    return snapshot_path / "haloproperties.hdf5"
+
+
+@pytest.fixture
+def haloproperties_step310_path(snapshot_path: Path):
+    return snapshot_path / "haloproperties_step310.hdf5"
+
+
+@pytest.fixture
+def halo_mapping_path(snapshot_path: Path):
+    return snapshot_path / "halo_mapping.hdf5"
+
+
+def test_cross_sim_with_mapping(
+    haloproperties_path, haloproperties_go_path, halo_mapping_path
+):
+    """Opening two different-simulation datasets with a mapping file succeeds."""
+    c = oc.open(haloproperties_path, haloproperties_go_path, halo_mapping_path)
+    assert isinstance(c, oc.SimulationCollection)
+    assert set(c.keys()) == {
+        "KAPPA_2_EGW_0.568_SEED_1.048e6_VKIN_7984_EPS_10.130",
+        "SCIDAC_128_GO",
+    }
+    assert c.match_set is not None
+    # Primary map handles must still be lazy h5py datasets, not materialised arrays.
+    for handle in c.match_set.primary_maps.values():
+        if isinstance(handle, tuple):
+            assert all(isinstance(h, h5py.Dataset) for h in handle)
+        else:
+            assert isinstance(handle, h5py.Dataset)
+
+
+def test_cross_sim_without_mapping_raises(haloproperties_path, haloproperties_go_path):
+    """Opening two different-simulation datasets without a mapping file raises ValueError."""
+    with pytest.raises(ValueError) as exc_info:
+        oc.open(haloproperties_path, haloproperties_go_path)
+    msg = str(exc_info.value)
+    assert "different simulations" in msg
+    assert "mapping file" in msg
+    # Must not be the old backstop message.
+    assert "This is likely a bug" not in msg
+
+
+def test_same_sim_collision_still_raises(
+    haloproperties_path, haloproperties_step310_path
+):
+    """Opening two datasets from the same simulation still raises the collision error."""
+    with pytest.raises(ValueError) as exc_info:
+        oc.open(haloproperties_path, haloproperties_step310_path)
+    msg = str(exc_info.value)
+    # The collision error names the shared simulation.
+    assert "KAPPA_2_EGW_0.568_SEED_1.048e6_VKIN_7984_EPS_10.130" in msg
+    # Must not be the new cross-simulation error.
+    assert "different simulations" not in msg
+
+
+def test_multi_file_nested_scopes_no_error(multi_path):
+    """A single file with nested /scidac1 and /scidac2 scopes opens without error."""
+    c = oc.open(multi_path)
+    assert isinstance(c, oc.SimulationCollection)
+    assert set(c.keys()) == {"scidac1", "scidac2"}
+
+
+def test_mapping_file_alone_raises(halo_mapping_path):
+    """Opening a mapping file on its own raises the pre-existing ValueError."""
+    with pytest.raises(ValueError) as exc_info:
+        oc.open(halo_mapping_path)
+    assert "Cannot open a dataset mapping on its own" in str(exc_info.value)

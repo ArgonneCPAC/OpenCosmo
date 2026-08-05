@@ -25,9 +25,24 @@ class _FakeFile:
     is_lightcone: bool
 
 
-@dataclass(frozen=True)
 class _FakeHeader:
-    file: _FakeFile
+    """Fake header that mimics OpenCosmoHeader's simulation_info access pattern.
+
+    ``header.simulation["name"]`` works when a simulation name is set;
+    accessing ``.simulation_info`` raises ``AttributeError`` when the name is
+    ``None``, matching the real header's behaviour for files that lack the
+    ``header/simulation`` ``name`` attribute.
+    """
+
+    def __init__(self, file: _FakeFile, simulation_name: str | None = None) -> None:
+        self.file = file
+        self._simulation_name = simulation_name
+
+    @property
+    def simulation_info(self) -> dict[str, str]:
+        if self._simulation_name is None:
+            raise AttributeError("simulation_info")
+        return {"name": self._simulation_name}
 
 
 def _group(
@@ -41,11 +56,12 @@ def _group(
     columns: tuple[str, ...] = ("x", "y"),
     dtypes: tuple[str, ...] = ("float64", "float64"),
     has_index: bool = True,
+    simulation_name: str | None = "sim_a",
 ) -> GroupLayout:
     return GroupLayout(
         path=path,
         header_path=header_path,
-        header=_FakeHeader(_FakeFile(step, data_type, is_lightcone)),  # type: ignore[arg-type]
+        header=_FakeHeader(_FakeFile(step, data_type, is_lightcone), simulation_name),  # type: ignore[arg-type]
         column_names=columns,
         column_dtypes=dtypes,
         row_count=100,
@@ -247,6 +263,101 @@ class TestGroupByScope:
         scopes = group_by_scope(layouts)
         assert list(scopes) == ["/"]
         assert isinstance(match_spec(scopes["/"]), DatasetSpec)
+
+    def test_two_root_groups_different_simulations_split_by_name(self) -> None:
+        # Two separate files, each with one root halo_properties group from a
+        # different simulation. They do not match any spec together (DatasetSpec
+        # requires exactly one group), so they fall through to the split branch and
+        # must be keyed by simulation name.
+        layouts = (
+            _file(
+                "/sim_a.hdf5",
+                _group(data_type="halo_properties", simulation_name="alpha"),
+            ),
+            _file(
+                "/sim_b.hdf5",
+                _group(data_type="halo_properties", simulation_name="beta"),
+            ),
+        )
+        scopes = group_by_scope(layouts)
+        assert list(scopes) == ["alpha", "beta"]
+
+    def test_root_group_missing_simulation_name_raises(self) -> None:
+        # A root group whose header has no simulation_info must raise ValueError
+        # naming the offending file path.
+        layouts = (
+            _file(
+                "/sim_a.hdf5",
+                _group(data_type="halo_properties", simulation_name="alpha"),
+            ),
+            _file(
+                "/no_name.hdf5",
+                _group(data_type="halo_properties", simulation_name=None),
+            ),
+        )
+        with pytest.raises(ValueError, match="/no_name.hdf5"):
+            group_by_scope(layouts)
+
+    def test_two_root_groups_same_simulation_name_different_files_raises(self) -> None:
+        # Two root groups from different files that resolve to the same simulation
+        # name must raise ValueError naming both paths and the shared name.
+        layouts = (
+            _file(
+                "/step310.hdf5",
+                _group(data_type="halo_properties", simulation_name="LastJourney"),
+            ),
+            _file(
+                "/step624.hdf5",
+                _group(data_type="halo_properties", simulation_name="LastJourney"),
+            ),
+        )
+        with pytest.raises(ValueError, match="LastJourney") as exc_info:
+            group_by_scope(layouts)
+        msg = str(exc_info.value)
+        assert "/step310.hdf5" in msg
+        assert "/step624.hdf5" in msg
+
+    def test_nested_multi_sim_split_across_files_no_collision(self) -> None:
+        # Regression: a nested multi-simulation structure collection split across two
+        # files — file A holds /scidac1/halo_properties and /scidac2/halo_properties,
+        # file B holds /scidac1/halo_particles and /scidac2/halo_particles.  Both files
+        # legitimately contribute to scopes "scidac1" and "scidac2"; this must NOT
+        # raise even though two different file paths share the same scope keys.
+        file_a = _file(
+            "/props.hdf5",
+            _group(
+                path="/scidac1/halo_properties",
+                header_path="/scidac1/header",
+                data_type="halo_properties",
+                linked=("haloparticles",),
+            ),
+            _group(
+                path="/scidac2/halo_properties",
+                header_path="/scidac2/header",
+                data_type="halo_properties",
+                linked=("haloparticles",),
+            ),
+        )
+        file_b = _file(
+            "/parts.hdf5",
+            _group(
+                path="/scidac1/halo_particles",
+                header_path="/scidac1/header",
+                data_type="halo_particles",
+            ),
+            _group(
+                path="/scidac2/halo_particles",
+                header_path="/scidac2/header",
+                data_type="halo_particles",
+            ),
+        )
+        layouts = (file_a, file_b)
+        scopes = group_by_scope(layouts)
+        assert list(scopes) == ["scidac1", "scidac2"]
+        # Each scope must contain groups from both files (two FileLayouts per scope).
+        for name, sub in scopes.items():
+            assert len(sub) == 2
+            assert isinstance(match_spec(sub), StructureCollectionSpec)
 
 
 class TestVerify:

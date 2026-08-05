@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
+    from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region
 
 
@@ -38,11 +39,16 @@ class SimulationCollection(dict):
     all of them.
     """
 
-    def __init__(self, datasets: Mapping[str, Dataset | Collection]):
+    def __init__(
+        self,
+        datasets: Mapping[str, Dataset | Collection],
+        match_set: "DatasetMatchSet | None" = None,
+    ):
         self.update(datasets)
         dtypes = set(type(ds) for ds in datasets.values())
         assert len(dtypes) == 1
         self.__dtype = dtypes.pop()
+        self._match_set = match_set
 
     def __enter__(self):
         return self
@@ -75,6 +81,21 @@ class SimulationCollection(dict):
         for name, dataset in self.items():
             children[name] = dataset.make_schema()
         return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
+
+    @property
+    def match_set(self) -> "DatasetMatchSet | None":
+        """
+        The dataset mapping set for this collection, if available.
+
+        The match set defines row-level mappings between datasets in different
+        simulations. It is populated when a mapping file is opened alongside
+        multiple simulations.
+
+        Returns
+        -------
+        match_set: DatasetMatchSet | None
+        """
+        return self._match_set
 
     def __map(
         self,

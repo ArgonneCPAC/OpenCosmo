@@ -197,6 +197,21 @@ class ReformatParameters(BaseModel):
         return data
 
 
+class HaccSimulationInfo(BaseModel):
+    """
+    Models the attributes on the ``header/simulation`` group itself (as opposed
+    to ``header/simulation/parameters``).
+
+    Only ``name`` is modelled deliberately: ``date`` would shadow the
+    module-level ``from datetime import date`` import, and the raw config blobs
+    (``raw_indat``, ``raw_cosmotools_config``) are not worth carrying.
+    """
+
+    model_config = ConfigDict(frozen=True)
+    ACCESS_PATH: ClassVar[str] = "simulation"
+    name: str
+
+
 class MapParams(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "healpix_map"
@@ -229,7 +244,10 @@ ORIGIN_PARAMETERS = {
         "simulation/cosmotools": CosmoToolsParameters,
         "simulation/cosmology": CosmologyParameters,
     },
-    "optional": {"reformat_hacc/config": ReformatParameters},
+    "optional": {
+        "reformat_hacc/config": ReformatParameters,
+        "simulation": HaccSimulationInfo,
+    },
 }
 
 DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {

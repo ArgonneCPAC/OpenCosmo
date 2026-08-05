@@ -85,6 +85,7 @@ class DatasetState:
     open_kwargs: dict[str, Any]
     sort_key: Optional[tuple[str, bool]]
     metadata_columns: frozenset[str]
+    uuid: UUID | None = None
 
     def __post_init__(self):
         self.cache.register_column_group(id(self), self.column_map)
@@ -193,6 +194,7 @@ def state_from_target(
         open_kwargs=open_kwargs,
         sort_key=None,
         metadata_columns=meta_column_names,
+        uuid=target["uuid"],
     )
 
 
