@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
@@ -248,8 +249,9 @@ def discover_all(
     """
     rank = comm.Get_rank() if comm is not None else 0
     nranks = comm.Get_size() if comm is not None else 1
-
-    my_layouts = [discover_file(p) for p in paths[rank::nranks]]
+    my_paths = paths[rank::nranks]
+    with ThreadPoolExecutor(len(my_paths)) as pool:
+        my_layouts: list[FileLayout] = list(pool.map(discover_file, my_paths))
 
     if comm is not None:
         my_layouts = [
