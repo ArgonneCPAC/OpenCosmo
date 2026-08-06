@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, Self
 
+import numpy as np
+
 from opencosmo.collection import structure as sc
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import Dataset
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.mapping.mapping import get_mapping
 
 if TYPE_CHECKING:
     import astropy.units as u
     import h5py
-    import numpy as np
     from astropy.cosmology import Cosmology
 
     from opencosmo.collection.protocols import Collection
@@ -31,6 +34,35 @@ def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
         raise ValueError(f"Some of {', '.join(datasets)} not found in file.")
 
 
+def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
+    reference_dataset = datasets[source]
+    rows_to_keep = np.ones(len(reference_dataset), dtype=bool)
+    index = reference_dataset.index
+
+    mappings = {}
+    for name, dataset in datasets.items():
+        if name == source:
+            continue
+        mapping = get_mapping(match_set, source, name, index)
+        rows_to_keep &= mapping >= 0
+        mappings[name] = mapping
+
+    for name, mapping in mappings.items():
+        mappings_to_keep = mapping[rows_to_keep]
+        mappings_in_index = np.isin(mappings_to_keep, into_array(datasets[name].index))
+        rows_to_keep[rows_to_keep] &= mappings_in_index
+
+    new_datasets = {source: datasets[source].take_rows(np.where(rows_to_keep)[0])}
+    for name, mapping in mappings.items():
+        target_index = into_array(datasets[name].index)
+        wanted = mapping[rows_to_keep]
+        order = np.argsort(target_index, kind="stable")
+        rows_to_take = order[np.searchsorted(target_index, wanted, sorter=order)]
+        new_datasets[name] = datasets[name].take_rows(rows_to_take)
+
+    return new_datasets
+
+
 class SimulationCollection(dict):
     """
     A collection of datasets of the same type from different
@@ -48,7 +80,7 @@ class SimulationCollection(dict):
         dtypes = set(type(ds) for ds in datasets.values())
         assert len(dtypes) == 1
         self.__dtype = dtypes.pop()
-        self._match_set = match_set
+        self.__match_set = match_set
 
     def __enter__(self):
         return self
@@ -121,7 +153,7 @@ class SimulationCollection(dict):
                 *args, **regular_kwargs, **dataset_mapped_kwargs
             )
         if construct:
-            return SimulationCollection(output)
+            return SimulationCollection(output, self.__match_set)
         return output
 
     def __map_attribute(self, attribute):
@@ -168,6 +200,32 @@ class SimulationCollection(dict):
         """
 
         return self.__map_attribute("simulation")
+
+    def match(self, source: str) -> Self:
+        """
+        Create a new simulation collection where the datasets are ordered so that matched
+        objects appear in the same row across every dataset. All datasets are matched
+        to `source`, and only rows that are available in every simulation are included.
+
+        For example, suppose you have one gravity-only sim and one hydro sim.
+
+
+        .. code-block:: python
+
+            collection = ds.
+
+
+        """
+        if self.__match_set is None:
+            raise ValueError(
+                "This SimulationCollection does not contain matching information!"
+            )
+        elif source not in self.keys():
+            raise ValueError(
+                f"This SimulationCollection does not have a simulation named {source}"
+            )
+        new_datasets = prepare_matched_datasets(self.__match_set, self, source)
+        return SimulationCollection(new_datasets, self.__match_set)
 
     def bound(self, region: Region, select_by: Optional[str] = None) -> Self:
         """

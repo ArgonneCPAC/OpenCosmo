@@ -11,7 +11,7 @@ from .build import (
 from .get import get_data
 from .in_range import n_in_range
 from .mask import into_array, mask
-from .ops import offset, rebuild_by_ranges, reindex_column
+from .ops import offset, rebuild_by_ranges, reindex_column, trim
 from .project import project
 from .take import take
 from .unary import get_length, get_range
@@ -46,4 +46,5 @@ __all__ = [
     "reindex_column",
     "offset",
     "zeros",
+    "trim",
 ]

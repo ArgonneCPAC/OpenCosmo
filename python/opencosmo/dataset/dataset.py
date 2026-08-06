@@ -30,8 +30,6 @@ from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from astropy.cosmology import Cosmology
 
     from opencosmo.column.column import (
@@ -114,22 +112,6 @@ class Dataset:
 
         """
         return self.__header
-
-    @property
-    def uuid(self) -> "UUID | None":
-        """
-        The UUID of this dataset, if available.
-
-        The UUID is assigned when the dataset is first written and remains constant
-        as long as the dataset's rows are not modified. Datasets written before
-        UUID support, or datasets derived from filtering or other modifications,
-        have uuid=None and cannot participate in mappings.
-
-        Returns
-        -------
-        uuid: UUID | None
-        """
-        return self.__state.uuid
 
     @property
     def columns(self) -> list[str]:

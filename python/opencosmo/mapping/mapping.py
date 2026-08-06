@@ -6,10 +6,7 @@ from typing import TYPE_CHECKING
 import h5py
 import numpy as np
 
-from opencosmo.index import (
-    get_data,
-    into_array,
-)
+from opencosmo.index import get_data, get_length, into_array, trim
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -55,9 +52,9 @@ H5pyIndex = SimpleH5pyIndex | ChunkedH5pyIndex
 
 @dataclass(frozen=True, slots=True)
 class DatasetMatchSet:
-    reference_source: UUID
-    primary_maps: dict[UUID, H5pyIndex]
-    aux_maps: dict[tuple[UUID, UUID], tuple[H5pyIndex, H5pyIndex]]
+    reference_source: str
+    primary_maps: dict[UUID | str, H5pyIndex]
+    aux_maps: dict[tuple[UUID | str, UUID | str], tuple[H5pyIndex, H5pyIndex]]
 
     @property
     def endpoints(self) -> "frozenset[UUID]":
@@ -77,6 +74,21 @@ class DatasetMatchSet:
             | set(self.primary_maps)
             | {u for pair in self.aux_maps for u in pair}
         )
+
+    def rename_uuids(self, name_to_uuid: dict[str, frozenset[UUID]]):
+        assert all(
+            len(uuids) == 1 for uuids in name_to_uuid.values()
+        )  # hard constraint for now, single datasets only
+        name_mapping = {set(uuids).pop(): name for name, uuids in name_to_uuid.items()}
+        reference_source = name_mapping[self.reference_source]
+        primary_maps = {
+            name_mapping[uuid]: index for uuid, index in self.primary_maps.items()
+        }
+        aux_maps = {
+            (name_mapping[key[0]], name_mapping[key[1]]): val
+            for key, val in self.aux_maps.items()
+        }
+        return DatasetMatchSet(reference_source, primary_maps, aux_maps)
 
 
 def get_mapping(
@@ -169,6 +181,9 @@ def get_primary_mapping(
 
 
 def __get_inverse_mapping(mapping: SimpleH5pyIndex, index: DataIndex):
+    if len(mapping) < get_length(index):
+        index = trim(index, len(mapping))
+
     mapping_index = get_data(mapping, index)
 
     valid_sources = np.where(mapping_index != -1)[0]

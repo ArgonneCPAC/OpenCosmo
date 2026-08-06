@@ -1457,6 +1457,35 @@ def test_multi_file_nested_scopes_no_error(multi_path):
     assert set(c.keys()) == {"scidac1", "scidac2"}
 
 
+def test_cross_sim_with_mapping(
+    haloproperties_path, haloproperties_go_path, halo_mapping_path
+):
+    """Opening two different-simulation datasets with a mapping file succeeds."""
+    c = oc.open(haloproperties_path, haloproperties_go_path, halo_mapping_path)
+    assert isinstance(c, oc.SimulationCollection)
+    assert set(c.keys()) == {
+        "KAPPA_2_EGW_0.568_SEED_1.048e6_VKIN_7984_EPS_10.130",
+        "SCIDAC_128_GO",
+    }
+    c = c.match("SCIDAC_128_GO")
+    c = c.select("fof_halo_mass")
+    d1, d2 = (ds.get_data("numpy") for ds in c.values())
+
+    import matplotlib.pyplot as plt
+
+    plt.scatter(d1, d2)
+    plt.loglog()
+    plt.show()
+
+    assert c.match_set is not None
+    # Primary map handles must still be lazy h5py datasets, not materialised arrays.
+    for handle in c.match_set.primary_maps.values():
+        if isinstance(handle, tuple):
+            assert all(isinstance(h, h5py.Dataset) for h in handle)
+        else:
+            assert isinstance(handle, h5py.Dataset)
+
+
 def test_mapping_file_alone_raises(halo_mapping_path):
     """Opening a mapping file on its own raises the pre-existing ValueError."""
     with pytest.raises(ValueError) as exc_info:

@@ -55,7 +55,6 @@ The later will consist of several datasets, each with the same data type and is_
 class DatasetTarget(TypedDict):
     header: OpenCosmoHeader
     dataset_group: h5py.Group
-    uuid: UUID | None
     columns: list[h5py.Dataset]
     spatial_index: Optional[h5py.Group]
 
@@ -146,6 +145,11 @@ def open_files(
         raise ValueError("No valid datasets found!")
 
     children: dict[str, oc.Dataset | oc.collection.Collection] = {}
+    # UUIDs of every dataset this rank actually opened. Only the identities are
+    # needed (map endpoint resolution is pure set membership), so nothing here
+    # requires the Dataset objects themselves.
+    children_by_uuid: dict[str, set[UUID]] = {}
+    available_uuids: set[UUID] = set()
     for scope_name in sorted(scopes):
         sub = scopes[scope_name]
         spec = match_spec(sub)
@@ -155,22 +159,22 @@ def open_files(
             )
         spec.verify(sub)
         assignments = plan.distribute(sub, mpi_mode, nranks)
-        child = plan.build_from_assignment(assignments[rank], sub, spec, open_kwargs)
+        child, child_uuids = plan.build_from_assignment(
+            assignments[rank], sub, spec, open_kwargs
+        )
         # A scope whose every dataset was gated out by load/if conditions builds to
         # None (see plan.build_from_assignment); drop it.
         if child is not None:
             children[scope_name] = child
+            children_by_uuid[scope_name] = child_uuids
+            available_uuids |= child_uuids
 
     if not children:
         raise ValueError("No valid datasets found!")
 
-    # Build the uuid->Dataset index once; it is reused by both _resolve_match_set
-    # and the connectivity check below.
-    available: dict[UUID, oc.Dataset] = {}
-    for child in children.values():
-        _collect_by_uuid(child, available)
+    # Resolve mapping files against the UUIDs actually opened on this rank.
 
-    match_set = _resolve_match_set(map_layouts, available)
+    match_set = _resolve_match_set(map_layouts, available_uuids)
 
     # --- Cross-simulation connectivity check ---
     #
@@ -197,13 +201,18 @@ def open_files(
             frozenset() if match_set is None else match_set.endpoints
         )
 
-        # Every root-origin scope must contain at least one UUID that appears in
-        # endpoints.  _collect_by_uuid already excludes uuid-less datasets, so the
-        # per-scope UUID set comes straight out of it applied to children[name].
+        # Per-scope UUIDs come from the discovered layouts, not from the built
+        # children: layouts are identical on every rank, whereas a rank's actual
+        # assignment is not under MpiMode.REDSHIFT.  Deriving the check from
+        # layouts keeps it collective-safe.  Datasets written before dataset
+        # identity existed have uuid=None and can never be a map endpoint.
         unconnected = [
             name
             for name in root_scope_names
-            if not _scope_uuids(children[name]) & endpoints
+            if not frozenset(
+                g.uuid for fl in scopes[name] for g in fl.groups if g.uuid is not None
+            )
+            & endpoints
         ]
         if unconnected:
             raise ValueError(
@@ -213,6 +222,8 @@ def open_files(
                 + ", ".join(f"'{n}'" for n in sorted(unconnected))
                 + "."
             )
+    if match_set is not None:
+        match_set = match_set.rename_uuids(children_by_uuid)
 
     # A mapping resolves to nothing usable whenever fewer than two of its endpoints
     # were opened — the "ignore unresolvable endpoints" rule applied consistently.
@@ -220,44 +231,17 @@ def open_files(
     # including the bare single-child object.
     if len(children) == 1 and match_set is None:
         return next(iter(children.values()))
+
     return occ.SimulationCollection(children, match_set=match_set)
 
 
-def _collect_by_uuid(
-    obj: oc.Dataset | oc.collection.Collection,
-    into: dict[UUID, oc.Dataset],
-) -> None:
-    """
-    Index every uuid-carrying Dataset reachable from ``obj``.
-
-    Children may be a bare Dataset or any collection; every collection type is a
-    dict subclass whose values are Datasets or further collections, so one recursion
-    over ``.values()`` with a Dataset base case covers all of them. A Dataset with no
-    uuid (written before dataset identity existed) simply cannot be a map endpoint.
-    """
-    if isinstance(obj, oc.Dataset):
-        if obj.uuid is not None:
-            into[obj.uuid] = obj
-    elif isinstance(obj, dict):
-        for child in obj.values():
-            _collect_by_uuid(child, into)
-
-
-def _scope_uuids(obj: oc.Dataset | oc.collection.Collection) -> frozenset[UUID]:
-    """Return the frozenset of UUIDs reachable from ``obj`` via ``_collect_by_uuid``."""
-    into: dict[UUID, oc.Dataset] = {}
-    _collect_by_uuid(obj, into)
-    return frozenset(into)
-
-
 def _resolve_match_set(
-    map_layouts: list[FileLayout],
-    available: dict[UUID, oc.Dataset],
+    map_layouts: list[FileLayout], available: set[UUID]
 ) -> DatasetMatchSet | None:
     """
     Resolve discovered mapping files against the datasets actually opened.
 
-    ``available`` is the uuid->Dataset index built by the caller; this function does
+    ``available`` is the set of UUIDs the caller actually opened; this function does
     not rebuild it.
 
     Only slots whose endpoints are all present survive, so one suite-wide mapping
@@ -283,16 +267,12 @@ def _resolve_match_set(
 
     from opencosmo.mapping.read import read_match_set
 
-    available_uuids: set[UUID] = set(available)
-
     for layout in map_layouts:
         # Pre-filter: skip this file entirely if no map it carries mentions any
         # available UUID.  endpoints is a necessary-but-not-sufficient condition —
         # read_match_set may still return None for a file that passes (e.g. exactly
         # one primary target available with the reference absent).
-        if not any(
-            map_layout.endpoints & available_uuids for map_layout in layout.maps
-        ):
+        if not any(map_layout.endpoints & available for map_layout in layout.maps):
             continue
 
         f = h5py.File(layout.path, "r")
@@ -300,7 +280,7 @@ def _resolve_match_set(
         for map_layout in layout.maps:
             group = f[map_layout.path]
             assert isinstance(group, h5py.Group)
-            match_set = read_match_set(group, map_layout, available_uuids)
+            match_set = read_match_set(group, map_layout, available)
             if match_set is not None:
                 winner = match_set
                 break
