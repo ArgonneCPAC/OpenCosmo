@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import h5py
 import numpy as np
 
-from opencosmo.index import get_data, get_length, into_array, trim
+from opencosmo.index import get_data, into_array
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -34,8 +34,10 @@ For example:
 
 Mapping from sim 3 -> sim 4 is:
 
-    sim_3_4 = np.concatenate(np.argsort(sim_0_3)[sim_0_4], sim_3_4)
+    sim_3_4 = np.concatenate(sim_0_4[np.argsort(sim_0_3)], sim_3_4)
 
+Note: the real implementation additionally propagates -1 for unmatched rows and
+requires the inverted map to be injective (one-to-one from reference to source).
 
 Constraints:
 
@@ -167,31 +169,97 @@ def get_primary_mapping(
     elif target == match_set.reference_source:
         mapping = match_set.primary_maps[source]
         assert not isinstance(mapping, tuple)
-        return __get_inverse_mapping(mapping, index)
-        # todo handle missing matches
-    map_to_source = match_set.primary_maps[source]
-    map_to_target = get_data(match_set.primary_maps[target], index)
-    assert isinstance(map_to_source, h5py.Dataset)
+        return __get_inverse_mapping(mapping, index, match_set.reference_source, source)
 
-    map_from_source = __get_inverse_mapping(map_to_source, index)
-    result = np.full(len(map_to_target), -1, dtype=np.int64)
-    matched = map_to_target != -1
-    result[matched] = map_from_source[map_to_target[matched]]
+    map_to_source = match_set.primary_maps[source]
+    map_to_target = match_set.primary_maps[target]
+    assert isinstance(map_to_source, h5py.Dataset)
+    assert isinstance(map_to_target, h5py.Dataset)
+
+    ref_rows = __get_inverse_mapping(
+        map_to_source, index, match_set.reference_source, source
+    )
+    result = np.full(len(ref_rows), -1, dtype=np.int64)
+    valid = ref_rows != -1
+    if valid.any():
+        forward_target = map_to_target[:]
+        result[valid] = forward_target[ref_rows[valid]]
     return result
 
 
-def __get_inverse_mapping(mapping: SimpleH5pyIndex, index: DataIndex):
-    if len(mapping) < get_length(index):
-        index = trim(index, len(mapping))
+def __get_inverse_mapping(
+    mapping: SimpleH5pyIndex,
+    index: "DataIndex",
+    reference_name: "str | UUID",
+    source_name: "str | UUID",
+) -> np.ndarray:
+    """Invert a reference→source primary map for the given source rows.
 
-    mapping_index = get_data(mapping, index)
+    Parameters
+    ----------
+    mapping:
+        An h5py Dataset of length ``n_reference`` whose value at reference row
+        ``r`` is the absolute source row that ``r`` maps to, or ``-1`` if
+        unmatched.  This is the *primary map* stored on disk.
+    index:
+        Absolute row numbers of the *source* dataset currently selected.
+        These are source-coordinate values, NOT reference-coordinate values.
+    reference_name:
+        Human-readable name of the reference simulation (used in error messages).
+    source_name:
+        Human-readable name of the source simulation (used in error messages).
 
-    valid_sources = np.where(mapping_index != -1)[0]
-    if len(valid_sources) == 0:
-        return mapping_index
+    Returns
+    -------
+    result : np.ndarray, dtype int64, shape (len(into_array(index)),)
+        ``result[i]`` is the absolute reference row corresponding to
+        ``into_array(index)[i]``, or ``-1`` if no reference row maps to it.
 
-    valid_targets = mapping_index[valid_sources]
-    n_target = valid_targets.max() + 1
-    final_map = np.full(n_target, -1, dtype=np.int64)
-    final_map[valid_targets] = valid_sources
-    return final_map
+    Raises
+    ------
+    ValueError
+        If the mapping is one-to-many (not injective), meaning inversion is
+        ambiguous.  The check is performed over the *entire* map (not just the
+        rows in ``index``) so the error is deterministic regardless of prior
+        filtering.
+    """
+    # Inversion is inherently non-lazy: we must read the entire forward map to
+    # know which reference row points at a given source row.  This is bounded
+    # by the reference dataset length, which is acceptable.
+    forward = mapping[:]
+
+    ref_rows = np.flatnonzero(forward != -1)
+    source_rows = forward[ref_rows]
+
+    order = np.argsort(source_rows, kind="stable")
+    sorted_source = source_rows[order]
+
+    # Injectivity check: performed globally over the whole map so the error is
+    # deterministic regardless of which rows happen to be in `index`.
+    if len(sorted_source) > 1:
+        n = int(np.count_nonzero(sorted_source[1:] == sorted_source[:-1]))
+        if n > 0:
+            raise ValueError(
+                f"Cannot match with source='{source_name}': the mapping from "
+                f"'{reference_name}' to '{source_name}' is one-to-many "
+                f"({n} ambiguous rows), so it cannot be inverted. "
+                f"Match with source='{reference_name}' instead."
+            )
+
+    wanted = into_array(index)
+    result = np.full(len(wanted), -1, dtype=np.int64)
+
+    if len(sorted_source) == 0:
+        return result
+
+    pos = np.searchsorted(sorted_source, wanted)
+    pos = np.clip(pos, 0, len(sorted_source) - 1)
+
+    # searchsorted returns an insertion point for absent values, not an error.
+    # We must verify that the located position actually holds the wanted value
+    # before writing; otherwise absent source rows would silently alias to a
+    # neighbouring entry.
+    hit = sorted_source[pos] == wanted
+    result[hit] = ref_rows[order[pos[hit]]]
+
+    return result

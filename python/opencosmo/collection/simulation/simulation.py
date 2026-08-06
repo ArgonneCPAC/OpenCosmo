@@ -35,6 +35,14 @@ def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
 
 
 def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
+    # Guard: active sort keys would cause dataset/state.py to re-sort the
+    # carefully ordered rows produced below, silently misaligning everything.
+    for name, ds in datasets.items():
+        if getattr(ds, "sorted_by", None) is not None:
+            raise ValueError(
+                f"Dataset '{name}' has an active sort key. Call match() before sort_by()."
+            )
+
     reference_dataset = datasets[source]
     rows_to_keep = np.ones(len(reference_dataset), dtype=bool)
     index = reference_dataset.index
@@ -44,9 +52,19 @@ def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
         if name == source:
             continue
         mapping = get_mapping(match_set, source, name, index)
+        # Guard: get_mapping can return a (starts, sizes) ChunkedIndex tuple,
+        # which is not compatible with the plain ndarray operations below.
+        if isinstance(mapping, tuple):
+            raise ValueError(
+                f"Cannot match dataset '{name}': get_mapping returned a chunked "
+                f"index, which is not supported by prepare_matched_datasets."
+            )
         rows_to_keep &= mapping >= 0
         mappings[name] = mapping
 
+    # The np.isin pass below is a required precondition for the unchecked
+    # searchsorted in the final loop: it guarantees every value in `wanted`
+    # is present in `target_index`, making the lookup safe without bounds checks.
     for name, mapping in mappings.items():
         mappings_to_keep = mapping[rows_to_keep]
         mappings_in_index = np.isin(mappings_to_keep, into_array(datasets[name].index))
