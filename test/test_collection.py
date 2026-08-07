@@ -913,6 +913,33 @@ def test_data_link_drop(halo_paths):
     assert found_dm_particles
 
 
+def test_drop_nested_structures_automatically(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+
+    dropped = collection.drop("fof_halo_mass", "gal_mass_star", "x")
+
+    assert "fof_halo_mass" not in dropped["halo_properties"].columns
+    assert "x" not in dropped["dm_particles"].columns
+    assert "gal_mass_star" not in dropped["galaxies"]["galaxy_properties"].columns
+    assert "x" not in dropped["galaxies"]["star_particles"].columns
+
+
+def test_drop_nested_structures_by_dataset_key(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+
+    dropped = collection.drop(
+        halo_properties=["fof_halo_mass"],
+        galaxies={
+            "galaxy_properties": ["gal_mass_star"],
+            "star_particles": ["x"],
+        },
+    )
+
+    assert "fof_halo_mass" not in dropped["halo_properties"].columns
+    assert "gal_mass_star" not in dropped["galaxies"]["galaxy_properties"].columns
+    assert "x" not in dropped["galaxies"]["star_particles"].columns
+
+
 def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
     galaxy_path = galaxy_paths[0]
     collection = oc.open(*halo_paths, galaxy_path)

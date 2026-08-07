@@ -168,6 +168,16 @@ You can still target datasets explicitly when you need to disambiguate shared co
 
 Datasets omitted from this explicit form are left unchanged. Nested collections can be selected with nested dictionaries; see :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>` for the full syntax.
 
+**Drop Follows Select Matching Rules**
+
+:py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>` automatically matches column names, wildcards, and nested collections the same way as ``select``:
+
+.. code-block:: python
+
+   ds = ds.drop("fof_halo_mass", "*_velocity")
+
+Use dataset-keyword arguments to target datasets explicitly.
+
 **Unit Transformations Apply to All Datasets**
 
 Transforming to a different unit convention is identical to :py:meth:`opencosmo.Dataset.with_units` and always applies to all datasets in the collection:
@@ -223,4 +233,3 @@ Simulation Collections
 ----------------------
 
 SimulationCollections implement an identical API to the :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` it holds. All operations will automatically be mapped over all datasets held by the collection, which will always be of the same type. See the documentation for those classes for more information 
-

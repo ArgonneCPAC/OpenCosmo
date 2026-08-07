@@ -48,7 +48,7 @@ def get_column_selection(
 
 
 def do_multi_dataset_selections(
-    datasets: dict[str, Dataset],
+    datasets: dict[Any, Dataset],
     select_args: tuple[str | list[str], ...],
     select_kwargs: dict[str, Any],
     mode: str = "global",
@@ -77,9 +77,35 @@ def do_multi_dataset_selections(
     return new_datasets
 
 
+def do_multi_dataset_drops(
+    datasets: dict[Any, Dataset],
+    drop_args: tuple[str | list[str], ...],
+):
+    columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
+    length_by_ds = {name: len(ds) for name, ds in datasets.items()}
+    args_by_ds, _ = build_multi_dataset_selections(
+        columns_by_ds, length_by_ds, drop_args, {}
+    )
+    new_datasets = {}
+    for name, dataset in datasets.items():
+        ds_args = args_by_ds.get(name, [])
+        if not ds_args:
+            new_datasets[name] = dataset
+            continue
+        try:
+            new_ds = dataset.drop(*ds_args)
+        # Do NOT fail if the only selections are wildcards, just return the raw dataset
+        except MissingColumnError:
+            if not all("*" in ds_arg for ds_arg in ds_args):
+                raise
+            new_ds = dataset
+        new_datasets[name] = new_ds
+    return new_datasets
+
+
 def build_multi_dataset_selections(
-    columns_by_ds: dict[str, set[str]],
-    ds_lengths: dict[str, int],
+    columns_by_ds: dict[Any, set[str]],
+    ds_lengths: dict[Any, int],
     select_args: tuple[str | list[str], ...],
     select_kwargs: dict[str, Any],
 ):

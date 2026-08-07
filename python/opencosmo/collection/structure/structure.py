@@ -12,6 +12,7 @@ from typing import (
     Literal,
     Mapping,
     Optional,
+    cast,
 )
 from warnings import warn
 
@@ -22,7 +23,7 @@ from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.column.column import DerivedScalarValue
-from opencosmo.column.select import do_multi_dataset_selections
+from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset.formats import verify_format
 from opencosmo.index.unary import get_length
 from opencosmo.io.schema import FileEntry, make_schema
@@ -155,6 +156,41 @@ class StructureCollection:
             self.__source.meta_columns, "galaxies" in self.__datasets
         )
         return self.__datasets
+
+    def __leaf_datasets(
+        self, path: tuple[str, ...] = ()
+    ) -> dict[tuple[str, ...], oc.Dataset]:
+        datasets = {}
+        if not self.__hide_source:
+            datasets[path + (self.__source.dtype,)] = self.__source
+        for name, dataset in self.__get_datasets().items():
+            if isinstance(dataset, StructureCollection):
+                datasets.update(dataset.__leaf_datasets(path + (name,)))
+            else:
+                datasets[path + (name,)] = dataset
+        return datasets
+
+    def __rebuild_hierarchy(
+        self,
+        datasets: Mapping[tuple[str, ...], oc.Dataset],
+        path: tuple[str, ...] = (),
+    ) -> StructureCollection:
+        source_path = path + (self.__source.dtype,)
+        new_source = datasets.get(source_path, self.__source)
+        new_datasets: dict[str, oc.Dataset | StructureCollection] = {}
+        for name, dataset in self.__get_datasets().items():
+            dataset_path = path + (name,)
+            if isinstance(dataset, StructureCollection):
+                new_datasets[name] = dataset.__rebuild_hierarchy(datasets, dataset_path)
+            else:
+                new_datasets[name] = datasets[dataset_path]
+        return StructureCollection(
+            new_source,
+            new_datasets,
+            self.__hide_source,
+            self.__handler,
+            self.__derived_columns,
+        )
 
     def __repr__(self):
         structure_type = self.__source.header.file.data_type.split("_")[0] + "s"
@@ -1031,41 +1067,11 @@ class StructureCollection:
                 raise ValueError(
                     "Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[dataset].select(scalar_expression)`"
                 )
-            datasets = {}
-
-            def collect_leaves(collection, path=()):
-                if not collection.__hide_source:
-                    datasets[path + (collection.__source.dtype,)] = collection.__source
-                for name, ds in collection.__get_datasets().items():
-                    if isinstance(ds, StructureCollection):
-                        collect_leaves(ds, path + (name,))
-                    else:
-                        datasets[path + (name,)] = ds
-
-            collect_leaves(self)
+            datasets = self.__leaf_datasets()
             selected = do_multi_dataset_selections(
                 datasets, select_args, select_kwargs, mode
             )
-
-            def rebuild(collection, path=()):
-                source_path = path + (collection.__source.dtype,)
-                new_source = selected.get(source_path, collection.__source)
-                new_datasets = {}
-                for name, ds in collection.__get_datasets().items():
-                    dataset_path = path + (name,)
-                    if isinstance(ds, StructureCollection):
-                        new_datasets[name] = rebuild(ds, dataset_path)
-                    else:
-                        new_datasets[name] = selected[dataset_path]
-                return StructureCollection(
-                    new_source,
-                    new_datasets,
-                    collection.__hide_source,
-                    collection.__handler,
-                    collection.__derived_columns,
-                )
-
-            return rebuild(self)
+            return self.__rebuild_hierarchy(selected)
 
         new_source = self.__source
         new_datasets = {}
@@ -1112,37 +1118,55 @@ class StructureCollection:
             self.__derived_columns,
         )
 
-    def drop(self, **columns_to_drop):
+    def drop(
+        self,
+        *drop_args: str | Iterable[str],
+        **columns_to_drop: str | Iterable[str] | dict,
+    ):
         """
-        Update the linked collection by dropping the specified columns
-        in the specified datasets. This method follows the exact same semantics as
-        :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>`.
-        Argument names should be datasets in this collection, and the argument
-        values should be a string, list of strings, or dictionary.
+        Drop columns by automatically matching their names to datasets in this
+        collection. Like :py:meth:`StructureCollection.select
+        <opencosmo.StructureCollection.select>`, this works across nested
+        structure collections; wildcards are applied to every dataset, while
+        datasets without a match are unchanged.
+
+        To target datasets explicitly, pass dataset names as keyword arguments.
+        Values may be a string, iterable of strings, or nested dictionary.
 
         Datasets that are not included will not be modified. You can drop
         entire datasets with :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
 
         Parameters
         ----------
+        *drop_args : str or Iterable[str]
+            Column names or wildcard patterns to match automatically across all
+            datasets in the collection.
         **columns_to_drop : str | Iterable[str]
-            The columns to drop from the dataset.
-
-        dataset : str, optional
-            The dataset to select from. If None, the properties dataset is used.
+            Columns to drop from explicitly named datasets.
 
         Returns
         -------
         StructureCollection
-            A new collection with only the selected columns for the specified dataset.
+            A new collection with the specified columns dropped.
 
         Raises
         -------
         ValueError
             If the specified dataset is not found in the collection.
         """
-        if not columns_to_drop:
+        if not drop_args and not columns_to_drop:
             return self
+
+        if drop_args:
+            datasets = self.__leaf_datasets()
+            dropped = do_multi_dataset_drops(
+                datasets, cast("tuple[str | list[str], ...]", drop_args)
+            )
+            collection = self.__rebuild_hierarchy(dropped)
+            if not columns_to_drop:
+                return collection
+            return collection.drop(**columns_to_drop)
+
         new_source = self.__source
         new_datasets = {}
 
@@ -1156,7 +1180,11 @@ class StructureCollection:
             new_ds = self.__datasets[dataset_name]
             if isinstance(new_ds, oc.Dataset):
                 new_ds = new_ds.drop(columns)
-            elif isinstance(new_ds.StructureCollection):
+            elif isinstance(new_ds, StructureCollection):
+                if not isinstance(columns, dict):
+                    raise ValueError(
+                        "When working with nested structure collections, the argument should be a dictionary!"
+                    )
                 new_ds = new_ds.drop(**columns)
 
             new_datasets[dataset_name] = new_ds
