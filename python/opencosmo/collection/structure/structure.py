@@ -22,6 +22,7 @@ from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.column.column import DerivedScalarValue
+from opencosmo.column.select import do_multi_dataset_selections
 from opencosmo.dataset.formats import verify_format
 from opencosmo.index.unary import get_length
 from opencosmo.io.schema import FileEntry, make_schema
@@ -937,6 +938,7 @@ class StructureCollection:
 
     def select(
         self,
+        *single_selections,
         mode: str = "global",
         **column_selections: str | Iterable[str] | dict,
     ) -> StructureCollection:
@@ -1011,8 +1013,54 @@ class StructureCollection:
         ValueError
             If the specified dataset is not found in the collection.
         """
-        if not column_selections:
+        if not column_selections and not single_selections:
             return self
+
+        kwargs_found = set(column_selections.keys())
+        if not kwargs_found.intersection(self.keys()) or single_selections:
+            if any(
+                isinstance(selection, DerivedScalarValue)
+                for selection in column_selections.values()
+            ):
+                raise ValueError(
+                    "Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[dataset].select(scalar_expression)`"
+                )
+            datasets = {}
+
+            def collect_leaves(collection, path=()):
+                if not collection.__hide_source:
+                    datasets[path + (collection.__source.dtype,)] = collection.__source
+                for name, ds in collection.__get_datasets().items():
+                    if isinstance(ds, StructureCollection):
+                        collect_leaves(ds, path + (name,))
+                    else:
+                        datasets[path + (name,)] = ds
+
+            collect_leaves(self)
+            selected = do_multi_dataset_selections(
+                datasets, single_selections, column_selections, mode
+            )
+
+            def rebuild(collection, path=()):
+                source_path = path + (collection.__source.dtype,)
+                new_source = selected.get(source_path, collection.__source)
+                new_datasets = {}
+                for name, ds in collection.__get_datasets().items():
+                    dataset_path = path + (name,)
+                    if isinstance(ds, StructureCollection):
+                        new_datasets[name] = rebuild(ds, dataset_path)
+                    else:
+                        new_datasets[name] = selected[dataset_path]
+                return StructureCollection(
+                    new_source,
+                    new_datasets,
+                    collection.__hide_source,
+                    collection.__handler,
+                    collection.__derived_columns,
+                )
+
+            return rebuild(self)
+
         new_source = self.__source
         new_datasets = {}
 

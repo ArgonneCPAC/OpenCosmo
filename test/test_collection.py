@@ -274,6 +274,31 @@ def test_select_nested_structures_with_derived(halo_paths, galaxy_paths):
         assert set(halo["galaxies"]["star_particles"].columns) == {"x", "y", "z"}
 
 
+def test_select_nested_structures_automatically(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+    galaxy_properties = collection["galaxies"]["galaxy_properties"]
+    expected_px = galaxy_properties.select(
+        px=oc.col("gal_mass_star") * oc.col("gal_com_vx")
+    ).get_data("numpy")
+
+    collection = collection.select(
+        "fof_halo_mass",
+        "gal_mass_star",
+        gal_star_px=oc.col("gal_mass_star") * oc.col("gal_com_vx"),
+    )
+
+    assert set(collection["halo_properties"].columns) == {"fof_halo_mass"}
+    galaxies = collection["galaxies"]
+    assert set(galaxies["galaxy_properties"].columns) == {
+        "gal_mass_star",
+        "gal_star_px",
+    }
+    galaxy_data = galaxies["galaxy_properties"].get_data("numpy")
+    assert np.all(galaxy_data["gal_star_px"] == expected_px)
+    assert "x" in collection["dm_particles"].columns
+    assert "x" in galaxies["star_particles"].columns
+
+
 def test_visit_single(halo_paths):
     collection = oc.open(*halo_paths).take(100)
     spec = {

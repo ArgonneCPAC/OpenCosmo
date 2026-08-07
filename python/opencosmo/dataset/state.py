@@ -11,7 +11,7 @@ import numpy as np
 
 from opencosmo.column.cache import ColumnCache
 from opencosmo.column.column import RawColumn
-from opencosmo.column.select import get_column_selection
+from opencosmo.column.select import MissingColumnError, get_column_selection
 from opencosmo.dataset.columns import add_columns, resort
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
@@ -427,11 +427,11 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     """
     selections, missing = get_column_selection(state.columns, columns)
     if missing:
-        raise ValueError(
+        raise MissingColumnError(
             f"Columns are included that are not in this dataset: {missing}"
         )
     elif not selections and columns:
-        raise ValueError("No columns matched the provided wildcards!")
+        raise MissingColumnError("No columns matched the provided wildcards!")
 
     if drop:
         selections = set(state.columns) - selections

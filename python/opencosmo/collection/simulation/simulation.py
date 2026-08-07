@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, Self
 
 from opencosmo.collection import structure as sc
+from opencosmo.column.select import do_multi_dataset_selections
 from opencosmo.dataset import Dataset
 from opencosmo.io.schema import FileEntry, make_schema
 
@@ -39,6 +40,9 @@ class SimulationCollection(dict):
 
     def __init__(self, datasets: Mapping[str, Dataset | Collection]):
         self.update(datasets)
+        dtypes = set(type(ds) for ds in datasets.values())
+        assert len(dtypes) == 1
+        self.__dtype = dtypes.pop()
 
     def __enter__(self):
         return self
@@ -203,7 +207,7 @@ class SimulationCollection(dict):
         """
         return self.__map("filter", *masks, **kwargs)
 
-    def select(self, *args, **kwargs) -> Self:
+    def select(self, *args, **kwargs) -> SimulationCollection:
         """
         Select a set of columns in the datasets in this collection. This method
         calls the underlying method in :class:`opencosmo.Dataset`, or
@@ -211,6 +215,10 @@ class SimulationCollection(dict):
         its behavior and arguments can vary depending on what this collection
         contains. See the documentation for those objects to determine
         the expected arguments.
+
+        If the collection holds datasets with different column sets (e.g a matched
+        gravity-only and hydro sim) it will make a best-effort attempt to distribute
+        the selections to the relevant dataset.
 
         Parameters
         ----------
@@ -227,7 +235,11 @@ class SimulationCollection(dict):
             A new collection with only the specified columns
 
         """
-        return self.__map("select", *args, **kwargs)
+        if self.__dtype is not Dataset:
+            return self.__map("select", *args, **kwargs)
+
+        output = do_multi_dataset_selections(self, args, kwargs)
+        return SimulationCollection(output)
 
     def drop(self, *args, **kwargs) -> Self:
         """
