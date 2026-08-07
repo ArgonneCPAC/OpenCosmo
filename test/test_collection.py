@@ -274,6 +274,31 @@ def test_select_nested_structures_with_derived(halo_paths, galaxy_paths):
         assert set(halo["galaxies"]["star_particles"].columns) == {"x", "y", "z"}
 
 
+def test_select_nested_structures_automatically(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+    galaxy_properties = collection["galaxies"]["galaxy_properties"]
+    expected_px = galaxy_properties.select(
+        px=oc.col("gal_mass_star") * oc.col("gal_com_vx")
+    ).get_data("numpy")
+
+    collection = collection.select(
+        "fof_halo_mass",
+        "gal_mass_star",
+        gal_star_px=oc.col("gal_mass_star") * oc.col("gal_com_vx"),
+    )
+
+    assert set(collection["halo_properties"].columns) == {"fof_halo_mass"}
+    galaxies = collection["galaxies"]
+    assert set(galaxies["galaxy_properties"].columns) == {
+        "gal_mass_star",
+        "gal_star_px",
+    }
+    galaxy_data = galaxies["galaxy_properties"].get_data("numpy")
+    assert np.all(galaxy_data["gal_star_px"] == expected_px)
+    assert "x" in collection["dm_particles"].columns
+    assert "x" in galaxies["star_particles"].columns
+
+
 def test_visit_single(halo_paths):
     collection = oc.open(*halo_paths).take(100)
     spec = {
@@ -886,6 +911,33 @@ def test_data_link_drop(halo_paths):
             found_dm_particles = True
             assert not set(dm_particles.columns).intersection({"x", "y", "z"})
     assert found_dm_particles
+
+
+def test_drop_nested_structures_automatically(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+
+    dropped = collection.drop("fof_halo_mass", "gal_mass_star", "x")
+
+    assert "fof_halo_mass" not in dropped["halo_properties"].columns
+    assert "x" not in dropped["dm_particles"].columns
+    assert "gal_mass_star" not in dropped["galaxies"]["galaxy_properties"].columns
+    assert "x" not in dropped["galaxies"]["star_particles"].columns
+
+
+def test_drop_nested_structures_by_dataset_key(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+
+    dropped = collection.drop(
+        halo_properties=["fof_halo_mass"],
+        galaxies={
+            "galaxy_properties": ["gal_mass_star"],
+            "star_particles": ["x"],
+        },
+    )
+
+    assert "fof_halo_mass" not in dropped["halo_properties"].columns
+    assert "gal_mass_star" not in dropped["galaxies"]["galaxy_properties"].columns
+    assert "x" not in dropped["galaxies"]["star_particles"].columns
 
 
 def test_link_halos_to_galaxies(halo_paths, galaxy_paths):

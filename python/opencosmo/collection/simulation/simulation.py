@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, Self
 
 from opencosmo.collection import structure as sc
+from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import Dataset
 from opencosmo.io.schema import FileEntry, make_schema
 
@@ -39,6 +40,9 @@ class SimulationCollection(dict):
 
     def __init__(self, datasets: Mapping[str, Dataset | Collection]):
         self.update(datasets)
+        dtypes = set(type(ds) for ds in datasets.values())
+        assert len(dtypes) == 1
+        self.__dtype = dtypes.pop()
 
     def __enter__(self):
         return self
@@ -203,7 +207,7 @@ class SimulationCollection(dict):
         """
         return self.__map("filter", *masks, **kwargs)
 
-    def select(self, *args, **kwargs) -> Self:
+    def select(self, *args, **kwargs) -> SimulationCollection:
         """
         Select a set of columns in the datasets in this collection. This method
         calls the underlying method in :class:`opencosmo.Dataset`, or
@@ -211,6 +215,10 @@ class SimulationCollection(dict):
         its behavior and arguments can vary depending on what this collection
         contains. See the documentation for those objects to determine
         the expected arguments.
+
+        If the collection holds datasets with different column sets (e.g a matched
+        gravity-only and hydro sim) it will make a best-effort attempt to distribute
+        the selections to the relevant dataset.
 
         Parameters
         ----------
@@ -227,27 +235,40 @@ class SimulationCollection(dict):
             A new collection with only the specified columns
 
         """
-        return self.__map("select", *args, **kwargs)
+        if self.__dtype is not Dataset:
+            return self.__map("select", *args, **kwargs)
 
-    def drop(self, *args, **kwargs) -> Self:
+        output = do_multi_dataset_selections(self, args, kwargs)
+        return SimulationCollection(output)
+
+    def drop(self, *args, **kwargs) -> SimulationCollection:
         """
-        Drop a set of columns from the datasets in the collection. This method
-        calls the underlying method in :class:`opencosmo.Dataset`, or
-        :class:`opencosmo.Collection` depending on the context. As such
-        its behavior and arguments can vary depending on what this collection
-        contains.
+        Drop columns by automatically matching their names to datasets in this
+        collection. Wildcards are applied to every dataset, while datasets
+        without a match are unchanged. For nested collections, matching follows
+        their :meth:`drop` behavior.
+
+        To target datasets explicitly, pass dataset names as keyword arguments.
+        This form is forwarded to the underlying datasets or collections.
 
         Parameters
         ----------
-        args:
-            The arguments to pass to the select method. This is
-            usually a list of column names to drop.
-        kwargs:
-            The keyword arguments to pass to the select method.
-            This is usually a dictionary of column names to select.
+        args : str or Iterable[str]
+            Column names or wildcard patterns to match automatically across all
+            datasets in the collection.
+        kwargs
+            Explicit dataset-keyed drop selections.
 
         """
-        return self.__map("drop", *args, **kwargs)
+        if self.__dtype is not Dataset:
+            return self.__map("drop", *args, **kwargs)
+
+        output = do_multi_dataset_drops(self, args)
+        for dataset_name, columns in kwargs.items():
+            if dataset_name not in self:
+                raise ValueError(f"Dataset {dataset_name} not found in collection.")
+            output[dataset_name] = output[dataset_name].drop(columns)
+        return SimulationCollection(output)
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"

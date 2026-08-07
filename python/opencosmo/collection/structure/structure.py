@@ -12,6 +12,7 @@ from typing import (
     Literal,
     Mapping,
     Optional,
+    cast,
 )
 from warnings import warn
 
@@ -22,6 +23,7 @@ from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate
 from opencosmo.collection.structure import io as sio
 from opencosmo.column.column import DerivedScalarValue
+from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset.formats import verify_format
 from opencosmo.index.unary import get_length
 from opencosmo.io.schema import FileEntry, make_schema
@@ -154,6 +156,41 @@ class StructureCollection:
             self.__source.meta_columns, "galaxies" in self.__datasets
         )
         return self.__datasets
+
+    def __leaf_datasets(
+        self, path: tuple[str, ...] = ()
+    ) -> dict[tuple[str, ...], oc.Dataset]:
+        datasets = {}
+        if not self.__hide_source:
+            datasets[path + (self.__source.dtype,)] = self.__source
+        for name, dataset in self.__get_datasets().items():
+            if isinstance(dataset, StructureCollection):
+                datasets.update(dataset.__leaf_datasets(path + (name,)))
+            else:
+                datasets[path + (name,)] = dataset
+        return datasets
+
+    def __rebuild_hierarchy(
+        self,
+        datasets: Mapping[tuple[str, ...], oc.Dataset],
+        path: tuple[str, ...] = (),
+    ) -> StructureCollection:
+        source_path = path + (self.__source.dtype,)
+        new_source = datasets.get(source_path, self.__source)
+        new_datasets: dict[str, oc.Dataset | StructureCollection] = {}
+        for name, dataset in self.__get_datasets().items():
+            dataset_path = path + (name,)
+            if isinstance(dataset, StructureCollection):
+                new_datasets[name] = dataset.__rebuild_hierarchy(datasets, dataset_path)
+            else:
+                new_datasets[name] = datasets[dataset_path]
+        return StructureCollection(
+            new_source,
+            new_datasets,
+            self.__hide_source,
+            self.__handler,
+            self.__derived_columns,
+        )
 
     def __repr__(self):
         structure_type = self.__source.header.file.data_type.split("_")[0] + "s"
@@ -937,86 +974,109 @@ class StructureCollection:
 
     def select(
         self,
+        *select_args,
         mode: str = "global",
-        **column_selections: str | Iterable[str] | dict,
+        **select_kwargs: str | Iterable[str] | dict,
     ) -> StructureCollection:
         """
-        Update a dataset in the collection collection to only include the
-        columns specified. The name of the arguments to this function should be
-        dataset names. For example:
+        Select columns from the datasets in this collection.
+
+        By default, column names and derived columns are matched to the datasets
+        that contain their required columns. This works across nested structure
+        collections, so dataset names do not usually need to be specified:
+
+        .. code-block:: python
+
+            momentum = oc.col("gal_mass_star") * oc.col("gal_com_vx")
+            collection = collection.select(
+                "fof_halo_mass",
+                "gal_mass_star",
+                gal_momentum=momentum,
+            )
+
+        Exact names must exist in at least one dataset. Wildcards are applied to
+        every dataset and leave datasets with no matches unchanged. A column or
+        derived expression that can be resolved by multiple datasets is selected
+        from each of them.
+
+        To target particular datasets explicitly, use dataset names as keyword
+        arguments. This legacy form is useful when the same column name appears in
+        several datasets. Nested collections and derived columns can also be targeted
+        with dictionaries:
 
         .. code-block:: python
 
             collection = collection.select(
-                halo_properties = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
-                dm_particles = ["x", "y", "z"]
+                halo_properties=["fof_halo_mass", "sod_halo_mass"],
+                dm_particles=["x", "y", "z"],
+                galaxies={"galaxy_properties": ["gal_mass_star"]},
             )
 
-        Datasets that do not appear in the argument list will not be modified. You can
-        remove entire datasets from the collection with
-        :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
-
-        The :py:class:`opencosmo.Dataset` class supports creating derived columns as part of
-        a :py:meth:`select <opencosmo.Dataset.select>` call. You can do the same here, with
-        the following pattern:
+        In the explicit form, a derived selection is represented by ``columns`` and
+        ``derived_columns`` entries:
 
         .. code-block:: python
 
-            halo_px = oc.col("fof_halo_mass")*oc.col("fof_halo_com_Vx")
             collection = collection.select(
-                halo_properties = {
-                    columns = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
-                    derived_columns = {"fof_halo_px": halo_px}
-                }
+                halo_properties={
+                    "columns": ["fof_halo_mass"],
+                    "derived_columns": {
+                        "fof_halo_px": oc.col("fof_halo_mass")
+                        * oc.col("fof_halo_com_vx")
+                    },
+                },
             )
-
-        For nested structure collections, such as galaxies within halos, you can pass
-        a nested dictionary:
-
-        .. code-block:: python
-
-            collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
-
-            collection = collection.select(
-                halo_properties = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
-                dm_particles = ["x", "y", "z"]
-                galaxies = {
-                    "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
-                    "star_particles": ["x", "y", "z"]
-                }
-            )
-
 
         Parameters
         ----------
+        *select_args : str or Iterable[str]
+            Column names or wildcard patterns to match automatically across all
+            datasets in the collection.
         mode : str, "local" or "global", default = "global"
             Controls how scalar reductions nested inside derived column
             expressions are computed when running under MPI. Defaults to
             ``"global"`` (cross-rank); pass ``"local"`` for per-rank scalars.
             Forwarded to each underlying ``Dataset.select`` call.
-
-        **column_selections : str | Iterable[str] | dict[str, Iterable[str]]
-            The columns to select from a given dataset or sub-collection
-
-        dataset : str
-            The dataset to select from.
+        **select_kwargs : Column or dataset selection
+            Derived columns to route automatically, or explicit selections keyed
+            by dataset name. Explicit selections may be a column name, an iterable
+            of names, or a nested selection dictionary.
 
         Returns
         -------
         StructureCollection
-            A new collection with only the selected columns for the specified dataset.
+            A new collection containing the selected columns. Datasets without an
+            applicable automatic selection are unchanged.
 
         Raises
         -------
         ValueError
-            If the specified dataset is not found in the collection.
+            If an exact column or derived-column dependency cannot be found in any
+            dataset, an explicitly named dataset does not exist, or a scalar
+            reduction is selected directly from the collection.
         """
-        if not column_selections:
+        if not select_kwargs and not select_args:
             return self
+
+        kwargs_found = set(select_kwargs.keys())
+        if not kwargs_found.intersection(self.keys()) or select_args:
+            if any(
+                isinstance(selection, DerivedScalarValue)
+                for selection in select_kwargs.values()
+            ):
+                raise ValueError(
+                    "Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[dataset].select(scalar_expression)`"
+                )
+            datasets = self.__leaf_datasets()
+            selected = do_multi_dataset_selections(
+                datasets, select_args, select_kwargs, mode
+            )
+            return self.__rebuild_hierarchy(selected)
+
         new_source = self.__source
         new_datasets = {}
 
-        for dataset, columns in column_selections.items():
+        for dataset, columns in select_kwargs.items():
             if isinstance(columns, dict) and (
                 "columns" in columns or "derived_columns" in columns
             ):
@@ -1058,37 +1118,55 @@ class StructureCollection:
             self.__derived_columns,
         )
 
-    def drop(self, **columns_to_drop):
+    def drop(
+        self,
+        *drop_args: str | Iterable[str],
+        **columns_to_drop: str | Iterable[str] | dict,
+    ):
         """
-        Update the linked collection by dropping the specified columns
-        in the specified datasets. This method follows the exact same semantics as
-        :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>`.
-        Argument names should be datasets in this collection, and the argument
-        values should be a string, list of strings, or dictionary.
+        Drop columns by automatically matching their names to datasets in this
+        collection. Like :py:meth:`StructureCollection.select
+        <opencosmo.StructureCollection.select>`, this works across nested
+        structure collections; wildcards are applied to every dataset, while
+        datasets without a match are unchanged.
+
+        To target datasets explicitly, pass dataset names as keyword arguments.
+        Values may be a string, iterable of strings, or nested dictionary.
 
         Datasets that are not included will not be modified. You can drop
         entire datasets with :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
 
         Parameters
         ----------
+        *drop_args : str or Iterable[str]
+            Column names or wildcard patterns to match automatically across all
+            datasets in the collection.
         **columns_to_drop : str | Iterable[str]
-            The columns to drop from the dataset.
-
-        dataset : str, optional
-            The dataset to select from. If None, the properties dataset is used.
+            Columns to drop from explicitly named datasets.
 
         Returns
         -------
         StructureCollection
-            A new collection with only the selected columns for the specified dataset.
+            A new collection with the specified columns dropped.
 
         Raises
         -------
         ValueError
             If the specified dataset is not found in the collection.
         """
-        if not columns_to_drop:
+        if not drop_args and not columns_to_drop:
             return self
+
+        if drop_args:
+            datasets = self.__leaf_datasets()
+            dropped = do_multi_dataset_drops(
+                datasets, cast("tuple[str | list[str], ...]", drop_args)
+            )
+            collection = self.__rebuild_hierarchy(dropped)
+            if not columns_to_drop:
+                return collection
+            return collection.drop(**columns_to_drop)
+
         new_source = self.__source
         new_datasets = {}
 
@@ -1102,7 +1180,11 @@ class StructureCollection:
             new_ds = self.__datasets[dataset_name]
             if isinstance(new_ds, oc.Dataset):
                 new_ds = new_ds.drop(columns)
-            elif isinstance(new_ds.StructureCollection):
+            elif isinstance(new_ds, StructureCollection):
+                if not isinstance(columns, dict):
+                    raise ValueError(
+                        "When working with nested structure collections, the argument should be a dictionary!"
+                    )
                 new_ds = new_ds.drop(**columns)
 
             new_datasets[dataset_name] = new_ds

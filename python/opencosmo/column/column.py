@@ -250,6 +250,11 @@ class Column:
         return set(self.__dep_map.values())
 
     @property
+    def requires_names(self) -> set[str]:
+        """Return all leaf column names in the expression tree."""
+        return self._traverse_names()
+
+    @property
     def produces(self):
         return None if self.name is None else set([self.name])
 
@@ -632,6 +637,9 @@ class ConstructedColumn(Protocol):
     def requires(self) -> set[UUID]: ...
 
     @property
+    def requires_names(self) -> set[str]: ...
+
+    @property
     def dep_map(self) -> dict[str, UUID] | None: ...
 
     @property
@@ -702,6 +710,13 @@ class RawColumn:
         return {self.__dep_uuid}
 
     @property
+    def requires_names(self) -> set[str]:
+        """Return the underlying column name when this is an alias, else empty set."""
+        if self.__alias is None:
+            return set()
+        return {self.__name}
+
+    @property
     def dep_map(self) -> dict[str, UUID]:
         if self.__alias is None:
             return {}
@@ -768,9 +783,13 @@ class DerivedScalarValue:
 
     def _traverse_names(self) -> set[str]:
         vals: set[str] = set()
-        if isinstance(self.lhs, (DerivedScalarValue, Column)):
+        if isinstance(self.lhs, str):
+            vals.add(self.lhs)
+        elif isinstance(self.lhs, (DerivedScalarValue, Column)):
             vals |= self.lhs._traverse_names()
-        if isinstance(self.rhs, (DerivedScalarValue, Column)):
+        if isinstance(self.rhs, str):
+            vals.add(self.rhs)
+        elif isinstance(self.rhs, (DerivedScalarValue, Column)):
             vals |= self.rhs._traverse_names()
         return vals
 
@@ -789,6 +808,11 @@ class DerivedScalarValue:
                 f"DerivedScalarValue '{self.name}' has not been bound yet."
             )
         return set(self.__dep_map.values())
+
+    @property
+    def requires_names(self) -> set[str]:
+        """Return all leaf column names in the expression tree."""
+        return self._traverse_names()
 
     @property
     def produces(self):
