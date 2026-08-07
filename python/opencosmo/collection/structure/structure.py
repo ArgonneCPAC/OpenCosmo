@@ -938,89 +938,95 @@ class StructureCollection:
 
     def select(
         self,
-        *single_selections,
+        *select_args,
         mode: str = "global",
-        **column_selections: str | Iterable[str] | dict,
+        **select_kwargs: str | Iterable[str] | dict,
     ) -> StructureCollection:
         """
-        Update a dataset in the collection collection to only include the
-        columns specified. The name of the arguments to this function should be
-        dataset names. For example:
+        Select columns from the datasets in this collection.
+
+        By default, column names and derived columns are matched to the datasets
+        that contain their required columns. This works across nested structure
+        collections, so dataset names do not usually need to be specified:
+
+        .. code-block:: python
+
+            momentum = oc.col("gal_mass_star") * oc.col("gal_com_vx")
+            collection = collection.select(
+                "fof_halo_mass",
+                "gal_mass_star",
+                gal_momentum=momentum,
+            )
+
+        Exact names must exist in at least one dataset. Wildcards are applied to
+        every dataset and leave datasets with no matches unchanged. A column or
+        derived expression that can be resolved by multiple datasets is selected
+        from each of them.
+
+        To target particular datasets explicitly, use dataset names as keyword
+        arguments. This legacy form is useful when the same column name appears in
+        several datasets. Nested collections and derived columns can also be targeted
+        with dictionaries:
 
         .. code-block:: python
 
             collection = collection.select(
-                halo_properties = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
-                dm_particles = ["x", "y", "z"]
+                halo_properties=["fof_halo_mass", "sod_halo_mass"],
+                dm_particles=["x", "y", "z"],
+                galaxies={"galaxy_properties": ["gal_mass_star"]},
             )
 
-        Datasets that do not appear in the argument list will not be modified. You can
-        remove entire datasets from the collection with
-        :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`
-
-        The :py:class:`opencosmo.Dataset` class supports creating derived columns as part of
-        a :py:meth:`select <opencosmo.Dataset.select>` call. You can do the same here, with
-        the following pattern:
+        In the explicit form, a derived selection is represented by ``columns`` and
+        ``derived_columns`` entries:
 
         .. code-block:: python
 
-            halo_px = oc.col("fof_halo_mass")*oc.col("fof_halo_com_Vx")
             collection = collection.select(
-                halo_properties = {
-                    columns = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
-                    derived_columns = {"fof_halo_px": halo_px}
-                }
+                halo_properties={
+                    "columns": ["fof_halo_mass"],
+                    "derived_columns": {
+                        "fof_halo_px": oc.col("fof_halo_mass")
+                        * oc.col("fof_halo_com_vx")
+                    },
+                },
             )
-
-        For nested structure collections, such as galaxies within halos, you can pass
-        a nested dictionary:
-
-        .. code-block:: python
-
-            collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5", "galaxyproperties.hdf5", "galaxyparticles.hdf5")
-
-            collection = collection.select(
-                halo_properties = ["fof_halo_mass", "sod_halo_mass", "sod_halo_cdelta"],
-                dm_particles = ["x", "y", "z"]
-                galaxies = {
-                    "galaxy_properties": ["gal_mass_bar", "gal_mass_star"],
-                    "star_particles": ["x", "y", "z"]
-                }
-            )
-
 
         Parameters
         ----------
+        *select_args : str or Iterable[str]
+            Column names or wildcard patterns to match automatically across all
+            datasets in the collection.
         mode : str, "local" or "global", default = "global"
             Controls how scalar reductions nested inside derived column
             expressions are computed when running under MPI. Defaults to
             ``"global"`` (cross-rank); pass ``"local"`` for per-rank scalars.
             Forwarded to each underlying ``Dataset.select`` call.
-
-        **column_selections : str | Iterable[str] | dict[str, Iterable[str]]
-            The columns to select from a given dataset or sub-collection
-
-        dataset : str
-            The dataset to select from.
+        **select_kwargs : Column or dataset selection
+            Derived columns to route automatically, or explicit selections keyed
+            by dataset name. Explicit selections may be a column name, an iterable
+            of names, or a nested selection dictionary.
 
         Returns
         -------
         StructureCollection
-            A new collection with only the selected columns for the specified dataset.
+            A new collection containing the selected columns. Datasets without an
+            applicable automatic selection are unchanged.
 
         Raises
         -------
         ValueError
-            If the specified dataset is not found in the collection.
+            If an exact column or derived-column dependency cannot be found in any
+            dataset, an explicitly named dataset does not exist, or a scalar
+            reduction is selected directly from the collection.
         """
-        if not column_selections and not single_selections:
+        if not select_kwargs and not select_args:
             return self
 
-        kwargs_found = set(column_selections.keys())
-        if not kwargs_found.intersection(self.keys()) or single_selections:
+        kwargs_found = set(select_kwargs.keys())
+        if not kwargs_found.intersection(self.keys()) or select_args:
             if any(
                 isinstance(selection, DerivedScalarValue)
-                for selection in column_selections.values()
+                for selection in select_kwargs.values()
             ):
                 raise ValueError(
                     "Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[dataset].select(scalar_expression)`"
@@ -1038,7 +1044,7 @@ class StructureCollection:
 
             collect_leaves(self)
             selected = do_multi_dataset_selections(
-                datasets, single_selections, column_selections, mode
+                datasets, select_args, select_kwargs, mode
             )
 
             def rebuild(collection, path=()):
@@ -1064,7 +1070,7 @@ class StructureCollection:
         new_source = self.__source
         new_datasets = {}
 
-        for dataset, columns in column_selections.items():
+        for dataset, columns in select_kwargs.items():
             if isinstance(columns, dict) and (
                 "columns" in columns or "derived_columns" in columns
             ):

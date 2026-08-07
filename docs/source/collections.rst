@@ -141,17 +141,32 @@ If your collection contains both a halo properties dataset and a galaxy properti
 
 However this comes with an important caveat. Filtering based on properties of a galaxy removes any halo that does not contain any a galaxy that meets the threshold. If a halo hosts multiple galaxies and at least one meets the criteria, all galaxies in the halo will be retained. 
 
-**Select Can Be Made on a Per-Dataset Basis**
+**Select Automatically Matches Columns to Datasets**
 
-You can always select subests of the columns in any of the individual datasets while keeping them housed in the collection
+:py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>` matches each requested column to the datasets that contain it. This also works for derived columns and nested structure collections, so most selections do not need to name a dataset explicitly:
 
 .. code-block:: python
 
    import opencosmo as oc
    ds = oc.open("my_collection.hdf5")
-   ds = data.select(["x", "y", "z"]), dataset="dm_particles")
+   ds = ds.select(
+       "fof_halo_mass",
+       "x",
+       halo_px=oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx"),
+   )
 
-If the "dataset" argument is not provided, the selection will be performed on the property dataset.
+An exact column name must exist in at least one dataset. Wildcards are applied across the collection; datasets without a match are left unchanged. If a column exists in multiple datasets, it is selected from each one.
+
+You can still target datasets explicitly when you need to disambiguate shared column names or control each dataset separately:
+
+.. code-block:: python
+
+   ds = ds.select(
+       halo_properties=["fof_halo_mass", "sod_halo_mass"],
+       dm_particles=["x", "y", "z"],
+   )
+
+Datasets omitted from this explicit form are left unchanged. Nested collections can be selected with nested dictionaries; see :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>` for the full syntax.
 
 **Unit Transformations Apply to All Datasets**
 
@@ -208,5 +223,4 @@ Simulation Collections
 ----------------------
 
 SimulationCollections implement an identical API to the :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` it holds. All operations will automatically be mapped over all datasets held by the collection, which will always be of the same type. See the documentation for those classes for more information 
-
 
