@@ -98,9 +98,7 @@ class TestDiscoverSingleFiles:
             ("lj_487.hdf5", False),  # diffsky
         ],
     )
-    def test_discover_single_files(
-        self, filename: str, is_lc: bool, test_data
-    ):
+    def test_discover_single_files(self, filename: str, is_lc: bool, test_data):
         """Test discovery of single-file datasets."""
         if filename == "haloproperties.hdf5":
             path = test_data.snapshot.primary.halo_properties

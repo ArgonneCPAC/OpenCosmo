@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
+from opencosmo.header import read_header, write_header
 
 import opencosmo as oc
 from opencosmo import col, write
-from opencosmo.header import read_header, write_header
 
 
 @pytest.fixture

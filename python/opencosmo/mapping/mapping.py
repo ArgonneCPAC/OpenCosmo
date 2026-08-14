@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING
+from uuid import UUID
 
 import h5py
 import numpy as np
@@ -9,8 +10,6 @@ import numpy as np
 from opencosmo.index import get_data, into_array
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
 """
@@ -54,9 +53,10 @@ H5pyIndex = SimpleH5pyIndex | ChunkedH5pyIndex
 
 @dataclass(frozen=True, slots=True)
 class DatasetMatchSet:
-    reference_source: str
-    primary_maps: dict[UUID | str, H5pyIndex]
-    aux_maps: dict[tuple[UUID | str, UUID | str], tuple[H5pyIndex, H5pyIndex]]
+    reference_source: UUID
+    primary_maps: dict[UUID, H5pyIndex]
+    aux_maps: dict[tuple[UUID, UUID], tuple[H5pyIndex, H5pyIndex]]
+    aliases: dict[str, UUID] = field(default_factory=dict)
 
     @property
     def endpoints(self) -> "frozenset[UUID]":
@@ -77,29 +77,27 @@ class DatasetMatchSet:
             | {u for pair in self.aux_maps for u in pair}
         )
 
-    def rename_uuids(self, name_to_uuid: dict[str, frozenset[UUID]]):
-        assert all(
-            len(uuids) == 1 for uuids in name_to_uuid.values()
-        )  # hard constraint for now, single datasets only
-        name_mapping = {set(uuids).pop(): name for name, uuids in name_to_uuid.items()}
-        reference_source = name_mapping.get(
-            cast("UUID", self.reference_source), self.reference_source
-        )
-        primary_maps = {
-            name_mapping[uuid]: index for uuid, index in self.primary_maps.items()
-        }
-        aux_maps = {
-            (name_mapping[key[0]], name_mapping[key[1]]): val
-            for key, val in self.aux_maps.items()
-        }
-        return DatasetMatchSet(reference_source, primary_maps, aux_maps)
+    def with_aliases(self, name_to_uuid: dict[str, UUID]):
+        if diff := set(name_to_uuid.values()).difference(self.primary_maps.keys()):
+            if diff != {self.reference_source}:
+                raise ValueError(f"Several UUIDs are not in this map: {diff}")
+
+        return replace(self, aliases=self.aliases | name_to_uuid)
 
 
 def get_mapping(
-    match_set: DatasetMatchSet, source: UUID, target: UUID, index: DataIndex
+    match_set: DatasetMatchSet, source: UUID | str, target: UUID | str, index: DataIndex
 ) -> DataIndex | None:
-    auxilliary_mapping = get_auxillary_mapping(match_set, source, target, index)
-    mapping = get_primary_mapping(match_set, source, target, index)
+    source_uuid = match_set.aliases.get(str(source), source)
+    target_uuid = match_set.aliases.get(str(target), target)
+
+    if not isinstance(source_uuid, UUID) or not isinstance(target_uuid, UUID):
+        raise ValueError("Mapping names must be UUIDs or registered aliases")
+
+    auxilliary_mapping = get_auxillary_mapping(
+        match_set, source_uuid, target_uuid, index
+    )
+    mapping = get_primary_mapping(match_set, source_uuid, target_uuid, index)
     if auxilliary_mapping is None:
         return mapping
 

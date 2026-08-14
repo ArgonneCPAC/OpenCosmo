@@ -148,7 +148,7 @@ def open_files(
     # UUIDs of every dataset this rank actually opened. Only the identities are
     # needed (map endpoint resolution is pure set membership), so nothing here
     # requires the Dataset objects themselves.
-    children_by_uuid: dict[str, set[UUID]] = {}
+    children_by_uuid: dict[str, frozenset[UUID]] = {}
     available_uuids: set[UUID] = set()
     for scope_name in sorted(scopes):
         sub = scopes[scope_name]
@@ -223,7 +223,10 @@ def open_files(
                 + "."
             )
     if match_set is not None:
-        match_set = match_set.rename_uuids(children_by_uuid)
+        assert all(len(uuids) == 1 for uuids in children_by_uuid.values())
+        match_set = match_set.with_aliases(
+            {name: next(iter(uuids)) for name, uuids in children_by_uuid.items()}
+        )
 
     # A mapping resolves to nothing usable whenever fewer than two of its endpoints
     # were opened — the "ignore unresolvable endpoints" rule applied consistently.

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 import astropy.cosmology as ac
 import h5py
 import pytest
-
 from opencosmo.cosmology import read_cosmology
 
 if TYPE_CHECKING:

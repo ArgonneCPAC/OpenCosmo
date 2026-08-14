@@ -52,6 +52,8 @@ def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
         if name == source:
             continue
         mapping = get_mapping(match_set, source, name, index)
+        if mapping is None:
+            raise ValueError(f"Unable to find mapping for dataset {dataset}")
         # Guard: get_mapping can return a (starts, sizes) ChunkedIndex tuple,
         # which is not compatible with the plain ndarray operations below.
         if isinstance(mapping, tuple):
@@ -59,7 +61,7 @@ def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
                 f"Cannot match dataset '{name}': get_mapping returned a chunked "
                 f"index, which is not supported by prepare_matched_datasets."
             )
-        rows_to_keep &= mapping >= 0
+        rows_to_keep = rows_to_keep & (mapping >= 0)
         mappings[name] = mapping
 
     # The np.isin pass below is a required precondition for the unchecked
@@ -219,7 +221,7 @@ class SimulationCollection(dict):
 
         return self.__map_attribute("simulation")
 
-    def match(self, source: str) -> Self:
+    def match(self, source: str) -> SimulationCollection:
         """
         Create a new simulation collection where the datasets are ordered so that matched
         objects appear in the same row across every dataset. All datasets are matched

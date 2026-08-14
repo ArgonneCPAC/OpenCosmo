@@ -7,6 +7,7 @@ from pyarrow import parquet as pq
 import opencosmo as oc
 from opencosmo.io import write_parquet
 
+
 @pytest.fixture
 def input_path(test_data):
     return test_data.snapshot.primary.halo_properties
