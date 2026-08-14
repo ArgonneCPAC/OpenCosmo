@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import h5py
 import numpy as np
@@ -82,7 +82,9 @@ class DatasetMatchSet:
             len(uuids) == 1 for uuids in name_to_uuid.values()
         )  # hard constraint for now, single datasets only
         name_mapping = {set(uuids).pop(): name for name, uuids in name_to_uuid.items()}
-        reference_source = name_mapping[self.reference_source]
+        reference_source = name_mapping.get(
+            cast("UUID", self.reference_source), self.reference_source
+        )
         primary_maps = {
             name_mapping[uuid]: index for uuid, index in self.primary_maps.items()
         }

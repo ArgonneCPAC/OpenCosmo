@@ -9,8 +9,8 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def input_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def input_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 def test_return_pandas(input_path):

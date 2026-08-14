@@ -6,8 +6,8 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def properties_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def properties_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 def test_add_column(properties_path):

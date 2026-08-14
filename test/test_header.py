@@ -32,9 +32,8 @@ def update_simulation_parameter(
 
 
 @pytest.fixture
-def header_resource_path(snapshot_path):
-    p = snapshot_path / "galaxyproperties.hdf5"
-    return p
+def header_resource_path(test_data):
+    return test_data.snapshot.primary.galaxy_properties
 
 
 @pytest.fixture
@@ -105,24 +104,24 @@ def test_simulation_info_galaxyproperties(header_resource_path):
     assert name != ""
 
 
-def test_simulation_info_haloproperties(snapshot_path):
+def test_simulation_info_haloproperties(test_data):
     """simulation["name"] returns the known value for haloproperties.hdf5."""
-    header = read_header(snapshot_path / "haloproperties.hdf5")
+    header = read_header(test_data.snapshot.primary.halo_properties)
     assert (
         header.simulation["name"]
         == "KAPPA_2_EGW_0.568_SEED_1.048e6_VKIN_7984_EPS_10.130"
     )
 
 
-def test_simulation_info_haloproperties_go(snapshot_path):
+def test_simulation_info_haloproperties_go(test_data):
     """simulation["name"] returns the known value for haloproperties_go.hdf5."""
-    header = read_header(snapshot_path / "haloproperties_go.hdf5")
+    header = read_header(test_data.snapshot.mapping_reference)
     assert header.simulation["name"] == "SCIDAC_128_GO"
 
 
-def test_simulation_info_roundtrip(snapshot_path, tmp_path):
+def test_simulation_info_roundtrip(test_data, tmp_path):
     """simulation["name"] is preserved after write/reopen (regression for silent drop)."""
-    src = snapshot_path / "haloproperties.hdf5"
+    src = test_data.snapshot.primary.halo_properties
     dest = tmp_path / "haloproperties_roundtrip.hdf5"
     dataset = oc.open(src)
     oc.write(dest, dataset)

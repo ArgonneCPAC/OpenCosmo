@@ -14,13 +14,13 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def haloproperties_600_path(lightcone_path):
-    return lightcone_path / "step_600" / "haloproperties.hdf5"
+def haloproperties_600_path(test_data):
+    return test_data.lightcone.step(600).halo_properties
 
 
 @pytest.fixture
-def haloproperties_601_path(lightcone_path):
-    return lightcone_path / "step_601" / "haloproperties.hdf5"
+def haloproperties_601_path(test_data):
+    return test_data.lightcone.step(601).halo_properties
 
 
 def _global_raw(lc):

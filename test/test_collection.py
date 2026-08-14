@@ -5,7 +5,6 @@ import random
 import shutil
 from collections import defaultdict
 from shutil import copy
-from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -14,10 +13,6 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -52,29 +47,18 @@ def per_test_dir(
 
 
 @pytest.fixture
-def multi_path(snapshot_path):
-    return snapshot_path / "haloproperties_multi.hdf5"
+def multi_path(test_data):
+    return test_data.snapshot.multi_simulation
 
 
 @pytest.fixture
-def halo_paths(snapshot_path: Path):
-    files = ["haloproperties.hdf5", "haloparticles.hdf5", "sodproperties.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def halo_paths(test_data):
+    return test_data.snapshot.primary.halos
 
 
 @pytest.fixture
-def galaxy_paths(snapshot_path: Path):
-    files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
-
-
-@pytest.fixture
-def galaxy_paths_2(snapshot_path: Path):
-    files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def galaxy_paths(test_data):
+    return test_data.snapshot.primary.galaxies
 
 
 @pytest.fixture
@@ -1407,23 +1391,33 @@ def test_modify_metadata_column(halo_paths):
 
 
 @pytest.fixture
-def haloproperties_go_path(snapshot_path: Path):
-    return snapshot_path / "haloproperties_go.hdf5"
+def haloproperties_go_path(test_data):
+    return test_data.snapshot.mapping_reference
 
 
 @pytest.fixture
-def haloproperties_path(snapshot_path: Path):
-    return snapshot_path / "haloproperties.hdf5"
+def haloproperties_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 @pytest.fixture
-def haloproperties_step310_path(snapshot_path: Path):
-    return snapshot_path / "haloproperties_step310.hdf5"
+def scidac_000_haloproperties_path(test_data):
+    return test_data.snapshot.scidac(0).halo_properties
 
 
 @pytest.fixture
-def halo_mapping_path(snapshot_path: Path):
-    return snapshot_path / "halo_mapping.hdf5"
+def scidac_001_haloproperties_path(test_data):
+    return test_data.snapshot.scidac(1).halo_properties
+
+
+@pytest.fixture
+def haloproperties_step310_path(test_data):
+    return test_data.snapshot.alternate_step
+
+
+@pytest.fixture
+def halo_mapping_path(test_data):
+    return test_data.snapshot.halo_mapping
 
 
 def test_cross_sim_without_mapping_raises(haloproperties_path, haloproperties_go_path):
@@ -1458,32 +1452,42 @@ def test_multi_file_nested_scopes_no_error(multi_path):
 
 
 def test_cross_sim_with_mapping(
-    haloproperties_path, haloproperties_go_path, halo_mapping_path
+    haloproperties_go_path,
+    scidac_000_haloproperties_path,
+    scidac_001_haloproperties_path,
+    halo_mapping_path,
 ):
-    """Opening two different-simulation datasets with a mapping file succeeds."""
-    c = oc.open(haloproperties_path, haloproperties_go_path, halo_mapping_path)
+    """Opening three different-simulation datasets with a mapping file succeeds."""
+    c = oc.open(
+        haloproperties_go_path,
+        scidac_000_haloproperties_path,
+        scidac_001_haloproperties_path,
+        halo_mapping_path,
+    )
     assert isinstance(c, oc.SimulationCollection)
     assert set(c.keys()) == {
-        "KAPPA_2_EGW_0.568_SEED_1.048e6_VKIN_7984_EPS_10.130",
         "SCIDAC_128_GO",
+        "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257",
+        "KAPPA_2.984_EGW_0.682_SEED_6e5_VKIN_7286_EPS_4.883",
     }
     c = c.match("SCIDAC_128_GO")
-    c = c.select("fof_halo_mass")
-    d1, d2 = (ds.get_data("numpy") for ds in c.values())
+    assert len({len(ds) for ds in c.values()}) == 1
 
-    import matplotlib.pyplot as plt
 
-    plt.scatter(d1, d2)
-    plt.loglog()
-    plt.show()
-
-    assert c.match_set is not None
-    # Primary map handles must still be lazy h5py datasets, not materialised arrays.
-    for handle in c.match_set.primary_maps.values():
-        if isinstance(handle, tuple):
-            assert all(isinstance(h, h5py.Dataset) for h in handle)
-        else:
-            assert isinstance(handle, h5py.Dataset)
+def test_cross_sim_with_mapping_without_reference(
+    scidac_000_haloproperties_path,
+    scidac_001_haloproperties_path,
+    halo_mapping_path,
+):
+    """Primary and auxiliary maps work when only non-reference datasets are open."""
+    c = oc.open(
+        scidac_000_haloproperties_path,
+        scidac_001_haloproperties_path,
+        halo_mapping_path,
+    )
+    source = "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257"
+    c = c.match(source)
+    assert {len(ds) for ds in c.values()} == {228317}
 
 
 def test_mapping_file_alone_raises(halo_mapping_path):

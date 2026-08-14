@@ -99,15 +99,15 @@ class TestDiscoverSingleFiles:
         ],
     )
     def test_discover_single_files(
-        self, filename: str, is_lc: bool, snapshot_path, map_path, diffsky_path
+        self, filename: str, is_lc: bool, test_data
     ):
         """Test discovery of single-file datasets."""
         if filename == "haloproperties.hdf5":
-            path = snapshot_path / filename
+            path = test_data.snapshot.primary.halo_properties
         elif filename == "test_map.hdf5":
-            path = map_path / filename
+            path = test_data.healpix_map
         else:
-            path = diffsky_path / filename
+            path = test_data.diffsky.core(487)
 
         layout = discover_file(path)
 
@@ -153,9 +153,9 @@ class TestDiscoverSingleFiles:
             # Header should be an OpenCosmoHeader
             assert isinstance(group.header, OpenCosmoHeader)
 
-    def test_discover_lightcone_file(self, lightcone_path):
+    def test_discover_lightcone_file(self, test_data):
         """Test discovery of a lightcone file."""
-        path = lightcone_path / "step_600" / "haloproperties.hdf5"
+        path = test_data.lightcone.step(600).halo_properties
         layout = discover_file(path)
 
         assert layout.error is None
@@ -171,9 +171,9 @@ class TestDiscoverSingleFiles:
         assert group.row_count == expected["row_count"]
         assert group.has_index == expected["has_index"]
 
-    def test_discover_healpix_map(self, map_path):
+    def test_discover_healpix_map(self, test_data):
         """Test discovery of HEALPix map file."""
-        path = map_path / "test_map.hdf5"
+        path = test_data.healpix_map
         layout = discover_file(path)
 
         assert layout.error is None
@@ -183,9 +183,9 @@ class TestDiscoverSingleFiles:
         assert is_healpix_map_group(group)
         assert not group.has_index  # HEALPix maps don't have index
 
-    def test_discover_no_h5py_leaks(self, snapshot_path):
+    def test_discover_no_h5py_leaks(self, test_data):
         """Test that no h5py handles leak from FileLayout."""
-        path = snapshot_path / "haloproperties.hdf5"
+        path = test_data.snapshot.primary.halo_properties
         layout = discover_file(path)
 
         # Should be picklable (no live h5py handles)
@@ -199,9 +199,9 @@ class TestDiscoverSingleFiles:
 class TestDiscoverNestedFile:
     """Test discovery of nested multi-group files."""
 
-    def test_discover_nested_multi_group(self, snapshot_path):
+    def test_discover_nested_multi_group(self, test_data):
         """Test discovery of haloproperties_multi.hdf5 with nested groups."""
-        path = snapshot_path / "haloproperties_multi.hdf5"
+        path = test_data.snapshot.multi_simulation
         layout = discover_file(path)
 
         assert layout.error is None
@@ -225,11 +225,11 @@ class TestDiscoverNestedFile:
 class TestDiscoverMultiFile:
     """Test serial multi-file discovery."""
 
-    def test_discover_all_serial(self, lightcone_path):
+    def test_discover_all_serial(self, test_data):
         """Test discover_all on multiple files (serial mode)."""
         paths = [
-            lightcone_path / "step_600" / "haloproperties.hdf5",
-            lightcone_path / "step_601" / "haloproperties.hdf5",
+            test_data.lightcone.step(600).halo_properties,
+            test_data.lightcone.step(601).halo_properties,
         ]
 
         layouts = discover_all(paths, comm=None)
@@ -241,11 +241,11 @@ class TestDiscoverMultiFile:
         path_strs = [str(fl.path) for fl in layouts]
         assert path_strs == sorted(path_strs)
 
-    def test_discover_all_determinism(self, lightcone_path):
+    def test_discover_all_determinism(self, test_data):
         """Test that discover_all returns same result regardless of input order."""
         paths = [
-            lightcone_path / "step_600" / "haloproperties.hdf5",
-            lightcone_path / "step_601" / "haloproperties.hdf5",
+            test_data.lightcone.step(600).halo_properties,
+            test_data.lightcone.step(601).halo_properties,
         ]
 
         layouts1 = discover_all(paths, comm=None)
@@ -315,58 +315,58 @@ class TestDiscoverMalformed:
 class TestHelperFunctions:
     """Test helper functions on discovered groups."""
 
-    def test_group_data_type(self, snapshot_path):
+    def test_group_data_type(self, test_data):
         """Test group_data_type helper."""
-        path = snapshot_path / "haloproperties.hdf5"
+        path = test_data.snapshot.primary.halo_properties
         layout = discover_file(path)
         group = layout.groups[0]
 
         dtype = group_data_type(group)
         assert dtype == "halo_properties"
 
-    def test_is_particle_group(self, snapshot_path):
+    def test_is_particle_group(self, test_data):
         """Test is_particle_group helper."""
         # haloproperties is not a particle group
-        path = snapshot_path / "haloproperties.hdf5"
+        path = test_data.snapshot.primary.halo_properties
         layout = discover_file(path)
         group = layout.groups[0]
 
         assert not is_particle_group(group)
 
         # haloparticles should be a particle group
-        path = snapshot_path / "haloparticles.hdf5"
+        path = test_data.snapshot.primary.halo_particles
         layout = discover_file(path)
         group = layout.groups[0]
 
         assert is_particle_group(group)
 
-    def test_is_properties_group(self, snapshot_path):
+    def test_is_properties_group(self, test_data):
         """Test is_properties_group helper."""
         # haloproperties should be a properties group
-        path = snapshot_path / "haloproperties.hdf5"
+        path = test_data.snapshot.primary.halo_properties
         layout = discover_file(path)
         group = layout.groups[0]
 
         assert is_properties_group(group)
 
         # galaxyproperties should be a properties group
-        path = snapshot_path / "galaxyproperties.hdf5"
+        path = test_data.snapshot.primary.galaxy_properties
         layout = discover_file(path)
         group = layout.groups[0]
 
         assert is_properties_group(group)
 
-    def test_is_lightcone_group(self, lightcone_path):
+    def test_is_lightcone_group(self, test_data):
         """Test is_lightcone_group helper."""
-        path = lightcone_path / "step_600" / "haloproperties.hdf5"
+        path = test_data.lightcone.step(600).halo_properties
         layout = discover_file(path)
         group = layout.groups[0]
 
         assert is_lightcone_group(group)
 
-    def test_is_healpix_map_group(self, map_path):
+    def test_is_healpix_map_group(self, test_data):
         """Test is_healpix_map_group helper."""
-        path = map_path / "test_map.hdf5"
+        path = test_data.healpix_map
         layout = discover_file(path)
         group = layout.groups[0]
 

@@ -8,8 +8,8 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def input_path(snapshot_path):
-    return snapshot_path / "galaxyproperties.hdf5"
+def input_path(test_data):
+    return test_data.snapshot.primary.galaxy_properties
 
 
 def test_select(input_path):
