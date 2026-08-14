@@ -76,7 +76,7 @@ def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
     return new_datasets
 
 
-class SimulationCollection(dict):
+class SimulationCollection:
     """
     A collection of datasets of the same type from different
     simulations. In general this exposes the exact same API
@@ -89,35 +89,23 @@ class SimulationCollection(dict):
         datasets: Mapping[str, Dataset | Collection],
         match_set: DatasetMatchSet | None = None,
     ):
-        self.update(datasets)
-        dtypes = set(type(ds) for ds in datasets.values())
-        assert len(dtypes) == 1
-        self.__dtype = dtypes.pop()
+        self.__datasets = dict(datasets)
         self.__match_set = match_set
 
-    def __setitem__(self, key, value):
-        raise TypeError("SimulationCollection is read-only")
+    def keys(self):
+        return self.__datasets.keys()
 
-    def __delitem__(self, key):
-        raise TypeError("SimulationCollection is read-only")
+    def values(self):
+        return self.__datasets.values()
 
-    def clear(self):
-        raise TypeError("SimulationCollection is read-only")
+    def items(self):
+        return self.__datasets.items()
 
-    def pop(self, key, default=None):
-        raise TypeError("SimulationCollection is read-only")
+    def __iter__(self):
+        return iter(self.keys())
 
-    def popitem(self):
-        raise TypeError("SimulationCollection is read-only")
-
-    def setdefault(self, key, default=None):
-        raise TypeError("SimulationCollection is read-only")
-
-    def update(self, *args, **kwargs):
-        raise TypeError("SimulationCollection is read-only")
-
-    def __ior__(self, other: object) -> Self:
-        raise TypeError("SimulationCollection is read-only")
+    def __getitem__(self, key):
+        return self.__datasets[key]
 
     def __enter__(self):
         return self
@@ -184,7 +172,7 @@ class SimulationCollection(dict):
             else:
                 regular_kwargs[name] = value
 
-        output = dict(self) if construct else {}
+        output = dict(self.__datasets) if construct else {}
         for name in requested_datasets:
             dataset = self[name]
             dataset_mapped_kwargs = {key: kw[name] for key, kw in mapped_kwargs.items()}

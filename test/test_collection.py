@@ -1103,8 +1103,8 @@ def test_simulation_collection_evaluate_noinsert(multi_path):
 @pytest.mark.parametrize("insert", (False, True))
 def test_simulation_collection_evaluate_selected_datasets(multi_path, insert):
     collection = oc.open(multi_path)
-    selected = next(iter(collection))
-    unselected = set(collection) - {selected}
+    selected = next(iter(collection.keys()))
+    unselected = set(collection.keys()) - {selected}
 
     def fof_px(fof_halo_mass, fof_halo_com_vx):
         return fof_halo_mass * fof_halo_com_vx
@@ -1119,7 +1119,7 @@ def test_simulation_collection_evaluate_selected_datasets(multi_path, insert):
 
     assert all("fof_px" not in dataset.columns for dataset in collection.values())
     if insert:
-        assert set(result) == set(collection)
+        assert set(result.keys()) == set(collection.keys())
         assert "fof_px" in result[selected].columns
         assert all(result[name] is collection[name] for name in unselected)
     else:
@@ -1184,7 +1184,7 @@ def test_simulation_collection_evaluate_overwrite(multi_path):
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
-    unselected = set(collection) - {ds_name}
+    unselected = set(collection.keys()) - {ds_name}
     data = np.random.randint(0, 100, len(collection[ds_name]))
     updated = collection.with_new_columns(datasets=ds_name, random_data=data)
     stored_data = updated[ds_name].select("random_data").get_data("numpy")
@@ -1194,7 +1194,7 @@ def test_simulation_collection_add(multi_path):
 
 def test_simulation_collection_add_selected_mapped_values(multi_path):
     collection = oc.open(multi_path)
-    ds_name = next(iter(collection))
+    ds_name = next(iter(collection.keys()))
     data = np.random.randint(0, 100, len(collection[ds_name]))
 
     updated = collection.with_new_columns(
@@ -1207,27 +1207,21 @@ def test_simulation_collection_add_selected_mapped_values(multi_path):
 
 
 @pytest.mark.parametrize(
-    "mutate",
+    "attribute",
     (
-        lambda collection: collection.__setitem__(
-            "new", next(iter(collection.values()))
-        ),
-        lambda collection: collection.__delitem__(next(iter(collection))),
-        lambda collection: collection.clear(),
-        lambda collection: collection.pop(next(iter(collection))),
-        lambda collection: collection.popitem(),
-        lambda collection: collection.setdefault(
-            "new", next(iter(collection.values()))
-        ),
-        lambda collection: collection.update({"new": next(iter(collection.values()))}),
-        lambda collection: collection.__ior__({"new": next(iter(collection.values()))}),
+        "__setitem__",
+        "__delitem__",
+        "clear",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+        "__ior__",
     ),
 )
-def test_simulation_collection_is_read_only(multi_path, mutate):
+def test_simulation_collection_does_not_expose_mutation_api(multi_path, attribute):
     collection = oc.open(multi_path)
-
-    with pytest.raises(TypeError, match="read-only"):
-        mutate(collection)
+    assert not hasattr(collection, attribute)
 
 
 def test_simulation_collection_add_with_descriptions(multi_path):
