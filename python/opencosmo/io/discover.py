@@ -55,12 +55,9 @@ class MapLayout:
     """Frozen layout of a /map group for dataset mapping.
 
     Records the endpoints (which datasets this map can connect) and the verbatim
-    on-disk slot names needed to re-open them. Whether a given slot is simple (an
-    ``index``) or chunked (a ``start``+``size`` pair) is deliberately not recorded:
-    the reader resolves that from the live group when it builds the DatasetMatchSet,
-    so storing it here would put the same fact in two places and let them disagree.
-    Discovery still walks into every slot to confirm it is one shape or the other,
-    but it keeps only the verdict, not the shape.
+    on-disk slot names needed to re-open them. Dataset mappings support only simple
+    one-to-one ``index`` arrays; chunked ``start``/``size`` indexes belong to other
+    OpenCosmo indexing use cases and are rejected during discovery.
     """
 
     path: str
@@ -76,6 +73,9 @@ class MapLayout:
     on-disk spelling of a UUID is not guaranteed to match ``str(UUID)``. The reader
     indexes back into the live group by name; it must never reconstruct one.
     """
+
+    primary_lengths: tuple[tuple[UUID, int], ...]
+    """Logical length of each primary map, keyed by target UUID."""
 
     aux_slots: tuple[tuple[str, UUID, UUID], ...]
     """Sorted (on-disk slot name, uuid_a, uuid_b) triples under /auxiliary.
@@ -159,32 +159,32 @@ def _coerce_to_uuid(value: str | bytes | np.bytes_ | UUID | None) -> UUID | None
     return None
 
 
-def _verify_slot(slot_group: h5py.Group, where: str) -> None:
+def _verify_slot(slot_group: h5py.Group, where: str) -> int:
     """
     Check that one map slot is well formed, keeping nothing.
 
-    A slot is either simple (an ``index`` dataset) or chunked (a ``start``+``size``
-    pair). That is the whole variation, and it is expressed here once so /primary and
-    /auxiliary are checked the same way. The reader re-resolves which shape a slot has
-    from the live group, so there is nothing here worth carrying in the layout — the
-    point of the walk is to turn a malformed slot into ``FileLayout.error`` during
-    discovery rather than a raise inside a later collective. Raises ValueError; the
-    caller in ``discover_file`` converts it.
+    Dataset mappings support only a simple ``index`` dataset. The point of the walk is
+    to turn a malformed or unsupported slot into ``FileLayout.error`` during discovery
+    rather than a raise during matching. Raises ValueError; ``discover_file`` converts
+    it.
     """
     keys = set(slot_group.keys())
-    names: tuple[str, ...]
-
-    if "index" in keys:
-        names = ("index",)
-    elif "start" in keys and "size" in keys:
-        names = ("start", "size")
-    else:
+    if "start" in keys or "size" in keys:
         raise ValueError(
-            f"{where}: slot has neither 'index' nor 'start'+'size' ({sorted(keys)})"
+            f"{where}: dataset mappings require a simple 'index' array; chunked "
+            "'start'/'size' mappings are not supported"
         )
+    if "index" not in keys:
+        raise ValueError(f"{where}: dataset mapping slot is missing its 'index' array")
 
-    if not all(isinstance(slot_group[name], h5py.Dataset) for name in names):
-        raise ValueError(f"{where}: {'/'.join(names)} is not a dataset")
+    array = slot_group["index"]
+    if not isinstance(array, h5py.Dataset):
+        raise ValueError(f"{where}: index is not a dataset")
+    if array.ndim != 1:
+        raise ValueError(f"{where}: mapping arrays must be one-dimensional")
+    if not np.issubdtype(array.dtype, np.integer):
+        raise ValueError(f"{where}: mapping arrays must have an integer dtype")
+    return array.shape[0]
 
 
 def _read_map_layout(
@@ -207,17 +207,23 @@ def _read_map_layout(
             f"Malformed map at {map_path}: missing or invalid 'reference' attribute"
         )
 
-    # Validate format_version presence as a structural check that this /map group is
-    # really a map — the value itself is not stored, since nothing in this repo reads it.
-    if attrs.get("format_version") is None:
+    format_version = attrs.get("format_version")
+    if format_version is None:
         raise ValueError(
             f"Malformed map at {map_path}: missing 'format_version' attribute"
+        )
+    if not isinstance(format_version, (int, np.integer)) or int(format_version) != 1:
+        raise ValueError(
+            f"Malformed map at {map_path}: unsupported format_version "
+            f"{format_version!r}; only version 1 is supported"
         )
 
     # /primary/<target_uuid> — the reference->target maps.
     # Slot names are kept verbatim: on-disk UUID spelling is not guaranteed to match
     # str(UUID), so the reader must index back by the recorded name, never reconstruct.
     primary_slots: list[tuple[str, UUID]] = []
+    primary_lengths: list[tuple[UUID, int]] = []
+    known_primaries: set[UUID] = set()
     if isinstance(primary_group := map_group.get("primary"), h5py.Group):
         for name, slot in primary_group.items():
             where = f"{map_path}/primary/{name}"
@@ -226,12 +232,19 @@ def _read_map_layout(
                 raise ValueError(f"{where}: group name is not a UUID")
             if not isinstance(slot, h5py.Group):
                 raise ValueError(f"{where}: expected a group")
-            _verify_slot(slot, where)
+            if target in known_primaries:
+                raise ValueError(
+                    f"{where}: duplicate primary mapping for UUID {target}"
+                )
+            length = _verify_slot(slot, where)
             primary_slots.append((name, target))
+            primary_lengths.append((target, length))
+            known_primaries.add(target)
 
     # /auxiliary/<uuid_a>__<uuid_b> — pairs that do not route through the reference.
     # Slot names are kept verbatim for the same reason as primary_slots.
     aux_slots: list[tuple[str, UUID, UUID]] = []
+    known_aux_pairs: set[frozenset[UUID]] = set()
     if isinstance(aux_group := map_group.get("auxiliary"), h5py.Group):
         for name, pair in aux_group.items():
             where = f"{map_path}/auxiliary/{name}"
@@ -244,11 +257,25 @@ def _read_map_layout(
                 raise ValueError(f"{where}: endpoint names are not UUIDs")
             if not isinstance(pair, h5py.Group):
                 raise ValueError(f"{where}: expected a group")
+            if uuid_a not in known_primaries or uuid_b not in known_primaries:
+                raise ValueError(
+                    "Found auxilliary matching groups without corresponding primaries!"
+                )
 
+            logical_pair = frozenset((uuid_a, uuid_b))
+            if logical_pair in known_aux_pairs:
+                raise ValueError(f"{where}: duplicate auxiliary mapping pair")
+            known_aux_pairs.add(logical_pair)
+
+            side_lengths = []
             for side in ("source", "target"):
                 if not isinstance(slot := pair.get(side), h5py.Group):
                     raise ValueError(f"{where}: missing '{side}' group")
-                _verify_slot(slot, f"{where}/{side}")
+                side_lengths.append(_verify_slot(slot, f"{where}/{side}"))
+            if side_lengths[0] != side_lengths[1]:
+                raise ValueError(
+                    f"{where}: auxiliary source and target must have the same length"
+                )
 
             aux_slots.append((name, uuid_a, uuid_b))
 
@@ -257,6 +284,7 @@ def _read_map_layout(
         reference=reference,
         # Sorted so every rank builds a byte-identical layout.
         primary_slots=tuple(sorted(primary_slots)),
+        primary_lengths=tuple(sorted(primary_lengths)),
         aux_slots=tuple(sorted(aux_slots)),
     )
 

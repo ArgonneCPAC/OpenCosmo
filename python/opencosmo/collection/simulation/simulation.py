@@ -54,13 +54,6 @@ def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
         mapping = get_mapping(match_set, source, name, index)
         if mapping is None:
             raise ValueError(f"Unable to find mapping for dataset {dataset}")
-        # Guard: get_mapping can return a (starts, sizes) ChunkedIndex tuple,
-        # which is not compatible with the plain ndarray operations below.
-        if isinstance(mapping, tuple):
-            raise ValueError(
-                f"Cannot match dataset '{name}': get_mapping returned a chunked "
-                f"index, which is not supported by prepare_matched_datasets."
-            )
         rows_to_keep = rows_to_keep & (mapping >= 0)
         mappings[name] = mapping
 
@@ -94,13 +87,37 @@ class SimulationCollection(dict):
     def __init__(
         self,
         datasets: Mapping[str, Dataset | Collection],
-        match_set: "DatasetMatchSet | None" = None,
+        match_set: DatasetMatchSet | None = None,
     ):
         self.update(datasets)
         dtypes = set(type(ds) for ds in datasets.values())
         assert len(dtypes) == 1
         self.__dtype = dtypes.pop()
         self.__match_set = match_set
+
+    def __setitem__(self, key, value):
+        raise TypeError("SimulationCollection is read-only")
+
+    def __delitem__(self, key):
+        raise TypeError("SimulationCollection is read-only")
+
+    def clear(self):
+        raise TypeError("SimulationCollection is read-only")
+
+    def pop(self, key, default=None):
+        raise TypeError("SimulationCollection is read-only")
+
+    def popitem(self):
+        raise TypeError("SimulationCollection is read-only")
+
+    def setdefault(self, key, default=None):
+        raise TypeError("SimulationCollection is read-only")
+
+    def update(self, *args, **kwargs):
+        raise TypeError("SimulationCollection is read-only")
+
+    def __ior__(self, other: object) -> Self:
+        raise TypeError("SimulationCollection is read-only")
 
     def __enter__(self):
         return self
@@ -111,6 +128,8 @@ class SimulationCollection(dict):
                 dataset.close()
             except ValueError:
                 continue
+        if self.__match_set is not None:
+            self.__match_set.close()
 
     def __repr__(self):
         n_collections = sum(
@@ -165,7 +184,7 @@ class SimulationCollection(dict):
             else:
                 regular_kwargs[name] = value
 
-        output = {}
+        output = dict(self) if construct else {}
         for name in requested_datasets:
             dataset = self[name]
             dataset_mapped_kwargs = {key: kw[name] for key, kw in mapped_kwargs.items()}
@@ -432,22 +451,6 @@ class SimulationCollection(dict):
         ** columns : opencosmo.Column | np.ndarray | units.Quantity
             The new columns
         """
-        if datasets is not None:
-            if isinstance(datasets, str):
-                datasets = [datasets]
-            else:
-                datasets = list(datasets)
-
-            output = {name: ds for name, ds in self.items()}
-            for ds_name in datasets:
-                output[ds_name] = output[ds_name].with_new_columns(
-                    *args,
-                    descriptions=descriptions,
-                    allow_overwrite=allow_overwrite,
-                    **new_columns,
-                )
-            return SimulationCollection(output)
-
         return self.__map(
             "with_new_columns",
             *args,
@@ -502,13 +505,6 @@ class SimulationCollection(dict):
         results: SimulationCollection | dict[str, np.ndarray] | dict[str, astropy.units.Quantity]
             The results of the computation, or a new simulation collection with the results inserted.
         """
-        if datasets is None:
-            datasets = list(self.keys())
-        elif isinstance(datasets, str):
-            datasets = [datasets]
-        else:
-            datasets = list(datasets)
-
         results = self.__map(
             "evaluate",
             func,
@@ -517,6 +513,7 @@ class SimulationCollection(dict):
             format=format,
             allow_overwrite=allow_overwrite,
             construct=insert,
+            datasets=datasets,
             **evaluate_kwargs,
         )
         if next(iter(results.values())) is None:

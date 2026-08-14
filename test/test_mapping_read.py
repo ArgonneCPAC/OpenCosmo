@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 import pytest
 from opencosmo.io.discover import _read_map_layout, discover_file
+from opencosmo.mapping.mapping import DatasetMatchSet, get_mapping
 from opencosmo.mapping.read import read_match_set
 
 if TYPE_CHECKING:
@@ -19,6 +20,21 @@ _REF = UUID("00000000-0000-0000-0000-000000000001")
 _A = UUID("00000000-0000-0000-0000-000000000002")
 _B = UUID("00000000-0000-0000-0000-000000000003")
 _C = UUID("00000000-0000-0000-0000-000000000004")
+
+
+def test_missing_primary_route_has_clear_error() -> None:
+    match_set = DatasetMatchSet(
+        reference_source=_REF,
+        primary_maps={},
+        aux_maps={},
+        aliases={"source": _A, "target": _B},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Unable to map from 'source' to 'target'.*no primary mapping route",
+    ):
+        get_mapping(match_set, "source", "target", np.array([0], dtype=np.int64))
 
 
 def _write_simple_slot(group: h5py.Group, name: str, data: list[int]) -> None:
@@ -112,27 +128,130 @@ class TestReferenceAbsentOnePrimaryNoAux:
             assert result is None
 
 
-class TestReferenceAbsentOnePrimaryWithAux:
-    """Reference absent, one primary target, one auxiliary pair -> aux retained, primary discarded."""
+class TestAuxiliaryRequiresPrimaries:
+    """Every auxiliary endpoint must have a corresponding primary map."""
 
-    def test_aux_retained_primary_discarded(self, tmp_path: Path) -> None:
+    def test_missing_primary_is_rejected(self, tmp_path: Path) -> None:
         path = tmp_path / "map.hdf5"
         with h5py.File(path, "w") as f:
-            map_group, layout = _make_map_group(
-                f,
-                reference=_REF,
-                primary_targets={_A: [0, 1, 2]},
-                aux_pairs={(_A, _B): ([0, 1], [2, 0])},
-            )
-            # Reference absent; both _A and _B are available.
-            available = {_A, _B}
-            result = read_match_set(map_group, layout, available)
+            with pytest.raises(ValueError, match="without corresponding primaries"):
+                _make_map_group(
+                    f,
+                    reference=_REF,
+                    primary_targets={_A: [0, 1, 2]},
+                    aux_pairs={(_A, _B): ([0, 1], [2, 0])},
+                )
 
-            assert result is not None
-            # Lone primary must be discarded.
-            assert result.primary_maps == {}
-            # Auxiliary pair must be retained.
-            assert (_A, _B) in result.aux_maps
+
+class TestMapArrayValidation:
+    @pytest.mark.parametrize(
+        ("data", "message"),
+        (
+            (np.array([[0, 1]], dtype=np.int64), "one-dimensional"),
+            (np.array([0.0, 1.0]), "integer dtype"),
+        ),
+    )
+    def test_primary_array_shape_and_dtype(self, tmp_path: Path, data, message) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group = f.require_group("map")
+            map_group.attrs["reference"] = str(_REF)
+            map_group.attrs["format_version"] = 1
+            slot = map_group.require_group(f"primary/{_A}")
+            slot.create_dataset("index", data=data)
+
+            with pytest.raises(ValueError, match=message):
+                _read_map_layout("/map", map_group)
+
+    def test_chunked_mapping_is_rejected(self, tmp_path: Path) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group = f.require_group("map")
+            map_group.attrs["reference"] = str(_REF)
+            map_group.attrs["format_version"] = 1
+            slot = map_group.require_group(f"primary/{_A}")
+            slot.create_dataset("start", data=np.array([0, 1], dtype=np.int64))
+            slot.create_dataset("size", data=np.array([1, 1], dtype=np.int64))
+
+            with pytest.raises(ValueError, match="chunked.*not supported"):
+                _read_map_layout("/map", map_group)
+
+        layout = discover_file(path)
+        assert layout.error is not None
+        assert "chunked" in layout.error
+
+    def test_slot_cannot_mix_simple_and_chunked_arrays(self, tmp_path: Path) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group = f.require_group("map")
+            map_group.attrs["reference"] = str(_REF)
+            map_group.attrs["format_version"] = 1
+            slot = map_group.require_group(f"primary/{_A}")
+            slot.create_dataset("index", data=np.array([0, 1], dtype=np.int64))
+            slot.create_dataset("start", data=np.array([0, 1], dtype=np.int64))
+            slot.create_dataset("size", data=np.array([1, 1], dtype=np.int64))
+
+            with pytest.raises(ValueError, match="chunked.*not supported"):
+                _read_map_layout("/map", map_group)
+
+    @pytest.mark.parametrize("version", (2, "1"))
+    def test_unsupported_format_version(self, tmp_path: Path, version) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group = f.require_group("map")
+            map_group.attrs["reference"] = str(_REF)
+            map_group.attrs["format_version"] = version
+
+            with pytest.raises(ValueError, match="only version 1 is supported"):
+                _read_map_layout("/map", map_group)
+
+    def test_auxiliary_sides_require_equal_lengths(self, tmp_path: Path) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            with pytest.raises(ValueError, match="source and target.*same length"):
+                _make_map_group(
+                    f,
+                    reference=_REF,
+                    primary_targets={_A: [0, 1], _B: [1, 0]},
+                    aux_pairs={(_A, _B): ([0, 1], [1])},
+                )
+
+
+class TestMapUUIDCollisions:
+    def test_primary_spellings_cannot_resolve_to_same_uuid(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group = f.require_group("map")
+            map_group.attrs["reference"] = str(_REF)
+            map_group.attrs["format_version"] = 1
+            primary = map_group.require_group("primary")
+            _write_simple_slot(primary, str(_A), [0, 1])
+            _write_simple_slot(primary, _A.hex, [0, 1])
+
+            with pytest.raises(ValueError, match="duplicate primary mapping"):
+                _read_map_layout("/map", map_group)
+
+    def test_auxiliary_spellings_cannot_resolve_to_same_pair(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group = f.require_group("map")
+            map_group.attrs["reference"] = str(_REF)
+            map_group.attrs["format_version"] = 1
+            primary = map_group.require_group("primary")
+            _write_simple_slot(primary, str(_A), [0, 1])
+            _write_simple_slot(primary, str(_B), [1, 0])
+            auxiliary = map_group.require_group("auxiliary")
+            _write_aux_pair(auxiliary, _A, _B, [0], [1])
+            reversed_pair = auxiliary.require_group(f"{_B.hex}__{_A.hex}")
+            _write_simple_slot(reversed_pair, "source", [1])
+            _write_simple_slot(reversed_pair, "target", [0])
+
+            with pytest.raises(ValueError, match="duplicate auxiliary mapping pair"):
+                _read_map_layout("/map", map_group)
 
 
 class TestReferencePresent:
@@ -187,7 +306,10 @@ class TestTargetsNotInAvailableFiltered:
             map_group, layout = _make_map_group(
                 f,
                 reference=_REF,
-                primary_targets={_A: [0, 1, 2]},
+                primary_targets={
+                    _A: [0, 1, 2],
+                    _C: [1, 2, 0],
+                },
                 # _C is not available, so this pair must be dropped.
                 aux_pairs={(_A, _C): ([0], [1])},
             )

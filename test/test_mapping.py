@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from typing import TYPE_CHECKING
 
 import h5py
@@ -186,6 +187,38 @@ def test_open_without_connecting_mapping_raises(paths, message, test_data):
 def test_mapping_file_alone_raises(test_data):
     with pytest.raises(ValueError, match="Cannot open a dataset mapping on its own"):
         oc.open(test_data.snapshot.halo_mapping)
+
+
+def test_open_multiple_mapping_files_raises(mapped_paths, test_data, tmp_path):
+    second_mapping = tmp_path / "second_mapping.hdf5"
+    shutil.copy(test_data.snapshot.halo_mapping, second_mapping)
+
+    with pytest.raises(ValueError, match="multiple dataset mapping files"):
+        oc.open(
+            mapped_paths[REFERENCE],
+            mapped_paths[SIMULATION_A],
+            test_data.snapshot.halo_mapping,
+            second_mapping,
+        )
+
+
+def test_primary_mapping_length_must_match_reference(mapped_paths, test_data, tmp_path):
+    mapping = tmp_path / "invalid_length_mapping.hdf5"
+    shutil.copy(test_data.snapshot.halo_mapping, mapping)
+    with h5py.File(mapping, "a") as file:
+        primary = file["map/primary"]
+        target = next(iter(primary))
+        slot = primary[target]
+        values = slot["index"][:-1]
+        del slot["index"]
+        slot.create_dataset("index", data=values)
+
+    with pytest.raises(ValueError, match="reference dataset length"):
+        oc.open(
+            mapped_paths[REFERENCE],
+            mapped_paths[SIMULATION_A],
+            mapping,
+        )
 
 
 def test_match_requires_mapping(test_data):

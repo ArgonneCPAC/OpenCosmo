@@ -1100,6 +1100,32 @@ def test_simulation_collection_evaluate_noinsert(multi_path):
         )
 
 
+@pytest.mark.parametrize("insert", (False, True))
+def test_simulation_collection_evaluate_selected_datasets(multi_path, insert):
+    collection = oc.open(multi_path)
+    selected = next(iter(collection))
+    unselected = set(collection) - {selected}
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    result = collection.evaluate(
+        fof_px,
+        datasets=selected,
+        vectorize=True,
+        insert=insert,
+        format="numpy",
+    )
+
+    assert all("fof_px" not in dataset.columns for dataset in collection.values())
+    if insert:
+        assert set(result) == set(collection)
+        assert "fof_px" in result[selected].columns
+        assert all(result[name] is collection[name] for name in unselected)
+    else:
+        assert set(result) == {selected}
+
+
 def test_simulation_collection_evaluate_map_kwarg(multi_path):
     collection = oc.open(multi_path)
 
@@ -1158,10 +1184,50 @@ def test_simulation_collection_evaluate_overwrite(multi_path):
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
+    unselected = set(collection) - {ds_name}
     data = np.random.randint(0, 100, len(collection[ds_name]))
-    collection = collection.with_new_columns(datasets=ds_name, random_data=data)
-    stored_data = collection[ds_name].select("random_data").get_data("numpy")
+    updated = collection.with_new_columns(datasets=ds_name, random_data=data)
+    stored_data = updated[ds_name].select("random_data").get_data("numpy")
     assert np.all(stored_data == data)
+    assert all(updated[name] is collection[name] for name in unselected)
+
+
+def test_simulation_collection_add_selected_mapped_values(multi_path):
+    collection = oc.open(multi_path)
+    ds_name = next(iter(collection))
+    data = np.random.randint(0, 100, len(collection[ds_name]))
+
+    updated = collection.with_new_columns(
+        datasets=ds_name,
+        random_data={ds_name: data},
+    )
+
+    stored = updated[ds_name].select("random_data").get_data("numpy")
+    assert np.all(stored == data)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda collection: collection.__setitem__(
+            "new", next(iter(collection.values()))
+        ),
+        lambda collection: collection.__delitem__(next(iter(collection))),
+        lambda collection: collection.clear(),
+        lambda collection: collection.pop(next(iter(collection))),
+        lambda collection: collection.popitem(),
+        lambda collection: collection.setdefault(
+            "new", next(iter(collection.values()))
+        ),
+        lambda collection: collection.update({"new": next(iter(collection.values()))}),
+        lambda collection: collection.__ior__({"new": next(iter(collection.values()))}),
+    ),
+)
+def test_simulation_collection_is_read_only(multi_path, mutate):
+    collection = oc.open(multi_path)
+
+    with pytest.raises(TypeError, match="read-only"):
+        mutate(collection)
 
 
 def test_simulation_collection_add_with_descriptions(multi_path):

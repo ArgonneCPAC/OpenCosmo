@@ -10,7 +10,7 @@ import numpy as np
 from opencosmo.index import get_data, into_array
 
 if TYPE_CHECKING:
-    from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
+    from opencosmo.index import DataIndex, SimpleIndex
 
 """
 A DatasetMatchIndex is used to define the mapping between one dataset and another. Every
@@ -40,22 +40,19 @@ requires the inverted map to be injective (one-to-one from reference to source).
 
 Constraints:
 
-    The primary map must *always* be the same length as the primary dataset. 
-    Mapping from one -> many is allowed, but disables inversion functionalities.
+    The primary map must *always* be the same length as the reference dataset.
+    Dataset mappings are one-to-one and use simple index arrays only.
 
 """
 
 type SimpleH5pyIndex = h5py.Dataset
-type ChunkedH5pyIndex = tuple[h5py.Dataset, h5py.Dataset]
-
-H5pyIndex = SimpleH5pyIndex | ChunkedH5pyIndex
 
 
 @dataclass(frozen=True, slots=True)
 class DatasetMatchSet:
     reference_source: UUID
-    primary_maps: dict[UUID, H5pyIndex]
-    aux_maps: dict[tuple[UUID, UUID], tuple[H5pyIndex, H5pyIndex]]
+    primary_maps: dict[UUID, SimpleH5pyIndex]
+    aux_maps: dict[tuple[UUID, UUID], tuple[SimpleH5pyIndex, SimpleH5pyIndex]]
     aliases: dict[str, UUID] = field(default_factory=dict)
 
     @property
@@ -84,41 +81,35 @@ class DatasetMatchSet:
 
         return replace(self, aliases=self.aliases | name_to_uuid)
 
+    def close(self):
+        pass
+
 
 def get_mapping(
     match_set: DatasetMatchSet, source: UUID | str, target: UUID | str, index: DataIndex
-) -> DataIndex | None:
+) -> SimpleIndex | None:
     source_uuid = match_set.aliases.get(str(source), source)
     target_uuid = match_set.aliases.get(str(target), target)
 
     if not isinstance(source_uuid, UUID) or not isinstance(target_uuid, UUID):
         raise ValueError("Mapping names must be UUIDs or registered aliases")
 
-    auxilliary_mapping = get_auxillary_mapping(
-        match_set, source_uuid, target_uuid, index
-    )
-    mapping = get_primary_mapping(match_set, source_uuid, target_uuid, index)
+    try:
+        auxilliary_mapping = get_auxillary_mapping(
+            match_set, source_uuid, target_uuid, index
+        )
+        mapping = get_primary_mapping(match_set, source_uuid, target_uuid, index)
+    except KeyError as exc:
+        raise ValueError(
+            f"Unable to map from '{source}' to '{target}': no primary mapping route "
+            "exists between these datasets."
+        ) from exc
     if auxilliary_mapping is None:
         return mapping
-
-    if isinstance(mapping, tuple):
-        assert isinstance(auxilliary_mapping[1], (tuple))
-        return __build_chunked_mapping(mapping, auxilliary_mapping)
 
     aux_index, aux_mapping = auxilliary_mapping
     mapping[aux_index] = aux_mapping
     return mapping
-
-
-def __build_chunked_mapping(
-    primary_mapping: ChunkedIndex, auxilliary_mapping: tuple[SimpleIndex, ChunkedIndex]
-):
-    starts, sizes = primary_mapping
-
-    aux_index, aux_mapping = auxilliary_mapping
-    starts[aux_index] = aux_mapping[0]
-    sizes[aux_index] = aux_mapping[1]
-    return (starts, sizes)
 
 
 def get_auxillary_mapping(
@@ -131,29 +122,12 @@ def get_auxillary_mapping(
             return None
         auxillary_map = (auxillary_map[1], auxillary_map[0])
 
-    assert isinstance(auxillary_map[0], h5py.Dataset)
-
-    def make_arrays(aux_map):
-        aux_index = aux_map[0][:]
-        if isinstance(aux_map[1], tuple):
-            return (aux_index, make_arrays(aux_map[1]))
-        return (aux_index, aux_map[1][:])
-
-    auxillary_map = make_arrays(auxillary_map)
+    auxillary_map = (auxillary_map[0][:], auxillary_map[1][:])
 
     index_arr = into_array(index)
     _, index_into_map, index_into_final = np.intersect1d(
         auxillary_map[0], index_arr, return_indices=True
     )
-    if isinstance(auxillary_map[1], tuple):
-        return (
-            index_into_final,
-            (
-                auxillary_map[1][0][index_into_map],
-                auxillary_map[1][1][index_into_map],
-            ),
-        )
-
     return (index_into_final, auxillary_map[1][index_into_map])
 
 
@@ -162,19 +136,14 @@ def get_primary_mapping(
 ):
     if source == match_set.reference_source:
         mapping = match_set.primary_maps[target]
-        if isinstance(mapping, tuple):
-            return (get_data(mapping[0], index), get_data(mapping[1], index))
         return get_data(mapping, index)
 
     elif target == match_set.reference_source:
         mapping = match_set.primary_maps[source]
-        assert not isinstance(mapping, tuple)
         return __get_inverse_mapping(mapping, index, match_set.reference_source, source)
 
     map_to_source = match_set.primary_maps[source]
     map_to_target = match_set.primary_maps[target]
-    assert isinstance(map_to_source, h5py.Dataset)
-    assert isinstance(map_to_target, h5py.Dataset)
 
     ref_rows = __get_inverse_mapping(
         map_to_source, index, match_set.reference_source, source

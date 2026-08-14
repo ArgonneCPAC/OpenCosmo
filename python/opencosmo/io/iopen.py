@@ -118,6 +118,13 @@ def open_files(
     map_layouts = [fl for fl in layouts if has_maps(fl)]
     ordinary_layouts = [fl for fl in layouts if fl.groups]
 
+    if len(map_layouts) > 1:
+        map_paths = ", ".join(str(layout.path) for layout in map_layouts)
+        raise ValueError(
+            "Opening multiple dataset mapping files is not supported. "
+            f"Mapping files: {map_paths}"
+        )
+
     # If there are maps but no ordinary layouts, raise: a mapping file has no
     # meaning without endpoints to connect.
     if map_layouts and not ordinary_layouts:
@@ -133,6 +140,28 @@ def open_files(
     # discovered group is a particle group, there is nothing to anchor them, so fail
     # loudly rather than fabricate a SimulationCollection of orphaned particle types.
     groups = [g for fl in ordinary_layouts for g in fl.groups]
+
+    groups_by_uuid = {group.uuid: group for group in groups if group.uuid is not None}
+    for file_layout in map_layouts:
+        for map_layout in file_layout.maps:
+            reference = groups_by_uuid.get(map_layout.reference)
+            if reference is None:
+                continue
+            invalid_lengths = [
+                (target, length)
+                for target, length in map_layout.primary_lengths
+                if length != reference.row_count
+            ]
+            if invalid_lengths:
+                details = ", ".join(
+                    f"{target} has length {length}"
+                    for target, length in invalid_lengths
+                )
+                raise ValueError(
+                    f"Primary mappings must have the reference dataset length "
+                    f"{reference.row_count}; {details}."
+                )
+
     if groups and all(is_particle_group(g) for g in groups):
         raise ValueError(
             "Cannot open particle data on its own. Particle datasets must be opened "
@@ -223,7 +252,8 @@ def open_files(
                 + "."
             )
     if match_set is not None:
-        assert all(len(uuids) == 1 for uuids in children_by_uuid.values())
+        if any(len(uuids) > 1 for uuids in children_by_uuid.values()):
+            raise ValueError("Mapping is currently only supported for single catalogs")
         match_set = match_set.with_aliases(
             {name: next(iter(uuids)) for name, uuids in children_by_uuid.items()}
         )

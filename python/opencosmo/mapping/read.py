@@ -9,35 +9,31 @@ if TYPE_CHECKING:
 
     import h5py
     from opencosmo.io.discover import MapLayout
-    from opencosmo.mapping.mapping import H5pyIndex
+    from opencosmo.mapping.mapping import SimpleH5pyIndex
 
 
-def read_index_group(group: h5py.Group) -> "H5pyIndex":
+def read_index_group(group: h5py.Group) -> "SimpleH5pyIndex":
     """
-    Resolve a map slot into an H5pyIndex.
+    Resolve a map slot into its simple index dataset.
 
-    A slot is either simple (an ``index`` dataset) or chunked (a ``start``+``size``
-    pair). This function returns the live h5py.Dataset objects (never slicing them),
-    allowing the caller to defer reads and slicing to the point of use.
+    This function returns the live h5py.Dataset object without slicing it, allowing
+    the caller to defer reads until the mapping is used.
 
     Relies on ``discover._verify_slot`` having already confirmed during discovery that
-    the slot is well-formed — i.e. it contains either ``index`` or both ``start`` and
-    ``size`` as datasets. Any slot that failed that check was converted to
-    ``FileLayout.error`` before this function is ever called.
+    the slot contains a one-dimensional integer ``index`` dataset. Any unsupported
+    chunked slot was converted to ``FileLayout.error`` before this function is called.
 
     Parameters
     ----------
     group : h5py.Group
-        The slot group, expected to contain either "index" or ("start" and "size").
+        The slot group, expected to contain an "index" dataset.
 
     Returns
     -------
-    H5pyIndex
-        Either the "index" dataset, or a tuple of ("start", "size") datasets.
+    SimpleH5pyIndex
+        The live "index" dataset.
     """
-    if "index" in group:
-        return group["index"]  # type: ignore[return-value]
-    return (group["start"], group["size"])  # type: ignore[return-value]
+    return group["index"]  # type: ignore[return-value]
 
 
 def read_match_set(
@@ -89,7 +85,8 @@ def read_match_set(
         The resolved match set with available endpoints only, or None if no maps
         remain after filtering.
     """
-    primary_maps: dict[UUID, H5pyIndex] = {}
+
+    primary_maps: dict[UUID, SimpleH5pyIndex] = {}
     for slot_name, target_uuid in layout.primary_slots:
         if target_uuid in available:
             primary_maps[target_uuid] = read_index_group(
@@ -99,7 +96,7 @@ def read_match_set(
     if layout.reference not in available and len(primary_maps) < 2:
         primary_maps = {}
 
-    aux_maps: dict[tuple[UUID, UUID], tuple[H5pyIndex, H5pyIndex]] = {}
+    aux_maps: dict[tuple[UUID, UUID], tuple[SimpleH5pyIndex, SimpleH5pyIndex]] = {}
     for slot_name, uuid_a, uuid_b in layout.aux_slots:
         if uuid_a in available and uuid_b in available:
             pair = group[f"auxiliary/{slot_name}"]  # type: ignore[index]
