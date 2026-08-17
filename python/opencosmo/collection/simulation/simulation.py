@@ -106,9 +106,11 @@ class SimulationCollection:
         return self.__datasets.keys()
 
     def values(self):
+        self.__rebuild_all()
         return self.__datasets.values()
 
     def items(self):
+        self.__rebuild_all()
         return self.__datasets.items()
 
     def __len__(self):
@@ -134,6 +136,23 @@ class SimulationCollection:
             self.__datasets |= new_datasets
             self.__rebuilt[key] = True
         return self.__datasets[key]
+
+    def __rebuild_all(self):
+        if self.__match_source is None:
+            return
+
+        datasets = {
+            key: ds
+            for key, ds in self.__datasets.items()
+            if key != self.__match_source and not self.__rebuilt[key]
+        }
+        if not datasets:
+            return
+        self.__datasets |= prepare_matched_datasets(
+            self.__match_set,
+            datasets | {self.__match_source: self.__datasets[self.__match_source]},
+            self.__match_source,
+        )
 
     def __enter__(self):
         return self

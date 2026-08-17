@@ -110,17 +110,12 @@ def _absolute_rows_from_ids(dataset, ids, identifier="fof_halo_tag"):
     return np.asarray([rows_by_id[value] for value in ids.tolist()], dtype=np.int64)
 
 
-def _assert_source_driven_result(
-    original, expected_source, actual, source, pairwise, identifier="fof_halo_tag"
+def _expected_source_driven_ids(
+    original, expected_source, source, pairwise, identifier="fof_halo_tag"
 ):
-    """Assert logical row order in every catalog follows ``expected_source``."""
-    expected_source_ids = _column(expected_source, identifier)
-    np.testing.assert_array_equal(
-        _column(actual[source], identifier), expected_source_ids
-    )
-
+    expected_ids = {source: _column(expected_source, identifier)}
     source_rows = _absolute_rows_from_ids(
-        original[source], expected_source_ids, identifier
+        original[source], expected_ids[source], identifier
     )
     for target in original.keys() - {source}:
         target_rows = pairwise[(source, target)][source_rows]
@@ -129,12 +124,21 @@ def _assert_source_driven_result(
         target_ids = _column(original[target], identifier)
         target_index = into_array(original[target].index)
         ids_by_row = dict(zip(target_index.tolist(), target_ids.tolist(), strict=True))
-        expected_target_ids = np.asarray(
+        expected_ids[target] = np.asarray(
             [ids_by_row[row] for row in target_rows.tolist()], dtype=target_ids.dtype
         )
-        np.testing.assert_array_equal(
-            _column(actual[target], identifier), expected_target_ids
-        )
+    return expected_ids
+
+
+def _assert_source_driven_result(
+    original, expected_source, actual, source, pairwise, identifier="fof_halo_tag"
+):
+    """Assert logical row order in every catalog follows ``expected_source``."""
+    expected_ids = _expected_source_driven_ids(
+        original, expected_source, source, pairwise, identifier
+    )
+    for name, ids in expected_ids.items():
+        np.testing.assert_array_equal(_column(actual[name], identifier), ids)
 
 
 def _assert_mapping_equal(before, after, identifier="fof_halo_tag"):
@@ -365,6 +369,54 @@ def test_matched_chained_index_operations_remain_aligned(mapped_paths, test_data
     _assert_source_driven_result(
         original, expected_source, result, SIMULATION_A, pairwise
     )
+
+
+@pytest.mark.parametrize("accessor", ("getitem", "values", "items"))
+def test_matched_dataset_access_rebuilds_targets(accessor, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE).take_range(7, 31)
+    expected_source = matched[REFERENCE]
+    expected_ids = _expected_source_driven_ids(
+        original, expected_source, REFERENCE, pairwise
+    )
+
+    if accessor == "getitem":
+        accessed = {name: matched[name] for name in matched.keys()}
+    elif accessor == "values":
+        accessed = dict(zip(matched.keys(), matched.values(), strict=True))
+    else:
+        accessed = dict(matched.items())
+
+    for name, dataset in accessed.items():
+        np.testing.assert_array_equal(
+            _column(dataset, "fof_halo_tag"), expected_ids[name]
+        )
+
+
+def test_matched_evaluate_rebuilds_targets_before_evaluation(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE).take_range(7, 31)
+    expected_source = matched[REFERENCE]
+    expected_ids = _expected_source_driven_ids(
+        original, expected_source, REFERENCE, pairwise
+    )
+
+    def evaluated_tag(fof_halo_tag):
+        return fof_halo_tag
+
+    result = matched.evaluate(
+        evaluated_tag, vectorize=True, insert=False, format="numpy"
+    )
+
+    for name, dataset in matched.items():
+        np.testing.assert_array_equal(
+            _column(dataset, "fof_halo_tag"), expected_ids[name]
+        )
+        np.testing.assert_array_equal(
+            result[name]["evaluated_tag"], _column(dataset, "fof_halo_tag")
+        )
 
 
 @pytest.mark.parametrize(
