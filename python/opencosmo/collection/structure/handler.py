@@ -478,6 +478,14 @@ class LinkHandler:
     ):
         if isinstance(derived_from, lc.Lightcone):
             assert isinstance(new_source, lc.Lightcone)
+            assert all(
+                isinstance(ds, (lc.Lightcone, sc.StructureCollection))
+                for ds in datasets.values()
+            )
+            datasets = cast(
+                "Mapping[str, oc.Lightcone | oc.StructureCollection]", datasets
+            )
+
             return rebuild_links_per_step(
                 derived_from, new_source, datasets, self.columns
             )

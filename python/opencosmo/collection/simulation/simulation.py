@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, Self
+from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, cast
 
 import numpy as np
 
@@ -38,7 +38,7 @@ def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
     # Guard: active sort keys would cause dataset/state.py to re-sort the
     # carefully ordered rows produced below, silently misaligning everything.
     for name, ds in datasets.items():
-        if getattr(ds, "sorted_by", None) is not None:
+        if getattr(ds, "sorted_by", None) is not None and name != source:
             raise ValueError(
                 f"Dataset '{name}' has an active sort key. Call match() before sort_by()."
             )
@@ -88,9 +88,19 @@ class SimulationCollection:
         self,
         datasets: Mapping[str, Dataset | Collection],
         match_set: DatasetMatchSet | None = None,
+        match_source: str | None = None,
+        rebuilt: dict[str, bool] | None = None,
     ):
+        if match_set is not None and not all(
+            isinstance(ds, Dataset) for ds in datasets.values()
+        ):
+            raise ValueError(
+                "Dataset matching is only supported for simple datasets (no collections)"
+            )
         self.__datasets = dict(datasets)
         self.__match_set = match_set
+        self.__match_source = match_source
+        self.__rebuilt = rebuilt
 
     def keys(self):
         return self.__datasets.keys()
@@ -108,6 +118,21 @@ class SimulationCollection:
         return iter(self.keys())
 
     def __getitem__(self, key):
+        if (
+            self.__match_source is not None
+            and key != self.__match_source
+            and not self.__rebuilt[key]
+        ):
+            datasets = {
+                self.__match_source: self.__datasets[self.__match_source],
+                key: self.__datasets[key],
+            }
+
+            new_datasets = prepare_matched_datasets(
+                self.__match_set, datasets, self.__match_source
+            )
+            self.__datasets |= new_datasets
+            self.__rebuilt[key] = True
         return self.__datasets[key]
 
     def __enter__(self):
@@ -195,7 +220,9 @@ class SimulationCollection:
                 *args, **regular_kwargs, **dataset_mapped_kwargs
             )
         if construct:
-            return SimulationCollection(output, self.__match_set)
+            return SimulationCollection(
+                output, self.__match_set, self.__match_source, self.__rebuilt
+            )
         return output
 
     def __map_attribute(self, attribute):
@@ -267,9 +294,19 @@ class SimulationCollection:
                 f"This SimulationCollection does not have a simulation named {source}"
             )
         new_datasets = prepare_matched_datasets(self.__match_set, self, source)
-        return SimulationCollection(new_datasets, self.__match_set)
+        return SimulationCollection(
+            new_datasets,
+            self.__match_set,
+            source,
+            {name: False for name in new_datasets.keys() if name != source},
+        )
 
-    def bound(self, region: Region, select_by: Optional[str] = None) -> Self:
+    def clear_match(self):
+        return SimulationCollection(self.__datasets, self.__match_set)
+
+    def bound(
+        self, region: Region, select_by: Optional[str] = None
+    ) -> SimulationCollection:
         """
         Restrict the datasets to some region. Note that the SimulationCollection does
         not do any checking to ensure its members have identical boxes. As a result
@@ -290,9 +327,19 @@ class SimulationCollection:
             The portion of each dataset inside the selected region
 
         """
+        if self.__match_source is not None:
+            new_source = self.__datasets[self.__match_source].bound(region, select_by)
+            new_datasets = self.__datasets | {self.__match_source: new_source}
+            return SimulationCollection(
+                new_datasets,
+                self.__match_set,
+                self.__match_source,
+                {name: False for name in self.keys()},
+            )
+
         return self.__map("bound", region, select_by)
 
-    def filter(self, *masks: ColumnMask, **kwargs) -> Self:
+    def filter(self, *masks: ColumnMask, **kwargs) -> SimulationCollection:
         """
         Filter the datasets in the collection. This method behaves
         exactly like :meth:`opencosmo.Dataset.filter` or
@@ -311,6 +358,22 @@ class SimulationCollection:
             A new collection with the same datasets, but only the
             particles that pass the filter.
         """
+        if self.__match_source is not None:
+            datasets = kwargs.pop("datasets", None)
+            if datasets is not None and datasets != self.__match_source:
+                raise ValueError(
+                    f"After matching a collection, you can only filter on the active source of the match. Got datasets = {datasets} but the collection is matched against {self.__match_source}"
+                )
+
+            new_source_dataset = self[self.__match_source].filter(*masks, **kwargs)
+            new_datasets = self.__datasets | {self.__match_source: new_source_dataset}
+            return SimulationCollection(
+                new_datasets,
+                self.__match_set,
+                self.__match_source,
+                {name: False for name in self.keys()},
+            )
+
         return self.__map("filter", *masks, **kwargs)
 
     def select(self, *args, **kwargs) -> SimulationCollection:
@@ -341,11 +404,14 @@ class SimulationCollection:
             A new collection with only the specified columns
 
         """
-        if self.__dtype is not Dataset:
+        if not all(isinstance(dataset, Dataset) for dataset in self.values()):
             return self.__map("select", *args, **kwargs)
 
-        output = do_multi_dataset_selections(self, args, kwargs)
-        return SimulationCollection(output)
+        datasets = cast("dict[str, Dataset]", self.__datasets)
+        output = do_multi_dataset_selections(datasets, args, kwargs)
+        return SimulationCollection(
+            output, self.__match_set, self.__match_source, self.__rebuilt
+        )
 
     def drop(self, *args, **kwargs) -> SimulationCollection:
         """
@@ -366,19 +432,22 @@ class SimulationCollection:
             Explicit dataset-keyed drop selections.
 
         """
-        if self.__dtype is not Dataset:
+        if not all(isinstance(dataset, Dataset) for dataset in self.values()):
             return self.__map("drop", *args, **kwargs)
 
-        output = do_multi_dataset_drops(self, args)
+        datasets = cast("dict[str, Dataset]", self.__datasets)
+        output = do_multi_dataset_drops(datasets, args)
         for dataset_name, columns in kwargs.items():
             if dataset_name not in self:
                 raise ValueError(f"Dataset {dataset_name} not found in collection.")
             output[dataset_name] = output[dataset_name].drop(columns)
-        return SimulationCollection(output)
+        return SimulationCollection(
+            output, self.__match_set, self.__match_source, self.__rebuilt
+        )
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
-    ) -> Self:
+    ) -> SimulationCollection:
         """
         Take a subest of rows from all datasets or collections in this collection.
         This method will delegate to the underlying method in
@@ -394,6 +463,16 @@ class SimulationCollection:
             The method to use to take rows. Must be one of "start", "end", "random".
 
         """
+        if self.__match_source is not None:
+            new_source = self.__datasets[self.__match_source].take(n, at, mode)
+            new_datasets = self.__datasets | {self.__match_source: new_source}
+            return SimulationCollection(
+                new_datasets,
+                self.__match_set,
+                self.__match_source,
+                {name: False for name in self.keys()},
+            )
+
         return self.__map("take", n, at, mode=mode)
 
     def take_range(
@@ -417,6 +496,18 @@ class SimulationCollection:
             The new simulation collection with only the specified rows.
 
         """
+        if self.__match_source is not None:
+            new_source = self.__datasets[self.__match_source].take_range(
+                start, end, mode
+            )
+            new_datasets = self.__datasets | {self.__match_source: new_source}
+            return SimulationCollection(
+                new_datasets,
+                self.__match_set,
+                self.__match_source,
+                {name: False for name in self.keys()},
+            )
+
         return self.__map("take_range", start, end, mode=mode)
 
     def with_new_columns(
@@ -508,6 +599,13 @@ class SimulationCollection:
         results: SimulationCollection | dict[str, np.ndarray] | dict[str, astropy.units.Quantity]
             The results of the computation, or a new simulation collection with the results inserted.
         """
+        if self.__match_source is not None:
+            assert self.__match_set is not None
+            new_datasets = prepare_matched_datasets(
+                self.__match_set, self.__datasets, self.__match_source
+            )
+            self.__datasets = new_datasets
+
         results = self.__map(
             "evaluate",
             func,
@@ -544,6 +642,16 @@ class SimulationCollection:
             A new SimulationCollection with the datasets ordered by the given column.
 
         """
+        if self.__match_source is not None:
+            new_source = self.__datasets[self.__match_source].sort_by(column, invert)
+            new_datasets = self.__datasets | {self.__match_source: new_source}
+            return SimulationCollection(
+                new_datasets,
+                self.__match_set,
+                self.__match_source,
+                {name: False for name in self.keys()},
+            )
+
         return self.__map("sort_by", column=column, invert=invert)
 
     def with_units(
@@ -551,7 +659,7 @@ class SimulationCollection:
         convention: Optional[str] = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
-    ) -> Self:
+    ) -> SimulationCollection:
         """
         Transform all datasets or collections to use the given unit convention, convert
         all columns with a given unit into a different unit, and/or convert specific column(s)

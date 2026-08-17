@@ -7,10 +7,10 @@ from uuid import uuid4
 import h5py
 import numpy as np
 import pytest
+from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 
 import opencosmo as oc
 from opencosmo.index import into_array
-from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -96,6 +96,44 @@ def _assert_matches_mapping(before, matched, source, pairwise):
         np.testing.assert_array_equal(
             into_array(matched[target].index),
             pairwise[(source, target)][source_index[rows_to_keep]],
+        )
+
+
+def _column(dataset, name):
+    return np.asarray(dataset.select(name).get_data(format="numpy"))
+
+
+def _absolute_rows_from_ids(dataset, ids, identifier="fof_halo_tag"):
+    dataset_ids = _column(dataset, identifier)
+    dataset_index = into_array(dataset.index)
+    rows_by_id = dict(zip(dataset_ids.tolist(), dataset_index.tolist(), strict=True))
+    return np.asarray([rows_by_id[value] for value in ids.tolist()], dtype=np.int64)
+
+
+def _assert_source_driven_result(
+    original, expected_source, actual, source, pairwise, identifier="fof_halo_tag"
+):
+    """Assert logical row order in every catalog follows ``expected_source``."""
+    expected_source_ids = _column(expected_source, identifier)
+    np.testing.assert_array_equal(
+        _column(actual[source], identifier), expected_source_ids
+    )
+
+    source_rows = _absolute_rows_from_ids(
+        original[source], expected_source_ids, identifier
+    )
+    for target in original.keys() - {source}:
+        target_rows = pairwise[(source, target)][source_rows]
+        assert np.all(target_rows >= 0)
+
+        target_ids = _column(original[target], identifier)
+        target_index = into_array(original[target].index)
+        ids_by_row = dict(zip(target_index.tolist(), target_ids.tolist(), strict=True))
+        expected_target_ids = np.asarray(
+            [ids_by_row[row] for row in target_rows.tolist()], dtype=target_ids.dtype
+        )
+        np.testing.assert_array_equal(
+            _column(actual[target], identifier), expected_target_ids
         )
 
 
@@ -198,6 +236,186 @@ def test_match_honors_filters(filtered_simulations, mapped_paths, test_data):
     _assert_matches_mapping(collection, matched, REFERENCE, pairwise)
 
 
+@pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
+def test_matched_take_range_is_driven_by_active_source(source, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(source)
+    expected_source = matched[source].take_range(7, 31)
+
+    result = matched.take_range(7, 31)
+
+    _assert_source_driven_result(original, expected_source, result, source, pairwise)
+
+
+def test_matched_filter_is_evaluated_only_on_active_source(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE)
+    threshold = np.median(_column(matched[REFERENCE], "fof_halo_mass"))
+    mask = oc.col("fof_halo_mass") > threshold
+    expected_source = matched[REFERENCE].filter(mask)
+
+    result = matched.filter(mask)
+
+    assert 0 < len(expected_source) < len(matched[REFERENCE])
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+@pytest.mark.parametrize("invert", (False, True), ids=("ascending", "descending"))
+def test_matched_sort_uses_active_source_order(invert, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE)
+    expected_source = matched[REFERENCE].sort_by("fof_halo_mass", invert=invert)
+    result = matched.sort_by("fof_halo_mass", invert=invert)
+
+    masses = _column(result[REFERENCE], "fof_halo_mass")
+    differences = np.diff(masses)
+    assert np.all(differences <= 0 if invert else differences >= 0)
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+@pytest.mark.parametrize("at", ("start", "end"))
+def test_matched_take_is_driven_by_active_source(at, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE)
+    expected_source = matched[REFERENCE].take(23, at=at)
+
+    result = matched.take(23, at=at)
+
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+def test_matched_random_take_preserves_source_order(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE)
+
+    result = matched.take(37, at="random")
+    selected_source = result[REFERENCE]
+
+    assert len(selected_source) == 37
+    selected_ids = _column(selected_source, "fof_halo_tag")
+    matched_ids = _column(matched[REFERENCE], "fof_halo_tag")
+    positions = {value: position for position, value in enumerate(matched_ids.tolist())}
+    selected_positions = np.asarray(
+        [positions[value] for value in selected_ids.tolist()]
+    )
+    assert np.all(np.diff(selected_positions) > 0)
+    _assert_source_driven_result(original, selected_source, result, REFERENCE, pairwise)
+
+
+def test_matched_bound_is_evaluated_on_active_source(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE).with_units("scalefree")
+    coordinate_names = tuple(f"fof_halo_center_{axis}" for axis in "xyz")
+    coordinates = matched[REFERENCE].select(coordinate_names).get_data(format="numpy")
+    lower = tuple(
+        float(np.quantile(coordinates[name], 0.3)) for name in coordinate_names
+    )
+    upper = tuple(
+        float(np.quantile(coordinates[name], 0.7)) for name in coordinate_names
+    )
+    region = oc.make_box(lower, upper)
+    expected_source = matched[REFERENCE].bound(region)
+
+    result = matched.bound(region)
+
+    assert 0 < len(expected_source) < len(matched[REFERENCE])
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+def test_matched_operation_intersects_pre_filtered_target(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    target_threshold = np.median(_column(original[SIMULATION_A], "fof_halo_mass"))
+    original = original.filter(
+        oc.col("fof_halo_mass") > target_threshold, datasets=SIMULATION_A
+    )
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE)
+    source_threshold = np.median(_column(matched[REFERENCE], "fof_halo_mass"))
+    mask = oc.col("fof_halo_mass") > source_threshold
+    expected_source = matched[REFERENCE].filter(mask)
+
+    result = matched.filter(mask)
+
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+def test_matched_chained_index_operations_remain_aligned(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(SIMULATION_A)
+    threshold = np.median(_column(matched[SIMULATION_A], "fof_halo_mass"))
+    mask = oc.col("fof_halo_mass") > threshold
+    expected_source = (
+        matched[SIMULATION_A]
+        .filter(mask)
+        .sort_by("fof_halo_mass", invert=True)
+        .take_range(3, 29)
+    )
+
+    result = (
+        matched.filter(mask).sort_by("fof_halo_mass", invert=True).take_range(3, 29)
+    )
+
+    _assert_source_driven_result(
+        original, expected_source, result, SIMULATION_A, pairwise
+    )
+
+
+@pytest.mark.parametrize(
+    "transform",
+    (
+        pytest.param(
+            lambda collection: collection.select("fof_halo_tag", "fof_halo_mass"),
+            id="column-selection",
+        ),
+        pytest.param(
+            lambda collection: collection.with_units("scalefree"),
+            id="unit-conversion",
+        ),
+        pytest.param(
+            lambda collection: collection.with_new_columns(
+                doubled_mass=oc.col("fof_halo_mass") * 2
+            ),
+            id="derived-column",
+        ),
+    ),
+)
+def test_non_index_operation_preserves_active_match_source(
+    transform, mapped_paths, test_data
+):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE)
+    expected_source = transform(matched[REFERENCE]).take_range(4, 19)
+
+    result = transform(matched).take_range(4, 19)
+
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+def test_matched_index_operation_accepts_only_active_source_dataset(
+    mapped_paths, test_data
+):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping).match(
+        REFERENCE
+    )
+    mask = oc.col("fof_halo_mass") > 1e14
+
+    result = collection.filter(mask, datasets=REFERENCE)
+
+    assert isinstance(result, oc.SimulationCollection)
+    with pytest.raises(ValueError, match="active source"):
+        collection.filter(mask, datasets=SIMULATION_A)
+    with pytest.raises(ValueError, match="active source"):
+        collection.filter(mask, datasets=(REFERENCE, SIMULATION_A))
+
+
 @pytest.mark.parametrize(
     ("paths", "message"),
     (
@@ -280,7 +498,9 @@ def test_mapping_write(mapped_paths, test_data, tmp_path):
 
 def test_mapping_write_without_reference(mapped_paths, test_data, tmp_path):
     simulations = (SIMULATION_A, SIMULATION_B)
-    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping, simulations)
+    collection = _open_mapped(
+        mapped_paths, test_data.snapshot.halo_mapping, simulations
+    )
     collection = collection.filter(oc.col("fof_halo_mass") > 1e14)
     oc.write(tmp_path / "test.hdf5", collection)
     written = oc.open(tmp_path / "test.hdf5")

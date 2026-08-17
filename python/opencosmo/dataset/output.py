@@ -100,7 +100,10 @@ def make_dataset_schema(
         attributes["load/if"] = load_conditions
 
     dataset_uuid = uuid4()
-    attributes = {"": {"uuid": str(dataset_uuid), "main_uuid": str(dataset_uuid)}}
+    attributes[""] = {
+        "uuid": str(dataset_uuid),
+        "main_uuid": str(dataset_uuid),
+    }
     data_schema = combine_with_cached_schema(
         data_schema,
         cached_data_schema,
@@ -108,7 +111,6 @@ def make_dataset_schema(
     metadata_schema = combine_with_cached_schema(
         metadata_schema, cached_metadata_schema
     )
-    # Generate a uuid
     data_schema = data_schema._replace(attributes=data_schema.attributes | attributes)
 
     children = {"data": data_schema}
