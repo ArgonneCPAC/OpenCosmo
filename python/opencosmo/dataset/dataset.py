@@ -15,7 +15,6 @@ from warnings import warn
 import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.table import QTable  # type: ignore
-from deprecated.sphinx import deprecated
 
 import opencosmo.dataset.state as st
 from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
@@ -25,6 +24,7 @@ from opencosmo.dataset.take import (
     get_random_take_index,
     get_range_take_index,
 )
+from opencosmo.deprecated import deprecated
 from opencosmo.index import empty, get_range, into_array, mask, project
 from opencosmo.spatial import check
 from opencosmo.units.converters import get_scale_factor
@@ -237,8 +237,7 @@ class Dataset:
 
     @property
     @deprecated(
-        version="1.1.0",
-        reason="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
+        msg="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
     )
     def data(self) -> QTable | u.Quantity:
         """

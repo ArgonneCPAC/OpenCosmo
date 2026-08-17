@@ -19,7 +19,6 @@ from warnings import warn
 import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
-from deprecated import deprecated
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
@@ -42,6 +41,7 @@ from opencosmo.dataset.take import (
     get_range_take_index,
     get_rows_take_index,
 )
+from opencosmo.deprecated import deprecated
 from opencosmo.index import get_range, into_array, rebuild_by_ranges
 from opencosmo.io import iopen
 from opencosmo.io.index_spec import index_spec_for
@@ -451,8 +451,7 @@ class Lightcone(dict):
 
     @property
     @deprecated(
-        version="1.1.0",
-        reason="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
+        msg="Accessing data through the .data attribute is deprecated and will be removed in a future version. Use get_data()",
     )
     def data(self):
         """
