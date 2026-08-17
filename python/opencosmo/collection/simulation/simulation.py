@@ -101,6 +101,9 @@ class SimulationCollection:
     def items(self):
         return self.__datasets.items()
 
+    def __len__(self):
+        return len(self.__datasets)
+
     def __iter__(self):
         return iter(self.keys())
 
@@ -137,8 +140,20 @@ class SimulationCollection:
     def make_schema(self) -> Schema:
         children = {}
 
+        new_uuids = {}
+        indices = {}
+
         for name, dataset in self.items():
             children[name] = dataset.make_schema()
+            new_uuids[name] = (
+                children[name].children["data"].attributes[""]["main_uuid"]
+            )
+            indices[name] = dataset.index
+
+        if self.__match_set is not None and len(self) > 1:
+            match_set_schema = self.__match_set.make_schema(new_uuids, indices)
+            children["map"] = match_set_schema
+
         return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
 
     def __map(

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from opencosmo.mapping.mapping import DatasetMatchSet
 
 if TYPE_CHECKING:
@@ -13,26 +15,7 @@ if TYPE_CHECKING:
 
 
 def read_index_group(group: h5py.Group) -> "SimpleH5pyIndex":
-    """
-    Resolve a map slot into its simple index dataset.
-
-    This function returns the live h5py.Dataset object without slicing it, allowing
-    the caller to defer reads until the mapping is used.
-
-    Relies on ``discover._verify_slot`` having already confirmed during discovery that
-    the slot contains a one-dimensional integer ``index`` dataset. Any unsupported
-    chunked slot was converted to ``FileLayout.error`` before this function is called.
-
-    Parameters
-    ----------
-    group : h5py.Group
-        The slot group, expected to contain an "index" dataset.
-
-    Returns
-    -------
-    SimpleH5pyIndex
-        The live "index" dataset.
-    """
+    """Resolve a primary map slot into its live simple index dataset."""
     return group["index"]  # type: ignore[return-value]
 
 
@@ -45,7 +28,8 @@ def read_match_set(
     ``layout`` comes from discovery, which has already validated the full /map
     structure and converted any malformation into ``FileLayout.error``. This function
     therefore assumes well-formedness and only (a) filters slots by availability and
-    (b) resolves live h5py handles via ``read_index_group``.
+    (b) resolves live h5py handles. Primary slot groups are resolved via
+    ``read_index_group``; auxiliary sides are direct datasets.
 
     Slot groups are accessed by the verbatim on-disk names recorded in ``layout``
     (``layout.primary_slots`` and ``layout.aux_slots``). Names are never reconstructed
@@ -100,9 +84,23 @@ def read_match_set(
     for slot_name, uuid_a, uuid_b in layout.aux_slots:
         if uuid_a in available and uuid_b in available:
             pair = group[f"auxiliary/{slot_name}"]  # type: ignore[index]
+            source = pair["source"]  # type: ignore[index]
+            target = pair["target"]  # type: ignore[index]
+            for side, array in (("source", source), ("target", target)):
+                values = array[:]
+                if np.any(values < 0):
+                    raise ValueError(
+                        f"Malformed auxiliary map '{slot_name}': {side} indices "
+                        "must be non-negative"
+                    )
+                if len(np.unique(values)) != len(values):
+                    raise ValueError(
+                        f"Malformed auxiliary map '{slot_name}': {side} indices "
+                        "must be unique"
+                    )
             aux_maps[(uuid_a, uuid_b)] = (
-                read_index_group(pair["source"]),  # type: ignore[index]
-                read_index_group(pair["target"]),  # type: ignore[index]
+                source,
+                target,
             )
 
     if not primary_maps and not aux_maps:

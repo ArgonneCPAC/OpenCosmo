@@ -53,8 +53,8 @@ def _write_aux_pair(
     """Write an auxiliary pair slot under *aux_group*."""
     pair_name = f"{uuid_a}__{uuid_b}"
     pair = aux_group.require_group(pair_name)
-    _write_simple_slot(pair, "source", source_data)
-    _write_simple_slot(pair, "target", target_data)
+    pair.create_dataset("source", data=np.array(source_data, dtype=np.int64))
+    pair.create_dataset("target", data=np.array(target_data, dtype=np.int64))
 
 
 def _make_map_group(
@@ -216,6 +216,72 @@ class TestMapArrayValidation:
                     aux_pairs={(_A, _B): ([0, 1], [1])},
                 )
 
+    @pytest.mark.parametrize(
+        ("side", "data", "message"),
+        (
+            ("source", np.array([[0, 1]], dtype=np.int64), "one-dimensional"),
+            ("target", np.array([0.0, 1.0]), "integer dtype"),
+        ),
+    )
+    def test_auxiliary_array_shape_and_dtype(
+        self, tmp_path: Path, side, data, message
+    ) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group, _ = _make_map_group(
+                f,
+                reference=_REF,
+                primary_targets={_A: [0, 1], _B: [1, 0]},
+                aux_pairs={(_A, _B): ([0, 1], [1, 0])},
+            )
+            pair = map_group[f"auxiliary/{_A}__{_B}"]
+            del pair[side]
+            pair.create_dataset(side, data=data)
+
+            with pytest.raises(ValueError, match=message):
+                _read_map_layout("/map", map_group)
+
+    @pytest.mark.parametrize("side", ("source", "target"))
+    def test_auxiliary_side_must_be_direct_dataset(self, tmp_path: Path, side) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group, _ = _make_map_group(
+                f,
+                reference=_REF,
+                primary_targets={_A: [0, 1], _B: [1, 0]},
+                aux_pairs={(_A, _B): ([0, 1], [1, 0])},
+            )
+            pair = map_group[f"auxiliary/{_A}__{_B}"]
+            del pair[side]
+            _write_simple_slot(pair, side, [0, 1])
+
+            with pytest.raises(ValueError, match="expected a dataset"):
+                _read_map_layout("/map", map_group)
+
+    @pytest.mark.parametrize(
+        ("source", "target", "message"),
+        (
+            ([-1, 1], [0, 1], "source indices must be non-negative"),
+            ([0, 1], [-1, 1], "target indices must be non-negative"),
+            ([0, 0], [0, 1], "source indices must be unique"),
+            ([0, 1], [0, 0], "target indices must be unique"),
+        ),
+    )
+    def test_auxiliary_values_are_one_to_one(
+        self, tmp_path: Path, source, target, message
+    ) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group, layout = _make_map_group(
+                f,
+                reference=_REF,
+                primary_targets={_A: [0, 1], _B: [1, 0]},
+                aux_pairs={(_A, _B): (source, target)},
+            )
+
+            with pytest.raises(ValueError, match=message):
+                read_match_set(map_group, layout, {_REF, _A, _B})
+
 
 class TestMapUUIDCollisions:
     def test_primary_spellings_cannot_resolve_to_same_uuid(
@@ -247,8 +313,8 @@ class TestMapUUIDCollisions:
             auxiliary = map_group.require_group("auxiliary")
             _write_aux_pair(auxiliary, _A, _B, [0], [1])
             reversed_pair = auxiliary.require_group(f"{_B.hex}__{_A.hex}")
-            _write_simple_slot(reversed_pair, "source", [1])
-            _write_simple_slot(reversed_pair, "target", [0])
+            reversed_pair.create_dataset("source", data=np.array([1], dtype=np.int64))
+            reversed_pair.create_dataset("target", data=np.array([0], dtype=np.int64))
 
             with pytest.raises(ValueError, match="duplicate auxiliary mapping pair"):
                 _read_map_layout("/map", map_group)
@@ -275,6 +341,25 @@ class TestReferencePresent:
             assert result is not None
             assert result.reference_source == _REF
             assert set(result.primary_maps.keys()) == {_A, _B}
+
+    def test_auxiliary_maps_resolve_direct_datasets(self, tmp_path: Path) -> None:
+        path = tmp_path / "map.hdf5"
+        with h5py.File(path, "w") as f:
+            map_group, layout = _make_map_group(
+                f,
+                reference=_REF,
+                primary_targets={_A: [0, 1], _B: [1, 0]},
+                aux_pairs={(_A, _B): ([2, 3], [4, 5])},
+            )
+
+            result = read_match_set(map_group, layout, {_REF, _A, _B})
+
+            assert result is not None
+            source, target = result.aux_maps[(_A, _B)]
+            assert source.name.endswith("/source")
+            assert target.name.endswith("/target")
+            np.testing.assert_array_equal(source[:], [2, 3])
+            np.testing.assert_array_equal(target[:], [4, 5])
 
 
 class TestTargetsNotInAvailableFiltered:

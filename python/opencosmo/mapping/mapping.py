@@ -6,8 +6,10 @@ from uuid import UUID
 
 import h5py
 import numpy as np
+from opencosmo.io.schema import FileEntry, Schema
+from opencosmo.io.writer import ColumnWriter
 
-from opencosmo.index import get_data, into_array
+from opencosmo.index import get_data, into_array, reindex_column
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex, SimpleIndex
@@ -74,15 +76,199 @@ class DatasetMatchSet:
             | {u for pair in self.aux_maps for u in pair}
         )
 
+    def get_alias(self, uuid: UUID):
+        for alias, ds_uuid in self.aliases.items():
+            if uuid == ds_uuid:
+                return alias
+        return None
+
+    def get_uuid(self, alias: str):
+        return self.aliases.get(alias)
+
     def with_aliases(self, name_to_uuid: dict[str, UUID]):
         if diff := set(name_to_uuid.values()).difference(self.primary_maps.keys()):
             if diff != {self.reference_source}:
                 raise ValueError(f"Several UUIDs are not in this map: {diff}")
+        elif len(set(name_to_uuid.items())) != len(name_to_uuid):
+            raise ValueError("Duplicate UUIDs detected!")
 
         return replace(self, aliases=self.aliases | name_to_uuid)
 
-    def close(self):
-        pass
+    def make_schema(
+        self, new_uuids: dict[str, UUID], indices: dict[str, DataIndex]
+    ) -> Schema:
+        if not set(new_uuids.keys()).issubset(self.aliases.keys()):
+            raise ValueError(
+                "Tried to match datasets that don't appear in this mapping!"
+            )
+        source_alias = self.get_alias(self.reference_source)
+
+        if source_alias in new_uuids:
+            new_primary, new_auxiliary = rebuild_single_with_source(
+                self, new_uuids, indices, source_alias
+            )
+        else:
+            source_alias = next(iter(new_uuids))
+            new_primary, new_auxiliary = rebuild_single_with_new_source(
+                self, new_uuids, indices, source_alias
+            )
+
+        primary_schemas = {}
+        for new_uuid, primary_map in new_primary.items():
+            writer = ColumnWriter.from_numpy_array(primary_map)
+            primary_schemas[new_uuid] = Schema(
+                new_uuid,
+                FileEntry.COLUMNS,
+                {},
+                columns={"index": writer},
+                attributes={},
+            )
+
+        auxiliary_schemas = {}
+        for (uuid_source, uuid_target), (
+            index_source,
+            index_target,
+        ) in new_auxiliary.items():
+            source_writer = ColumnWriter.from_numpy_array(index_source)
+            target_writer = ColumnWriter.from_numpy_array(index_target)
+            writers = {"source": source_writer, "target": target_writer}
+            name = f"{uuid_source}__{uuid_target}"
+
+            schema = Schema(name, FileEntry.COLUMNS, {}, columns=writers, attributes={})
+            auxiliary_schemas[name] = schema
+        primary_schema = Schema("primary", FileEntry.COLUMNS, primary_schemas, {}, {})
+        auxiliary_schema = Schema(
+            "auxiliary", FileEntry.COLUMNS, auxiliary_schemas, {}, {}
+        )
+
+        children = {"primary": primary_schema, "auxiliary": auxiliary_schema}
+        return Schema(
+            "map",
+            FileEntry.METADATA,
+            children,
+            {},
+            {"": {"format_version": 1, "reference": new_uuids[source_alias]}},
+        )
+
+
+def rebuild_single_with_source(
+    match_set: DatasetMatchSet,
+    new_uuids: dict[str, UUID],
+    indices: dict[str, DataIndex],
+    source: str,
+):
+    """
+    This is used during writing to figure out the new map. The important thing
+    to appreciate about writing is data is ALWAYS written in the same order
+    regardless of operations.
+
+    This algorithm assumes mapping is one to one: Each row in the source maps to
+    at most one row in the target.
+    """
+    new_primary_maps = {}
+    old_source_uuid = match_set.get_uuid(source)
+    assert old_source_uuid is not None
+    source_index = into_array(indices[source])
+    source_sort = np.argsort(source_index)
+    for name, new_uuid in new_uuids.items():
+        if name == source:
+            continue
+        old_target_uuid = match_set.get_uuid(name)
+        assert old_target_uuid is not None
+        primary_map = get_primary_mapping(
+            match_set, old_source_uuid, old_target_uuid, source_index
+        )
+        target_index = into_array(indices[name])
+        target_sort = np.argsort(target_index)
+
+        new_primary_maps[new_uuid] = reindex_column(
+            target_index[target_sort], primary_map[source_sort]
+        )
+
+    new_auxiliary_maps = {}
+    for (uuida, uuidb), (
+        aux_source_index,
+        aux_target_index,
+    ) in match_set.aux_maps.items():
+        aliasa = match_set.get_alias(uuida)
+        aliasb = match_set.get_alias(uuidb)
+        if aliasa not in new_uuids or aliasb not in new_uuids:
+            continue
+        indexa = into_array(indices[aliasa])
+        indexb = into_array(indices[aliasb])
+        reindexa = reindex_column(np.sort(indexa), aux_source_index[:])
+        reindexb = reindex_column(np.sort(indexb), aux_target_index[:])
+        to_keep = (reindexa != -1) & (reindexb != -1)
+        new_auxiliary_maps[(new_uuids[aliasa], new_uuids[aliasb])] = (
+            reindexa[to_keep],
+            reindexb[to_keep],
+        )
+
+    return new_primary_maps, new_auxiliary_maps
+
+
+def rebuild_single_with_new_source(
+    match_set: DatasetMatchSet,
+    new_uuids: dict[str, UUID],
+    indices: dict[str, DataIndex],
+    source: str,
+):
+    new_primary_maps = {}
+    old_source_uuid = match_set.get_uuid(source)
+    assert old_source_uuid is not None
+
+    source_index = into_array(indices[source])
+    source_sort = np.argsort(source_index)
+
+    for target, new_uuid in new_uuids.items():
+        if target == source:
+            continue
+        old_target_uuid = match_set.get_uuid(target)
+        assert old_target_uuid is not None
+        mapping = get_mapping(match_set, old_source_uuid, old_target_uuid, source_index)
+        assert mapping is not None
+        target_index = into_array(indices[target])
+        new_primary_maps[new_uuid] = reindex_column(
+            np.sort(target_index), mapping[source_sort]
+        )
+
+    new_auxiliary_maps = {}
+    aliases = sorted(alias for alias in new_uuids if alias != source)
+    for position, aliasa in enumerate(aliases):
+        old_uuida = match_set.get_uuid(aliasa)
+        assert old_uuida is not None
+        indexa = into_array(indices[aliasa])
+        sorteda = np.sort(indexa)
+        for aliasb in aliases[position + 1 :]:
+            old_uuidb = match_set.get_uuid(aliasb)
+            assert old_uuidb is not None
+            indexb = into_array(indices[aliasb])
+            mapping = get_mapping(match_set, old_uuida, old_uuidb, indexa)
+            assert mapping is not None
+            sort_a = np.argsort(indexa)
+            reindexa = reindex_column(sorteda, indexa[sort_a])
+            reindexb = reindex_column(np.sort(indexb), mapping[sort_a])
+            keep = (reindexa >= 0) & (reindexb >= 0)
+
+            primary_a = new_primary_maps[new_uuids[aliasa]]
+            primary_b = new_primary_maps[new_uuids[aliasb]]
+            routed_b_by_a = np.full(len(indexa), -1, dtype=np.int64)
+            routed = (primary_a >= 0) & (primary_b >= 0)
+            routed_b_by_a[primary_a[routed]] = primary_b[routed]
+
+            routed_pair = np.zeros(len(reindexa), dtype=bool)
+            valid_a = reindexa >= 0
+            routed_pair[valid_a] = (
+                routed_b_by_a[reindexa[valid_a]] == reindexb[valid_a]
+            )
+            keep &= ~routed_pair
+            if keep.any():
+                new_auxiliary_maps[(new_uuids[aliasa], new_uuids[aliasb])] = (
+                    reindexa[keep],
+                    reindexb[keep],
+                )
+
+    return new_primary_maps, new_auxiliary_maps
 
 
 def get_mapping(
@@ -95,7 +281,7 @@ def get_mapping(
         raise ValueError("Mapping names must be UUIDs or registered aliases")
 
     try:
-        auxilliary_mapping = get_auxillary_mapping(
+        auxiliary_mapping = get_auxillary_mapping(
             match_set, source_uuid, target_uuid, index
         )
         mapping = get_primary_mapping(match_set, source_uuid, target_uuid, index)
@@ -104,10 +290,10 @@ def get_mapping(
             f"Unable to map from '{source}' to '{target}': no primary mapping route "
             "exists between these datasets."
         ) from exc
-    if auxilliary_mapping is None:
+    if auxiliary_mapping is None:
         return mapping
 
-    aux_index, aux_mapping = auxilliary_mapping
+    aux_index, aux_mapping = auxiliary_mapping
     mapping[aux_index] = aux_mapping
     return mapping
 

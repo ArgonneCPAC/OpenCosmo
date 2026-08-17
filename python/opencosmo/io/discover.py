@@ -159,6 +159,17 @@ def _coerce_to_uuid(value: str | bytes | np.bytes_ | UUID | None) -> UUID | None
     return None
 
 
+def _verify_map_array(array: h5py.Dataset | None, where: str) -> int:
+    """Validate a direct, simple mapping array without reading its values."""
+    if not isinstance(array, h5py.Dataset):
+        raise ValueError(f"{where}: expected a dataset")
+    if array.ndim != 1:
+        raise ValueError(f"{where}: mapping arrays must be one-dimensional")
+    if not np.issubdtype(array.dtype, np.integer):
+        raise ValueError(f"{where}: mapping arrays must have an integer dtype")
+    return array.shape[0]
+
+
 def _verify_slot(slot_group: h5py.Group, where: str) -> int:
     """
     Check that one map slot is well formed, keeping nothing.
@@ -259,7 +270,7 @@ def _read_map_layout(
                 raise ValueError(f"{where}: expected a group")
             if uuid_a not in known_primaries or uuid_b not in known_primaries:
                 raise ValueError(
-                    "Found auxilliary matching groups without corresponding primaries!"
+                    "Found auxiliary matching groups without corresponding primaries!"
                 )
 
             logical_pair = frozenset((uuid_a, uuid_b))
@@ -267,11 +278,10 @@ def _read_map_layout(
                 raise ValueError(f"{where}: duplicate auxiliary mapping pair")
             known_aux_pairs.add(logical_pair)
 
-            side_lengths = []
-            for side in ("source", "target"):
-                if not isinstance(slot := pair.get(side), h5py.Group):
-                    raise ValueError(f"{where}: missing '{side}' group")
-                side_lengths.append(_verify_slot(slot, f"{where}/{side}"))
+            side_lengths = [
+                _verify_map_array(pair.get(side), f"{where}/{side}")
+                for side in ("source", "target")
+            ]
             if side_lengths[0] != side_lengths[1]:
                 raise ValueError(
                     f"{where}: auxiliary source and target must have the same length"

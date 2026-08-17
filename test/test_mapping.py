@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import h5py
 import numpy as np
@@ -9,6 +10,7 @@ import pytest
 
 import opencosmo as oc
 from opencosmo.index import into_array
+from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -49,8 +51,8 @@ def _expected_pairwise_maps(mapping_path: Path, mapped_paths):
         primary_a = group[f"primary/{uuids[SIMULATION_A]}/index"][:]
         primary_b = group[f"primary/{uuids[SIMULATION_B]}/index"][:]
         auxiliary = group[f"auxiliary/{uuids[SIMULATION_A]}__{uuids[SIMULATION_B]}"]
-        auxiliary_a = auxiliary["source/index"][:]
-        auxiliary_b = auxiliary["target/index"][:]
+        auxiliary_a = auxiliary["source"][:]
+        auxiliary_b = auxiliary["target"][:]
 
     pairwise = {}
     pairwise[(REFERENCE, SIMULATION_A)] = primary_a
@@ -95,6 +97,38 @@ def _assert_matches_mapping(before, matched, source, pairwise):
             into_array(matched[target].index),
             pairwise[(source, target)][source_index[rows_to_keep]],
         )
+
+
+def _assert_mapping_equal(before, after, identifier="fof_halo_tag"):
+    """Assert two collections describe the same matches using stable row IDs."""
+    assert set(before) == set(after)
+    names = tuple(sorted(before))
+
+    for source in names:
+        before_matched = before.match(source)
+        after_matched = after.match(source)
+
+        before_ids = [
+            np.asarray(before_matched[name].select(identifier).get_data(format="numpy"))
+            for name in names
+        ]
+        after_ids = [
+            np.asarray(after_matched[name].select(identifier).get_data(format="numpy"))
+            for name in names
+        ]
+
+        for name, values in zip(names, before_ids, strict=True):
+            assert len(np.unique(values)) == len(values), (
+                f"{identifier!r} is not unique in dataset {name!r}"
+            )
+        for name, values in zip(names, after_ids, strict=True):
+            assert len(np.unique(values)) == len(values), (
+                f"{identifier!r} is not unique in dataset {name!r}"
+            )
+
+        before_pairs = set(zip(*before_ids, strict=True))
+        after_pairs = set(zip(*after_ids, strict=True))
+        assert before_pairs == after_pairs, f"Mapping differs for source {source!r}"
 
 
 @pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
@@ -233,3 +267,53 @@ def test_match_requires_known_source(mapped_paths, test_data):
 
     with pytest.raises(ValueError, match="does not have a simulation named unknown"):
         collection.match("unknown")
+
+
+def test_mapping_write(mapped_paths, test_data, tmp_path):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    collection = collection.filter(oc.col("fof_halo_mass") > 1e14)
+    oc.write(tmp_path / "test.hdf5", collection)
+    written = oc.open(tmp_path / "test.hdf5")
+
+    _assert_mapping_equal(collection, written)
+
+
+def test_mapping_write_without_reference(mapped_paths, test_data, tmp_path):
+    simulations = (SIMULATION_A, SIMULATION_B)
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping, simulations)
+    collection = collection.filter(oc.col("fof_halo_mass") > 1e14)
+    oc.write(tmp_path / "test.hdf5", collection)
+    written = oc.open(tmp_path / "test.hdf5")
+
+    _assert_mapping_equal(collection, written)
+
+
+def test_rebuild_with_new_source_preserves_old_reference_pair_as_auxiliary(tmp_path):
+    old_reference, old_source, old_a, old_b = (uuid4() for _ in range(4))
+    new_source, new_a, new_b = (uuid4() for _ in range(3))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_source = file.create_dataset("source", data=[0, -1])
+        primary_a = file.create_dataset("a", data=[-1, 0])
+        primary_b = file.create_dataset("b", data=[-1, 0])
+        match_set = DatasetMatchSet(
+            old_reference,
+            {old_source: primary_source, old_a: primary_a, old_b: primary_b},
+            {},
+            {"source": old_source, "a": old_a, "b": old_b},
+        )
+
+        primary, auxiliary = rebuild_single_with_new_source(
+            match_set,
+            {"source": new_source, "a": new_a, "b": new_b},
+            {
+                "source": np.array([0]),
+                "a": np.array([0]),
+                "b": np.array([0]),
+            },
+            "source",
+        )
+
+    np.testing.assert_array_equal(primary[new_a], [-1])
+    np.testing.assert_array_equal(primary[new_b], [-1])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][0], [0])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][1], [0])

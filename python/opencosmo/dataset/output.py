@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import reduce
 from typing import TYPE_CHECKING, Optional
+from uuid import uuid4
 
 import astropy.units as u
 
@@ -98,10 +99,17 @@ def make_dataset_schema(
     if (load_conditions := raw_data_handler.load_conditions) is not None:
         attributes["load/if"] = load_conditions
 
-    data_schema = combine_with_cached_schema(data_schema, cached_data_schema)
+    dataset_uuid = uuid4()
+    attributes = {"": {"uuid": str(dataset_uuid), "main_uuid": str(dataset_uuid)}}
+    data_schema = combine_with_cached_schema(
+        data_schema,
+        cached_data_schema,
+    )
     metadata_schema = combine_with_cached_schema(
         metadata_schema, cached_metadata_schema
     )
+    # Generate a uuid
+    data_schema = data_schema._replace(attributes=data_schema.attributes | attributes)
 
     children = {"data": data_schema}
     if metadata_schema.type != FileEntry.EMPTY:
