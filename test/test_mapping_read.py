@@ -37,6 +37,38 @@ def test_missing_primary_route_has_clear_error() -> None:
         get_mapping(match_set, "source", "target", np.array([0], dtype=np.int64))
 
 
+@pytest.mark.parametrize(
+    ("source", "target", "index", "expected"),
+    (
+        (_REF, _A, [3, 0, 1, 2], [1, 2, -1, 0]),
+        (_A, _REF, [3, 1, 2, 0], [-1, 3, 0, 2]),
+        (_REF, _B, [3, 0, 1, 2], [0, 1, 2, -1]),
+        (_B, _REF, [4, 0, 1, 2], [-1, 3, 0, 1]),
+        (_A, _B, [3, 1, 2, 0], [4, 0, 1, -1]),
+        (_B, _A, [4, 0, 1, 2], [3, 1, 2, -1]),
+    ),
+)
+def test_get_mapping_directions(tmp_path, source, target, index, expected) -> None:
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_a = file.create_dataset("primary_a", data=[2, -1, 0, 1])
+        primary_b = file.create_dataset("primary_b", data=[1, 2, -1, 0])
+        auxiliary_a = file.create_dataset("auxiliary_a", data=[3])
+        auxiliary_b = file.create_dataset("auxiliary_b", data=[4])
+        match_set = DatasetMatchSet(
+            reference_source=_REF,
+            primary_maps={_A: primary_a, _B: primary_b},
+            aux_maps={(_A, _B): (auxiliary_a, auxiliary_b)},
+        )
+
+        result = get_mapping(
+            match_set, source, target, np.asarray(index, dtype=np.int64)
+        )
+
+    assert result is not None
+    assert result.dtype == np.int64
+    np.testing.assert_array_equal(result, expected)
+
+
 def _write_simple_slot(group: h5py.Group, name: str, data: list[int]) -> None:
     """Write a simple (index-only) slot under *group*."""
     slot = group.require_group(name)

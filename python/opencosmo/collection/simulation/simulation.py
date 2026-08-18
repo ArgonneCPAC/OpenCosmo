@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import copy
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, cast
 
 import numpy as np
@@ -107,6 +108,7 @@ class SimulationCollection:
 
     def values(self):
         self.__rebuild_all()
+
         return self.__datasets.values()
 
     def items(self):
@@ -153,6 +155,7 @@ class SimulationCollection:
             datasets | {self.__match_source: self.__datasets[self.__match_source]},
             self.__match_source,
         )
+        self.__rebuilt = {key: True for key in self.__datasets.keys()}
 
     def __enter__(self):
         return self
@@ -163,8 +166,6 @@ class SimulationCollection:
                 dataset.close()
             except ValueError:
                 continue
-        if self.__match_set is not None:
-            self.__match_set.close()
 
     def __repr__(self):
         n_collections = sum(
@@ -195,7 +196,9 @@ class SimulationCollection:
             indices[name] = dataset.index
 
         if self.__match_set is not None and len(self) > 1:
-            match_set_schema = self.__match_set.make_schema(new_uuids, indices)
+            match_set_schema = self.__match_set.make_schema(
+                new_uuids, indices, self.__match_source
+            )
             children["map"] = match_set_schema
 
         return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
@@ -240,7 +243,10 @@ class SimulationCollection:
             )
         if construct:
             return SimulationCollection(
-                output, self.__match_set, self.__match_source, self.__rebuilt
+                output,
+                self.__match_set,
+                self.__match_source,
+                copy(self.__rebuilt) if self.__rebuilt is not None else None,
             )
         return output
 
@@ -249,7 +255,7 @@ class SimulationCollection:
 
     @property
     def dtype(self) -> dict[str, str]:
-        return {key: ds.header.file.data_dtype for key, ds in self.items()}
+        return {key: ds.header.file.data_type for key, ds in self.items()}
 
     @property
     def header(self) -> dict[str, OpenCosmoHeader]:
@@ -312,15 +318,15 @@ class SimulationCollection:
             raise ValueError(
                 f"This SimulationCollection does not have a simulation named {source}"
             )
-        new_datasets = prepare_matched_datasets(self.__match_set, self, source)
         return SimulationCollection(
-            new_datasets,
+            self.__datasets,
             self.__match_set,
             source,
-            {name: False for name in new_datasets.keys() if name != source},
+            {name: False for name in self.__datasets.keys() if name != source},
         )
 
     def clear_match(self):
+        self.__rebuild_all()
         return SimulationCollection(self.__datasets, self.__match_set)
 
     def bound(
@@ -379,7 +385,13 @@ class SimulationCollection:
         """
         if self.__match_source is not None:
             datasets = kwargs.pop("datasets", None)
-            if datasets is not None and datasets != self.__match_source:
+            if isinstance(datasets, str):
+                requested_datasets = {datasets}
+            elif datasets is None:
+                requested_datasets = {self.__match_source}
+            else:
+                requested_datasets = set(datasets)
+            if requested_datasets != {self.__match_source}:
                 raise ValueError(
                     f"After matching a collection, you can only filter on the active source of the match. Got datasets = {datasets} but the collection is matched against {self.__match_source}"
                 )
@@ -620,10 +632,7 @@ class SimulationCollection:
         """
         if self.__match_source is not None:
             assert self.__match_set is not None
-            new_datasets = prepare_matched_datasets(
-                self.__match_set, self.__datasets, self.__match_source
-            )
-            self.__datasets = new_datasets
+            self.__rebuild_all()
 
         results = self.__map(
             "evaluate",

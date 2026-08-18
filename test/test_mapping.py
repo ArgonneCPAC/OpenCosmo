@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import h5py
 import numpy as np
+import opencosmo.collection.simulation.simulation as simulation_module
 import pytest
 from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 
@@ -171,6 +172,22 @@ def _assert_mapping_equal(before, after, identifier="fof_halo_tag"):
         before_pairs = set(zip(*before_ids, strict=True))
         after_pairs = set(zip(*after_ids, strict=True))
         assert before_pairs == after_pairs, f"Mapping differs for source {source!r}"
+
+
+def _assert_ordered_mapping_equal(
+    before, after, source, identifier="fof_halo_tag", sort_by=None
+):
+    """Assert exact matched row order survives persistence."""
+    after = after.match(source)
+    if sort_by is not None:
+        after = after.sort_by(*sort_by).take_range(0, len(after[source]))
+    assert tuple(before.keys()) == tuple(after.keys())
+    for name in before.keys():
+        np.testing.assert_array_equal(
+            _column(after[name], identifier),
+            _column(before[name], identifier),
+            err_msg=name,
+        )
 
 
 @pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
@@ -371,6 +388,72 @@ def test_matched_chained_index_operations_remain_aligned(mapped_paths, test_data
     )
 
 
+@pytest.mark.parametrize(
+    "operation",
+    ("filter", "sort", "take-start", "take-end", "take-random", "range", "bound"),
+)
+def test_clear_match_rebuilds_pending_targets(operation, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(REFERENCE)
+
+    if operation == "filter":
+        result = matched.filter(oc.col("fof_halo_mass") > 1e14)
+    elif operation == "sort":
+        result = matched.sort_by("fof_halo_mass", invert=True)
+    elif operation.startswith("take-"):
+        result = matched.take(23, at=operation.removeprefix("take-"))
+    elif operation == "range":
+        result = matched.take_range(7, 31)
+    else:
+        matched = matched.with_units("scalefree")
+        result = matched.bound(oc.make_box((0.2, 0.2, 0.2), (0.8, 0.8, 0.8)))
+
+    expected_source = result[REFERENCE]
+    cleared = result.clear_match()
+
+    _assert_source_driven_result(
+        original, expected_source, cleared, REFERENCE, pairwise
+    )
+    assert {len(dataset) for dataset in cleared.values()} == {len(expected_source)}
+
+
+def test_mapped_collection_context_manager_exits_cleanly(mapped_paths, test_data):
+    with (
+        _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+        .match(REFERENCE)
+        .take_range(7, 31) as matched
+    ):
+        assert {len(dataset) for dataset in matched.values()} == {24}
+
+
+def test_matched_targets_are_rebuilt_at_most_once(mapped_paths, test_data, monkeypatch):
+    calls = 0
+    prepare = simulation_module.prepare_matched_datasets
+
+    def counting_prepare(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return prepare(*args, **kwargs)
+
+    monkeypatch.setattr(simulation_module, "prepare_matched_datasets", counting_prepare)
+    matched = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping).match(
+        REFERENCE
+    )
+
+    list(matched.values())
+    list(matched.items())
+    repr(matched)
+
+    assert calls == 1
+
+    pending = matched.take_range(7, 31)
+    list(pending.values())
+    list(pending.values())
+
+    assert calls == 2
+
+
 @pytest.mark.parametrize("accessor", ("getitem", "values", "items"))
 def test_matched_dataset_access_rebuilds_targets(accessor, mapped_paths, test_data):
     original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
@@ -451,17 +534,27 @@ def test_non_index_operation_preserves_active_match_source(
     _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
 
 
-def test_matched_index_operation_accepts_only_active_source_dataset(
-    mapped_paths, test_data
+@pytest.mark.parametrize("datasets", (REFERENCE, [REFERENCE], (REFERENCE,)))
+def test_matched_filter_accepts_active_source_dataset_forms(
+    datasets, mapped_paths, test_data
 ):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    collection = original.match(REFERENCE)
+    mask = oc.col("fof_halo_mass") > 1e14
+    expected_source = collection[REFERENCE].filter(mask)
+
+    result = collection.filter(mask, datasets=datasets)
+
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+def test_matched_filter_rejects_non_source_datasets(mapped_paths, test_data):
     collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping).match(
         REFERENCE
     )
     mask = oc.col("fof_halo_mass") > 1e14
 
-    result = collection.filter(mask, datasets=REFERENCE)
-
-    assert isinstance(result, oc.SimulationCollection)
     with pytest.raises(ValueError, match="active source"):
         collection.filter(mask, datasets=SIMULATION_A)
     with pytest.raises(ValueError, match="active source"):
@@ -558,6 +651,45 @@ def test_mapping_write_without_reference(mapped_paths, test_data, tmp_path):
     written = oc.open(tmp_path / "test.hdf5")
 
     _assert_mapping_equal(collection, written)
+
+
+@pytest.mark.parametrize(
+    ("transform", "sort_after_read"),
+    (
+        pytest.param(
+            lambda collection: collection.filter(oc.col("fof_halo_mass") > 1e14),
+            None,
+            id="filter",
+        ),
+        pytest.param(
+            lambda collection: collection.sort_by(
+                "fof_halo_mass", invert=True
+            ).take_range(7, 31),
+            ("fof_halo_mass", True),
+            id="sort-and-range",
+        ),
+        pytest.param(
+            lambda collection: collection.take(37, at="random"),
+            None,
+            id="random-take",
+        ),
+    ),
+)
+def test_active_match_write_preserves_order(
+    transform, sort_after_read, mapped_paths, test_data, tmp_path
+):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping).match(
+        REFERENCE
+    )
+    collection = transform(collection)
+    path = tmp_path / "test.hdf5"
+
+    oc.write(path, collection)
+    written = oc.open(path)
+
+    _assert_ordered_mapping_equal(
+        collection, written, REFERENCE, sort_by=sort_after_read
+    )
 
 
 def test_rebuild_with_new_source_preserves_old_reference_pair_as_auxiliary(tmp_path):

@@ -95,15 +95,35 @@ class DatasetMatchSet:
         return replace(self, aliases=self.aliases | name_to_uuid)
 
     def make_schema(
-        self, new_uuids: dict[str, UUID], indices: dict[str, DataIndex]
+        self,
+        new_uuids: dict[str, UUID],
+        indices: dict[str, DataIndex],
+        source: str | None = None,
     ) -> Schema:
         if not set(new_uuids.keys()).issubset(self.aliases.keys()):
             raise ValueError(
                 "Tried to match datasets that don't appear in this mapping!"
             )
-        source_alias = self.get_alias(self.reference_source)
+        source_alias = source or self.get_alias(self.reference_source)
 
-        if source_alias in new_uuids:
+        if source is not None:
+            lengths = {len(into_array(index)) for index in indices.values()}
+            if source not in new_uuids or len(lengths) != 1:
+                raise RuntimeError("Matched datasets must have identical row counts")
+            source_uuid = self.get_uuid(source)
+            assert source_uuid is not None
+            source_index = np.sort(into_array(indices[source]))
+            new_primary = {}
+            for name, uuid in new_uuids.items():
+                if name == source:
+                    continue
+                target_uuid = self.get_uuid(name)
+                assert target_uuid is not None
+                mapping = get_mapping(self, source_uuid, target_uuid, source_index)
+                assert mapping is not None
+                new_primary[uuid] = reindex_column(indices[name], mapping)
+            new_auxiliary = {}
+        elif source_alias in new_uuids:
             new_primary, new_auxiliary = rebuild_single_with_source(
                 self, new_uuids, indices, source_alias
             )
@@ -113,22 +133,24 @@ class DatasetMatchSet:
                 self, new_uuids, indices, source_alias
             )
 
-        primary_schemas = {}
+        primary_schemas: dict[str, Schema] = {}
         for new_uuid, primary_map in new_primary.items():
             writer = ColumnWriter.from_numpy_array(primary_map)
-            primary_schemas[new_uuid] = Schema(
-                new_uuid,
+            primary_schemas[str(new_uuid)] = Schema(
+                str(new_uuid),
                 FileEntry.COLUMNS,
                 {},
                 columns={"index": writer},
                 attributes={},
             )
 
-        auxiliary_schemas = {}
+        auxiliary_schemas: dict[str, Schema] = {}
         for (uuid_source, uuid_target), (
             index_source,
             index_target,
         ) in new_auxiliary.items():
+            if len(index_source) == 0:
+                continue
             source_writer = ColumnWriter.from_numpy_array(index_source)
             target_writer = ColumnWriter.from_numpy_array(index_target)
             writers = {"source": source_writer, "target": target_writer}
@@ -258,9 +280,7 @@ def rebuild_single_with_new_source(
 
             routed_pair = np.zeros(len(reindexa), dtype=bool)
             valid_a = reindexa >= 0
-            routed_pair[valid_a] = (
-                routed_b_by_a[reindexa[valid_a]] == reindexb[valid_a]
-            )
+            routed_pair[valid_a] = routed_b_by_a[reindexa[valid_a]] == reindexb[valid_a]
             keep &= ~routed_pair
             if keep.any():
                 new_auxiliary_maps[(new_uuids[aliasa], new_uuids[aliasb])] = (
