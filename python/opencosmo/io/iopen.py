@@ -380,12 +380,11 @@ def open_dataset(
         open_kwargs,
         data_index,
         metadata_group,
+        tree=tree,
     )
 
     dataset = oc.Dataset(
-        header,
         state,
-        tree=tree,
     )
     dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
     return dataset

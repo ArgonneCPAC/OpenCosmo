@@ -52,13 +52,9 @@ OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndar
 class Dataset:
     def __init__(
         self,
-        header: OpenCosmoHeader,
         state: DatasetState,
-        tree: Optional[Tree] = None,
     ):
-        self.__header = header
         self.__state = state
-        self.__tree = tree
 
     def __repr__(self):
         """
@@ -111,7 +107,7 @@ class Dataset:
         header: opencosmo.header.OpenCosmoHeader
 
         """
-        return self.__header
+        return self.__state.header
 
     @property
     def columns(self) -> list[str]:
@@ -168,7 +164,7 @@ class Dataset:
         -------
         cosmology: astropy.cosmology.Cosmology
         """
-        return self.__header.cosmology
+        return self.header.cosmology
 
     @property
     def dtype(self) -> str:
@@ -179,7 +175,7 @@ class Dataset:
         -------
         dtype: str
         """
-        return str(self.__header.file.data_type)
+        return str(self.header.file.data_type)
 
     @property
     def redshift(self) -> float | tuple[float, float] | None:
@@ -191,7 +187,7 @@ class Dataset:
         redshift: float
 
         """
-        return self.__header.file.redshift
+        return self.header.file.redshift
 
     @property
     def region(self) -> Region:
@@ -218,7 +214,7 @@ class Dataset:
         -------
         parameters: Optional[opencosmo.dtypes.hacc.HaccSimulationParameters]
         """
-        return getattr(self.__header, "simulation", None)
+        return getattr(self.header, "simulation", None)
 
     @property
     def sorted_by(self) -> Optional[str]:
@@ -233,7 +229,7 @@ class Dataset:
 
     @property
     def tree(self) -> Optional[Tree]:
-        return self.__tree
+        return self.__state.tree
 
     @property
     @deprecated(
@@ -363,7 +359,7 @@ class Dataset:
             If the dataset does not contain a spatial index
         """
 
-        if self.__tree is None:
+        if self.__state.tree is None:
             raise AttributeError(
                 "Your dataset does not contain a spatial index, "
                 "so spatial querying is not available"
@@ -387,7 +383,7 @@ class Dataset:
 
         if not self.__state.region.intersects(check_region):
             new_state = st.take_rows(self.__state, empty())
-            return Dataset(self.__header, new_state, self.__tree)
+            return Dataset(new_state)
 
         if not self.__state.region.contains(check_region):
             warn(
@@ -397,23 +393,21 @@ class Dataset:
 
         contained_index: DataIndex
         intersects_index: DataIndex
-        contained_index, intersects_index = self.__tree.query(check_region)
+        contained_index, intersects_index = self.__state.tree.query(check_region)
 
         contained_index = project(self.__state.raw_index, contained_index)
         intersects_index = project(self.__state.raw_index, intersects_index)
 
         check_state = st.take_rows(self.__state, intersects_index)
         check_dataset = Dataset(
-            self.__header,
             check_state,
-            self.__tree,
         )
-        if not self.__header.file.is_lightcone:
+        if not self.header.file.is_lightcone:
             check_dataset = check_dataset.with_units("scalefree")
 
         if len(check_dataset) > 0:
             index_mask = check.check_containment(
-                check_dataset, check_region, self.__header.file
+                check_dataset, check_region, self.header.file
             )
             new_intersects_index = mask(intersects_index, index_mask)
         else:
@@ -427,7 +421,7 @@ class Dataset:
 
         new_state = st.with_region(st.take_rows(self.__state, new_index), check_region)
 
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(new_state)
 
     def evaluate(
         self,
@@ -568,7 +562,7 @@ class Dataset:
             bool_mask &= m.apply(self)
 
         new_state = st.take_rows(self.__state, np.where(bool_mask)[0])
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(new_state)
 
     def rows(
         self,
@@ -701,9 +695,7 @@ class Dataset:
             new_state = st.select(new_state, all_columns)
 
         return Dataset(
-            self.__header,
             new_state,
-            self.__tree,
         )
 
     def drop(self, *columns: str | Iterable[str]) -> Dataset:
@@ -738,9 +730,7 @@ class Dataset:
 
         new_state = st.select(self.__state, all_columns, drop=True)
         return Dataset(
-            self.__header,
             new_state,
-            self.__tree,
         )
 
     def sort_by(self, column: Optional[str], invert: bool = False) -> Dataset:
@@ -778,9 +768,7 @@ class Dataset:
         """
         new_state = st.sort_by(self.__state, column, invert)
         return Dataset(
-            self.__header,
             new_state,
-            self.__tree,
         )
 
     def take(
@@ -908,7 +896,7 @@ class Dataset:
             )
 
         new_state = st.take_rows(self.__state, rows)
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(new_state)
 
     def with_new_columns(
         self,
@@ -988,7 +976,7 @@ class Dataset:
         new_state = st.with_new_columns(
             self.__state, descriptions, allow_overwrite, **new_columns
         )
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(new_state)
 
     def make_schema(
         self, with_header: bool = True, name: Optional[str] = None
@@ -1006,13 +994,6 @@ class Dataset:
 
         """
         schema = st.make_schema(self.__state, name)
-
-        if self.__tree is not None:
-            tree = self.__tree.apply_index(self.__state.raw_index)
-            tree_schema = tree.make_schema()
-            schema.children["index"] = tree_schema
-        metadata = self.header.dump()
-        schema.children["header"] = metadata
 
         return schema
 
@@ -1089,13 +1070,6 @@ class Dataset:
             self.cosmology,
             self.redshift,
         )
-        if convention is not None:
-            new_header = self.__header.with_units(convention)
-        else:
-            new_header = self.__header
-
         return Dataset(
-            new_header,
             new_state,
-            self.__tree,
         )

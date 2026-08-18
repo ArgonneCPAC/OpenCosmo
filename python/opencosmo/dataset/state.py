@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
     from opencosmo.units.handler import UnitHandler
 
 
@@ -80,6 +81,7 @@ class DatasetState:
     cache: DataCache
     unit_handler: UnitHandler
     header: OpenCosmoHeader
+    tree: Tree | None
     column_map: dict[str, UUID]
     region: Region
     open_kwargs: dict[str, Any]
@@ -150,6 +152,7 @@ def state_from_target(
     open_kwargs: dict[str, Any],
     index: Optional[DataIndex] = None,
     metadata_group: Optional[str] = None,
+    tree: Tree | None = None,
 ) -> DatasetState:
     data_group = target["dataset_group"]
     if "load" in data_group.keys():
@@ -188,6 +191,7 @@ def state_from_target(
         cache=cache,
         unit_handler=unit_handler,
         header=target["header"],
+        tree=tree,
         column_map=column_map,
         region=region,
         open_kwargs=open_kwargs,
@@ -205,6 +209,7 @@ def state_in_memory(
     open_kwargs: dict[str, Any],
     descriptions: Optional[dict[str, str]] = None,
     index: Optional[DataIndex] = None,
+    tree: Tree | None = None,
 ) -> DatasetState:
     descriptions = descriptions or {}
 
@@ -235,6 +240,7 @@ def state_in_memory(
         cache=cache,
         unit_handler=unit_handler,
         header=header,
+        tree=tree,
         column_map=column_map,
         region=region,
         open_kwargs=open_kwargs,
@@ -383,7 +389,9 @@ def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
         state.column_map,
         state.meta_columns,
         state.header,
+        state.tree,
         state.region,
+        state.raw_index,
         derived_data,
         name,
     )
@@ -530,4 +538,8 @@ def with_units(
         ).intersection(state.columns)
         columns_to_drop = all_derived_names.union(state.raw_data_handler.columns)
         cache = state.cache.drop(columns_to_drop)
-    return dataclasses.replace(state, unit_handler=new_handler, cache=cache)
+    new_header = state.header.with_units(convention_)
+
+    return dataclasses.replace(
+        state, unit_handler=new_handler, cache=cache, header=new_header
+    )
