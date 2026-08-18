@@ -7,8 +7,10 @@ import astropy.units as u
 import numpy as np
 from astropy.table import Column, QTable
 
+from opencosmo.dataset import operations as dsops
+
 if TYPE_CHECKING:
-    from opencosmo import Dataset
+    from opencosmo.dataset.state import DatasetState
 
 
 def verify_format(output_format: str):
@@ -68,7 +70,7 @@ def convert_data(
 
 
 def fetch_as_dict(
-    dataset: Dataset,
+    state: DatasetState,
     requires_names: Iterable[str],
     output_format: str,
     unpack: bool = True,
@@ -80,7 +82,8 @@ def fetch_as_dict(
     values via to_format_dict.
     """
     requires_names = list(requires_names)
-    raw = dataset.select(requires_names).get_data(format="astropy", unpack=unpack)
+    state = dsops.select(state, requires_names)
+    raw = dsops.get_data(state, format="astropy", unpack=unpack)
     if isinstance(raw, QTable):
         raw = {name: raw[name] for name in raw.colnames}
     elif not isinstance(raw, dict):

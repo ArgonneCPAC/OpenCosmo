@@ -857,8 +857,12 @@ class Lightcone(dict):
                 argname: vals[name] for argname, vals in mapped_kwargs.items()
             }
 
+            # Anti-pattern here. Workaround until Lightcone holds
+            # Dataset states. Future PR.
+            dataset_state_to_verify = dataset_to_verify._Dataset__state
+
             evaluated_column = build_evaluated_column(
-                dataset_to_verify,
+                dataset_state_to_verify,
                 func,
                 vectorize,
                 insert,
