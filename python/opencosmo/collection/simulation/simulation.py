@@ -190,6 +190,8 @@ class SimulationCollection:
 
         for name, dataset in self.items():
             children[name] = dataset.make_schema()
+            if isinstance(dataset, sc.StructureCollection):
+                continue
             new_uuids[name] = (
                 children[name].children["data"].attributes[""]["main_uuid"]
             )

@@ -120,5 +120,7 @@ def make_dataset_schema(
         name = ""
 
     return make_schema(
-        name, FileEntry.DATASET, children=children, attributes=attributes
+        name,
+        FileEntry.DATASET,
+        children=children,
     )
