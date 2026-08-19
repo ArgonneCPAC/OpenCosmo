@@ -99,11 +99,6 @@ def make_dataset_schema(
     if (load_conditions := raw_data_handler.load_conditions) is not None:
         attributes["load/if"] = load_conditions
 
-    dataset_uuid = uuid4()
-    attributes[""] = {
-        "uuid": str(dataset_uuid),
-        "main_uuid": str(dataset_uuid),
-    }
     data_schema = combine_with_cached_schema(
         data_schema,
         cached_data_schema,
@@ -111,7 +106,15 @@ def make_dataset_schema(
     metadata_schema = combine_with_cached_schema(
         metadata_schema, cached_metadata_schema
     )
-    data_schema = data_schema._replace(attributes=data_schema.attributes | attributes)
+
+    dataset_uuid = uuid4()
+    new_data_attributes = data_schema.attributes.get("", {}) | {
+        "uuid": str(dataset_uuid),
+        "main_uuid": str(dataset_uuid),
+    }
+    new_attributes = data_schema.attributes
+    new_attributes[""] = new_data_attributes
+    data_schema = data_schema._replace(attributes=new_attributes)
 
     children = {"data": data_schema}
     if metadata_schema.type != FileEntry.EMPTY:
@@ -120,7 +123,5 @@ def make_dataset_schema(
         name = ""
 
     return make_schema(
-        name,
-        FileEntry.DATASET,
-        children=children,
+        name, FileEntry.DATASET, children=children, attributes=attributes
     )
