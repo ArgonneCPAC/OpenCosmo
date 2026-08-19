@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
 import numpy as np
 
@@ -13,10 +13,10 @@ from opencosmo.column.column import (
     RawColumn,
 )
 from opencosmo.dataset import operations as dsops
-from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
+    from opencosmo.dataset.state import DatasetState
 
 
 class MissingColumnError(ValueError):
@@ -50,11 +50,13 @@ def get_column_selection(
 
 
 def do_multi_dataset_selections(
-    datasets: dict[Any, Dataset],
+    datasets: Mapping[Any, Dataset | DatasetState],
     select_args: tuple[str | list[str], ...],
     select_kwargs: dict[str, Any],
     mode: str = "global",
 ):
+    from opencosmo.dataset.state import DatasetState
+
     mode = select_kwargs.pop("mode", mode)
     columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
     length_by_ds = {name: len(ds) for name, ds in datasets.items()}
@@ -83,9 +85,11 @@ def do_multi_dataset_selections(
 
 
 def do_multi_dataset_drops(
-    datasets: dict[Any, Dataset],
+    datasets: Mapping[Any, Dataset | DatasetState],
     drop_args: tuple[str | list[str], ...],
 ):
+    from opencosmo.dataset.state import DatasetState
+
     columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
     length_by_ds = {name: len(ds) for name, ds in datasets.items()}
     args_by_ds, _ = build_multi_dataset_selections(
@@ -98,7 +102,10 @@ def do_multi_dataset_drops(
             new_datasets[name] = dataset
             continue
         try:
-            new_ds = dataset.drop(*ds_args)
+            if isinstance(dataset, DatasetState):
+                new_ds = dsops.drop(dataset, *ds_args)
+            else:
+                new_ds = dataset.drop(*ds_args)
         # Do NOT fail if the only selections are wildcards, just return the raw dataset
         except MissingColumnError:
             if not all("*" in ds_arg for ds_arg in ds_args):

@@ -221,10 +221,11 @@ def rebuild_single_with_source(
         reindexa = reindex_column(np.sort(indexa), aux_source_index[:])
         reindexb = reindex_column(np.sort(indexb), aux_target_index[:])
         to_keep = (reindexa != -1) & (reindexb != -1)
-        new_auxiliary_maps[(new_uuids[aliasa], new_uuids[aliasb])] = (
-            reindexa[to_keep],
-            reindexb[to_keep],
-        )
+        if to_keep.any():
+            new_auxiliary_maps[(new_uuids[aliasa], new_uuids[aliasb])] = (
+                reindexa[to_keep],
+                reindexb[to_keep],
+            )
 
     return new_primary_maps, new_auxiliary_maps
 

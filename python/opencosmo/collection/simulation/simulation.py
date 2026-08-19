@@ -112,9 +112,6 @@ class SimulationCollection:
                 "Simulation collection only accepts datasets and structure collections"
             )
 
-        if match_set is not None and match_source is None:
-            rebuilt = rebuilt
-
         if match_set is not None and not all(
             isinstance(v, (Dataset, DatasetState)) for v in datasets.values()
         ):
@@ -266,6 +263,8 @@ class SimulationCollection:
         datasets have the same data type, so it is always safe to map operations
         across all of them.
         """
+        if isinstance(datasets, str):
+            datasets = [datasets]
         if self.__match_source is not None and method in (
             "take",
             "take_range",
@@ -274,7 +273,9 @@ class SimulationCollection:
             "bound",
             "sort_by",
         ):
-            if datasets is not None or datasets != self.__match_source:
+            if (datasets is not None or not isinstance(datasets, Iterable)) and (
+                len(datasets) > 0 or list(datasets)[0] != self.__match_source  # type: ignore
+            ):
                 raise ValueError(
                     f"When working with a matched collection, {method} can only be called on the active source. Got datasets = {datasets}"
                 )
@@ -561,15 +562,17 @@ class SimulationCollection:
             Explicit dataset-keyed drop selections.
 
         """
-        if not all(isinstance(dataset, Dataset) for dataset in self.values()):
+        if not all(
+            isinstance(dataset, DatasetState) for dataset in self.__datasets.values()
+        ):
             return self.__map("drop", *args, **kwargs)
 
-        datasets = cast("dict[str, Dataset]", self.__datasets)
+        datasets = cast("dict[str, DatasetState]", self.__datasets)
         output = do_multi_dataset_drops(datasets, args)
         for dataset_name, columns in kwargs.items():
             if dataset_name not in self:
                 raise ValueError(f"Dataset {dataset_name} not found in collection.")
-            output[dataset_name] = output[dataset_name].drop(columns)
+            output[dataset_name] = dsops.drop(output[dataset_name], columns)
         return SimulationCollection(
             output, self.__match_set, self.__match_source, self.__rebuilt
         )
