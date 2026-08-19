@@ -8,13 +8,13 @@ from opencosmo.units import UnitsError
 
 
 @pytest.fixture
-def properties_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def properties_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 @pytest.fixture
-def particles_path(snapshot_path):
-    return snapshot_path / "haloparticles.hdf5"
+def particles_path(test_data):
+    return test_data.snapshot.primary.halo_particles
 
 
 def test_derive_multiply(properties_path):

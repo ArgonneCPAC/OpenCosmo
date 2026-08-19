@@ -143,7 +143,7 @@ In each iteration, "halo properties" will be a dictionary containing the propert
 
 ### Testing
 
-To run tests, first download the test data [from Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing). Set environment variable `OPENCOSMO_DATA_PATH` to the path where the data is stored. Then run the tests with `pytest`:
+To run tests, first download the test data [from Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing). Extract it into `test_data/` at the repository root, or set `OPENCOSMO_DATA_PATH` to an extracted data directory elsewhere. See [`test/TEST_DATA.md`](test/TEST_DATA.md) for the expected layout. Then run the tests with `pytest`:
 
 ```bash
 export OPENCOSMO_DATA_PATH=/path/to/data

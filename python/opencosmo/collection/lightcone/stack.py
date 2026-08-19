@@ -103,7 +103,21 @@ def sync_metadata(dataset_schemas: list[Schema]):
     additional_metadata = [schema.attributes for schema in dataset_schemas]
     if not any(additional_metadata):
         return {}
-    if not all(am == additional_metadata[0] for am in additional_metadata[1:]):
+
+    def without_dataset_identity(metadata):
+        return {
+            path: (
+                {key: value for key, value in attributes.items() if key not in identity}
+                if path == ""
+                else attributes
+            )
+            for path, attributes in metadata.items()
+            if path != "" or any(key not in identity for key in attributes)
+        }
+
+    identity = {"uuid", "main_uuid"}
+    comparable_metadata = [without_dataset_identity(am) for am in additional_metadata]
+    if not all(am == comparable_metadata[0] for am in comparable_metadata[1:]):
         raise ValueError("Datasets don't have the same metadata!")
 
     return additional_metadata[0]

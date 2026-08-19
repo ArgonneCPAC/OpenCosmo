@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Iterable, Optional
+from uuid import uuid4
 
 import h5py
 import numpy as np
@@ -81,7 +82,6 @@ def write_parallel(file: Path, file_schema: Schema):
         raise
     if any(rs == CombineState.INVALID for rs in results):
         raise ValueError("One or more ranks recieved invalid schemas!")
-
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
     if len(has_data) == 0:
         raise ValueError("No ranks have any data to write!")
@@ -93,14 +93,15 @@ def write_parallel(file: Path, file_schema: Schema):
     if new_comm == MPI.COMM_NULL:
         return cleanup_mpi(comm, new_comm, new_group)
 
+    file_schema = sync_schemas(file_schema, new_comm)
     verify_schemas(file_schema, new_comm)
     offsets = __get_all_offsets(file_schema, new_comm, "")
+
     if new_comm.Get_rank() == 0:
         with h5py.File(file, "w") as f:
             __allocate(file_schema, f, new_comm)
     else:
         __allocate(file_schema, None, new_comm)
-
     try:
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
             __write_parallel(file_schema, f, offsets, new_comm)
@@ -138,7 +139,13 @@ def get_all_keys(
     return all_data_names
 
 
-def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
+def sync_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
+    if comm.Get_size() == 1:  # this shouldn't happen, but include anyway
+        return schema
+    return verify_schemas(schema, comm)
+
+
+def verify_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
     """
     By this stage, we know that all the ranks that are participating have a valid
     file schema. We now need to verify that they can be made consistent across ranks.
@@ -149,9 +156,6 @@ def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
 
     """
 
-    if comm.Get_size() == 1:  # this shouldn't happen, but include anyway
-        return
-
     file_types = set(comm.allgather(schema.type))
     if len(file_types) > 1:
         raise ValueError(
@@ -159,7 +163,9 @@ def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
         )
 
     verify_columns(schema.columns, comm)
-    verify_attributes(schema.attributes, comm)
+    new_attributes = sync_attributes(schema.attributes, schema.name, comm)
+    schema = schema._replace(attributes=new_attributes)
+
     all_child_names = get_all_keys(schema.children if schema is not None else {}, comm)
 
     for child_name in all_child_names:
@@ -174,12 +180,14 @@ def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
             new_comm = comm.Create(new_group)
             group.Free()
         if child_name in schema.children:
-            verify_schemas(schema.children[child_name], new_comm)
+            new_schema = verify_schemas(schema.children[child_name], new_comm)
+            schema.children[child_name] = new_schema
         # Free only the sub-communicator/group we created; never the parent comm.
         if new_group is not None:
             if new_comm != MPI.COMM_NULL:
                 new_comm.Free()
             new_group.Free()
+    return schema
 
 
 def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
@@ -230,11 +238,17 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
             raise ValueError("Metadata was not consistent across ranks!")
 
 
-def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
-    all_metadata = comm.allgather(metadata)
+def sync_attributes(metadata: dict[str, Any], group_name: str, comm: MPI.Comm):
+    if group_name == "data":
+        uuid = uuid4()
+        uuid = comm.bcast(str(uuid))
+        metadata[""]["uuid"] = uuid
+        metadata[""]["main_uuid"] = uuid
 
+    all_metadata = comm.allgather(metadata)
     if not all(md == all_metadata[0] for md in all_metadata[1:]):
         raise ValueError("Not all ranks recieved the same metadata!")
+    return metadata
 
 
 def __write_parallel(
@@ -353,6 +367,7 @@ def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MP
     for column_name in all_column_names:
         column_writer = schema.columns.get(column_name)
         __allocate_column(column_name, column_writer, group, comm)
+
     __write_metadata(schema, group, comm)
 
     all_child_names = get_all_keys(schema.children, comm)
@@ -418,10 +433,11 @@ def __write_metadata(
         attrs = comm.allgather(None)
     else:
         attrs = comm.allgather(schema.attributes)
+
     attrs_to_write = list(filter(lambda at: at is not None, attrs))[0]
     if group is not None:
         for path, metadata in attrs_to_write.items():
-            metadata_group = group.require_group(path)
+            metadata_group = group.require_group(path) if path else group
             metadata_group.attrs.update(metadata)
 
 

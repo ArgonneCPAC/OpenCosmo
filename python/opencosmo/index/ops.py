@@ -24,6 +24,17 @@ def rebuild_by_ranges(index: DataIndex, ranges: ChunkedIndex):
             return idxlib.rebuild_chunked_by_ranges(*index, *ranges)
 
 
+def trim(index: DataIndex, max: int):
+    if isinstance(index, np.ndarray):
+        return index[index < max]
+    ends = index[0] + index[1]
+    ends = np.clip(ends, a_min=None, a_max=max)
+
+    valid = ends > index[0]
+    new_sizes = ends - index[0]
+    return index[0][valid], new_sizes[valid]
+
+
 def offset(index: DataIndex, offset_amount: int):
     if isinstance(index, np.ndarray):
         return index + offset_amount

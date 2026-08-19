@@ -13,18 +13,8 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def healpix_map_path(map_path):
-    return map_path / "test_map.hdf5"
-
-
-@pytest.fixture
-def all_files():
-    return ["test_map.hdf5"]
-
-
-@pytest.fixture
-def structure_maps(map_path, all_files):
-    return [map_path / f for f in all_files]
+def healpix_map_path(test_data):
+    return test_data.healpix_map
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")

@@ -5,10 +5,10 @@ from opencosmo.analysis import create_yt_dataset, visualize_halo
 
 
 @pytest.fixture
-def data(snapshot_path):
+def data(test_data):
     """Fetch particle data for a couple of halos"""
-    haloproperties = snapshot_path / "haloproperties.hdf5"
-    haloparticles = snapshot_path / "haloparticles.hdf5"
+    haloproperties = test_data.snapshot.primary.halo_properties
+    haloparticles = test_data.snapshot.primary.halo_particles
     d = (
         oc.open([haloproperties, haloparticles])
         .filter(oc.col("sod_halo_mass") > 5e13)
