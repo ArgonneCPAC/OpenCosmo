@@ -12,6 +12,8 @@ from opencosmo.column.column import (
     DerivedScalarValue,
     RawColumn,
 )
+from opencosmo.dataset import operations as dsops
+from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
     from opencosmo import Dataset
@@ -66,9 +68,12 @@ def do_multi_dataset_selections(
         if not ds_args and not ds_kwargs:
             new_datasets[name] = dataset
             continue
+
         try:
-            new_ds = dataset.select(*ds_args, **ds_kwargs, mode=mode)
-        # Do NOT fail if the only selections are wildcards, just return the raw dataset
+            if isinstance(dataset, DatasetState):
+                new_ds = dsops.select(dataset, *ds_args, **ds_kwargs, mode=mode)
+            else:
+                new_ds = dataset.select(*ds_args, **ds_kwargs, mode=mode)
         except MissingColumnError:
             if not all("*" in ds_arg for ds_arg in ds_args) or ds_kwargs:
                 raise

@@ -470,7 +470,7 @@ class Dataset:
         if not masks:
             return self
 
-        new_state = dsops.filter(self.__state, masks, mode)
+        new_state = dsops.filter(self.__state, *masks, mode=mode)
         return Dataset(new_state)
 
     def rows(
@@ -876,7 +876,7 @@ class Dataset:
             self.__state,
             convention,
             conversions,
-            columns,
+            **columns,
         )
         return Dataset(
             new_state,

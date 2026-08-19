@@ -68,7 +68,7 @@ def get_data(
     return convert_data(data, format, wrap_single=wrap_single)
 
 
-def filter(state: DatasetState, masks: tuple[ColumnMask, ...], mode: str):
+def filter(state: DatasetState, *masks: ColumnMask, mode: str = "global"):
     reducer = default_reducer(mode)
     masks = tuple(m.with_reducer(reducer) for m in masks)
     bool_mask = np.ones(len(state), dtype=bool)
@@ -140,13 +140,13 @@ def drop(state: DatasetState, *columns: str | Iterable[str]):
     return st.select(state, all_columns, drop=True)
 
 
-def sort_by(state: DatasetState, column_name: str | None, invert: bool) -> DatasetState:
-    if column_name is None:
+def sort_by(state: DatasetState, column: str | None, invert: bool) -> DatasetState:
+    if column is None:
         sort_key = None
-    elif column_name not in state.columns:
-        raise ValueError(f"This dataset has no column {column_name}")
+    elif column not in state.columns:
+        raise ValueError(f"This dataset has no column {column}")
     else:
-        sort_key = (column_name, invert)
+        sort_key = (column, invert)
 
     return dataclasses.replace(state, sort_key=sort_key)
 
@@ -311,7 +311,7 @@ def bound(state: DatasetState, region, select_by):
 
     check_state = st.take_rows(state, intersects_index)
     if not state.header.file.is_lightcone:
-        check_state = with_units(check_state, "scalefree", {}, {})
+        check_state = with_units(check_state, "scalefree", {})
 
     if len(check_state) > 0:
         index_mask = check.check_containment(
@@ -332,7 +332,7 @@ def with_units(
     state: DatasetState,
     convention: str | None,
     conversions: dict[u.Unit, u.Unit],
-    columns: dict[str, u.Unit],
+    **columns: u.Unit,
 ) -> DatasetState:
     if convention is None:
         convention_ = state.unit_handler.current_convention
