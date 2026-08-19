@@ -72,6 +72,9 @@ class Hdf5Handler:
     def __len__(self):
         return get_length(self.__index)
 
+    def with_index(self, index: DataIndex) -> Hdf5Handler:
+        return Hdf5Handler(self.__columns, index, self.__load_conditions)
+
     @property
     def in_memory(self) -> bool:
         return self.__in_memory

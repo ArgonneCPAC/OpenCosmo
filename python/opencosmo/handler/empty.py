@@ -19,6 +19,9 @@ class EmptyHandler:
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None) -> Self:
         return self
 
+    def with_index(self, index):
+        return self
+
     def __len__(self) -> int:
         return 0
 

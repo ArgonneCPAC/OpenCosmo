@@ -33,6 +33,8 @@ class DataHandler(Protocol):
     @property
     def index(self) -> DataIndex: ...
 
+    def with_index(self, index: DataIndex) -> Self: ...
+
 
 class DataCache(Protocol):
     def add_data(

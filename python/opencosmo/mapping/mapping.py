@@ -332,10 +332,19 @@ def get_auxillary_mapping(
     auxillary_map = (auxillary_map[0][:], auxillary_map[1][:])
 
     index_arr = into_array(index)
-    _, index_into_map, index_into_final = np.intersect1d(
-        auxillary_map[0], index_arr, return_indices=True
-    )
-    return (index_into_final, auxillary_map[1][index_into_map])
+
+    # np.intersect1d would report only the first position of each repeated
+    # value, silently leaving later duplicates without their override. An index
+    # can contain duplicates after a match, because several source rows may map
+    # onto the same target row.
+    aux_source, aux_target = auxillary_map
+    order = np.argsort(aux_source, kind="stable")
+    sorted_source = aux_source[order]
+    candidates = np.searchsorted(sorted_source, index_arr)
+    candidates[candidates >= len(sorted_source)] = 0
+    index_into_final = np.flatnonzero(sorted_source[candidates] == index_arr)
+    index_into_map = order[candidates[index_into_final]]
+    return (index_into_final, aux_target[index_into_map])
 
 
 def get_primary_mapping(

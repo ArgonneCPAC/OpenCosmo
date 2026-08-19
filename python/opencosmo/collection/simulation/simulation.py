@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import copy
+from dataclasses import replace
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, cast
 
 import numpy as np
@@ -14,6 +15,7 @@ from opencosmo.dataset.state import DatasetState
 from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mapping.mapping import get_mapping
+from opencosmo.mpi import get_comm_world, has_mpi
 
 if TYPE_CHECKING:
     import astropy.units as u
@@ -39,7 +41,9 @@ def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
 
 
 def prepare_matched_datasets(
-    match_set: DatasetMatchSet, datasets: Mapping[str, DatasetState], source
+    match_set: DatasetMatchSet,
+    datasets: Mapping[str, DatasetState],
+    source: str,
 ):
     # Guard: active sort keys would cause dataset/state.py to re-sort the
     # carefully ordered rows produced below, silently misaligning everything.
@@ -63,6 +67,9 @@ def prepare_matched_datasets(
         rows_to_keep = rows_to_keep & (mapping >= 0)
         mappings[name] = mapping
 
+    if has_mpi():
+        return prepare_matched_datasets_mpi(datasets, mappings, rows_to_keep, source)
+
     # The np.isin pass below is a required precondition for the unchecked
     # searchsorted in the final loop: it guarantees every value in `wanted`
     # is present in `target_index`, making the lookup safe without bounds checks.
@@ -73,6 +80,8 @@ def prepare_matched_datasets(
         )
         rows_to_keep[rows_to_keep] &= mappings_in_index
 
+    # Must be taken only after the refinement above, so the source and every
+    # target end up with the same number of rows.
     new_datasets = {
         source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
     }
@@ -83,6 +92,41 @@ def prepare_matched_datasets(
         rows_to_take = order[np.searchsorted(target_index, wanted, sorter=order)]
         new_datasets[name] = dsops.take_rows(datasets[name], rows_to_take)
 
+    return new_datasets
+
+
+def prepare_matched_datasets_mpi(
+    datasets: Mapping[str, DatasetState],
+    mappings: dict[str, np.ndarray],
+    rows_to_keep: np.ndarray,
+    source: str,
+):
+    """
+    Match under MPI, where a rank pulls the GLOBAL target rows that its local
+    source rows map to. Target rows therefore need not live on this rank, so the
+    serial rank-local membership test does not apply.
+
+    A row is still only matchable if it is present somewhere in the current
+    global state. Rows dropped by an earlier match are gone from every rank and
+    must not reappear, so membership is tested against the union of every rank's
+    index rather than the local index alone.
+    """
+    comm = get_comm_world()
+    assert comm is not None
+
+    for name, mapping in mappings.items():
+        global_index = np.concatenate(
+            comm.allgather(into_array(datasets[name].raw_index))
+        )
+        rows_to_keep[rows_to_keep] &= np.isin(mapping[rows_to_keep], global_index)
+
+    new_datasets = {
+        source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
+    }
+    for name, mapping in mappings.items():
+        dataset = datasets[name]
+        new_handler = dataset.raw_data_handler.with_index(mapping[rows_to_keep])
+        new_datasets[name] = replace(dataset, raw_data_handler=new_handler)
     return new_datasets
 
 
@@ -273,8 +317,12 @@ class SimulationCollection:
             "bound",
             "sort_by",
         ):
-            if (datasets is not None or not isinstance(datasets, Iterable)) and (
-                len(datasets) > 0 or list(datasets)[0] != self.__match_source  # type: ignore
+            # datasets=None means "all datasets", which for a matched collection
+            # resolves to the active source. Any explicit request must name that
+            # source and nothing else.
+            if datasets is not None and (
+                not isinstance(datasets, Iterable)
+                or tuple(datasets) != (self.__match_source,)
             ):
                 raise ValueError(
                     f"When working with a matched collection, {method} can only be called on the active source. Got datasets = {datasets}"
@@ -446,7 +494,9 @@ class SimulationCollection:
         assert all(isinstance(ds, DatasetState) for ds in self.__datasets.values())
 
         new_datasets = prepare_matched_datasets(
-            self.__match_set, cast("dict[str, DatasetState]", self.__datasets), source
+            self.__match_set,
+            cast("dict[str, DatasetState]", self.__datasets),
+            source,
         )
 
         return SimulationCollection(
