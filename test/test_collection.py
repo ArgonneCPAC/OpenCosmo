@@ -1121,7 +1121,9 @@ def test_simulation_collection_evaluate_selected_datasets(multi_path, insert):
     if insert:
         assert set(result.keys()) == set(collection.keys())
         assert "fof_px" in result[selected].columns
-        assert all(result[name] is collection[name] for name in unselected)
+        assert all(
+            result[name]._state is collection[name]._state for name in unselected
+        )
     else:
         assert set(result) == {selected}
 
@@ -1189,7 +1191,7 @@ def test_simulation_collection_add(multi_path):
     updated = collection.with_new_columns(datasets=ds_name, random_data=data)
     stored_data = updated[ds_name].select("random_data").get_data("numpy")
     assert np.all(stored_data == data)
-    assert all(updated[name] is collection[name] for name in unselected)
+    assert all(updated[name]._state is collection[name]._state for name in unselected)
 
 
 def test_simulation_collection_add_selected_mapped_values(multi_path):

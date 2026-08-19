@@ -17,17 +17,8 @@ import numpy as np
 from astropy.table import QTable  # type: ignore
 
 import opencosmo.dataset.state as st
-from opencosmo.dataset.evaluate import build_evaluated_column, visit_dataset
-from opencosmo.dataset.formats import convert_data, verify_format
-from opencosmo.dataset.take import (
-    get_end_take_index,
-    get_random_take_index,
-    get_range_take_index,
-)
+from opencosmo.dataset import operations as dsops
 from opencosmo.deprecated import deprecated
-from opencosmo.index import empty, get_range, into_array, mask, project
-from opencosmo.spatial import check
-from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
@@ -52,13 +43,9 @@ OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndar
 class Dataset:
     def __init__(
         self,
-        header: OpenCosmoHeader,
         state: DatasetState,
-        tree: Optional[Tree] = None,
     ):
-        self.__header = header
         self.__state = state
-        self.__tree = tree
 
     def __repr__(self):
         """
@@ -87,6 +74,11 @@ class Dataset:
     def __len__(self):
         return len(self.__state)
 
+    @property
+    def _state(self) -> st.DatasetState:
+        """Return the internal state for collection and I/O implementations."""
+        return self.__state
+
     def __enter__(self):
         # Need to write tests
         return self
@@ -111,7 +103,7 @@ class Dataset:
         header: opencosmo.header.OpenCosmoHeader
 
         """
-        return self.__header
+        return self.__state.header
 
     @property
     def columns(self) -> list[str]:
@@ -168,7 +160,7 @@ class Dataset:
         -------
         cosmology: astropy.cosmology.Cosmology
         """
-        return self.__header.cosmology
+        return self.header.cosmology
 
     @property
     def dtype(self) -> str:
@@ -179,7 +171,7 @@ class Dataset:
         -------
         dtype: str
         """
-        return str(self.__header.file.data_type)
+        return str(self.header.file.data_type)
 
     @property
     def redshift(self) -> float | tuple[float, float] | None:
@@ -191,7 +183,7 @@ class Dataset:
         redshift: float
 
         """
-        return self.__header.file.redshift
+        return self.header.file.redshift
 
     @property
     def region(self) -> Region:
@@ -218,7 +210,7 @@ class Dataset:
         -------
         parameters: Optional[opencosmo.dtypes.hacc.HaccSimulationParameters]
         """
-        return getattr(self.__header, "simulation", None)
+        return getattr(self.header, "simulation", None)
 
     @property
     def sorted_by(self) -> Optional[str]:
@@ -233,7 +225,7 @@ class Dataset:
 
     @property
     def tree(self) -> Optional[Tree]:
-        return self.__tree
+        return self.__state.tree
 
     @property
     @deprecated(
@@ -265,7 +257,7 @@ class Dataset:
         self,
         format="astropy",
         unpack=True,
-        metadata_columns=[],
+        metadata_columns=None,
         wrap_single=False,
         **kwargs,
     ) -> OpenCosmoData:
@@ -311,30 +303,9 @@ class Dataset:
                 "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
             )
             format = kwargs["output"]
-
-        verify_format(format)
-
-        if self.__state.convention.value == "physical":
-            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
-            unit_kwargs = {"scale_factor": scale_factor}
-        else:
-            unit_kwargs = {}
-
-        data = st.get_data(
-            self.__state,
-            unit_kwargs=unit_kwargs,
-            metadata_columns=metadata_columns,
-            **kwargs,
-        )  # dict
-        if unpack:
-            data = {
-                key: value[0]
-                if isinstance(value, np.ndarray) and value.ndim > 0 and len(value) == 1
-                else value
-                for key, value in data.items()
-            }
-
-        return convert_data(data, format, wrap_single=wrap_single)
+        return dsops.get_data(
+            self.__state, format, unpack, wrap_single, metadata_columns, **kwargs
+        )
 
     def bound(self, region: Region, select_by: Optional[str] = None):
         """
@@ -363,71 +334,9 @@ class Dataset:
             If the dataset does not contain a spatial index
         """
 
-        if self.__tree is None:
-            raise AttributeError(
-                "Your dataset does not contain a spatial index, "
-                "so spatial querying is not available"
-            )
+        new_state = dsops.bound(self.__state, region, select_by)
 
-        if not self.header.file.is_lightcone:
-            columns = check.find_coordinates_3d(self, self.dtype)
-
-            check_region = region.into_base_convention(
-                self.__state.unit_handler,  # type: ignore[arg-type]
-                columns,
-                self.__state.convention,
-                {
-                    "scale_factor": self.cosmology.scale_factor(
-                        self.header.file.redshift
-                    ).value
-                },
-            )
-        else:
-            check_region = region
-
-        if not self.__state.region.intersects(check_region):
-            new_state = st.take_rows(self.__state, empty())
-            return Dataset(self.__header, new_state, self.__tree)
-
-        if not self.__state.region.contains(check_region):
-            warn(
-                "You're querying with a region that is not fully contained by the "
-                "region this dataset is in. This may result in unexpected behavior"
-            )
-
-        contained_index: DataIndex
-        intersects_index: DataIndex
-        contained_index, intersects_index = self.__tree.query(check_region)
-
-        contained_index = project(self.__state.raw_index, contained_index)
-        intersects_index = project(self.__state.raw_index, intersects_index)
-
-        check_state = st.take_rows(self.__state, intersects_index)
-        check_dataset = Dataset(
-            self.__header,
-            check_state,
-            self.__tree,
-        )
-        if not self.__header.file.is_lightcone:
-            check_dataset = check_dataset.with_units("scalefree")
-
-        if len(check_dataset) > 0:
-            index_mask = check.check_containment(
-                check_dataset, check_region, self.__header.file
-            )
-            new_intersects_index = mask(intersects_index, index_mask)
-        else:
-            new_intersects_index = np.array([], dtype=np.int64)
-
-        new_index = np.sort(
-            np.concatenate(
-                [into_array(contained_index), into_array(new_intersects_index)]
-            )
-        )
-
-        new_state = st.with_region(st.take_rows(self.__state, new_index), check_region)
-
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(new_state)
 
     def evaluate(
         self,
@@ -511,20 +420,20 @@ class Dataset:
         result : Dataset | dict[str, np.ndarray | astropy.units.Quantity]
             The new dataset with the evaluated column(s) or the results as numpy arrays or astropy quantities
         """
-        verify_format(format)
-        evaluated_column = build_evaluated_column(
-            self, func, vectorize, insert, format, batch_size, evaluate_kwargs
+        result = dsops.evaluate(
+            self.__state,
+            func,
+            vectorize,
+            insert,
+            format,
+            batch_size,
+            allow_overwrite,
+            _verify,
+            **evaluate_kwargs,
         )
-
         if not insert:
-            output = visit_dataset(evaluated_column, self, batch_size)
-            return output
-
-        return self.with_new_columns(
-            descriptions={},
-            allow_overwrite=allow_overwrite,
-            **{func.__name__: evaluated_column},
-        )
+            return result
+        return Dataset(result)
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """
@@ -557,18 +466,12 @@ class Dataset:
             not in the dataset, or the  would return zero rows.
 
         """
-        from opencosmo.column.reducer import default_reducer
 
         if not masks:
             return self
-        reducer = default_reducer(mode)
-        masks = tuple(m.with_reducer(reducer) for m in masks)
-        bool_mask = np.ones(len(self), dtype=bool)
-        for m in masks:
-            bool_mask &= m.apply(self)
 
-        new_state = st.take_rows(self.__state, np.where(bool_mask)[0])
-        return Dataset(self.__header, new_state, self.__tree)
+        new_state = dsops.filter(self.__state, *masks, mode=mode)
+        return Dataset(new_state)
 
     def rows(
         self,
@@ -592,23 +495,7 @@ class Dataset:
             A dictionary of values for each row in the dataset with units.
 
         """
-        if self.__state.convention.value == "physical":
-            scale_factor = get_scale_factor(self.__state, self.cosmology, self.redshift)
-            unit_kwargs = {"scale_factor": scale_factor}
-        else:
-            unit_kwargs = {}
-
-        for row in st.iter_rows(self.__state, metadata_columns, unit_kwargs):
-            output_data = row
-            if not isinstance(output_data, dict):
-                output_data = {self.columns[0]: row}
-
-            if not include_units:
-                output_data = {
-                    name: val.value if isinstance(val, u.Quantity) else val
-                    for name, val in output_data.items()
-                }
-            yield output_data
+        yield from dsops.rows(self.__state, metadata_columns, include_units)
 
     def select(
         self,
@@ -661,50 +548,8 @@ class Dataset:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        from opencosmo.column.column import Column, DerivedScalarValue
-        from opencosmo.column.reducer import default_reducer
-
-        all_columns: set[str] = set()
-        for col_group in columns:
-            if isinstance(col_group, str):
-                col_group = {col_group}
-            all_columns.update(col_group)
-
-        scalars: dict[str, DerivedScalarValue] = {}
-        non_scalars: dict[str, ConstructedColumn] = {}
-        for name, col in derived_columns.items():
-            if isinstance(col, DerivedScalarValue):
-                scalars[name] = col
-            else:
-                non_scalars[name] = col
-
-        if scalars and (all_columns or non_scalars):
-            raise ValueError(
-                "Scalar selections cannot be mixed with column selections. "
-                "Call select() with only scalar kwargs, or only column selections."
-            )
-
-        reducer = default_reducer(mode)
-        derived_columns = {
-            k: v.with_reducer(reducer)
-            if isinstance(v, (Column, DerivedScalarValue))
-            else v
-            for k, v in derived_columns.items()
-        }
-
-        new_state = self.__state
-        if derived_columns:
-            new_state = st.with_new_columns(new_state, {}, False, **derived_columns)
-            all_columns.update(derived_columns.keys())
-
-        if all_columns:
-            new_state = st.select(new_state, all_columns)
-
-        return Dataset(
-            self.__header,
-            new_state,
-            self.__tree,
-        )
+        new_state = dsops.select(self.__state, *columns, mode=mode, **derived_columns)
+        return Dataset(new_state)
 
     def drop(self, *columns: str | Iterable[str]) -> Dataset:
         """
@@ -730,17 +575,9 @@ class Dataset:
 
         """
 
-        all_columns: set[str] = set()
-        for col_group in columns:
-            if isinstance(col_group, str):
-                col_group = {col_group}
-            all_columns.update(col_group)
-
-        new_state = st.select(self.__state, all_columns, drop=True)
+        new_state = dsops.drop(self.__state, *columns)
         return Dataset(
-            self.__header,
             new_state,
-            self.__tree,
         )
 
     def sort_by(self, column: Optional[str], invert: bool = False) -> Dataset:
@@ -776,11 +613,9 @@ class Dataset:
 
 
         """
-        new_state = st.sort_by(self.__state, column, invert)
+        new_state = dsops.sort_by(self.__state, column, invert)
         return Dataset(
-            self.__header,
             new_state,
-            self.__tree,
         )
 
     def take(
@@ -823,16 +658,8 @@ class Dataset:
             or if 'at' is invalid.
 
         """
-        if at == "start":
-            return self.take_range(0, n, mode)
-        elif at == "end":
-            take_index = get_end_take_index(n, self, self.__state.sort_key, mode)
-            return self.take_rows(take_index)
-        elif at != "random":
-            raise ValueError(f"Unknown take type {at}")
-
-        row_indices = get_random_take_index(n, len(self), mode)
-        return self.take_rows(row_indices)
+        new_state = dsops.take(self.__state, n, at, mode)
+        return Dataset(new_state)
 
     def take_range(
         self, start: int, end: int, mode: Literal["local", "global"] = "local"
@@ -871,15 +698,8 @@ class Dataset:
             or if end is greater than start.
 
         """
-        if start < 0 or end < 0:
-            raise ValueError("start and end must be positive.")
-        if end < start:
-            raise ValueError("end must be greater than start.")
-
-        take_index = get_range_take_index(
-            self, self.__state.sort_key, start, end - start, mode
-        )
-        return self.take_rows(take_index)
+        new_state = dsops.take_range(self.__state, start, end, mode)
+        return Dataset(new_state)
 
     def take_rows(self, rows: np.ndarray | DataIndex):
         """
@@ -901,14 +721,8 @@ class Dataset:
             dataset.
 
         """
-        row_range = get_range(rows)
-        if row_range[0] < 0 or row_range[1] > len(self):
-            raise ValueError(
-                "Row indices must be between 0 and the length of this dataset - 1!"
-            )
-
-        new_state = st.take_rows(self.__state, rows)
-        return Dataset(self.__header, new_state, self.__tree)
+        new_state = dsops.take_rows(self.__state, rows)
+        return Dataset(new_state)
 
     def with_new_columns(
         self,
@@ -971,24 +785,10 @@ class Dataset:
             This dataset with the columns added
 
         """
-        from opencosmo.column.column import Column, DerivedScalarValue
-        from opencosmo.column.reducer import default_reducer
-
-        if any(isinstance(col, DerivedScalarValue) for col in new_columns.values()):
-            raise ValueError(
-                "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
-            )
-        reducer = default_reducer(mode)
-        new_columns = {
-            k: v.with_reducer(reducer) if isinstance(v, Column) else v
-            for k, v in new_columns.items()
-        }
-        if isinstance(descriptions, str):
-            descriptions = {key: descriptions for key in new_columns.keys()}
-        new_state = st.with_new_columns(
-            self.__state, descriptions, allow_overwrite, **new_columns
+        new_state = dsops.with_new_columns(
+            self.__state, descriptions, allow_overwrite, mode=mode, **new_columns
         )
-        return Dataset(self.__header, new_state, self.__tree)
+        return Dataset(new_state)
 
     def make_schema(
         self, with_header: bool = True, name: Optional[str] = None
@@ -1005,16 +805,7 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        schema = st.make_schema(self.__state, name)
-
-        if self.__tree is not None:
-            tree = self.__tree.apply_index(self.__state.raw_index)
-            tree_schema = tree.make_schema()
-            schema.children["index"] = tree_schema
-        metadata = self.header.dump()
-        schema.children["header"] = metadata
-
-        return schema
+        return st.make_schema(self.__state, name)
 
     def with_units(
         self,
@@ -1081,21 +872,12 @@ class Dataset:
 
         """
 
-        new_state = st.with_units(
+        new_state = dsops.with_units(
             self.__state,
             convention,
             conversions,
-            columns,
-            self.cosmology,
-            self.redshift,
+            **columns,
         )
-        if convention is not None:
-            new_header = self.__header.with_units(convention)
-        else:
-            new_header = self.__header
-
         return Dataset(
-            new_header,
             new_state,
-            self.__tree,
         )

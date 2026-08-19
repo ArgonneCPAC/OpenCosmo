@@ -295,7 +295,7 @@ def get_order_mpi(pixels, comm):
 def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth: int):
     datasets = list(datasets)
     nside = 2**max_index_depth
-    coordinates = list(map(find_coordinates_2d, datasets))
+    coordinates = [find_coordinates_2d(dataset._state) for dataset in datasets]
     coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
 
     if datasets:

@@ -8,6 +8,9 @@ import numpy as np
 from opencosmo.collection import structure as sc
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import Dataset
+from opencosmo.dataset import operations as dsops
+from opencosmo.dataset import state as st
+from opencosmo.dataset.state import DatasetState
 from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mapping.mapping import get_mapping
@@ -35,18 +38,20 @@ def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
         raise ValueError(f"Some of {', '.join(datasets)} not found in file.")
 
 
-def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
+def prepare_matched_datasets(
+    match_set: DatasetMatchSet, datasets: Mapping[str, DatasetState], source
+):
     # Guard: active sort keys would cause dataset/state.py to re-sort the
     # carefully ordered rows produced below, silently misaligning everything.
     for name, ds in datasets.items():
-        if getattr(ds, "sorted_by", None) is not None and name != source:
+        if ds.sort_key is not None and name != source:
             raise ValueError(
                 f"Dataset '{name}' has an active sort key. Call match() before sort_by()."
             )
 
     reference_dataset = datasets[source]
     rows_to_keep = np.ones(len(reference_dataset), dtype=bool)
-    index = reference_dataset.index
+    index = reference_dataset.raw_index
 
     mappings = {}
     for name, dataset in datasets.items():
@@ -63,16 +68,20 @@ def prepare_matched_datasets(match_set: DatasetMatchSet, datasets, source):
     # is present in `target_index`, making the lookup safe without bounds checks.
     for name, mapping in mappings.items():
         mappings_to_keep = mapping[rows_to_keep]
-        mappings_in_index = np.isin(mappings_to_keep, into_array(datasets[name].index))
+        mappings_in_index = np.isin(
+            mappings_to_keep, into_array(datasets[name].raw_index)
+        )
         rows_to_keep[rows_to_keep] &= mappings_in_index
 
-    new_datasets = {source: datasets[source].take_rows(np.where(rows_to_keep)[0])}
+    new_datasets = {
+        source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
+    }
     for name, mapping in mappings.items():
-        target_index = into_array(datasets[name].index)
+        target_index = into_array(datasets[name].raw_index)
         wanted = mapping[rows_to_keep]
         order = np.argsort(target_index, kind="stable")
         rows_to_take = order[np.searchsorted(target_index, wanted, sorter=order)]
-        new_datasets[name] = datasets[name].take_rows(rows_to_take)
+        new_datasets[name] = dsops.take_rows(datasets[name], rows_to_take)
 
     return new_datasets
 
@@ -87,18 +96,30 @@ class SimulationCollection:
 
     def __init__(
         self,
-        datasets: Mapping[str, Dataset | Collection],
+        datasets: Mapping[str, Dataset | DatasetState | Collection],
         match_set: DatasetMatchSet | None = None,
         match_source: str | None = None,
         rebuilt: dict[str, bool] | None = None,
     ):
+        def normalize(
+            value: Dataset | DatasetState | Collection,
+        ) -> DatasetState | sc.StructureCollection:
+            if isinstance(value, Dataset):
+                return value._state
+            elif isinstance(value, (DatasetState, sc.StructureCollection)):
+                return value
+            raise ValueError(
+                "Simulation collection only accepts datasets and structure collections"
+            )
+
         if match_set is not None and not all(
-            isinstance(ds, Dataset) for ds in datasets.values()
+            isinstance(v, (Dataset, DatasetState)) for v in datasets.values()
         ):
             raise ValueError(
                 "Dataset matching is only supported for simple datasets (no collections)"
             )
-        self.__datasets = dict(datasets)
+
+        self.__datasets = {k: normalize(v) for k, v in dict(datasets).items()}
         self.__match_set = match_set
         self.__match_source = match_source
         self.__rebuilt = rebuilt
@@ -109,11 +130,23 @@ class SimulationCollection:
     def values(self):
         self.__rebuild_all()
 
-        return self.__datasets.values()
+        values = []
+        for v in self.__datasets.values():
+            if isinstance(v, DatasetState):
+                values.append(Dataset(v))
+            else:
+                values.append(v)
+        return values
 
     def items(self):
         self.__rebuild_all()
-        return self.__datasets.items()
+        out = {}
+        for k, v in self.__datasets.items():
+            if isinstance(v, DatasetState):
+                out[k] = Dataset(v)
+            else:
+                out[k] = v
+        return out.items()
 
     def __len__(self):
         return len(self.__datasets)
@@ -137,7 +170,10 @@ class SimulationCollection:
             )
             self.__datasets |= new_datasets
             self.__rebuilt[key] = True
-        return self.__datasets[key]
+        value = self.__datasets[key]
+        if isinstance(value, DatasetState):
+            return Dataset(value)
+        return value
 
     def __rebuild_all(self):
         if self.__match_source is None:
@@ -187,8 +223,17 @@ class SimulationCollection:
 
         new_uuids = {}
         indices = {}
+        self.__rebuild_all()
 
-        for name, dataset in self.items():
+        for name, dataset in self.__datasets.items():
+            if isinstance(dataset, DatasetState):
+                children[name] = st.make_schema(dataset)
+                new_uuids[name] = (
+                    children[name].children["data"].attributes[""]["main_uuid"]
+                )
+                indices[name] = dataset.raw_index
+                continue
+
             children[name] = dataset.make_schema()
             if isinstance(dataset, sc.StructureCollection):
                 continue
@@ -218,6 +263,39 @@ class SimulationCollection:
         datasets have the same data type, so it is always safe to map operations
         across all of them.
         """
+        if isinstance(datasets, str):
+            datasets = [datasets]
+        if self.__match_source is not None and method in (
+            "take",
+            "take_range",
+            "take_rows",
+            "filter",
+            "bound",
+            "sort_by",
+        ):
+            if (datasets is not None or not isinstance(datasets, Iterable)) and (
+                len(datasets) > 0 or list(datasets)[0] != self.__match_source  # type: ignore
+            ):
+                raise ValueError(
+                    f"When working with a matched collection, {method} can only be called on the active source. Got datasets = {datasets}"
+                )
+
+            method_impl = getattr(dsops, method)
+            new_source = method_impl(
+                self.__datasets[self.__match_source], *args, **kwargs
+            )
+            new_datasets = self.__datasets | {self.__match_source: new_source}
+            return SimulationCollection(
+                new_datasets,
+                self.__match_set,
+                self.__match_source,
+                {
+                    ds_name: False
+                    for ds_name in self.__datasets.keys()
+                    if ds_name != self.__match_source
+                },
+            )
+
         regular_kwargs = {}
         mapped_kwargs = {}
         if isinstance(datasets, str):
@@ -238,10 +316,14 @@ class SimulationCollection:
 
         output = dict(self.__datasets) if construct else {}
         for name in requested_datasets:
-            dataset = self[name]
-            dataset_mapped_kwargs = {key: kw[name] for key, kw in mapped_kwargs.items()}
-            output[name] = getattr(dataset, method)(
-                *args, **regular_kwargs, **dataset_mapped_kwargs
+            output[name] = self.__dispatch_dataset_operation(
+                name,
+                method,
+                *args,
+                dataset_mapped_kwargs={
+                    key: kw[name] for key, kw in mapped_kwargs.items()
+                },
+                regular_kwargs=regular_kwargs,
             )
         if construct:
             return SimulationCollection(
@@ -252,16 +334,37 @@ class SimulationCollection:
             )
         return output
 
-    def __map_attribute(self, attribute):
-        return {k: getattr(v, attribute) for k, v in self.items()}
+    def __dispatch_dataset_operation(
+        self,
+        dataset_name: str,
+        method: str,
+        *args,
+        dataset_mapped_kwargs: dict[str, object],
+        regular_kwargs: dict[str, object],
+    ) -> DatasetState | sc.StructureCollection:
+        """Private dispatcher for operations on DatasetState vs nested Collections."""
+        target = self.__datasets[dataset_name]
+        if isinstance(target, DatasetState):
+            # Route DatasetState operations through the shared state operation layer.
+            fn = getattr(dsops, method)
+            return fn(target, *args, **regular_kwargs, **dataset_mapped_kwargs)
+        # Higher-level collections already implement the operation.
+        assert isinstance(target, sc.StructureCollection)
+        return getattr(target, method)(*args, **regular_kwargs, **dataset_mapped_kwargs)
 
     @property
     def dtype(self) -> dict[str, str]:
-        return {key: ds.header.file.data_type for key, ds in self.items()}
+        out: dict[str, str] = {}
+        for key, v in self.__datasets.items():
+            if isinstance(v, DatasetState):
+                out[key] = str(v.header.file.data_type)
+            else:
+                out[key] = v.dtype
+        return out
 
     @property
     def header(self) -> dict[str, OpenCosmoHeader]:
-        return self.__map_attribute("header")
+        return {k: v.header for k, v in self.__datasets.items()}
 
     @property
     def cosmology(self) -> dict[str, Cosmology]:
@@ -272,10 +375,17 @@ class SimulationCollection:
         --------
         cosmologies: dict[str, astropy.cosmology.Cosmology]
         """
-        return self.__map_attribute("cosmology")
+        out: dict[str, Cosmology] = {}
+        for k, v in self.__datasets.items():
+            # DatasetState does not have .cosmology; derive it from the state-owned header.
+            if isinstance(v, DatasetState):
+                out[k] = v.header.cosmology
+            else:
+                out[k] = v.cosmology
+        return out
 
     @property
-    def redshift(self) -> dict[str, float | tuple[float, float]]:
+    def redshift(self) -> dict[str, float | tuple[float, float] | None]:
         """
         Get the redshift slices or ranges for the simulations in the collection
 
@@ -283,7 +393,14 @@ class SimulationCollection:
         --------
         redshifts: dict[str, float | tuple[float,float]]
         """
-        return self.__map_attribute("redshift")
+        out: dict[str, float | tuple[float, float] | None] = {}
+        for k, v in self.__datasets.items():
+            # DatasetState does not have .redshift; derive it from the state-owned header.
+            if isinstance(v, DatasetState):
+                out[k] = v.header.file.redshift
+            else:
+                out[k] = v.redshift
+        return out
 
     @property
     def simulation(self) -> dict[str, HaccSimulationParameters]:
@@ -294,8 +411,14 @@ class SimulationCollection:
         --------
         simulation_parameters: dict[str, opencosmo.dtypes.HaccSimulationParameters]
         """
-
-        return self.__map_attribute("simulation")
+        out = {}
+        for k, v in self.__datasets.items():
+            # DatasetState does not have .redshift; derive it from the state-owned header.
+            if isinstance(v, DatasetState):
+                out[k] = v.header.simulation
+            else:
+                out[k] = v.simulation
+        return out
 
     def match(self, source: str) -> SimulationCollection:
         """
@@ -320,8 +443,10 @@ class SimulationCollection:
             raise ValueError(
                 f"This SimulationCollection does not have a simulation named {source}"
             )
+        assert all(isinstance(ds, DatasetState) for ds in self.__datasets.values())
+
         new_datasets = prepare_matched_datasets(
-            self.__match_set, self.__datasets, source
+            self.__match_set, cast("dict[str, DatasetState]", self.__datasets), source
         )
 
         return SimulationCollection(
@@ -358,16 +483,6 @@ class SimulationCollection:
             The portion of each dataset inside the selected region
 
         """
-        if self.__match_source is not None:
-            new_source = self.__datasets[self.__match_source].bound(region, select_by)
-            new_datasets = self.__datasets | {self.__match_source: new_source}
-            return SimulationCollection(
-                new_datasets,
-                self.__match_set,
-                self.__match_source,
-                {name: False for name in self.keys()},
-            )
-
         return self.__map("bound", region, select_by)
 
     def filter(self, *masks: ColumnMask, **kwargs) -> SimulationCollection:
@@ -389,28 +504,6 @@ class SimulationCollection:
             A new collection with the same datasets, but only the
             particles that pass the filter.
         """
-        if self.__match_source is not None:
-            datasets = kwargs.pop("datasets", None)
-            if isinstance(datasets, str):
-                requested_datasets = {datasets}
-            elif datasets is None:
-                requested_datasets = {self.__match_source}
-            else:
-                requested_datasets = set(datasets)
-            if requested_datasets != {self.__match_source}:
-                raise ValueError(
-                    f"After matching a collection, you can only filter on the active source of the match. Got datasets = {datasets} but the collection is matched against {self.__match_source}"
-                )
-
-            new_source_dataset = self[self.__match_source].filter(*masks, **kwargs)
-            new_datasets = self.__datasets | {self.__match_source: new_source_dataset}
-            return SimulationCollection(
-                new_datasets,
-                self.__match_set,
-                self.__match_source,
-                {name: False for name in self.keys()},
-            )
-
         return self.__map("filter", *masks, **kwargs)
 
     def select(self, *args, **kwargs) -> SimulationCollection:
@@ -469,15 +562,17 @@ class SimulationCollection:
             Explicit dataset-keyed drop selections.
 
         """
-        if not all(isinstance(dataset, Dataset) for dataset in self.values()):
+        if not all(
+            isinstance(dataset, DatasetState) for dataset in self.__datasets.values()
+        ):
             return self.__map("drop", *args, **kwargs)
 
-        datasets = cast("dict[str, Dataset]", self.__datasets)
+        datasets = cast("dict[str, DatasetState]", self.__datasets)
         output = do_multi_dataset_drops(datasets, args)
         for dataset_name, columns in kwargs.items():
             if dataset_name not in self:
                 raise ValueError(f"Dataset {dataset_name} not found in collection.")
-            output[dataset_name] = output[dataset_name].drop(columns)
+            output[dataset_name] = dsops.drop(output[dataset_name], columns)
         return SimulationCollection(
             output, self.__match_set, self.__match_source, self.__rebuilt
         )
@@ -500,16 +595,6 @@ class SimulationCollection:
             The method to use to take rows. Must be one of "start", "end", "random".
 
         """
-        if self.__match_source is not None:
-            new_source = self.__datasets[self.__match_source].take(n, at, mode)
-            new_datasets = self.__datasets | {self.__match_source: new_source}
-            return SimulationCollection(
-                new_datasets,
-                self.__match_set,
-                self.__match_source,
-                {name: False for name in self.keys()},
-            )
-
         return self.__map("take", n, at, mode=mode)
 
     def take_range(
@@ -533,18 +618,6 @@ class SimulationCollection:
             The new simulation collection with only the specified rows.
 
         """
-        if self.__match_source is not None:
-            new_source = self.__datasets[self.__match_source].take_range(
-                start, end, mode
-            )
-            new_datasets = self.__datasets | {self.__match_source: new_source}
-            return SimulationCollection(
-                new_datasets,
-                self.__match_set,
-                self.__match_source,
-                {name: False for name in self.keys()},
-            )
-
         return self.__map("take_range", start, end, mode=mode)
 
     def with_new_columns(
@@ -676,16 +749,6 @@ class SimulationCollection:
             A new SimulationCollection with the datasets ordered by the given column.
 
         """
-        if self.__match_source is not None:
-            new_source = self.__datasets[self.__match_source].sort_by(column, invert)
-            new_datasets = self.__datasets | {self.__match_source: new_source}
-            return SimulationCollection(
-                new_datasets,
-                self.__match_set,
-                self.__match_source,
-                {name: False for name in self.keys()},
-            )
-
         return self.__map("sort_by", column=column, invert=invert)
 
     def with_units(

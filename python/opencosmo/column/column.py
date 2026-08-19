@@ -32,7 +32,6 @@ if TYPE_CHECKING:
 
     from astropy import table
 
-    from opencosmo import Dataset
     from opencosmo.column.reducer import Reducer
     from opencosmo.index import DataIndex
 
@@ -1177,42 +1176,8 @@ class EvaluatedColumn:
             output = {next(iter(self.__produces)): output}
         return to_numpy_dict(output)
 
-    def evaluate_one(self, dataset: Dataset):
-        match self.__strategy:
-            case EvaluateStrategy.VECTORIZE:
-                values = (
-                    dataset.select(self.__requires)
-                    .take(1)
-                    .get_data(self.__format, unpack=False)
-                )
-                values = dict(values)
-                return self.__func(**values, **self.__kwargs)
 
-            case EvaluateStrategy.ROW_WISE:
-                values = (
-                    dataset.select(self.__requires)
-                    .take(1)
-                    .get_data(self.__format, unpack=True)
-                )
-                values = dict(values)
-                return self.__func(**values, **self.__kwargs)
-
-            case EvaluateStrategy.CHUNKED:
-                index = dataset.index
-                assert isinstance(index, tuple)
-                first_chunk_size = index[1][0]
-                first_chunk = (
-                    dataset.select(self.__requires)
-                    .take(first_chunk_size)
-                    .get_data(self.__format)
-                )
-                first_chunk = dict(first_chunk)
-                return self.__func(**first_chunk, **self.__kwargs)
-
-        pass
-
-
-def _evaluate_scalar(scalar: DerivedScalarValue, ds: Dataset) -> Any:
+def _evaluate_scalar(scalar: DerivedScalarValue, data: dict[str, np.ndarray]) -> Any:
     """
     Materialize the columns a DerivedScalarValue depends on and evaluate
     the reduction against them. Pulls data via the astropy format so Quantity
@@ -1225,8 +1190,6 @@ def _evaluate_scalar(scalar: DerivedScalarValue, ds: Dataset) -> Any:
         return scalar.evaluate({})
     reducer = default_reducer("global")
     scalar = scalar.with_reducer(reducer) if scalar.reducer is None else scalar
-    table = ds.select(*required).get_data("astropy", unpack=False, wrap_single=True)
-    data = {name: table[name] for name in required}
     return scalar.evaluate(data)
 
 
@@ -1246,30 +1209,49 @@ class ColumnMask:
         self.right = right
         self.operator = operator
 
-    def apply(self, ds: Dataset):
+    @property
+    def requires_names(self) -> set[str]:
+        requires_names = set()
+        match self.left:
+            case Column() | DerivedScalarValue():
+                requires_names |= self.left.requires_names
+            case _:
+                pass
+        match self.right:
+            case Column() | DerivedScalarValue():
+                requires_names |= self.right.requires_names
+            case str():
+                requires_names.add(self.right)
+            case _:
+                pass
+        return requires_names
+
+    def apply(self, columns: dict[str, np.ndarray]):
+        left: Any
         match self.left:
             case Column():
                 if self.left.rhs is None and self.left.operation is ident:
                     assert isinstance(self.left.lhs, str)
-                    left = ds.select(self.left.lhs).get_data()
+                    left = columns[self.left.lhs]
                 else:
-                    left = ds.select(data=self.left).get_data()
+                    left = self.left.evaluate(columns)
             case DerivedScalarValue():
-                left = _evaluate_scalar(self.left, ds)
+                left = _evaluate_scalar(self.left, columns)
             case _:
                 left = self.left
 
         right_selected = False
+        right: Any
         match self.right:
             case Column():
                 assert isinstance(self.right.lhs, str)
                 if self.right.rhs is None and self.right.operation is ident:
-                    right = ds.select(self.right.lhs).get_data()
+                    right = columns[self.right.lhs]
                 else:
-                    right = ds.select(data=self.right).get_data()
+                    right = self.right.evaluate(columns)
                 right_selected = True
             case DerivedScalarValue():
-                right = _evaluate_scalar(self.right, ds)
+                right = _evaluate_scalar(self.right, columns)
             case _:
                 right = self.right
         if (
@@ -1317,15 +1299,22 @@ class CompoundColumnMask:
         columns |= self.right.requires
         return columns
 
+    @property
+    def requires_names(self):
+        columns = set()
+        columns |= self.left.requires_names
+        columns |= self.right.requires_names
+        return columns
+
     def __and__(self, other: ColumnMask | Self):
         return CompoundColumnMask(self, other, lambda left, right: left & right)
 
     def __or__(self, other: ColumnMask | Self):
         return CompoundColumnMask(self, other, lambda left, right: left | right)
 
-    def apply(self, ds: Dataset):
-        left_mask = self.left.apply(ds)
-        right_mask = self.right.apply(ds)
+    def apply(self, columns: dict[str, np.ndarray]):
+        left_mask = self.left.apply(columns)
+        right_mask = self.right.apply(columns)
         return self.op(left_mask, right_mask)
 
     def with_reducer(self, reducer: Reducer) -> CompoundColumnMask:

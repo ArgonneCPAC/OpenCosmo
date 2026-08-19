@@ -3,6 +3,8 @@ import random
 import numpy as np
 
 import opencosmo as oc
+from opencosmo.dataset import operations as dsops
+from opencosmo.spatial import check
 
 
 def test_contains():
@@ -54,6 +56,34 @@ def test_box_query(halo_properties_path):
         assert col_max.value <= max_
 
     assert set(original_data["fof_halo_tag"]) == set(data["fof_halo_tag"])
+
+
+def test_box_query_state_operation(halo_properties_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    region = oc.make_box((30, 30, 30), (60, 60, 60))
+
+    state = dsops.bound(ds._state, region, None)
+
+    expected = ds.bound(region).select("fof_halo_tag").get_data()
+    actual = dsops.get_data(dsops.select(state, "fof_halo_tag"), "numpy")
+    assert set(actual) == set(expected)
+
+
+def test_box_query_passes_select_by(halo_properties_path, monkeypatch):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    region = oc.make_box((30, 30, 30), (60, 60, 60))
+    selections = []
+    find_coordinates_3d = check.find_coordinates_3d
+
+    def record_selection(state, dtype, select_by=None):
+        selections.append(select_by)
+        return find_coordinates_3d(state, dtype)
+
+    monkeypatch.setattr(check, "find_coordinates_3d", record_selection)
+
+    ds.bound(region, select_by="fof")
+
+    assert selections == ["fof", "fof"]
 
 
 def test_box_query_physical(halo_properties_path):
@@ -124,7 +154,7 @@ def test_write_tree(halo_properties_path, tmp_path):
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
 
     ds = oc.open(tmp_path / "bound_dataset.hdf5").with_units("scalefree")
-    tree_data = ds._Dataset__tree._Tree__columns
+    tree_data = ds._Dataset__state.tree._Tree__columns
     for i in range(3):
         starts = tree_data[f"level_{i}/start"][:]
         sizes = tree_data[f"level_{i}/size"][:]

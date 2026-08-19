@@ -33,6 +33,7 @@ from opencosmo.column.column import (
     resolve_mask_scalars,
 )
 from opencosmo.column.reducer import default_reducer
+from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import concat_chunks, convert_data, verify_format
 from opencosmo.dataset.take import (
@@ -65,7 +66,6 @@ if TYPE_CHECKING:
         ColumnMask,
         ConstructedColumn,
     )
-    from opencosmo.dataset import Dataset
     from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -857,8 +857,15 @@ class Lightcone(dict):
                 argname: vals[name] for argname, vals in mapped_kwargs.items()
             }
 
+            # Workaround until Lightcone holds Dataset states. Future PR.
+            if isinstance(dataset_to_verify, Dataset):
+                dataset_state_to_verify = dataset_to_verify._state
+            elif isinstance(dataset_to_verify, Lightcone):
+                dataset_to_verify = next(iter(dataset_to_verify.values()))
+                dataset_state_to_verify = dataset_to_verify._state
+
             evaluated_column = build_evaluated_column(
-                dataset_to_verify,
+                dataset_state_to_verify,
                 func,
                 vectorize,
                 insert,

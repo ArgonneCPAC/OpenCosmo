@@ -26,7 +26,6 @@ from opencosmo.plugins.contexts import (
     PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
-from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
     make_unit_handler_from_units,
@@ -45,6 +44,8 @@ if TYPE_CHECKING:
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
+    from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
 
@@ -80,6 +81,7 @@ class DatasetState:
     cache: DataCache
     unit_handler: UnitHandler
     header: OpenCosmoHeader
+    tree: Tree | None
     column_map: dict[str, UUID]
     region: Region
     open_kwargs: dict[str, Any]
@@ -150,6 +152,7 @@ def state_from_target(
     open_kwargs: dict[str, Any],
     index: Optional[DataIndex] = None,
     metadata_group: Optional[str] = None,
+    tree: Tree | None = None,
 ) -> DatasetState:
     data_group = target["dataset_group"]
     if "load" in data_group.keys():
@@ -188,6 +191,7 @@ def state_from_target(
         cache=cache,
         unit_handler=unit_handler,
         header=target["header"],
+        tree=tree,
         column_map=column_map,
         region=region,
         open_kwargs=open_kwargs,
@@ -205,6 +209,7 @@ def state_in_memory(
     open_kwargs: dict[str, Any],
     descriptions: Optional[dict[str, str]] = None,
     index: Optional[DataIndex] = None,
+    tree: Tree | None = None,
 ) -> DatasetState:
     descriptions = descriptions or {}
 
@@ -235,6 +240,7 @@ def state_in_memory(
         cache=cache,
         unit_handler=unit_handler,
         header=header,
+        tree=tree,
         column_map=column_map,
         region=region,
         open_kwargs=open_kwargs,
@@ -291,7 +297,7 @@ def get_data(
 
 def iter_rows(
     state: DatasetState,
-    metadata_columns: list = [],
+    metadata_columns: list | None = None,
     unit_kwargs: dict = {},
 ) -> Generator:
     """
@@ -316,7 +322,7 @@ def iter_rows(
         for start, end in chunk_ranges:
             chunk = take_rows(state, single_chunk(start, end - start))
             data = get_data(
-                chunk, metadata_columns=metadata_columns, unit_kwargs=unit_kwargs
+                chunk, metadata_columns=metadata_columns or [], unit_kwargs=unit_kwargs
             )
             for name in derived_to_collect:
                 derived_storage[name].append(data[name])
@@ -383,7 +389,9 @@ def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
         state.column_map,
         state.meta_columns,
         state.header,
+        state.tree,
         state.region,
+        state.raw_index,
         derived_data,
         name,
     )
@@ -441,19 +449,6 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     return dataclasses.replace(state, column_map=new_column_map)
 
 
-def sort_by(
-    state: DatasetState, column_name: Optional[str], invert: bool
-) -> DatasetState:
-    if column_name is None:
-        sort_key = None
-    elif column_name not in state.columns:
-        raise ValueError(f"This dataset has no column {column_name}")
-    else:
-        sort_key = (column_name, invert)
-
-    return dataclasses.replace(state, sort_key=sort_key)
-
-
 def get_sorted_index(state: DatasetState) -> np.ndarray | None:
     if state.sort_key is not None:
         column = get_data(select(state, {state.sort_key[0]}), ignore_sort=True)[
@@ -486,7 +481,7 @@ def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
 
 def with_units(
     state: DatasetState,
-    convention: Optional[str],
+    convention: UnitConvention,
     conversions: dict[u.Unit, u.Unit],
     columns: dict[str, u.Unit],
     cosmology: Cosmology,
@@ -495,29 +490,11 @@ def with_units(
     """
     Update the units of a given state.
     """
-    if convention is None:
-        convention_ = state.unit_handler.current_convention
-    else:
-        convention_ = UnitConvention(convention)
-
-    if (
-        convention_ == UnitConvention.SCALEFREE
-        and UnitConvention(state.header.file.unit_convention)
-        != UnitConvention.SCALEFREE
-    ):
-        raise ValueError(
-            f"Cannot convert units with convention {state.header.file.unit_convention} to convention scalefree"
-        )
-    column_keys = set(columns.keys())
-    missing_columns = column_keys - set(state.columns)
-    if missing_columns:
-        raise ValueError(f"Dataset does not have columns {missing_columns}")
-
-    new_handler = state.unit_handler.with_convention(convention_).with_conversions(
+    new_handler = state.unit_handler.with_convention(convention).with_conversions(
         conversions, columns
     )
 
-    if convention_ == state.unit_handler.current_convention:
+    if convention == state.unit_handler.current_convention:
         cache = state.cache.create_child()
     else:
         all_derived_names: set[str] = set()
@@ -530,4 +507,8 @@ def with_units(
         ).intersection(state.columns)
         columns_to_drop = all_derived_names.union(state.raw_data_handler.columns)
         cache = state.cache.drop(columns_to_drop)
-    return dataclasses.replace(state, unit_handler=new_handler, cache=cache)
+    new_header = state.header.with_units(convention)
+
+    return dataclasses.replace(
+        state, unit_handler=new_handler, cache=cache, header=new_header
+    )
