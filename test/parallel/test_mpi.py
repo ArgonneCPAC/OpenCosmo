@@ -16,6 +16,7 @@ from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo.analysis import reduce
+from opencosmo.collection.simulation import SimulationCollection
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -745,7 +746,8 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
     halo_tags = {}
     if comm.Get_rank() == 0:
         key_to_drop = next(iter(data.keys()))
-        data.pop(key_to_drop)
+        new_data = {name: ds for name, ds in data.items() if name != key_to_drop}
+        data = SimulationCollection(new_data)
 
     for name, sim in data.items():
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
