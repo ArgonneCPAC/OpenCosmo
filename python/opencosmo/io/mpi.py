@@ -81,7 +81,6 @@ def write_parallel(file: Path, file_schema: Schema):
         raise
     if any(rs == CombineState.INVALID for rs in results):
         raise ValueError("One or more ranks recieved invalid schemas!")
-
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
     if len(has_data) == 0:
         raise ValueError("No ranks have any data to write!")
@@ -100,7 +99,6 @@ def write_parallel(file: Path, file_schema: Schema):
             __allocate(file_schema, f, new_comm)
     else:
         __allocate(file_schema, None, new_comm)
-
     try:
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
             __write_parallel(file_schema, f, offsets, new_comm)
@@ -353,6 +351,7 @@ def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MP
     for column_name in all_column_names:
         column_writer = schema.columns.get(column_name)
         __allocate_column(column_name, column_writer, group, comm)
+
     __write_metadata(schema, group, comm)
 
     all_child_names = get_all_keys(schema.children, comm)
@@ -418,10 +417,11 @@ def __write_metadata(
         attrs = comm.allgather(None)
     else:
         attrs = comm.allgather(schema.attributes)
+
     attrs_to_write = list(filter(lambda at: at is not None, attrs))[0]
     if group is not None:
         for path, metadata in attrs_to_write.items():
-            metadata_group = group.require_group(path)
+            metadata_group = group.require_group(path) if path else group
             metadata_group.attrs.update(metadata)
 
 
