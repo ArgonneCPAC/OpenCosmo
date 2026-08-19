@@ -318,11 +318,15 @@ class SimulationCollection:
             raise ValueError(
                 f"This SimulationCollection does not have a simulation named {source}"
             )
+        new_datasets = prepare_matched_datasets(
+            self.__match_set, self.__datasets, source
+        )
+
         return SimulationCollection(
-            self.__datasets,
+            new_datasets,
             self.__match_set,
             source,
-            {name: False for name in self.__datasets.keys() if name != source},
+            {name: True for name in self.__datasets.keys()},
         )
 
     def clear_match(self):
