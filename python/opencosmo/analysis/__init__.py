@@ -4,7 +4,7 @@ from .mpi import reduce
 
 __all__ = ["reduce"]
 
-known_yt_tools = [
+known_analysis_tools = [
     "create_yt_dataset",
     "ProjectionPlot",
     "SlicePlot",
@@ -14,6 +14,7 @@ known_yt_tools = [
     "visualize_halo",
     "halo_projection_array",
     "animate_halos",
+    "binned_statistic",
 ]
 
 
@@ -24,16 +25,22 @@ future we will need to implement a more robust system that handles things automa
 
 
 def __getattr__(name):
-    if name in known_yt_tools:
+    if name in known_analysis_tools:
+        statistics = import_module(".statistics", package="opencosmo.analysis")
         yt_viz = import_module(".yt_viz", package="opencosmo.analysis")
         yt_utils = import_module(".yt_utils", package="opencosmo.analysis")
+
         try:
             return getattr(yt_viz, name)
         except AttributeError:
             pass
         try:
             return getattr(yt_utils, name)
-        except AttributError:
+        except AttributeError:
+            pass
+        try:
+            return getattr(statistics, name)
+        except AttributeError:
             pass
 
         # except ImportError as ie:
