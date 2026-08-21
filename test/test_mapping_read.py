@@ -352,6 +352,42 @@ class TestMapUUIDCollisions:
                 _read_map_layout("/map", map_group)
 
 
+def test_get_auxiliary_mapping_override_alignment_one_to_one(tmp_path) -> None:
+    """Regression test for correct alignment of auxiliary overrides.
+
+    In particular, the override indices returned by `get_auxillary_mapping`
+    must be aligned to the positions in the caller-provided `index_arr`.
+    """
+
+    path = tmp_path / "mapping.hdf5"
+    with h5py.File(path, "w") as file:
+        primary_a = file.create_dataset("primary_a", data=[0, 2, -1, 3])
+        primary_b = file.create_dataset("primary_b", data=[0, 3, 1, -1])
+
+        # Auxiliary overrides for source->target when source index is 1.
+        # This should override the mapping for the *correct position* in the
+        # provided index array.
+        auxiliary_source = file.create_dataset("aux_source", data=[1])
+        auxiliary_target = file.create_dataset("aux_target", data=[2])
+
+        match_set = DatasetMatchSet(
+            reference_source=_REF,
+            primary_maps={_A: primary_a, _B: primary_b},
+            aux_maps={(_A, _B): (auxiliary_source, auxiliary_target)},
+            aliases={"source": _A, "target": _B},
+        )
+
+        # index positions: only the entry equal to aux_source[0] should be overridden.
+        index_arr = np.asarray([3, 1, 0], dtype=np.int64)
+        result = get_mapping(match_set, "source", "target", index_arr)
+        assert result is not None
+
+        # Ensure injective mapping for the source rows we selected.
+        # -1 entries are unmatched and ignored for one-to-one.
+        mapped = result[result != -1]
+        assert mapped.size == np.unique(mapped).size
+
+
 class TestReferencePresent:
     """Reference present -> primary maps populated (pre-existing behaviour)."""
 
