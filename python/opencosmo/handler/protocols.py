@@ -70,6 +70,9 @@ class DataCache(Protocol):
 
     def create_child(self) -> Self: ...
 
+    @classmethod
+    def empty(cls) -> Self: ...
+
     @property
     def columns(self) -> set[str]: ...
 

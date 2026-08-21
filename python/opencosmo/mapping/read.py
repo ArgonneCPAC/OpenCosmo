@@ -93,6 +93,8 @@ def read_match_set(
                         "must be non-negative"
                     )
                 if len(np.unique(values)) != len(values):
+                    vals, count = np.unique(values, return_counts=True)
+
                     raise ValueError(
                         f"Malformed auxiliary map '{slot_name}': {side} indices "
                         "must be unique"

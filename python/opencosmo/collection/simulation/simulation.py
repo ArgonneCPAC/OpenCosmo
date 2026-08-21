@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional
 import numpy as np
 
 from opencosmo.collection import structure as sc
+from opencosmo.collection.simulation.io import resort_simulation_collection
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import Dataset
 from opencosmo.dataset import operations as dsops
@@ -126,7 +127,9 @@ def prepare_matched_datasets_mpi(
     for name, mapping in mappings.items():
         dataset = datasets[name]
         new_handler = dataset.raw_data_handler.with_index(mapping[rows_to_keep])
-        new_datasets[name] = replace(dataset, raw_data_handler=new_handler)
+        new_datasets[name] = replace(
+            dataset, raw_data_handler=new_handler, cache=dataset.cache.empty()
+        )
     return new_datasets
 
 
@@ -292,7 +295,8 @@ class SimulationCollection:
             )
             children["map"] = match_set_schema
 
-        return make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
+        schema = make_schema("/", FileEntry.SIMULATION_COLLECTION, children=children)
+        return resort_simulation_collection(schema)
 
     def __map(
         self,

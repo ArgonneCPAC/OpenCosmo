@@ -7,8 +7,12 @@ from uuid import uuid4
 
 import h5py
 import numpy as np
+import opencosmo.collection.simulation.io as simulation_io
 import opencosmo.collection.simulation.simulation as simulation_module
 import pytest
+from opencosmo.io.schema import FileEntry, MapCoordinateState, make_schema
+from opencosmo.io.serial import allocate
+from opencosmo.io.verify import verify_structure
 from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 
 import opencosmo as oc
@@ -715,6 +719,36 @@ def test_active_match_write_preserves_order(
     )
 
 
+def test_active_match_write_restores_canonical_spatial_order(
+    mapped_paths, test_data, tmp_path
+):
+    collection = (
+        _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+        .match(REFERENCE)
+        .take_range(7, 31)
+    )
+    coordinate_names = tuple(f"fof_halo_center_{axis}" for axis in "xyz")
+    indices = {name: into_array(dataset.index) for name, dataset in collection.items()}
+    assert any(np.any(np.diff(index) < 0) for index in indices.values())
+
+    expected = {}
+    for name, index in indices.items():
+        with h5py.File(mapped_paths[name]) as file:
+            expected[name] = {
+                column: file[f"data/{column}"][:][np.sort(index)]
+                for column in coordinate_names
+            }
+
+    path = tmp_path / "test.hdf5"
+    oc.write(path, collection)
+    with h5py.File(path) as file:
+        for name, coordinates in expected.items():
+            for column, values in coordinates.items():
+                np.testing.assert_array_equal(file[f"{name}/data/{column}"][:], values)
+
+    _assert_mapping_equal(collection, oc.open(path))
+
+
 def test_mapping_write_with_empty_target(mapped_paths, test_data, tmp_path):
     collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
     collection = collection.filter(
@@ -740,6 +774,145 @@ def test_mapping_write_reference_and_one_target(mapped_paths, test_data, tmp_pat
     _assert_mapping_equal(collection, written)
 
 
+def test_make_schema_retains_raw_primary_and_auxiliary_endpoints(tmp_path):
+    reference, first, second = (uuid4() for _ in range(3))
+    new_reference, new_first, new_second = (uuid4() for _ in range(3))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_first = file.create_dataset("first", data=[10, 11, 12])
+        primary_second = file.create_dataset("second", data=[20, 21, 22])
+        auxiliary_first = file.create_dataset("aux_first", data=[50])
+        auxiliary_second = file.create_dataset("aux_second", data=[60])
+        match_set = DatasetMatchSet(
+            reference,
+            {first: primary_first, second: primary_second},
+            {(first, second): (auxiliary_first, auxiliary_second)},
+            {"reference": reference, "first": first, "second": second},
+        )
+
+        schema = match_set.make_schema(
+            {"reference": new_reference, "first": new_first, "second": new_second},
+            {
+                "reference": np.array([2, 0]),
+                "first": np.array([10]),
+                "second": np.array([20]),
+            },
+        )
+
+    primary = schema.children["primary"].children
+    np.testing.assert_array_equal(
+        primary[str(new_first)].columns["index"].data, [10, 12]
+    )
+    np.testing.assert_array_equal(
+        primary[str(new_second)].columns["index"].data, [20, 22]
+    )
+    auxiliary = schema.children["auxiliary"].children[f"{new_first}__{new_second}"]
+    np.testing.assert_array_equal(auxiliary.columns["source"].data, [50])
+    np.testing.assert_array_equal(auxiliary.columns["target"].data, [60])
+
+
+def test_unresolved_mapping_schema_is_rejected_by_generic_verification(tmp_path):
+    schema = make_schema(
+        "/",
+        FileEntry.SIMULATION_COLLECTION,
+        children={
+            "map": make_schema(
+                "map",
+                FileEntry.METADATA,
+                attributes={"": {}},
+            )._replace(map_coordinates=MapCoordinateState.RAW)
+        },
+    )
+
+    with pytest.raises(
+        ValueError, match="Unresolved raw-coordinate simulation mapping"
+    ):
+        verify_structure(schema)
+    with h5py.File(tmp_path / "unresolved.hdf5", "w") as file:
+        with pytest.raises(
+            ValueError, match="Unresolved raw-coordinate simulation mapping"
+        ):
+            allocate(file, schema)
+
+
+def test_lowered_mapping_schema_is_accepted_by_generic_verification():
+    schema = make_schema(
+        "/",
+        FileEntry.SIMULATION_COLLECTION,
+        children={"map": make_schema("map", FileEntry.METADATA, attributes={"": {}})},
+    )
+
+    verify_structure(schema)
+
+
+def test_lower_primary_mapping_preserves_unmatched_and_missing_targets():
+    writer = simulation_io.ColumnWriter.from_numpy_array(np.array([8, -1, 3, 99]))
+
+    lowered = simulation_io.__lower_primary_writer(writer, {3: 0, 8: 1})
+
+    np.testing.assert_array_equal(lowered.data, [1, -1, 0, -1])
+
+
+def test_lower_auxiliary_mapping_filters_and_sorts_pairs():
+    source = simulation_io.ColumnWriter.from_numpy_array(
+        np.array([20, 10, 20, 99]), attrs={"source": "attribute"}
+    )
+    target = simulation_io.ColumnWriter.from_numpy_array(
+        np.array([7, 9, 8, 7]), attrs={"target": "attribute"}
+    )
+
+    lowered_source, lowered_target = simulation_io.__lower_auxiliary_writers(
+        source, target, {10: 0, 20: 1}, {7: 1, 8: 0}
+    )
+
+    np.testing.assert_array_equal(lowered_source.data, [1, 1])
+    np.testing.assert_array_equal(lowered_target.data, [0, 1])
+    assert lowered_source.attrs == {"source": "attribute"}
+    assert lowered_target.attrs == {"target": "attribute"}
+
+
+def test_lower_mapping_rejects_duplicate_raw_ids():
+    with pytest.raises(ValueError, match="duplicate output raw row IDs"):
+        simulation_io.__make_output_position_lookup(np.array([3, 1, 3]))
+
+
+def test_mpi_dataset_output_plan_is_stable_and_balanced():
+    canonical, lookup = simulation_io.__plan_dataset_output(
+        np.array([8, 2, 9, 1, 5, 4, 7]), 3
+    )
+
+    np.testing.assert_array_equal(canonical, [1, 2, 4, 5, 7, 8, 9])
+    assert dict(lookup.output_positions) == {
+        1: 0,
+        2: 1,
+        4: 2,
+        5: 3,
+        7: 4,
+        8: 5,
+        9: 6,
+    }
+    assert dict(lookup.writer_ranks) == {
+        1: 0,
+        2: 0,
+        4: 0,
+        5: 1,
+        7: 1,
+        8: 2,
+        9: 2,
+    }
+
+
+def test_mpi_dataset_output_plan_allows_empty_writer_intervals():
+    _, lookup = simulation_io.__plan_dataset_output(np.array([3, 1]), 4)
+
+    assert dict(lookup.output_positions) == {1: 0, 3: 1}
+    assert dict(lookup.writer_ranks) == {1: 0, 3: 1}
+
+
+def test_mpi_dataset_output_plan_rejects_duplicate_raw_ids():
+    with pytest.raises(ValueError, match="duplicate raw row IDs"):
+        simulation_io.__plan_dataset_output(np.array([3, 1, 3]), 2)
+
+
 def test_rebuild_with_new_source_folds_auxiliary_into_primary(tmp_path):
     old_reference, old_source, old_target = (uuid4() for _ in range(3))
     new_source, new_target = (uuid4() for _ in range(2))
@@ -762,7 +935,7 @@ def test_rebuild_with_new_source_folds_auxiliary_into_primary(tmp_path):
             "source",
         )
 
-    np.testing.assert_array_equal(primary[new_target], [0])
+    np.testing.assert_array_equal(primary[new_target], [3])
     assert auxiliary == {}
 
 
@@ -791,8 +964,8 @@ def test_rebuild_with_new_source_omits_fully_routed_auxiliary_pair(tmp_path):
             "source",
         )
 
-    np.testing.assert_array_equal(primary[new_a], [0, 1])
-    np.testing.assert_array_equal(primary[new_b], [0, 1])
+    np.testing.assert_array_equal(primary[new_a], [10, 11])
+    np.testing.assert_array_equal(primary[new_b], [20, 21])
     assert auxiliary == {}
 
 
@@ -819,7 +992,7 @@ def test_rebuild_with_new_source_no_surviving_correspondence(tmp_path):
             "source",
         )
 
-    np.testing.assert_array_equal(primary[new_target], [-1, -1])
+    np.testing.assert_array_equal(primary[new_target], [10, 11])
     assert auxiliary == {}
 
 
@@ -883,10 +1056,10 @@ def test_rebuild_with_new_source_honors_asymmetric_selections(tmp_path):
             "source",
         )
 
-    np.testing.assert_array_equal(primary[new_a], [0, -1, 1])
-    np.testing.assert_array_equal(primary[new_b], [0, -1, 1])
-    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][0], [2])
-    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][1], [2])
+    np.testing.assert_array_equal(primary[new_a], [10, 11, 12])
+    np.testing.assert_array_equal(primary[new_b], [20, 21, 22])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][0], [13, 14])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][1], [23, 24])
 
 
 def test_rebuild_with_new_source_preserves_old_reference_pair_as_auxiliary(tmp_path):
