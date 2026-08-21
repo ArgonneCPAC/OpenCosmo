@@ -62,7 +62,7 @@ def parallel_assert_can_stack(value: np.ndarray, comm: MPI.Comm | None = None):
     parallel_assert_compatible_shapes(value, comm)
 
 
-def get_subcom(comm, include: list[bool]):
+def get_subcom(include: list[bool], comm: MPI.Comm):
     group = comm.Get_group()
     new_group = group.Incl(np.where(include)[0])
     new_comm = comm.Create(new_group)
@@ -70,7 +70,7 @@ def get_subcom(comm, include: list[bool]):
     return new_comm, new_group
 
 
-def gather_index(comm, index: np.ndarray):
+def gather_index(index: np.ndarray, comm: MPI.Comm):
     parallel_assert_is_simple_index(index, comm)
 
     counts = comm.gather(len(index))
@@ -92,7 +92,7 @@ def gather_index(comm, index: np.ndarray):
     return recvbuf
 
 
-def scatter_index(comm, index: np.ndarray | None, length: int):
+def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
     counts = comm.allgather(length)
     index_length = comm.bcast(len(index) if index is not None else None)
     parallel_assert(np.sum(counts) == index_length, comm)
@@ -115,14 +115,14 @@ def scatter_index(comm, index: np.ndarray | None, length: int):
     # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
 
 
-def redistribute_data(comm, data, target_rank):
+def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm):
     parallel_assert_is_simple_index(target_rank, comm)
     parallel_assert(len(target_rank) == len(data), comm)
     parallel_assert_can_stack(data, comm)
 
     rank_distribution = [np.where(target_rank == i)[0] for i in range(comm.Get_size())]
     lengths = np.array([len(tr) for tr in rank_distribution]).astype(np.int64)
-    parallel_assert(sum(lengths) == len(data))
+    parallel_assert(sum(lengths) == len(data), comm)
     recv_lengths = np.empty(comm.Get_size(), dtype=np.int64)
     comm.Alltoall(lengths, recv_lengths)
 

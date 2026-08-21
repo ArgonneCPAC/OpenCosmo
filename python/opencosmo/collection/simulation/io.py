@@ -231,7 +231,7 @@ def __get_dataset_output_lookup(
     raw_ids: np.ndarray, comm: MPI.Comm
 ) -> tuple[DatasetOutputLookup, np.ndarray]:
     """Collectively plan output ownership and return this rank's destinations."""
-    gathered_raw_ids = gather_index(comm, raw_ids)
+    gathered_raw_ids = gather_index(raw_ids, comm)
     if comm.Get_rank() == 0:
         try:
             canonical_raw_ids, lookup = __plan_dataset_output(
@@ -258,11 +258,11 @@ def __get_dataset_output_lookup(
     assert canonical_raw_ids is not None
     assert target_ranks is not None
     lookup = __make_dataset_output_lookup(canonical_raw_ids, comm.Get_size())
-    return lookup, scatter_index(comm, target_ranks, len(raw_ids))
+    return lookup, scatter_index(target_ranks, len(raw_ids), comm)
 
 
 def redistribute_simulation_collection_data(
-    schema, comm: MPI.Comm
+    schema: Schema, comm: MPI.Comm
 ) -> tuple[Schema, dict[str, DatasetOutputLookup]]:
     """Redistribute dataset rows and retain their global output lookups.
 
@@ -276,7 +276,7 @@ def redistribute_simulation_collection_data(
             continue
         rank_has_child = child_name in schema.children
         all_has_child = comm.allgather(rank_has_child)
-        subcom, subgroup = get_subcom(comm, all_has_child)
+        subcom, subgroup = get_subcom(all_has_child, comm)
         try:
             if not rank_has_child:
                 continue
@@ -285,12 +285,12 @@ def redistribute_simulation_collection_data(
             if local_raw_ids is None:
                 raise ValueError(f"Dataset '{child_name}' has no output raw row index")
             lookup, target_ranks = __get_dataset_output_lookup(local_raw_ids, subcom)
-            received_raw_ids = redistribute_data(subcom, local_raw_ids, target_ranks)
+            received_raw_ids = redistribute_data(local_raw_ids, target_ranks, subcom)
             new_children[child_name] = update_dataset_schema_with_redistribute(
                 child,
-                subcom,
                 target_ranks,
                 received_raw_ids,
+                subcom,
             )
             # ``lookup`` is planned on the dataset subcommunicator.  Primary map
             # lowering routes on ``comm``, so translate its ranks back to the
@@ -313,7 +313,7 @@ def redistribute_simulation_collection_data(
     return schema._replace(children=new_children), output_lookups
 
 
-def __collective_error(comm: MPI.Comm, message: str | None) -> None:
+def __collective_error(message: str | None, comm: MPI.Comm) -> None:
     """Raise the first local validation error on every rank."""
     messages = comm.allgather(message)
     error = next((value for value in messages if value is not None), None)
@@ -346,7 +346,7 @@ def __lower_primary_values(
                 source_ranks[position] = reference_lookup.writer_ranks[int(raw_id)]
         except KeyError as error:
             message = f"Primary mapping source raw row ID is not in the output: {error}"
-    __collective_error(comm, message)
+    __collective_error(message, comm)
 
     output_targets = np.full(len(raw_targets), -1, dtype=np.int64)
     for position, raw_target in enumerate(raw_targets):
@@ -355,8 +355,8 @@ def __lower_primary_values(
                 int(raw_target), -1
             )
 
-    received_positions = redistribute_data(comm, source_positions, source_ranks)
-    received_targets = redistribute_data(comm, output_targets, source_ranks)
+    received_positions = redistribute_data(source_positions, source_ranks, comm)
+    received_targets = redistribute_data(output_targets, source_ranks, comm)
     reorder = np.argsort(received_positions, kind="stable")
     received_positions = received_positions[reorder]
     received_targets = received_targets[reorder]
@@ -375,7 +375,7 @@ def __lower_primary_values(
             "Primary mapping entries do not cover this rank's contiguous reference "
             "output interval"
         )
-    __collective_error(comm, message)
+    __collective_error(message, comm)
     return received_targets
 
 
@@ -390,10 +390,10 @@ def __lower_auxiliary_values(
     raw_source = np.asarray(raw_source, dtype=np.int64)
     raw_target = np.asarray(raw_target, dtype=np.int64)
     __collective_error(
-        comm,
         None
         if len(raw_source) == len(raw_target)
         else "Auxiliary mapping source and target have different lengths",
+        comm,
     )
 
     source_positions = np.fromiter(
@@ -415,8 +415,8 @@ def __lower_auxiliary_values(
         count=len(source_positions),
     )
 
-    received_source = redistribute_data(comm, source_positions, source_ranks)
-    received_target = redistribute_data(comm, target_positions, source_ranks)
+    received_source = redistribute_data(source_positions, source_ranks, comm)
+    received_target = redistribute_data(target_positions, source_ranks, comm)
     reorder = np.lexsort((received_target, received_source))
     return received_source[reorder], received_target[reorder]
 
@@ -452,7 +452,7 @@ def __dataset_names_and_lookups(
     return uuid_to_name, lookups_by_name
 
 
-def resort_simulation_collection_mpi(schema, comm: MPI.Comm):
+def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
     """Redistribute dataset rows and lower maps to output coordinates."""
     rank_has_map = "map" in schema.children
     has_map = comm.allgather(rank_has_map)
@@ -477,10 +477,10 @@ def resort_simulation_collection_mpi(schema, comm: MPI.Comm):
     reference_uuid = str(map_attributes[""]["reference"])
     reference_name = uuid_to_name.get(reference_uuid)
     __collective_error(
-        comm,
         None
         if reference_name in lookups_by_name
         else "Simulation mapping reference dataset is not in the output schema",
+        comm,
     )
     assert reference_name is not None
     reference_lookup = lookups_by_name[reference_name]
@@ -492,10 +492,10 @@ def resort_simulation_collection_mpi(schema, comm: MPI.Comm):
     ):
         target_name = uuid_to_name.get(target_uuid)
         __collective_error(
-            comm,
             None
             if target_name in lookups_by_name
             else f"Primary mapping target dataset {target_uuid} is not in the output schema",
+            comm,
         )
         assert target_name is not None
         target_lookup = lookups_by_name[target_name]
@@ -553,22 +553,22 @@ def resort_simulation_collection_mpi(schema, comm: MPI.Comm):
             source_uuid, target_uuid = pair_name.split("__")
         except ValueError:
             __collective_error(
-                comm, f"Auxiliary mapping pair name is invalid: {pair_name}"
+                f"Auxiliary mapping pair name is invalid: {pair_name}", comm
             )
             raise RuntimeError("unreachable")
         source_name = uuid_to_name.get(source_uuid)
         target_name = uuid_to_name.get(target_uuid)
         __collective_error(
-            comm,
             None
             if source_name in lookups_by_name
             else f"Auxiliary mapping source dataset {source_uuid} is not in the output schema",
+            comm,
         )
         __collective_error(
-            comm,
             None
             if target_name in lookups_by_name
             else f"Auxiliary mapping target dataset {target_uuid} is not in the output schema",
+            comm,
         )
         assert source_name is not None
         assert target_name is not None
@@ -588,7 +588,7 @@ def resort_simulation_collection_mpi(schema, comm: MPI.Comm):
                 local_slot.columns["target"].data
             ):
                 message = "Auxiliary mapping source and target have different lengths"
-        __collective_error(comm, message)
+        __collective_error(message, comm)
 
         raw_source = (
             local_slot.columns["source"].data
@@ -668,7 +668,7 @@ def resort_simulation_collection_mpi(schema, comm: MPI.Comm):
 
 
 def update_dataset_schema_with_redistribute(
-    schema: Schema, comm, target_rank, rank_local_index
+    schema: Schema, target_rank, rank_local_index, comm
 ):
     if "data" not in schema.children:
         raise ValueError("Dataset schema has no data child")
@@ -681,11 +681,11 @@ def update_dataset_schema_with_redistribute(
             schema.children["data"]
             .columns[name]
             .redistribute(
-                comm,
                 rank_local_index,
                 sorted_rank_local_index,
                 argsort_local,
                 target_rank,
+                comm,
             )
         )
         new_columns[name] = writer

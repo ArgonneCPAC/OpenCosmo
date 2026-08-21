@@ -85,11 +85,11 @@ class ColumnWriter:
 
     def redistribute(
         self,
-        comm,
         unsorted_rank_local_index,
         sorted_rank_local_index,
         argsort,
         rank_targets: SimpleIndex,
+        comm,
     ):
         assert len(self.__sources) == 1
 
@@ -99,7 +99,7 @@ class ColumnWriter:
                 new_source = source.with_index(sorted_rank_local_index)
                 return ColumnWriter([new_source], self.__combine_strategy, self.__attrs)
             case NumpySource():
-                local_data = redistribute_data(comm, source.data, rank_targets)[argsort]
+                local_data = redistribute_data(source.data, rank_targets, comm)[argsort]
                 return ColumnWriter.from_numpy_array(
                     local_data, self.__combine_strategy, self.__attrs
                 )
