@@ -1,8 +1,15 @@
+from __future__ import annotations
+
 from functools import cache
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Generator, Optional
 
 import numpy as np
 from mpi4py.util import dtlib
+
+from opencosmo.index import into_array
+
+if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
 
 try:
     from mpi4py import MPI
@@ -70,10 +77,37 @@ def get_subcom(include: list[bool], comm: MPI.Comm):
     return new_comm, new_group
 
 
-def gather_index(index: np.ndarray, comm: MPI.Comm):
+def gather_index(index: np.ndarray, comm: MPI.Comm, all: bool = False):
     parallel_assert_is_simple_index(index, comm)
 
-    counts = comm.gather(len(index))
+    counts = comm.allgather(len(index))
+    if comm.Get_rank() == 0 or all:
+        displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
+
+        total_size = sum(counts)
+        recvbuf = np.empty(total_size, dtype=np.int64)
+    else:
+        counts = None
+        displacements = None
+        recvbuf = None
+
+        # 4. Perform the variable-length gather operation
+        # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
+    if not all:
+        comm.Gatherv(
+            sendbuf=index, recvbuf=[recvbuf, counts, displacements, MPI.INT64_T], root=0
+        )
+    else:
+        comm.Allgatherv(
+            sendbuf=index, recvbuf=[recvbuf, counts, displacements, MPI.INT64_T]
+        )
+    return recvbuf
+
+
+def gather_data(data: np.ndarray, comm: MPI.Comm):
+    parallel_assert_can_stack(data, comm)
+
+    counts = comm.allgather(len(data))
     if comm.Get_rank() == 0:
         displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
 
@@ -87,7 +121,9 @@ def gather_index(index: np.ndarray, comm: MPI.Comm):
         # 4. Perform the variable-length gather operation
         # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
     comm.Gatherv(
-        sendbuf=index, recvbuf=[recvbuf, counts, displacements, MPI.INT64_T], root=0
+        sendbuf=data,
+        recvbuf=[recvbuf, counts, displacements, dtlib.from_numpy_dtype(data.dtype)],
+        root=0,
     )
     return recvbuf
 
@@ -107,6 +143,30 @@ def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
     recvbuf = np.empty(length, np.int64)
     comm.Scatterv(
         [index, counts, displacements, MPI.INT64_T],
+        recvbuf,
+        root=0,
+    )
+    return recvbuf
+    # 4. Perform the variable-length gather operation
+    # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
+
+
+def scatter_data(data: np.ndarray | None, length: int, comm: MPI.Comm):
+    counts = comm.allgather(length)
+    data_length = comm.bcast(len(data) if data is not None else None)
+    parallel_assert(np.sum(counts) == data_length, comm)
+    dtype = comm.bcast(data.dtype if data is not None else None)
+
+    if comm.Get_rank() == 0:
+        displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
+
+    else:
+        counts = None
+        displacements = None
+
+    recvbuf = np.empty(length, dtype)
+    comm.Scatterv(
+        [data, counts, displacements, dtlib.from_numpy_dtype(dtype)],
         recvbuf,
         root=0,
     )
@@ -147,3 +207,37 @@ def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm)
         [recvbuf, recv_lengths, recv_displs, dtype],
     )
     return recvbuf
+
+
+def verify_redistribution(old_index: np.ndarray, new_index: np.ndarray, comm: MPI.Comm):
+    old_index = gather_index(into_array(old_index), comm)
+    new_index = gather_index(into_array(new_index), comm)
+    if comm.Get_rank() != 0:
+        parallel_assert(True)
+        return
+    diff = np.setdiff1d(new_index, old_index)
+    parallel_assert(len(diff) == 0)
+
+
+def get_all_keys[T: SupportsRichComparison](
+    data: dict[T, Any], comm: Optional[MPI.Comm]
+) -> list[T]:
+    """
+    Return all keys in the dictionary across all ranks, sorted
+    alphabetically. When defining the file structure, we have to iterate
+    through the schemas in the same order across all ranks, including
+    when one rank doesn't have a given child.
+    """
+    data_names: set[T] = set(data.keys())
+    if comm is None:
+        return sorted(list(data_names))
+
+    all_data_names: set[T] = data_names.union(*comm.allgather(data_names))
+    return sorted(all_data_names)
+
+
+def get_all_entries[T: (SupportsRichComparison), U](
+    data: dict[T, U], comm: Optional[MPI.Comm]
+) -> Generator[tuple[T, U | None]]:
+    for key in get_all_keys(data, comm):
+        yield key, data.get(key)

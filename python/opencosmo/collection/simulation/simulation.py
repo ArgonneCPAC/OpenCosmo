@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import copy
-from dataclasses import replace
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, cast
 
 import numpy as np
@@ -126,10 +125,7 @@ def prepare_matched_datasets_mpi(
     }
     for name, mapping in mappings.items():
         dataset = datasets[name]
-        new_handler = dataset.raw_data_handler.with_index(mapping[rows_to_keep])
-        new_datasets[name] = replace(
-            dataset, raw_data_handler=new_handler, cache=dataset.cache.empty()
-        )
+        new_datasets[name] = st.redistribute(dataset, mapping[rows_to_keep])
     return new_datasets
 
 

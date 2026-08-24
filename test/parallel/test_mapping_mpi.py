@@ -573,6 +573,21 @@ def test_match_honors_filters(filtered_simulations, mapped_paths, test_data):
 
 
 @pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("source", TARGET_SIMULATIONS)
+def test_match_redistributes_cache(source, mapped_paths, test_data):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    new_id = {}
+    for name, ds in collection.items():
+        tag = ds.select("fof_halo_tag").get_data()
+        new_id[name] = tag + 1
+
+    collection = collection.with_new_columns(new_id=new_id).match(source)
+    for name, ds in collection.items():
+        data = ds.select("fof_halo_tag", "new_id").get_data("numpy")
+        assert np.all(data["new_id"] == data["fof_halo_tag"] + 1)
+
+
+@pytest.mark.parallel(nprocs=4)
 @pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
 def test_matched_take_range_is_driven_by_active_source(source, mapped_paths, test_data):
     original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)

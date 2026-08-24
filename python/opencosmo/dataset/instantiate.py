@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import rustworkx as rx
 
 from opencosmo.column.column import EvaluatedColumn, RawColumn
-from opencosmo.dataset.graph import build_dependency_graph
+from opencosmo.dataset.graph import build_dependency_graph, get_all_required_pairs
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -16,33 +16,6 @@ if TYPE_CHECKING:
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.index import DataIndex
     from opencosmo.units.handler import UnitHandler
-
-
-def get_all_required_pairs(
-    columns_to_uuid: dict[str, UUID], dependency_graph: rx.PyDiGraph
-) -> set[tuple[UUID, str]]:
-    """
-    Return the full set of (producer_uuid, column_name) pairs needed to
-    produce the requested columns, including all transitive dependencies.
-    """
-    uuid_to_node: dict[UUID, int] = {
-        dependency_graph[i].uuid: i for i in range(dependency_graph.num_nodes())
-    }
-    required_nodes: set[int] = set()
-    for uuid in columns_to_uuid.values():
-        if uuid in uuid_to_node:
-            node_idx = uuid_to_node[uuid]
-            required_nodes.add(node_idx)
-            required_nodes.update(rx.ancestors(dependency_graph, node_idx))
-
-    pairs: set[tuple[UUID, str]] = {
-        (uuid, name) for name, uuid in columns_to_uuid.items()
-    }
-    for node_idx in required_nodes:
-        producer = dependency_graph[node_idx]
-        for name in producer.produces:
-            pairs.add((producer.uuid, name))
-    return pairs
 
 
 def build_initial_uuid_data(
@@ -171,12 +144,13 @@ def instantiate_dataset(
     if sort_by is not None and sort_by not in working_columns:
         sort_name = sort_by
         for producer in column_producers:
+            assert producer.uuid is not None
             if sort_name in producer.produces:
                 working_columns[sort_name] = producer.uuid
                 break
 
+    required_pairs = get_all_required_pairs(column_producers, working_columns)
     dependency_graph = build_dependency_graph(column_producers)
-    required_pairs = get_all_required_pairs(working_columns, dependency_graph)
 
     cached_data = cache.get_data(required_pairs)
 

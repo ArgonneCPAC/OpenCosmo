@@ -8,8 +8,9 @@ if TYPE_CHECKING:
     import numpy as np
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.schema import Schema
+    from opencosmo.mpi import MPI
 
-    from opencosmo.index import DataIndex
+    from opencosmo.index import DataIndex, SimpleIndex
 
 
 class DataHandler(Protocol):
@@ -24,6 +25,12 @@ class DataHandler(Protocol):
         metadata_columns: set[str] = set(),
         header: Optional[OpenCosmoHeader] = None,
     ) -> tuple[Schema, Schema]: ...
+
+    def get_uuids(self) -> dict[str, UUID]: ...
+
+    """
+
+    """
 
     @property
     def columns(self) -> Iterable[str]: ...
@@ -69,6 +76,14 @@ class DataCache(Protocol):
     def deregister_column_group(self, state_id: int) -> None: ...
 
     def create_child(self) -> Self: ...
+
+    def redistribute(
+        self,
+        reorder_map: SimpleIndex | None,
+        length: int,
+        columns_to_keep: dict[UUID, list[str]],
+        comm: MPI.Comm,
+    ) -> Self: ...
 
     @classmethod
     def empty(cls) -> Self: ...
