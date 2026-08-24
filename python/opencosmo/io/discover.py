@@ -6,7 +6,9 @@ from uuid import UUID
 
 import h5py
 import numpy as np
+from pydantic import ValidationError
 
+from opencosmo.dtypes import read_map_header
 from opencosmo.header import read_header
 
 if TYPE_CHECKING:
@@ -343,6 +345,21 @@ def discover_file(path: Path) -> FileLayout:
                     return FileLayout(path=path, groups=(), error=str(e))
 
             maps = tuple(sorted(map_layouts, key=lambda m: m.path))
+
+            # A mapping file carries a minimal, dataset-agnostic header
+            # identifying it as an OpenCosmo file. Validate it here so a foreign
+            # HDF5 file that merely happens to contain a "/map" group is rejected
+            # with the same contract as every other malformed OpenCosmo file.
+            # The header is only checked, never retained.
+            if maps and len(data_groups) == 0:
+                try:
+                    read_map_header(f)
+                except (KeyError, ValidationError) as e:
+                    return FileLayout(
+                        path=path,
+                        groups=(),
+                        error=f"Malformed mapping header: {e}",
+                    )
 
             # A file is valid if it carries header+data or if it carries maps. A
             # mapping file has neither header nor data — it is not owned by any
