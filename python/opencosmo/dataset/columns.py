@@ -13,6 +13,7 @@ from opencosmo.column.column import (
     RawColumn,
 )
 from opencosmo.dataset.graph import validate_column_producers
+from opencosmo.uuid import get_raw_column_uuid
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -48,6 +49,8 @@ def validate_in_memory_columns(
 
 def __categorize_columns(
     new_columns: dict,
+    name_to_uuid: dict[str, UUID],
+    all_known_uuids: set[UUID],
     descriptions: dict[str, str],
     ds_length: int,
 ) -> tuple[list[ConstructedColumn], dict, dict, list[str], dict]:
@@ -70,15 +73,19 @@ def __categorize_columns(
             case Column():
                 column.name = colname
                 column.description = descriptions.get(colname, "None")
+                column = column.bind(name_to_uuid, all_known_uuids)
                 new_derived_columns.append(column)
                 new_column_names.extend(column.produces)
+
             case DerivedScalarValue():
                 column.name = colname
                 column.description = descriptions.get(colname, "None")
+                column = column.bind(name_to_uuid, all_known_uuids)
                 new_derived_columns.append(column)
                 new_column_names.extend(column.produces)
             case EvaluatedColumn():
                 column.description = descriptions.get(colname, "None")
+                column = column.bind(name_to_uuid, all_known_uuids)
                 new_derived_columns.append(column)
                 new_column_names.extend(column.produces)
             case np.ndarray():
@@ -86,15 +93,21 @@ def __categorize_columns(
                     raise ValueError(
                         f"New column {colname} does not have the same length as this dataset!"
                     )
+                uuid = get_raw_column_uuid(colname, all_known_uuids)
                 new_in_memory_descriptions[colname] = descriptions.get(colname, "None")
                 new_in_memory_columns[colname] = column
                 new_column_names.append(colname)
-                new_derived_columns.append(RawColumn(colname, None))
+                new_derived_columns.append(RawColumn(colname, None, uuid))
                 new_static_units[colname] = (
                     column.unit if isinstance(column, u.Quantity) else None
                 )
             case _:
                 raise ValueError(f"Got an invalid new column of type {type(column)}")
+
+        assert new_derived_columns[-1].uuid is not None
+        for name_ in new_derived_columns[-1].produces:
+            name_to_uuid[name_] = new_derived_columns[-1].uuid
+        all_known_uuids.add(new_derived_columns[-1].uuid)
 
     return (
         new_derived_columns,
@@ -110,12 +123,14 @@ def add_columns(
     unit_handler: UnitHandler,
     cache: DataCache,
     name_to_uuid: ColumnMap,
+    all_known_uuids: set[UUID],
     sorted_index: np.ndarray | None,
     descriptions: dict[str, str],
     new_columns: dict,
     ds_length: int,
     allow_overwrite: bool,
 ) -> tuple[list[ConstructedColumn], ColumnMap, UnitHandler]:
+    name_to_uuid = copy(name_to_uuid)
     if (
         inter := set(name_to_uuid.keys()).intersection(new_columns.keys())
     ) and not allow_overwrite:
@@ -127,22 +142,9 @@ def add_columns(
         new_in_memory_descriptions,
         new_column_names,
         new_static_units,
-    ) = __categorize_columns(new_columns, descriptions, ds_length)
-
-    # Extend the name→UUID map with new producers' outputs so that columns added
-    # in the same with_new_columns call can reference each other.
-    # For overwritten columns, preserve the OLD UUID so that new producers can
-    # correctly declare a dependency on the existing data rather than on themselves.
-    extended_name_to_uuid = dict(name_to_uuid)
-    for producer in new_derived_columns:
-        if producer.produces:
-            for name in producer.produces:
-                if name not in name_to_uuid:
-                    extended_name_to_uuid[name] = producer.uuid
-
-    new_derived_columns = [
-        producer.bind(extended_name_to_uuid) for producer in new_derived_columns
-    ]
+    ) = __categorize_columns(
+        new_columns, name_to_uuid, all_known_uuids, descriptions, ds_length
+    )
 
     new_unit_handler = unit_handler.with_static_columns(**new_static_units)
     new_producers = copy(producers) + new_derived_columns
@@ -167,7 +169,7 @@ def add_columns(
 
     updated_columns = dict(name_to_uuid)
     for producer in new_derived_columns:
+        assert producer.uuid is not None
         for name in producer.produces:
             updated_columns[name] = producer.uuid
-
     return new_producers, updated_columns, new_unit_handler

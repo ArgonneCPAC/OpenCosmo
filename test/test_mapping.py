@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import shutil
+from itertools import combinations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import h5py
 import numpy as np
+import opencosmo.collection.simulation.io as simulation_io
 import opencosmo.collection.simulation.simulation as simulation_module
 import pytest
+from opencosmo.io.schema import FileEntry, MapCoordinateState, make_schema
+from opencosmo.io.serial import allocate
+from opencosmo.io.verify import verify_structure
 from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 
 import opencosmo as oc
@@ -20,7 +25,9 @@ if TYPE_CHECKING:
 REFERENCE = "SCIDAC_128_GO"
 SIMULATION_A = "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257"
 SIMULATION_B = "KAPPA_2.984_EGW_0.682_SEED_6e5_VKIN_7286_EPS_4.883"
-MAPPED_SIMULATIONS = (REFERENCE, SIMULATION_A, SIMULATION_B)
+SIMULATION_C = "KAPPA_2.444_EGW_1_SEED_6.667e5_VKIN_4841_EPS_6.006"
+TARGET_SIMULATIONS = (SIMULATION_A, SIMULATION_B, SIMULATION_C)
+MAPPED_SIMULATIONS = (REFERENCE, *TARGET_SIMULATIONS)
 
 
 @pytest.fixture
@@ -29,6 +36,7 @@ def mapped_paths(test_data):
         REFERENCE: test_data.snapshot.mapping_reference,
         SIMULATION_A: test_data.snapshot.scidac(0).halo_properties,
         SIMULATION_B: test_data.snapshot.scidac(1).halo_properties,
+        SIMULATION_C: test_data.snapshot.scidac(2).halo_properties,
     }
 
 
@@ -49,35 +57,49 @@ def _expected_pairwise_maps(mapping_path: Path, mapped_paths):
         reference_uuid = str(group.attrs["reference"])
         assert uuids[REFERENCE] == reference_uuid
 
-        primary_a = group[f"primary/{uuids[SIMULATION_A]}/index"][:]
-        primary_b = group[f"primary/{uuids[SIMULATION_B]}/index"][:]
-        auxiliary = group[f"auxiliary/{uuids[SIMULATION_A]}__{uuids[SIMULATION_B]}"]
-        auxiliary_a = auxiliary["source"][:]
-        auxiliary_b = auxiliary["target"][:]
+        primary = {
+            name: group[f"primary/{uuids[name]}/index"][:]
+            for name in TARGET_SIMULATIONS
+        }
 
     pairwise = {}
-    pairwise[(REFERENCE, SIMULATION_A)] = primary_a
-    pairwise[(REFERENCE, SIMULATION_B)] = primary_b
-
-    for target, primary in (
-        (SIMULATION_A, primary_a),
-        (SIMULATION_B, primary_b),
-    ):
+    for target, target_primary in primary.items():
+        pairwise[(REFERENCE, target)] = target_primary
         inverse = np.full(lengths[target], -1, dtype=np.int64)
-        reference_rows = np.flatnonzero(primary >= 0)
-        inverse[primary[reference_rows]] = reference_rows
+        reference_rows = np.flatnonzero(target_primary >= 0)
+        inverse[target_primary[reference_rows]] = reference_rows
         pairwise[(target, REFERENCE)] = inverse
 
-    a_to_b = np.full(lengths[SIMULATION_A], -1, dtype=np.int64)
-    primary_rows = np.flatnonzero((primary_a >= 0) & (primary_b >= 0))
-    a_to_b[primary_a[primary_rows]] = primary_b[primary_rows]
-    a_to_b[auxiliary_a] = auxiliary_b
-    pairwise[(SIMULATION_A, SIMULATION_B)] = a_to_b
+    with h5py.File(mapping_path) as file:
+        auxiliary_group = file["map/auxiliary"]
+        for source, target in combinations(TARGET_SIMULATIONS, 2):
+            source_uuid = uuids[source]
+            target_uuid = uuids[target]
+            if source_uuid < target_uuid:
+                pair = auxiliary_group[f"{source_uuid}__{target_uuid}"]
+                auxiliary_source = pair["source"][:]
+                auxiliary_target = pair["target"][:]
+            else:
+                pair = auxiliary_group[f"{target_uuid}__{source_uuid}"]
+                auxiliary_source = pair["target"][:]
+                auxiliary_target = pair["source"][:]
 
-    b_to_a = np.full(lengths[SIMULATION_B], -1, dtype=np.int64)
-    b_to_a[primary_b[primary_rows]] = primary_a[primary_rows]
-    b_to_a[auxiliary_b] = auxiliary_a
-    pairwise[(SIMULATION_B, SIMULATION_A)] = b_to_a
+            source_to_target = np.full(lengths[source], -1, dtype=np.int64)
+            primary_rows = np.flatnonzero(
+                (primary[source] >= 0) & (primary[target] >= 0)
+            )
+            source_to_target[primary[source][primary_rows]] = primary[target][
+                primary_rows
+            ]
+            source_to_target[auxiliary_source] = auxiliary_target
+            pairwise[(source, target)] = source_to_target
+
+            target_to_source = np.full(lengths[target], -1, dtype=np.int64)
+            target_to_source[primary[target][primary_rows]] = primary[source][
+                primary_rows
+            ]
+            target_to_source[auxiliary_target] = auxiliary_source
+            pairwise[(target, source)] = target_to_source
     return pairwise
 
 
@@ -160,18 +182,15 @@ def _assert_mapping_equal(before, after, identifier="fof_halo_tag"):
             for name in names
         ]
 
-        for name, values in zip(names, before_ids, strict=True):
-            assert len(np.unique(values)) == len(values), (
-                f"{identifier!r} is not unique in dataset {name!r}"
-            )
-        for name, values in zip(names, after_ids, strict=True):
-            assert len(np.unique(values)) == len(values), (
-                f"{identifier!r} is not unique in dataset {name!r}"
-            )
-
-        before_pairs = set(zip(*before_ids, strict=True))
-        after_pairs = set(zip(*after_ids, strict=True))
-        assert before_pairs == after_pairs, f"Mapping differs for source {source!r}"
+        before_pairs = np.column_stack(before_ids)
+        after_pairs = np.column_stack(after_ids)
+        before_order = np.lexsort(before_pairs.T[::-1])
+        after_order = np.lexsort(after_pairs.T[::-1])
+        np.testing.assert_array_equal(
+            before_pairs[before_order],
+            after_pairs[after_order],
+            err_msg=f"Mapping differs for source {source!r}",
+        )
 
 
 def _assert_ordered_mapping_equal(
@@ -202,9 +221,9 @@ def test_match_aligns_rows_for_each_source(source, mapped_paths, test_data):
     _assert_matches_mapping(collection, matched, source, pairwise)
 
 
-@pytest.mark.parametrize("source", (SIMULATION_A, SIMULATION_B))
+@pytest.mark.parametrize("source", TARGET_SIMULATIONS)
 def test_match_without_reference(source, mapped_paths, test_data):
-    simulations = (SIMULATION_A, SIMULATION_B)
+    simulations = TARGET_SIMULATIONS
     collection = _open_mapped(
         mapped_paths, test_data.snapshot.halo_mapping, simulations
     )
@@ -641,8 +660,16 @@ def test_mapping_write(mapped_paths, test_data, tmp_path):
     _assert_mapping_equal(collection, written)
 
 
+def test_mapping_write_unfiltered(mapped_paths, test_data, tmp_path):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    oc.write(tmp_path / "test.hdf5", collection)
+    written = oc.open(tmp_path / "test.hdf5")
+
+    _assert_mapping_equal(collection, written)
+
+
 def test_mapping_write_without_reference(mapped_paths, test_data, tmp_path):
-    simulations = (SIMULATION_A, SIMULATION_B)
+    simulations = TARGET_SIMULATIONS
     collection = _open_mapped(
         mapped_paths, test_data.snapshot.halo_mapping, simulations
     )
@@ -690,6 +717,349 @@ def test_active_match_write_preserves_order(
     _assert_ordered_mapping_equal(
         collection, written, REFERENCE, sort_by=sort_after_read
     )
+
+
+def test_active_match_write_restores_canonical_spatial_order(
+    mapped_paths, test_data, tmp_path
+):
+    collection = (
+        _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+        .match(REFERENCE)
+        .take_range(7, 31)
+    )
+    coordinate_names = tuple(f"fof_halo_center_{axis}" for axis in "xyz")
+    indices = {name: into_array(dataset.index) for name, dataset in collection.items()}
+    assert any(np.any(np.diff(index) < 0) for index in indices.values())
+
+    expected = {}
+    for name, index in indices.items():
+        with h5py.File(mapped_paths[name]) as file:
+            expected[name] = {
+                column: file[f"data/{column}"][:][np.sort(index)]
+                for column in coordinate_names
+            }
+
+    path = tmp_path / "test.hdf5"
+    oc.write(path, collection)
+    with h5py.File(path) as file:
+        for name, coordinates in expected.items():
+            for column, values in coordinates.items():
+                np.testing.assert_array_equal(file[f"{name}/data/{column}"][:], values)
+
+    _assert_mapping_equal(collection, oc.open(path))
+
+
+def test_mapping_write_with_empty_target(mapped_paths, test_data, tmp_path):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    collection = collection.filter(
+        oc.col("fof_halo_mass") < 0,
+        datasets=SIMULATION_C,
+    )
+    assert len(collection[SIMULATION_C]) == 0
+
+    oc.write(tmp_path / "test.hdf5", collection)
+    written = oc.open(tmp_path / "test.hdf5")
+
+    _assert_mapping_equal(collection, written)
+
+
+def test_mapping_write_reference_and_one_target(mapped_paths, test_data, tmp_path):
+    simulations = (REFERENCE, SIMULATION_A)
+    collection = _open_mapped(
+        mapped_paths, test_data.snapshot.halo_mapping, simulations
+    )
+    oc.write(tmp_path / "test.hdf5", collection)
+    written = oc.open(tmp_path / "test.hdf5")
+
+    _assert_mapping_equal(collection, written)
+
+
+def test_make_schema_retains_raw_primary_and_auxiliary_endpoints(tmp_path):
+    reference, first, second = (uuid4() for _ in range(3))
+    new_reference, new_first, new_second = (uuid4() for _ in range(3))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_first = file.create_dataset("first", data=[10, 11, 12])
+        primary_second = file.create_dataset("second", data=[20, 21, 22])
+        auxiliary_first = file.create_dataset("aux_first", data=[50])
+        auxiliary_second = file.create_dataset("aux_second", data=[60])
+        match_set = DatasetMatchSet(
+            reference,
+            {first: primary_first, second: primary_second},
+            {(first, second): (auxiliary_first, auxiliary_second)},
+            {"reference": reference, "first": first, "second": second},
+        )
+
+        schema = match_set.make_schema(
+            {"reference": new_reference, "first": new_first, "second": new_second},
+            {
+                "reference": np.array([2, 0]),
+                "first": np.array([10]),
+                "second": np.array([20]),
+            },
+        )
+
+    primary = schema.children["primary"].children
+    np.testing.assert_array_equal(
+        primary[str(new_first)].columns["index"].data, [10, 12]
+    )
+    np.testing.assert_array_equal(
+        primary[str(new_second)].columns["index"].data, [20, 22]
+    )
+    auxiliary = schema.children["auxiliary"].children[f"{new_first}__{new_second}"]
+    np.testing.assert_array_equal(auxiliary.columns["source"].data, [50])
+    np.testing.assert_array_equal(auxiliary.columns["target"].data, [60])
+
+
+def test_unresolved_mapping_schema_is_rejected_by_generic_verification(tmp_path):
+    schema = make_schema(
+        "/",
+        FileEntry.SIMULATION_COLLECTION,
+        children={
+            "map": make_schema(
+                "map",
+                FileEntry.METADATA,
+                attributes={"": {}},
+            )._replace(map_coordinates=MapCoordinateState.RAW)
+        },
+    )
+
+    with pytest.raises(
+        ValueError, match="Unresolved raw-coordinate simulation mapping"
+    ):
+        verify_structure(schema)
+    with h5py.File(tmp_path / "unresolved.hdf5", "w") as file:
+        with pytest.raises(
+            ValueError, match="Unresolved raw-coordinate simulation mapping"
+        ):
+            allocate(file, schema)
+
+
+def test_lowered_mapping_schema_is_accepted_by_generic_verification():
+    schema = make_schema(
+        "/",
+        FileEntry.SIMULATION_COLLECTION,
+        children={"map": make_schema("map", FileEntry.METADATA, attributes={"": {}})},
+    )
+
+    verify_structure(schema)
+
+
+def test_lower_primary_mapping_preserves_unmatched_and_missing_targets():
+    writer = simulation_io.ColumnWriter.from_numpy_array(np.array([8, -1, 3, 99]))
+
+    lowered = simulation_io.__lower_primary_writer(writer, {3: 0, 8: 1})
+
+    np.testing.assert_array_equal(lowered.data, [1, -1, 0, -1])
+
+
+def test_lower_auxiliary_mapping_filters_and_sorts_pairs():
+    source = simulation_io.ColumnWriter.from_numpy_array(
+        np.array([20, 10, 20, 99]), attrs={"source": "attribute"}
+    )
+    target = simulation_io.ColumnWriter.from_numpy_array(
+        np.array([7, 9, 8, 7]), attrs={"target": "attribute"}
+    )
+
+    lowered_source, lowered_target = simulation_io.__lower_auxiliary_writers(
+        source, target, {10: 0, 20: 1}, {7: 1, 8: 0}
+    )
+
+    np.testing.assert_array_equal(lowered_source.data, [1, 1])
+    np.testing.assert_array_equal(lowered_target.data, [0, 1])
+    assert lowered_source.attrs == {"source": "attribute"}
+    assert lowered_target.attrs == {"target": "attribute"}
+
+
+def test_lower_mapping_rejects_duplicate_raw_ids():
+    with pytest.raises(ValueError, match="duplicate output raw row IDs"):
+        simulation_io.__make_output_position_lookup(np.array([3, 1, 3]))
+
+
+def test_mpi_dataset_output_plan_is_stable_and_balanced():
+    canonical, lookup = simulation_io.__plan_dataset_output(
+        np.array([8, 2, 9, 1, 5, 4, 7]), 3
+    )
+
+    np.testing.assert_array_equal(canonical, [1, 2, 4, 5, 7, 8, 9])
+    assert dict(lookup.output_positions) == {
+        1: 0,
+        2: 1,
+        4: 2,
+        5: 3,
+        7: 4,
+        8: 5,
+        9: 6,
+    }
+    assert dict(lookup.writer_ranks) == {
+        1: 0,
+        2: 0,
+        4: 0,
+        5: 1,
+        7: 1,
+        8: 2,
+        9: 2,
+    }
+
+
+def test_mpi_dataset_output_plan_allows_empty_writer_intervals():
+    _, lookup = simulation_io.__plan_dataset_output(np.array([3, 1]), 4)
+
+    assert dict(lookup.output_positions) == {1: 0, 3: 1}
+    assert dict(lookup.writer_ranks) == {1: 0, 3: 1}
+
+
+def test_mpi_dataset_output_plan_rejects_duplicate_raw_ids():
+    with pytest.raises(ValueError, match="duplicate raw row IDs"):
+        simulation_io.__plan_dataset_output(np.array([3, 1, 3]), 2)
+
+
+def test_rebuild_with_new_source_folds_auxiliary_into_primary(tmp_path):
+    old_reference, old_source, old_target = (uuid4() for _ in range(3))
+    new_source, new_target = (uuid4() for _ in range(2))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_source = file.create_dataset("source", data=[-1])
+        primary_target = file.create_dataset("target", data=[-1])
+        auxiliary_source = file.create_dataset("aux_source", data=[2])
+        auxiliary_target = file.create_dataset("aux_target", data=[3])
+        match_set = DatasetMatchSet(
+            old_reference,
+            {old_source: primary_source, old_target: primary_target},
+            {(old_source, old_target): (auxiliary_source, auxiliary_target)},
+            {"source": old_source, "target": old_target},
+        )
+
+        primary, auxiliary = rebuild_single_with_new_source(
+            match_set,
+            {"source": new_source, "target": new_target},
+            {"source": np.array([2]), "target": np.array([3])},
+            "source",
+        )
+
+    np.testing.assert_array_equal(primary[new_target], [3])
+    assert auxiliary == {}
+
+
+def test_rebuild_with_new_source_omits_fully_routed_auxiliary_pair(tmp_path):
+    old_reference, old_source, old_a, old_b = (uuid4() for _ in range(4))
+    new_source, new_a, new_b = (uuid4() for _ in range(3))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_source = file.create_dataset("source", data=[0, 1])
+        primary_a = file.create_dataset("a", data=[10, 11])
+        primary_b = file.create_dataset("b", data=[20, 21])
+        match_set = DatasetMatchSet(
+            old_reference,
+            {old_source: primary_source, old_a: primary_a, old_b: primary_b},
+            {},
+            {"source": old_source, "a": old_a, "b": old_b},
+        )
+
+        primary, auxiliary = rebuild_single_with_new_source(
+            match_set,
+            {"source": new_source, "a": new_a, "b": new_b},
+            {
+                "source": np.array([0, 1]),
+                "a": np.array([10, 11]),
+                "b": np.array([20, 21]),
+            },
+            "source",
+        )
+
+    np.testing.assert_array_equal(primary[new_a], [10, 11])
+    np.testing.assert_array_equal(primary[new_b], [20, 21])
+    assert auxiliary == {}
+
+
+def test_rebuild_with_new_source_no_surviving_correspondence(tmp_path):
+    old_reference, old_source, old_target = (uuid4() for _ in range(3))
+    new_source, new_target = (uuid4() for _ in range(2))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_source = file.create_dataset("source", data=[0, 1])
+        primary_target = file.create_dataset("target", data=[10, 11])
+        match_set = DatasetMatchSet(
+            old_reference,
+            {old_source: primary_source, old_target: primary_target},
+            {},
+            {"source": old_source, "target": old_target},
+        )
+
+        primary, auxiliary = rebuild_single_with_new_source(
+            match_set,
+            {"source": new_source, "target": new_target},
+            {
+                "source": np.array([0, 1]),
+                "target": np.array([20, 21]),
+            },
+            "source",
+        )
+
+    np.testing.assert_array_equal(primary[new_target], [10, 11])
+    assert auxiliary == {}
+
+
+def test_rebuild_with_new_source_emits_only_residual_auxiliary_pairs(tmp_path):
+    old_reference, old_source, old_a, old_b = (uuid4() for _ in range(4))
+    new_source, new_a, new_b = (uuid4() for _ in range(3))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_source = file.create_dataset("source", data=[0, -1])
+        primary_a = file.create_dataset("a", data=[0, 1])
+        primary_b = file.create_dataset("b", data=[0, 1])
+        auxiliary_a = file.create_dataset("aux_a", data=[2])
+        auxiliary_b = file.create_dataset("aux_b", data=[2])
+        match_set = DatasetMatchSet(
+            old_reference,
+            {old_source: primary_source, old_a: primary_a, old_b: primary_b},
+            {(old_a, old_b): (auxiliary_a, auxiliary_b)},
+            {"source": old_source, "a": old_a, "b": old_b},
+        )
+
+        primary, auxiliary = rebuild_single_with_new_source(
+            match_set,
+            {"source": new_source, "a": new_a, "b": new_b},
+            {
+                "source": np.array([0]),
+                "a": np.array([0, 1, 2, 3]),
+                "b": np.array([0, 1, 2]),
+            },
+            "source",
+        )
+
+    np.testing.assert_array_equal(primary[new_a], [0])
+    np.testing.assert_array_equal(primary[new_b], [0])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][0], [1, 2])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][1], [1, 2])
+
+
+def test_rebuild_with_new_source_honors_asymmetric_selections(tmp_path):
+    old_reference, old_source, old_a, old_b = (uuid4() for _ in range(4))
+    new_source, new_a, new_b = (uuid4() for _ in range(3))
+    with h5py.File(tmp_path / "mapping.hdf5", "w") as file:
+        primary_source = file.create_dataset("source", data=[0, 1, 2])
+        primary_a = file.create_dataset("a", data=[10, 11, 12])
+        primary_b = file.create_dataset("b", data=[20, 21, 22])
+        auxiliary_a = file.create_dataset("aux_a", data=[13, 14, 15])
+        auxiliary_b = file.create_dataset("aux_b", data=[23, 24, 25])
+        match_set = DatasetMatchSet(
+            old_reference,
+            {old_source: primary_source, old_a: primary_a, old_b: primary_b},
+            {(old_a, old_b): (auxiliary_a, auxiliary_b)},
+            {"source": old_source, "a": old_a, "b": old_b},
+        )
+
+        primary, auxiliary = rebuild_single_with_new_source(
+            match_set,
+            {"source": new_source, "a": new_a, "b": new_b},
+            {
+                "source": np.array([2, 0, 1]),
+                "a": np.array([14, 10, 13, 12]),
+                "b": np.array([25, 23, 20, 22]),
+            },
+            "source",
+        )
+
+    np.testing.assert_array_equal(primary[new_a], [10, 11, 12])
+    np.testing.assert_array_equal(primary[new_b], [20, 21, 22])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][0], [13, 14])
+    np.testing.assert_array_equal(auxiliary[(new_a, new_b)][1], [23, 24])
 
 
 def test_rebuild_with_new_source_preserves_old_reference_pair_as_auxiliary(tmp_path):

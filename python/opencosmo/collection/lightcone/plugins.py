@@ -110,7 +110,13 @@ def redshift_from_chi(chi: u.Quantity, cosmology):
         # right unit rather than invoking the solver.
         return {"redshift": distance.value * cu.redshift}
 
-    redshift = distance.to(
+    z_max = distance.max().to(
         cu.redshift, cu.redshift_distance(cosmology, kind="comoving")
     )
-    return {"redshift": redshift}
+    z_min = distance.min().to(
+        cu.redshift, cu.redshift_distance(cosmology, kind="comoving")
+    )
+    z_grid = np.linspace(z_min.value, z_max.value, 4096)
+    chi_grid = cosmology.comoving_distance(z_grid).to(u.Mpc)
+    z = np.interp(distance.to_value(u.Mpc), chi_grid.to_value(u.Mpc), z_grid)
+    return {"redshift": z * cu.redshift}

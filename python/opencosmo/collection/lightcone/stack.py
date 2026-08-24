@@ -7,9 +7,8 @@ import healpy as hp
 import numpy as np
 
 from opencosmo import dataset as ds
-from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.mpi import get_comm_world
+from opencosmo.mpi import get_all_keys, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
@@ -295,7 +294,7 @@ def get_order_mpi(pixels, comm):
 def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth: int):
     datasets = list(datasets)
     nside = 2**max_index_depth
-    coordinates = list(map(find_coordinates_2d, datasets))
+    coordinates = [find_coordinates_2d(dataset._state) for dataset in datasets]
     coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
 
     if datasets:

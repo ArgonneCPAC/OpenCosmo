@@ -20,8 +20,10 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
 
 
 def get_derived_column_names(
@@ -74,12 +76,14 @@ def make_dataset_schema(
     columns_to_uuid: dict[str, UUID],
     meta_columns: list[str],
     header: OpenCosmoHeader,
+    tree: Tree | None,
     region: Region,
+    raw_index: DataIndex,
     derived_data: dict,
     name: Optional[str] = None,
 ) -> Schema:
     columns = set(columns_to_uuid.keys())
-    header = header.with_region(region)
+    # header = header.with_region(region)
     raw_columns = columns.intersection(raw_data_handler.columns)
     raw_meta_columns = raw_columns & set(meta_columns)
     data_schema, metadata_schema = raw_data_handler.make_schema(
@@ -121,6 +125,14 @@ def make_dataset_schema(
         children[metadata_schema.name] = metadata_schema
     if name is None:
         name = ""
+
+    if tree is not None:
+        tree = tree.apply_index(raw_index)
+        tree_schema = tree.make_schema()
+        children["index"] = tree_schema
+
+    header_schema = header.dump()
+    children["header"] = header_schema
 
     return make_schema(
         name, FileEntry.DATASET, children=children, attributes=attributes

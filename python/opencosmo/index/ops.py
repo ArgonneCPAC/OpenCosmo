@@ -8,10 +8,10 @@ from opencosmo._lib import index as idxlib
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:
-    from opencosmo.index import ChunkedIndex, DataIndex
+    from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
 
-def reindex_column(index: DataIndex, column: np.ndarray):
+def reindex_column(index: DataIndex, column: np.ndarray) -> SimpleIndex:
     column = column.astype(np.int64)
     return idxlib.reindex_column(into_array(index), column)
 

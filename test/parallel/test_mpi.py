@@ -11,7 +11,7 @@ import mpi4py
 import numpy as np
 import pytest
 from mpi4py import MPI
-from opencosmo.mpi import get_comm_world
+from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
@@ -98,6 +98,52 @@ def update_simulation_parameter(
             for key, value in parameters.items():
                 file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_scatter_multidimensional_data():
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    data = np.arange((rank + 1) * 6, dtype=np.float64).reshape(rank + 1, 2, 3)
+
+    gathered = gather_data(data, comm)
+    if rank == 0:
+        expected = np.concatenate(comm.gather(data, root=0))
+        assert np.array_equal(gathered, expected)
+        assert gathered.shape == (10, 2, 3)
+    else:
+        comm.gather(data, root=0)
+
+    scattered = scatter_data(gathered, len(data), comm)
+    parallel_assert(np.array_equal(scattered, data))
+    parallel_assert(scattered.shape == data.shape)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redistribute_multidimensional_data():
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    data = np.asarray(
+        [
+            [[rank, 0], [rank, 1]],
+            [[rank, 2], [rank, 3]],
+        ],
+        dtype=np.float32,
+    )
+    target_rank = np.asarray([rank, (rank + 1) % size], dtype=np.int64)
+    all_inputs = comm.allgather((data, target_rank))
+
+    redistributed = redistribute_data(data, target_rank, comm)
+
+    expected = np.concatenate(
+        [
+            source_data[source_targets == rank]
+            for source_data, source_targets in all_inputs
+        ]
+    )
+    parallel_assert(np.array_equal(redistributed, expected))
+    parallel_assert(redistributed.shape == expected.shape)
 
 
 @pytest.mark.timeout(60)

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Iterable, Optional
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
 import numpy as np
@@ -10,12 +9,10 @@ import numpy as np
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import schema_data_length, verify_structure
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
-from opencosmo.mpi import MPI, get_comm_world
+from opencosmo.mpi import MPI, get_all_keys, get_comm_world
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from _typeshed import SupportsRichComparisonT
 
     from opencosmo.io.schema import Schema
 
@@ -69,7 +66,9 @@ def write_parallel(file: Path, file_schema: Schema):
         raise ValueError("Different ranks recieved a different path to output to!")
 
     try:
-        verify_structure(file_schema)  # Tier 1: structural correctness
+        verify_structure(
+            file_schema, allow_unresolved_maps=True
+        )  # Tier 1: structural correctness
         # Tier 2: does this rank actually contribute any rows?
         state = (
             CombineState.VALID
@@ -94,7 +93,7 @@ def write_parallel(file: Path, file_schema: Schema):
         return cleanup_mpi(comm, new_comm, new_group)
 
     file_schema = sync_schemas(file_schema, new_comm)
-    verify_schemas(file_schema, new_comm)
+    __verify_structure_collective(file_schema, new_comm)
     offsets = __get_all_offsets(file_schema, new_comm, "")
 
     if new_comm.Get_rank() == 0:
@@ -119,30 +118,105 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     group_write.Free()
 
 
-def get_all_keys(
-    data: dict[SupportsRichComparisonT, Any], comm: Optional[MPI.Comm]
-) -> list[SupportsRichComparisonT]:
-    """
-    Return all keys in the dictionary across all ranks, sorted
-    alphabetically. When defining the file structure, we have to iterate
-    through the schemas in the same order across all ranks, including
-    when one rank doesn't have a given child.
-    """
-    data_names = set(data.keys())
-    if comm is None:
-        return sorted(list(data_names))
-
-    all_data_names: Iterable[SupportsRichComparisonT]
-    all_data_names = data_names.union(*comm.allgather(data_names))
-    all_data_names = list(all_data_names)
-    all_data_names.sort()
-    return all_data_names
-
-
 def sync_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
-    if comm.Get_size() == 1:  # this shouldn't happen, but include anyway
-        return schema
+    from opencosmo.collection.simulation.io import resort_simulation_collection_mpi
+
+    schema = sync_uuids(schema, comm, {})
+    if schema.type == FileEntry.SIMULATION_COLLECTION:
+        schema = resort_simulation_collection_mpi(schema, comm)
     return verify_schemas(schema, comm)
+
+
+def __verify_structure_collective(schema: Schema, comm: MPI.Comm) -> None:
+    """Validate final schemas without allowing one rank to skip a collective."""
+    try:
+        verify_structure(schema)
+        message = None
+    except ValueError as error:
+        message = str(error)
+    messages = comm.allgather(message)
+    invalid_message = next((value for value in messages if value is not None), None)
+    if invalid_message is not None:
+        raise ValueError(invalid_message)
+
+
+def sync_uuids(schema: Schema, comm: MPI.Comm, uuid_map: dict[str, str]) -> Schema:
+    """Synchronize dataset identities and update mapping schemas.
+
+    A rank may have an empty schema for a child that is present on another rank.  Keep
+    those ranks in the collectives here instead of creating a sub-communicator: they
+    still need the UUID mappings when a map is present locally.
+    """
+
+    def collect(current: Schema) -> None:
+        if current.name == "data":
+            metadata = current.attributes.get("")
+            local_uuid = None if metadata is None else metadata.get("main_uuid")
+            all_uuids = comm.allgather(local_uuid)
+            canonical_uuid = next(
+                (value for value in all_uuids if value is not None), None
+            )
+            if canonical_uuid is not None:
+                for old_uuid in all_uuids:
+                    if old_uuid is not None:
+                        uuid_map[str(old_uuid)] = str(canonical_uuid)
+
+        for cname in get_all_keys(current.children, comm):
+            child_schema = current.children.get(cname)
+            collect(child_schema or make_schema(cname, FileEntry.EMPTY))
+
+    def rewrite(current: Schema) -> Schema:
+        rewritten_children = {}
+        for cname in get_all_keys(current.children, comm):
+            child_schema = current.children.get(cname)
+            rewritten_child = rewrite(
+                child_schema or make_schema(cname, FileEntry.EMPTY)
+            )
+            if child_schema is not None:
+                rewritten_children[cname] = rewritten_child
+
+        attributes = current.attributes
+        if current.name == "data":
+            metadata = current.attributes.get("")
+            if metadata is not None:
+                new_uuid = uuid_map.get(str(metadata.get("main_uuid")))
+                if new_uuid is not None:
+                    attributes = current.attributes | {
+                        "": metadata | {"uuid": new_uuid, "main_uuid": new_uuid}
+                    }
+
+        if current.name == "map":
+            metadata = current.attributes.get("")
+            if metadata is not None and "reference" in metadata:
+                reference = str(metadata["reference"])
+                attributes = current.attributes | {
+                    "": metadata | {"reference": uuid_map.get(reference, reference)}
+                }
+
+            for parent_name in ("primary", "auxiliary"):
+                parent = rewritten_children.get(parent_name)
+                if parent is None:
+                    continue
+                renamed_children = {}
+                for child_name, child_schema in parent.children.items():
+                    if parent_name == "primary":
+                        new_name = uuid_map.get(child_name, child_name)
+                    else:
+                        endpoints = child_name.split("__")
+                        new_name = "__".join(
+                            uuid_map.get(endpoint, endpoint) for endpoint in endpoints
+                        )
+                    renamed_children[new_name] = child_schema._replace(name=new_name)
+                rewritten_children[parent_name] = parent._replace(
+                    children=renamed_children
+                )
+
+        return current._replace(children=rewritten_children, attributes=attributes)
+
+    collect(schema)
+    schema = rewrite(schema)
+
+    return schema
 
 
 def verify_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
@@ -239,15 +313,10 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
 
 
 def sync_attributes(metadata: dict[str, Any], group_name: str, comm: MPI.Comm):
-    if group_name == "data":
-        uuid = uuid4()
-        uuid = comm.bcast(str(uuid))
-        metadata[""]["uuid"] = uuid
-        metadata[""]["main_uuid"] = uuid
-
     all_metadata = comm.allgather(metadata)
-    if not all(md == all_metadata[0] for md in all_metadata[1:]):
-        raise ValueError("Not all ranks recieved the same metadata!")
+    for md in all_metadata[1:]:
+        if md != all_metadata[0]:
+            raise ValueError("Not all ranks recieved the same metadata!")
     return metadata
 
 

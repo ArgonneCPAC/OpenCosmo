@@ -6,10 +6,10 @@ from uuid import UUID
 
 import h5py
 import numpy as np
-from opencosmo.io.schema import FileEntry, Schema
+from opencosmo.io.schema import FileEntry, MapCoordinateState, Schema
 from opencosmo.io.writer import ColumnWriter
 
-from opencosmo.index import get_data, into_array, reindex_column
+from opencosmo.index import get_data, into_array
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex, SimpleIndex
@@ -100,69 +100,42 @@ class DatasetMatchSet:
         indices: dict[str, DataIndex],
         source: str | None = None,
     ) -> Schema:
+        """Build an unresolved, raw-row-coordinate mapping schema.
+
+        Lowering must reject duplicate target raw IDs when they have multiple
+        output occurrences, until occurrence-aware mapping is implemented.
+        """
         if not set(new_uuids.keys()).issubset(self.aliases.keys()):
             raise ValueError(
                 "Tried to match datasets that don't appear in this mapping!"
             )
         source_alias = source or self.get_alias(self.reference_source)
-
+        new_primary: dict[UUID, SimpleIndex]
+        new_auxiliary: dict[tuple[UUID, UUID], tuple[SimpleIndex, SimpleIndex]]
         if source is not None:
-            lengths = {len(into_array(index)) for index in indices.values()}
-            if source not in new_uuids or len(lengths) != 1:
-                raise RuntimeError("Matched datasets must have identical row counts")
-            source_uuid = self.get_uuid(source)
-            assert source_uuid is not None
-            source_index = np.sort(into_array(indices[source]))
-            new_primary = {}
-            for name, uuid in new_uuids.items():
-                if name == source:
-                    continue
-                target_uuid = self.get_uuid(name)
-                assert target_uuid is not None
-                mapping = get_mapping(self, source_uuid, target_uuid, source_index)
-                assert mapping is not None
-                new_primary[uuid] = reindex_column(indices[name], mapping)
+            # Already mapped. Guaranteed only items that are matched
+            # in all datasets
+            primary_by_name = get_all_maps(self, indices, source)
+            new_primary = {
+                new_uuids[name]: mapping for name, mapping in primary_by_name.items()
+            }
             new_auxiliary = {}
         elif source_alias in new_uuids:
+            # Not mapped. Original source is present
             new_primary, new_auxiliary = rebuild_single_with_source(
                 self, new_uuids, indices, source_alias
             )
         else:
+            # Not mapped, original source not present
             source_alias = next(iter(new_uuids))
             new_primary, new_auxiliary = rebuild_single_with_new_source(
                 self, new_uuids, indices, source_alias
             )
 
-        primary_schemas: dict[str, Schema] = {}
-        for new_uuid, primary_map in new_primary.items():
-            writer = ColumnWriter.from_numpy_array(primary_map)
-            primary_schemas[str(new_uuid)] = Schema(
-                str(new_uuid),
-                FileEntry.COLUMNS,
-                {},
-                columns={"index": writer},
-                attributes={},
-            )
+        primary_schema = make_primary_schema(new_primary)
+        auxiliary_schema = make_auxiliary_schema(new_auxiliary)
 
-        auxiliary_schemas: dict[str, Schema] = {}
-        for (uuid_source, uuid_target), (
-            index_source,
-            index_target,
-        ) in new_auxiliary.items():
-            if len(index_source) == 0:
-                continue
-            source_writer = ColumnWriter.from_numpy_array(index_source)
-            target_writer = ColumnWriter.from_numpy_array(index_target)
-            writers = {"source": source_writer, "target": target_writer}
-            name = f"{uuid_source}__{uuid_target}"
-
-            schema = Schema(name, FileEntry.COLUMNS, {}, columns=writers, attributes={})
-            auxiliary_schemas[name] = schema
-        primary_schema = Schema("primary", FileEntry.COLUMNS, primary_schemas, {}, {})
-        auxiliary_schema = Schema(
-            "auxiliary", FileEntry.COLUMNS, auxiliary_schemas, {}, {}
-        )
-
+        assert source_alias is not None
         children = {"primary": primary_schema, "auxiliary": auxiliary_schema}
         return Schema(
             "map",
@@ -170,7 +143,67 @@ class DatasetMatchSet:
             children,
             {},
             {"": {"format_version": 1, "reference": new_uuids[source_alias]}},
+            MapCoordinateState.RAW,
         )
+
+
+def get_all_maps(
+    match_set: DatasetMatchSet, indices: dict[str, DataIndex], source: str
+) -> dict[str, SimpleIndex]:
+    lengths = {len(into_array(index)) for index in indices.values()}
+    if len(lengths) != 1:
+        raise RuntimeError("Matched datasets must have identical row counts")
+    source_uuid = match_set.get_uuid(source)
+    assert source_uuid is not None
+    source_index = np.sort(into_array(indices[source]))
+    maps: dict[str, SimpleIndex] = {}
+    for name in indices:
+        if name == source:
+            continue
+        target_uuid = match_set.get_uuid(name)
+        assert target_uuid is not None
+        mapping = get_mapping(match_set, source_uuid, target_uuid, source_index)
+        assert mapping is not None
+        maps[name] = mapping
+    return maps
+
+
+def make_primary_schema(new_primary: dict[UUID, SimpleIndex]) -> Schema:
+    primary_schemas: dict[str, Schema] = {}
+    for new_uuid, primary_map in new_primary.items():
+        writer = ColumnWriter.from_numpy_array(primary_map)
+
+        primary_schemas[str(new_uuid)] = Schema(
+            str(new_uuid),
+            FileEntry.COLUMNS,
+            {},
+            columns={"index": writer},
+            attributes={},
+        )
+
+    return Schema("primary", FileEntry.COLUMNS, primary_schemas, {}, {})
+
+
+def make_auxiliary_schema(
+    new_auxiliary: dict[tuple[UUID, UUID], tuple[SimpleIndex, SimpleIndex]],
+) -> Schema:
+    auxiliary_schemas: dict[str, Schema] = {}
+    for (uuid_source, uuid_target), (
+        index_source,
+        index_target,
+    ) in new_auxiliary.items():
+        if len(index_source) == 0:
+            continue
+        source_writer = ColumnWriter.from_numpy_array(index_source)
+        target_writer = ColumnWriter.from_numpy_array(index_target)
+
+        writers = {"source": source_writer, "target": target_writer}
+        name = f"{uuid_source}__{uuid_target}"
+
+        schema = Schema(name, FileEntry.COLUMNS, {}, columns=writers, attributes={})
+        auxiliary_schemas[name] = schema
+
+    return Schema("auxiliary", FileEntry.COLUMNS, auxiliary_schemas, {}, {})
 
 
 def rebuild_single_with_source(
@@ -178,7 +211,10 @@ def rebuild_single_with_source(
     new_uuids: dict[str, UUID],
     indices: dict[str, DataIndex],
     source: str,
-):
+) -> tuple[
+    dict[UUID, SimpleIndex],
+    dict[tuple[UUID, UUID], tuple[SimpleIndex, SimpleIndex]],
+]:
     """
     This is used during writing to figure out the new map. The important thing
     to appreciate about writing is data is ALWAYS written in the same order
@@ -187,7 +223,7 @@ def rebuild_single_with_source(
     This algorithm assumes mapping is one to one: Each row in the source maps to
     at most one row in the target.
     """
-    new_primary_maps = {}
+    new_primary_maps: dict[UUID, SimpleIndex] = {}
     old_source_uuid = match_set.get_uuid(source)
     assert old_source_uuid is not None
     source_index = into_array(indices[source])
@@ -200,14 +236,9 @@ def rebuild_single_with_source(
         primary_map = get_primary_mapping(
             match_set, old_source_uuid, old_target_uuid, source_index
         )
-        target_index = into_array(indices[name])
-        target_sort = np.argsort(target_index)
+        new_primary_maps[new_uuid] = primary_map[source_sort]
 
-        new_primary_maps[new_uuid] = reindex_column(
-            target_index[target_sort], primary_map[source_sort]
-        )
-
-    new_auxiliary_maps = {}
+    new_auxiliary_maps: dict[tuple[UUID, UUID], tuple[SimpleIndex, SimpleIndex]] = {}
     for (uuida, uuidb), (
         aux_source_index,
         aux_target_index,
@@ -216,14 +247,9 @@ def rebuild_single_with_source(
         aliasb = match_set.get_alias(uuidb)
         if aliasa not in new_uuids or aliasb not in new_uuids:
             continue
-        indexa = into_array(indices[aliasa])
-        indexb = into_array(indices[aliasb])
-        reindexa = reindex_column(np.sort(indexa), aux_source_index[:])
-        reindexb = reindex_column(np.sort(indexb), aux_target_index[:])
-        to_keep = (reindexa != -1) & (reindexb != -1)
         new_auxiliary_maps[(new_uuids[aliasa], new_uuids[aliasb])] = (
-            reindexa[to_keep],
-            reindexb[to_keep],
+            aux_source_index[:],
+            aux_target_index[:],
         )
 
     return new_primary_maps, new_auxiliary_maps
@@ -234,8 +260,11 @@ def rebuild_single_with_new_source(
     new_uuids: dict[str, UUID],
     indices: dict[str, DataIndex],
     source: str,
-):
-    new_primary_maps = {}
+) -> tuple[
+    dict[UUID, SimpleIndex],
+    dict[tuple[UUID, UUID], tuple[SimpleIndex, SimpleIndex]],
+]:
+    new_primary_maps: dict[UUID, SimpleIndex] = {}
     old_source_uuid = match_set.get_uuid(source)
     assert old_source_uuid is not None
 
@@ -249,43 +278,47 @@ def rebuild_single_with_new_source(
         assert old_target_uuid is not None
         mapping = get_mapping(match_set, old_source_uuid, old_target_uuid, source_index)
         assert mapping is not None
-        target_index = into_array(indices[target])
-        new_primary_maps[new_uuid] = reindex_column(
-            np.sort(target_index), mapping[source_sort]
-        )
+        new_primary_maps[new_uuid] = mapping[source_sort]
 
-    new_auxiliary_maps = {}
+    new_auxiliary_maps: dict[tuple[UUID, UUID], tuple[SimpleIndex, SimpleIndex]] = {}
     aliases = sorted(alias for alias in new_uuids if alias != source)
     for position, aliasa in enumerate(aliases):
         old_uuida = match_set.get_uuid(aliasa)
         assert old_uuida is not None
         indexa = into_array(indices[aliasa])
-        sorteda = np.sort(indexa)
         for aliasb in aliases[position + 1 :]:
             old_uuidb = match_set.get_uuid(aliasb)
             assert old_uuidb is not None
-            indexb = into_array(indices[aliasb])
             mapping = get_mapping(match_set, old_uuida, old_uuidb, indexa)
             assert mapping is not None
             sort_a = np.argsort(indexa)
-            reindexa = reindex_column(sorteda, indexa[sort_a])
-            reindexb = reindex_column(np.sort(indexb), mapping[sort_a])
-            keep = (reindexa >= 0) & (reindexb >= 0)
+            raw_a = indexa[sort_a]
+            raw_b = mapping[sort_a]
+            keep = raw_b >= 0
 
             primary_a = new_primary_maps[new_uuids[aliasa]]
             primary_b = new_primary_maps[new_uuids[aliasb]]
-            routed_b_by_a = np.full(len(indexa), -1, dtype=np.int64)
             routed = (primary_a >= 0) & (primary_b >= 0)
-            routed_b_by_a[primary_a[routed]] = primary_b[routed]
-
-            routed_pair = np.zeros(len(reindexa), dtype=bool)
-            valid_a = reindexa >= 0
-            routed_pair[valid_a] = routed_b_by_a[reindexa[valid_a]] == reindexb[valid_a]
+            routed_b_by_raw_a = dict(
+                zip(
+                    primary_a[routed].tolist(),
+                    primary_b[routed].tolist(),
+                    strict=True,
+                )
+            )
+            routed_pair = np.fromiter(
+                (
+                    routed_b_by_raw_a.get(raw_source) == raw_target
+                    for raw_source, raw_target in zip(raw_a, raw_b, strict=True)
+                ),
+                dtype=bool,
+                count=len(raw_a),
+            )
             keep &= ~routed_pair
             if keep.any():
                 new_auxiliary_maps[(new_uuids[aliasa], new_uuids[aliasb])] = (
-                    reindexa[keep],
-                    reindexb[keep],
+                    raw_a[keep],
+                    raw_b[keep],
                 )
 
     return new_primary_maps, new_auxiliary_maps
@@ -331,10 +364,19 @@ def get_auxillary_mapping(
     auxillary_map = (auxillary_map[0][:], auxillary_map[1][:])
 
     index_arr = into_array(index)
-    _, index_into_map, index_into_final = np.intersect1d(
-        auxillary_map[0], index_arr, return_indices=True
-    )
-    return (index_into_final, auxillary_map[1][index_into_map])
+
+    # np.intersect1d would report only the first position of each repeated
+    # value, silently leaving later duplicates without their override. An index
+    # can contain duplicates after a match, because several source rows may map
+    # onto the same target row.
+    aux_source, aux_target = auxillary_map
+    order = np.argsort(aux_source, kind="stable")
+    sorted_source = aux_source[order]
+    candidates = np.searchsorted(sorted_source, index_arr)
+    candidates[candidates >= len(sorted_source)] = 0
+    index_into_final = np.flatnonzero(sorted_source[candidates] == index_arr)
+    index_into_map = order[candidates[index_into_final]]
+    return (index_into_final, aux_target[index_into_map])
 
 
 def get_primary_mapping(
