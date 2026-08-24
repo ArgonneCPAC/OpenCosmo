@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
 import numpy as np
@@ -9,12 +9,10 @@ import numpy as np
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import schema_data_length, verify_structure
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
-from opencosmo.mpi import MPI, get_comm_world
+from opencosmo.mpi import MPI, get_all_keys, get_comm_world
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from _typeshed import SupportsRichComparisonT
 
     from opencosmo.io.schema import Schema
 
@@ -118,26 +116,6 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     if comm_write != MPI.COMM_NULL:
         comm_write.Free()
     group_write.Free()
-
-
-def get_all_keys(
-    data: dict[SupportsRichComparisonT, Any], comm: Optional[MPI.Comm]
-) -> list[SupportsRichComparisonT]:
-    """
-    Return all keys in the dictionary across all ranks, sorted
-    alphabetically. When defining the file structure, we have to iterate
-    through the schemas in the same order across all ranks, including
-    when one rank doesn't have a given child.
-    """
-    data_names = set(data.keys())
-    if comm is None:
-        return sorted(list(data_names))
-
-    all_data_names: Iterable[SupportsRichComparisonT]
-    all_data_names = data_names.union(*comm.allgather(data_names))
-    all_data_names = list(all_data_names)
-    all_data_names.sort()
-    return all_data_names
 
 
 def sync_schemas(schema: Schema, comm: MPI.Comm) -> Schema:

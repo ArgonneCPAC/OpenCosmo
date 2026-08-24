@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
-from opencosmo.io.mpi import get_all_keys
-from opencosmo.mpi import MPI, get_comm_world
+from opencosmo.mpi import MPI, get_all_keys, get_comm_world
 
 if TYPE_CHECKING:
     from collections.abc import Callable

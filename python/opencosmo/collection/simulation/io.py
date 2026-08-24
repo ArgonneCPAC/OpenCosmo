@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Mapping
 import numpy as np
 
 from opencosmo.index import into_array
-from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import (
     FileEntry,
     Schema,
@@ -17,6 +16,7 @@ from opencosmo.io.schema import (
 from opencosmo.io.writer import ColumnWriter
 from opencosmo.mpi import (
     gather_index,
+    get_all_keys,
     get_subcom,
     redistribute_data,
     scatter_index,
