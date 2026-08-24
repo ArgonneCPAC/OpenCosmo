@@ -126,7 +126,11 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     ds = oc.open(haloproperties_600_path)
     assert "redshift" in ds.columns
 
-    pixel = np.random.choice(ds.region.pixels)
+    # Reopening may repartition rows, so every rank must query the same region.
+    # Choosing independently makes the pre- and post-write datasets answer
+    # different unions of per-rank cones.
+    pixels = np.concatenate(comm.allgather(ds.region.pixels))
+    pixel = comm.bcast(np.random.choice(pixels) if comm.Get_rank() == 0 else None)
     center = pix2ang(ds.region.nside, pixel, True, True)
 
     region = oc.make_cone(center, 2 * u.deg)
@@ -146,7 +150,10 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     all_tags = np.concatenate(comm.allgather(rank_tags))
     all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
 
-    parallel_assert(np.all(np.sort(all_tags) == np.sort(all_new_tags)))
+    parallel_assert(
+        np.array_equal(np.sort(all_tags), np.sort(all_new_tags)),
+        f"expected {len(all_tags)} tags after round trip, got {len(all_new_tags)}",
+    )
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")

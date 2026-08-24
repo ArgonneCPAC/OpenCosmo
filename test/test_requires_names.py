@@ -88,7 +88,7 @@ class TestRawColumnRequiresNames:
     def test_alias_bind_then_requires_names(self):
         rc = RawColumn("fof_halo_mass", "halo mass", uuid4(), alias="mass")
         name_to_uuid = {"fof_halo_mass": uuid4()}
-        bound = rc.bind(name_to_uuid)
+        bound = rc.bind(name_to_uuid, set(name_to_uuid.values()))
         assert bound.requires_names == {"fof_halo_mass"}
 
     def test_plain_returns_fresh_set(self):
