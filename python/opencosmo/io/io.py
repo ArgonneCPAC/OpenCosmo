@@ -191,6 +191,12 @@ def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> N
     if mpiio is not None:
         return mpiio.write_parallel(path, schema)
 
+    from opencosmo.collection.simulation.io import lower_simulation_collection_maps
+
+    schema = lower_simulation_collection_maps(schema)
+    from opencosmo.io.verify import verify_structure
+
+    verify_structure(schema)
     file = h5py.File(path, "w")
     allocate(file, schema)
     write_metadata(file, schema)

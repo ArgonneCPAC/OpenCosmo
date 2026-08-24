@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Generator, Optional
@@ -10,15 +11,17 @@ import astropy.units as u
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import RawColumn
+from opencosmo.column.column import EvaluatedColumn, RawColumn
 from opencosmo.column.select import MissingColumnError, get_column_selection
 from opencosmo.dataset.columns import add_columns, resort
+from opencosmo.dataset.graph import get_all_required_pairs
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
-from opencosmo.index import single_chunk
+from opencosmo.index import reindex_column, single_chunk
 from opencosmo.index.mask import into_array
+from opencosmo.mpi import gather_index, get_comm_world, verify_redistribution
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
     HookPoint,
@@ -30,6 +33,7 @@ from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
     make_unit_handler_from_units,
 )
+from opencosmo.uuid import get_raw_column_uuid
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -175,12 +179,17 @@ def state_from_target(
         if metadata_group and col.name.split("/")[-2] == metadata_group
     )
     descriptions = handler.descriptions
+    uuids = handler.get_uuids()
 
     raw_producers = [
         RawColumn(
-            cname, descriptions.get(cname, "None"), no_cache=cname in meta_column_names
+            cname,
+            descriptions.get(cname, "None"),
+            _uuid=uuid,
+            no_cache=cname in meta_column_names,
+            on_disk=True,
         )
-        for cname in handler.columns
+        for cname, uuid in uuids.items()
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
     producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
@@ -215,7 +224,9 @@ def state_in_memory(
 
     all_columns = dict(data_columns) | dict(metadata_columns)
     raw_producers = [
-        RawColumn(cname, descriptions.get(cname, "None"))
+        RawColumn(
+            cname, descriptions.get(cname, "None"), get_raw_column_uuid(cname, set())
+        )
         for cname in all_columns.keys()
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
@@ -411,15 +422,21 @@ def with_new_columns(
         state.unit_handler,
         state.cache,
         state.column_map,
+        set(state.producers.keys()),
         get_sorted_index(state),
         descriptions,
         new_columns,
         len(state),
         allow_overwrite=allow_overwrite,
     )
+    producers = {}
+    for producer in new_producers_list:
+        assert producer.uuid is not None
+        producers[producer.uuid] = producer
+
     return dataclasses.replace(
         state,
-        producers={p.uuid: p for p in new_producers_list},
+        producers=producers,
         column_map=new_column_map,
         unit_handler=new_unit_handler,
     )
@@ -512,3 +529,31 @@ def with_units(
     return dataclasses.replace(
         state, unit_handler=new_handler, cache=cache, header=new_header
     )
+
+
+def redistribute(state: DatasetState, rows):
+    all_required_producers = get_all_required_pairs(
+        list(state.producers.values()), state.column_map
+    )
+    cached_columns_to_keep = defaultdict(list)
+    for uuid, name in all_required_producers:
+        producer = state.producers[uuid]
+        if isinstance(producer, EvaluatedColumn) or (
+            isinstance(producer, RawColumn) and not producer.on_disk
+        ):
+            cached_columns_to_keep[uuid].append(name)
+
+    comm = get_comm_world()
+    assert comm is not None
+    verify_redistribution(state.raw_index, rows, comm)
+    new_index = gather_index(rows, comm)
+    original_index = gather_index(into_array(state.raw_index), comm)
+    reorder_map = None
+    if comm.Get_rank() == 0:
+        reorder_map = reindex_column(original_index, new_index)
+
+    new_cache = state.cache.redistribute(
+        reorder_map, len(rows), cached_columns_to_keep, comm
+    )
+    new_handler = state.raw_data_handler.with_index(rows)
+    return dataclasses.replace(state, cache=new_cache, raw_data_handler=new_handler)

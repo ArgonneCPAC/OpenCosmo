@@ -8,6 +8,7 @@ from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import (
     ColumnWriter,
 )
+from opencosmo.uuid import get_hdf5_column_uuid
 
 from opencosmo.index import (
     SimpleIndex,
@@ -19,6 +20,8 @@ from opencosmo.index import (
 )
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     import h5py
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.schema import Schema
@@ -72,6 +75,9 @@ class Hdf5Handler:
     def __len__(self):
         return get_length(self.__index)
 
+    def with_index(self, index: DataIndex) -> Hdf5Handler:
+        return Hdf5Handler(self.__columns, index, self.__load_conditions)
+
     @property
     def in_memory(self) -> bool:
         return self.__in_memory
@@ -79,6 +85,9 @@ class Hdf5Handler:
     @property
     def load_conditions(self) -> Optional[dict[str, bool]]:
         return self.__load_conditions
+
+    def get_uuids(self) -> dict[str, UUID]:
+        return {name: get_hdf5_column_uuid(col) for name, col in self.__columns.items()}
 
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
         if len(other) == 0:

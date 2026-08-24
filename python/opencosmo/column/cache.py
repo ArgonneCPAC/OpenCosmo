@@ -14,6 +14,12 @@ from opencosmo.index.take import take
 from opencosmo.index.unary import get_length, get_range
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import ColumnWriter
+from opencosmo.mpi import (
+    gather_data,
+    get_all_entries,
+    parallel_assert,
+    scatter_data,
+)
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex
@@ -187,6 +193,33 @@ class ColumnCache:
             else make_schema("metadata", FileEntry.EMPTY)
         )
         return data_schema, metadata_schema
+
+    def redistribute(
+        self, reorder_map, length, columns_to_keep: dict[UUID, list[str]], comm
+    ):
+        new_data = {}
+        keys_to_keep = set()
+        for uuid, cols in columns_to_keep.items():
+            if not cols:
+                continue
+            keys_to_keep.update([(uuid, col) for col in cols])
+
+        data_to_keep = self.get_data(keys_to_keep)
+        for uuid, columns in get_all_entries(data_to_keep, comm):
+            parallel_assert(columns is not None, comm)
+            assert columns is not None
+            for name, data in get_all_entries(columns, comm):
+                parallel_assert(data is not None, comm)
+                assert data is not None
+                if name not in columns_to_keep[uuid]:
+                    continue
+                all_data = gather_data(data, comm)
+                if comm.Get_rank() == 0:
+                    all_data = all_data[reorder_map]
+                new_data[(uuid, name)] = scatter_data(all_data, length, comm)
+        return ColumnCache(
+            new_data, {}, self.__descriptions, set(), {}, None, None, None
+        )
 
     def __push_down(self, data: dict[CacheKey, np.ndarray]):
         pairs_to_keep = self.registered_pairs.intersection(data.keys()).difference(

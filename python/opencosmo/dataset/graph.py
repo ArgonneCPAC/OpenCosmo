@@ -16,6 +16,35 @@ if TYPE_CHECKING:
     from opencosmo.units.handler import UnitHandler
 
 
+def get_all_required_pairs(
+    producers: list[ConstructedColumn],
+    columns_to_uuid: dict[str, UUID],
+) -> set[tuple[UUID, str]]:
+    """
+    Return the full set of (producer_uuid, column_name) pairs needed to
+    produce the requested columns, including all transitive dependencies.
+    """
+    dependency_graph = build_dependency_graph(producers)
+    uuid_to_node: dict[UUID, int] = {
+        dependency_graph[i].uuid: i for i in range(dependency_graph.num_nodes())
+    }
+    required_nodes: set[int] = set()
+    for uuid in columns_to_uuid.values():
+        if uuid in uuid_to_node:
+            node_idx = uuid_to_node[uuid]
+            required_nodes.add(node_idx)
+            required_nodes.update(rx.ancestors(dependency_graph, node_idx))
+
+    pairs: set[tuple[UUID, str]] = {
+        (uuid, name) for name, uuid in columns_to_uuid.items()
+    }
+    for node_idx in required_nodes:
+        producer = dependency_graph[node_idx]
+        for name in producer.produces:
+            pairs.add((producer.uuid, name))
+    return pairs
+
+
 def validate_column_producers(
     producers: list[ConstructedColumn], unit_handler: UnitHandler
 ):
@@ -51,10 +80,14 @@ def build_dependency_graph(
 
     for producer in producers:
         node_idx = graph.add_node(producer)
-        uuid_to_node[producer.uuid] = node_idx
+        uuid = producer.uuid
+        assert uuid is not None
+        uuid_to_node[uuid] = node_idx
 
     for producer in producers:
-        produces_idx = uuid_to_node[producer.uuid]
+        uuid = producer.uuid
+        assert uuid is not None
+        produces_idx = uuid_to_node[uuid]
         if not producer.requires.issubset(uuid_to_node.keys()):
             raise ValueError(
                 f"Producer {producer.produces} depends on an unknown producer UUID."

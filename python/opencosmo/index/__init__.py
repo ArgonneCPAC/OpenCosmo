@@ -1,6 +1,7 @@
 import numpy as np
 
 from .build import (
+    coalesce_chunks,
     concatenate,
     empty,
     from_size,
@@ -27,6 +28,7 @@ __all__ = [
     "DataIndex",
     "SimpleIndex",
     "ChunkedIndex",
+    "coalesce_chunks",
     "empty",
     "from_size",
     "single_chunk",

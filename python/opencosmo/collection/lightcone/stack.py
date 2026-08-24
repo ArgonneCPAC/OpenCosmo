@@ -7,9 +7,8 @@ import healpy as hp
 import numpy as np
 
 from opencosmo import dataset as ds
-from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.mpi import get_comm_world
+from opencosmo.mpi import get_all_keys, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:

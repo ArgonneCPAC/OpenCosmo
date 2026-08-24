@@ -602,7 +602,7 @@ class Lightcone(dict):
     def make_schema(
         self, name: str = "", _min_size=100_000, no_stack: bool = False
     ) -> Schema:
-        from opencosmo.io.mpi import get_all_keys
+        from opencosmo.mpi import get_all_keys
 
         datasets = lcio.order_by_redshift_range(self)
         for key in datasets:
