@@ -305,8 +305,7 @@ class SimulationCollection:
     ):
         """
         This type of collection will only ever be constructed if all the underlying
-        datasets have the same data type, so it is always safe to map operations
-        across all of them.
+        datasets have the same data type.
         """
         if isinstance(datasets, str):
             datasets = [datasets]
@@ -501,7 +500,7 @@ class SimulationCollection:
             )
         return {name: ds.get_data() for name, ds in self.values()}
 
-    def match(self, source: str) -> SimulationCollection:
+    def match(self, dataset: str) -> SimulationCollection:
         """
         Create a new simulation collection where the datasets are ordered so that matched
         objects appear in the same row across every dataset. All datasets are matched
@@ -515,21 +514,21 @@ class SimulationCollection:
 
             collection = collection.match("gravity_only")
 
-        Further operations such as :py:meth:`take <opencosmo.SimulationCollection.take` and
-        :py:meth:`filter <opencosmo.SimulationCollection.filter` will now operate exclusively
+        Further operations such as :py:meth:`take <opencosmo.SimulationCollection.take>` and
+        :py:meth:`filter <opencosmo.SimulationCollection.filter>` will now operate exclusively
         on the gravity_only sim, and retain matching objects in the other sim. For a matched
-        collection, calling :my:meth:`get_data <opencosmo.SimulationCollection.get_data>` will
+        collection, calling :py:meth:`get_data <opencosmo.SimulationCollection.get_data>` will
         always return datasets with equal length
 
-        To clear a match, use :py:meth:`clear_match <opencosmo.StructureCollection.clear_match>`.
+        To clear a match, use :py:meth:`clear_match <opencosmo.SimulationCollection.clear_match>`.
         Clearning a match does not undo any previous operations, it simple causes later
         operations to be applied to all datasets regardless of matching between rows.
 
         Parameters
         ----------
         dataset: str
-            The dataset to match the collection against. You can get them with py:meth:`
-            SimulationCollection.keys <opencosmo.SimulationCollection.keys>`
+            The dataset to match the collection against. You can get the available
+            names with SimulationCollection.keys()
 
         Returns
         -------
@@ -545,22 +544,22 @@ class SimulationCollection:
             raise ValueError(
                 "This SimulationCollection does not contain matching information!"
             )
-        elif source not in self.keys():
+        elif dataset not in self.keys():
             raise ValueError(
-                f"This SimulationCollection does not have a simulation named {source}"
+                f"This SimulationCollection does not have a simulation named {dataset}"
             )
         assert all(isinstance(ds, DatasetState) for ds in self.__datasets.values())
 
         new_datasets = prepare_matched_datasets(
             self.__match_set,
             cast("dict[str, DatasetState]", self.__datasets),
-            source,
+            dataset,
         )
 
         return SimulationCollection(
             new_datasets,
             self.__match_set,
-            source,
+            dataset,
             {name: True for name in self.__datasets.keys()},
         )
 
