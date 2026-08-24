@@ -276,14 +276,20 @@ def redistribute_simulation_collection_data(
             continue
         rank_has_child = child_name in schema.children
         all_has_child = comm.allgather(rank_has_child)
+        child = schema.children.get(child_name)
+        local_raw_ids = None if child is None else get_dataset_schema_index(child)
+        __collective_error(
+            f"Dataset '{child_name}' has no output raw row index"
+            if child is not None and local_raw_ids is None
+            else None,
+            comm,
+        )
+
         subcom, subgroup = get_subcom(all_has_child, comm)
         try:
-            if not rank_has_child:
+            if child is None:
                 continue
-            child = schema.children[child_name]
-            local_raw_ids = get_dataset_schema_index(child)
-            if local_raw_ids is None:
-                raise ValueError(f"Dataset '{child_name}' has no output raw row index")
+            assert local_raw_ids is not None
             lookup, target_ranks = __get_dataset_output_lookup(local_raw_ids, subcom)
             received_raw_ids = redistribute_data(local_raw_ids, target_ranks, subcom)
             new_children[child_name] = update_dataset_schema_with_redistribute(
@@ -601,17 +607,20 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
             else np.empty(0, dtype=np.int64)
         )
         source_child = schema.children.get(source_name)
-        if source_child is not None:
-            local_source_ids = get_dataset_schema_index(source_child)
-            if local_source_ids is None:
-                __collective_error(
-                    comm, f"Dataset '{source_name}' has no output raw row index"
-                )
-            else:
-                local_source_ids = into_array(local_source_ids)
-                local_pairs = np.isin(raw_source, local_source_ids)
-                raw_source = raw_source[local_pairs]
-                raw_target = raw_target[local_pairs]
+        local_source_ids = (
+            None if source_child is None else get_dataset_schema_index(source_child)
+        )
+        __collective_error(
+            f"Dataset '{source_name}' has no output raw row index"
+            if source_child is not None and local_source_ids is None
+            else None,
+            comm,
+        )
+        if local_source_ids is not None:
+            local_source_ids = into_array(local_source_ids)
+            local_pairs = np.isin(raw_source, local_source_ids)
+            raw_source = raw_source[local_pairs]
+            raw_target = raw_target[local_pairs]
         source, target = __lower_auxiliary_values(
             raw_source,
             raw_target,

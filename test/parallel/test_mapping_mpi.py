@@ -71,6 +71,31 @@ def test_mpi_dataset_output_lookup_assigns_uneven_runs():
 
 
 @pytest.mark.parallel(nprocs=4)
+def test_mpi_dataset_redistribution_validates_indices_collectively(monkeypatch):
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    child = Schema("catalog", FileEntry.DATASET, {}, {}, {})
+    schema = Schema(
+        "/",
+        FileEntry.SIMULATION_COLLECTION,
+        {"catalog": child} if rank < 2 else {},
+        {},
+        {},
+    )
+
+    monkeypatch.setattr(
+        simulation_io,
+        "get_dataset_schema_index",
+        lambda _: None if rank == 0 else np.asarray([rank], dtype=np.int64),
+    )
+
+    with pytest.raises(
+        ValueError, match="Dataset 'catalog' has no output raw row index"
+    ):
+        simulation_io.redistribute_simulation_collection_data(schema, comm)
+
+
+@pytest.mark.parallel(nprocs=4)
 def test_mpi_primary_lowering_routes_remote_target_to_source_owner():
     comm = MPI.COMM_WORLD
     lookup = simulation_io.__make_dataset_output_lookup(

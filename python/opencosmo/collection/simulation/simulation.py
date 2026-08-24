@@ -590,7 +590,7 @@ class SimulationCollection:
         datasets = cast("dict[str, Dataset]", self.__datasets)
         output = do_multi_dataset_selections(datasets, args, kwargs)
         return SimulationCollection(
-            output, self.__match_set, self.__match_source, self.__rebuilt
+            output, self.__match_set, self.__match_source, copy(self.__rebuilt)
         )
 
     def drop(self, *args, **kwargs) -> SimulationCollection:
@@ -624,7 +624,7 @@ class SimulationCollection:
                 raise ValueError(f"Dataset {dataset_name} not found in collection.")
             output[dataset_name] = dsops.drop(output[dataset_name], columns)
         return SimulationCollection(
-            output, self.__match_set, self.__match_source, self.__rebuilt
+            output, self.__match_set, self.__match_source, copy(self.__rebuilt)
         )
 
     def take(

@@ -4,7 +4,6 @@ from functools import cache
 from typing import TYPE_CHECKING, Any, Generator, Optional
 
 import numpy as np
-from mpi4py.util import dtlib
 
 from opencosmo.index import into_array
 
@@ -71,7 +70,7 @@ def parallel_assert_can_stack(value: np.ndarray, comm: MPI.Comm | None = None):
 
 def get_subcom(include: list[bool], comm: MPI.Comm):
     group = comm.Get_group()
-    new_group = group.Incl(np.where(include)[0])
+    new_group = group.Incl(np.flatnonzero(include).tolist())
     new_comm = comm.Create(new_group)
     group.free()
     return new_comm, new_group
@@ -79,53 +78,41 @@ def get_subcom(include: list[bool], comm: MPI.Comm):
 
 def gather_index(index: np.ndarray, comm: MPI.Comm, all: bool = False):
     parallel_assert_is_simple_index(index, comm)
-
-    counts = comm.allgather(len(index))
-    if comm.Get_rank() == 0 or all:
-        displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
-
-        total_size = sum(counts)
-        recvbuf = np.empty(total_size, dtype=np.int64)
-    else:
-        counts = None
-        displacements = None
-        recvbuf = None
-
-        # 4. Perform the variable-length gather operation
-        # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
-    if not all:
-        comm.Gatherv(
-            sendbuf=index, recvbuf=[recvbuf, counts, displacements, MPI.INT64_T], root=0
-        )
-    else:
-        comm.Allgatherv(
-            sendbuf=index, recvbuf=[recvbuf, counts, displacements, MPI.INT64_T]
-        )
-    return recvbuf
+    return gather_data(index, comm, all=all)
 
 
-def gather_data(data: np.ndarray, comm: MPI.Comm):
+def gather_data(data: np.ndarray, comm: MPI.Comm, all: bool = False):
+    from mpi4py.util import dtlib
+
     parallel_assert_can_stack(data, comm)
 
-    counts = comm.allgather(len(data))
-    if comm.Get_rank() == 0:
+    row_counts = np.asarray(comm.allgather(len(data)), dtype=np.int64)
+    row_size = int(np.prod(data.shape[1:], dtype=np.int64))
+    counts = row_counts * row_size
+    if comm.Get_rank() == 0 or all:
         displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
-
-        total_size = sum(counts)
-        recvbuf = np.empty(total_size, dtype=np.int64)
+        recvbuf = np.empty(int(np.sum(counts)), dtype=data.dtype)
+        recv_counts = counts
     else:
-        counts = None
         displacements = None
         recvbuf = None
+        recv_counts = None
 
-        # 4. Perform the variable-length gather operation
-        # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
-    comm.Gatherv(
-        sendbuf=data,
-        recvbuf=[recvbuf, counts, displacements, dtlib.from_numpy_dtype(data.dtype)],
-        root=0,
-    )
-    return recvbuf
+    mpi_dtype = dtlib.from_numpy_dtype(data.dtype)
+    if all:
+        comm.Allgatherv(
+            sendbuf=data.reshape(-1),
+            recvbuf=[recvbuf, recv_counts, displacements, mpi_dtype],
+        )
+    else:
+        comm.Gatherv(
+            sendbuf=data.reshape(-1),
+            recvbuf=[recvbuf, recv_counts, displacements, mpi_dtype],
+            root=0,
+        )
+    if recvbuf is None:
+        return None
+    return recvbuf.reshape((int(np.sum(row_counts)), *data.shape[1:]))
 
 
 def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
@@ -135,14 +122,15 @@ def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
 
     if comm.Get_rank() == 0:
         displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
+        send_counts = counts
 
     else:
-        counts = None
         displacements = None
+        send_counts = None
 
     recvbuf = np.empty(length, np.int64)
     comm.Scatterv(
-        [index, counts, displacements, MPI.INT64_T],
+        [index, send_counts, displacements, MPI.INT64_T],
         recvbuf,
         root=0,
     )
@@ -152,39 +140,50 @@ def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
 
 
 def scatter_data(data: np.ndarray | None, length: int, comm: MPI.Comm):
-    counts = comm.allgather(length)
+    from mpi4py.util import dtlib
+
+    row_counts = np.asarray(comm.allgather(length), dtype=np.int64)
     data_length = comm.bcast(len(data) if data is not None else None)
-    parallel_assert(np.sum(counts) == data_length, comm)
+    parallel_assert(np.sum(row_counts) == data_length, comm)
     dtype = comm.bcast(data.dtype if data is not None else None)
+    trailing_shape = comm.bcast(data.shape[1:] if data is not None else None)
+    assert dtype is not None
+    assert trailing_shape is not None
+    row_size = int(np.prod(trailing_shape, dtype=np.int64))
+    counts = row_counts * row_size
 
-    if comm.Get_rank() == 0:
-        displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
+    displacements = np.insert(np.cumsum(counts), 0, 0)[:-1]
 
-    else:
-        counts = None
-        displacements = None
-
-    recvbuf = np.empty(length, dtype)
+    recvbuf = np.empty(length * row_size, dtype)
     comm.Scatterv(
-        [data, counts, displacements, dtlib.from_numpy_dtype(dtype)],
+        [
+            None if data is None else data.reshape(-1),
+            counts,
+            displacements,
+            dtlib.from_numpy_dtype(dtype),
+        ],
         recvbuf,
         root=0,
     )
-    return recvbuf
-    # 4. Perform the variable-length gather operation
-    # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
+    return recvbuf.reshape((length, *trailing_shape))
 
 
 def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm):
+    from mpi4py.util import dtlib
+
     parallel_assert_is_simple_index(target_rank, comm)
     parallel_assert(len(target_rank) == len(data), comm)
     parallel_assert_can_stack(data, comm)
 
     rank_distribution = [np.where(target_rank == i)[0] for i in range(comm.Get_size())]
-    lengths = np.array([len(tr) for tr in rank_distribution]).astype(np.int64)
-    parallel_assert(sum(lengths) == len(data), comm)
-    recv_lengths = np.empty(comm.Get_size(), dtype=np.int64)
-    comm.Alltoall(lengths, recv_lengths)
+    row_lengths = np.asarray([len(tr) for tr in rank_distribution], dtype=np.int64)
+    parallel_assert(sum(row_lengths) == len(data), comm)
+    recv_row_lengths = np.empty(comm.Get_size(), dtype=np.int64)
+    comm.Alltoall(row_lengths, recv_row_lengths)
+
+    row_size = int(np.prod(data.shape[1:], dtype=np.int64))
+    lengths = row_lengths * row_size
+    recv_lengths = recv_row_lengths * row_size
 
     send_displs = np.zeros(comm.Get_size(), dtype="i")
     send_displs[1:] = np.cumsum(lengths)[:-1]
@@ -194,7 +193,9 @@ def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm)
 
     # --- Build the actual send buffer ---
     # Total data this rank sends = sum(send_counts)
-    sendbuf = np.concat([data[rank_distribution[i]] for i in range(comm.Get_size())])
+    sendbuf = np.concat(
+        [data[rank_distribution[i]] for i in range(comm.Get_size())]
+    ).reshape(-1)
 
     # --- Allocate the receive buffer ---
     total_recv = int(np.sum(recv_lengths))
@@ -206,7 +207,7 @@ def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm)
         [sendbuf, lengths, send_displs, dtype],
         [recvbuf, recv_lengths, recv_displs, dtype],
     )
-    return recvbuf
+    return recvbuf.reshape((int(np.sum(recv_row_lengths)), *data.shape[1:]))
 
 
 def verify_redistribution(old_index: np.ndarray, new_index: np.ndarray, comm: MPI.Comm):
