@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dataset.dataset import OpenCosmoData
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
@@ -468,21 +469,78 @@ class SimulationCollection:
                 out[k] = v.simulation
         return out
 
+    def get_data(
+        self, output: str = "astropy", wrap_single: bool = False
+    ) -> dict[str, OpenCosmoData]:
+        """
+        Retrieve the data from all datasets in this collection, and return it as a dictionary of
+        type (dataset_name, data). This method requires that the underlying entries into this
+        SimulationCollection are :py:class:`datasets <opencosmo.Dataset>` or :py:class:`lightcones <opencosmo.Lightcone>`,
+        other entries will raise an error.
+
+        Parameters
+        ----------
+        output: str, default="astropy"
+            The format to output the data in.
+            Currently supported are "astropy", "numpy", "pandas", "polars", "arrow", "jax"
+
+        wrap_single: bool, default=False
+            If True, always return the format's natural multi-column container even
+            when only one column is present.
+
+        Returns
+        -------
+        data: dict
+            The data the datasets. Keys will be the same as the keys of this
+            collection.
+
+        """
+        if not all(isinstance(ds, DatasetState) for ds in self.__datasets.values()):
+            raise TypeError(
+                "get_data is only supported when this collection contains datasets!"
+            )
+        return {name: ds.get_data() for name, ds in self.values()}
+
     def match(self, source: str) -> SimulationCollection:
         """
         Create a new simulation collection where the datasets are ordered so that matched
         objects appear in the same row across every dataset. All datasets are matched
         to `source`, and only rows that are available in every simulation are included.
+        This feature requires that the underlying data has a pre-built matching index,
+        and will raise an error if the index is not present.
 
         For example, suppose you have one gravity-only sim and one hydro sim.
 
-
         .. code-block:: python
 
-            collection = ds.
+            collection = collection.match("gravity_only")
 
+        Further operations such as :py:meth:`take <opencosmo.SimulationCollection.take` and
+        :py:meth:`filter <opencosmo.SimulationCollection.filter` will now operate exclusively
+        on the gravity_only sim, and retain matching objects in the other sim. For a matched
+        collection, calling :my:meth:`get_data <opencosmo.SimulationCollection.get_data>` will
+        always return datasets with equal length
 
+        To clear a match, use :py:meth:`clear_match <opencosmo.StructureCollection.clear_match>`.
+        Clearning a match does not undo any previous operations, it simple causes later
+        operations to be applied to all datasets regardless of matching between rows.
+
+        Parameters
+        ----------
+        dataset: str
+            The dataset to match the collection against. You can get them with py:meth:`
+            SimulationCollection.keys <opencosmo.SimulationCollection.keys>`
+
+        Returns
+        -------
+        dataset: opencosmo.SimulationCollection
+            The collection with the matching performed.
+
+        Raises
+        -------
+        ValueError: If the data does not contain a matching index
         """
+
         if self.__match_set is None:
             raise ValueError(
                 "This SimulationCollection does not contain matching information!"
@@ -507,6 +565,46 @@ class SimulationCollection:
         )
 
     def clear_match(self):
+        """
+        Clear a previously set :py:meth`match <opencosmo.SimulationCollection.match>`. This does not
+        alter any datasets. Instead, it ensures that any future operations will be applied uniformly
+        across all datasets, rather than only to the match source.
+
+        Take the following example:
+
+        .. code-block:: python
+
+            collection = collection.match("gravity_only")
+            collection = collection.filter(oc.col("fof_halo_mass") > 1e14)
+            collection = collection.clear_match()
+
+        This collection will contain all objects in the gravity-only simulations with
+        a mass above 10**14 and their matched objects in the other simulations. The
+        clear_match call has no effect until a further operation is performed. If you
+        retrieve data, the rows in each dataset will be matched up.
+
+        Another example:
+
+        .. code-block:: python
+
+            collection = collection.match("gravity_only")
+            collection = collection.clear_match()
+            collection = collection.filter(oc.col("fof_halo_mass") > 1e14)
+
+        This collection will contain all objects which have any a match to an object in the
+        gravity-only simulation, and is above a mass 10**14. However since the filter
+        was performed after clear_match, the order of the datasets are no longer
+        guaranteed and the datasets may be of different lengths.
+
+        If the collection does not contain a matching index, or no matching has been performed,
+        this operations has no effect.
+
+        Returns
+        -------
+        dataset: opencosmo.SimulationCollection
+            The collection with the matching cleared.
+        """
+
         self.__rebuild_all()
         return SimulationCollection(self.__datasets, self.__match_set)
 
@@ -543,6 +641,10 @@ class SimulationCollection:
         it applies the filter to all the datasets or collections
         within this collection. The result is a new collection.
 
+        If this dataset has been matched with :py:meth:`SimulationCollection.match <opencosmo.SimulatinCollection.match>`,
+        the filter will only run on the dataset matched against, with all matching rows retained
+        in the remaining datasets.
+
         Parameters
         ----------
         filters:
@@ -567,7 +669,9 @@ class SimulationCollection:
 
         If the collection holds datasets with different column sets (e.g a matched
         gravity-only and hydro sim) it will make a best-effort attempt to distribute
-        the selections to the relevant dataset.
+        the selections to the relevant dataset. Datasets with no matches will
+        be retained unchanged.
+
 
         Parameters
         ----------
@@ -603,6 +707,12 @@ class SimulationCollection:
         To target datasets explicitly, pass dataset names as keyword arguments.
         This form is forwarded to the underlying datasets or collections.
 
+        If the collection holds datasets with different column sets (e.g a matched
+        gravity-only and hydro sim) it will make a best-effort attempt to distribute
+        the selections to the relevant dataset. Datasets with no matches will
+        be retained unchanged.
+
+
         Parameters
         ----------
         args : str or Iterable[str]
@@ -637,6 +747,11 @@ class SimulationCollection:
         on  the context. As such, behavior may vary depending on what this collection
         contains. See their documentation for more info.
 
+        If this dataset has been matched with :py:meth:`SimulationCollection.match <opencosmo.SimulatinCollection.match>`,
+        the take operation will only run on the dataset matched against, with all matching rows retained
+        in the remaining datasets.
+
+
         Parameters
         ----------
         n: int
@@ -654,6 +769,10 @@ class SimulationCollection:
         Take a range of rows from all datasets or collections in this collection.
         This method will fail if :code:`start` < 0, or any of the datasets are not at least
         :code:`end` long.
+
+        If this dataset has been matched with :py:meth:`SimulationCollection.match <opencosmo.SimulatinCollection.match>`,
+        the take operation will only run on the dataset matched against, with all matching rows retained
+        in the remaining datasets.
 
         Parameters
         ----------
