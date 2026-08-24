@@ -5,7 +5,6 @@ import random
 import shutil
 from collections import defaultdict
 from shutil import copy
-from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -14,10 +13,6 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -52,29 +47,18 @@ def per_test_dir(
 
 
 @pytest.fixture
-def multi_path(snapshot_path):
-    return snapshot_path / "haloproperties_multi.hdf5"
+def multi_path(test_data):
+    return test_data.snapshot.multi_simulation
 
 
 @pytest.fixture
-def halo_paths(snapshot_path: Path):
-    files = ["haloproperties.hdf5", "haloparticles.hdf5", "sodproperties.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def halo_paths(test_data):
+    return test_data.snapshot.primary.halos
 
 
 @pytest.fixture
-def galaxy_paths(snapshot_path: Path):
-    files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
-
-
-@pytest.fixture
-def galaxy_paths_2(snapshot_path: Path):
-    files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def galaxy_paths(test_data):
+    return test_data.snapshot.primary.galaxies
 
 
 @pytest.fixture
@@ -1116,6 +1100,34 @@ def test_simulation_collection_evaluate_noinsert(multi_path):
         )
 
 
+@pytest.mark.parametrize("insert", (False, True))
+def test_simulation_collection_evaluate_selected_datasets(multi_path, insert):
+    collection = oc.open(multi_path)
+    selected = next(iter(collection.keys()))
+    unselected = set(collection.keys()) - {selected}
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    result = collection.evaluate(
+        fof_px,
+        datasets=selected,
+        vectorize=True,
+        insert=insert,
+        format="numpy",
+    )
+
+    assert all("fof_px" not in dataset.columns for dataset in collection.values())
+    if insert:
+        assert set(result.keys()) == set(collection.keys())
+        assert "fof_px" in result[selected].columns
+        assert all(
+            result[name]._state is collection[name]._state for name in unselected
+        )
+    else:
+        assert set(result) == {selected}
+
+
 def test_simulation_collection_evaluate_map_kwarg(multi_path):
     collection = oc.open(multi_path)
 
@@ -1174,10 +1186,44 @@ def test_simulation_collection_evaluate_overwrite(multi_path):
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
+    unselected = set(collection.keys()) - {ds_name}
     data = np.random.randint(0, 100, len(collection[ds_name]))
-    collection = collection.with_new_columns(datasets=ds_name, random_data=data)
-    stored_data = collection[ds_name].select("random_data").get_data("numpy")
+    updated = collection.with_new_columns(datasets=ds_name, random_data=data)
+    stored_data = updated[ds_name].select("random_data").get_data("numpy")
     assert np.all(stored_data == data)
+    assert all(updated[name]._state is collection[name]._state for name in unselected)
+
+
+def test_simulation_collection_add_selected_mapped_values(multi_path):
+    collection = oc.open(multi_path)
+    ds_name = next(iter(collection.keys()))
+    data = np.random.randint(0, 100, len(collection[ds_name]))
+
+    updated = collection.with_new_columns(
+        datasets=ds_name,
+        random_data={ds_name: data},
+    )
+
+    stored = updated[ds_name].select("random_data").get_data("numpy")
+    assert np.all(stored == data)
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    (
+        "__setitem__",
+        "__delitem__",
+        "clear",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+        "__ior__",
+    ),
+)
+def test_simulation_collection_does_not_expose_mutation_api(multi_path, attribute):
+    collection = oc.open(multi_path)
+    assert not hasattr(collection, attribute)
 
 
 def test_simulation_collection_add_with_descriptions(multi_path):

@@ -11,7 +11,7 @@ from opencosmo import collection as occ
 from opencosmo.dataset import state as st
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import plan
-from opencosmo.io.discover import discover_all, is_particle_group
+from opencosmo.io.discover import discover_all, has_maps, is_particle_group
 from opencosmo.io.specs import group_by_scope, match_spec
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
@@ -23,12 +23,15 @@ from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from uuid import UUID
 
     import h5py
 
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.io.discover import FileLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.io import MpiMode
+    from opencosmo.mapping.mapping import DatasetMatchSet
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -109,12 +112,56 @@ def open_files(
         details = "\n".join(f"  {fl.path}: {fl.error}" for fl in errored)
         raise ValueError(f"Failed to open one or more files:\n{details}")
 
+    # Partition layouts into map-carrying and ordinary. A layout may have both
+    # maps and groups; route it to the map side if has_maps, to the ordinary side
+    # if it has groups, so a hybrid file participates in both pipelines.
+    map_layouts = [fl for fl in layouts if has_maps(fl)]
+    ordinary_layouts = [fl for fl in layouts if fl.groups]
+
+    if len(map_layouts) > 1:
+        map_paths = ", ".join(str(layout.path) for layout in map_layouts)
+        raise ValueError(
+            "Opening multiple dataset mapping files is not supported. "
+            f"Mapping files: {map_paths}"
+        )
+
+    # If there are maps but no ordinary layouts, raise: a mapping file has no
+    # meaning without endpoints to connect.
+    if map_layouts and not ordinary_layouts:
+        raise ValueError(
+            "Cannot open a dataset mapping on its own. A mapping file defines "
+            "row-level correspondences between datasets in different simulations "
+            "and requires both endpoint datasets to be present."
+        )
+
     # Particle files carry a "*_particles" data_type in their header. They only make
     # sense when opened alongside the properties dataset that links to them (a
     # StructureCollection). Opening particles on their own is unsupported: if every
     # discovered group is a particle group, there is nothing to anchor them, so fail
     # loudly rather than fabricate a SimulationCollection of orphaned particle types.
-    groups = [g for fl in layouts if fl.error is None for g in fl.groups]
+    groups = [g for fl in ordinary_layouts for g in fl.groups]
+
+    groups_by_uuid = {group.uuid: group for group in groups if group.uuid is not None}
+    for file_layout in map_layouts:
+        for map_layout in file_layout.maps:
+            reference = groups_by_uuid.get(map_layout.reference)
+            if reference is None:
+                continue
+            invalid_lengths = [
+                (target, length)
+                for target, length in map_layout.primary_lengths
+                if length != reference.row_count
+            ]
+            if invalid_lengths:
+                details = ", ".join(
+                    f"{target} has length {length}"
+                    for target, length in invalid_lengths
+                )
+                raise ValueError(
+                    f"Primary mappings must have the reference dataset length "
+                    f"{reference.row_count}; {details}."
+                )
+
     if groups and all(is_particle_group(g) for g in groups):
         raise ValueError(
             "Cannot open particle data on its own. Particle datasets must be opened "
@@ -122,11 +169,16 @@ def open_files(
             "which links to them as a StructureCollection."
         )
 
-    scopes = group_by_scope(layouts)
+    scopes = group_by_scope(tuple(ordinary_layouts))
     if not scopes:
         raise ValueError("No valid datasets found!")
 
     children: dict[str, oc.Dataset | oc.collection.Collection] = {}
+    # UUIDs of every dataset this rank actually opened. Only the identities are
+    # needed (map endpoint resolution is pure set membership), so nothing here
+    # requires the Dataset objects themselves.
+    children_by_uuid: dict[str, frozenset[UUID]] = {}
+    available_uuids: set[UUID] = set()
     for scope_name in sorted(scopes):
         sub = scopes[scope_name]
         spec = match_spec(sub)
@@ -136,17 +188,145 @@ def open_files(
             )
         spec.verify(sub)
         assignments = plan.distribute(sub, mpi_mode, nranks)
-        child = plan.build_from_assignment(assignments[rank], sub, spec, open_kwargs)
+        child, child_uuids = plan.build_from_assignment(
+            assignments[rank], sub, spec, open_kwargs
+        )
         # A scope whose every dataset was gated out by load/if conditions builds to
         # None (see plan.build_from_assignment); drop it.
         if child is not None:
             children[scope_name] = child
+            children_by_uuid[scope_name] = child_uuids
+            available_uuids |= child_uuids
 
     if not children:
         raise ValueError("No valid datasets found!")
-    if len(children) == 1:
+
+    # Resolve mapping files against the UUIDs actually opened on this rank.
+
+    match_set = _resolve_match_set(map_layouts, available_uuids)
+
+    # --- Cross-simulation connectivity check ---
+    #
+    # Detect root-origin scopes structurally: a scope is root-origin when every one
+    # of its GroupLayouts sits at the root path ("/" or "").  Nested multi-simulation
+    # scopes (e.g. /scidac1, /scidac2) have non-root paths and are excluded.  We do
+    # NOT sniff the scope-key string to decide this — g.path is the real signal.
+    #
+    # Only scopes that actually produced a child count: a scope whose every dataset
+    # was gated out by load/if conditions builds to None and was dropped from children
+    # (see the `if child is not None:` guard above).
+    root_scope_names = [
+        scope_name
+        for scope_name, sub in scopes.items()
+        if scope_name in children
+        and all(g.path in ("/", "") for fl in sub for g in fl.groups)
+    ]
+
+    if len(root_scope_names) > 1:
+        # The set of UUIDs the mapping file connects (post-availability-filter).
+        # See DatasetMatchSet.endpoints for why reference_source is included even
+        # when that dataset was not opened.
+        endpoints: frozenset[UUID] = (
+            frozenset() if match_set is None else match_set.endpoints
+        )
+
+        # Per-scope UUIDs come from the discovered layouts, not from the built
+        # children: layouts are identical on every rank, whereas a rank's actual
+        # assignment is not under MpiMode.REDSHIFT.  Deriving the check from
+        # layouts keeps it collective-safe.  Datasets written before dataset
+        # identity existed have uuid=None and can never be a map endpoint.
+        unconnected = [
+            name
+            for name in root_scope_names
+            if not frozenset(
+                g.uuid for fl in scopes[name] for g in fl.groups if g.uuid is not None
+            )
+            & endpoints
+        ]
+        if unconnected:
+            raise ValueError(
+                "Cannot open datasets from different simulations without a connecting "
+                "mapping file. Pass a mapping file that defines the correspondence "
+                "between them. Unconnected datasets: "
+                + ", ".join(f"'{n}'" for n in sorted(unconnected))
+                + "."
+            )
+    if match_set is not None:
+        if any(len(uuids) > 1 for uuids in children_by_uuid.values()):
+            raise ValueError("Mapping is currently only supported for single catalogs")
+        match_set = match_set.with_aliases(
+            {name: next(iter(uuids)) for name, uuids in children_by_uuid.items()}
+        )
+
+    # A mapping resolves to nothing usable whenever fewer than two of its endpoints
+    # were opened — the "ignore unresolvable endpoints" rule applied consistently.
+    # The result is then exactly what it would have been without the mapping file,
+    # including the bare single-child object.
+    if len(children) == 1 and match_set is None:
         return next(iter(children.values()))
-    return occ.SimulationCollection(children)
+
+    return occ.SimulationCollection(children, match_set=match_set)
+
+
+def _resolve_match_set(
+    map_layouts: list[FileLayout], available: set[UUID]
+) -> DatasetMatchSet | None:
+    """
+    Resolve discovered mapping files against the datasets actually opened.
+
+    ``available`` is the set of UUIDs the caller actually opened; this function does
+    not rebuild it.
+
+    Only slots whose endpoints are all present survive, so one suite-wide mapping
+    file can be opened against any subset of its simulations. Files are opened
+    without a context manager and their handles deliberately outlive this call: the
+    match set slices them lazily, exactly as build_from_assignment does for data.
+
+    Pre-filtering with ``MapLayout.endpoints`` avoids opening files that cannot
+    possibly resolve: a file is skipped entirely when none of its maps mention any
+    available UUID. Files that are opened but yield no resolving map have their
+    handle closed before moving on.
+
+    First resolvable map wins. Multiple connecting map files are not merged — that
+    is a real design decision, not a cleanup omission.
+
+    This is pure computation over the layouts every rank already holds plus local
+    file opens, so it introduces no collective and cannot diverge across ranks.
+    """
+    if not map_layouts:
+        return None
+
+    import h5py
+
+    from opencosmo.mapping.read import read_match_set
+
+    for layout in map_layouts:
+        # Pre-filter: skip this file entirely if no map it carries mentions any
+        # available UUID.  endpoints is a necessary-but-not-sufficient condition —
+        # read_match_set may still return None for a file that passes (e.g. exactly
+        # one primary target available with the reference absent).
+        if not any(map_layout.endpoints & available for map_layout in layout.maps):
+            continue
+
+        f = h5py.File(layout.path, "r")
+        winner = None
+        for map_layout in layout.maps:
+            group = f[map_layout.path]
+            assert isinstance(group, h5py.Group)
+            match_set = read_match_set(group, map_layout, available)
+            if match_set is not None:
+                winner = match_set
+                break
+
+        if winner is not None:
+            # Leave this file's handle open: the match set slices it lazily.
+            # First resolvable map wins; multiple connecting map files are not merged.
+            return winner
+
+        # No map in this file resolved — close the handle rather than leaking it.
+        f.close()
+
+    return None
 
 
 def open_dataset(
@@ -200,12 +380,11 @@ def open_dataset(
         open_kwargs,
         data_index,
         metadata_group,
+        tree=tree,
     )
 
     dataset = oc.Dataset(
-        header,
         state,
-        tree=tree,
     )
     dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
     return dataset

@@ -7,9 +7,8 @@ import healpy as hp
 import numpy as np
 
 from opencosmo import dataset as ds
-from opencosmo.io.mpi import get_all_keys
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.mpi import get_comm_world
+from opencosmo.mpi import get_all_keys, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
@@ -103,7 +102,21 @@ def sync_metadata(dataset_schemas: list[Schema]):
     additional_metadata = [schema.attributes for schema in dataset_schemas]
     if not any(additional_metadata):
         return {}
-    if not all(am == additional_metadata[0] for am in additional_metadata[1:]):
+
+    def without_dataset_identity(metadata):
+        return {
+            path: (
+                {key: value for key, value in attributes.items() if key not in identity}
+                if path == ""
+                else attributes
+            )
+            for path, attributes in metadata.items()
+            if path != "" or any(key not in identity for key in attributes)
+        }
+
+    identity = {"uuid", "main_uuid"}
+    comparable_metadata = [without_dataset_identity(am) for am in additional_metadata]
+    if not all(am == comparable_metadata[0] for am in comparable_metadata[1:]):
         raise ValueError("Datasets don't have the same metadata!")
 
     return additional_metadata[0]
@@ -281,7 +294,7 @@ def get_order_mpi(pixels, comm):
 def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth: int):
     datasets = list(datasets)
     nside = 2**max_index_depth
-    coordinates = list(map(find_coordinates_2d, datasets))
+    coordinates = [find_coordinates_2d(dataset._state) for dataset in datasets]
     coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
 
     if datasets:

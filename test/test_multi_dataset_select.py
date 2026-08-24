@@ -18,15 +18,6 @@ def dataset_columns():
     }
 
 
-@pytest.fixture
-def halo_paths(snapshot_path):
-    return [
-        snapshot_path / "haloproperties.hdf5",
-        snapshot_path / "haloparticles.hdf5",
-        snapshot_path / "sodproperties.hdf5",
-    ]
-
-
 def test_routes_columns_and_wildcards(dataset_columns):
     args, _ = build_multi_dataset_selections(
         dataset_columns,
@@ -95,9 +86,9 @@ def test_rejects_selections_missing_from_every_dataset(dataset_columns, args, kw
         )
 
 
-def test_simulation_collection_routes_across_different_column_sets(snapshot_path):
-    gravity = oc.open(snapshot_path / "haloproperties.hdf5")
-    hydro = oc.open(snapshot_path / "galaxyproperties.hdf5")
+def test_simulation_collection_routes_across_different_column_sets(test_data):
+    gravity = oc.open(test_data.snapshot.primary.halo_properties)
+    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
     collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
 
     selected = collection.select(
@@ -115,9 +106,9 @@ def test_simulation_collection_routes_across_different_column_sets(snapshot_path
     assert np.all(hydro_data["stellar_fraction"] == expected)
 
 
-def test_simulation_collection_drop_routes_across_different_column_sets(snapshot_path):
-    gravity = oc.open(snapshot_path / "haloproperties.hdf5")
-    hydro = oc.open(snapshot_path / "galaxyproperties.hdf5")
+def test_simulation_collection_drop_routes_across_different_column_sets(test_data):
+    gravity = oc.open(test_data.snapshot.primary.halo_properties)
+    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
     collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
 
     dropped = collection.drop("fof_halo_mass", "gal_mass_star")
@@ -128,10 +119,10 @@ def test_simulation_collection_drop_routes_across_different_column_sets(snapshot
 
 
 def test_simulation_collection_drop_wildcard_leaves_unmatched_datasets_unchanged(
-    snapshot_path,
+    test_data,
 ):
-    gravity = oc.open(snapshot_path / "haloproperties.hdf5")
-    hydro = oc.open(snapshot_path / "galaxyproperties.hdf5")
+    gravity = oc.open(test_data.snapshot.primary.halo_properties)
+    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
     collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
 
     dropped = collection.drop("gal_mass_*")
@@ -140,18 +131,18 @@ def test_simulation_collection_drop_wildcard_leaves_unmatched_datasets_unchanged
     assert not any(name.startswith("gal_mass_") for name in dropped["hydro"].columns)
 
 
-def test_simulation_collection_drop_rejects_missing_column(snapshot_path):
-    gravity = oc.open(snapshot_path / "haloproperties.hdf5")
-    hydro = oc.open(snapshot_path / "galaxyproperties.hdf5")
+def test_simulation_collection_drop_rejects_missing_column(test_data):
+    gravity = oc.open(test_data.snapshot.primary.halo_properties)
+    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
     collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
 
     with pytest.raises(MissingColumnError):
         collection.drop("not_a_column")
 
 
-def test_simulation_collection_drop_by_dataset_key(snapshot_path):
-    gravity = oc.open(snapshot_path / "haloproperties.hdf5")
-    hydro = oc.open(snapshot_path / "galaxyproperties.hdf5")
+def test_simulation_collection_drop_by_dataset_key(test_data):
+    gravity = oc.open(test_data.snapshot.primary.halo_properties)
+    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
     collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
 
     dropped = collection.drop(gravity=["fof_halo_mass"], hydro=["gal_mass_star"])
@@ -160,8 +151,8 @@ def test_simulation_collection_drop_by_dataset_key(snapshot_path):
     assert "gal_mass_star" not in dropped["hydro"].columns
 
 
-def test_structure_collection_ignores_unmatched_wildcard_on_other_datasets(halo_paths):
-    collection = oc.open(*halo_paths)
+def test_structure_collection_ignores_unmatched_wildcard_on_other_datasets(test_data):
+    collection = oc.open(*test_data.snapshot.primary.halos)
     selected = collection.select("sod_halo_mass*")
 
     assert selected["halo_properties"].columns
@@ -171,8 +162,8 @@ def test_structure_collection_ignores_unmatched_wildcard_on_other_datasets(halo_
     assert selected["dm_particles"].columns == collection["dm_particles"].columns
 
 
-def test_structure_collection_rejects_scalar_selection(halo_paths):
-    collection = oc.open(*halo_paths)
+def test_structure_collection_rejects_scalar_selection(test_data):
+    collection = oc.open(*test_data.snapshot.primary.halos)
 
     with pytest.raises(ValueError, match="Scalar values cannot be retrieved"):
         collection.select(mean_mass=oc.col("fof_halo_mass").mean())

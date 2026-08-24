@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from copy import copy
 from functools import cache
 from itertools import chain
@@ -8,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
 import numpy as np
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from opencosmo.dtypes import (
     FileParameters,
@@ -25,6 +26,8 @@ from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from pydantic import BaseModel
 
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
@@ -90,34 +93,39 @@ class OpenCosmoHeader:
 
     @cache
     def __get_access_table(self):
-        table = {}
         all_models = chain(
             self.__required_origin_parameters.values(),
             self.__optional_origin_parameters.values(),
             self.__dtype_parameters.values(),
         )
+        table = defaultdict(list)
         for model in all_models:
             if not hasattr(model, "ACCESS_PATH"):
                 continue
-            table[model.ACCESS_PATH] = model
             if hasattr(model, "ACCESS_TRANSFORMATION"):
                 table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
+            else:
+                table[model.ACCESS_PATH].append(model)
 
         cosmology = table.get("cosmology")
         convention = object.__getattribute__(self, "unit_convention")
         scale_factor = None
         if self.__file_pars.redshift is not None:
             scale_factor = cosmology.scale_factor(self.__file_pars.redshift)
-        for name, model in table.items():
-            if isinstance(model, BaseModel):
-                table[name] = apply_units(
+        for name, models in table.items():
+            if not isinstance(models, list):
+                continue
+            output = {}
+            for model in models:
+                output |= apply_units(
                     model,
                     cosmology,
                     convention,
                     unit_kwargs={"scale_factor": scale_factor},
                 )
+            table[name] = output
 
-        return table
+        return dict(table)
 
     @property
     def parameters(self):

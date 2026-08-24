@@ -9,28 +9,23 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def haloproperties_600_path(lightcone_path):
-    return lightcone_path / "step_600" / "haloproperties.hdf5"
+def haloproperties_600_path(test_data):
+    return test_data.lightcone.step(600).halo_properties
 
 
 @pytest.fixture
-def haloproperties_601_path(lightcone_path):
-    return lightcone_path / "step_601" / "haloproperties.hdf5"
+def haloproperties_601_path(test_data):
+    return test_data.lightcone.step(601).halo_properties
 
 
 @pytest.fixture
-def all_files():
-    return ["haloparticles.hdf5", "haloproperties.hdf5", "haloprofiles.hdf5"]
+def structure_600(test_data):
+    return test_data.lightcone.step(600).halos
 
 
 @pytest.fixture
-def structure_600(lightcone_path, all_files):
-    return [lightcone_path / "step_600" / f for f in all_files]
-
-
-@pytest.fixture
-def structure_601(lightcone_path, all_files):
-    return [lightcone_path / "step_601" / f for f in all_files]
+def structure_601(test_data):
+    return test_data.lightcone.step(601).halos
 
 
 def test_create_theta_phi_coords(haloproperties_600_path, haloproperties_601_path):
@@ -805,8 +800,8 @@ def test_lc_scope_chained_internal_dependency(
 
 
 @pytest.fixture
-def diffsky_core_path(diffsky_path):
-    return diffsky_path / "lj_487.hdf5"
+def diffsky_core_path(test_data):
+    return test_data.diffsky.core(487)
 
 
 def test_lc_scope_nested_lightcone(diffsky_core_path):

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 import astropy.cosmology as ac
 import h5py
 import pytest
-
 from opencosmo.cosmology import read_cosmology
 
 if TYPE_CHECKING:
@@ -13,9 +12,8 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def cosmology_resource_path(snapshot_path):
-    p = snapshot_path / "galaxyproperties.hdf5"
-    return p
+def cosmology_resource_path(test_data):
+    return test_data.snapshot.primary.galaxy_properties
 
 
 @pytest.fixture

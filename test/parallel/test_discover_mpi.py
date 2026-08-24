@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from opencosmo.io.discover import discover_all
 from opencosmo.mpi import get_comm_world
@@ -18,18 +16,16 @@ def _layout_signature(layout) -> tuple:
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_discover_all_byte_identical_across_ranks():
+def test_discover_all_byte_identical_across_ranks(test_data):
     """Test that discover_all returns byte-identical layouts on all ranks."""
     comm = get_comm_world()
     if comm is None:
         pytest.skip("MPI not available")
 
     # Use lightcone files: step_600 and step_601, each with 5 files
-    lightcone_path = Path("test_data/lightcone")
-    step_600_files = sorted(lightcone_path.glob("step_600/*.hdf5"))
-    step_601_files = sorted(lightcone_path.glob("step_601/*.hdf5"))
-
-    all_paths = sorted(step_600_files + step_601_files)
+    all_paths = sorted(
+        test_data.lightcone.step(600).all + test_data.lightcone.step(601).all
+    )
 
     # All ranks discover together
     layouts = discover_all(all_paths, comm=comm)
@@ -49,17 +45,15 @@ def test_discover_all_byte_identical_across_ranks():
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_discover_all_round_robin_coverage():
+def test_discover_all_round_robin_coverage(test_data):
     """Test that round-robin coverage finds all files."""
     comm = get_comm_world()
     if comm is None:
         pytest.skip("MPI not available")
 
-    lightcone_path = Path("test_data/lightcone")
-    step_600_files = sorted(lightcone_path.glob("step_600/*.hdf5"))
-    step_601_files = sorted(lightcone_path.glob("step_601/*.hdf5"))
-
-    all_paths = sorted(step_600_files + step_601_files)
+    all_paths = sorted(
+        test_data.lightcone.step(600).all + test_data.lightcone.step(601).all
+    )
     expected_count = len(all_paths)
 
     # Discover all
@@ -81,17 +75,16 @@ def test_discover_all_round_robin_coverage():
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_discover_all_fewer_files_than_ranks():
+def test_discover_all_fewer_files_than_ranks(test_data):
     """Test that discovery works when there are fewer files than ranks."""
     comm = get_comm_world()
     if comm is None:
         pytest.skip("MPI not available")
 
     # Use only 2 files across (potentially) 4 ranks
-    lightcone_path = Path("test_data/lightcone")
     paths = [
-        lightcone_path / "step_600" / "haloproperties.hdf5",
-        lightcone_path / "step_601" / "haloproperties.hdf5",
+        test_data.lightcone.step(600).halo_properties,
+        test_data.lightcone.step(601).halo_properties,
     ]
 
     layouts = discover_all(paths, comm=comm)
@@ -115,15 +108,14 @@ def test_discover_all_fewer_files_than_ranks():
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_discover_all_single_file_collective_free():
+def test_discover_all_single_file_collective_free(test_data):
     """Test that single-file discovery doesn't need allgather (remains collective-free)."""
     comm = get_comm_world()
     if comm is None:
         pytest.skip("MPI not available")
 
     # Single file should not trigger allgather (every rank should independently discover it)
-    lightcone_path = Path("test_data/lightcone")
-    single_file = [lightcone_path / "step_600" / "haloproperties.hdf5"]
+    single_file = [test_data.lightcone.step(600).halo_properties]
 
     layouts = discover_all(single_file, comm=comm)
 
@@ -146,17 +138,15 @@ def test_discover_all_single_file_collective_free():
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_discover_all_sorted_determinism():
+def test_discover_all_sorted_determinism(test_data):
     """Test that results are sorted by path (deterministic order)."""
     comm = get_comm_world()
     if comm is None:
         pytest.skip("MPI not available")
 
-    lightcone_path = Path("test_data/lightcone")
-    step_600_files = sorted(lightcone_path.glob("step_600/*.hdf5"))
-    step_601_files = sorted(lightcone_path.glob("step_601/*.hdf5"))
-
-    all_paths = sorted(step_600_files + step_601_files)
+    all_paths = sorted(
+        test_data.lightcone.step(600).all + test_data.lightcone.step(601).all
+    )
 
     layouts = discover_all(all_paths, comm=comm)
 

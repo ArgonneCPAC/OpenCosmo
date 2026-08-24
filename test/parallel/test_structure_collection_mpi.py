@@ -6,50 +6,40 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def halos_600_path(lightcone_path):
-    properties = lightcone_path / "step_600" / "haloproperties.hdf5"
-    particles = lightcone_path / "step_600" / "haloparticles.hdf5"
-    profiles = lightcone_path / "step_600" / "haloprofiles.hdf5"
-    return [properties, particles, profiles]
+def halos_600_path(test_data):
+    return test_data.lightcone.step(600).halos
 
 
 @pytest.fixture
-def galaxies_600_path(lightcone_path):
-    properties = lightcone_path / "step_600" / "galaxyproperties.hdf5"
-    particles = lightcone_path / "step_600" / "galaxyparticles.hdf5"
-    return [properties, particles]
+def galaxies_600_path(test_data):
+    return test_data.lightcone.step(600).galaxies
 
 
 @pytest.fixture
-def halos_601_path(lightcone_path):
-    properties = lightcone_path / "step_601" / "haloproperties.hdf5"
-    particles = lightcone_path / "step_601" / "haloparticles.hdf5"
-    profiles = lightcone_path / "step_601" / "haloprofiles.hdf5"
-    return [properties, particles, profiles]
+def halos_601_path(test_data):
+    return test_data.lightcone.step(601).halos
 
 
 @pytest.fixture
-def galaxies_601_path(lightcone_path):
-    properties = lightcone_path / "step_601" / "galaxyproperties.hdf5"
-    particles = lightcone_path / "step_601" / "galaxyparticles.hdf5"
-    return [properties, particles]
+def galaxies_601_path(test_data):
+    return test_data.lightcone.step(601).galaxies
 
 
 @pytest.fixture
-def lightcone_files(lightcone_path):
+def lightcone_files(test_data):
     """Map a component name to the per-step files that provide it."""
 
-    def files(stem):
-        return [
-            lightcone_path / step / f"{stem}.hdf5" for step in ("step_600", "step_601")
-        ]
-
+    step_600 = test_data.lightcone.step(600)
+    step_601 = test_data.lightcone.step(601)
     return {
-        "halo_properties": files("haloproperties"),
-        "halo_particles": files("haloparticles"),
-        "halo_profiles": files("haloprofiles"),
-        "galaxy_properties": files("galaxyproperties"),
-        "galaxy_particles": files("galaxyparticles"),
+        name: [getattr(step_600, name), getattr(step_601, name)]
+        for name in (
+            "halo_properties",
+            "halo_particles",
+            "halo_profiles",
+            "galaxy_properties",
+            "galaxy_particles",
+        )
     }
 
 
@@ -211,6 +201,7 @@ def test_write_lightcone_structure_combinations(
 
     output = per_test_dir / "collection.hdf5"
     oc.write(output, collection)
+    print("DONE WRITING")
     reopened = oc.open(output)
 
     assert isinstance(reopened, oc.StructureCollection)

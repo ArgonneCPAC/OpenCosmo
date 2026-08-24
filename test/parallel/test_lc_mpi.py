@@ -12,49 +12,43 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def core_path_487(diffsky_path):
-    return diffsky_path / "lj_487.hdf5"
+def core_path_487(test_data):
+    return test_data.diffsky.core(487)
 
 
 @pytest.fixture
-def core_path_475(diffsky_path):
-    return diffsky_path / "lj_475.hdf5"
+def core_path_475(test_data):
+    return test_data.diffsky.core(475)
 
 
 @pytest.fixture
-def haloproperties_600_path(lightcone_path):
-    return lightcone_path / "step_600" / "haloproperties.hdf5"
+def haloproperties_600_path(test_data):
+    return test_data.lightcone.step(600).halo_properties
 
 
 @pytest.fixture
-def haloproperties_601_path(lightcone_path):
-    return lightcone_path / "step_601" / "haloproperties.hdf5"
+def haloproperties_601_path(test_data):
+    return test_data.lightcone.step(601).halo_properties
 
 
 @pytest.fixture
-def galaxyproperties_600_path(lightcone_path):
-    return lightcone_path / "step_600" / "galaxyproperties.hdf5"
+def galaxyproperties_600_path(test_data):
+    return test_data.lightcone.step(600).galaxy_properties
 
 
 @pytest.fixture
-def halo_sc_files(lightcone_path):
+def halo_sc_files(test_data):
     """
     All files of a two-step halo lightcone structure collection
     (haloproperties + haloparticles + haloprofiles for step_600 and step_601).
     """
-    stems = ("haloproperties", "haloparticles", "haloprofiles")
-    return [
-        lightcone_path / step / f"{stem}.hdf5"
-        for step in ("step_600", "step_601")
-        for stem in stems
-    ]
+    return test_data.lightcone.step(600).halos + test_data.lightcone.step(601).halos
 
 
 @pytest.fixture
-def halo_sc_files_single_step(lightcone_path):
+def halo_sc_files_single_step(test_data):
     """All files of a single-step halo lightcone structure collection (step_600)."""
-    stems = ("haloproperties", "haloparticles", "haloprofiles")
-    return [lightcone_path / "step_600" / f"{stem}.hdf5" for stem in stems]
+    return test_data.lightcone.step(600).halos
 
 
 def _global_sc_source_raw(sc, column="fof_halo_mass"):
@@ -132,7 +126,11 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     ds = oc.open(haloproperties_600_path)
     assert "redshift" in ds.columns
 
-    pixel = np.random.choice(ds.region.pixels)
+    # Reopening may repartition rows, so every rank must query the same region.
+    # Choosing independently makes the pre- and post-write datasets answer
+    # different unions of per-rank cones.
+    pixels = np.concatenate(comm.allgather(ds.region.pixels))
+    pixel = comm.bcast(np.random.choice(pixels) if comm.Get_rank() == 0 else None)
     center = pix2ang(ds.region.nside, pixel, True, True)
 
     region = oc.make_cone(center, 2 * u.deg)
@@ -152,7 +150,10 @@ def test_healpix_write(haloproperties_600_path, per_test_dir):
     all_tags = np.concatenate(comm.allgather(rank_tags))
     all_new_tags = np.concatenate(comm.allgather(new_rank_tags))
 
-    parallel_assert(np.all(np.sort(all_tags) == np.sort(all_new_tags)))
+    parallel_assert(
+        np.array_equal(np.sort(all_tags), np.sort(all_new_tags)),
+        f"expected {len(all_tags)} tags after round trip, got {len(all_new_tags)}",
+    )
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -1322,7 +1323,7 @@ def test_redshift_mpi_select_and_filter_work(
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_redshift_mpi_inconsistent_steps_raise(haloproperties_600_path, lightcone_path):
+def test_redshift_mpi_inconsistent_steps_raise(test_data):
     """
     A lightcone structure collection whose steps do not share the same set of
     linked file types must be rejected during rank-0 planning with a clear error,
@@ -1332,11 +1333,8 @@ def test_redshift_mpi_inconsistent_steps_raise(haloproperties_600_path, lightcon
     Here step_600 is a full halo SC (properties + particles + profiles) while
     step_601 provides only properties -> inconsistent data_type sets across steps.
     """
-    files = [
-        lightcone_path / "step_600" / "haloproperties.hdf5",
-        lightcone_path / "step_600" / "haloparticles.hdf5",
-        lightcone_path / "step_600" / "haloprofiles.hdf5",
-        lightcone_path / "step_601" / "haloproperties.hdf5",
+    files = test_data.lightcone.step(600).halos + [
+        test_data.lightcone.step(601).halo_properties
     ]
 
     raised = False

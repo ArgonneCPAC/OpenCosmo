@@ -1,29 +1,28 @@
 import numpy as np
 import pytest
+from opencosmo.header import read_header, write_header
 
 import opencosmo as oc
 from opencosmo import col, write
-from opencosmo.header import read_header, write_header
 
 
 @pytest.fixture
-def cosmology_resource_path(snapshot_path):
-    p = snapshot_path / "header.hdf5"
-    return p
+def cosmology_resource_path(test_data):
+    return test_data.snapshot.header
 
 
 @pytest.fixture
-def halo_properties_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def halo_properties_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 @pytest.fixture
-def galaxy_properties_path(snapshot_path):
-    return snapshot_path / "galaxyproperties.hdf5"
+def galaxy_properties_path(test_data):
+    return test_data.snapshot.primary.galaxy_properties
 
 
-def test_write_header(snapshot_path, tmp_path):
-    header = read_header(snapshot_path / "galaxyproperties.hdf5")
+def test_write_header(test_data, tmp_path):
+    header = read_header(test_data.snapshot.primary.galaxy_properties)
     new_path = tmp_path / "header.hdf5"
     write_header(new_path, header)
 

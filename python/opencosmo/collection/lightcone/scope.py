@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from opencosmo.column.column import RawColumn, _contains_scalar
+from opencosmo.uuid import get_raw_column_uuid
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -136,7 +137,11 @@ class LightconeScope:
             for raw_name in col._traverse_names():
                 if raw_name in name_to_uuid:
                     continue
-                placeholder = RawColumn(raw_name, None)
+                placeholder = RawColumn(
+                    raw_name,
+                    None,
+                    get_raw_column_uuid(raw_name, set(name_to_uuid.values())),
+                )
                 new_placeholders[raw_name] = placeholder
                 name_to_uuid[raw_name] = placeholder.uuid
 
@@ -145,8 +150,12 @@ class LightconeScope:
         new_descriptions = dict(self.descriptions)
         for name, col in scoped.items():
             col.name = name  # type: ignore[attr-defined]
-            bound = col.bind(name_to_uuid)
+            bound = col.bind(
+                name_to_uuid,
+                set(name_to_uuid.values()).intersection(new_column_map.values()),
+            )
             new_derived.append(bound)
+            assert bound.uuid is not None
             new_column_map[name] = bound.uuid
             new_descriptions[name] = bound.description
 

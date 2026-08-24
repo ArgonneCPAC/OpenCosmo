@@ -8,7 +8,8 @@ import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import structure as sc
-from opencosmo.index import into_array, offset
+from opencosmo.dataset import dataset as ocds
+from opencosmo.index import coalesce_chunks, into_array, offset
 from opencosmo.index.build import empty
 
 if TYPE_CHECKING:
@@ -69,7 +70,7 @@ def create_start_size(data, start_name, size_name, offsets):
             src_rs += source_len
             ds_rs += ds_len
 
-    return (start[valid], size[valid])
+    return coalesce_chunks(start[valid], size[valid])
 
 
 def create_idx(data, idx_name, offsets):
@@ -167,7 +168,7 @@ def compute_resort_index(
     starts = chunk_boundaries[sort_index]
     sizes = size_column_data[sort_index]
     valid = sizes > 0
-    return (starts[valid], sizes[valid])
+    return coalesce_chunks(starts[valid], sizes[valid])
 
 
 def resort_datasets(
@@ -455,8 +456,8 @@ class LinkHandler:
     def rebuild_datasets(
         self,
         new_source: oc.Dataset | oc.Lightcone,
-        datasets: Mapping[str, oc.Dataset | oc.Lightcone | sc.StructureCollection],
-    ):
+        datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    ) -> Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection]:
         """
         We have a few guarantees here:
         1. The rows in new_source is a strict subset of the rows in source
@@ -469,11 +470,27 @@ class LinkHandler:
             return datasets
         return self.__rebuild_datasets(self.__derived_from, new_source, datasets)
 
-    def __rebuild_datasets(self, derived_from, new_source, datasets):
+    def __rebuild_datasets[T: (oc.Dataset, oc.Lightcone)](
+        self,
+        derived_from: oc.Dataset | oc.Lightcone,
+        new_source: oc.Dataset | oc.Lightcone,
+        datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    ):
         if isinstance(derived_from, lc.Lightcone):
+            assert isinstance(new_source, lc.Lightcone)
+            assert all(
+                isinstance(ds, (lc.Lightcone, sc.StructureCollection))
+                for ds in datasets.values()
+            )
+            datasets = cast(
+                "Mapping[str, oc.Lightcone | oc.StructureCollection]", datasets
+            )
+
             return rebuild_links_per_step(
                 derived_from, new_source, datasets, self.columns
             )
+
+        assert isinstance(new_source, ocds.Dataset)
 
         original_index = into_array(derived_from.index)
         new_index = into_array(new_source.index)
@@ -546,4 +563,4 @@ def rebuild_chunk_index(
     starts = chunk_boundaries[index_into_original[valid_rows]]
     sizes = original_size_column[index_into_original[valid_rows]]
 
-    return (starts, sizes)
+    return coalesce_chunks(starts, sizes)

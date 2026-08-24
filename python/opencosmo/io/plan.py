@@ -18,6 +18,8 @@ from opencosmo.io.discover import (
 )
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     import opencosmo as oc
     from opencosmo.io.discover import FileLayout
     from opencosmo.io.io import MpiMode
@@ -247,7 +249,7 @@ def build_from_assignment(
     layouts: tuple[FileLayout, ...],
     matched_spec: SpecBuilder,
     open_kwargs: dict[str, Any],
-) -> oc.Dataset | oc.collection.Collection | None:
+) -> tuple[oc.Dataset | oc.collection.Collection | None, frozenset[UUID]]:
     """
     Reopen only this rank's files and rehydrate FileTargets from live handles.
 
@@ -272,9 +274,12 @@ def build_from_assignment(
 
     Returns
     -------
-    oc.Dataset | oc.collection.Collection | None
-        The built collection or dataset, or None if this scope was entirely
-        filtered out by load/if conditions.
+    tuple[oc.Dataset | oc.collection.Collection | None, frozenset[UUID]]
+        A 2-tuple of: the built collection or dataset (or None if this scope
+        was entirely filtered out by load/if conditions), and the frozenset of
+        UUIDs of the datasets this rank actually opened. Datasets written before
+        dataset identity existed carry uuid=None and are simply absent from the
+        frozenset.
     """
     import h5py
 
@@ -282,6 +287,7 @@ def build_from_assignment(
 
     # Step A: Rehydrate this rank's files into FileTargets.
     file_targets: list[FileTarget] = []
+    opened_uuids: set[UUID] = set()
 
     for file_idx in assignment.file_indices:
         # An Assignment only ever references valid files: distribute() builds
@@ -347,6 +353,8 @@ def build_from_assignment(
             # so a dropped target here is expected behavior, not an error.
             if evaluate_load_conditions(target, open_kwargs):
                 dataset_targets.append(target)
+                if group.uuid is not None:
+                    opened_uuids.add(group.uuid)
 
         if dataset_targets:
             file_targets.append(
@@ -362,12 +370,15 @@ def build_from_assignment(
     # build; the orchestrator drops this scope. This is deterministic across ranks
     # (same open_kwargs everywhere), so it stays collective-safe.
     if not file_targets:
-        return None
+        return None, frozenset()
 
     # Step B: Pass Assignment fields through to spec builder.
-    return matched_spec.build_from_targets(
-        file_targets,
-        index_kind=assignment.index_kind,
-        is_empty_ref=assignment.is_empty_ref,
-        open_kwargs=open_kwargs,
+    return (
+        matched_spec.build_from_targets(
+            file_targets,
+            index_kind=assignment.index_kind,
+            is_empty_ref=assignment.is_empty_ref,
+            open_kwargs=open_kwargs,
+        ),
+        frozenset(opened_uuids),
     )

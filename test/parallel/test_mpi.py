@@ -11,11 +11,12 @@ import mpi4py
 import numpy as np
 import pytest
 from mpi4py import MPI
-from opencosmo.mpi import get_comm_world
+from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo.analysis import reduce
+from opencosmo.collection.simulation import SimulationCollection
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -29,23 +30,18 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def multi_path(snapshot_path):
-    return snapshot_path / "haloproperties_multi.hdf5"
+def multi_path(test_data):
+    return test_data.snapshot.multi_simulation
 
 
 @pytest.fixture
-def input_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def input_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 @pytest.fixture
-def particle_path(snapshot_path):
-    return snapshot_path / "haloparticles.hdf5"
-
-
-@pytest.fixture
-def profile_path(snapshot_path):
-    return snapshot_path / "sodproperties.hdf5"
+def profile_path(test_data):
+    return test_data.snapshot.primary.halo_profiles
 
 
 @pytest.fixture
@@ -55,63 +51,39 @@ def malformed_header_path(input_path, tmp_path):
 
 
 @pytest.fixture
-def scidac_000_paths(snapshot_path):
-    return [
-        snapshot_path / "scidac_000" / "haloproperties.hdf5",
-        snapshot_path / "scidac_000" / "galaxyproperties.hdf5",
-    ]
+def scidac_000_paths(test_data):
+    return test_data.snapshot.scidac(0).all
 
 
 @pytest.fixture
-def scidac_001_paths(snapshot_path):
-    return [
-        snapshot_path / "scidac_001" / "haloproperties.hdf5",
-        snapshot_path / "scidac_001" / "galaxyproperties.hdf5",
-    ]
+def scidac_001_paths(test_data):
+    return test_data.snapshot.scidac(1).all
 
 
 @pytest.fixture
-def galaxy_paths(snapshot_path: Path):
-    files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def galaxy_paths(test_data):
+    return test_data.snapshot.primary.galaxies
 
 
 @pytest.fixture
-def galaxy_paths_2(snapshot_path: Path):
-    files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def galaxy_halo_path(test_data):
+    primary = test_data.snapshot.primary
+    return [primary.halo_properties, primary.galaxy_properties]
 
 
 @pytest.fixture
-def galaxy_halo_path(snapshot_path: Path):
-    files = ["haloproperties.hdf5", "galaxyproperties.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def all_paths(test_data):
+    return test_data.snapshot.primary.halos
 
 
 @pytest.fixture
-def all_paths(snapshot_path: Path):
-    files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
-
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def mass_fn_path(test_data):
+    return test_data.analysis.mass_function
 
 
 @pytest.fixture
-def simcollection_path(snapshot_path):
-    return snapshot_path / "haloproperties_multi.hdf5"
-
-
-@pytest.fixture
-def mass_fn_path(analysis_path):
-    return analysis_path / "mass_fn.npy"
-
-
-@pytest.fixture
-def stacked_profile_path(analysis_path):
-    return analysis_path / "stacked_profile.npy"
+def stacked_profile_path(test_data):
+    return test_data.analysis.stacked_profile
 
 
 def update_simulation_parameter(
@@ -126,6 +98,52 @@ def update_simulation_parameter(
             for key, value in parameters.items():
                 file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_scatter_multidimensional_data():
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    data = np.arange((rank + 1) * 6, dtype=np.float64).reshape(rank + 1, 2, 3)
+
+    gathered = gather_data(data, comm)
+    if rank == 0:
+        expected = np.concatenate(comm.gather(data, root=0))
+        assert np.array_equal(gathered, expected)
+        assert gathered.shape == (10, 2, 3)
+    else:
+        comm.gather(data, root=0)
+
+    scattered = scatter_data(gathered, len(data), comm)
+    parallel_assert(np.array_equal(scattered, data))
+    parallel_assert(scattered.shape == data.shape)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redistribute_multidimensional_data():
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    data = np.asarray(
+        [
+            [[rank, 0], [rank, 1]],
+            [[rank, 2], [rank, 3]],
+        ],
+        dtype=np.float32,
+    )
+    target_rank = np.asarray([rank, (rank + 1) % size], dtype=np.int64)
+    all_inputs = comm.allgather((data, target_rank))
+
+    redistributed = redistribute_data(data, target_rank, comm)
+
+    expected = np.concatenate(
+        [
+            source_data[source_targets == rank]
+            for source_data, source_targets in all_inputs
+        ]
+    )
+    parallel_assert(np.array_equal(redistributed, expected))
+    parallel_assert(redistributed.shape == expected.shape)
 
 
 @pytest.mark.timeout(60)
@@ -774,7 +792,8 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
     halo_tags = {}
     if comm.Get_rank() == 0:
         key_to_drop = next(iter(data.keys()))
-        data.pop(key_to_drop)
+        new_data = {name: ds for name, ds in data.items() if name != key_to_drop}
+        data = SimulationCollection(new_data)
 
     for name, sim in data.items():
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")

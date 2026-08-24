@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import reduce
 from typing import TYPE_CHECKING, Optional
+from uuid import uuid4
 
 import astropy.units as u
 
@@ -19,8 +20,10 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
 
 
 def get_derived_column_names(
@@ -73,12 +76,14 @@ def make_dataset_schema(
     columns_to_uuid: dict[str, UUID],
     meta_columns: list[str],
     header: OpenCosmoHeader,
+    tree: Tree | None,
     region: Region,
+    raw_index: DataIndex,
     derived_data: dict,
     name: Optional[str] = None,
 ) -> Schema:
     columns = set(columns_to_uuid.keys())
-    header = header.with_region(region)
+    # header = header.with_region(region)
     raw_columns = columns.intersection(raw_data_handler.columns)
     raw_meta_columns = raw_columns & set(meta_columns)
     data_schema, metadata_schema = raw_data_handler.make_schema(
@@ -98,16 +103,36 @@ def make_dataset_schema(
     if (load_conditions := raw_data_handler.load_conditions) is not None:
         attributes["load/if"] = load_conditions
 
-    data_schema = combine_with_cached_schema(data_schema, cached_data_schema)
+    data_schema = combine_with_cached_schema(
+        data_schema,
+        cached_data_schema,
+    )
     metadata_schema = combine_with_cached_schema(
         metadata_schema, cached_metadata_schema
     )
+
+    dataset_uuid = uuid4()
+    new_data_attributes = data_schema.attributes.get("", {}) | {
+        "uuid": str(dataset_uuid),
+        "main_uuid": str(dataset_uuid),
+    }
+    new_attributes = data_schema.attributes
+    new_attributes[""] = new_data_attributes
+    data_schema = data_schema._replace(attributes=new_attributes)
 
     children = {"data": data_schema}
     if metadata_schema.type != FileEntry.EMPTY:
         children[metadata_schema.name] = metadata_schema
     if name is None:
         name = ""
+
+    if tree is not None:
+        tree = tree.apply_index(raw_index)
+        tree_schema = tree.make_schema()
+        children["index"] = tree_schema
+
+    header_schema = header.dump()
+    children["header"] = header_schema
 
     return make_schema(
         name, FileEntry.DATASET, children=children, attributes=attributes

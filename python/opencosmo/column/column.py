@@ -14,7 +14,6 @@ from typing import (
     Self,
     Union,
 )
-from uuid import uuid4
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -26,13 +25,13 @@ from opencosmo.column.evaluate import (
     evaluate_vectorized,
 )
 from opencosmo.units import UnitsError
+from opencosmo.uuid import get_derived_column_uuid
 
 if TYPE_CHECKING:
     from uuid import UUID
 
     from astropy import table
 
-    from opencosmo import Dataset
     from opencosmo.column.reducer import Reducer
     from opencosmo.index import DataIndex
 
@@ -155,8 +154,8 @@ class Column:
         description: Optional[str] = None,
         output_name: Optional[str] = None,
         _dep_map: dict[str, UUID] | None = None,
-        no_cache: bool = False,
         _uuid: UUID | None = None,
+        no_cache: bool = False,
     ):
         self.lhs = lhs
         self.rhs = rhs
@@ -164,7 +163,7 @@ class Column:
         self.name = output_name
         self.operation = operation
         self.description = description if description is not None else "None"
-        self.__uuid = _uuid if _uuid is not None else uuid4()
+        self.__uuid = _uuid
         self.__dep_map: dict[str, UUID] | None = _dep_map
         self.__no_cache = no_cache
 
@@ -183,14 +182,14 @@ class Column:
         return output
 
     @property
-    def uuid(self) -> UUID:
+    def uuid(self) -> UUID | None:
         return self.__uuid
 
     @property
     def dep_map(self) -> dict[str, UUID] | None:
         return self.__dep_map
 
-    def bind(self, name_to_uuid: dict[str, UUID]) -> Column:
+    def bind(self, name_to_uuid: dict[str, UUID], all_known_uuids: set[UUID]) -> Column:
         """
         Resolve each dependency column name to the UUID of the producer that was
         producing it at the time this column was registered with a dataset.
@@ -201,6 +200,10 @@ class Column:
             raise ValueError(f"Derived column depends on unknown columns {missing}")
 
         dep_map = {name: name_to_uuid[name] for name in self._traverse_names()}
+        uuid = get_derived_column_uuid(
+            set(dep_map.values()), self.produces, all_known_uuids
+        )
+
         return Column(
             self.lhs,
             self.rhs,
@@ -208,7 +211,7 @@ class Column:
             self.description,
             self.name,
             _dep_map=dep_map,
-            _uuid=self.__uuid,
+            _uuid=uuid,
         )
 
     def with_reducer(self, reducer: Reducer) -> Column:
@@ -631,7 +634,7 @@ class ConstructedColumn(Protocol):
     pass
 
     @property
-    def uuid(self) -> UUID: ...
+    def uuid(self) -> UUID | None: ...
 
     @property
     def requires(self) -> set[UUID]: ...
@@ -648,7 +651,11 @@ class ConstructedColumn(Protocol):
     @property
     def description(self) -> Optional[str]: ...
 
-    def bind(self, name_to_uuid: dict[str, UUID]) -> Self: ...
+    def bind(
+        self,
+        name_to_uuid: dict[str, UUID],
+        all_known_uuids: set[UUID],
+    ) -> Self: ...
 
     @property
     def no_cache(self) -> bool: ...
@@ -666,17 +673,19 @@ class RawColumn:
         self,
         name,
         description,
+        _uuid: UUID,
         alias=None,
         _dep_uuid=None,
-        _uuid=None,
         no_cache: bool = False,
+        on_disk: bool = False,
     ):
         self.__name = name
         self.__description = description
         self.__alias = alias
-        self.__uuid = _uuid if _uuid is not None else uuid4()
+        self.__uuid = _uuid
         self.__dep_uuid: UUID | None = _dep_uuid
         self.__no_cache = no_cache
+        self.__on_disk = on_disk
 
     @property
     def uuid(self) -> UUID:
@@ -686,7 +695,9 @@ class RawColumn:
     def name(self):
         return self.__name
 
-    def bind(self, name_to_uuid: dict[str, UUID]) -> RawColumn:
+    def bind(
+        self, name_to_uuid: dict[str, UUID], all_known_uuids: set[UUID]
+    ) -> RawColumn:
         if self.__alias is None:
             return self
         dep_uuid = name_to_uuid[self.__name]
@@ -697,6 +708,7 @@ class RawColumn:
             _dep_uuid=dep_uuid,
             _uuid=self.__uuid,
             no_cache=self.__no_cache,
+            on_disk=self.__on_disk,
         )
 
     @property
@@ -708,6 +720,10 @@ class RawColumn:
                 f"RawColumn alias '{self.__alias}' has not been bound yet."
             )
         return {self.__dep_uuid}
+
+    @property
+    def on_disk(self) -> bool:
+        return self.__on_disk
 
     @property
     def requires_names(self) -> set[str]:
@@ -776,7 +792,7 @@ class DerivedScalarValue:
         self.operation = operation
         self.name = output_name
         self.description = description if description is not None else "None"
-        self.__uuid = _uuid if _uuid is not None else uuid4()
+        self.__uuid = _uuid
         self.__dep_map: dict[str, UUID] | None = _dep_map
         self.__no_cache = no_cache
         self.__reducer = reducer
@@ -794,7 +810,7 @@ class DerivedScalarValue:
         return vals
 
     @property
-    def uuid(self) -> UUID:
+    def uuid(self) -> UUID | None:
         return self.__uuid
 
     @property
@@ -846,17 +862,22 @@ class DerivedScalarValue:
             reducer=reducer,
         )
 
-    def bind(self, name_to_uuid: dict[str, UUID]) -> DerivedScalarValue:
+    def bind(
+        self, name_to_uuid: dict[str, UUID], all_known_uuids: set[UUID]
+    ) -> DerivedScalarValue:
         """
         Resolve each dependency column name to the UUID of the producer that was
         producing it at the time this scalar was registered with a dataset.
         Returns a new bound DerivedScalarValue; does not mutate this instance.
         """
+        assert self.name is not None
         required_names = self._traverse_names()
         if missing := required_names.difference(name_to_uuid):
             raise ValueError(f"Derived scalar depends on unknown columns {missing}")
 
         dep_map = {name: name_to_uuid[name] for name in self._traverse_names()}
+        uuid = get_derived_column_uuid(dep_map.values(), self.produces, all_known_uuids)
+
         return DerivedScalarValue(
             self.lhs,
             self.rhs,
@@ -865,7 +886,7 @@ class DerivedScalarValue:
             self.name,
             _dep_map=dep_map,
             no_cache=self.__no_cache,
-            _uuid=self.__uuid,
+            _uuid=uuid,
             reducer=self.__reducer,
         )
 
@@ -1034,24 +1055,29 @@ class EvaluatedColumn:
         self.__batch_size = batch_size
         self.__no_cache = no_cache
         self.description = description
-        self.__uuid = _uuid if _uuid is not None else uuid4()
+        self.__uuid = _uuid
         self.__dep_map = _dep_map
 
     @property
-    def uuid(self) -> UUID:
+    def uuid(self) -> UUID | None:
         return self.__uuid
 
     @property
     def dep_map(self) -> dict[str, UUID] | None:
         return self.__dep_map
 
-    def bind(self, name_to_uuid: dict[str, UUID]) -> EvaluatedColumn:
+    def bind(
+        self, name_to_uuid: dict[str, UUID], all_known_uuids: set[UUID]
+    ) -> EvaluatedColumn:
         """
         Resolve each dependency column name to the UUID of the producer that was
         producing it at the time this column was registered with a dataset.
         Returns a new bound EvaluatedColumn; does not mutate this instance.
         """
         dep_map = {name: name_to_uuid[name] for name in self.__requires}
+        uuid = get_derived_column_uuid(
+            set(dep_map.values()), self.produces, all_known_uuids
+        )
         return EvaluatedColumn(
             self.__func,
             self.__requires,
@@ -1063,7 +1089,7 @@ class EvaluatedColumn:
             self.description,
             _dep_map=dep_map,
             no_cache=self.__no_cache,
-            _uuid=self.__uuid,
+            _uuid=uuid,
             **self.__kwargs,
         )
 
@@ -1177,42 +1203,8 @@ class EvaluatedColumn:
             output = {next(iter(self.__produces)): output}
         return to_numpy_dict(output)
 
-    def evaluate_one(self, dataset: Dataset):
-        match self.__strategy:
-            case EvaluateStrategy.VECTORIZE:
-                values = (
-                    dataset.select(self.__requires)
-                    .take(1)
-                    .get_data(self.__format, unpack=False)
-                )
-                values = dict(values)
-                return self.__func(**values, **self.__kwargs)
 
-            case EvaluateStrategy.ROW_WISE:
-                values = (
-                    dataset.select(self.__requires)
-                    .take(1)
-                    .get_data(self.__format, unpack=True)
-                )
-                values = dict(values)
-                return self.__func(**values, **self.__kwargs)
-
-            case EvaluateStrategy.CHUNKED:
-                index = dataset.index
-                assert isinstance(index, tuple)
-                first_chunk_size = index[1][0]
-                first_chunk = (
-                    dataset.select(self.__requires)
-                    .take(first_chunk_size)
-                    .get_data(self.__format)
-                )
-                first_chunk = dict(first_chunk)
-                return self.__func(**first_chunk, **self.__kwargs)
-
-        pass
-
-
-def _evaluate_scalar(scalar: DerivedScalarValue, ds: Dataset) -> Any:
+def _evaluate_scalar(scalar: DerivedScalarValue, data: dict[str, np.ndarray]) -> Any:
     """
     Materialize the columns a DerivedScalarValue depends on and evaluate
     the reduction against them. Pulls data via the astropy format so Quantity
@@ -1225,8 +1217,6 @@ def _evaluate_scalar(scalar: DerivedScalarValue, ds: Dataset) -> Any:
         return scalar.evaluate({})
     reducer = default_reducer("global")
     scalar = scalar.with_reducer(reducer) if scalar.reducer is None else scalar
-    table = ds.select(*required).get_data("astropy", unpack=False, wrap_single=True)
-    data = {name: table[name] for name in required}
     return scalar.evaluate(data)
 
 
@@ -1246,30 +1236,49 @@ class ColumnMask:
         self.right = right
         self.operator = operator
 
-    def apply(self, ds: Dataset):
+    @property
+    def requires_names(self) -> set[str]:
+        requires_names = set()
+        match self.left:
+            case Column() | DerivedScalarValue():
+                requires_names |= self.left.requires_names
+            case _:
+                pass
+        match self.right:
+            case Column() | DerivedScalarValue():
+                requires_names |= self.right.requires_names
+            case str():
+                requires_names.add(self.right)
+            case _:
+                pass
+        return requires_names
+
+    def apply(self, columns: dict[str, np.ndarray]):
+        left: Any
         match self.left:
             case Column():
                 if self.left.rhs is None and self.left.operation is ident:
                     assert isinstance(self.left.lhs, str)
-                    left = ds.select(self.left.lhs).get_data()
+                    left = columns[self.left.lhs]
                 else:
-                    left = ds.select(data=self.left).get_data()
+                    left = self.left.evaluate(columns)
             case DerivedScalarValue():
-                left = _evaluate_scalar(self.left, ds)
+                left = _evaluate_scalar(self.left, columns)
             case _:
                 left = self.left
 
         right_selected = False
+        right: Any
         match self.right:
             case Column():
                 assert isinstance(self.right.lhs, str)
                 if self.right.rhs is None and self.right.operation is ident:
-                    right = ds.select(self.right.lhs).get_data()
+                    right = columns[self.right.lhs]
                 else:
-                    right = ds.select(data=self.right).get_data()
+                    right = self.right.evaluate(columns)
                 right_selected = True
             case DerivedScalarValue():
-                right = _evaluate_scalar(self.right, ds)
+                right = _evaluate_scalar(self.right, columns)
             case _:
                 right = self.right
         if (
@@ -1317,15 +1326,22 @@ class CompoundColumnMask:
         columns |= self.right.requires
         return columns
 
+    @property
+    def requires_names(self):
+        columns = set()
+        columns |= self.left.requires_names
+        columns |= self.right.requires_names
+        return columns
+
     def __and__(self, other: ColumnMask | Self):
         return CompoundColumnMask(self, other, lambda left, right: left & right)
 
     def __or__(self, other: ColumnMask | Self):
         return CompoundColumnMask(self, other, lambda left, right: left | right)
 
-    def apply(self, ds: Dataset):
-        left_mask = self.left.apply(ds)
-        right_mask = self.right.apply(ds)
+    def apply(self, columns: dict[str, np.ndarray]):
+        left_mask = self.left.apply(columns)
+        right_mask = self.right.apply(columns)
         return self.op(left_mask, right_mask)
 
     def with_reducer(self, reducer: Reducer) -> CompoundColumnMask:
