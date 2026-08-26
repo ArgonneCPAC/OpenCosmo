@@ -469,7 +469,7 @@ class SimulationCollection:
         return out
 
     def get_data(
-        self, output: str = "astropy", wrap_single: bool = False
+        self, format: str = "astropy", wrap_single: bool = False, unpack: bool = True
     ) -> dict[str, OpenCosmoData]:
         """
         Retrieve the data from all datasets in this collection, and return it as a dictionary of
@@ -498,7 +498,10 @@ class SimulationCollection:
             raise TypeError(
                 "get_data is only supported when this collection contains datasets!"
             )
-        return {name: ds.get_data() for name, ds in self.values()}
+        return {
+            name: ds.get_data(format=format, wrap_single=wrap_single, unpack=unpack)
+            for name, ds in self.items()
+        }
 
     def match(self, dataset: str) -> SimulationCollection:
         """

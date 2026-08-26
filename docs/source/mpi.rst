@@ -51,8 +51,12 @@ This also works for lightcone **structure collections**, where each redshift ste
 
 If there are fewer steps than ranks, the surplus ranks hold a full-schema, zero-length dataset (or structure collection) — every column, unit, and redshift range is still available on those ranks, so :code:`select`, :code:`filter`, and scalar reductions behave identically everywhere. Nested (Diffsky step-then-type) lightcones are not redshift-split in the current release; passing :code:`mpi_mode="redshift"` for them silently falls back to spatial distribution. Without an MPI communicator the argument is a no-op.
 
-Combining Results Across Processes with :code:`reduce`:
--------------------------------------------------------
+Combining Results Across Processes with :code:`reduce` and `gather`:
+--------------------------------------------------------------------
+
+Performing Multi-Rank Computations with :code:`reduce`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 :code:`opencosmo` contains convinience functions for combining the results of a computation across ranks. The :meth:`reduce <opencosmo.analysis.reduce>` function allows you to sum, multiply, or average results from several different processes into a single result. For example, suppose you are working with a very large simulation using MPI and you want to compute the halo mass function across the entire simulation:
 
 .. code-block:: python
@@ -79,7 +83,42 @@ Combining Results Across Processes with :code:`reduce`:
 
 :meth:`reduce <opencosmo.analysis.reduce>` uses :meth:`evalute <opencosmo.Dataset.evaluate>` to perform its computation. As a result, the expected signature of the computation function is identical. Any additional keyword arguments are passed directly to the underlying :code:`evaluate` implementation, with the exception of :code:`insert` which is ignored. Note this does mean that the exact set of expected arguments will depend on the type of the dataset you are computing with. See the API reference for the various :code:`opencosmo` dataset and collection types for more details.
 
-Additional convinience functions for working with MPI are planned for future releases.
+
+
+Combining Data with Gather
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you just want the column values, and don't need to perform an additional computation, you can use :py:meth:`gather <opencosmo.analysis.gather>`. :code:`gather` can retrieve columns that exist, or derived columns produced with :ref:`column expressions <Combining Columns Into New Columns>`. Like :code:`gather`, :code:`reduce` accepts a plotting function that can produce a plot of your result or perform another computation:
+
+.. code-block:: python
+
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import opencosmo as oc
+        from opencosmo.analysis import gather
+
+        ds = oc.open("haloproperties.hdf5")
+
+        def gas_mass_vs_halo_mass(sod_halo_mass, gas_frac, path)
+                plt.scatter(sod_halo_mass, sod_halo_MGas)
+                plt.semilogx()
+                plt.xlabel("SOD Halo Mass")
+                plt.ylabel("Halo Gas fraction")
+                plt.savefig(path)
+                
+
+        gather(ds, 
+                "sod_halo_gas", 
+                gas_frac = oc.col("sod_halo_MGas") / oc.col("sod_halo_mass"), 
+                format="numpy", 
+                plotting_function = gas_mass_vs_halo_mas, 
+                plotting_kwargs = {"path": "plots/gas_frac.png"
+        )
+
+
+Data is automatically sent to the root process, which performs the plotting. This function will work in a single-process environment as well, ensuring you can write scripts that run anywhere.
+
+
 
 Important Caveats
 -----------------
