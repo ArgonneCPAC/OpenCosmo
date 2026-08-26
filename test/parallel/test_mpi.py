@@ -15,7 +15,7 @@ from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatte
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-from opencosmo.analysis import reduce
+from opencosmo.analysis import gather, reduce
 from opencosmo.collection.simulation import SimulationCollection
 
 logger = getLogger()
@@ -924,3 +924,128 @@ def test_reduce_average(input_path, profile_path, stacked_profile_path):
         profile = result["profile"]
         assert np.all(bin_centers == expected_centers)
         assert np.all(expected_profile == profile)
+
+
+@pytest.fixture
+def simulation_collection(test_data):
+    return oc.SimulationCollection(
+        {
+            "scidac_000": oc.open(test_data.snapshot.scidac(0).halo_properties),
+            "scidac_001": oc.open(test_data.snapshot.scidac(1).halo_properties),
+        }
+    )
+
+
+def _gather_column(dataset, column, comm):
+    """Concatenate a single column across all ranks in rank order."""
+    local = dataset.select(column).get_data("numpy")
+    return np.concatenate(comm.allgather(local))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce_simulation_collection(simulation_collection):
+    comm = get_comm_world()
+
+    def halo_mass_function(fof_halo_mass, log_bins, box_size):
+        log_mass = np.log10(fof_halo_mass)
+        hist, _ = np.histogram(log_mass, log_bins)
+        return hist / np.diff(log_bins) / box_size**3
+
+    bins = np.linspace(10.5, 15)
+    box_size = 100.0
+    result = reduce(
+        simulation_collection,
+        halo_mass_function,
+        format="numpy",
+        vectorize=True,
+        log_bins=bins,
+        box_size=box_size,
+        all=True,
+    )
+
+    # A SimulationCollection reduces each simulation independently, keyed by name.
+    assert set(result.keys()) == set(simulation_collection.keys())
+
+    for name in simulation_collection.keys():
+        mass = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
+        expected = halo_mass_function(mass, bins, box_size)
+        parallel_assert(np.allclose(result[name]["halo_mass_function"], expected))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    columns = ["fof_halo_mass", "fof_halo_center_x"]
+    result = gather(ds, columns=columns, format="numpy", all=True)
+
+    for column in columns:
+        expected = _gather_column(ds, column, comm)
+        parallel_assert(np.array_equal(result[column], expected))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_derived_column(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # A derived column is passed as a keyword argument, forwarded to select().
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    result = gather(
+        ds, columns="fof_halo_mass", fof_halo_px=derived, format="numpy", all=True
+    )
+
+    expected_mass = _gather_column(ds, "fof_halo_mass", comm)
+    local_px = ds.select(fof_halo_px=derived).get_data("numpy")
+    expected_px = np.concatenate(comm.allgather(local_px))
+
+    parallel_assert(np.array_equal(result["fof_halo_mass"], expected_mass))
+    parallel_assert(np.array_equal(result["fof_halo_px"], expected_px))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_derived_column_only(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # With columns=None, only the derived column is gathered; a single column
+    # collapses to a bare array.
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    result = gather(ds, fof_halo_px=derived, format="numpy", all=True)
+
+    local_px = ds.select(fof_halo_px=derived).get_data("numpy")
+    expected_px = np.concatenate(comm.allgather(local_px))
+
+    parallel_assert(np.array_equal(result, expected_px))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_no_all(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    expected = _gather_column(ds, "fof_halo_mass", comm)
+    result = gather(ds, columns="fof_halo_mass", format="numpy")
+
+    if comm.Get_rank() != 0:
+        assert result is None
+    else:
+        # A single requested column collapses to a bare array.
+        assert np.array_equal(result, expected)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_simulation_collection(simulation_collection):
+    comm = get_comm_world()
+
+    result = gather(
+        simulation_collection, columns="fof_halo_mass", format="numpy", all=True
+    )
+
+    # A SimulationCollection gathers each simulation independently, keyed by name.
+    assert set(result.keys()) == set(simulation_collection.keys())
+
+    for name in simulation_collection.keys():
+        expected = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
+        parallel_assert(np.array_equal(result[name], expected))

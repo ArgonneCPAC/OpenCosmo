@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import Enum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -98,6 +98,12 @@ def reduce(
     Althoug the example above only returns a single array, you may return multiple
     arrays as a dictionary. Each array in the dictionary will be processed seperately.
 
+    If :code:`dataset` is a :py:class:`SimulationCollection <opencosmo.SimulationCollection>`,
+    each simulation in the collection is reduced independently (a simulation is never combined
+    with another simulation). The result is then a dictionary keyed by simulation name, where
+    each value has the same shape a single dataset would produce. If you pass a
+    :code:`plotting_function`, it will receive these simulation-name keys as keyword arguments.
+
     Parameters
     ----------
     dataset: Dataset | Collection
@@ -127,7 +133,9 @@ def reduce(
     results: dict[str, np.ndarray] | None
         The result of the reduction. If :code:`all = False` (the default) only the root process will recieve
         the results with the remaining processes receiving :code:`None`. If :code:`all = True`, all processes
-        will recieve the results
+        will recieve the results. When :code:`dataset` is a
+        :py:class:`SimulationCollection <opencosmo.SimulationCollection>`, each simulation is reduced
+        independently and the result is a dictionary keyed by simulation name.
 
     """
     evaluate_kwargs = evaluate_kwargs or {}
@@ -144,15 +152,56 @@ def reduce(
 
     op = EvalOperation(operation)
     result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
+
+    if isinstance(dataset, SimulationCollection):
+        output = __reduce_multi_dataset_result(dataset, result, op, all, comm)
+    else:
+        output = __reduce_single_dataset_result(result, len(dataset), op, all, comm)
+
+    if not all and comm.Get_rank() != 0:
+        return None
+
+    return process_output(output, plotting_function, plotting_kwargs, evaluate_kwargs)
+
+
+def __reduce_multi_dataset_result(
+    dataset: SimulationCollection,
+    result: dict[str, Any],
+    op: EvalOperation,
+    all: bool,
+    comm: MPI.Comm,
+) -> dict[str, Any]:
+    """
+    Reduce a per-dataset result mapping produced by
+    :py:meth:`SimulationCollection.evaluate`. Each dataset is reduced
+    independently and keyed by its name, mirroring the shape returned by
+    :py:func:`gather` for the same collection.
+    """
+    output = {}
+    for name in get_all_keys(result, comm):
+        assert name in result
+        output[name] = __reduce_single_dataset_result(
+            result[name], len(dataset[name]), op, all, comm
+        )
+    return output
+
+
+def __reduce_single_dataset_result(
+    result: dict[str, np.ndarray] | np.ndarray,
+    dataset_len: int,
+    op: EvalOperation,
+    all: bool,
+    comm: MPI.Comm,
+) -> Any:
     results_to_combine = __verify_results(result, comm)
     keys = get_all_keys(results_to_combine, comm)
     reduce_func = comm.allreduce if all else comm.reduce
-    output = {}
+    output: dict[str, Any] = {}
 
     match op:
         case EvalOperation.AVG:
-            total_size = comm.allreduce(len(dataset))
-            weight = len(dataset) / total_size
+            total_size = comm.allreduce(dataset_len)
+            weight = dataset_len / total_size
             results_to_combine = {
                 name: value * weight for name, value in results_to_combine.items()
             }
@@ -165,16 +214,10 @@ def reduce(
     for key in keys:
         output[key] = reduce_func(results_to_combine[key], op=combine_operation)
 
-    if not all and comm.Get_rank() != 0:
-        return None
-
-    assert not (any(v is None for v in output.values()))
-    output = cast("dict[str, Any]", output)
-
     if not isinstance(result, dict):
         return next(iter(output.values()))
 
-    return process_output(output, plotting_function, plotting_kwargs, evaluate_kwargs)
+    return output
 
 
 def gather(
@@ -224,10 +267,11 @@ def gather(
             plotting_kwargs={"path": "halos.png"},
         )
 
-    Note that when :code:`format = "astropy"` (the default) a multi-column result is
-    returned as a :code:`QTable`, which cannot be unpacked into a plotting function's
-    keyword arguments. If you pass a :code:`plotting_function`, choose a dict-like format
-    such as :code:`"numpy"` or :code:`"pandas"`.
+    If :code:`dataset` is a :py:class:`SimulationCollection <opencosmo.SimulationCollection>`,
+    each simulation is gathered independently (a simulation is never concatenated with another
+    simulation). The result is then a dictionary keyed by simulation name, where each value is
+    the gathered table/array in the requested :code:`format`. A :code:`plotting_function` will
+    receive these simulation-name keys as keyword arguments.
 
     Parameters
     ----------
@@ -261,8 +305,10 @@ def gather(
         The gathered columns in the requested :code:`format`. If :code:`all = False` (the
         default) only the root process will recieve the results, with the remaining
         processes receiving :code:`None`. If :code:`all = True`, all processes will
-        recieve the results. If a :code:`plotting_function` is provided, its return value
-        is returned instead.
+        recieve the results. For a :py:class:`SimulationCollection <opencosmo.SimulationCollection>`,
+        this is instead a dictionary keyed by simulation name, with one such result per
+        simulation. If a :code:`plotting_function` is provided, its return value is returned
+        instead.
 
     """
     verify_format(format)
@@ -380,4 +426,11 @@ def process_output(
 ) -> Any:
     if plotting_function is None:
         return output
+    # An astropy result is a QTable, which cannot be splatted into keyword
+    # arguments directly. Unpack it into a {column: data} dict so the plotting
+    # function receives one keyword argument per column.
+    from astropy.table import Table
+
+    if isinstance(output, Table):
+        output = dict(output)
     return plotting_function(**output, **plotting_kwargs, **evaluate_kwargs)
