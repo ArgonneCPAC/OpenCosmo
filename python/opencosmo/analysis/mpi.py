@@ -1,14 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
-from opencosmo.mpi import MPI, get_all_keys, get_comm_world
+from opencosmo import SimulationCollection
+from opencosmo.dataset.formats import convert_data, verify_format
+from opencosmo.mpi import (
+    MPI,
+    gather_data,
+    get_all_entries,
+    get_all_keys,
+    get_comm_world,
+    parallel_assert,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from astropy.table import QTable
 
 
 class EvalOperation(Enum):
@@ -163,6 +175,174 @@ def reduce(
         return next(iter(output.values()))
 
     return process_output(output, plotting_function, plotting_kwargs, evaluate_kwargs)
+
+
+def gather(
+    dataset,
+    columns: str | list[str] | None = None,
+    format="astropy",
+    all: bool = False,
+    plotting_function: Callable | None = None,
+    plotting_kwargs: dict[str, Any] | None = None,
+    **derived_columns,
+) -> Any:
+    r"""
+    Concatenate columns from a dataset that has been distributed across several MPI
+    processes into a single table on one (or all) processes. By default, the result is
+    returned to the root process (rank 0), while all other processes receive
+    :code:`None`. You can return the result to all processes by setting
+    :code:`all = True`.
+
+    Under the hood, this function uses :py:meth:`select <opencosmo.Dataset.select>` to
+    pick out the requested columns and gathers them across ranks. You choose which
+    columns to include with :code:`columns`, and you can define new columns on the fly by
+    passing them as keyword arguments (see :code:`derived_columns` below).
+
+    If you like, you can also pass a plotting function that will receive the gathered
+    columns as keyword arguments.
+
+    For example, to gather the mass and position of every halo in a large simulation and
+    plot them on the root process:
+
+    .. code-block:: python
+
+        import matplotlib.pyplot as plt
+        import opencosmo as oc
+        from opencosmo.analysis import gather
+
+        ds = oc.open("haloproperties.hdf5")
+
+        def make_plot(fof_halo_mass, fof_halo_center_x, fof_halo_center_y, path, **kwargs):
+            plt.scatter(fof_halo_center_x, fof_halo_center_y, c=fof_halo_mass)
+            plt.savefig(path)
+
+        gather(
+            ds,
+            columns=["fof_halo_mass", "fof_halo_center_x", "fof_halo_center_y"],
+            format="numpy",
+            plotting_function=make_plot,
+            plotting_kwargs={"path": "halos.png"},
+        )
+
+    Note that when :code:`format = "astropy"` (the default) a multi-column result is
+    returned as a :code:`QTable`, which cannot be unpacked into a plotting function's
+    keyword arguments. If you pass a :code:`plotting_function`, choose a dict-like format
+    such as :code:`"numpy"` or :code:`"pandas"`.
+
+    Parameters
+    ----------
+    dataset: Dataset | Collection
+        Any OpenCosmo dataset or collection which supports :code:`select`
+    columns: str | list[str] | None, default = None
+        The columns (by name) to include. Pass a single name, a list of names, or
+        :code:`"all"` to include every column already in the dataset. If :code:`None`,
+        only the columns defined via :code:`derived_columns` are included.
+    format: str, default = "astropy"
+        The output format for the gathered data. One of :code:`"astropy"`,
+        :code:`"numpy"`, :code:`"pandas"`, :code:`"polars"`, :code:`"arrow"` or
+        :code:`"jax"`.
+    all: bool, default = False
+        Whether to return the result to all processes or just the root process. If
+        :code:`False`, all processes besides the root process will recieve :code:`None`
+    plotting_function: Optional[Callable], default = None
+        A function that performs some plotting or post-processing. It receives the
+        gathered columns as keyword arguments named after the columns, so it should take
+        arguments with the same names as the columns you gathered.
+    plotting_kwargs: dict[str, Any], default = None
+        Additional keyword arguments to pass into the plotting function.
+    **derived_columns: Any
+        New columns to compute and include in the result, passed directly into
+        :code:`dataset.select`. The keyword name becomes the column name. These are not
+        passed into the plotting function.
+
+    Returns
+    -------
+    results: QTable | dict[str, np.ndarray] | ... | None
+        The gathered columns in the requested :code:`format`. If :code:`all = False` (the
+        default) only the root process will recieve the results, with the remaining
+        processes receiving :code:`None`. If :code:`all = True`, all processes will
+        recieve the results. If a :code:`plotting_function` is provided, its return value
+        is returned instead.
+
+    """
+    verify_format(format)
+    if columns is None and not derived_columns:
+        raise ValueError(
+            "No columns were provided! Use `columns = 'all'` to include all columns already in the dataset"
+        )
+    columns_norm: tuple[str, ...] | None
+    match columns:
+        case None:
+            columns_norm = ()
+        case "all":
+            columns_norm = ("*",)
+        case str():
+            columns_norm = (columns,)
+        case Iterable():
+            columns_norm = tuple(columns)
+        case _:
+            columns_norm = None
+
+    all_columns_norm = (
+        columns_norm + tuple(derived_columns.keys())
+        if columns_norm is not None
+        else None
+    )
+
+    comm = get_comm_world()
+    if comm is None:
+        if columns_norm is None:
+            raise ValueError(
+                "columns must be a string, an iterable of strings, or 'all'"
+            )
+        data = dataset.select(*columns_norm, **derived_columns).get_data(format)
+        return process_output(data, plotting_function, plotting_kwargs or {}, {})
+
+    all_columns = comm.allgather(all_columns_norm)
+    if any(cols is None for cols in all_columns):
+        raise ValueError("columns must be a string, an iterable of strings, or 'all'")
+
+    column_sets = set([frozenset(cols) for cols in all_columns])
+    if len(column_sets) > 1:
+        raise ValueError("Not all ranks recieved the same sets of columns!")
+
+    data = dataset.select(*columns_norm, **derived_columns).get_data(
+        "astropy", unpack=False, wrap_single=True
+    )
+    if isinstance(dataset, SimulationCollection):
+        result = __concatenate_multi_dataset_rank_data(data, all, format, comm)
+    else:
+        result = __concatenate_rank_data(data, all, format, comm)
+    if not all and comm.Get_rank() != 0:
+        return None
+
+    return process_output(result, plotting_function, plotting_kwargs or {}, {})
+
+
+def __concatenate_multi_dataset_rank_data(
+    data: dict[str, dict[str, np.ndarray]], all: bool, format, comm: MPI.Comm
+):
+    new_data = {}
+    for name in get_all_keys(data, comm):
+        assert name in data
+        new_data[name] = __concatenate_rank_data(data[name], all, format, comm)
+    return new_data
+
+
+def __concatenate_rank_data(data: QTable, all: bool, format, comm: MPI.Comm):
+    output = {}
+    data = dict(data)
+    for name, arr in get_all_entries(data, comm):
+        parallel_assert(arr is not None)
+        assert arr is not None  # narrow for the type checker; guaranteed above
+        column = gather_data(arr, comm, all)
+        if column is None:
+            continue
+        if arr.unit is not None:
+            column *= arr.unit
+        output[name] = column
+
+    return convert_data(output, format)
 
 
 def __verify_results(

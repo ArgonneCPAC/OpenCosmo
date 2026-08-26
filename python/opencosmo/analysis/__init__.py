@@ -1,8 +1,8 @@
 # ruff: noqa
 from importlib import import_module
-from .mpi import reduce
+from .mpi import reduce, gather
 
-__all__ = ["reduce"]
+__all__ = ["reduce", "gather"]
 
 known_yt_tools = [
     "create_yt_dataset",
