@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
 
+def contains():
+    pass
+
+
 def project(source: DataIndex, other: DataIndex) -> DataIndex:
     match (source, other):
         case (tuple(), np.ndarray()):

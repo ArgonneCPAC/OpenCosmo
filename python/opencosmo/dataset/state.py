@@ -547,13 +547,16 @@ def redistribute(state: DatasetState, rows):
     assert comm is not None
     verify_redistribution(state.raw_index, rows, comm)
     new_index = gather_index(rows, comm)
-    original_index = gather_index(into_array(state.raw_index), comm)
+    original_index = gather_index(state.raw_index, comm)
     reorder_map = None
     if comm.Get_rank() == 0:
         reorder_map = reindex_column(original_index, new_index)
 
-    new_cache = state.cache.redistribute(
-        reorder_map, len(rows), cached_columns_to_keep, comm
-    )
+    if cached_columns_to_keep:
+        new_cache = state.cache.redistribute(
+            reorder_map, len(rows), cached_columns_to_keep, comm
+        )
+    else:
+        new_cache = state.cache.empty()
     new_handler = state.raw_data_handler.with_index(rows)
     return dataclasses.replace(state, cache=new_cache, raw_data_handler=new_handler)

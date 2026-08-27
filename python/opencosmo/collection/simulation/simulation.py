@@ -12,10 +12,10 @@ from opencosmo.dataset import Dataset
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset import state as st
 from opencosmo.dataset.state import DatasetState
-from opencosmo.index import into_array
+from opencosmo.index import into_array, project
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mapping.mapping import get_mapping
-from opencosmo.mpi import get_comm_world, has_mpi
+from opencosmo.mpi import gather_index, get_comm_world, has_mpi
 
 if TYPE_CHECKING:
     import astropy.units as u
@@ -116,10 +116,26 @@ def prepare_matched_datasets_mpi(
     assert comm is not None
 
     for name, mapping in mappings.items():
-        global_index = np.concatenate(
-            comm.allgather(into_array(datasets[name].raw_index))
-        )
-        rows_to_keep[rows_to_keep] &= np.isin(mapping[rows_to_keep], global_index)
+        global_index = gather_index(datasets[name].raw_index, comm, True, True)
+        candidate_rows = np.where(rows_to_keep)[0]
+        if candidate_rows.size == 0:
+            continue
+
+        candidate_mapping = mapping[rows_to_keep]
+
+        # `project_chunked_on_simple` assumes the `simple` input is monotone.
+        # mapping values may be unsorted, so we sort probe values, project,
+        # and then expand back into the original candidate ordering.
+        sort_pos = np.argsort(candidate_mapping)
+        mapping_sorted = candidate_mapping[sort_pos]
+
+        present_pos_in_sorted = project(mapping_sorted, global_index)
+        present_pos_in_candidates = sort_pos[present_pos_in_sorted]
+
+        # Keep only candidates proven present in the global target index.
+        new_rows_to_keep = np.zeros_like(rows_to_keep)
+        new_rows_to_keep[candidate_rows[present_pos_in_candidates]] = True
+        rows_to_keep &= new_rows_to_keep
 
     new_datasets = {
         source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
