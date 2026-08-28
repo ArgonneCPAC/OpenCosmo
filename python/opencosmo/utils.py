@@ -7,6 +7,7 @@ def normalize_kwarg_name(s: str) -> str:
     Normalize a string into a valid Python identifier suitable for use
     as a function keyword argument name.
     """
+    return s
     # Replace any run of characters that aren't letters, digits, or underscore with '_'
     s = re.sub(r"\W+", "_", s)
 
