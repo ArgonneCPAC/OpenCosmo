@@ -13,7 +13,7 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.dataset import state as st
 from opencosmo.dataset.state import DatasetState
 from opencosmo.index import into_array
-from opencosmo.index.mpi import get_global_membership
+from opencosmo.index.mpi import is_in_global_index
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mapping.mapping import get_mapping
 from opencosmo.mpi import get_comm_world, has_mpi
@@ -119,12 +119,11 @@ def prepare_matched_datasets_mpi(
     assert comm is not None
 
     for name, mapping in mappings.items():
-        rows_in_global = get_global_membership(
+        rows_to_keep[rows_to_keep] &= is_in_global_index(
             mapping[rows_to_keep],
             into_array(datasets[name].raw_index),
             comm,
         )
-        rows_to_keep[rows_to_keep] &= np.isin(mapping[rows_to_keep], rows_in_global)
 
     new_datasets = {
         source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
