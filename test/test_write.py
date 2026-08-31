@@ -93,3 +93,21 @@ def test_after_unit_transform(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path)
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
     assert all(ds.get_data() == new_ds.get_data())
+
+
+def test_after_sort_drop(halo_properties_path, tmp_path):
+    ds = oc.open(halo_properties_path).sort_by("fof_halo_mass").drop("fof_halo_*")
+
+    # write should not change the data
+    write(tmp_path / "haloproperties.hdf5", ds)
+
+    new_ds = oc.open(tmp_path / "haloproperties.hdf5")
+    ds = oc.open(halo_properties_path).drop("fof_halo_*")
+
+    data = ds.get_data()
+    new_data = new_ds.get_data()
+
+    for name, d in data.items():
+        assert np.all(d == new_data[name])
+
+    assert "fof_halo_mass" not in new_ds.columns

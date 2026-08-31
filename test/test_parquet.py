@@ -48,6 +48,18 @@ def test_dump_dataset_unit_transition(input_path, tmp_path):
         assert np.all(data[col] == table[col])
 
 
+def test_dump_with_sort_drop(input_path, tmp_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.sort_by("fof_halo_mass").drop("fof_halo_*")
+    write_parquet(tmp_path / "test.parquet", dataset)
+    table = pq.read_table(tmp_path / "test.parquet")
+    data = dataset.get_data("numpy")
+    print(dataset.columns)
+
+    for col in dataset.columns:
+        assert np.all(data[col] == table[col])
+
+
 def test_dump_lightcone(haloproperties_600_path, haloproperties_601_path, tmp_path):
     dataset = oc.open(haloproperties_600_path, haloproperties_601_path)
     write_parquet(tmp_path / "test.parquet", dataset)
