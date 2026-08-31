@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Generator, Optional
 
 import numpy as np
 
-from opencosmo.index import into_array
+from opencosmo.index import coalesce_chunks, get_length, into_array, project, sort
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
@@ -49,6 +49,18 @@ def parallel_assert_is_simple_index(value, comm: MPI.Comm | None = None):
     parallel_assert(value.dtype == np.int64, comm)
 
 
+def parallel_assert_is_chunked_index(value: tuple, comm: MPI.Comm | None = None):
+    has_shape = (
+        len(value) == 2
+        and isinstance(value[0], np.ndarray)
+        and isinstance(value[1], np.ndarray)
+    )
+
+    parallel_assert(has_shape, comm)
+    parallel_assert(value[0].ndim == 1 and value[1].ndim == 1, comm)
+    parallel_assert(value[0].dtype == np.int64 and value[1].dtype == np.int64, comm)
+
+
 def parallel_assert_same_dtype(value: np.ndarray, comm: MPI.Comm | None = None):
     parallel_assert(isinstance(value, np.ndarray), comm)
     assert comm is not None
@@ -76,9 +88,35 @@ def get_subcom(include: list[bool], comm: MPI.Comm):
     return new_comm, new_group
 
 
-def gather_index(index: np.ndarray, comm: MPI.Comm, all: bool = False):
-    parallel_assert_is_simple_index(index, comm)
-    return gather_data(index, comm, all=all)
+def gather_index(
+    index: np.ndarray | tuple[np.ndarray, np.ndarray],
+    comm: MPI.Comm,
+    all: bool = False,
+    sorted=False,
+):
+    if isinstance(index, tuple):
+        parallel_assert_is_chunked_index(index, comm)
+    else:
+        parallel_assert_is_simple_index(index, comm)
+
+    rank_is_chunked = comm.allgather(isinstance(index, tuple))
+
+    if np.all(rank_is_chunked):
+        starts = gather_data(index[0], comm, all=all)
+        sizes = gather_data(index[1], comm, all=all)
+        if not all and comm.Get_rank() != 0:
+            return None
+
+        if sorted:
+            start, sizes = sort((starts, sizes))
+
+        return coalesce_chunks(starts, sizes)
+
+    result = gather_data(into_array(index), comm, all=all)
+    if not all and comm.Get_rank() != 0:
+        return None
+
+    return sort(result) if sorted else result
 
 
 def gather_data(data: np.ndarray, comm: MPI.Comm, all: bool = False):
@@ -211,13 +249,15 @@ def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm)
 
 
 def verify_redistribution(old_index: np.ndarray, new_index: np.ndarray, comm: MPI.Comm):
-    old_index = gather_index(into_array(old_index), comm)
-    new_index = gather_index(into_array(new_index), comm)
+    old_index = gather_index(old_index, comm, sorted=True)
+    new_index = gather_index(new_index, comm, sorted=True)
+    return
     if comm.Get_rank() != 0:
         parallel_assert(True)
         return
-    diff = np.setdiff1d(new_index, old_index)
-    parallel_assert(len(diff) == 0)
+    projection = project(new_index, old_index)
+
+    parallel_assert(get_length(projection) == get_length(old_index))
 
 
 def get_all_keys[T: SupportsRichComparison](

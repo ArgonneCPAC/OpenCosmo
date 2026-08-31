@@ -20,6 +20,7 @@ from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
+from opencosmo.utils import normalize_kwarg_name
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -255,7 +256,10 @@ def open_files(
         if any(len(uuids) > 1 for uuids in children_by_uuid.values()):
             raise ValueError("Mapping is currently only supported for single catalogs")
         match_set = match_set.with_aliases(
-            {name: next(iter(uuids)) for name, uuids in children_by_uuid.items()}
+            {
+                normalize_kwarg_name(name): next(iter(uuids))
+                for name, uuids in children_by_uuid.items()
+            }
         )
 
     # A mapping resolves to nothing usable whenever fewer than two of its endpoints

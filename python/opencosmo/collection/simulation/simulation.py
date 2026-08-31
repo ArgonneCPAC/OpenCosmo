@@ -13,9 +13,11 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.dataset import state as st
 from opencosmo.dataset.state import DatasetState
 from opencosmo.index import into_array
+from opencosmo.index.mpi import is_in_global_index
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mapping.mapping import get_mapping
 from opencosmo.mpi import get_comm_world, has_mpi
+from opencosmo.utils import normalize_kwarg_name
 
 if TYPE_CHECKING:
     import astropy.units as u
@@ -112,14 +114,16 @@ def prepare_matched_datasets_mpi(
     must not reappear, so membership is tested against the union of every rank's
     index rather than the local index alone.
     """
+
     comm = get_comm_world()
     assert comm is not None
 
     for name, mapping in mappings.items():
-        global_index = np.concatenate(
-            comm.allgather(into_array(datasets[name].raw_index))
+        rows_to_keep[rows_to_keep] &= is_in_global_index(
+            mapping[rows_to_keep],
+            into_array(datasets[name].raw_index),
+            comm,
         )
-        rows_to_keep[rows_to_keep] &= np.isin(mapping[rows_to_keep], global_index)
 
     new_datasets = {
         source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
@@ -163,7 +167,9 @@ class SimulationCollection:
                 "Dataset matching is only supported for simple datasets (no collections)"
             )
 
-        self.__datasets = {k: normalize(v) for k, v in dict(datasets).items()}
+        self.__datasets = {
+            normalize_kwarg_name(k): normalize(v) for k, v in dict(datasets).items()
+        }
         self.__match_set = match_set
         self.__match_source = match_source
         self.__rebuilt = rebuilt

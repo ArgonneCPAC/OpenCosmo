@@ -14,6 +14,7 @@ from opencosmo.io.schema import FileEntry, MapCoordinateState, make_schema
 from opencosmo.io.serial import allocate
 from opencosmo.io.verify import verify_structure
 from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
+from opencosmo.utils import normalize_kwarg_name
 
 import opencosmo as oc
 from opencosmo.index import into_array
@@ -22,10 +23,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-REFERENCE = "SCIDAC_128_GO"
-SIMULATION_A = "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257"
-SIMULATION_B = "KAPPA_2.984_EGW_0.682_SEED_6e5_VKIN_7286_EPS_4.883"
-SIMULATION_C = "KAPPA_2.444_EGW_1_SEED_6.667e5_VKIN_4841_EPS_6.006"
+REFERENCE = normalize_kwarg_name("SCIDAC_128_GO")
+SIMULATION_A = normalize_kwarg_name(
+    "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257"
+)
+SIMULATION_B = normalize_kwarg_name(
+    "KAPPA_2.984_EGW_0.682_SEED_6e5_VKIN_7286_EPS_4.883"
+)
+SIMULATION_C = normalize_kwarg_name(
+    "KAPPA_2.444_EGW_1_SEED_6.667e5_VKIN_4841_EPS_6.006"
+)
 TARGET_SIMULATIONS = (SIMULATION_A, SIMULATION_B, SIMULATION_C)
 MAPPED_SIMULATIONS = (REFERENCE, *TARGET_SIMULATIONS)
 

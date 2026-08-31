@@ -39,3 +39,11 @@ def offset(index: DataIndex, offset_amount: int):
     if isinstance(index, np.ndarray):
         return index + offset_amount
     return (index[0] + offset_amount, index[1])
+
+
+def sort(index: DataIndex):
+    if isinstance(index, np.ndarray):
+        return np.sort(index)
+
+    sort_order = np.argsort(index[0])
+    return (index[0][sort_order], index[1][sort_order])
