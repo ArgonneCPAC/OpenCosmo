@@ -309,7 +309,7 @@ def get_data(
     if not ignore_sort:
         data = sort_data(data, state.sort_key, state)
 
-    new_order = list(data.keys())
+    new_order = list(state.columns)
     for name in metadata_columns:
         if name in state.metadata_columns:
             new_order.append(name)
