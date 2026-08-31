@@ -55,18 +55,19 @@ def _get_sort_column(ds: DatasetState | Lightcone, sort_col: str):
 
 
 def _get_sort_index(
-    ds: DatasetState | Lightcone, sort_key: tuple[str, bool]
+    ds: DatasetState | Lightcone, sort_key: tuple[str, bool, *tuple[bool, ...]]
 ) -> np.ndarray:
-    sort_col, sort_desc = sort_key
     values = _get_sort_column(ds, sort_key[0])
     assert isinstance(values, np.ndarray)
-    if sort_desc:
+    if sort_key[1]:
         values = -values
     return np.argsort(values, kind="stable")
 
 
 def get_rows_take_index(
-    ds: DatasetState | Lightcone, rows: DataIndex, sort_key: Optional[tuple[str, bool]]
+    ds: DatasetState | Lightcone,
+    rows: DataIndex,
+    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
 ) -> DataIndex:
     """Map user-provided logical (sorted-order) row positions to physical row positions."""
     if sort_key is None:
@@ -77,7 +78,7 @@ def get_rows_take_index(
 
 def get_range_take_index(
     ds: DatasetState | Lightcone,
-    sort_key: Optional[tuple[str, bool]],
+    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
     start: int,
     size: int,
     mode: Literal["local", "global"],
@@ -95,7 +96,7 @@ def get_range_take_index(
 def get_end_take_index(
     n: int,
     ds: DatasetState | Lightcone,
-    sort_key: Optional[tuple[str, bool]],
+    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
     mode: Literal["local", "global"],
 ):
     ds_length = len(ds)
@@ -118,7 +119,7 @@ def get_end_take_index(
 
 def get_range_take_index_mpi(
     ds: DatasetState | Lightcone,
-    sort_key: Optional[tuple[str, bool]],
+    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
     start: int,
     size: int,
 ):
@@ -179,12 +180,13 @@ def get_range_take_index_mpi(
     return single_chunk(local_start, local_end - local_start)
 
 
-def get_global_sort_order(ds: DatasetState | Lightcone, sort_key: tuple[str, bool]):
+def get_global_sort_order(
+    ds: DatasetState | Lightcone, sort_key: tuple[str, bool, *tuple[bool, ...]]
+):
     comm = get_comm_world()
     assert comm is not None
 
     assert sort_key is not None
-    sort_col, sort_desc = sort_key
     raw = _get_sort_column(ds, sort_key[0])
     local_values = np.atleast_1d(
         np.asarray(raw.value if hasattr(raw, "value") else raw, dtype=np.float64)
@@ -206,7 +208,7 @@ def get_global_sort_order(ds: DatasetState | Lightcone, sort_key: tuple[str, boo
     # Determine global sort range
     assert recv is not None
     global_sorted_phys = np.argsort(recv, kind="stable")
-    if sort_desc:
+    if sort_key[1]:
         global_sorted_phys = global_sorted_phys[::-1]
 
     return global_sorted_phys

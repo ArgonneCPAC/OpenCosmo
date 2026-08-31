@@ -146,7 +146,7 @@ def sort_by(state: DatasetState, column: str | None, invert: bool) -> DatasetSta
     elif column not in state.columns:
         raise ValueError(f"This dataset has no column {column}")
     else:
-        sort_key = (column, invert)
+        sort_key = (column, invert, False)
 
     return dataclasses.replace(state, sort_key=sort_key)
 

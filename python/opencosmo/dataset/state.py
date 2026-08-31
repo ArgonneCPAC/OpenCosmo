@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections import defaultdict
+from copy import copy
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Generator, Optional
@@ -58,7 +59,9 @@ def deregister_state(id: int, cache: DataCache):
 
 
 def sort_data(
-    data: dict[str, np.ndarray], sort_by: tuple[str, bool] | None, state: DatasetState
+    data: dict[str, np.ndarray],
+    sort_by: tuple[str, bool, bool] | None,
+    state: DatasetState,
 ):
     if sort_by is None:
         return data
@@ -68,7 +71,7 @@ def sort_data(
         order = order[::-1]
 
     data = {key: value[order] for key, value in data.items()}
-    if sort_by[0] not in state.columns:
+    if sort_by[2] and set(data.keys()) != set(sort_by[0]):
         data.pop(sort_by[0])
     return fold(HookPoint.PostSort, PostSortCtx(state, data, np.argsort(order))).data
 
@@ -89,7 +92,7 @@ class DatasetState:
     column_map: dict[str, UUID]
     region: Region
     open_kwargs: dict[str, Any]
-    sort_key: Optional[tuple[str, bool]]
+    sort_key: Optional[tuple[str, bool, bool]]
     metadata_columns: frozenset[str]
 
     def __post_init__(self):
@@ -98,7 +101,15 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        return [c for c in self.column_map if c not in self.metadata_columns]
+        sort_to_drop: int | str = -1
+        if self.sort_key is not None and self.sort_key[2]:
+            sort_to_drop = self.sort_key[0]
+
+        return [
+            c
+            for c in self.column_map
+            if c not in self.metadata_columns.union(set([sort_to_drop]))
+        ]
 
     @property
     def meta_columns(self) -> list[str]:
@@ -299,6 +310,9 @@ def get_data(
         data = sort_data(data, state.sort_key, state)
 
     new_order = list(state.columns)
+    if state.sort_key is not None and not new_order:
+        new_order = [state.sort_key[0]]
+
     for name in metadata_columns:
         if name in state.metadata_columns:
             new_order.append(name)
@@ -393,11 +407,16 @@ def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
         derived_data = get_data(converted, ignore_sort=True)
     else:
         derived_data = {}
+
+    column_map = copy(state.column_map)
+    if state.sort_key is not None and state.sort_key[2]:
+        column_map.pop(state.sort_key[0])
+
     return make_dataset_schema(
         producers,
         state.raw_data_handler,
         state.cache,
-        state.column_map,
+        column_map,
         state.meta_columns,
         state.header,
         state.tree,
@@ -451,6 +470,21 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     Select a set of columns
     """
     selections, missing = get_column_selection(state.columns, columns)
+    if (
+        len(columns) > 1
+        and state.sort_key is not None
+        and state.sort_key[2]
+        and state.sort_key[0] in columns
+    ):
+        missing.add(state.sort_key[0])
+    elif (
+        len(columns) == 1
+        and state.sort_key is not None
+        and missing == set([state.sort_key[0]])
+    ):
+        selections = columns
+        missing = set()
+
     if missing:
         raise MissingColumnError(
             f"Columns are included that are not in this dataset: {missing}"
@@ -461,9 +495,14 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     if drop:
         selections = set(state.columns) - selections
 
+    new_sort_key = state.sort_key
+    if state.sort_key is not None and state.sort_key[0] not in selections:
+        selections.add(state.sort_key[0])
+        new_sort_key = (state.sort_key[0], state.sort_key[1], True)
+
     new_column_map = {n: state.column_map[n] for n in selections}
     new_column_map |= {n: state.column_map[n] for n in state.metadata_columns}
-    return dataclasses.replace(state, column_map=new_column_map)
+    return dataclasses.replace(state, column_map=new_column_map, sort_key=new_sort_key)
 
 
 def get_sorted_index(state: DatasetState) -> np.ndarray | None:
