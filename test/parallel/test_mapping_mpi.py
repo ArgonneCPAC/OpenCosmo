@@ -12,6 +12,7 @@ from mpi4py import MPI
 from opencosmo.io.mpi import sync_uuids
 from opencosmo.io.schema import FileEntry, MapCoordinateState, Schema
 from opencosmo.io.writer import ColumnWriter
+from opencosmo.utils import normalize_kwarg_name
 from pytest_mpi import parallel_assert
 
 import opencosmo as oc
@@ -20,11 +21,17 @@ from opencosmo.index import into_array
 if TYPE_CHECKING:
     from pathlib import Path
 
+REFERENCE = normalize_kwarg_name("SCIDAC_128_GO")
+SIMULATION_A = normalize_kwarg_name(
+    "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257"
+)
+SIMULATION_B = normalize_kwarg_name(
+    "KAPPA_2.984_EGW_0.682_SEED_6e5_VKIN_7286_EPS_4.883"
+)
+SIMULATION_C = normalize_kwarg_name(
+    "KAPPA_2.444_EGW_1_SEED_6.667e5_VKIN_4841_EPS_6.006"
+)
 
-REFERENCE = "SCIDAC_128_GO"
-SIMULATION_A = "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257"
-SIMULATION_B = "KAPPA_2.984_EGW_0.682_SEED_6e5_VKIN_7286_EPS_4.883"
-SIMULATION_C = "KAPPA_2.444_EGW_1_SEED_6.667e5_VKIN_4841_EPS_6.006"
 TARGET_SIMULATIONS = (SIMULATION_A, SIMULATION_B, SIMULATION_C)
 MAPPED_SIMULATIONS = (REFERENCE, *TARGET_SIMULATIONS)
 ALL_PAIRS = list(combinations(MAPPED_SIMULATIONS, 2))
