@@ -71,7 +71,7 @@ def sort_data(
         order = order[::-1]
 
     data = {key: value[order] for key, value in data.items()}
-    if sort_by[2]:
+    if sort_by[2] and set(data.keys()) != set(sort_by[0]):
         data.pop(sort_by[0])
     return fold(HookPoint.PostSort, PostSortCtx(state, data, np.argsort(order))).data
 
@@ -310,6 +310,9 @@ def get_data(
         data = sort_data(data, state.sort_key, state)
 
     new_order = list(state.columns)
+    if state.sort_key is not None and not new_order:
+        new_order = [state.sort_key[0]]
+
     for name in metadata_columns:
         if name in state.metadata_columns:
             new_order.append(name)
@@ -474,6 +477,13 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
         and state.sort_key[0] in columns
     ):
         missing.add(state.sort_key[0])
+    elif (
+        len(columns) == 1
+        and state.sort_key is not None
+        and missing == set([state.sort_key[0]])
+    ):
+        selections = columns
+        missing = set()
 
     if missing:
         raise MissingColumnError(
