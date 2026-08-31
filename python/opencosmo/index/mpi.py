@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-import numpy.typing as npt
 
 from opencosmo.mpi import get_mpi
 
 if TYPE_CHECKING:
+    import numpy.typing as npt
     from mpi4py import MPI
 
 BOR_CHUNK = 1 << 28
