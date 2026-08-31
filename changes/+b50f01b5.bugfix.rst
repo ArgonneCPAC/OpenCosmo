@@ -1,0 +1,1 @@
+Fix a bug that could cause :my:meth:`reduce <opencosmo.analysis.reduce>` to fail if used on a simulation collection with keys that are not kwarg compatible.
