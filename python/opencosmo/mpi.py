@@ -119,6 +119,33 @@ def gather_index(
     return sort(result) if sorted else result
 
 
+def sum_scatter(data: np.ndarray, comm: MPI.Comm):
+    parallel_assert_can_stack(data, comm)
+    row_counts = np.asarray(comm.allgather(len(data)), dtype=np.int64)
+    parallel_assert(len(np.unique(row_counts)) == 1, comm)
+    parallel_assert(data.ndim == 1, comm)
+
+    dtype = comm.bcast(data.dtype if data is not None else None)
+    assert dtype is not None
+
+    counts_per_rank = len(data) // comm.Get_size()
+    counts_per = np.full(comm.Get_size(), counts_per_rank)
+
+    counts_per[0] += len(data) % comm.Get_size()
+
+    recvbuf = np.empty(counts_per[comm.Get_rank()], dtype)
+
+    comm.Reduce_scatter(
+        data,
+        recvbuf,
+        counts_per,
+    )
+    offsets = np.cumsum(counts_per)
+    offset = 0 if comm.Get_rank() == 0 else offsets[comm.Get_rank() - 1]
+
+    return (recvbuf, offset)
+
+
 def gather_data(data: np.ndarray, comm: MPI.Comm, all: bool = False):
     from mpi4py.util import dtlib
 
