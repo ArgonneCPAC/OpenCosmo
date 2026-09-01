@@ -4,7 +4,9 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
+import hdf5plugin
 import numpy as np
+from h5py import h5fd, h5p, h5s
 
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import schema_data_length, verify_structure
@@ -41,6 +43,28 @@ File schemas are simply collections of columns and metadata. Columns contain:
 
 In order to avoid MPI deadlocks, we always sort columns in alphabetical order before performing operations on the file.
 """
+
+
+def collective_write(dset, start, data=None):
+    """Collective write where any rank may contribute nothing.
+    All ranks in the file's communicator must call this."""
+    dxpl = h5p.create(h5p.DATASET_XFER)
+    dxpl.set_dxpl_mpio(h5fd.MPIO_COLLECTIVE)
+
+    fspace = dset.id.get_space()
+    n = 0 if data is None else len(data)
+
+    if n:
+        arr = np.ascontiguousarray(data, dtype=dset.dtype)
+        mspace = h5s.create_simple(arr.shape)
+        fspace.select_hyperslab((start,) + (0,) * (dset.ndim - 1), arr.shape)
+    else:
+        arr = np.zeros((1,) + dset.shape[1:], dtype=dset.dtype)
+        mspace = h5s.create_simple(arr.shape)
+        mspace.select_none()
+        fspace.select_none()
+
+    dset.id.write(mspace, fspace, arr, dxpl=dxpl)
 
 
 class CombineState(Enum):
@@ -522,7 +546,14 @@ def __allocate_column(
 
     shape, dtype, attrs = get_column_allocation_metadata(column_writer, comm)
     if group is not None:
-        ds = group.create_dataset(name, shape=shape, dtype=dtype)
+        ds = group.create_dataset(
+            name,
+            shape=shape,
+            dtype=dtype,
+            compression=hdf5plugin.Blosc(
+                cname="blosclz", clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE
+            ),
+        )
         ds.attrs.update(attrs)
         return ds
     return None
@@ -574,8 +605,11 @@ def __write_column(
         case _:
             data = None
 
-    if data is not None:
-        ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
+    if data is None or len(data) == 0:
+        shape = (0,) + ds.shape[1:]
+        data = np.empty(shape, dtype=ds.dtype)
+
+    collective_write(ds, offset, data)
 
     # Free only the sub-communicator/group we created; never the parent comm.
     # Ranks excluded from the sub-communicator get COMM_NULL (which must not be
