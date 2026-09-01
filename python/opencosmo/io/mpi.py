@@ -578,18 +578,22 @@ def __write_column(
     writer: Optional[ColumnWriter],
     ds: h5py.Dataset,
     offset: int,
-    comm: MPI.Comm,
+    write_comm: MPI.Comm,
 ):
     strategy = None if writer is None else writer.combine_strategy
-    strategies = list(filter(lambda strat: strat is not None, comm.allgather(strategy)))
+    strategies = list(
+        filter(lambda strat: strat is not None, write_comm.allgather(strategy))
+    )
     strategy = strategies[0]
-    new_comm, new_group = get_subcom(comm.allgather(writer is not None), comm)
+    data_comm, new_group = get_subcom(
+        write_comm.allgather(writer is not None), write_comm
+    )
 
     data: np.ndarray | None
     match strategy:
         case ColumnCombineStrategy.CONCAT:
             if writer is not None:
-                data = writer.get_data(new_comm)
+                data = writer.get_data(data_comm)
             else:
                 shape = (0,) + ds.shape[1:]
                 data = np.empty(shape, dtype=ds.dtype)
@@ -598,9 +602,8 @@ def __write_column(
             if writer is None:
                 data = np.zeros(ds.shape, ds.dtype)
             else:
-                data = writer.get_data(new_comm)
-
-            data, offset = sum_scatter(data, new_comm)
+                data = writer.get_data(data_comm)
+            data, offset = sum_scatter(data, write_comm)
 
         case _:
             data = None
@@ -614,11 +617,10 @@ def __write_column(
     # Free only the sub-communicator/group we created; never the parent comm.
     # Ranks excluded from the sub-communicator get COMM_NULL (which must not be
     # freed) but still own a group handle that must be released.
-    if new_comm != MPI.COMM_NULL:
-        new_comm.Free()
+    if data_comm != MPI.COMM_NULL:
+        data_comm.Free()
 
     new_group.Free()
-    if comm is not None:
-        comm.Barrier()
+    write_comm.Barrier()
 
     ds.file.flush()
