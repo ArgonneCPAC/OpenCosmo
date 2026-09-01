@@ -258,8 +258,24 @@ def write_header(
 
 
 def get_access_table(all_models, unit_convention, redshift):
-    table = defaultdict(list)
+    table = defaultdict(dict)
     known_paramater_exports = set()
+    all_models = list(all_models)
+    cosmology_pars = [
+        i
+        for i, m in enumerate(all_models)
+        if getattr(m, "ACCESS_PATH", None) == "cosmology"
+    ]
+    if len(cosmology_pars) == 1:
+        table["cosmology"] = all_models[cosmology_pars[0]].ACCESS_TRANSFORMATION()
+
+    del all_models[cosmology_pars[0]]
+
+    cosmology = table.get("cosmology")
+    scale_factor = None
+    if redshift is not None:
+        scale_factor = cosmology.scale_factor(redshift)
+
     for model in all_models:
         if hasattr(model, "PARAMETER_ACCESS_PATHS"):
             for name, path in model.PARAMETER_ACCESS_PATHS.items():
@@ -278,26 +294,17 @@ def get_access_table(all_models, unit_convention, redshift):
                 f"Duplicate access path detected in header: {model.ACCESS_PATH}"
             )
         if hasattr(model, "ACCESS_TRANSFORMATION"):
-            table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
+            data = model.ACCESS_TRANSFORMATION()
         else:
-            table[model.ACCESS_PATH].append(model)
+            data = model
 
-    cosmology = table.get("cosmology")
-    scale_factor = None
-    if redshift is not None:
-        scale_factor = cosmology.scale_factor(redshift)
-    for name, models in table.items():
-        if not isinstance(models, list):
-            continue
-        output = {}
-        for model in models:
-            output |= apply_units(
-                model,
-                cosmology,
-                unit_convention,
-                unit_kwargs={"scale_factor": scale_factor},
-            )
-        table[name] = output
+        table[model.ACCESS_PATH] |= apply_units(
+            data,
+            type(model),
+            cosmology,
+            unit_convention,
+            unit_kwargs={"scale_factor": scale_factor},
+        )
 
     return dict(table)
 

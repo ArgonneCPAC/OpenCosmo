@@ -181,6 +181,12 @@ class SimulationCollection:
             return object.__getattribute__(self, key)
         return output
 
+    def __dir__(self):
+        keys: set[str] = set()
+        for ds in self.__datasets.values():
+            keys.update(ds.header.parameters.keys())
+        return list(keys) + list(super().__dir__())
+
     def keys(self):
         return self.__datasets.keys()
 
