@@ -155,9 +155,10 @@ def _raw_box_mask(raw_data, ra_min, ra_max, dec_min, dec_max):
     """Return boolean mask for rows strictly inside the RA/Dec box."""
     raw_ra = np.rad2deg(raw_data["phi"])
     raw_dec = np.rad2deg(np.pi / 2 - raw_data["theta"])
+    ra_width = (ra_max - ra_min) % 360.0
     return (
-        (raw_ra > ra_min)
-        & (raw_ra < ra_max)
+        (((raw_ra - ra_min) % 360.0) > 0.0)
+        & (((raw_ra - ra_min) % 360.0) < ra_width)
         & (raw_dec > dec_min)
         & (raw_dec < dec_max)
     )
@@ -198,6 +199,20 @@ def test_box_search_tuple_args(haloproperties_600_path):
 
     result = ds.box_search((_BOX_RA_MIN, _BOX_DEC_MIN), (_BOX_RA_MAX, _BOX_DEC_MAX))
     assert len(result) == n_expected
+
+
+def test_box_search_wraps_ra(haloproperties_600_path):
+    """box_search retains only rows in an RA interval crossing zero degrees."""
+    ds = oc.open(haloproperties_600_path)
+    raw_data = ds.get_data()
+    ra_min, ra_max = 359.297, 1.297
+    dec_min, dec_max = -6.979, -4.979
+
+    n_expected = np.sum(_raw_box_mask(raw_data, ra_min, ra_max, dec_min, dec_max))
+    result = ds.box_search((ra_min, dec_min), (ra_max, dec_max)).get_data()
+
+    assert len(result) == n_expected
+    assert np.all(_raw_box_mask(result, ra_min, ra_max, dec_min, dec_max))
 
 
 def test_box_search_chain(haloproperties_600_path):

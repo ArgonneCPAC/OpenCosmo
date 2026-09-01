@@ -164,14 +164,15 @@ def test_box_search(haloproperties_600_path):
     raw_data = ds.select(("theta", "phi")).get_data("numpy")
 
     # Each rank picks a pixel it owns and builds a ±1° box around its centre.
-    pixel = np.random.choice(ds.region.pixels)
+    comm = get_comm_world()
+    pixel = np.random.default_rng(1234 + comm.Get_rank()).choice(ds.region.pixels)
     ra_center, dec_center = pix2ang(ds.region.nside, pixel, lonlat=True, nest=True)
     half_width = 1.0  # degrees
 
     ra_min = ra_center - half_width
     ra_max = ra_center + half_width
-    dec_min = dec_center - half_width
-    dec_max = dec_center + half_width
+    dec_min = max(dec_center - half_width, -90.0)
+    dec_max = min(dec_center + half_width, 90.0)
 
     p1 = SkyCoord(ra_min * u.deg, dec_min * u.deg)
     p2 = SkyCoord(ra_max * u.deg, dec_max * u.deg)
@@ -183,8 +184,8 @@ def test_box_search(haloproperties_600_path):
 
     n_expected = int(
         np.sum(
-            (coordinates.ra > p1.ra)
-            & (coordinates.ra < p2.ra)
+            (((coordinates.ra.deg - ra_min) % 360.0) > 0.0)
+            & (((coordinates.ra.deg - ra_min) % 360.0) < 2.0 * half_width)
             & (coordinates.dec > p1.dec)
             & (coordinates.dec < p2.dec)
         )
@@ -198,7 +199,8 @@ def test_box_search(haloproperties_600_path):
     result_dec = np.pi / 2 - data["theta"]
     result_coords = SkyCoord(result_ra, result_dec, unit="rad")
 
-    parallel_assert(np.all((result_coords.ra > p1.ra) & (result_coords.ra < p2.ra)))
+    result_offset = (result_coords.ra.deg - ra_min) % 360.0
+    parallel_assert(np.all((result_offset > 0.0) & (result_offset < 2.0 * half_width)))
     parallel_assert(np.all((result_coords.dec > p1.dec) & (result_coords.dec < p2.dec)))
 
 
