@@ -64,10 +64,31 @@ def __cone_intersects_cone(region: ConeRegion, other: ConeRegion) -> bool:
     return dtheta < (region.radius + other.radius)
 
 
-def __skybox_contains_point(region: SkyboxRegion, coords: SkyCoord) -> NDArray:
-    ra_in_range = (coords.ra.value > region.ra_bounds[0]) & (
-        coords.ra.value < region.ra_bounds[1]
+def __ra_offset(region: SkyboxRegion, ra_deg: float | NDArray) -> NDArray:
+    return (np.asarray(ra_deg) - region.ra_start) % 360.0
+
+
+def __skybox_contains_ra_interval(
+    region: SkyboxRegion, start: float, width: float
+) -> bool:
+    offset = float(__ra_offset(region, start))
+    return region.ra_width >= width and offset + width <= region.ra_width
+
+
+def __skybox_ra_intersects(region: SkyboxRegion, other: SkyboxRegion) -> bool:
+    if region.ra_width == 0.0 or other.ra_width == 0.0:
+        return False
+    if region.ra_width >= 360.0 or other.ra_width >= 360.0:
+        return True
+    start = float(__ra_offset(region, other.ra_start))
+    return (start < region.ra_width and start + other.ra_width > 0.0) or (
+        start - 360.0 < region.ra_width and start - 360.0 + other.ra_width > 0.0
     )
+
+
+def __skybox_contains_point(region: SkyboxRegion, coords: SkyCoord) -> NDArray:
+    ra_offset = __ra_offset(region, coords.ra.deg)
+    ra_in_range = (ra_offset > 0.0) & (ra_offset < region.ra_width)
     dec_in_range = (coords.dec.value > region.dec_bounds[0]) & (
         coords.dec.value < region.dec_bounds[1]
     )
@@ -75,10 +96,7 @@ def __skybox_contains_point(region: SkyboxRegion, coords: SkyCoord) -> NDArray:
 
 
 def __skybox_contains_skybox(region: SkyboxRegion, other: SkyboxRegion) -> bool:
-    ra_contained = (
-        region.ra_bounds[0] <= other.ra_bounds[0]
-        and region.ra_bounds[1] >= other.ra_bounds[1]
-    )
+    ra_contained = __skybox_contains_ra_interval(region, other.ra_start, other.ra_width)
     dec_contained = (
         region.dec_bounds[0] <= other.dec_bounds[0]
         and region.dec_bounds[1] >= other.dec_bounds[1]
@@ -87,10 +105,7 @@ def __skybox_contains_skybox(region: SkyboxRegion, other: SkyboxRegion) -> bool:
 
 
 def __skybox_intersects_skybox(region: SkyboxRegion, other: SkyboxRegion) -> bool:
-    ra_overlaps = (
-        region.ra_bounds[0] < other.ra_bounds[1]
-        and region.ra_bounds[1] > other.ra_bounds[0]
-    )
+    ra_overlaps = __skybox_ra_intersects(region, other)
     dec_overlaps = (
         region.dec_bounds[0] < other.dec_bounds[1]
         and region.dec_bounds[1] > other.dec_bounds[0]
@@ -102,12 +117,9 @@ def __skybox_contains_cone(region: SkyboxRegion, other: ConeRegion) -> bool:
     import astropy.units as u
 
     radius_deg = other.radius.to(u.deg).value
-    ra = other.center.ra.deg
+    ra = other.center.ra.deg - radius_deg
     dec = other.center.dec.deg
-    ra_contained = (
-        region.ra_bounds[0] <= ra - radius_deg
-        and region.ra_bounds[1] >= ra + radius_deg
-    )
+    ra_contained = __skybox_contains_ra_interval(region, ra, 2.0 * radius_deg)
     dec_contained = (
         region.dec_bounds[0] <= dec - radius_deg
         and region.dec_bounds[1] >= dec + radius_deg
@@ -118,10 +130,10 @@ def __skybox_contains_cone(region: SkyboxRegion, other: ConeRegion) -> bool:
 def __cone_contains_skybox(region: ConeRegion, other: SkyboxRegion) -> bool:
     corners = SkyCoord(
         ra=[
-            other.ra_bounds[0],
-            other.ra_bounds[0],
-            other.ra_bounds[1],
-            other.ra_bounds[1],
+            other.ra_start,
+            other.ra_start,
+            other.ra_start + other.ra_width,
+            other.ra_start + other.ra_width,
         ],
         dec=[
             other.dec_bounds[0],
@@ -135,7 +147,16 @@ def __cone_contains_skybox(region: ConeRegion, other: SkyboxRegion) -> bool:
 
 
 def __skybox_intersects_cone(region: SkyboxRegion, other: ConeRegion) -> bool:
-    nearest_ra = np.clip(other.center.ra.deg, region.ra_bounds[0], region.ra_bounds[1])
+    center_ra = other.center.ra.deg
+    offset = float(__ra_offset(region, center_ra))
+    if offset <= region.ra_width:
+        nearest_ra = center_ra
+    else:
+        ra_end = (region.ra_start + region.ra_width) % 360.0
+        start_distance = min(offset, 360.0 - offset)
+        end_offset = (center_ra - ra_end) % 360.0
+        end_distance = min(end_offset, 360.0 - end_offset)
+        nearest_ra = region.ra_start if start_distance < end_distance else ra_end
     nearest_dec = np.clip(
         other.center.dec.deg, region.dec_bounds[0], region.dec_bounds[1]
     )

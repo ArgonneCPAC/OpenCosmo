@@ -1,0 +1,1 @@
+Fix skybox searches that cross the RA=0/360-degree boundary returning the complementary sky region.

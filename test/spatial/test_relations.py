@@ -14,8 +14,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
-
-import opencosmo as oc
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.spatial.relations import (
     contains_2d,
@@ -23,6 +21,8 @@ from opencosmo.spatial.relations import (
     intersects_2d,
     intersects_3d,
 )
+
+import opencosmo as oc
 
 # ---------------------------------------------------------------------------
 # BoxRegion — contains_3d
@@ -240,6 +240,21 @@ class TestSkyboxContainsPoint:
         assert not result[1]
         assert not result[2]
 
+    def test_wrapping_ra_interval(self):
+        skybox = oc.make_skybox((359.0, -10.0), (1.0, 10.0))
+        points = SkyCoord([0.0, 359.5, 0.5, 180.0], [0.0, 0.0, 0.0, 0.0], unit="deg")
+        assert np.array_equal(contains_2d(skybox, points), [True, True, True, False])
+
+    def test_wrapping_intersections_are_small_and_sorted(self):
+        skybox = oc.make_skybox((359.0, -1.0), (1.0, 1.0))
+        pixels = skybox.get_healpix_intersections(64)
+        assert np.all(pixels[:-1] < pixels[1:])
+        assert len(pixels) < 12 * 64**2 / 10
+
+    def test_pole_adjacent_intersections_do_not_crash(self):
+        skybox = oc.make_skybox((359.0, 89.0), (1.0, 90.0))
+        assert len(skybox.get_healpix_intersections(64)) > 0
+
 
 # ---------------------------------------------------------------------------
 # SkyboxRegion — contains_2d / intersects_2d (skybox vs skybox)
@@ -279,6 +294,19 @@ class TestSkyboxContainsSkybox:
     def test_intersects_is_symmetric(self):
         assert intersects_2d(self.big, self.overlapping)
         assert intersects_2d(self.overlapping, self.big)
+
+    def test_wrapping_contains_and_intersects(self):
+        wrapping = oc.make_skybox((350.0, -10.0), (10.0, 10.0))
+        inside = oc.make_skybox((355.0, -5.0), (5.0, 5.0))
+        overlap = oc.make_skybox((5.0, -5.0), (15.0, 5.0))
+        assert contains_2d(wrapping, inside)
+        assert intersects_2d(wrapping, inside)
+        assert intersects_2d(wrapping, overlap)
+
+    def test_wrapping_intersects_cone(self):
+        wrapping = oc.make_skybox((350.0, -10.0), (10.0, 10.0))
+        cone = oc.make_cone((0.0, 0.0), 2.0)
+        assert intersects_2d(wrapping, cone)
 
 
 # ---------------------------------------------------------------------------
