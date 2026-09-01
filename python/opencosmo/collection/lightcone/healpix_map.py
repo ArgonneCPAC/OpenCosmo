@@ -22,12 +22,10 @@ from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
-    from astropy.cosmology import Cosmology
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
-    from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
@@ -139,6 +137,15 @@ class HealpixMap(dict):
         self.__hidden = hidden
         self.__ordered_by = ordered_by
         self.__region = region
+
+    def __getattr__(self, key: str):
+        try:
+            return self.header.parameters[key]
+        except KeyError:
+            return object.__getattribute__(self, key)
+
+    def __dir__(self):
+        return list(self.header.parameters.keys()) + super().__dir__()
 
     @property
     def nside(self):
@@ -276,18 +283,6 @@ class HealpixMap(dict):
         return descriptions
 
     @property
-    def cosmology(self) -> Cosmology:
-        """
-        The cosmology of the simulation this dataset is drawn from as
-        an astropy.cosmology.Cosmology object.
-
-        Returns
-        -------
-        cosmology: astropy.cosmology.Cosmology
-        """
-        return self.__header.cosmology
-
-    @property
     def region(self) -> Region:
         """
         The region this dataset is contained in. If no spatial
@@ -300,18 +295,6 @@ class HealpixMap(dict):
 
         """
         return self.__region
-
-    @property
-    def simulation(self) -> HaccSimulationParameters:
-        """
-        The parameters of the simulation this dataset is drawn
-        from.
-
-        Returns
-        -------
-        parameters: opencosmo.dtypes.hacc.HaccSimulationParameters
-        """
-        return self.__header.simulation
 
     @property
     def z_range(self):
