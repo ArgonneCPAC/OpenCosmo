@@ -58,7 +58,7 @@ jobs:
           mkdir -p test_data
           tar -xzf test_data.tar.gz -C test_data
       - name: install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv
         with:
           version: "0.8.2"
       - name: install python
@@ -102,7 +102,7 @@ jobs:
           mkdir -p test_data
           tar -xzf test_data.tar.gz -C test_data
       - name: install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv
         with:
           version: "0.8.2"
       - name: install python
