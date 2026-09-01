@@ -22,12 +22,10 @@ from opencosmo.utils import normalize_kwarg_name
 if TYPE_CHECKING:
     import astropy.units as u
     import h5py
-    from astropy.cosmology import Cosmology
 
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset.dataset import OpenCosmoData
-    from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import FileTarget
     from opencosmo.io.schema import Schema
@@ -173,6 +171,21 @@ class SimulationCollection:
         self.__match_set = match_set
         self.__match_source = match_source
         self.__rebuilt = rebuilt
+
+    def __getattr__(self, key: str):
+        output = {}
+        try:
+            for name, ds in self.__datasets.items():
+                output[name] = getattr(ds.header, key)
+        except AttributeError:
+            return object.__getattribute__(self, key)
+        return output
+
+    def __dir__(self):
+        keys: set[str] = set()
+        for ds in self.__datasets.values():
+            keys.update(ds.header.parameters.keys())
+        return list(keys) + list(super().__dir__())
 
     def keys(self):
         return self.__datasets.keys()
@@ -419,60 +432,6 @@ class SimulationCollection:
     @property
     def header(self) -> dict[str, OpenCosmoHeader]:
         return {k: v.header for k, v in self.__datasets.items()}
-
-    @property
-    def cosmology(self) -> dict[str, Cosmology]:
-        """
-        Get the cosmologies of the simulations in the collection
-
-        Returns
-        --------
-        cosmologies: dict[str, astropy.cosmology.Cosmology]
-        """
-        out: dict[str, Cosmology] = {}
-        for k, v in self.__datasets.items():
-            # DatasetState does not have .cosmology; derive it from the state-owned header.
-            if isinstance(v, DatasetState):
-                out[k] = v.header.cosmology
-            else:
-                out[k] = v.cosmology
-        return out
-
-    @property
-    def redshift(self) -> dict[str, float | tuple[float, float] | None]:
-        """
-        Get the redshift slices or ranges for the simulations in the collection
-
-        Returns
-        --------
-        redshifts: dict[str, float | tuple[float,float]]
-        """
-        out: dict[str, float | tuple[float, float] | None] = {}
-        for k, v in self.__datasets.items():
-            # DatasetState does not have .redshift; derive it from the state-owned header.
-            if isinstance(v, DatasetState):
-                out[k] = v.header.file.redshift
-            else:
-                out[k] = v.redshift
-        return out
-
-    @property
-    def simulation(self) -> dict[str, HaccSimulationParameters]:
-        """
-        Get the simulation parameters for the simulations in the collection
-
-        Returns
-        --------
-        simulation_parameters: dict[str, opencosmo.dtypes.HaccSimulationParameters]
-        """
-        out = {}
-        for k, v in self.__datasets.items():
-            # DatasetState does not have .redshift; derive it from the state-owned header.
-            if isinstance(v, DatasetState):
-                out[k] = v.header.simulation
-            else:
-                out[k] = v.simulation
-        return out
 
     def get_data(
         self, format: str = "astropy", wrap_single: bool = False, unpack: bool = True

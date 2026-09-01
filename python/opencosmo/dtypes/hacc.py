@@ -21,6 +21,7 @@ from opencosmo.units import UnitConvention
 
 from .cosmology import CosmologyParameters
 from .diffsky import DiffskyCatalogInfo, DiffskyVersionInfo
+from .supermock import SuperMockParams
 from .units import register_units
 from .utils import empty_string_to_none
 
@@ -260,6 +261,7 @@ DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
         "optional": {
             "diffsky_versions": DiffskyVersionInfo,
             "catalog_info": DiffskyCatalogInfo,
+            "supermock": SuperMockParams,
         }
     },
     "healpix_map": {"required": {"map_params": MapParams}},

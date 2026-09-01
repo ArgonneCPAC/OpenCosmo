@@ -31,7 +31,6 @@ from opencosmo.io.schema import FileEntry, make_schema
 from .handler import LinkHandler
 
 if TYPE_CHECKING:
-    import astropy
     import astropy.units as u
 
     from opencosmo.column.column import ConstructedColumn
@@ -208,6 +207,15 @@ class StructureCollection:
     def __len__(self):
         return len(self.__source)
 
+    def __dir__(self):
+        return list(self.source.header.parameters.keys()) + super().__dir__()
+
+    def __getattr__(self, key: str):
+        try:
+            return self.__source.header.parameters[key]
+        except KeyError:
+            return object.__getattribute__(self, key)
+
     @classmethod
     def open(
         cls,
@@ -230,13 +238,6 @@ class StructureCollection:
         return structure_type
 
     @property
-    def cosmology(self) -> astropy.cosmology.Cosmology:
-        """
-        The cosmology of the structure collection
-        """
-        return self.__source.cosmology
-
-    @property
     def header(self) -> OpenCosmoHeader:
         return self.__source.header
 
@@ -247,42 +248,6 @@ class StructureCollection:
         halo_properties or galaxy_properties dataset.
         """
         return self.__source.columns
-
-    @property
-    def redshift(self) -> float | tuple[float, float] | None:
-        """
-        For snapshots, return the redshift this dataset was drawn from.
-
-        Returns
-        -------
-        redshift: float | tuple[float, float]
-
-        """
-        if isinstance(self.__source, lc.Lightcone):
-            raise AttributeError(
-                "This is a lightcone structure collection. Use .z_range to get the redshift range."
-            )
-        return self.__source.header.file.redshift
-
-    @property
-    def z_range(self) -> tuple[float, float]:
-        """
-        The redshift range covered by this lightcone structure collection.
-
-        Returns
-        -------
-        z_range: tuple[float, float]
-
-        Raises
-        ------
-        AttributeError
-            If this is not a lightcone structure collection.
-        """
-        if not isinstance(self.__source, lc.Lightcone):
-            raise AttributeError(
-                "This is not a lightcone structure collection. Use .redshift to get the redshift."
-            )
-        return self.__source.z_range
 
     @property
     def sorted_by(self) -> Optional[str]:

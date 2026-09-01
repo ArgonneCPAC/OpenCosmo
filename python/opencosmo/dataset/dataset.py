@@ -21,15 +21,12 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.deprecated import deprecated
 
 if TYPE_CHECKING:
-    from astropy.cosmology import Cosmology
-
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
         DerivedScalarValue,
     )
     from opencosmo.dataset.state import DatasetState
-    from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
@@ -74,6 +71,9 @@ class Dataset:
     def __len__(self):
         return len(self.__state)
 
+    def __dir__(self):
+        return list(self.header.parameters.keys()) + super().__dir__()
+
     @property
     def _state(self) -> st.DatasetState:
         """Return the internal state for collection and I/O implementations."""
@@ -88,6 +88,12 @@ class Dataset:
 
     def close(self):
         return st.exit_state(self.__state)
+
+    def __getattr__(self, key: str):
+        try:
+            return self.header.parameters[key]
+        except KeyError:
+            return object.__getattribute__(self, key)
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -151,41 +157,6 @@ class Dataset:
         return self.__state.units
 
     @property
-    def cosmology(self) -> Cosmology:
-        """
-        The cosmology of the simulation this dataset is drawn from as
-        an astropy.cosmology.Cosmology object.
-
-        Returns
-        -------
-        cosmology: astropy.cosmology.Cosmology
-        """
-        return self.header.cosmology
-
-    @property
-    def dtype(self) -> str:
-        """
-        The data type of this dataset.
-
-        Returns
-        -------
-        dtype: str
-        """
-        return str(self.header.file.data_type)
-
-    @property
-    def redshift(self) -> float | tuple[float, float] | None:
-        """
-        The redshift slice or range this dataset was drawn from
-
-        Returns
-        -------
-        redshift: float
-
-        """
-        return self.header.file.redshift
-
-    @property
     def region(self) -> Region:
         """
         The region this dataset is contained in. If no spatial
@@ -198,19 +169,6 @@ class Dataset:
 
         """
         return self.__state.region
-
-    @property
-    def simulation(self) -> Optional[HaccSimulationParameters]:
-        """
-        The parameters of the simulation this dataset is drawn
-        from. May return None if the parameters are not included
-        in the file
-
-        Returns
-        -------
-        parameters: Optional[opencosmo.dtypes.hacc.HaccSimulationParameters]
-        """
-        return getattr(self.header, "simulation", None)
 
     @property
     def sorted_by(self) -> Optional[str]:

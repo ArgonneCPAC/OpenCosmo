@@ -1,6 +1,6 @@
 # ruff: noqa: TC001 TC003
 from enum import Enum
-from typing import Optional
+from typing import ClassVar, Optional
 
 from pydantic import (
     BaseModel,
@@ -32,6 +32,11 @@ class DatasetType(Enum):
 
 
 class FileParameters(BaseModel):
+    PARAMETER_ACCESS_PATHS: ClassVar[dict[str, str]] = {
+        "data_type": "dtype",
+        "redshift": "redshift",
+    }
+
     model_config = ConfigDict(use_enum_values=True, frozen=True)
     origin: str = "HACC"
     data_type: DatasetType

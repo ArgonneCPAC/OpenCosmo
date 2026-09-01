@@ -60,13 +60,11 @@ if TYPE_CHECKING:
     import astropy.units as u  # type: ignore
     import numpy.typing as npt
     from astropy.coordinates import SkyCoord
-    from astropy.cosmology import Cosmology
 
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
     )
-    from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import FileTarget
@@ -160,6 +158,15 @@ class Lightcone(dict):
             except ValueError:
                 continue
 
+    def __getattr__(self, key: str):
+        try:
+            return self.__header.parameters[key]
+        except KeyError:
+            return object.__getattribute__(self, key)
+
+    def __dir__(self):
+        return list(self.header.parameters.keys()) + super().__dir__()
+
     @property
     def header(self) -> OpenCosmoHeader:
         """
@@ -242,29 +249,6 @@ class Lightcone(dict):
         return units
 
     @property
-    def cosmology(self) -> Cosmology:
-        """
-        The cosmology of the simulation this dataset is drawn from as
-        an astropy.cosmology.Cosmology object.
-
-        Returns
-        -------
-        cosmology: astropy.cosmology.Cosmology
-        """
-        return self.__header.cosmology
-
-    @property
-    def dtype(self) -> str:
-        """
-        The data type of this dataset.
-
-        Returns
-        -------
-        dtype: str
-        """
-        return self.__header.file.data_type
-
-    @property
     def region(self) -> Region:
         """
         The region this dataset is contained in. If no spatial
@@ -282,18 +266,6 @@ class Lightcone(dict):
         return regions[0].combine(*regions[1:])
 
     @property
-    def simulation(self) -> HaccSimulationParameters:
-        """
-        The parameters of the simulation this dataset is drawn
-        from.
-
-        Returns
-        -------
-        parameters: opencosmo.dtypes.hacc.HaccSimulationParameters
-        """
-        return self.__header.simulation
-
-    @property
     def sorted_by(self) -> Optional[str]:
         """
         The column this dataset is sorted by. If not sorted, returns None.
@@ -303,18 +275,6 @@ class Lightcone(dict):
         column: Optional[str]
         """
         return self.__sort_key[0] if self.__sort_key is not None else None
-
-    @property
-    def z_range(self):
-        """
-        The redshift range of this lightcone.
-
-        Returns
-        -------
-        z_range: tuple[float, float]
-        """
-
-        return self.__header.lightcone["z_range"]
 
     def get_pixels(self, nside: int = 64):
         """
