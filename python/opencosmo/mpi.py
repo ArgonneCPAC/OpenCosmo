@@ -138,7 +138,7 @@ def sum_scatter(data: np.ndarray, comm: MPI.Comm):
     comm.Reduce_scatter(
         data,
         recvbuf,
-        counts_per,
+        counts_per,  # type: ignore
     )
     offsets = np.cumsum(counts_per)
     offset = 0 if comm.Get_rank() == 0 else offsets[comm.Get_rank() - 1]

@@ -348,7 +348,7 @@ def __write_parallel(
     schema: Schema,
     group: h5py.File | h5py.Group,
     offsets: dict,
-    comm: MPI.Comm,
+    comm: MPI.Comm | None,
 ):
     """
     Used with both the parallel and serial version, though the later passes through
@@ -563,7 +563,7 @@ def __write_columns(
     schema: Schema,
     group: h5py.File | h5py.Group,
     offsets: dict,
-    comm: MPI.Comm,
+    comm: MPI.Comm | None,
 ):
     all_column_names = get_all_keys(schema.columns, comm)
     for cn in all_column_names:
@@ -588,7 +588,7 @@ def __write_column(
     writer: Optional[ColumnWriter],
     ds: h5py.Dataset,
     offset: int,
-    write_comm: MPI.Comm,
+    write_comm: MPI.Comm | None,
 ):
     if write_comm is None:
         return __write_column_serial(writer, offset, ds)
