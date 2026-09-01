@@ -574,12 +574,25 @@ def __write_columns(
         __write_column(writer, ds, offset, comm)
 
 
+def __write_column_serial(writer, offset, ds):
+    data = writer.get_data()
+    match writer.combine_strategy:
+        case ColumnCombineStrategy.CONCAT:
+            ds[offset : offset + len(data)] = data
+        case ColumnCombineStrategy.SUM:
+            data += ds[:]
+            ds[:] = data
+
+
 def __write_column(
     writer: Optional[ColumnWriter],
     ds: h5py.Dataset,
     offset: int,
     write_comm: MPI.Comm,
 ):
+    if write_comm is None:
+        return __write_column_serial(writer, offset, ds)
+
     strategy = None if writer is None else writer.combine_strategy
     strategies = list(
         filter(lambda strat: strat is not None, write_comm.allgather(strategy))
