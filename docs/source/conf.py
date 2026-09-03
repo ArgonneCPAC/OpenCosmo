@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath("_ext"))
 project = "OpenCosmo"
 copyright = "2026, OpenCosmo Team"
 author = "OpenCosmo Team"
-release = "1.3.11"
+release = "1.4.0-b2"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
