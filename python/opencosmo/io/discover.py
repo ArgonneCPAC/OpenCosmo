@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, Optional
 
 import h5py
@@ -57,6 +58,49 @@ class GroupLayout:
     """Whether ``uuid`` came from an on-disk ``main_uuid`` attribute. Synthesized
     UUIDs must never satisfy a /map endpoint check, so consumers that resolve
     mapping files filter on this rather than on ``uuid``."""
+
+    link_layout: LinkLayout | None = None
+    """Frozen /data_linked layout when this group has one, otherwise None."""
+
+
+class LinkSlotKind(StrEnum):
+    """The index representation used by a /data_linked slot."""
+
+    CHUNKED = "chunked"
+    SIMPLE = "simple"
+
+
+@dataclass(frozen=True)
+class LinkSlot:
+    """Frozen layout of one prefix-keyed /data_linked slot."""
+
+    prefix: str
+    """The slot prefix, retained verbatim from the on-disk dataset names."""
+
+    kind: LinkSlotKind
+    """Whether this slot uses a start/size pair or a simple idx array."""
+
+    dataset_names: tuple[str, ...]
+    """Verbatim on-disk dataset names, in representation order."""
+
+    length: int
+    """Number of rows in this slot's index representation."""
+
+
+@dataclass(frozen=True)
+class LinkLayout:
+    """Frozen layout of a /data_linked group for structure links.
+
+    Slots are keyed by their verbatim prefixes because /data_linked stores flat
+    sibling datasets rather than UUID-named slot groups. The recorded names let a
+    later reader re-open the exact datasets without reconstructing their spelling.
+    """
+
+    path: str
+    """In-file path of the /data_linked group, e.g. "/data_linked"."""
+
+    slots: tuple[LinkSlot, ...]
+    """Sorted prefix-keyed link slots in this group."""
 
 
 @dataclass(frozen=True)
@@ -185,6 +229,86 @@ def _verify_slot(slot_group: h5py.Group, where: str) -> int:
     if not np.issubdtype(array.dtype, np.integer):
         raise ValueError(f"{where}: mapping arrays must have an integer dtype")
     return array.shape[0]
+
+
+def _read_link_layout(
+    link_path: str,
+    link_group: h5py.Group,
+) -> LinkLayout:
+    """Resolve one /data_linked group into a frozen LinkLayout.
+
+    Link slots are flat sibling datasets, unlike the group-based /map slots. Reads
+    names, dtypes, and shapes only. Raises ValueError on malformed structure;
+    ``discover_file`` converts it to ``FileLayout.error`` inside the collective.
+    """
+    slot_datasets: dict[str, dict[str, str]] = {}
+    for name, item in link_group.items():
+        suffix = next(
+            (suffix for suffix in ("_start", "_size", "_idx") if name.endswith(suffix)),
+            None,
+        )
+        where = f"{link_path}/{name}"
+        if suffix is None:
+            raise ValueError(
+                f"{where}: link datasets must end in _start, _size, or _idx"
+            )
+        prefix = name.removesuffix(suffix)
+        if not prefix:
+            raise ValueError(f"{where}: link dataset prefix must not be empty")
+        if not isinstance(item, h5py.Dataset):
+            raise ValueError(f"{where}: expected a dataset")
+        slot_datasets.setdefault(prefix, {})[suffix] = name
+
+    slots: list[LinkSlot] = []
+    for prefix, names in sorted(slot_datasets.items()):
+        where = f"{link_path}/{prefix}"
+        has_start = "_start" in names
+        has_size = "_size" in names
+        has_idx = "_idx" in names
+        if has_start != has_size:
+            missing = "_size" if has_start else "_start"
+            raise ValueError(f"{where}: missing matching {missing} dataset")
+        if has_idx and has_start:
+            raise ValueError(
+                f"{where}: cannot contain both start/size and idx datasets"
+            )
+        if has_start:
+            start_name = names["_start"]
+            size_name = names["_size"]
+            start_length = _verify_map_array(
+                link_group[start_name], f"{link_path}/{start_name}"
+            )
+            size_length = _verify_map_array(
+                link_group[size_name], f"{link_path}/{size_name}"
+            )
+            if start_length != size_length:
+                raise ValueError(
+                    f"{where}: start and size arrays must have the same length"
+                )
+            slots.append(
+                LinkSlot(
+                    prefix=prefix,
+                    kind=LinkSlotKind.CHUNKED,
+                    dataset_names=(start_name, size_name),
+                    length=start_length,
+                )
+            )
+        elif has_idx:
+            idx_name = names["_idx"]
+            slots.append(
+                LinkSlot(
+                    prefix=prefix,
+                    kind=LinkSlotKind.SIMPLE,
+                    dataset_names=(idx_name,),
+                    length=_verify_map_array(
+                        link_group[idx_name], f"{link_path}/{idx_name}"
+                    ),
+                )
+            )
+        else:
+            raise ValueError(f"{where}: link slot has no index datasets")
+
+    return LinkLayout(path=link_path, slots=tuple(slots))
 
 
 def _read_map_layout(
@@ -430,19 +554,24 @@ def discover_file(path: Path) -> FileLayout:
                 index_path = f"{group_parent}index"
                 has_index = index_path in file_map
 
-                # Check for data_linked group and extract linked target names.
-                linked_target_names_set = set()
+                # Check for data_linked group and extract its frozen slot layout.
+                linked_target_names_set: set[str] = set()
+                link_layout: LinkLayout | None = None
                 data_linked_path = f"{group_parent}data_linked"
                 if data_linked_path in file_map:
                     data_linked_group = file_map[data_linked_path]
                     if isinstance(data_linked_group, h5py.Group):
-                        for key in data_linked_group.keys():
-                            if key.endswith("_start"):
-                                target_name = key.rsplit("_start", 1)[0]
-                                linked_target_names_set.add(target_name)
-                            elif key.endswith("_size"):
-                                target_name = key.rsplit("_size", 1)[0]
-                                linked_target_names_set.add(target_name)
+                        try:
+                            link_layout = _read_link_layout(
+                                data_linked_path, data_linked_group
+                            )
+                        except ValueError as e:
+                            return FileLayout(path=path, groups=(), error=str(e))
+                        linked_target_names_set.update(
+                            slot.prefix
+                            for slot in link_layout.slots
+                            if slot.kind is LinkSlotKind.CHUNKED
+                        )
 
                 linked_target_names = tuple(sorted(linked_target_names_set))
                 # Hash the /data group itself so parent groups' path prefixes do not
@@ -470,6 +599,7 @@ def discover_file(path: Path) -> FileLayout:
                         row_count=row_count,
                         has_index=has_index,
                         linked_target_names=linked_target_names,
+                        link_layout=link_layout,
                     )
                 )
 

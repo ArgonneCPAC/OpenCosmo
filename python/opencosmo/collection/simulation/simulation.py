@@ -65,6 +65,8 @@ def prepare_matched_datasets(
         mapping = get_mapping(match_set, source, name, index)
         if mapping is None:
             raise ValueError(f"Unable to find mapping for dataset {dataset}")
+        if not isinstance(mapping, np.ndarray):
+            raise ValueError("Dataset matching does not support chunked mappings")
         rows_to_keep = rows_to_keep & (mapping >= 0)
         mappings[name] = mapping
 
