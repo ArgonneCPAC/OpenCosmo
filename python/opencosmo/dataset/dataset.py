@@ -21,6 +21,8 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.deprecated import deprecated
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
@@ -184,6 +186,11 @@ class Dataset:
     @property
     def tree(self) -> Optional[Tree]:
         return self.__state.tree
+
+    # Internal identity used by link/mapping resolution.
+    @property
+    def uuid(self) -> UUID:
+        return self.__state.uuid
 
     @property
     @deprecated(

@@ -54,6 +54,7 @@ The later will consist of several datasets, each with the same data type and is_
 
 
 class DatasetTarget(TypedDict):
+    uuid: UUID
     header: OpenCosmoHeader
     dataset_group: h5py.Group
     columns: list[h5py.Dataset]
@@ -234,13 +235,17 @@ def open_files(
         # Per-scope UUIDs come from the discovered layouts, not from the built
         # children: layouts are identical on every rank, whereas a rank's actual
         # assignment is not under MpiMode.REDSHIFT.  Deriving the check from
-        # layouts keeps it collective-safe.  Datasets written before dataset
-        # identity existed have uuid=None and can never be a map endpoint.
+        # layouts keeps it collective-safe.  Datasets without a persistent
+        # on-disk ``main_uuid`` have a synthesized identity that can never be a
+        # map endpoint.
         unconnected = [
             name
             for name in root_scope_names
             if not frozenset(
-                g.uuid for fl in scopes[name] for g in fl.groups if g.uuid is not None
+                g.uuid
+                for fl in scopes[name]
+                for g in fl.groups
+                if g.has_persistent_uuid
             )
             & endpoints
         ]

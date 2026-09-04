@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
-from uuid import UUID
 
 import h5py
 import numpy as np
@@ -10,10 +9,12 @@ from pydantic import ValidationError
 
 from opencosmo.dtypes import read_map_header
 from opencosmo.header import read_header
+from opencosmo.uuid import coerce_to_uuid, get_dataset_uuid
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+    from uuid import UUID
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.mpi import MPI
@@ -47,9 +48,15 @@ class GroupLayout:
     linked_target_names: tuple[str, ...]
     """Sorted tuple of linked target name prefixes (from /data_linked _start/_size suffixes)."""
 
-    uuid: UUID | None = None
-    """UUID for dataset, used in linking. Absent on files written before dataset
-    identity existed, which simply cannot participate in a mapping."""
+    uuid: UUID
+    """Identity of this dataset's /data group. Read from the group's ``main_uuid``
+    attribute when present, otherwise deterministically synthesized from the resolved
+    file path and the group path so every MPI rank agrees without communication."""
+
+    has_persistent_uuid: bool
+    """Whether ``uuid`` came from an on-disk ``main_uuid`` attribute. Synthesized
+    UUIDs must never satisfy a /map endpoint check, so consumers that resolve
+    mapping files filter on this rather than on ``uuid``."""
 
 
 @dataclass(frozen=True)
@@ -141,26 +148,6 @@ def _iter_ancestors(group_path: str) -> Iterator[str]:
         yield group_path
 
 
-def _coerce_to_uuid(value: str | bytes | np.bytes_ | UUID | None) -> UUID | None:
-    """
-    Coerce a value to UUID, handling multiple input formats.
-
-    Returns None if the value is None, not a UUID-like type, or unparseable.
-    """
-    if value is None:
-        return None
-    if isinstance(value, UUID):
-        return value
-    if isinstance(value, (bytes, np.bytes_)):
-        value = value.decode("utf-8")
-    if isinstance(value, str):
-        try:
-            return UUID(value)
-        except (ValueError, AttributeError):
-            return None
-    return None
-
-
 def _verify_map_array(array: h5py.Dataset | None, where: str) -> int:
     """Validate a direct, simple mapping array without reading its values."""
     if not isinstance(array, h5py.Dataset):
@@ -214,7 +201,7 @@ def _read_map_layout(
     """
     attrs = dict(map_group.attrs)
 
-    reference = _coerce_to_uuid(attrs.get("reference"))
+    reference = coerce_to_uuid(attrs.get("reference"))
     if reference is None:
         raise ValueError(
             f"Malformed map at {map_path}: missing or invalid 'reference' attribute"
@@ -240,7 +227,7 @@ def _read_map_layout(
     if isinstance(primary_group := map_group.get("primary"), h5py.Group):
         for name, slot in primary_group.items():
             where = f"{map_path}/primary/{name}"
-            target = _coerce_to_uuid(name)
+            target = coerce_to_uuid(name)
             if target is None:
                 raise ValueError(f"{where}: group name is not a UUID")
             if not isinstance(slot, h5py.Group):
@@ -265,7 +252,7 @@ def _read_map_layout(
             parts = name.split("__")
             if len(parts) != 2:
                 raise ValueError(f"{where}: name is not '<uuid_a>__<uuid_b>'")
-            uuid_a, uuid_b = (_coerce_to_uuid(p) for p in parts)
+            uuid_a, uuid_b = (coerce_to_uuid(p) for p in parts)
             if uuid_a is None or uuid_b is None:
                 raise ValueError(f"{where}: endpoint names are not UUIDs")
             if not isinstance(pair, h5py.Group):
@@ -458,9 +445,18 @@ def discover_file(path: Path) -> FileLayout:
                                 linked_target_names_set.add(target_name)
 
                 linked_target_names = tuple(sorted(linked_target_names_set))
-                group_attrs = dict(file_map[data_path].attrs)
-                group_uuid_raw = group_attrs.get("main_uuid")
-                group_uuid = _coerce_to_uuid(group_uuid_raw)
+                # Hash the /data group itself so parent groups' path prefixes do not
+                # affect identity.
+                data_group = file_map[data_path]
+                if not isinstance(data_group, h5py.Group):
+                    return FileLayout(
+                        path=path,
+                        groups=(),
+                        error=f"Expected /data group at {data_path}",
+                    )
+
+                persistent_uuid = coerce_to_uuid(data_group.attrs.get("main_uuid"))
+                group_uuid = get_dataset_uuid(data_group)
 
                 group_layouts.append(
                     GroupLayout(
@@ -468,6 +464,7 @@ def discover_file(path: Path) -> FileLayout:
                         header_path=governing_header_path,
                         header=header,
                         uuid=group_uuid,
+                        has_persistent_uuid=persistent_uuid is not None,
                         column_names=column_names,
                         column_dtypes=column_dtypes,
                         row_count=row_count,

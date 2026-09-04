@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from functools import reduce
 from typing import TYPE_CHECKING, Optional
-from uuid import uuid4
 
 import astropy.units as u
 
@@ -80,6 +79,7 @@ def make_dataset_schema(
     region: Region,
     raw_index: DataIndex,
     derived_data: dict,
+    dataset_uuid: UUID,
     name: Optional[str] = None,
 ) -> Schema:
     columns = set(columns_to_uuid.keys())
@@ -111,7 +111,6 @@ def make_dataset_schema(
         metadata_schema, cached_metadata_schema
     )
 
-    dataset_uuid = uuid4()
     new_data_attributes = data_schema.attributes.get("", {}) | {
         "uuid": str(dataset_uuid),
         "main_uuid": str(dataset_uuid),

@@ -57,6 +57,8 @@ from opencosmo.plugins.contexts import (
 from opencosmo.plugins.hook import fold
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     import astropy.units as u  # type: ignore
     import numpy.typing as npt
     from astropy.coordinates import SkyCoord
@@ -212,6 +214,11 @@ class Lightcone(dict):
         columns: list[str]
         """
         return next(iter(self.values())).meta_columns
+
+    # Internal identity used by link/mapping resolution.
+    @property
+    def uuid(self) -> UUID:
+        return next(iter(self.values())).uuid
 
     @cached_property
     def descriptions(self) -> dict[str, Optional[str]]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pickle
 import random
 from pathlib import Path  # noqa: TC003
+from uuid import UUID
 
 import h5py
 import pytest
@@ -192,6 +193,47 @@ class TestDiscoverSingleFiles:
 
         assert unpickled.error is None
         assert len(unpickled.groups) == len(layout.groups)
+
+    def test_dataset_uuid_persistence_and_stability(self, test_data):
+        """Test persistent and synthesized dataset identities."""
+        legacy_path = test_data.snapshot.primary.galaxy_properties
+        first_legacy = discover_file(legacy_path).groups[0]
+        second_legacy = discover_file(legacy_path).groups[0]
+
+        assert first_legacy.uuid == second_legacy.uuid
+        assert not first_legacy.has_persistent_uuid
+        assert first_legacy.uuid is not None
+
+        persistent_path = test_data.snapshot.primary.halo_properties
+        persistent_group = discover_file(persistent_path).groups[0]
+        with h5py.File(persistent_path, "r") as file:
+            on_disk_uuid = UUID(str(file["data"].attrs["main_uuid"]))
+
+        assert persistent_group.has_persistent_uuid
+        assert persistent_group.uuid == on_disk_uuid
+
+    def test_synthesized_dataset_uuid_resolves_file_path(self, test_data):
+        """Test that synthesized identities do not depend on path spelling."""
+        path = test_data.snapshot.primary.galaxy_properties
+        alternate_spelling = path.parent / ".." / path.parent.name / path.name
+
+        absolute_group = discover_file(path.absolute()).groups[0]
+        alternate_group = discover_file(alternate_spelling).groups[0]
+
+        assert absolute_group.uuid == alternate_group.uuid
+
+    def test_synthesized_dataset_uuids_are_distinct(self, test_data):
+        """Test that distinct legacy data groups have distinct identities."""
+        galaxy_group = discover_file(
+            test_data.snapshot.primary.galaxy_properties
+        ).groups[0]
+        profile_group = discover_file(test_data.snapshot.primary.halo_profiles).groups[
+            0
+        ]
+        multi_groups = discover_file(test_data.snapshot.multi_simulation).groups
+
+        assert galaxy_group.uuid != profile_group.uuid
+        assert len({group.uuid for group in multi_groups}) == len(multi_groups)
 
 
 class TestDiscoverNestedFile:

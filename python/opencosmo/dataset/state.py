@@ -6,6 +6,7 @@ from copy import copy
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Generator, Optional
+from uuid import uuid4
 from weakref import finalize
 
 import astropy.units as u
@@ -34,7 +35,7 @@ from opencosmo.units.handler import (
     make_unit_handler_from_hdf5,
     make_unit_handler_from_units,
 )
-from opencosmo.uuid import get_raw_column_uuid
+from opencosmo.uuid import get_in_memory_dataset_uuid, get_raw_column_uuid
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -83,6 +84,7 @@ class DatasetState:
     itself only exposes basic lookup operations.
     """
 
+    uuid: UUID
     producers: dict[UUID, ConstructedColumn]
     raw_data_handler: DataHandler
     cache: DataCache
@@ -206,6 +208,7 @@ def state_from_target(
     producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
     cache = ColumnCache.empty()
     return DatasetState(
+        uuid=target["uuid"],
         producers=producers,
         raw_data_handler=handler,
         cache=cache,
@@ -257,6 +260,7 @@ def state_in_memory(
     unit_handler = make_unit_handler_from_units(units, header, unit_convention)
 
     return DatasetState(
+        uuid=get_in_memory_dataset_uuid(data_columns, metadata_columns),
         producers=producers,
         raw_data_handler=EmptyHandler(),
         cache=cache,
@@ -423,6 +427,8 @@ def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
         state.region,
         state.raw_index,
         derived_data,
+        # Writing creates a new persistent dataset, so do not reuse the runtime state UUID.
+        uuid4(),
         name,
     )
 
