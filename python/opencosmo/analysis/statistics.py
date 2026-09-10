@@ -1,4 +1,5 @@
 # contains general function for computing various statistics
+
 import opencosmo as oc
 import numpy as np
 
@@ -54,8 +55,24 @@ def _get_statistic(col, statistic, **kwargs):
 
     raise TypeError("statistic must be a string or callable")
 
+def _compute_bins(min, max, n, bin_spacing="log"):
+    if bin_spacing == "log":
+        return np.geomspace(min, max, n)
+    elif bin_spacing == "linear":
+        return np.linspace(min, max, n)
+    else:
+        raise RuntimeError(f"unrecognized value for bin_spacing: {bin_spacing}")
 
-def binned_statistic(ds, column, bin_by="sod_halo_mass", statistic="mean", bins=20, dataset="halo_properties", mode="global", **kwargs):
+
+def binned_statistic(
+    ds, column, 
+    bin_by="sod_halo_mass", 
+    statistic="mean", 
+    bins=20, 
+    dataset="halo_properties", 
+    mode="global", 
+    *kwargs,
+):
     # statistic can be either string of a function that takes the column as input
     #   def cool_stat(col):
     #       return (col.max()-col.min()) / col.std()
@@ -82,7 +99,7 @@ def binned_statistic(ds, column, bin_by="sod_halo_mass", statistic="mean", bins=
 
         bins = np.geomspace(d["bin_min"], d["bin_max"], bins+1)
 
-    print(f"BINS: {bins}", flush=True)
+    #print(f"BINS: {bins}", flush=True)
 
     # else:
     #   make sure given bins are in the right units
@@ -103,17 +120,119 @@ def binned_statistic(ds, column, bin_by="sod_halo_mass", statistic="mean", bins=
             .get_data()
         )
 
-        print(f"{statistic}: {d}", flush=True)
+        #print(f"{statistic}: {d}", flush=True)
 
         binned_stat.append(d)
 
         if ranks > 1:
             comm.Barrier()
 
-    return binned_stat
+    return binned_stat, bins
 
-def hist1d(ds):
-    return #reduce(ds, _hist1d, evaluate_kwargs=evaluate_kwargs)
+def hist1d(
+    ds,
+    column, 
+    bins=20,
+    bin_spacing = "log",
+    mode="global",
+):
 
-def hist2d():
-    return 
+    if isinstance(ds, oc.StructureCollection):
+        ds = ds[dataset]
+
+    if not isinstance(bins, list):
+
+        d = ds.select( 
+                bin_min = oc.col(column).min(), 
+                bin_max = oc.col(column).max(),
+                mode = mode,
+            ).get_data()
+
+        bins = _compute_bins(
+            d["bin_min"], d["bin_max"], bins+1, 
+            bin_spacing = bin_spacing
+        )
+
+    counts, bin_edges = np.histogram( ds.select(column).get_data(), bins=bins )
+
+    if ranks > 1:
+        counts = comm.allreduce( counts, op=MPI.SUM )
+
+    return counts, bin_edges
+
+def hist2d(
+    ds,
+    column_x,
+    column_y, 
+    bins=20,
+    bin_spacing="log",
+    mode="global",
+):
+
+    if isinstance(ds, oc.StructureCollection):
+        ds = ds[dataset]
+
+    if not isinstance(bins, list):
+        d_x = ds.select( 
+                bin_min = oc.col(column_x).min(), 
+                bin_max = oc.col(column_x).max(),
+                mode = mode,
+            ).get_data()
+
+        d_y = ds.select( 
+                bin_min = oc.col(column_y).min(), 
+                bin_max = oc.col(column_y).max(),
+                mode = mode,
+            ).get_data()
+
+        if isinstance(bin_spacing, (list, tuple)):
+            bin_spacing_x, bin_spacing_y = bin_spacing
+        elif isinstance(bin_spacing, str):
+            bin_spacing_x = bin_spacing
+            bin_spacing_y = bin_spacing
+        else:
+            raise RuntimeError(f"Invalid input for bin_spacing: {bin_spacing}")
+    
+        bins_x = _compute_bins(
+            d_x["bin_min"], d_x["bin_max"], bins+1, 
+            bin_spacing = bin_spacing_x
+        )
+
+        bins_y = _compute_bins(
+            d_y["bin_min"], d_y["bin_max"], bins+1, 
+            bin_spacing = bin_spacing_y
+        )
+
+    else:
+        bins_x, bins_y = bins
+
+    data = ds.select(column_x, column_y).get_data()
+
+    h, x, y = np.histogram2d(data[column_x], data[column_y], bins = [bins_x, bins_y])
+
+    if ranks > 1:
+        h = comm.allreduce( h, op=MPI.SUM )
+
+    return h, x, y
+
+def stacked_profile(
+    ds,
+    column,
+    mode="global",
+    statistic="mean",
+):
+
+    if isinstance(ds, oc.StructureCollection):
+        ds = ds["halo_profiles"]
+
+    return
+
+
+
+
+
+def two_point_correlation_function():
+    return
+
+def halo_mass_function():
+    return
