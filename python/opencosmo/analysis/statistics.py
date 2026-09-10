@@ -11,44 +11,20 @@ rank = comm.Get_rank() if comm is not None else 0
 ranks = comm.Get_size() if comm is not None else 1
 
 
-#NOTE: FOR PLOTTING, ADD A WAY TO PLOT FOR MULTIPLE SUBVOLUMES
-
-def _pmin(x):
-    if ranks > 1:
-        return min( comm.allreduce(x, op=MPI.MIN) )
-    else:
-        return min(x)
-
-def _pmax(x):
-    if ranks > 1:
-        return max( comm.allreduce(x, op=MPI.MAX) )
-    else:
-        return max(x)
-
-def _pmean(x, w=None):
-    if w is None:
-        w = np.ones_like(x)
-
-    if ranks > 1:
-        num   = comm.allreduce(x * w, op=MPI.SUM)
-        denom = comm.allreduce(w, op=MPI.SUM)
-
-        if denom == 0:
-            return 0
-        else:
-            return num/denom 
-
-    else:
-        return( sum(x*w)/sum(w) )
-
-
-def _pmedian():
-    return
-
 def _get_statistic(col, statistic, **kwargs):
+    # return either result of custom, callable input function or that of 
+    # a builtin method attached to the Column object
 
     if isinstance(statistic, str):
-        return getattr(col, statistic)(**kwargs)
+        if statistic.startswith("geometric_"):
+            # if doing geometric mean, median, quantile, etc., does
+            # global scalar reduction in log space. Will need to
+            # convert back to exp10() space after the function call.
+
+            return getattr( col.log10(), statistic.removeprefix("geometric_") )(**kwargs)
+
+        else:
+            return getattr(col, statistic)(**kwargs)
 
     if callable(statistic):
         return statistic(col, **kwargs)
@@ -71,7 +47,7 @@ def binned_statistic(
     bins=20, 
     dataset="halo_properties", 
     mode="global", 
-    *kwargs,
+    **kwargs,
 ):
     # statistic can be either string of a function that takes the column as input
     #   def cool_stat(col):
@@ -99,8 +75,6 @@ def binned_statistic(
 
         bins = np.geomspace(d["bin_min"], d["bin_max"], bins+1)
 
-    #print(f"BINS: {bins}", flush=True)
-
     # else:
     #   make sure given bins are in the right units
 
@@ -108,8 +82,6 @@ def binned_statistic(
 
     for i in range(len(bins)-1):
         low, high = bins[i], bins[i+1]
-
-        #print(f"[{low}, {high}]", flush=True)
 
         d = (
             ds.filter(oc.col(bin_by) >= low, oc.col(bin_by) < high)
@@ -120,7 +92,9 @@ def binned_statistic(
             .get_data()
         )
 
-        #print(f"{statistic}: {d}", flush=True)
+        # convert back from log-space if doing geometric mean, median, etc.
+        if isinstance(statistic, str) and statistic.startswith("geometric_"):
+            d = 10 ** d
 
         binned_stat.append(d)
 
@@ -220,6 +194,7 @@ def stacked_profile(
     column,
     mode="global",
     statistic="mean",
+    stat_space="log",
 ):
 
     if isinstance(ds, oc.StructureCollection):
