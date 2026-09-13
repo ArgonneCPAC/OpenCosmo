@@ -55,6 +55,42 @@ def comoving_to_scalefree(value: float, cosmology: FLRW):
     return scalefree_value
 
 
+def region_dimension(region: Region) -> int:
+    match region:
+        case ConeRegion() | SkyboxRegion() | HealpixRegion() | FullSkyRegion():
+            return 2
+        case BoxRegion():
+            return 3
+    raise ValueError("Can't get the dimensions of something that is not a region!")
+
+
+def combine(*regions: Region) -> Region:
+    dims = set(map(region_dimension, regions))
+    if len(dims) != 1:
+        raise ValueError("Can only combine regions of the same dimension!")
+
+    dim = dims.pop()
+    if dim == 3:
+        return combine_3d_regions(*regions)
+    return combine_2d_regions(*regions)
+
+
+def combine_3d_regions(*regions: Region):
+    assert all(isinstance(r, BoxRegion) for r in regions)
+    return regions[0].combine(*regions[1:])  # type: ignore
+
+
+def combine_2d_regions(*regions: Region):
+    region_types = set(map(type, regions))
+    if FullSkyRegion in region_types:
+        return FullSkyRegion()
+
+    elif len(region_types) == 1 and HealpixRegion in region_types:
+        return regions[0].combine(*regions[1:])  # type: ignore
+
+    raise NotImplementedError
+
+
 class ConeRegion:
     """
     Cone region for querying lightcones. Defined by RA/Dec coordinate and an angular
@@ -254,6 +290,8 @@ class HealpixRegion:
         return HealpixRegionModel(pixels=into_array(self.__idxs), nside=self.nside)
 
     def combine(self, *others: HealpixRegion) -> HealpixRegion:
+        if not others:
+            return self
         if any(o.nside != self.nside for o in others):
             raise ValueError("Cannot combine healpix regions with different nsides!")
         if any(o.ordering != self.ordering for o in others):

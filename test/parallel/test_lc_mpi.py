@@ -1423,6 +1423,7 @@ def test_redshift_mpi_sc_linked_colocation(halo_sc_files):
     linked particles/profiles live on the owning rank (linked co-location). Empty
     ranks simply iterate zero structures.
     """
+    comm = get_comm_world()
     result = oc.open(*halo_sc_files, mpi_mode="redshift")
 
     # Accumulate results LOCALLY. parallel_assert is a collective, so it must be
@@ -1431,17 +1432,22 @@ def test_redshift_mpi_sc_linked_colocation(halo_sc_files):
     # iterate zero structures).
     n_halos = 0
     linked_ok = True
-    for halo in result.halos():
-        n_halos += 1
-        host_tag = halo["halo_properties"]["fof_halo_tag"]
-        dm_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
-        profile_tags = (
-            halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
-        )
-        if not (np.all(dm_tags == host_tag) and np.all(profile_tags == host_tag)):
-            linked_ok = False
 
-    comm = get_comm_world()
+    if comm.Get_rank() < 2:
+        parallel_assert(len(result) > 0)
+        for halo in result.halos():
+            n_halos += 1
+            host_tag = halo["halo_properties"]["fof_halo_tag"]
+            dm_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
+            profile_tags = (
+                halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
+            )
+            if not (np.all(dm_tags == host_tag) and np.all(profile_tags == host_tag)):
+                linked_ok = False
+
+    else:
+        parallel_assert(len(result) == 0)
+
     all_ok = all(comm.allgather(linked_ok))
     parallel_assert(all_ok, "linked particles/profiles must belong to their host halo")
 

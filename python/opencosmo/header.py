@@ -24,6 +24,7 @@ from opencosmo.file import broadcast_read, file_reader, file_writer
 from opencosmo.io.schema import FileEntry, add_metadata, empty_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.spatial.builders import from_model
+from opencosmo.spatial.region import combine
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
@@ -596,7 +597,7 @@ def combine_header_regions(schema: Schema, comm: MPI.Comm | None) -> Schema:
         return schema
 
     regions = comm.allgather(from_model(pars.region))
-    new_region = regions[0].combine(*regions[1:])
+    new_region = combine(*regions)
     region_dump = {
         f"region_{key}": val
         for key, val in new_region.into_model().model_dump().items()
