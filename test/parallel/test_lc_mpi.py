@@ -106,6 +106,68 @@ def test_healpix_index(haloproperties_600_path):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
+def test_healpix_write_after_bound_disjoint(haloproperties_600_path, per_test_dir):
+    from healpy import ang2pix
+
+    comm = get_comm_world()
+
+    ds = oc.open(haloproperties_600_path)
+    nside = ds.region.nside
+
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
+
+    radius = 2 * u.deg
+
+    region = oc.make_cone(center, radius)
+    ds = ds.bound(region)
+
+    coordinates = ds.select("ra", "dec").get_data("numpy")
+    pixels_included = np.unique(
+        ang2pix(nside, coordinates["ra"], coordinates["dec"], lonlat=True, nest=True)
+    )
+    oc.write(per_test_dir / "test.hdf5", ds)
+    ds = oc.open(per_test_dir / "test.hdf5")
+
+    expected_pixels = np.unique(np.concat(comm.allgather(pixels_included)))
+    found_pixels = np.unique(np.concat(comm.allgather(ds.region.pixels)))
+    parallel_assert(np.array_equal(expected_pixels, found_pixels))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_write_after_bound_disjoint_box(haloproperties_600_path, per_test_dir):
+    from healpy import ang2pix
+
+    comm = get_comm_world()
+
+    ds = oc.open(haloproperties_600_path)
+    nside = ds.region.nside
+
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
+
+    radius = 0.5
+    p1 = (center[0] - radius, center[1] - radius)
+    p2 = (center[0] + radius, center[1] + radius)
+
+    region = oc.make_skybox(p1, p2)
+    ds = ds.bound(region)
+
+    coordinates = ds.select("ra", "dec").get_data("numpy")
+    pixels_included = np.unique(
+        ang2pix(nside, coordinates["ra"], coordinates["dec"], lonlat=True, nest=True)
+    )
+    oc.write(per_test_dir / "test.hdf5", ds)
+    ds = oc.open(per_test_dir / "test.hdf5")
+
+    expected_pixels = np.unique(np.concat(comm.allgather(pixels_included)))
+    found_pixels = np.unique(np.concat(comm.allgather(ds.region.pixels)))
+    parallel_assert(np.array_equal(expected_pixels, found_pixels))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
 def test_healpix_index_chain_failure(haloproperties_600_path):
     ds = oc.open(haloproperties_600_path)
 

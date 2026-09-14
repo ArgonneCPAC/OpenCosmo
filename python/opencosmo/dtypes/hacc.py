@@ -2,7 +2,7 @@
 from datetime import date
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import ClassVar, Literal, Optional
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
@@ -217,11 +217,11 @@ class MapParams(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "healpix_map"
     z_range: Optional[tuple[float, float]] = None
-    nside: Optional[int] = None
-    nside_lr: Optional[int] = None
+    nside: int
+    nside_lr: int
     map_type: Optional[str] = None
-    ordering: Optional[str] = None
-    full_sky: Optional[bool] = None
+    ordering: Literal["NESTED"]
+    full_sky: bool
 
     @model_validator(mode="before")
     @classmethod

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import FLRW
 
     from opencosmo.index import DataIndex
-    from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.protocols import Region, Region2d, Region3d
     from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
@@ -65,30 +65,44 @@ def region_dimension(region: Region) -> int:
 
 
 def combine(*regions: Region) -> Region:
+    from typing import cast
+
     dims = set(map(region_dimension, regions))
     if len(dims) != 1:
         raise ValueError("Can only combine regions of the same dimension!")
 
     dim = dims.pop()
     if dim == 3:
+        regions = cast("tuple[Region3d, ...]", regions)
         return combine_3d_regions(*regions)
+    regions = cast("tuple[Region2d, ...]", regions)
     return combine_2d_regions(*regions)
 
 
-def combine_3d_regions(*regions: Region):
+def combine_3d_regions(*regions: Region3d):
     assert all(isinstance(r, BoxRegion) for r in regions)
     return regions[0].combine(*regions[1:])  # type: ignore
 
 
-def combine_2d_regions(*regions: Region):
+def combine_2d_regions(*regions: Region2d):
     region_types = set(map(type, regions))
     if FullSkyRegion in region_types:
         return FullSkyRegion()
 
-    elif len(region_types) == 1 and HealpixRegion in region_types:
-        return regions[0].combine(*regions[1:])  # type: ignore
+    healpix_regions = regularize_regions(*regions)
+    return healpix_regions[0].combine(*healpix_regions[1:])
 
-    raise NotImplementedError
+
+def regularize_regions(*regions: Region2d) -> list[HealpixRegion]:
+    healpix_regions = [r for r in regions if isinstance(r, HealpixRegion)]
+    if not healpix_regions:
+        target_nside = 2**8
+    else:
+        region_nsides = set(r.nside for r in healpix_regions)
+        target_nside = max(region_nsides)
+
+    output_healpix = [r.into_healpix_region(target_nside) for r in regions]
+    return output_healpix
 
 
 class ConeRegion:
@@ -183,6 +197,10 @@ class ConeRegion:
         radius = self.radius.to(u.rad).value
         return query_disc(nside, vec, radius, inclusive=True, nest=nest)
 
+    def into_healpix_region(self, nside: int):
+        pixel_intersections = self.get_healpix_intersections(nside)
+        return HealpixRegion(pixel_intersections, nside)
+
 
 class SkyboxRegion:
     """A declination-bounded sky box with an eastward circular RA interval.
@@ -253,6 +271,10 @@ class SkyboxRegion:
         # projection requires the intersection pixels to be sorted.
         return np.sort(strip[keep])
 
+    def into_healpix_region(self, nside: int):
+        pixels = self.get_healpix_intersections(nside)
+        return HealpixRegion(pixels, nside)
+
     def into_base_convention(self, *args, **kwargs):
         return self
 
@@ -269,10 +291,9 @@ class SkyboxRegion:
 
 
 class HealpixRegion:
-    def __init__(self, idxs: DataIndex, nside: int, ordering: str = "nested"):
+    def __init__(self, idxs: DataIndex, nside: int):
         self.__idxs = idxs
         self.__nside = nside
-        self.__ordering = ordering
 
     def __repr__(self):
         if get_length(self.__idxs) == 0:
@@ -302,7 +323,7 @@ class HealpixRegion:
             (o.pixels for o in others),
             self.pixels,
         )
-        return HealpixRegion(output, self.nside, self.ordering)
+        return HealpixRegion(output, self.nside)
 
     @property
     def pixels(self):
@@ -323,7 +344,7 @@ class HealpixRegion:
         """
         The pixel ordering
         """
-        return self.__ordering
+        return "nested"
 
     def get_healpix_intersections(self, nside: int):
         if nside == self.nside:
@@ -332,6 +353,17 @@ class HealpixRegion:
             raise ValueError(
                 "Healpix regions can only be compared to each other if they have the same nside"
             )
+
+    def into_healpix_region(self, nside: int):
+        if nside == self.nside:
+            return self
+        if nside < self.nside:
+            raise ValueError("New nside must be greater than current nside!")
+        factor = nside // self.nside
+        num_subpixels = factor**2
+        starts = self.pixels * num_subpixels
+        sizes = np.full_like(starts, num_subpixels)
+        return HealpixRegion((starts, sizes), nside)
 
     def contains(self, other: Any):
         return contains_2d(self, other)

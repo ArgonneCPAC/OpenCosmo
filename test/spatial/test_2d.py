@@ -314,6 +314,108 @@ def test_box_search_collection(haloproperties_600_path, haloproperties_601_path)
     assert len(data) == n_expected
 
 
+def test_combine_cones():
+    from healpy import ang2vec, query_disc
+    from opencosmo.spatial.region import combine
+
+    from opencosmo.spatial import make_cone
+
+    DEFAULT_NSIDE = 2**8
+
+    gen = np.random.default_rng()
+    center_ras = gen.random(8) * 360.0
+    center_decs = gen.random(8) * 180 - 90
+    radii = gen.random(8)
+    centers = list(zip(center_ras, center_decs))
+
+    vecs = [ang2vec(*center, True) for center in centers]
+    radii_rad = radii * np.pi / 180
+
+    pixels = np.unique(
+        np.concat(
+            [
+                query_disc(DEFAULT_NSIDE, vec, radius, inclusive=True, nest=True)
+                for vec, radius in zip(vecs, radii_rad)
+            ]
+        )
+    )
+
+    regions = [make_cone(center, radius) for center, radius in zip(centers, radii)]
+    result = combine(*regions)
+    combined_pixels = np.unique(result.pixels)
+    assert np.array_equal(pixels, combined_pixels)
+
+
+def test_healpix_combine_promotion():
+    from healpy import nside2npix
+    from opencosmo.spatial.region import combine
+
+    from opencosmo.spatial import HealpixRegion
+
+    rng = np.random.default_rng()
+    MAX_LEVEL = 10
+
+    all_pixels = np.array([], np.int64)
+    regions = []
+    for i in range(6, MAX_LEVEL + 1):
+        npix = nside2npix(2**i)
+        pixels = rng.integers(0, npix, size=1000)
+        regions.append(HealpixRegion(pixels, 2**i))
+        factor = 2 ** (MAX_LEVEL - i)
+        num_subpixels = factor**2
+        subpixels_nested = (pixels[:, None] * num_subpixels) + np.arange(num_subpixels)
+        subpixels_nested = subpixels_nested.flatten()
+        all_pixels = np.union1d(all_pixels, subpixels_nested)
+
+    final_region = combine(*regions)
+    assert final_region.nside == 2**10
+    assert np.array_equal(final_region.pixels, all_pixels)
+
+
+def test_combine_cones_and_healpix():
+    from healpy import ang2vec, nside2npix, query_disc
+    from opencosmo.spatial.region import HealpixRegion, combine
+
+    from opencosmo.spatial import make_cone
+
+    MAX_LEVEL = 10
+
+    gen = np.random.default_rng()
+    center_ras = gen.random(8) * 360.0
+    center_decs = gen.random(8) * 180 - 90
+    radii = gen.random(8)
+    centers = list(zip(center_ras, center_decs))
+
+    vecs = [ang2vec(*center, True) for center in centers]
+    radii_rad = radii * np.pi / 180
+
+    all_pixels = np.unique(
+        np.concat(
+            [
+                query_disc(2**MAX_LEVEL, vec, radius, inclusive=True, nest=True)
+                for vec, radius in zip(vecs, radii_rad)
+            ]
+        )
+    )
+
+    regions = [make_cone(center, radius) for center, radius in zip(centers, radii)]
+
+    rng = np.random.default_rng()
+    for i in range(6, MAX_LEVEL + 1):
+        npix = nside2npix(2**i)
+        pixels = rng.integers(0, npix, size=1000)
+        regions.append(HealpixRegion(pixels, 2**i))
+        factor = 2 ** (MAX_LEVEL - i)
+        num_subpixels = factor**2
+        subpixels_nested = (pixels[:, None] * num_subpixels) + np.arange(num_subpixels)
+        subpixels_nested = subpixels_nested.flatten()
+        all_pixels = np.union1d(all_pixels, subpixels_nested)
+
+    result = combine(*regions)
+    combined_pixels = np.unique(result.pixels)
+    assert np.array_equal(all_pixels, combined_pixels)
+
+
 # ---------------------------------------------------------------------------
 # contains_2d / intersects_2d — ConeRegion vs SkyboxRegion
 # ---------------------------------------------------------------------------
