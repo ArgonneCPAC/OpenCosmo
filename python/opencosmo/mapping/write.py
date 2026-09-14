@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING
 
 import numpy as np
 from opencosmo.io.schema import FileEntry, get_dataset_schema_index
@@ -12,27 +12,47 @@ if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
 
 
-def __make_output_position_lookup(raw_ids: np.ndarray) -> dict[int, int]:
+def __make_output_position_lookup(raw_ids: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Map unique raw row IDs to their positions in an output dataset."""
     raw_ids = np.asarray(raw_ids, dtype=np.int64)
-    unique_ids, counts = np.unique(raw_ids, return_counts=True)
-    duplicate_ids = unique_ids[counts > 1]
-    if len(duplicate_ids) > 0:
-        raise ValueError(
-            "Cannot lower mapping with duplicate output raw row IDs: "
-            f"{duplicate_ids.tolist()}"
-        )
-    return {int(raw_id): position for position, raw_id in enumerate(raw_ids)}
+    sort_order = np.argsort(raw_ids, kind="stable")
+    sorted_ids = raw_ids[sort_order]
+    if len(sorted_ids) > 1 and np.any(sorted_ids[1:] == sorted_ids[:-1]):
+        raise ValueError("Cannot lower mapping with duplicate output raw row IDs:")
+
+    return sorted_ids, sort_order
+
+
+def __lookup_positions(
+    raw_ids: np.ndarray, positions: tuple[np.ndarray, np.ndarray]
+) -> np.ndarray:
+    sorted_ids, sort_positions = positions
+    raw_ids = np.asarray(raw_ids, dtype=np.int64)
+
+    if len(sorted_ids) == 0:
+        return np.full(len(raw_ids), -1, dtype=np.int64)
+
+    idx = np.searchsorted(sorted_ids, raw_ids)
+    np.clip(idx, 0, len(sorted_ids) - 1, out=idx)
+    found = sorted_ids[idx] == raw_ids
+
+    resolved = np.full(len(raw_ids), -1, dtype=np.int64)
+    resolved[found] = sort_positions[idx[found]]
+    return resolved
 
 
 def __lower_primary_writer(
-    writer: ColumnWriter, target_positions: Mapping[int, int]
+    writer: ColumnWriter, target_positions: tuple[np.ndarray, np.ndarray]
 ) -> ColumnWriter:
-    raw_targets = writer.data
+    sorted_ids, positions = target_positions
+    raw_targets = np.asarray(writer.data, dtype=np.int64)
+
     output_targets = np.full(len(raw_targets), -1, dtype=np.int64)
-    for position, raw_target in enumerate(raw_targets):
-        if raw_target >= 0:
-            output_targets[position] = target_positions.get(int(raw_target), -1)
+    valid_mask = raw_targets >= 0
+    output_targets[valid_mask] = __lookup_positions(
+        raw_targets[valid_mask], target_positions
+    )
+
     return ColumnWriter.from_numpy_array(
         output_targets, writer.combine_strategy, writer.attrs
     )
@@ -41,27 +61,21 @@ def __lower_primary_writer(
 def __lower_auxiliary_writers(
     source_writer: ColumnWriter,
     target_writer: ColumnWriter,
-    source_positions: Mapping[int, int],
-    target_positions: Mapping[int, int],
+    source_positions: tuple[np.ndarray, np.ndarray],
+    target_positions: tuple[np.ndarray, np.ndarray],
 ) -> tuple[ColumnWriter, ColumnWriter]:
-    raw_source = source_writer.data
-    raw_target = target_writer.data
+    raw_source = np.asarray(source_writer.data, dtype=np.int64)
+    raw_target = np.asarray(target_writer.data, dtype=np.int64)
     if len(raw_source) != len(raw_target):
         raise ValueError("Auxiliary mapping source and target have different lengths")
 
-    source = np.fromiter(
-        (source_positions.get(int(raw_id), -1) for raw_id in raw_source),
-        dtype=np.int64,
-        count=len(raw_source),
-    )
-    target = np.fromiter(
-        (target_positions.get(int(raw_id), -1) for raw_id in raw_target),
-        dtype=np.int64,
-        count=len(raw_target),
-    )
+    source = __lookup_positions(raw_source, source_positions)
+    target = __lookup_positions(raw_target, target_positions)
+
     retained = (source >= 0) & (target >= 0)
     source = source[retained]
     target = target[retained]
+
     reorder = np.lexsort((target, source))
     return (
         ColumnWriter.from_numpy_array(
@@ -73,18 +87,17 @@ def __lower_auxiliary_writers(
     )
 
 
-def __dataset_positions(schema: Schema) -> dict[str, dict[int, int]]:
-    positions_by_uuid: dict[str, dict[int, int]] = {}
+def __dataset_positions(schema: Schema) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    positions_by_uuid: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for child_name, child in schema.children.items():
         if child_name == "map" or child.type != FileEntry.DATASET:
             continue
-        raw_index = get_dataset_schema_index(child)
+        raw_index = into_array(get_dataset_schema_index(child))
         if raw_index is None:
             raise ValueError(f"Dataset '{child_name}' has no output raw row index")
         uuid = child.children["data"].attributes["main_uuid"]
-        positions_by_uuid[str(uuid)] = __make_output_position_lookup(
-            into_array(raw_index)
-        )
+        positions_by_uuid[str(uuid)] = __make_output_position_lookup(raw_index)
+
     return positions_by_uuid
 
 

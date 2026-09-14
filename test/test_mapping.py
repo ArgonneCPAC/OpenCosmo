@@ -830,7 +830,9 @@ def test_lowered_mapping_schema_is_accepted_by_generic_verification():
 def test_lower_primary_mapping_preserves_unmatched_and_missing_targets():
     writer = mapping_write.ColumnWriter.from_numpy_array(np.array([8, -1, 3, 99]))
 
-    lowered = mapping_write.__lower_primary_writer(writer, {3: 0, 8: 1})
+    lowered = mapping_write.__lower_primary_writer(
+        writer, (np.array([3, 8]), np.array([0, 1]))
+    )
 
     np.testing.assert_array_equal(lowered.data, [1, -1, 0, -1])
 
@@ -844,7 +846,10 @@ def test_lower_auxiliary_mapping_filters_and_sorts_pairs():
     )
 
     lowered_source, lowered_target = mapping_write.__lower_auxiliary_writers(
-        source, target, {10: 0, 20: 1}, {7: 1, 8: 0}
+        source,
+        target,
+        (np.array([10, 20]), np.array([0, 1])),
+        (np.array([7, 8]), np.array([1, 0])),
     )
 
     np.testing.assert_array_equal(lowered_source.data, [1, 1])
@@ -864,31 +869,15 @@ def test_mpi_dataset_output_plan_is_stable_and_balanced():
     )
 
     np.testing.assert_array_equal(canonical, [1, 2, 4, 5, 7, 8, 9])
-    assert dict(lookup.output_positions) == {
-        1: 0,
-        2: 1,
-        4: 2,
-        5: 3,
-        7: 4,
-        8: 5,
-        9: 6,
-    }
-    assert dict(lookup.writer_ranks) == {
-        1: 0,
-        2: 0,
-        4: 0,
-        5: 1,
-        7: 1,
-        8: 2,
-        9: 2,
-    }
+    np.testing.assert_array_equal(lookup.raw_ids, [1, 2, 4, 5, 7, 8, 9])
+    np.testing.assert_array_equal(lookup.writer_ranks, [0, 0, 0, 1, 1, 2, 2])
 
 
 def test_mpi_dataset_output_plan_allows_empty_writer_intervals():
     _, lookup = simulation_io.__plan_dataset_output(np.array([3, 1]), 4)
 
-    assert dict(lookup.output_positions) == {1: 0, 3: 1}
-    assert dict(lookup.writer_ranks) == {1: 0, 3: 1}
+    np.testing.assert_array_equal(lookup.raw_ids, [1, 3])
+    np.testing.assert_array_equal(lookup.writer_ranks, [0, 1])
 
 
 def test_mpi_dataset_output_plan_rejects_duplicate_raw_ids():
