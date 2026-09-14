@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterable, NamedTuple, Optional, Protocol, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Iterable,
+    NamedTuple,
+    Optional,
+    Protocol,
+    Union,
+)
 
 import numpy as np
 from numpy.typing import NDArray
@@ -8,7 +16,7 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex, SimpleIndex
     from opencosmo.spatial.models import RegionModel
-    from opencosmo.spatial.region import BoxRegion
+    from opencosmo.spatial.region import BoxRegion, HealpixRegion
     from opencosmo.units import UnitConvention
     from opencosmo.units.get import UnitApplicator
 
@@ -36,9 +44,10 @@ class Region(Protocol):
     def into_model(self) -> RegionModel: ...
 
 
-class Region2d(Region):
+class Region2d(Region, Protocol):
     def bounds(self): ...
     def get_healpix_intersections(self, nside: int): ...
+    def into_healpix_region(self, nside: int) -> HealpixRegion: ...
 
 
 class Region3d(Region, Protocol):

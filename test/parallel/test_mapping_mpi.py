@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import warnings
 from itertools import combinations
 from typing import TYPE_CHECKING
 
@@ -924,7 +925,9 @@ def test_mapping_write_with_empty_target(mapped_paths, test_data, per_test_dir):
     path = per_test_dir / "mapping.hdf5"
 
     oc.write(path, collection)
-    written = oc.open(path)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*Rank recieved no data.*")
+        written = oc.open(path)
 
     _assert_mapping_equal(collection, written)
 

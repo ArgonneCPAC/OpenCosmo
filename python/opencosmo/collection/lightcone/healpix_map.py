@@ -474,9 +474,9 @@ class HealpixMap(dict):
         is_full_sky = self.full_sky and get_comm_world() is None
 
         if len(new_pixels) != out_npix:
-            region = HealpixRegion(new_pixels, nside_out, self.__ordering)
+            region = HealpixRegion(new_pixels, nside_out)
         else:
-            region = HealpixRegion(from_size(out_npix), nside_out, self.__ordering)
+            region = HealpixRegion(from_size(out_npix), nside_out)
 
         return HealpixMap(
             {"data": new_dataset},

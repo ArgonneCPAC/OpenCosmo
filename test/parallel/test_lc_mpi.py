@@ -106,6 +106,68 @@ def test_healpix_index(haloproperties_600_path):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
+def test_healpix_write_after_bound_disjoint(haloproperties_600_path, per_test_dir):
+    from healpy import ang2pix
+
+    comm = get_comm_world()
+
+    ds = oc.open(haloproperties_600_path)
+    nside = ds.region.nside
+
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
+
+    radius = 2 * u.deg
+
+    region = oc.make_cone(center, radius)
+    ds = ds.bound(region)
+
+    coordinates = ds.select("ra", "dec").get_data("numpy")
+    pixels_included = np.unique(
+        ang2pix(nside, coordinates["ra"], coordinates["dec"], lonlat=True, nest=True)
+    )
+    oc.write(per_test_dir / "test.hdf5", ds)
+    ds = oc.open(per_test_dir / "test.hdf5")
+
+    expected_pixels = np.unique(np.concat(comm.allgather(pixels_included)))
+    found_pixels = np.unique(np.concat(comm.allgather(ds.region.pixels)))
+    parallel_assert(np.array_equal(expected_pixels, found_pixels))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
+def test_healpix_write_after_bound_disjoint_box(haloproperties_600_path, per_test_dir):
+    from healpy import ang2pix
+
+    comm = get_comm_world()
+
+    ds = oc.open(haloproperties_600_path)
+    nside = ds.region.nside
+
+    pixel = np.random.choice(ds.region.pixels)
+    center = pix2ang(ds.region.nside, pixel, True, True)
+
+    radius = 0.5
+    p1 = (center[0] - radius, center[1] - radius)
+    p2 = (center[0] + radius, center[1] + radius)
+
+    region = oc.make_skybox(p1, p2)
+    ds = ds.bound(region)
+
+    coordinates = ds.select("ra", "dec").get_data("numpy")
+    pixels_included = np.unique(
+        ang2pix(nside, coordinates["ra"], coordinates["dec"], lonlat=True, nest=True)
+    )
+    oc.write(per_test_dir / "test.hdf5", ds)
+    ds = oc.open(per_test_dir / "test.hdf5")
+
+    expected_pixels = np.unique(np.concat(comm.allgather(pixels_included)))
+    found_pixels = np.unique(np.concat(comm.allgather(ds.region.pixels)))
+    parallel_assert(np.array_equal(expected_pixels, found_pixels))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parallel(nprocs=4)
 def test_healpix_index_chain_failure(haloproperties_600_path):
     ds = oc.open(haloproperties_600_path)
 
@@ -1423,6 +1485,7 @@ def test_redshift_mpi_sc_linked_colocation(halo_sc_files):
     linked particles/profiles live on the owning rank (linked co-location). Empty
     ranks simply iterate zero structures.
     """
+    comm = get_comm_world()
     result = oc.open(*halo_sc_files, mpi_mode="redshift")
 
     # Accumulate results LOCALLY. parallel_assert is a collective, so it must be
@@ -1431,17 +1494,22 @@ def test_redshift_mpi_sc_linked_colocation(halo_sc_files):
     # iterate zero structures).
     n_halos = 0
     linked_ok = True
-    for halo in result.halos():
-        n_halos += 1
-        host_tag = halo["halo_properties"]["fof_halo_tag"]
-        dm_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
-        profile_tags = (
-            halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
-        )
-        if not (np.all(dm_tags == host_tag) and np.all(profile_tags == host_tag)):
-            linked_ok = False
 
-    comm = get_comm_world()
+    if comm.Get_rank() < 2:
+        parallel_assert(len(result) > 0)
+        for halo in result.halos():
+            n_halos += 1
+            host_tag = halo["halo_properties"]["fof_halo_tag"]
+            dm_tags = halo["dm_particles"].select("fof_halo_tag").get_data("numpy")
+            profile_tags = (
+                halo["halo_profiles"].select("fof_halo_bin_tag").get_data("numpy")
+            )
+            if not (np.all(dm_tags == host_tag) and np.all(profile_tags == host_tag)):
+                linked_ok = False
+
+    else:
+        parallel_assert(len(result) == 0)
+
     all_ok = all(comm.allgather(linked_ok))
     parallel_assert(all_ok, "linked particles/profiles must belong to their host halo")
 
