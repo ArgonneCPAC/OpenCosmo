@@ -830,7 +830,9 @@ def test_lowered_mapping_schema_is_accepted_by_generic_verification():
 def test_lower_primary_mapping_preserves_unmatched_and_missing_targets():
     writer = mapping_write.ColumnWriter.from_numpy_array(np.array([8, -1, 3, 99]))
 
-    lowered = mapping_write.__lower_primary_writer(writer, {3: 0, 8: 1})
+    lowered = mapping_write.__lower_primary_writer(
+        writer, (np.array([3, 8]), np.array([0, 1]))
+    )
 
     np.testing.assert_array_equal(lowered.data, [1, -1, 0, -1])
 
@@ -844,7 +846,10 @@ def test_lower_auxiliary_mapping_filters_and_sorts_pairs():
     )
 
     lowered_source, lowered_target = mapping_write.__lower_auxiliary_writers(
-        source, target, {10: 0, 20: 1}, {7: 1, 8: 0}
+        source,
+        target,
+        (np.array([10, 20]), np.array([0, 1])),
+        (np.array([7, 8]), np.array([1, 0])),
     )
 
     np.testing.assert_array_equal(lowered_source.data, [1, 1])
