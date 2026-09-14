@@ -63,10 +63,8 @@ def test_mpi_dataset_output_lookup_assigns_uneven_runs():
         local_raw_ids, MPI.COMM_WORLD
     )
 
-    parallel_assert(
-        dict(lookup.output_positions) == {1: 0, 2: 1, 4: 2, 6: 3, 7: 4, 8: 5}
-    )
-    parallel_assert(dict(lookup.writer_ranks) == {1: 0, 2: 0, 4: 1, 6: 1, 7: 2, 8: 3})
+    parallel_assert(np.array_equal(lookup.raw_ids, [1, 2, 4, 6, 7, 8]))
+    parallel_assert(np.array_equal(lookup.writer_ranks, [0, 0, 1, 1, 2, 3]))
     expected_targets = (
         np.array([2, 0, 3]),
         np.array([1]),

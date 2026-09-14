@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from types import MappingProxyType
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -44,31 +43,46 @@ def resort_simulation_collection(schema):
 
 @dataclass(frozen=True)
 class DatasetOutputLookup:
-    """Global output coordinates and writer ownership for one dataset."""
+    """Global output coordinates and writer ownership for one dataset.
 
-    output_positions: Mapping[int, int]
-    writer_ranks: Mapping[int, int]
+    ``raw_ids`` holds the globally sorted, unique raw row IDs, so a raw ID's
+    output position is its position in that array. ``writer_ranks`` is aligned
+    with ``raw_ids`` and names the rank that writes each row.
+    """
+
+    raw_ids: np.ndarray
+    writer_ranks: np.ndarray
+
+
+def __lookup_positions(lookup: DatasetOutputLookup, raw_ids: np.ndarray) -> np.ndarray:
+    """Resolve raw row IDs to output positions, or -1 where they are absent."""
+    raw_ids = np.asarray(raw_ids, dtype=np.int64)
+    if len(lookup.raw_ids) == 0:
+        return np.full(len(raw_ids), -1, dtype=np.int64)
+
+    positions = np.searchsorted(lookup.raw_ids, raw_ids)
+    np.clip(positions, 0, len(lookup.raw_ids) - 1, out=positions)
+    found = lookup.raw_ids[positions] == raw_ids
+    return np.where(found, positions, -1).astype(np.int64)
+
+
+def __lookup_ranks(lookup: DatasetOutputLookup, positions: np.ndarray) -> np.ndarray:
+    """Map resolved output positions to their writer ranks, preserving -1."""
+    found = positions >= 0
+    ranks = np.full(len(positions), -1, dtype=np.int64)
+    ranks[found] = lookup.writer_ranks[positions[found]]
+    return ranks
 
 
 def __make_dataset_output_lookup(
     canonical_raw_ids: np.ndarray, nranks: int
 ) -> DatasetOutputLookup:
     """Build immutable output lookups from globally sorted, unique raw IDs."""
-    output_positions = {
-        int(raw_id): position for position, raw_id in enumerate(canonical_raw_ids)
-    }
+    canonical_raw_ids = np.asarray(canonical_raw_ids, dtype=np.int64)
     lengths = np.full(nranks, len(canonical_raw_ids) // nranks, dtype=np.int64)
     lengths[: len(canonical_raw_ids) % nranks] += 1
-    writer_ranks = {
-        int(raw_id): rank
-        for rank, raw_ids in enumerate(
-            np.split(canonical_raw_ids, np.cumsum(lengths)[:-1])
-        )
-        for raw_id in raw_ids
-    }
-    return DatasetOutputLookup(
-        MappingProxyType(output_positions), MappingProxyType(writer_ranks)
-    )
+    writer_ranks = np.repeat(np.arange(nranks, dtype=np.int64), lengths)
+    return DatasetOutputLookup(canonical_raw_ids, writer_ranks)
 
 
 def __plan_dataset_output(
@@ -97,10 +111,8 @@ def __get_dataset_output_lookup(
             canonical_raw_ids, lookup = __plan_dataset_output(
                 gathered_raw_ids, comm.Get_size()
             )
-            target_ranks = np.fromiter(
-                (lookup.writer_ranks[int(raw_id)] for raw_id in gathered_raw_ids),
-                dtype=np.int64,
-                count=len(gathered_raw_ids),
+            target_ranks = __lookup_ranks(
+                lookup, __lookup_positions(lookup, gathered_raw_ids)
             )
             payload: tuple[str | None, np.ndarray | None, np.ndarray | None] = (
                 None,
@@ -161,15 +173,9 @@ def redistribute_simulation_collection_data(
             # ``lookup`` is planned on the dataset subcommunicator.  Primary map
             # lowering routes on ``comm``, so translate its ranks back to the
             # parent communicator explicitly.
-            active_ranks = np.flatnonzero(all_has_child)
+            active_ranks = np.flatnonzero(all_has_child).astype(np.int64)
             output_lookups[child_name] = DatasetOutputLookup(
-                lookup.output_positions,
-                MappingProxyType(
-                    {
-                        raw_id: int(active_ranks[rank])
-                        for raw_id, rank in lookup.writer_ranks.items()
-                    }
-                ),
+                lookup.raw_ids, active_ranks[lookup.writer_ranks]
             )
         finally:
             if rank_has_child:
@@ -201,25 +207,25 @@ def __lower_primary_values(
     if len(source_raw_ids) != len(raw_targets):
         message = "Primary mapping length does not match the local reference dataset"
 
-    source_positions = np.empty(len(source_raw_ids), dtype=np.int64)
-    source_ranks = np.empty(len(source_raw_ids), dtype=np.int64)
+    source_positions = np.empty(0, dtype=np.int64)
+    source_ranks = np.empty(0, dtype=np.int64)
     if message is None:
-        try:
-            for position, raw_id in enumerate(source_raw_ids):
-                source_positions[position] = reference_lookup.output_positions[
-                    int(raw_id)
-                ]
-                source_ranks[position] = reference_lookup.writer_ranks[int(raw_id)]
-        except KeyError as error:
-            message = f"Primary mapping source raw row ID is not in the output: {error}"
+        source_positions = __lookup_positions(reference_lookup, source_raw_ids)
+        missing = source_positions < 0
+        if np.any(missing):
+            message = (
+                "Primary mapping source raw row ID is not in the output: "
+                f"{int(source_raw_ids[missing][0])}"
+            )
+        else:
+            source_ranks = __lookup_ranks(reference_lookup, source_positions)
     __collective_error(message, comm)
 
     output_targets = np.full(len(raw_targets), -1, dtype=np.int64)
-    for position, raw_target in enumerate(raw_targets):
-        if raw_target >= 0:
-            output_targets[position] = target_lookup.output_positions.get(
-                int(raw_target), -1
-            )
+    valid_targets = raw_targets >= 0
+    output_targets[valid_targets] = __lookup_positions(
+        target_lookup, raw_targets[valid_targets]
+    )
 
     received_positions = redistribute_data(source_positions, source_ranks, comm)
     received_targets = redistribute_data(output_targets, source_ranks, comm)
@@ -227,14 +233,9 @@ def __lower_primary_values(
     received_positions = received_positions[reorder]
     received_targets = received_targets[reorder]
 
-    expected_positions = np.asarray(
-        sorted(
-            position
-            for raw_id, position in reference_lookup.output_positions.items()
-            if reference_lookup.writer_ranks[raw_id] == comm.Get_rank()
-        ),
-        dtype=np.int64,
-    )
+    expected_positions = np.flatnonzero(
+        reference_lookup.writer_ranks == comm.Get_rank()
+    ).astype(np.int64)
     message = None
     if not np.array_equal(received_positions, expected_positions):
         message = (
@@ -262,24 +263,12 @@ def __lower_auxiliary_values(
         comm,
     )
 
-    source_positions = np.fromiter(
-        (source_lookup.output_positions.get(int(raw_id), -1) for raw_id in raw_source),
-        dtype=np.int64,
-        count=len(raw_source),
-    )
-    target_positions = np.fromiter(
-        (target_lookup.output_positions.get(int(raw_id), -1) for raw_id in raw_target),
-        dtype=np.int64,
-        count=len(raw_target),
-    )
+    source_positions = __lookup_positions(source_lookup, raw_source)
+    target_positions = __lookup_positions(target_lookup, raw_target)
     retained = (source_positions >= 0) & (target_positions >= 0)
     source_positions = source_positions[retained]
     target_positions = target_positions[retained]
-    source_ranks = np.fromiter(
-        (source_lookup.writer_ranks[int(raw_id)] for raw_id in raw_source[retained]),
-        dtype=np.int64,
-        count=len(source_positions),
-    )
+    source_ranks = __lookup_ranks(source_lookup, source_positions)
 
     received_source = redistribute_data(source_positions, source_ranks, comm)
     received_target = redistribute_data(target_positions, source_ranks, comm)
@@ -303,18 +292,13 @@ def __dataset_names_and_lookups(
                 raise ValueError(f"Output dataset UUID {uuid} has multiple names")
 
     serialized_lookups = {
-        name: (dict(lookup.output_positions), dict(lookup.writer_ranks))
+        name: (lookup.raw_ids, lookup.writer_ranks)
         for name, lookup in output_lookups.items()
     }
     lookups_by_name: dict[str, DatasetOutputLookup] = {}
     for values in comm.allgather(serialized_lookups):
-        for name, (positions, ranks) in values.items():
-            lookups_by_name.setdefault(
-                name,
-                DatasetOutputLookup(
-                    MappingProxyType(positions), MappingProxyType(ranks)
-                ),
-            )
+        for name, (raw_ids, ranks) in values.items():
+            lookups_by_name.setdefault(name, DatasetOutputLookup(raw_ids, ranks))
     return uuid_to_name, lookups_by_name
 
 

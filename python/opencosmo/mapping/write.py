@@ -6,6 +6,8 @@ import numpy as np
 from opencosmo.io.schema import FileEntry, get_dataset_schema_index
 from opencosmo.io.writer import ColumnWriter
 
+from opencosmo.index import into_array
+
 if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
 
@@ -24,7 +26,6 @@ def __make_output_position_lookup(raw_ids: np.ndarray) -> tuple[np.ndarray, np.n
 def __lookup_positions(
     raw_ids: np.ndarray, positions: tuple[np.ndarray, np.ndarray]
 ) -> np.ndarray:
-    print(positions)
     sorted_ids, sort_positions = positions
     raw_ids = np.asarray(raw_ids, dtype=np.int64)
 
@@ -91,7 +92,7 @@ def __dataset_positions(schema: Schema) -> dict[str, tuple[np.ndarray, np.ndarra
     for child_name, child in schema.children.items():
         if child_name == "map" or child.type != FileEntry.DATASET:
             continue
-        raw_index = get_dataset_schema_index(child)
+        raw_index = into_array(get_dataset_schema_index(child))
         if raw_index is None:
             raise ValueError(f"Dataset '{child_name}' has no output raw row index")
         uuid = child.children["data"].attributes["main_uuid"]
