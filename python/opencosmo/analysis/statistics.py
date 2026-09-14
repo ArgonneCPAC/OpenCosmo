@@ -4,6 +4,7 @@ import opencosmo as oc
 import numpy as np
 
 from opencosmo.mpi import get_comm_world, get_mpi
+from opencosmo.analysis.default_plotting_params import default_params
 
 MPI = get_mpi()
 comm = get_comm_world()
@@ -39,6 +40,21 @@ def _compute_bins(min, max, n, bin_spacing="log"):
     else:
         raise RuntimeError(f"unrecognized value for bin_spacing: {bin_spacing}")
 
+def _filter_bad(ds, column):
+
+    params = default_params.get(column)
+    if params is None:
+        return ds
+
+    filters = params.get("filter_bad")
+    if filters is None:
+        return ds
+
+    if not isinstance(filters, (list, tuple)):
+        filters = [filters]
+
+    return ds.filter(*filters)
+
 
 def binned_statistic(
     ds, column, 
@@ -64,6 +80,7 @@ def binned_statistic(
     if isinstance(ds, oc.StructureCollection):
         ds = ds[dataset]
 
+    ds = _filter_bad(ds, column)
 
     if not isinstance(bins, list):
 
@@ -114,6 +131,8 @@ def hist1d(
     if isinstance(ds, oc.StructureCollection):
         ds = ds[dataset]
 
+    ds = _filter_bad(ds, column)
+
     if not isinstance(bins, list):
 
         d = ds.select( 
@@ -138,13 +157,16 @@ def hist2d(
     ds,
     column_x,
     column_y, 
-    bins=20,
+    bins=100,
     bin_spacing="log",
     mode="global",
 ):
 
     if isinstance(ds, oc.StructureCollection):
         ds = ds[dataset]
+
+    ds = _filter_bad(ds, column_x)
+    ds = _filter_bad(ds, column_y)
 
     if not isinstance(bins, list):
         d_x = ds.select( 
