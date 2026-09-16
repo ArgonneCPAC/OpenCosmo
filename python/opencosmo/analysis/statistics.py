@@ -124,7 +124,7 @@ def hist1d(
     ds,
     column, 
     bins=20,
-    bin_spacing = "log",
+    bin_spacing="log",
     mode="global",
 ):
 

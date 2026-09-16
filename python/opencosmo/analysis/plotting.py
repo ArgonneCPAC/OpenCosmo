@@ -22,6 +22,7 @@ def _set_defaults(column):
             "filter_bad": None,
             "plotting": {
                 "label": column,
+                "symbol": r"$x$",
                 "scale": "log",
                 "min": None,
                 "max": None,
@@ -33,13 +34,10 @@ def _set_defaults(column):
 
 def hist2d(ds, column_x, column_y, ax=None, plot_rank="all", **kwargs):
 
-    bins = kwargs.get("bins", 100)
-    bin_spacing = kwargs.get("bin_spacing", "log")
-
     x_params = _set_defaults(column_x)
     y_params = _set_defaults(column_y)
 
-    h, x, y = statistics.hist2d(ds, column_x, column_y, bins=bins, bin_spacing=bin_spacing)
+    h, x, y = statistics.hist2d(ds, column_x, column_y, **kwargs)
 
     if plot_rank=="all" or rank == plot_rank:
         if ax is None:
@@ -60,8 +58,39 @@ def hist2d(ds, column_x, column_y, ax=None, plot_rank="all", **kwargs):
 
     return fig, ax
 
-    
 
+def hist1d(ds, column, differential=False, ax=None, plot_rank="all", **kwargs):  
+    params = _set_defaults(column)
+
+    counts, bin_edges = statistics.hist1d(ds, column, **kwargs)
+
+    if differential:
+        counts = counts / np.diff(bin_edges)
+
+    if plot_rank=="all" or rank == plot_rank:
+        if ax is None:
+            # if no axis is passed in, create a new figure
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+
+        bin_centers = 0.5*(bin_edges[1:] + bin_edges[:-1])
+
+        if differential:
+            ylabel = rf"$dN/d{params['plotting']['symbol']}$"
+        else:
+            ylabel = r"$N$"
+
+        ax.step(bin_centers, counts, where="mid")
+
+        ax.set(
+            xlabel=params["plotting"]["label"],
+            ylabel=ylabel,
+            xscale=params["plotting"]["scale"],
+            yscale="log"
+        )
+
+    return fig, ax
 
 
 
@@ -75,6 +104,10 @@ def _scatter():
 
 def _stacked_profiles():
     # plot stacked profiles. If collection, plot all and color curves by given input column
+    return
+
+def plot_collection():
+    # plot a binned_statistic for each simulation collection
     return
 
 def plot_collage():
