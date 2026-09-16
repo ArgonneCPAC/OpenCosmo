@@ -102,7 +102,7 @@ def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
     if len(missing_hosts) == 0 and len(missing_satellites) == 0:
         return new_index
 
-    all_missing = np.unique(np.concatenate((missing_hosts, missing_satellites)))
+    all_missing = np.union1d(missing_hosts, missing_satellites)
     insert_idx = np.searchsorted(index_array, all_missing)
     return np.insert(index_array, insert_idx, all_missing)
 
@@ -147,7 +147,7 @@ def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCt
 
     def _offset_top_host_idx(top_host_idx, offset):
         top_host_idx[top_host_idx >= 0] += offset
-        return top_host_idx
+        return {"top_host_idx": top_host_idx}
 
     for key, ds in ctx.lightcone.items():
         output[key] = ds.evaluate(
