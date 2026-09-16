@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
+from opencosmo.collection.structure.handler import link_slot_values
 
 import opencosmo as oc
-from opencosmo.collection.structure.handler import link_slot_values
 
 
 def _link_slot(collection, link_name):
