@@ -22,7 +22,7 @@ def _set_defaults(column):
             "filter_bad": None,
             "plotting": {
                 "label": column,
-                "symbol": r"$x$",
+                "symbol": r"x",
                 "scale": "log",
                 "min": None,
                 "max": None,
@@ -65,7 +65,7 @@ def hist1d(ds, column, differential=False, ax=None, plot_rank="all", **kwargs):
     counts, bin_edges = statistics.hist1d(ds, column, **kwargs)
 
     if differential:
-        counts = counts / np.diff(bin_edges)
+        counts = counts / np.diff(bin_edges.value)
 
     if plot_rank=="all" or rank == plot_rank:
         if ax is None:
