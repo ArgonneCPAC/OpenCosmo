@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
+from opencosmo.collection.structure.handler import link_slot_values
 
 import opencosmo as oc
-from opencosmo.collection.structure.handler import link_slot_values
 
 
 def _link_slot(collection, link_name):
@@ -50,24 +50,6 @@ def lightcone_files(test_data):
         "halo_profiles": [step_600.halo_profiles, step_601.halo_profiles],
         "galaxy_properties": [step_600.galaxy_properties, step_601.galaxy_properties],
         "galaxy_particles": [step_600.galaxy_particles, step_601.galaxy_particles],
-    }
-
-
-@pytest.fixture
-def lightcone_files(lightcone_path):
-    """Map a component name to the per-step files that provide it."""
-
-    def files(stem):
-        return [
-            lightcone_path / step / f"{stem}.hdf5" for step in ("step_600", "step_601")
-        ]
-
-    return {
-        "halo_properties": files("haloproperties"),
-        "halo_particles": files("haloparticles"),
-        "halo_profiles": files("haloprofiles"),
-        "galaxy_properties": files("galaxyproperties"),
-        "galaxy_particles": files("galaxyparticles"),
     }
 
 
