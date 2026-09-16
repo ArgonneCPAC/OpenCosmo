@@ -1,11 +1,10 @@
-opencosmo 1.3.11 (2026-07-23)
+opencosmo 1.3.12 (2026-09-16)
 =============================
 
 Bugfixes
 --------
 
-- Fixed a failure when writing a lightcone after dropping its angular coordinate columns (`ra`/`dec` or `theta`/`phi`). (268a)
-- Fixed a `KeyError` when writing a dataset after dropping a derived column, such as `top_host_idx` in diffsky data. (268b)
+- Fix a bug that could cause OpenCosmo to keep multiple copies of some Diffsky hosts when :code:`keep_top_host = True` is passed at open time.
 
 
 
