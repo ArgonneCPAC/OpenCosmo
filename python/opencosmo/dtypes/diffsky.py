@@ -102,7 +102,7 @@ def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
     if len(missing_hosts) == 0 and len(missing_satellites) == 0:
         return new_index
 
-    all_missing = np.sort(np.concatenate((missing_hosts, missing_satellites)))
+    all_missing = np.unique(np.concatenate((missing_hosts, missing_satellites)))
     insert_idx = np.searchsorted(index_array, all_missing)
     return np.insert(index_array, insert_idx, all_missing)
 
