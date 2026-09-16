@@ -6,6 +6,9 @@ from .utils import empty_string_to_none
 
 
 class LightconeParams(BaseModel):
+    PARAMETER_ACCESS_PATHS: ClassVar[dict[str, str]] = {
+        "z_range": "z_range",
+    }
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "lightcone"
     z_range: Optional[tuple[float, float]] = None

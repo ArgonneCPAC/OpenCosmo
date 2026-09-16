@@ -1,29 +1,29 @@
 import numpy as np
 import pytest
+from opencosmo.header import read_header, write_header
+from opencosmo.io.discover import discover_file
 
 import opencosmo as oc
 from opencosmo import col, write
-from opencosmo.header import read_header, write_header
 
 
 @pytest.fixture
-def cosmology_resource_path(snapshot_path):
-    p = snapshot_path / "header.hdf5"
-    return p
+def cosmology_resource_path(test_data):
+    return test_data.snapshot.header
 
 
 @pytest.fixture
-def halo_properties_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def halo_properties_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 @pytest.fixture
-def galaxy_properties_path(snapshot_path):
-    return snapshot_path / "galaxyproperties.hdf5"
+def galaxy_properties_path(test_data):
+    return test_data.snapshot.primary.galaxy_properties
 
 
-def test_write_header(snapshot_path, tmp_path):
-    header = read_header(snapshot_path / "galaxyproperties.hdf5")
+def test_write_header(test_data, tmp_path):
+    header = read_header(test_data.snapshot.primary.galaxy_properties)
     new_path = tmp_path / "header.hdf5"
     write_header(new_path, header)
 
@@ -38,6 +38,20 @@ def test_write_dataset(halo_properties_path, tmp_path):
 
     new_ds = oc.open(new_path)
     assert all(ds.get_data() == new_ds.get_data())
+
+
+def test_write_mints_fresh_persistent_dataset_uuid(halo_properties_path, tmp_path):
+    """Test that writing mints a new on-disk dataset identity."""
+    source = oc.open(halo_properties_path)
+    output_path = tmp_path / "haloproperties.hdf5"
+    write(output_path, source)
+
+    reopened = oc.open(output_path)
+    output_group = discover_file(output_path).groups[0]
+
+    assert reopened.uuid != source.uuid
+    assert output_group.has_persistent_uuid
+    assert reopened.uuid == output_group.uuid
 
 
 def test_overwrite(halo_properties_path, tmp_path):
@@ -94,3 +108,21 @@ def test_after_unit_transform(halo_properties_path, tmp_path):
     ds = oc.open(halo_properties_path)
     new_ds = oc.open(tmp_path / "haloproperties.hdf5")
     assert all(ds.get_data() == new_ds.get_data())
+
+
+def test_after_sort_drop(halo_properties_path, tmp_path):
+    ds = oc.open(halo_properties_path).sort_by("fof_halo_mass").drop("fof_halo_*")
+
+    # write should not change the data
+    write(tmp_path / "haloproperties.hdf5", ds)
+
+    new_ds = oc.open(tmp_path / "haloproperties.hdf5")
+    ds = oc.open(halo_properties_path).drop("fof_halo_*")
+
+    data = ds.get_data()
+    new_data = new_ds.get_data()
+
+    for name, d in data.items():
+        assert np.all(d == new_data[name])
+
+    assert "fof_halo_mass" not in new_ds.columns

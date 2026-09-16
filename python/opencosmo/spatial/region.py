@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from astropy.cosmology import FLRW
 
     from opencosmo.index import DataIndex
-    from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.protocols import Region, Region2d, Region3d
     from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
@@ -53,6 +53,56 @@ def comoving_to_scalefree(value: float, cosmology: FLRW):
     h = cosmology.h
     scalefree_value = value * h
     return scalefree_value
+
+
+def region_dimension(region: Region) -> int:
+    match region:
+        case ConeRegion() | SkyboxRegion() | HealpixRegion() | FullSkyRegion():
+            return 2
+        case BoxRegion():
+            return 3
+    raise ValueError("Can't get the dimensions of something that is not a region!")
+
+
+def combine(*regions: Region) -> Region:
+    from typing import cast
+
+    dims = set(map(region_dimension, regions))
+    if len(dims) != 1:
+        raise ValueError("Can only combine regions of the same dimension!")
+
+    dim = dims.pop()
+    if dim == 3:
+        regions = cast("tuple[Region3d, ...]", regions)
+        return combine_3d_regions(*regions)
+    regions = cast("tuple[Region2d, ...]", regions)
+    return combine_2d_regions(*regions)
+
+
+def combine_3d_regions(*regions: Region3d):
+    assert all(isinstance(r, BoxRegion) for r in regions)
+    return regions[0].combine(*regions[1:])  # type: ignore
+
+
+def combine_2d_regions(*regions: Region2d):
+    region_types = set(map(type, regions))
+    if FullSkyRegion in region_types:
+        return FullSkyRegion()
+
+    healpix_regions = regularize_regions(*regions)
+    return healpix_regions[0].combine(*healpix_regions[1:])
+
+
+def regularize_regions(*regions: Region2d) -> list[HealpixRegion]:
+    healpix_regions = [r for r in regions if isinstance(r, HealpixRegion)]
+    if not healpix_regions:
+        target_nside = 2**8
+    else:
+        region_nsides = set(r.nside for r in healpix_regions)
+        target_nside = max(region_nsides)
+
+    output_healpix = [r.into_healpix_region(target_nside) for r in regions]
+    return output_healpix
 
 
 class ConeRegion:
@@ -147,22 +197,31 @@ class ConeRegion:
         radius = self.radius.to(u.rad).value
         return query_disc(nside, vec, radius, inclusive=True, nest=nest)
 
+    def into_healpix_region(self, nside: int):
+        pixel_intersections = self.get_healpix_intersections(nside)
+        return HealpixRegion(pixel_intersections, nside)
+
 
 class SkyboxRegion:
+    """A declination-bounded sky box with an eastward circular RA interval.
+
+    The RA interval starts at ``p1.ra`` and extends eastward to ``p2.ra``. Its
+    width is ``(p2.ra - p1.ra) % 360``, so boxes that cross RA=0 retain their
+    intended narrow extent.
+    """
+
     def __init__(self, p1: SkyCoord, p2: SkyCoord):
         self.__p1 = p1
         self.__p2 = p2
-        self.__ra_bounds = (
-            min(p1.ra.deg, p2.ra.deg),
-            max(p1.ra.deg, p2.ra.deg),
-        )
+        self.__ra_start = p1.ra.deg % 360.0
+        self.__ra_width = (p2.ra.deg - p1.ra.deg) % 360.0
         self.__dec_bounds = (
             min(p1.dec.deg, p2.dec.deg),
             max(p1.dec.deg, p2.dec.deg),
         )
 
     def __repr__(self):
-        ra0, ra1 = self.__ra_bounds
+        ra0, ra1 = self.ra_bounds
         dec0, dec1 = self.__dec_bounds
         return (
             f"Sky Box Region (RA: {ra0:.4f}°–{ra1:.4f}°, Dec: {dec0:.4f}°–{dec1:.4f}°)"
@@ -170,7 +229,18 @@ class SkyboxRegion:
 
     @property
     def ra_bounds(self) -> tuple[float, float]:
-        return self.__ra_bounds
+        """Return the monotonic eastward RA interval, whose upper bound may exceed 360."""
+        return self.__ra_start, self.__ra_start + self.__ra_width
+
+    @property
+    def ra_start(self) -> float:
+        """Starting RA of the eastward interval, normalized to [0, 360)."""
+        return self.__ra_start
+
+    @property
+    def ra_width(self) -> float:
+        """Eastward RA interval width in degrees, in [0, 360)."""
+        return self.__ra_width
 
     @property
     def dec_bounds(self) -> tuple[float, float]:
@@ -183,7 +253,6 @@ class SkyboxRegion:
         # query_polygon would omit pixels along the box's lower-declination edge.
         # Instead, select the full declination band with query_strip and then
         # restrict to the RA bounds.
-        ra0, ra1 = self.__ra_bounds
         dec0, dec1 = self.__dec_bounds
         theta1 = np.radians(90.0 - dec1)
         theta2 = np.radians(90.0 - dec0)
@@ -193,10 +262,18 @@ class SkyboxRegion:
         # pixels straddling the RA edges are treated as intersecting.
         cos_dec = min(np.cos(np.radians(dec0)), np.cos(np.radians(dec1)))
         margin = np.degrees(max_pixrad(nside)) / max(cos_dec, 1e-6)
-        keep = (strip_ra >= ra0 - margin) & (strip_ra <= ra1 + margin)
+        if self.__ra_width >= 360.0:
+            keep = np.ones(strip.shape, dtype=bool)
+        else:
+            offset = (strip_ra - self.__ra_start) % 360.0
+            keep = (offset <= self.__ra_width + margin) | (offset >= 360.0 - margin)
         # query_strip does not return pixels in ascending order; downstream index
         # projection requires the intersection pixels to be sorted.
         return np.sort(strip[keep])
+
+    def into_healpix_region(self, nside: int):
+        pixels = self.get_healpix_intersections(nside)
+        return HealpixRegion(pixels, nside)
 
     def into_base_convention(self, *args, **kwargs):
         return self
@@ -214,12 +291,13 @@ class SkyboxRegion:
 
 
 class HealpixRegion:
-    def __init__(self, idxs: DataIndex, nside: int, ordering: str = "nested"):
+    def __init__(self, idxs: DataIndex, nside: int):
         self.__idxs = idxs
         self.__nside = nside
-        self.__ordering = ordering
 
     def __repr__(self):
+        if get_length(self.__idxs) == 0:
+            return "Empty region"
         res = (
             f"Healpix Region (nside = {self.nside}, ordering = {self.ordering})\n"
             f"{get_length(self.__idxs)} pixels in range: {self.pixels.min()} -> {self.pixels.max()}"
@@ -233,6 +311,8 @@ class HealpixRegion:
         return HealpixRegionModel(pixels=into_array(self.__idxs), nside=self.nside)
 
     def combine(self, *others: HealpixRegion) -> HealpixRegion:
+        if not others:
+            return self
         if any(o.nside != self.nside for o in others):
             raise ValueError("Cannot combine healpix regions with different nsides!")
         if any(o.ordering != self.ordering for o in others):
@@ -243,7 +323,7 @@ class HealpixRegion:
             (o.pixels for o in others),
             self.pixels,
         )
-        return HealpixRegion(output, self.nside, self.ordering)
+        return HealpixRegion(output, self.nside)
 
     @property
     def pixels(self):
@@ -264,7 +344,7 @@ class HealpixRegion:
         """
         The pixel ordering
         """
-        return self.__ordering
+        return "nested"
 
     def get_healpix_intersections(self, nside: int):
         if nside == self.nside:
@@ -273,6 +353,17 @@ class HealpixRegion:
             raise ValueError(
                 "Healpix regions can only be compared to each other if they have the same nside"
             )
+
+    def into_healpix_region(self, nside: int):
+        if nside == self.nside:
+            return self
+        if nside < self.nside:
+            raise ValueError("New nside must be greater than current nside!")
+        factor = nside // self.nside
+        num_subpixels = factor**2
+        starts = self.pixels * num_subpixels
+        sizes = np.full_like(starts, num_subpixels)
+        return HealpixRegion((starts, sizes), nside)
 
     def contains(self, other: Any):
         return contains_2d(self, other)
@@ -330,6 +421,22 @@ class BoxRegion:
 
     def bounding_box(self) -> BoxRegion:
         return self
+
+    def combine(self, *others: BoxRegion):
+        if not others:
+            return self
+        bounds = self.bounds
+        for o in others:
+            bounds = [
+                (
+                    min(bounds[i][0], o.bounds[i][0]),
+                    max(bounds[i][1], o.bounds[i][1]),
+                )
+                for i in range(3)
+            ]
+        center = tuple((b[0] + b[1]) / 2 for b in bounds)
+        halfwidth = tuple((b[1] - b[0]) / 2 for b in bounds)
+        return BoxRegion(center, halfwidth)
 
     def into_base_convention(
         self,

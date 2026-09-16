@@ -79,43 +79,47 @@ For more details, see :doc:`collections`.
 Adding Custom Columns
 ---------------------
 
-You can use the :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>` to add new columns to your data. You can either combine existing columns to create new ones, or create wholly-new columns by providing data as a numpy array or astropy quantity array. 
-
+You can add new columns derived from existing ones using :py:meth:`opencosmo.col` expressions. The preferred way to do this is with :py:meth:`Dataset.select <opencosmo.Dataset.select>`, using ``"*"`` to retain all existing columns alongside the new ones. :py:meth:`Dataset.with_new_columns <opencosmo.Dataset.with_new_columns>` is also available and behaves identically.
 
 Combining Columns into New Columns
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can use :py:meth:`opencosmo.col` to combine columns to create new columns. Because these new columns are created from pre-existing colums, they will behave as expected under transformations such as a change in unit convention.
+You can use :py:meth:`opencosmo.col` to combine columns to create new columns. Because these new columns are created from pre-existing columns, they will behave as expected under transformations such as a change in unit convention.
 
 .. code-block:: python
 
    fof_halo_speed_sqrd = oc.col("fof_halo_com_vx") ** 2 + oc.col("fof_halo_com_vy") ** 2 + oc.col("fof_halo_com_vz") ** 2
    fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
-   
-   ds = ds.with_new_columns(fof_halo_ke = fof_halo_ke)
+
+   # Preferred: select with "*" keeps all existing columns
+   ds = ds.select("*", fof_halo_ke=fof_halo_ke)
+
+   # Also works
+   ds = ds.with_new_columns(fof_halo_ke=fof_halo_ke)
+
    ds = ds.with_units("physical")
 
-You can also always add multiple derived columns in a single call:
+You can add multiple derived columns in a single call:
 
 .. code-block:: python
 
    fof_halo_speed_sqrd = oc.col("fof_halo_com_vx") ** 2 + oc.col("fof_halo_com_vy") ** 2 + oc.col("fof_halo_com_vz") ** 2
    fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
    fof_halo_p = oc.col("fof_halo_mass") * fof_halo_speed_sqrd ** 0.5
-   
-   ds = ds.with_new_columns(fof_halo_ke = fof_halo_ke, fof_halo_p = fof_halo_p)
 
-:py:meth:`opencosmo.Dataset.with_new_columns` checks to ensure that the columns you are using already exist in the dataset and that the units of the various columns match. For example
+   ds = ds.select("*", fof_halo_ke=fof_halo_ke, fof_halo_p=fof_halo_p)
+
+:py:meth:`opencosmo.Dataset.select` checks to ensure that the columns you are using already exist in the dataset and that the units of the various columns match. For example
 
 .. code-block:: python
 
    # Forgot to square the x velocity!
    fof_halo_speed_sqrd = oc.col("fof_halo_com_vx") + oc.col("fof_halo_com_vy") ** 2 + oc.col("fof_halo_com_vz") ** 2
    fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
-   
-   ds = ds.with_new_columns(fof_halo_ke = fof_halo_ke)
 
-you will get an error. 
+   ds = ds.select("*", fof_halo_ke=fof_halo_ke)
+
+you will get an error.
 
 .. code-block:: text
 
@@ -130,32 +134,30 @@ OpenCosmo provides a number of built-in column combinations that may be useful f
 
         import opencosmo as oc
         from opencosmo.columns import norm_cols
-        
+
         dataset = oc.open("haloproperties.hdf5")
         total_halo_velocity = norm_cols("fof_halo_com_vx", "fof_halo_com_vy", "fof_halo_com_vz")
-        
-        dataset = dataset.with_new_columns(fof_halo_com_velocity = total_halo_velocity)
-        
+
+        dataset = dataset.select("*", fof_halo_com_velocity=total_halo_velocity)
+
 You can find a list of available column combinations in the :ref:`column API reference <Provided Column Combinations>`
 
 
 Adding Columns Manually
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-The :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` method accepts numpy arrays and astropy quantity arrays. These arrays must be the same length as the dataset they are being added to. Note that if your data has units, these units will not be transformed under calls to :py:meth:`with_units <opencosmo.Dataset.with_units>`. 
+Both :py:meth:`select <opencosmo.Dataset.select>` and :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` accept numpy arrays and astropy quantity arrays. These arrays must be the same length as the dataset they are being added to. Note that if your data has units, these units will not be transformed under calls to :py:meth:`with_units <opencosmo.Dataset.with_units>`.
 
 .. code-block:: python
 
-        random_data = np.random.randint(0, 1000, size = len(ds)) * u.s
-        dataset  = dataset.with_new_columns(random_time = random_data)
-
+        random_data = np.random.randint(0, 1000, size=len(ds)) * u.s
+        dataset = dataset.select("*", random_time=random_data)
 
 
 Creating New Columns in Collections
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Calls to :py:meth:`opencosmo.StructureCollection.with_new_columns` must explicitly say which dataset the column is being added to:
-
 
 .. code-block:: python
 
@@ -165,11 +167,116 @@ Calls to :py:meth:`opencosmo.StructureCollection.with_new_columns` must explicit
    fof_halo_ke = 0.5 * oc.col("fof_halo_mass") * fof_halo_speed_sqrd
    fof_halo_p = oc.col("fof_halo_mass") * fof_halo_speed_sqrd ** 0.5
 
-   ds = ds.with_new_columns(dataset="halo_properties", fof_halo_ke = fof_halo_ke, fof_halo_p = fof_halo_pe)
+   ds = ds.with_new_columns(dataset="halo_properties", fof_halo_ke=fof_halo_ke, fof_halo_p=fof_halo_p)
 
 Calls to :py:meth:`opencosmo.SimulationCollection.with_new_columns` will always apply the new columns to all the datasets in the collection. Because of this, passing a numpy array or astropy quantity object will generally not work, since the length of the datasets within the collection will be different. You can always add a column to a single dataset in the collections by passing the optional :code:`dataset` parameter:
 
 .. code-block:: python
-   
+
    random_data = np.random.randint(0, 100, len(collection["simulation_a"]))
    collection = collection.with_new_columns(dataset="simulation_a", random_data=random_data)
+
+
+Column Scalar Reductions
+------------------------
+
+Columns support reduction methods that collapse all values in the column into a single scalar quantity. These are useful both for retrieving summary statistics and for building normalized or standardized columns.
+
+The available reduction methods on a :py:meth:`Column <opencosmo.col>` are:
+
+- ``.mean()`` — arithmetic mean
+- ``.min()`` — minimum value
+- ``.max()`` — maximum value
+- ``.std()`` — standard deviation
+- ``.var()`` — variance
+- ``.median()`` — median
+- ``.sum()`` — sum
+- ``.quantile(q)`` — quantile at level ``q`` (0 ≤ q ≤ 1)
+
+Scalars in Column Arithmetic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Scalar reductions can be used directly in column arithmetic. This is useful for normalization patterns:
+
+.. code-block:: python
+
+   import opencosmo as oc
+
+   ds = oc.open("haloproperties.hdf5")
+   m = oc.col("fof_halo_mass")
+
+   # Z-score normalization
+   ds = ds.select("*", zscore=(m - m.mean()) / m.std())
+
+   # Min-max scaling to [0, 1]
+   ds = ds.select("*", scaled=(m - m.min()) / (m.max() - m.min()))
+
+   # Robust scaling using the interquartile range
+   iqr = m.quantile(0.75) - m.quantile(0.25)
+   ds = ds.select("*", robust=(m - m.median()) / iqr)
+
+Scalars can also be used in filter expressions, allowing you to filter relative to a data-driven threshold:
+
+.. code-block:: python
+
+   m = oc.col("fof_halo_mass")
+
+   # Keep only halos below the mean mass
+   ds = ds.filter(m < m.mean())
+
+   # Keep halos within one standard deviation of the mean
+   ds = ds.filter(m > m.mean() - m.std(), m < m.mean() + m.std())
+
+The scalar is evaluated over the rows present in the dataset at the time ``get_data()`` is called, so any prior ``filter()`` or ``bound()`` calls will affect the result.
+
+Retrieving Scalar Values from Columns
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+You can retrieve scalar quantities directly by passing only scalar expressions as keyword arguments to :py:meth:`select <opencosmo.Dataset.select>`:
+
+.. code-block:: python
+
+   ds = oc.open("haloproperties.hdf5")
+
+   # Single scalar — get_data() returns an astropy Quantity directly
+   min_mass = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+
+   # Multiple scalars — get_data() returns a dict of Quantities
+   stats = ds.select(
+       min_mass=oc.col("fof_halo_mass").min(),
+       max_mass=oc.col("fof_halo_mass").max(),
+       mean_mass=oc.col("fof_halo_mass").mean(),
+   ).get_data()
+
+To get bare numpy scalars instead of astropy Quantities, pass ``format="numpy"`` to ``get_data()``:
+
+.. code-block:: python
+
+   min_mass = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data(format="numpy")
+
+Scalar selections **cannot** be mixed with column selections in a single ``select()`` call. To combine scalar statistics with columnar data, make two separate calls:
+
+.. code-block:: python
+
+   # This raises ValueError:
+   ds.select("fof_halo_mass", min_mass=oc.col("fof_halo_mass").min())
+
+   # Do this instead:
+   columnar_ds = ds.select("fof_halo_mass", "fof_halo_center_x")
+   min_mass = ds.select(min_mass=oc.col("fof_halo_mass").min()).get_data()
+
+Scalar reductions also cannot be passed to ``with_new_columns`` on a :py:class:`StructureCollection <opencosmo.StructureCollection>`. Access the underlying dataset directly and use ``select()`` there:
+
+.. code-block:: python
+
+   collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+
+   # This raises an error:
+   # collection.with_new_columns(halo_properties, min_mass=oc.col("fof_halo_mass").min())
+
+   # Do this instead:
+   min_mass = collection["halo_properties"].select(
+       min_mass=oc.col("fof_halo_mass").min()
+   ).get_data()
+
+For scalar reductions across MPI ranks, see :ref:`Working with MPI`.

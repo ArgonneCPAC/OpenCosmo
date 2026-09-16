@@ -10,8 +10,8 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def input_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def input_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 FORMATS = ["jax", "pandas", "polars", "arrow"]
@@ -191,9 +191,8 @@ def test_evaluate_noinsert_returns_native_container(input_path, format, expected
 
 
 @pytest.fixture
-def halo_paths(snapshot_path):
-    files = ["haloproperties.hdf5", "haloparticles.hdf5"]
-    return [snapshot_path / f for f in files]
+def halo_paths(test_data):
+    return test_data.snapshot.primary.halos[:2]
 
 
 def _mean_x(format):
@@ -305,10 +304,10 @@ def test_collection_evaluate_on_dataset(halo_paths, format):
 
 
 @pytest.fixture
-def lc_paths(lightcone_path):
+def lc_paths(test_data):
     return [
-        lightcone_path / "step_600" / "haloproperties.hdf5",
-        lightcone_path / "step_601" / "haloproperties.hdf5",
+        test_data.lightcone.step(600).halo_properties,
+        test_data.lightcone.step(601).halo_properties,
     ]
 
 

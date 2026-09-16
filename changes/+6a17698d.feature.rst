@@ -1,0 +1,1 @@
+Add a :py:meth:`gather <opencosmo.analysis.gather>` method, which concatenates data from multiple ranks into a single array and (optionally) passes them to a user-defined plotting function.

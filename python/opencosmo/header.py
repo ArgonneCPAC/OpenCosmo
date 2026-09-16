@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections import defaultdict
 from copy import copy
 from functools import cache
 from itertools import chain
@@ -8,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
 import numpy as np
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from opencosmo.dtypes import (
     FileParameters,
@@ -19,17 +21,36 @@ from opencosmo.dtypes import (
 )
 from opencosmo.dtypes.units import apply_units
 from opencosmo.file import broadcast_read, file_reader, file_writer
-from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.schema import FileEntry, add_metadata, empty_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
+from opencosmo.spatial.builders import from_model
+from opencosmo.spatial.region import combine
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import BaseModel
+
     from opencosmo.io.schema import Schema
+    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
 
 HEADER_WRITE_OVERRIDES = {"region_pixels": ColumnCombineStrategy.CONCAT}
+
+
+def _json_default_serializer(obj: Any) -> Any:
+    """Best-effort JSON serializer for header transport.
+
+    The goal is to preserve list ordering by only converting array-like types
+    into plain Python lists (instead of reordering or permuting).
+    """
+
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    return str(obj)
 
 
 class OpenCosmoHeader:
@@ -63,6 +84,9 @@ class OpenCosmoHeader:
             and self.__dtype_parameters == other.__dtype_parameters
         )
 
+    def __dir__(self):
+        return list(self.parameters.keys()) + list(super().__dir__())
+
     def __hash__(self):
         # Create a frozenset of the items in the dictionary
         # Each item is a tuple of (key, hash of the model)
@@ -90,34 +114,15 @@ class OpenCosmoHeader:
 
     @cache
     def __get_access_table(self):
-        table = {}
         all_models = chain(
+            {"file": self.__file_pars}.values(),
             self.__required_origin_parameters.values(),
             self.__optional_origin_parameters.values(),
             self.__dtype_parameters.values(),
         )
-        for model in all_models:
-            if not hasattr(model, "ACCESS_PATH"):
-                continue
-            table[model.ACCESS_PATH] = model
-            if hasattr(model, "ACCESS_TRANSFORMATION"):
-                table[model.ACCESS_PATH] = model.ACCESS_TRANSFORMATION()
+        table = get_access_table(all_models, self.unit_convention, self.file.redshift)
 
-        cosmology = table.get("cosmology")
-        convention = object.__getattribute__(self, "unit_convention")
-        scale_factor = None
-        if self.__file_pars.redshift is not None:
-            scale_factor = cosmology.scale_factor(self.__file_pars.redshift)
-        for name, model in table.items():
-            if isinstance(model, BaseModel):
-                table[name] = apply_units(
-                    model,
-                    cosmology,
-                    convention,
-                    unit_kwargs={"scale_factor": scale_factor},
-                )
-
-        return table
+        return dict(table)
 
     @property
     def parameters(self):
@@ -202,30 +207,17 @@ class OpenCosmoHeader:
             self.__optional_origin_parameters.items(),
             self.__dtype_parameters.items(),
         )
-        pars = {}
-        arr_pars = {}
+        schema = empty_schema("header", FileEntry.METADATA)
+
         for path, model in to_write:
             data = model.model_dump(by_alias=True, exclude_none=True)
-            data = dict(
-                map(
-                    lambda kv: (kv[0], kv[1] if kv[1] is not None else ""), data.items()
-                )
-            )
+            schema = add_metadata(path, schema, data, HEADER_WRITE_OVERRIDES)
 
-            keys = list(data.keys())
+        file_schema = schema.children["file"]
 
-            for key in keys:
-                if isinstance(data[key], list):
-                    arr_pars[f"{path}/{key}"] = ColumnWriter.from_numpy_array(
-                        np.array(data[key]),
-                        HEADER_WRITE_OVERRIDES.get(key, ColumnCombineStrategy.EXACT),
-                    )
-                    _ = data.pop(key)
-            pars[path] = data
+        schema.children["file"] = file_schema._replace(updater=combine_header_regions)
 
-        return make_schema(
-            "header", FileEntry.METADATA, attributes=pars, columns=arr_pars
-        )
+        return schema
 
     def write(self, file: h5py.File | h5py.Group) -> None:
         write_header_attributes(file, "file", self.__file_pars)
@@ -245,6 +237,165 @@ class OpenCosmoHeader:
         its data type.
         """
         return self.__file_pars
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe representation of this header.
+
+        Notes
+        -----
+        This representation is intended for transport/storage (e.g. SQLite
+        caches). Values are JSON-safe primitives and nested dict/list
+        structures.
+        """
+
+        def _model_block(models: dict[str, BaseModel]) -> dict[str, Any]:
+            out: dict[str, Any] = {}
+            for key, model in models.items():
+                # Round-tripping through json coerces numpy scalars/arrays that
+                # some models emit into JSON-safe primitives.
+                data = model.model_dump(by_alias=True, exclude_none=True)
+                out[key] = json.loads(
+                    json.dumps(
+                        data, default=_json_default_serializer, separators=(",", ":")
+                    )
+                )
+            return out
+
+        return {
+            "file": json.loads(
+                json.dumps(
+                    self.__file_pars.model_dump(by_alias=True, exclude_none=True),
+                    default=_json_default_serializer,
+                )
+            ),
+            "unit_convention": self.unit_convention.value,
+            "required_origin_parameters": _model_block(
+                self.__required_origin_parameters
+            ),
+            "optional_origin_parameters": _model_block(
+                self.__optional_origin_parameters
+            ),
+            "dtype_parameters": _model_block(self.__dtype_parameters),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OpenCosmoHeader:
+        """Reconstruct an :class:`~opencosmo.header.OpenCosmoHeader` from ``to_dict``."""
+
+        unit_convention = UnitConvention(data["unit_convention"])
+
+        file_pars = FileParameters.model_validate(data["file"])
+        origin_parameter_models = origin.get_origin_parameters(file_pars.origin)
+        required_origin_models = origin_parameter_models.get("required", {})
+        optional_origin_models = origin_parameter_models.get("optional", {})
+
+        def _postprocess_payload(payload: dict[str, Any]) -> dict[str, Any]:
+            for k, v in list(payload.items()):
+                if k.endswith("cosmotools_steps") and isinstance(v, np.ndarray):
+                    payload[k] = v.tolist()
+            return payload
+
+        required_origin_parameters: dict[str, BaseModel] = {}
+        for key, payload in data["required_origin_parameters"].items():
+            payload = _postprocess_payload(payload)
+            model_type = required_origin_models.get(key)
+            if model_type is None:
+                raise ValueError(f"Unknown required origin parameter: {key}")
+            if isinstance(model_type, UnionType):
+                for inner_model in model_type.__args__:
+                    try:
+                        required_origin_parameters[key] = inner_model.model_validate(
+                            payload
+                        )
+                        break
+                    except ValidationError as ve:
+                        if any(
+                            e["type"] == "missing" or e["input"] is None
+                            for e in ve.errors()
+                        ):
+                            continue
+                        raise ValueError(
+                            "Parsing header paramter model raised a validation error: "
+                            f"\n {ve}"
+                        )
+                else:
+                    raise ValueError(
+                        "Input attributes do not match any of the models in the union"
+                    )
+            else:
+                required_origin_parameters[key] = model_type.model_validate(payload)
+
+        optional_origin_parameters: dict[str, BaseModel] = {}
+        for key, payload in data["optional_origin_parameters"].items():
+            payload = _postprocess_payload(payload)
+            model_type = optional_origin_models.get(key)
+            if model_type is None:
+                raise ValueError(f"Unknown optional origin parameter: {key}")
+            if isinstance(model_type, UnionType):
+                for inner_model in model_type.__args__:
+                    try:
+                        optional_origin_parameters[key] = inner_model.model_validate(
+                            payload
+                        )
+                        break
+                    except ValidationError as ve:
+                        if any(
+                            e["type"] == "missing" or e["input"] is None
+                            for e in ve.errors()
+                        ):
+                            continue
+                        raise ValueError(
+                            "Parsing header paramter model raised a validation error: "
+                            f"\n {ve}"
+                        )
+                else:
+                    raise ValueError(
+                        "Input attributes do not match any of the models in the union"
+                    )
+            else:
+                optional_origin_parameters[key] = model_type.model_validate(payload)
+
+        dtype_parameter_models = dtype.get_dtype_parameters(file_pars)
+        required_dtype_models = dtype_parameter_models.get("required", {})
+        optional_dtype_models = dtype_parameter_models.get("optional", {})
+
+        dtype_parameters: dict[str, BaseModel] = {}
+        for key, payload in data["dtype_parameters"].items():
+            payload = _postprocess_payload(payload)
+            model_type = required_dtype_models.get(key) or optional_dtype_models.get(
+                key
+            )
+            if model_type is None:
+                raise ValueError(f"Unknown dtype parameter: {key}")
+            if isinstance(model_type, UnionType):
+                for inner_model in model_type.__args__:
+                    try:
+                        dtype_parameters[key] = inner_model.model_validate(payload)
+                        break
+                    except ValidationError as ve:
+                        if any(
+                            e["type"] == "missing" or e["input"] is None
+                            for e in ve.errors()
+                        ):
+                            continue
+                        raise ValueError(
+                            "Parsing header paramter model raised a validation error: "
+                            f"\n {ve}"
+                        )
+                else:
+                    raise ValueError(
+                        "Input attributes do not match any of the models in the union"
+                    )
+            else:
+                dtype_parameters[key] = model_type.model_validate(payload)
+
+        return cls(
+            file_pars,
+            required_origin_parameters,
+            optional_origin_parameters,
+            dtype_parameters,
+            unit_convention,
+        )
 
 
 @file_writer
@@ -268,6 +419,58 @@ def write_header(
         else:
             group = f
         header.write(group)
+
+
+def get_access_table(all_models, unit_convention, redshift):
+    table = defaultdict(dict)
+    known_paramater_exports = set()
+    all_models = list(all_models)
+    cosmology_pars = [
+        i
+        for i, m in enumerate(all_models)
+        if getattr(m, "ACCESS_PATH", None) == "cosmology"
+    ]
+    if len(cosmology_pars) == 1:
+        table["cosmology"] = all_models[cosmology_pars[0]].ACCESS_TRANSFORMATION()
+
+    del all_models[cosmology_pars[0]]
+
+    cosmology = table.get("cosmology")
+    scale_factor = None
+    if redshift is not None:
+        scale_factor = cosmology.scale_factor(redshift)
+
+    for model in all_models:
+        if hasattr(model, "PARAMETER_ACCESS_PATHS"):
+            for name, path in model.PARAMETER_ACCESS_PATHS.items():
+                if path in known_paramater_exports:
+                    raise ValueError(
+                        f"Duplicate access path detected in header: {name}"
+                    )
+                table[path] = getattr(model, name)
+                known_paramater_exports.add(path)
+
+        if not hasattr(model, "ACCESS_PATH"):
+            continue
+
+        if model.ACCESS_PATH in known_paramater_exports:
+            raise ValueError(
+                f"Duplicate access path detected in header: {model.ACCESS_PATH}"
+            )
+        if hasattr(model, "ACCESS_TRANSFORMATION"):
+            data = model.ACCESS_TRANSFORMATION()
+        else:
+            data = model
+
+        table[model.ACCESS_PATH] |= apply_units(
+            data,
+            type(model),
+            cosmology,
+            unit_convention,
+            unit_kwargs={"scale_factor": scale_factor},
+        )
+
+    return dict(table)
 
 
 @broadcast_read
@@ -381,3 +584,31 @@ def load_union_model(
                     f"Parsing header paramter model raised a validation error: \n {ve}"
                 )
     raise ValueError("Input attributes do not match any of the models in the union")
+
+
+def combine_header_regions(schema: Schema, comm: MPI.Comm | None) -> Schema:
+    if comm is None:
+        return schema
+    metadata = schema.attributes | {
+        name: col.get_data() for name, col in schema.columns.items()
+    }
+    pars = FileParameters(**metadata)  # type: ignore
+    if pars.region is None:
+        return schema
+
+    regions = comm.allgather(from_model(pars.region))
+    new_region = combine(*regions)
+    region_dump = {
+        f"region_{key}": val
+        for key, val in new_region.into_model().model_dump().items()
+    }
+    attribute_keys = set(schema.attributes).intersection(region_dump)
+    column_keys = set(schema.columns).intersection(region_dump)
+    new_attributes = schema.attributes | {
+        name: region_dump[name] for name in attribute_keys
+    }
+    new_columns = {
+        name: ColumnWriter.from_numpy_array(np.array(region_dump[name]))
+        for name in column_keys
+    }
+    return schema._replace(columns=new_columns, attributes=new_attributes)

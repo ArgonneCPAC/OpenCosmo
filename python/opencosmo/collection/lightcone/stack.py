@@ -7,9 +7,8 @@ import healpy as hp
 import numpy as np
 
 from opencosmo import dataset as ds
-from opencosmo.io.mpi import get_all_keys
-from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.mpi import get_comm_world
+from opencosmo.io.schema import FileEntry, add_metadata, make_schema
+from opencosmo.mpi import get_all_keys, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
@@ -99,14 +98,23 @@ def update_global_order_mpi(data, comm, order):
     return np.concat(all_data)[global_order]
 
 
-def sync_metadata(dataset_schemas: list[Schema]):
-    additional_metadata = [schema.attributes for schema in dataset_schemas]
-    if not any(additional_metadata):
-        return {}
-    if not all(am == additional_metadata[0] for am in additional_metadata[1:]):
+def sync_metadata(dataset_schemas: list[Schema], skip: list[str] = []):
+    metadata = [schema.attributes for schema in dataset_schemas]
+    identity = {"uuid", "main_uuid"}
+    to_compare = []
+    for md in metadata:
+        to_compare.append({k: v for k, v in md.items() if k not in identity})
+    if not all(am == to_compare[0] for am in to_compare[1:]):
         raise ValueError("Datasets don't have the same metadata!")
 
-    return additional_metadata[0]
+    child_names = set(frozenset(schema.children.keys()) for schema in dataset_schemas)
+    if len(child_names) > 1:
+        raise ValueError("Datasets don't have the same metadata!")
+    for child in list(child_names)[0]:
+        if child in skip:
+            continue
+        schemas = [sc.children[child] for sc in dataset_schemas]
+        sync_metadata(schemas)
 
 
 def sync_headers(datasets: list[ds.Dataset], redshift_range):
@@ -139,24 +147,28 @@ def sync_headers(datasets: list[ds.Dataset], redshift_range):
 
     # lightcones are identified by their upper redshift slice
     header_schema = datasets[0].header.dump()
-    header_schema.attributes["file"]["redshift"] = redshift
-    header_schema.attributes["file"]["step"] = step
-    header_schema.attributes["lightcone"]["z_range"] = redshift_range
+    header_schema = add_metadata(
+        "file", header_schema, {"redshift": redshift, "step": step}
+    )
+    header_schema = add_metadata(
+        "lightcone", header_schema, {"z_range": redshift_range}
+    )
     return header_schema
 
 
 def stack_lightcone_datasets_in_schema(
     datasets: dict[str, list[ds.Dataset]],
-    name: Optional[str],
+    path: str,
     redshift_range: Optional[tuple[float, float]],
     no_stack: bool = False,
 ):
+    name = path.split("/")[-1]
     n_datasets = sum(len(lst) for lst in datasets.values())
     if n_datasets == 1 and get_comm_world() is None:
         dataset_list = next(iter(datasets.values()))
         dataset_name = next(iter(datasets.keys()))
 
-        schema = dataset_list[0].make_schema(name=name)
+        schema = dataset_list[0].make_schema(path=path)
         header = sync_headers(dataset_list, redshift_range)
         schema.children["header"] = header
         return {dataset_name: schema}
@@ -173,7 +185,7 @@ def stack_lightcone_datasets_in_schema(
             get_stacked_lightcone_order([], -1)
             sync_headers(ds_list, None)
             continue
-        schemas = [ds.make_schema(name=name) for ds in ds_list]
+        schemas = [ds.make_schema(path=path) for ds in ds_list]
         index_names = list(schemas[0].children["index"].children.keys())
         index_names.sort()
         max_level = int(index_names[-1][-1])
@@ -203,9 +215,9 @@ def stack_lightcone_datasets_in_schema(
             [schema.children["index"] for schema in schemas]
         )
         header_schema = sync_headers(ds_list, redshift_range)
-        additional_metadata = sync_metadata(schemas)
+        additional_metadata = sync_metadata(schemas, skip=["header"])
 
-        children = {
+        children = schemas[0].children | {
             "data": new_data_group,
             "index": new_index_group,
             "header": header_schema,
@@ -248,7 +260,7 @@ def stack_data_groups(schemas: list[Schema]):
     new_schema = make_schema(
         base_schema.name,
         base_schema.type,
-        children={},
+        children=base_schema.children,
         columns=new_writers,
         attributes=base_schema.attributes,
     )
@@ -281,7 +293,7 @@ def get_order_mpi(pixels, comm):
 def get_stacked_lightcone_order(datasets: Iterable[ds.Dataset], max_index_depth: int):
     datasets = list(datasets)
     nside = 2**max_index_depth
-    coordinates = list(map(find_coordinates_2d, datasets))
+    coordinates = [find_coordinates_2d(dataset._state) for dataset in datasets]
     coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
 
     if datasets:

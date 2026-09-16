@@ -1,16 +1,33 @@
 from __future__ import annotations
 
-from functools import partial, reduce
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Mapping, Optional, cast
 
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.index import into_array
+from opencosmo.collection.structure import structure as sc
+from opencosmo.dataset import dataset as ocds
+from opencosmo.index import coalesce_chunks, into_array, offset
+from opencosmo.index.build import empty
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import ColumnWriter
+from opencosmo.mapping.mapping import (
+    ChunkedSlot,
+    get_mapping,
+    get_slot_sizes,
+    is_chunked_slot,
+    rebuild_target_index,
+)
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     import opencosmo as oc
-    from opencosmo.collection.structure import structure as sc
+    from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
+    from opencosmo.mapping.mapping import DatasetMatchSet
+
 
 """
 A tale in 3 acts:
@@ -45,337 +62,377 @@ LINK_ALIASES = {  # Left: Name in file, right: Name in collection
 }
 
 
-def create_start_size(data, start_name, size_name, offsets):
-    start = data.pop(start_name, None)
-    size = data.pop(size_name, None)
-    if start is None or size is None:
-        return None
-
-    start = np.atleast_1d(start).astype(np.int64)
-    size = np.atleast_1d(size).astype(np.int64)
-    valid = size > 0
-    if not np.any(valid):
-        return None
-
-    if offsets is not None:
-        ds_rs = 0
-        src_rs = 0
-        for source_len, ds_len in offsets:
-            slice = start[src_rs : src_rs + source_len]
-            slice[slice >= 0] += ds_rs
-            src_rs += source_len
-            ds_rs += ds_len
-
-    return (start[valid], size[valid])
+def _target_uuid(match_set: DatasetMatchSet, name: str) -> UUID:
+    target_uuid = match_set.get_uuid(name)
+    if target_uuid is None:
+        raise ValueError(f"Unable to resolve link '{name}'")
+    return target_uuid
 
 
-def create_idx(data, idx_name, offsets):
-    idx = data.pop(idx_name, None)
-    if idx is None:
-        return None
-
-    idx = idx.astype(np.int64)
-    valid = idx >= 0
-    if offsets is not None:
-        ds_rs = 0
-        src_rs = 0
-        for source_len, ds_len in offsets:
-            slice = idx[src_rs : src_rs + source_len]
-            slice[slice >= 0] += ds_rs
-            src_rs += source_len
-            ds_rs += ds_len
-
-    if isinstance(idx, np.ndarray):
-        return idx[valid]
-    elif idx == -1:
-        return None
-    return np.atleast_1d(idx)
+def _slot_values(
+    source: oc.Dataset, match_set: DatasetMatchSet, name: str, index: DataIndex
+) -> tuple[np.ndarray, bool]:
+    target_uuid = _target_uuid(match_set, name)
+    if is_chunked_slot(match_set, target_uuid):
+        return get_slot_sizes(match_set, target_uuid, index), True
+    mapping = get_mapping(match_set, match_set.reference_source, target_uuid, index)
+    assert mapping is not None
+    return np.asarray(mapping), False
 
 
-def build_lightcone_index(old_source: lc.Lightcone, new_source: lc.Lightcone):
-    index = np.zeros(len(new_source), dtype=np.int64)
-    offset = 0
-    rs = 0
-    for name, ds in old_source.items():
-        if name not in new_source.keys():
-            offset += len(ds)
-            continue
-        original_index = into_array(ds.index)
-        new_index = into_array(new_source[name].index)
-        _, index_into_original, index_into_new = np.intersect1d(
-            original_index, new_index, assume_unique=True, return_indices=True
-        )
-        index_into_original = index_into_original[np.argsort(index_into_new)]
-
-        index[rs : rs + len(index_into_original)] = index_into_original + offset
-        offset += len(ds)
-        rs += len(index_into_original)
-    return index
-
-
-def make_links(keys, rename_galaxies=False):
-    starts = list(filter(lambda key: "start" in key, keys))
-    sizes = list(filter(lambda key: "size" in key, keys))
-    idxs = list(filter(lambda key: "idx" in key, keys))
-
-    starts = set(map(lambda key: key[:-6], starts))
-    sizes = set(map(lambda key: key[:-5], sizes))
-    idxs = set(map(lambda key: key[:-4], idxs))
-
-    assert starts == sizes
-    output = {}
-    columns = {}
-    for name in starts:
-        output[LINK_ALIASES[name]] = partial(
-            create_start_size, start_name=f"{name}_start", size_name=f"{name}_size"
-        )
-        columns[LINK_ALIASES[name]] = [f"{name}_start", f"{name}_size"]
-
-    for name in idxs:
-        output[LINK_ALIASES[name]] = partial(create_idx, idx_name=f"{name}_idx")
-        columns[LINK_ALIASES[name]] = [f"{name}_idx"]
-
-    if rename_galaxies and "galaxy_properties" in output:
-        output["galaxies"] = output.pop("galaxy_properties")
-        columns["galaxies"] = columns.pop("galaxy_properties")
-    return output, columns
-
-
-def resort_datasets(
+def link_slot_values(
+    match_sets: dict[UUID, DatasetMatchSet],
     source: oc.Dataset | oc.Lightcone,
-    datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
-    columns: dict[str, list[str]],
-):
-    all_columns: list[str] = reduce(
-        lambda acc, ds: acc + columns[ds], datasets.keys(), []
-    )
-    sort_column = next(filter(lambda c: "start" in c or "idx" in c, all_columns))
-    unsorted_meta_column = source.get_metadata(sort_column, ignore_sort=True)
-    sorted_meta_column = source.get_metadata(sort_column)
+    name: str,
+) -> tuple[np.ndarray, bool]:
+    """Return per-source-row slot values for link ``name`` and whether it is chunked.
 
-    argsort_meta_column = np.argsort(sorted_meta_column[sort_column])
+    For a chunked slot the values are the ``size`` column; for a simple slot they
+    are the raw ``idx`` column including ``-1`` sentinels. Values are aligned with
+    ``source``'s logical row order.
+    """
+    if isinstance(source, ocds.Dataset):
+        return _slot_values(source, match_sets[source.uuid], name, source.index)
 
-    sort_index = argsort_meta_column[
+    values: list[np.ndarray] = []
+    chunked: Optional[bool] = None
+    for _, step_source in source.items():
+        step_values, step_chunked = _slot_values(
+            step_source, match_sets[step_source.uuid], name, step_source.index
+        )
+        if chunked is not None and chunked != step_chunked:
+            raise ValueError(f"Link '{name}' has inconsistent slot kinds across steps")
+        chunked = step_chunked
+        values.append(step_values)
+
+    output = np.concatenate(values)
+    sort_key = source._Lightcone__sort_key
+    if sort_key is not None:
+        order = np.argsort(source.select(sort_key[0]).get_data("numpy"))
+        if sort_key[1]:
+            order = order[::-1]
+        output = output[order]
+    assert chunked is not None
+    return output, chunked
+
+
+def compute_sort_index(source: oc.Dataset) -> np.ndarray:
+    """Build an index from a source's file order to its current sorted order.
+
+    Uses the source's own raw row numbers rather than any link's slot values:
+    slot values (particularly chunked sizes) are not unique per row and cannot
+    be used to recover a permutation.
+    """
+    unsorted_rows = into_array(source._state.raw_data_handler.index)
+    sorted_rows = into_array(source.index)
+
+    argsort_sorted_rows = np.argsort(sorted_rows)
+    return argsort_sorted_rows[
         np.searchsorted(
-            sorted_meta_column[sort_column],
-            unsorted_meta_column[sort_column],
-            sorter=argsort_meta_column,
+            sorted_rows,
+            unsorted_rows,
+            sorter=argsort_sorted_rows,
         )
     ]
 
-    meta = source.get_metadata(all_columns)
-    output = {}
-    for name, dataset in datasets.items():
-        if len(columns[name]) == 1:
-            valid_rows = meta[columns[name][0]] >= 0
-            new_dataset = dataset.take_rows(sort_index[valid_rows])
-        else:
-            size_column = [name for name in columns[name] if "size" in name]
-            assert len(size_column) == 1
-            size_column_data = meta[size_column[0]].astype(np.int64)
-            chunk_boundaries = np.zeros(len(size_column_data) + 1, dtype=np.int64)
-            _ = np.cumsum(size_column_data, out=chunk_boundaries[1:])
-            starts = chunk_boundaries[sort_index]
-            sizes = size_column_data[sort_index]
-            valid = sizes > 0
-            idx = (starts[valid], sizes[valid])
-            new_dataset = dataset.take_rows(idx)
-        output[name] = new_dataset
-    return output
+
+def compute_resort_index(
+    source: oc.Dataset,
+    match_set: DatasetMatchSet,
+    name: str,
+    sort_index: np.ndarray,
+) -> DataIndex:
+    """Build the take index restoring a linked dataset to source file order."""
+    slot_values, chunked = _slot_values(source, match_set, name, source.index)
+    if not chunked:
+        valid_rows = slot_values >= 0
+        return sort_index[valid_rows]
+
+    chunk_boundaries = np.zeros(len(slot_values) + 1, dtype=np.int64)
+    _ = np.cumsum(slot_values, out=chunk_boundaries[1:])
+    starts = chunk_boundaries[sort_index]
+    sizes = slot_values[sort_index]
+    valid = sizes > 0
+    return coalesce_chunks(starts[valid], sizes[valid])
+
+
+def resort_datasets(
+    source: oc.Dataset,
+    datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    match_sets: dict[UUID, DatasetMatchSet],
+) -> dict[str, oc.Dataset | oc.Lightcone | oc.StructureCollection]:
+    match_set = match_sets[source.uuid]
+    sort_index = compute_sort_index(source)
+    return {
+        name: dataset.take_rows(
+            compute_resort_index(source, match_set, name, sort_index)
+        )
+        for name, dataset in datasets.items()
+    }
+
+
+def apply_step_indices(
+    target: oc.Lightcone | oc.StructureCollection,
+    per_step_index: dict[Any, Optional[DataIndex]],
+) -> oc.Lightcone | oc.StructureCollection:
+    """Apply step-local indices to a Lightcone or nested StructureCollection."""
+
+    if isinstance(target, lc.Lightcone):
+        new_datasets = {
+            step: target[step].take_rows(index if index is not None else empty())
+            for step, index in per_step_index.items()
+        }
+        return lc.Lightcone.from_datasets(new_datasets)
+
+    assert isinstance(target, sc.StructureCollection)
+    source = target[str(target.header.file.data_type)]
+    assert isinstance(source, lc.Lightcone)
+    pieces: list[np.ndarray] = []
+    running = 0
+    for step, step_source in source.items():
+        index = per_step_index.get(step)
+        if index is not None:
+            pieces.append(into_array(offset(index, running)))
+        running += len(step_source)
+    global_index = np.concatenate(pieces) if pieces else np.array([], dtype=np.int64)
+    return target.take_rows(global_index)
+
+
+def resolve_links_per_step(
+    source: oc.Lightcone,
+    datasets: Mapping[str, oc.Lightcone | sc.StructureCollection],
+    match_sets: dict[UUID, DatasetMatchSet],
+) -> dict[str, oc.Lightcone | oc.StructureCollection]:
+    new_datasets: dict[str, oc.Lightcone | oc.StructureCollection] = {}
+    for name, target in datasets.items():
+        per_step_index: dict[Any, Optional[DataIndex]] = {}
+        for step, step_source in source.items():
+            match_set = match_sets[step_source.uuid]
+            target_uuid = _target_uuid(match_set, name)
+            index = get_mapping(
+                match_set, match_set.reference_source, target_uuid, step_source.index
+            )
+            assert index is not None
+            if not is_chunked_slot(match_set, target_uuid):
+                index = np.asarray(index)
+                index = index[index >= 0]
+            per_step_index[step] = _none_if_empty(index)
+        new_datasets[name] = apply_step_indices(target, per_step_index)
+    return new_datasets
+
+
+def _none_if_empty(index: DataIndex) -> Optional[DataIndex]:
+    if isinstance(index, tuple):
+        return index if len(index[0]) else None
+    return index if len(index) else None
+
+
+def rebuild_links_per_step(
+    derived_from: oc.Lightcone,
+    new_source: oc.Lightcone,
+    datasets: Mapping[str, oc.Lightcone | sc.StructureCollection],
+    match_sets: dict[UUID, DatasetMatchSet],
+) -> dict[str, oc.Lightcone | oc.StructureCollection]:
+    per_step_index: dict[str, dict[Any, Optional[DataIndex]]] = defaultdict(dict)
+    for step, new_step_source in new_source.items():
+        old_step_source = derived_from[step]
+        match_set = match_sets[old_step_source.uuid]
+        for name in datasets:
+            target_uuid = _target_uuid(match_set, name)
+            index = rebuild_target_index(
+                match_set,
+                target_uuid,
+                old_step_source.index,
+                new_step_source.index,
+            )
+            per_step_index[name][step] = _none_if_empty(index)
+    return {
+        name: apply_step_indices(target, per_step_index[name])
+        for name, target in datasets.items()
+    }
+
+
+def resort_datasets_per_step(
+    source: oc.Lightcone,
+    datasets: Mapping[str, oc.Lightcone | sc.StructureCollection],
+    match_sets: dict[UUID, DatasetMatchSet],
+) -> dict[str, oc.Lightcone | oc.StructureCollection]:
+    per_step_index: dict[str, dict[Any, Optional[DataIndex]]] = defaultdict(dict)
+    for step, step_source in source.items():
+        match_set = match_sets[step_source.uuid]
+        sort_index = compute_sort_index(step_source)
+        for name in datasets:
+            index = compute_resort_index(step_source, match_set, name, sort_index)
+            per_step_index[name][step] = _none_if_empty(index)
+    return {
+        name: apply_step_indices(target, per_step_index[name])
+        for name, target in datasets.items()
+    }
 
 
 class LinkHandler:
-    """
-    This needs some explanation. We break the "don't mutate state" rule pretty hard here.
-
-    When a StructureCollection is initialized, we build its linked datasets based on
-    the metadata in the halo/galaxy properties which tells us which rows in the linked
-    datasets belong to which halo/galaxy.
-
-    When a StructureCollection is modified (e.g. by filtering) we filter the source
-    dataset but DO NOT update the linked datasets, because doing so is a fairly
-    expensive operation. Instead, we create a LinkHandler that knows which rows in
-    the original halo/galaxy properties are included in the current version of the
-    datasets.
-
-    When data is requested, we perform the update if necessary. The StructureCollection
-    passes in its current halo/galaxy properties and the un-updated linked datasets. We know
-    for sure that the rows in the current halo/galaxy properties is a strict subset of the rows
-    in the original halo/galaxy properties. We determine where the overlaps are, and then update
-    the datasets accordingly.
-
-    The original version of the StructureCollection held the entire, unmodified linked datasets
-    and created the version with the correct rows when the data was requested. While this was very clean,
-    it made it impossible to cache data because the linked datasets that actually got returned to the
-    user were ephemeral.
-
-    We could re-build the datasets each time we create a new StructureCollection, but this is quite slow.
-    Converting from that approach to this approach shaved 25% off the runtime of one of my tests.
-    """
+    """Manage linked structure datasets and their deferred rebuilding."""
 
     def __init__(
         self,
-        links,
-        columns,
+        match_sets: dict[UUID, DatasetMatchSet],
         derived_from: Optional[oc.Dataset | oc.Lightcone],
-    ):
+    ) -> None:
         self.__derived_from = derived_from
-        self.links = links
-        self.columns = columns
+        self.match_sets = match_sets
 
-    @classmethod
-    def from_link_names(cls, names: Iterable[str], rename_galaxies=False):
-        links, columns = make_links(names, rename_galaxies)
-        return LinkHandler(links, columns, None)
+    def match_set_for(self, source: oc.Dataset) -> DatasetMatchSet:
+        """Return the match set owning ``source``'s links."""
+        return self.match_sets[source.uuid]
 
-    def parse(
-        self,
-        data: dict[str, Any],
-        offsets: Optional[dict[str, list[tuple[int, int]]]] = None,
-    ):
-        output = {}
-        for name, handler in self.links.items():
-            result = handler(
-                data, offsets=offsets.get(name) if offsets is not None else None
+    def make_schema(
+        self, source: oc.Dataset | oc.Lightcone, source_schema: Schema
+    ) -> Schema:
+        """Add source-row-aligned link datasets to a structure source schema."""
+        if isinstance(source, ocds.Dataset):
+            return source_schema._replace(
+                children=source_schema.children
+                | {"data_linked": self.__make_link_schema(source)}
             )
-            if result is not None:
-                output[name] = result
-        return output
+
+        children = dict(source_schema.children)
+        for step, step_source in source.items():
+            child_names = [name for name in children if name.startswith(f"{step}_")]
+            if len(child_names) != 1:
+                raise RuntimeError(
+                    f"Unable to find source schema for lightcone step '{step}'"
+                )
+            child_name = child_names[0]
+            step_schema = children[child_name]
+            children[child_name] = step_schema._replace(
+                children=step_schema.children
+                | {"data_linked": self.__make_link_schema(step_source)}
+            )
+        return source_schema._replace(children=children)
+
+    def __make_link_schema(self, source: oc.Dataset) -> Schema:
+        match_set = self.match_set_for(source)
+        columns = {}
+        for slot in match_set.primary_maps.values():
+            datasets = (
+                (slot.start, slot.size) if isinstance(slot, ChunkedSlot) else (slot,)
+            )
+            for dataset in datasets:
+                name = dataset.name.rsplit("/", maxsplit=1)[-1]
+                columns[name] = ColumnWriter.from_h5_dataset(
+                    dataset, source.index, attrs=dict(dataset.attrs)
+                )
+        return make_schema(
+            "data_linked",
+            FileEntry.COLUMNS,
+            columns={name: columns[name] for name in sorted(columns)},
+        )
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Collection-facing link names, sorted for determinism."""
+        return tuple(
+            sorted(
+                {
+                    name
+                    for match_set in self.match_sets.values()
+                    for name in match_set.aliases
+                }
+            )
+        )
 
     def prep_datasets(
         self,
         source: oc.Dataset | oc.Lightcone,
         datasets: dict[str, oc.Dataset | oc.Lightcone],
-    ):
-        """
-        Called once when a datasets are opened for the first time. Downstream
-        versions always use rebuild_datsets
-        """
-        all_columns: list[str] = reduce(
-            lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
-        )
-        meta = source.get_metadata(all_columns)
-        # Offsets are now baked into the metadata columns at construction time
-        # (see build_lightcone_structure_collection in io.py), so no per-step
-        # offset calculation is needed here.
-        indices = self.parse(meta, offsets=None)
-        new_datasets = datasets
+    ) -> dict[str, oc.Dataset | oc.Lightcone]:
+        """Prepare linked datasets when their source is first opened."""
+        if isinstance(source, lc.Lightcone):
+            lightcone_datasets = cast(
+                "Mapping[str, oc.Lightcone | sc.StructureCollection]", datasets
+            )
+            return cast(
+                "dict[str, oc.Dataset | oc.Lightcone]",
+                resolve_links_per_step(source, lightcone_datasets, self.match_sets),
+            )
 
-        for name, index in indices.items():
-            new_datasets[name] = new_datasets[name].take_rows(index)
+        match_set = self.match_set_for(source)
+        new_datasets = dict(datasets)
+        for name, dataset in datasets.items():
+            target_uuid = match_set.get_uuid(name)
+            if target_uuid is None:
+                continue
+            index = get_mapping(
+                match_set, match_set.reference_source, target_uuid, source.index
+            )
+            assert index is not None
+            if not is_chunked_slot(match_set, target_uuid):
+                index = np.asarray(index)
+                index = index[index >= 0]
+            new_datasets[name] = dataset.take_rows(index)
         return new_datasets
 
-    def make_derived(self, source: oc.Dataset):
-        """
-        Because the library encourages performing several operations in a row before requesting data,
-        it is a bad idea to re-build the datasets every time someone performs an operation. Instead,
-        we just hold a copy of the source dataset the last time the datasets were rebuilt,
-        which allows us to perform the rebuild whenver data is actually requsted.
-        """
+    def make_derived(self, source: oc.Dataset) -> LinkHandler:
+        """Record the source from which deferred linked rebuilding begins."""
         derived_from = self.__derived_from
         if self.__derived_from is None:
             derived_from = source
-
-        return LinkHandler(self.links, self.columns, derived_from)
+        return LinkHandler(self.match_sets, derived_from)
 
     def rebuild_datasets(
         self,
         new_source: oc.Dataset | oc.Lightcone,
-        datasets: Mapping[str, oc.Dataset | oc.Lightcone | sc.StructureCollection],
-    ):
-        """
-        We have a few guarantees here:
-        1. The rows in new_source is a strict subset of the rows in source
-        2. The rows in both are unique
-
-        What is NOT guaranteed:
-        1. The rows are sorted
-        """
+        datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    ) -> Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection]:
+        """Rebuild linked datasets only after a derived source has changed rows."""
         if self.__derived_from is None:
             return datasets
         return self.__rebuild_datasets(self.__derived_from, new_source, datasets)
 
-    def __rebuild_datasets(self, derived_from, new_source, datasets):
+    def __rebuild_datasets(
+        self,
+        derived_from: oc.Dataset | oc.Lightcone,
+        new_source: oc.Dataset | oc.Lightcone,
+        datasets: Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    ) -> Mapping[str, oc.Dataset | oc.Lightcone | oc.StructureCollection]:
         if isinstance(derived_from, lc.Lightcone):
-            index_into_original = build_lightcone_index(derived_from, new_source)
-        else:
-            original_index = into_array(derived_from.index)
-            new_index = into_array(new_source.index)
-
-            _, index_into_original, index_into_new = np.intersect1d(
-                original_index, new_index, assume_unique=True, return_indices=True
+            assert isinstance(new_source, lc.Lightcone)
+            assert all(
+                isinstance(dataset, (lc.Lightcone, sc.StructureCollection))
+                for dataset in datasets.values()
             )
-            index_into_original = index_into_original[np.argsort(index_into_new)]
-        all_columns: list[str] = reduce(
-            lambda acc, ds: acc + self.columns[ds], datasets.keys(), []
-        )
-        metadata = derived_from.get_metadata(all_columns)
-        new_datasets = {}
+            lightcone_datasets = cast(
+                "Mapping[str, oc.Lightcone | sc.StructureCollection]", datasets
+            )
+            return rebuild_links_per_step(
+                derived_from, new_source, lightcone_datasets, self.match_sets
+            )
 
+        assert isinstance(new_source, ocds.Dataset)
+        match_set = self.match_set_for(derived_from)
+        new_datasets: dict[str, oc.Dataset | oc.Lightcone | oc.StructureCollection] = {}
         for name, dataset in datasets.items():
-            if len(self.columns[name]) == 1:
-                metadata_column = metadata[self.columns[name][0]]
-                new_datasets[name] = rebuild_row_index(
-                    new_source, dataset, metadata_column, index_into_original
-                )
-            else:
-                size_column = [name for name in self.columns[name] if "size" in name]
-                assert len(size_column) == 1
-                size_column_name = size_column[0]
-                size_column_data = metadata[size_column_name]
-
-                new_datasets[name] = rebuild_chunk_index(
-                    new_source,
-                    dataset,
-                    size_column_data.astype(np.int64),
-                    index_into_original.astype(np.int64),
-                )
+            target_uuid = _target_uuid(match_set, name)
+            index = rebuild_target_index(
+                match_set, target_uuid, derived_from.index, new_source.index
+            )
+            new_datasets[name] = dataset.take_rows(index)
         return new_datasets
 
     def resort(
-        self, source: oc.Dataset | oc.Lightcone, datasets: dict[str, oc.Dataset]
-    ):
-        """
-        Data is always written in its original order, whether or not it has been sorted.
-        This is to preserve the spatial index. However, when linked datasets are rebuilt
-        they are rebuilt in the sorted order. This method re-sorts them based on the
-        index from the original data.
-        """
-
-        is_sorted = source.sorted_by is not None
-        if not is_sorted:
+        self,
+        source: oc.Dataset | oc.Lightcone,
+        datasets: dict[str, oc.Dataset | oc.Lightcone | oc.StructureCollection],
+    ) -> dict[str, oc.Dataset | oc.Lightcone | oc.StructureCollection]:
+        """Restore linked datasets to their source's original file order."""
+        if source.sorted_by is None:
             return datasets
-
-        return resort_datasets(source, datasets, self.columns)
-
-
-def rebuild_row_index(
-    new_source: oc.Dataset,
-    dataset: oc.Dataset,
-    original_metadata_column: np.ndarray,
-    index_into_original: np.ndarray,
-):
-    valid_rows = original_metadata_column >= 0
-    index = np.full(len(original_metadata_column), -1, dtype=np.int64)
-    index[valid_rows] = np.arange(0, sum(valid_rows))
-    index_to_take = index[index_into_original]
-    index_to_take = index_to_take[index_to_take >= 0]
-
-    return dataset.take_rows(index_to_take)
-
-
-def rebuild_chunk_index(
-    new_source: oc.Dataset,
-    dataset: oc.Dataset,
-    original_size_column: np.ndarray,
-    index_into_original: np.ndarray,
-):
-    chunk_boundaries = np.zeros(len(original_size_column) + 1, dtype=np.int64)
-    _ = np.cumsum(original_size_column, out=chunk_boundaries[1:])
-    valid_rows = original_size_column[index_into_original] > 0
-
-    starts = chunk_boundaries[index_into_original[valid_rows]]
-    sizes = original_size_column[index_into_original[valid_rows]]
-
-    ds = dataset.take_rows((starts, sizes))
-    return ds
+        if isinstance(source, lc.Lightcone):
+            lightcone_datasets = cast(
+                "Mapping[str, oc.Lightcone | sc.StructureCollection]", datasets
+            )
+            return cast(
+                "dict[str, oc.Dataset | oc.Lightcone | oc.StructureCollection]",
+                resort_datasets_per_step(source, lightcone_datasets, self.match_sets),
+            )
+        return resort_datasets(source, datasets, self.match_sets)

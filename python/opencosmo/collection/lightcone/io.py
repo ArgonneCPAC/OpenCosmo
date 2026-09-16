@@ -4,8 +4,7 @@ from collections import OrderedDict, defaultdict
 
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.dataset import dataset as ocds
-from opencosmo.io.mpi import get_all_keys
-from opencosmo.mpi import get_comm_world, get_mpi
+from opencosmo.mpi import get_all_keys, get_comm_world, get_mpi
 
 
 def order_by_redshift_range(datasets: dict[str, ocds.Dataset]):

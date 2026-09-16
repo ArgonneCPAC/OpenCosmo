@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import shutil
 from collections import defaultdict
 from functools import reduce as ftr
 from logging import getLogger
@@ -13,11 +11,12 @@ import mpi4py
 import numpy as np
 import pytest
 from mpi4py import MPI
+from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
-from opencosmo.analysis import reduce
-from opencosmo.mpi import get_comm_world
+from opencosmo.analysis import gather, reduce
+from opencosmo.collection.simulation import SimulationCollection
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -29,58 +28,20 @@ else:
 if TYPE_CHECKING:
     from pathlib import Path
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+@pytest.fixture
+def multi_path(test_data):
+    return test_data.snapshot.multi_simulation
 
 
 @pytest.fixture
-def per_test_dir(
-    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
-):
-    """
-    Creates a unique directory for each test and deletes it after the test finishes.
-
-    Uses tmp_path_factory so you can control base temp location via pytest's
-    tempdir handling, and also so it can be used from broader-scoped fixtures
-    if needed.
-    """
-    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
-    nodeid = (
-        request.node.nodeid.replace("/", "_")
-        .replace("::", "__")
-        .replace("[", "_")
-        .replace("]", "_")
-    )
-
-    path = tmp_path_factory.mktemp(nodeid)
-    comm = MPI.COMM_WORLD
-    path_to_return = comm.bcast(path)
-
-    try:
-        yield path_to_return
-    finally:
-        # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS:
-            shutil.rmtree(path, ignore_errors=True)
+def input_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 @pytest.fixture
-def multi_path(snapshot_path):
-    return snapshot_path / "haloproperties_multi.hdf5"
-
-
-@pytest.fixture
-def input_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
-
-
-@pytest.fixture
-def particle_path(snapshot_path):
-    return snapshot_path / "haloparticles.hdf5"
-
-
-@pytest.fixture
-def profile_path(snapshot_path):
-    return snapshot_path / "sodproperties.hdf5"
+def profile_path(test_data):
+    return test_data.snapshot.primary.halo_profiles
 
 
 @pytest.fixture
@@ -90,63 +51,39 @@ def malformed_header_path(input_path, tmp_path):
 
 
 @pytest.fixture
-def scidac_000_paths(snapshot_path):
-    return [
-        snapshot_path / "scidac_000" / "haloproperties.hdf5",
-        snapshot_path / "scidac_000" / "galaxyproperties.hdf5",
-    ]
+def scidac_000_paths(test_data):
+    return test_data.snapshot.scidac(0).all
 
 
 @pytest.fixture
-def scidac_001_paths(snapshot_path):
-    return [
-        snapshot_path / "scidac_001" / "haloproperties.hdf5",
-        snapshot_path / "scidac_001" / "galaxyproperties.hdf5",
-    ]
+def scidac_001_paths(test_data):
+    return test_data.snapshot.scidac(1).all
 
 
 @pytest.fixture
-def galaxy_paths(snapshot_path: Path):
-    files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def galaxy_paths(test_data):
+    return test_data.snapshot.primary.galaxies
 
 
 @pytest.fixture
-def galaxy_paths_2(snapshot_path: Path):
-    files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def galaxy_halo_path(test_data):
+    primary = test_data.snapshot.primary
+    return [primary.halo_properties, primary.galaxy_properties]
 
 
 @pytest.fixture
-def galaxy_halo_path(snapshot_path: Path):
-    files = ["haloproperties.hdf5", "galaxyproperties.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def all_paths(test_data):
+    return test_data.snapshot.primary.halos
 
 
 @pytest.fixture
-def all_paths(snapshot_path: Path):
-    files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
-
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def mass_fn_path(test_data):
+    return test_data.analysis.mass_function
 
 
 @pytest.fixture
-def simcollection_path(snapshot_path):
-    return snapshot_path / "haloproperties_multi.hdf5"
-
-
-@pytest.fixture
-def mass_fn_path(analysis_path):
-    return analysis_path / "mass_fn.npy"
-
-
-@pytest.fixture
-def stacked_profile_path(analysis_path):
-    return analysis_path / "stacked_profile.npy"
+def stacked_profile_path(test_data):
+    return test_data.analysis.stacked_profile
 
 
 def update_simulation_parameter(
@@ -161,6 +98,52 @@ def update_simulation_parameter(
             for key, value in parameters.items():
                 file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_scatter_multidimensional_data():
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    data = np.arange((rank + 1) * 6, dtype=np.float64).reshape(rank + 1, 2, 3)
+
+    gathered = gather_data(data, comm)
+    if rank == 0:
+        expected = np.concatenate(comm.gather(data, root=0))
+        assert np.array_equal(gathered, expected)
+        assert gathered.shape == (10, 2, 3)
+    else:
+        comm.gather(data, root=0)
+
+    scattered = scatter_data(gathered, len(data), comm)
+    parallel_assert(np.array_equal(scattered, data))
+    parallel_assert(scattered.shape == data.shape)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_redistribute_multidimensional_data():
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    data = np.asarray(
+        [
+            [[rank, 0], [rank, 1]],
+            [[rank, 2], [rank, 3]],
+        ],
+        dtype=np.float32,
+    )
+    target_rank = np.asarray([rank, (rank + 1) % size], dtype=np.int64)
+    all_inputs = comm.allgather((data, target_rank))
+
+    redistributed = redistribute_data(data, target_rank, comm)
+
+    expected = np.concatenate(
+        [
+            source_data[source_targets == rank]
+            for source_data, source_targets in all_inputs
+        ]
+    )
+    parallel_assert(np.array_equal(redistributed, expected))
+    parallel_assert(redistributed.shape == expected.shape)
 
 
 @pytest.mark.timeout(60)
@@ -697,7 +680,6 @@ def test_simcollection_structure_write(
 
     collection_written = oc.open(temporary_path)
 
-    shutil.copy(temporary_path, "output.hdf5")
     for ds_name, ds in collection_written.items():
         assert np.all(
             ds["halo_properties"].get_data()
@@ -810,7 +792,8 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
     halo_tags = {}
     if comm.Get_rank() == 0:
         key_to_drop = next(iter(data.keys()))
-        data.pop(key_to_drop)
+        new_data = {name: ds for name, ds in data.items() if name != key_to_drop}
+        data = SimulationCollection(new_data)
 
     for name, sim in data.items():
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
@@ -941,3 +924,128 @@ def test_reduce_average(input_path, profile_path, stacked_profile_path):
         profile = result["profile"]
         assert np.all(bin_centers == expected_centers)
         assert np.all(expected_profile == profile)
+
+
+@pytest.fixture
+def simulation_collection(test_data):
+    return oc.SimulationCollection(
+        {
+            "scidac_000": oc.open(test_data.snapshot.scidac(0).halo_properties),
+            "scidac_001": oc.open(test_data.snapshot.scidac(1).halo_properties),
+        }
+    )
+
+
+def _gather_column(dataset, column, comm):
+    """Concatenate a single column across all ranks in rank order."""
+    local = dataset.select(column).get_data("numpy")
+    return np.concatenate(comm.allgather(local))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce_simulation_collection(simulation_collection):
+    comm = get_comm_world()
+
+    def halo_mass_function(fof_halo_mass, log_bins, box_size):
+        log_mass = np.log10(fof_halo_mass)
+        hist, _ = np.histogram(log_mass, log_bins)
+        return hist / np.diff(log_bins) / box_size**3
+
+    bins = np.linspace(10.5, 15)
+    box_size = 100.0
+    result = reduce(
+        simulation_collection,
+        halo_mass_function,
+        format="numpy",
+        vectorize=True,
+        log_bins=bins,
+        box_size=box_size,
+        all=True,
+    )
+
+    # A SimulationCollection reduces each simulation independently, keyed by name.
+    assert set(result.keys()) == set(simulation_collection.keys())
+
+    for name in simulation_collection.keys():
+        mass = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
+        expected = halo_mass_function(mass, bins, box_size)
+        parallel_assert(np.allclose(result[name]["halo_mass_function"], expected))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    columns = ["fof_halo_mass", "fof_halo_center_x"]
+    result = gather(ds, columns=columns, format="numpy", all=True)
+
+    for column in columns:
+        expected = _gather_column(ds, column, comm)
+        parallel_assert(np.array_equal(result[column], expected))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_derived_column(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # A derived column is passed as a keyword argument, forwarded to select().
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    result = gather(
+        ds, columns="fof_halo_mass", fof_halo_px=derived, format="numpy", all=True
+    )
+
+    expected_mass = _gather_column(ds, "fof_halo_mass", comm)
+    local_px = ds.select(fof_halo_px=derived).get_data("numpy")
+    expected_px = np.concatenate(comm.allgather(local_px))
+
+    parallel_assert(np.array_equal(result["fof_halo_mass"], expected_mass))
+    parallel_assert(np.array_equal(result["fof_halo_px"], expected_px))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_derived_column_only(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    # With columns=None, only the derived column is gathered; a single column
+    # collapses to a bare array.
+    derived = oc.col("fof_halo_mass") * oc.col("fof_halo_com_vx")
+    result = gather(ds, fof_halo_px=derived, format="numpy", all=True)
+
+    local_px = ds.select(fof_halo_px=derived).get_data("numpy")
+    expected_px = np.concatenate(comm.allgather(local_px))
+
+    parallel_assert(np.array_equal(result, expected_px))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_no_all(input_path):
+    comm = get_comm_world()
+    ds = oc.open(input_path)
+
+    expected = _gather_column(ds, "fof_halo_mass", comm)
+    result = gather(ds, columns="fof_halo_mass", format="numpy")
+
+    if comm.Get_rank() != 0:
+        assert result is None
+    else:
+        # A single requested column collapses to a bare array.
+        assert np.array_equal(result, expected)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_gather_simulation_collection(simulation_collection):
+    comm = get_comm_world()
+
+    result = gather(
+        simulation_collection, columns="fof_halo_mass", format="numpy", all=True
+    )
+
+    # A SimulationCollection gathers each simulation independently, keyed by name.
+    assert set(result.keys()) == set(simulation_collection.keys())
+
+    for name in simulation_collection.keys():
+        expected = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
+        parallel_assert(np.array_equal(result[name], expected))

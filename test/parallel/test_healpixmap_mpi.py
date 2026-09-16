@@ -13,18 +13,8 @@ import opencosmo as oc
 
 
 @pytest.fixture
-def healpix_map_path(map_path):
-    return map_path / "test_map.hdf5"
-
-
-@pytest.fixture
-def all_files():
-    return ["test_map.hdf5"]
-
-
-@pytest.fixture
-def structure_maps(map_path, all_files):
-    return [map_path / f for f in all_files]
+def healpix_map_path(test_data):
+    return test_data.healpix_map
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -81,10 +71,10 @@ IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 )
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parallel(nprocs=4)
-def test_healpix_write(healpix_map_path, tmp_path):
+def test_healpix_write(healpix_map_path, per_test_dir):
     ds = oc.open(healpix_map_path)
 
-    path = MPI.COMM_WORLD.bcast(tmp_path)
+    path = per_test_dir
     # This is a known failing case
     centers = [
         (np.float64(24.741210937499996), np.float64(31.191736968831727)),
@@ -125,8 +115,8 @@ def test_healpix_partition(healpix_map_path):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_write_single_map(healpix_map_path, tmp_path):
-    path = MPI.COMM_WORLD.bcast(tmp_path)
+def test_write_single_map(healpix_map_path, per_test_dir):
+    path = per_test_dir
     ds = oc.open(healpix_map_path)
 
     original_length = len(ds.get_data()["tsz"].valid_pixels)
@@ -147,8 +137,8 @@ def test_healpix_downgrade(healpix_map_path):
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_healpix_downgrade_write(healpix_map_path, tmp_path):
-    path = MPI.COMM_WORLD.bcast(tmp_path)
+def test_healpix_downgrade_write(healpix_map_path, per_test_dir):
+    path = per_test_dir
     ds = oc.open(healpix_map_path)
     original_data = ds.get_data()
     downgraded_ds = ds.with_resolution(ds.nside // 16)

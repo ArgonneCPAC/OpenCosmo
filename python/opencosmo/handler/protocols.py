@@ -6,10 +6,10 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     import numpy as np
-    from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.schema import Schema
+    from opencosmo.mpi import MPI
 
-    from opencosmo.index import DataIndex
+    from opencosmo.index import DataIndex, SimpleIndex
 
 
 class DataHandler(Protocol):
@@ -21,9 +21,11 @@ class DataHandler(Protocol):
     def make_schema(
         self,
         columns: Iterable[str],
-        metadata_columns: set[str] = set(),
-        header: Optional[OpenCosmoHeader] = None,
-    ) -> tuple[Schema, Schema]: ...
+    ) -> Schema: ...
+
+    """
+
+    """
 
     @property
     def columns(self) -> Iterable[str]: ...
@@ -32,6 +34,8 @@ class DataHandler(Protocol):
 
     @property
     def index(self) -> DataIndex: ...
+
+    def with_index(self, index: DataIndex) -> Self: ...
 
 
 class DataCache(Protocol):
@@ -42,17 +46,9 @@ class DataCache(Protocol):
         push_up: bool = True,
     ): ...
 
-    def add_metadata(
-        self,
-        data: dict[str, np.ndarray],
-        descriptions: dict[str, str] = {},
-    ): ...
-
     def get_data(
         self, pairs: set[tuple[UUID, str]]
     ) -> dict[UUID, dict[str, np.ndarray]]: ...
-
-    def get_metadata(self, column_names: Iterable[str]) -> dict[str, np.ndarray]: ...
 
     def __len__(self) -> int: ...
 
@@ -68,15 +64,21 @@ class DataCache(Protocol):
 
     def create_child(self) -> Self: ...
 
+    def redistribute(
+        self,
+        reorder_map: SimpleIndex | None,
+        length: int,
+        columns_to_keep: dict[UUID, list[str]],
+        comm: MPI.Comm,
+    ) -> Self: ...
+
+    @classmethod
+    def empty(cls) -> Self: ...
+
     @property
     def columns(self) -> set[str]: ...
 
     @property
-    def metadata_columns(self) -> set[str]: ...
-
-    @property
     def descriptions(self) -> dict[str, str]: ...
 
-    def make_schema(
-        self, columns: dict[str, UUID], meta_columns: list[str]
-    ) -> tuple[Schema, Schema]: ...
+    def make_schema(self, columns: dict[str, UUID]) -> Schema: ...

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import pytest
 from pyarrow import parquet as pq
@@ -9,30 +7,25 @@ from pyarrow import parquet as pq
 import opencosmo as oc
 from opencosmo.io import write_parquet
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+@pytest.fixture
+def input_path(test_data):
+    return test_data.snapshot.primary.halo_properties
 
 
 @pytest.fixture
-def input_path(snapshot_path):
-    return snapshot_path / "haloproperties.hdf5"
+def halo_structure_paths(test_data):
+    return test_data.snapshot.primary.halos
 
 
 @pytest.fixture
-def halo_structure_paths(snapshot_path: Path):
-    files = ["haloparticles.hdf5", "haloproperties.hdf5", "sodproperties.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def haloproperties_600_path(test_data):
+    return test_data.lightcone.step(600).halo_properties
 
 
 @pytest.fixture
-def haloproperties_600_path(lightcone_path):
-    return lightcone_path / "step_600" / "haloproperties.hdf5"
-
-
-@pytest.fixture
-def haloproperties_601_path(lightcone_path):
-    return lightcone_path / "step_601" / "haloproperties.hdf5"
+def haloproperties_601_path(test_data):
+    return test_data.lightcone.step(601).halo_properties
 
 
 def test_dump_dataset(input_path, tmp_path):
@@ -50,6 +43,18 @@ def test_dump_dataset_unit_transition(input_path, tmp_path):
     write_parquet(tmp_path / "test.parquet", dataset)
     table = pq.read_table(tmp_path / "test.parquet")
     data = dataset.get_data("numpy")
+
+    for col in dataset.columns:
+        assert np.all(data[col] == table[col])
+
+
+def test_dump_with_sort_drop(input_path, tmp_path):
+    dataset = oc.open(input_path)
+    dataset = dataset.sort_by("fof_halo_mass").drop("fof_halo_*")
+    write_parquet(tmp_path / "test.parquet", dataset)
+    table = pq.read_table(tmp_path / "test.parquet")
+    data = dataset.get_data("numpy")
+    print(dataset.columns)
 
     for col in dataset.columns:
         assert np.all(data[col] == table[col])

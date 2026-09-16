@@ -155,9 +155,10 @@ def _raw_box_mask(raw_data, ra_min, ra_max, dec_min, dec_max):
     """Return boolean mask for rows strictly inside the RA/Dec box."""
     raw_ra = np.rad2deg(raw_data["phi"])
     raw_dec = np.rad2deg(np.pi / 2 - raw_data["theta"])
+    ra_width = (ra_max - ra_min) % 360.0
     return (
-        (raw_ra > ra_min)
-        & (raw_ra < ra_max)
+        (((raw_ra - ra_min) % 360.0) > 0.0)
+        & (((raw_ra - ra_min) % 360.0) < ra_width)
         & (raw_dec > dec_min)
         & (raw_dec < dec_max)
     )
@@ -198,6 +199,20 @@ def test_box_search_tuple_args(haloproperties_600_path):
 
     result = ds.box_search((_BOX_RA_MIN, _BOX_DEC_MIN), (_BOX_RA_MAX, _BOX_DEC_MAX))
     assert len(result) == n_expected
+
+
+def test_box_search_wraps_ra(haloproperties_600_path):
+    """box_search retains only rows in an RA interval crossing zero degrees."""
+    ds = oc.open(haloproperties_600_path)
+    raw_data = ds.get_data()
+    ra_min, ra_max = 359.297, 1.297
+    dec_min, dec_max = -6.979, -4.979
+
+    n_expected = np.sum(_raw_box_mask(raw_data, ra_min, ra_max, dec_min, dec_max))
+    result = ds.box_search((ra_min, dec_min), (ra_max, dec_max)).get_data()
+
+    assert len(result) == n_expected
+    assert np.all(_raw_box_mask(result, ra_min, ra_max, dec_min, dec_max))
 
 
 def test_box_search_chain(haloproperties_600_path):
@@ -297,6 +312,108 @@ def test_box_search_collection(haloproperties_600_path, haloproperties_601_path)
     assert np.all((ra > _BOX_RA_MIN) & (ra < _BOX_RA_MAX))
     assert np.all((dec > _BOX_DEC_MIN) & (dec < _BOX_DEC_MAX))
     assert len(data) == n_expected
+
+
+def test_combine_cones():
+    from healpy import ang2vec, query_disc
+    from opencosmo.spatial.region import combine
+
+    from opencosmo.spatial import make_cone
+
+    DEFAULT_NSIDE = 2**8
+
+    gen = np.random.default_rng()
+    center_ras = gen.random(8) * 360.0
+    center_decs = gen.random(8) * 180 - 90
+    radii = gen.random(8)
+    centers = list(zip(center_ras, center_decs))
+
+    vecs = [ang2vec(*center, True) for center in centers]
+    radii_rad = radii * np.pi / 180
+
+    pixels = np.unique(
+        np.concat(
+            [
+                query_disc(DEFAULT_NSIDE, vec, radius, inclusive=True, nest=True)
+                for vec, radius in zip(vecs, radii_rad)
+            ]
+        )
+    )
+
+    regions = [make_cone(center, radius) for center, radius in zip(centers, radii)]
+    result = combine(*regions)
+    combined_pixels = np.unique(result.pixels)
+    assert np.array_equal(pixels, combined_pixels)
+
+
+def test_healpix_combine_promotion():
+    from healpy import nside2npix
+    from opencosmo.spatial.region import combine
+
+    from opencosmo.spatial import HealpixRegion
+
+    rng = np.random.default_rng()
+    MAX_LEVEL = 10
+
+    all_pixels = np.array([], np.int64)
+    regions = []
+    for i in range(6, MAX_LEVEL + 1):
+        npix = nside2npix(2**i)
+        pixels = rng.integers(0, npix, size=1000)
+        regions.append(HealpixRegion(pixels, 2**i))
+        factor = 2 ** (MAX_LEVEL - i)
+        num_subpixels = factor**2
+        subpixels_nested = (pixels[:, None] * num_subpixels) + np.arange(num_subpixels)
+        subpixels_nested = subpixels_nested.flatten()
+        all_pixels = np.union1d(all_pixels, subpixels_nested)
+
+    final_region = combine(*regions)
+    assert final_region.nside == 2**10
+    assert np.array_equal(final_region.pixels, all_pixels)
+
+
+def test_combine_cones_and_healpix():
+    from healpy import ang2vec, nside2npix, query_disc
+    from opencosmo.spatial.region import HealpixRegion, combine
+
+    from opencosmo.spatial import make_cone
+
+    MAX_LEVEL = 10
+
+    gen = np.random.default_rng()
+    center_ras = gen.random(8) * 360.0
+    center_decs = gen.random(8) * 180 - 90
+    radii = gen.random(8)
+    centers = list(zip(center_ras, center_decs))
+
+    vecs = [ang2vec(*center, True) for center in centers]
+    radii_rad = radii * np.pi / 180
+
+    all_pixels = np.unique(
+        np.concat(
+            [
+                query_disc(2**MAX_LEVEL, vec, radius, inclusive=True, nest=True)
+                for vec, radius in zip(vecs, radii_rad)
+            ]
+        )
+    )
+
+    regions = [make_cone(center, radius) for center, radius in zip(centers, radii)]
+
+    rng = np.random.default_rng()
+    for i in range(6, MAX_LEVEL + 1):
+        npix = nside2npix(2**i)
+        pixels = rng.integers(0, npix, size=1000)
+        regions.append(HealpixRegion(pixels, 2**i))
+        factor = 2 ** (MAX_LEVEL - i)
+        num_subpixels = factor**2
+        subpixels_nested = (pixels[:, None] * num_subpixels) + np.arange(num_subpixels)
+        subpixels_nested = subpixels_nested.flatten()
+        all_pixels = np.union1d(all_pixels, subpixels_nested)
+
+    result = combine(*regions)
+    combined_pixels = np.unique(result.pixels)
+    assert np.array_equal(all_pixels, combined_pixels)
 
 
 # ---------------------------------------------------------------------------

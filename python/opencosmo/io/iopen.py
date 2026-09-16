@@ -1,21 +1,19 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from enum import Enum
-from functools import partial, reduce
-from typing import TYPE_CHECKING, Any, Optional, TypedDict
+from dataclasses import dataclass
+from functools import cached_property
+from typing import TYPE_CHECKING, Any
 
-import h5py
 import healpy as hp
 import numpy as np
 
 import opencosmo as oc
 from opencosmo import collection as occ
-from opencosmo.collection.structure import structure as sc
 from opencosmo.dataset import state as st
-from opencosmo.dataset.mpi import partition
-from opencosmo.header import OpenCosmoHeader, read_header
-from opencosmo.index.build import empty, from_range
+from opencosmo.header import OpenCosmoHeader
+from opencosmo.io import plan
+from opencosmo.io.discover import discover_all, has_maps, is_particle_group
+from opencosmo.io.specs import group_by_scope, match_spec
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
 from opencosmo.plugins.hook import fold
@@ -23,12 +21,21 @@ from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
+from opencosmo.utils import normalize_kwarg_name
+from opencosmo.uuid import get_column_uuid
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from uuid import UUID
+
+    import h5py
 
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.index import DataIndex
+    from opencosmo.io.discover import FileLayout, GroupLayout, LinkLayout
+    from opencosmo.io.index_spec import IndexSpec
+    from opencosmo.io.io import MpiMode
+    from opencosmo.mapping.mapping import DatasetMatchSet
+    from opencosmo.spatial.region import Region
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -49,476 +56,373 @@ The later will consist of several datasets, each with the same data type and is_
 """
 
 
-class DatasetTarget(TypedDict):
-    header: OpenCosmoHeader
-    dataset_group: h5py.Group
-    columns: list[h5py.Dataset]
-    spatial_index: Optional[h5py.Group]
+@dataclass(frozen=True)
+class DatasetTarget:
+    """One discovered dataset group, paired with the live file it lives in.
 
-
-class FileType(Enum):
-    DATASET = "dataset"
-    LIGHTCONE = "lightcone"
-    STRUCTURE_COLLECTION = "structure_collection"
-    PARTICLES = "particles"
-    SIMULATION_COLLECTION = "simulation_collection"
-
-
-class CollectionType(Enum):
-    pass
-
-
-class FileTarget(TypedDict):
-    dataset_group_types: dict[str, FileType]
-    dataset_targets: list[DatasetTarget]
-    dataset_groups: dict[str, list[DatasetTarget]]
-
-
-def open_files(paths: list[Path], open_kwargs: dict[str, Any]):
-    """
-    Main back-end entry point for opening files.
+    Everything static comes from ``layout`` — discovery already captured the column
+    names, dtypes, units, descriptions, row count and link structure, so nothing here
+    re-reads them. The only live state is ``file``; the h5py accessors below resolve
+    off it on first use and are cached, so a target that is opened but never read
+    costs no HDF5 metadata access at all.
     """
 
-    func = partial(__make_file_target, open_kwargs=open_kwargs)
-    targets = map(func, paths)
+    layout: GroupLayout
+    """The group's discovered layout. Sole source of truth for static metadata."""
 
-    valid_targets = [t for t in targets if t is not None]
-    if not valid_targets:
-        raise ValueError("No valid datasets found!")
+    file_path: Path
+    """Resolved path of the file. Only used to mint column UUIDs."""
 
-    if len(valid_targets) > 1:
-        collection_type = __determine_multi_file_collection_type(valid_targets)
-        return collection_type.open(valid_targets, **open_kwargs)
+    file: h5py.File
+    """Live handle. Held strongly: derived Hdf5Handlers acquire columns lazily and
+    must not outlive it."""
 
-    return __open_single_file(valid_targets[0], open_kwargs)
+    @property
+    def uuid(self) -> UUID:
+        return self.layout.uuid
+
+    @property
+    def header(self) -> OpenCosmoHeader:
+        return self.layout.header
+
+    @property
+    def link_layout(self) -> LinkLayout | None:
+        return self.layout.link_layout
+
+    @property
+    def column_names(self) -> tuple[str, ...]:
+        return self.layout.column_names
+
+    @property
+    def row_count(self) -> int:
+        return self.layout.row_count
+
+    @property
+    def __prefix(self) -> str:
+        # rstrip("/") maps the root group "/" to "", so the root and named groups
+        # build child paths the same way ("" -> "/data", "/scidac1" -> "/scidac1/data").
+        return self.layout.path.rstrip("/")
+
+    @property
+    def name(self) -> str:
+        """Trailing segment of the group path. Empty for the root group, matching
+        ``h5py.Group.name.split("/")[-1]``."""
+        return self.layout.path.rsplit("/", 1)[-1]
+
+    @property
+    def parent_name(self) -> str:
+        """Path of the group's parent, matching ``h5py.Group.parent.name``."""
+        return self.layout.path.rsplit("/", 1)[0] or "/"
+
+    @cached_property
+    def column_units(self) -> dict[str, str | None]:
+        return dict(zip(self.layout.column_names, self.layout.column_units))
+
+    @cached_property
+    def column_descriptions(self) -> dict[str, str | None]:
+        return dict(zip(self.layout.column_names, self.layout.column_descriptions))
+
+    @cached_property
+    def column_uuids(self) -> dict[str, UUID]:
+        return {
+            name: get_column_uuid(self.file_path, f"{self.__prefix}/data/{name}")
+            for name in self.layout.column_names
+        }
+
+    @cached_property
+    def group(self) -> h5py.Group:
+        return self.file[self.layout.path]
+
+    @cached_property
+    def data_group(self) -> h5py.Group:
+        return self.file[f"{self.__prefix}/data"]
+
+    @cached_property
+    def spatial_index(self) -> h5py.Group | None:
+        if not self.layout.has_index:
+            return None
+        return self.file[f"{self.__prefix}/index"]
+
+    @cached_property
+    def load_conditions(self) -> dict[str, bool] | None:
+        """Conditions from the group's ``load/if`` attrs, or None when absent.
+
+        Read once per target: both ``evaluate_load_conditions`` and
+        ``state_from_target`` need these, and each open used to probe the group
+        separately.
+        """
+        try:
+            return dict(self.group["load/if"].attrs)
+        except KeyError:
+            return None
 
 
-def __make_group_map(group: h5py.File | h5py.Group, prefix: str = ""):
-    index = {}
-    for key, item in group.items():
-        path = f"{prefix}/{key}"
-        index[path] = item
-        if isinstance(item, h5py.Group):
-            index.update(__make_group_map(item, path))
-    return index
-
-
-def __make_file_target(path: Path, open_kwargs: dict[str, Any]) -> Optional[FileTarget]:
-    """
-    Search through the file for any valid datasets or dataset groups. For groups,
-    identify the group types. Datasets with load conditions that are not
-    met will be discarded.
-    """
-    file = h5py.File(path)
-    group_map = __make_group_map(file)
-    dataset_targets, group_targets = __find_all_datasets(group_map, open_kwargs)
-    if not dataset_targets and not group_targets:
-        return None
-    group_types = __identify_group_types(dataset_targets, group_targets)
-    return FileTarget(
-        dataset_group_types=group_types,
-        dataset_targets=dataset_targets,
-        dataset_groups=group_targets,
-    )
-
-
-def __open_single_file(
-    target: FileTarget, open_kwargs: dict[str, Any] = {}
+def open_files(
+    paths: list[Path],
+    open_kwargs: dict[str, Any],
+    mpi_mode: "MpiMode | None" = None,
 ) -> oc.Dataset | oc.collection.Collection:
     """
-    Opens a single file, which may or may not contain
-    several datasets
+    Main back-end entry point for opening files.
+
+    Pipeline: discover metadata for every file (one collective allgather), group the
+    discovered layouts by governing header scope, then for each scope match a spec,
+    verify it, distribute files across ranks, and build this rank's object. A single
+    scope returns its object directly; multiple scopes wrap in a SimulationCollection.
+    Every rank computes identical scopes/specs/assignments from identical, path-sorted
+    layouts, so the only collective in the whole path is the discovery allgather.
     """
-    if len(target["dataset_targets"]) == 1:
-        # Just one dataset, easy
-        return open_single_dataset(
-            target["dataset_targets"][0], open_kwargs=open_kwargs
+    if mpi_mode is None:
+        from opencosmo.io.io import MpiMode
+
+        mpi_mode = MpiMode.SPATIAL
+
+    comm = get_comm_world()
+    rank = comm.Get_rank() if comm is not None else 0
+    nranks = comm.Get_size() if comm is not None else 1
+
+    layouts = discover_all(paths, comm)
+
+    # Discovery captures structural failures into FileLayout.error rather than raising
+    # mid-collective. Every rank holds the identical errored set (allgather), so raising
+    # here is collective. The message includes each bad path (test_open_bad_data asserts
+    # the offending path appears in the ValueError).
+    errored = [fl for fl in layouts if fl.error is not None]
+    if errored:
+        details = "\n".join(f"  {fl.path}: {fl.error}" for fl in errored)
+        raise ValueError(f"Failed to open one or more files:\n{details}")
+
+    # Partition layouts into map-carrying and ordinary. A layout may have both
+    # maps and groups; route it to the map side if has_maps, to the ordinary side
+    # if it has groups, so a hybrid file participates in both pipelines.
+    map_layouts = [fl for fl in layouts if has_maps(fl)]
+    ordinary_layouts = [fl for fl in layouts if fl.groups]
+
+    if len(map_layouts) > 1:
+        map_paths = ", ".join(str(layout.path) for layout in map_layouts)
+        raise ValueError(
+            "Opening multiple dataset mapping files is not supported. "
+            f"Mapping files: {map_paths}"
         )
 
-    elif target["dataset_targets"]:
-        # Multiple datasets, but all grouped together
-        if next(iter(target["dataset_group_types"].values())) == FileType.LIGHTCONE:
-            # All lightcone datasets of the same type
-            return occ.Lightcone.open([target])
-        if (
-            next(iter(target["dataset_group_types"].values()))
-            == FileType.STRUCTURE_COLLECTION
-        ):
-            # Structure collection
-            return occ.StructureCollection.open([target], **open_kwargs)
-    elif target["dataset_groups"]:
-        # A lightcone structure collection has a halo_properties or
-        # galaxy_properties group alongside its linked datasets. A plain
-        # lightcone of a single properties type is stored as a dataset_target
-        # rather than a dataset_group, so the presence of a properties group
-        # here unambiguously marks a structure collection. This must be checked
-        # before the plain-lightcone case below, since every group in a
-        # halo_properties + galaxy_properties collection is lightcone-typed.
-        if (
-            target["dataset_group_types"].get("halo_properties") == FileType.LIGHTCONE
-            or target["dataset_group_types"].get("galaxy_properties")
-            == FileType.LIGHTCONE
-        ):
-            result = sc.StructureCollection.open([target], **open_kwargs)
-            return result
+    # If there are maps but no ordinary layouts, raise: a mapping file has no
+    # meaning without endpoints to connect.
+    if map_layouts and not ordinary_layouts:
+        raise ValueError(
+            "Cannot open a dataset mapping on its own. A mapping file defines "
+            "row-level correspondences between datasets in different simulations "
+            "and requires both endpoint datasets to be present."
+        )
 
-        # Sometimes, lightcones have multiple datasets per slice
-        elif all(
-            group_type == FileType.LIGHTCONE
-            for group_type in target["dataset_group_types"].values()
-        ):
-            return occ.Lightcone.open([target])
+    # Particle files carry a "*_particles" data_type in their header. They only make
+    # sense when opened alongside the properties dataset that links to them (a
+    # StructureCollection). Opening particles on their own is unsupported: if every
+    # discovered group is a particle group, there is nothing to anchor them, so fail
+    # loudly rather than fabricate a SimulationCollection of orphaned particle types.
+    groups = [g for fl in ordinary_layouts for g in fl.groups]
 
-        datasets = {
-            name: __open_dataset_targets_for_sim_collection(
-                targets, target["dataset_group_types"][name]
-            )
-            for name, targets in target["dataset_groups"].items()
-        }
-        if len(datasets) > 1:
-            return occ.SimulationCollection(datasets)
-        else:
-            return next(iter(datasets.values()))
-    raise ValueError(
-        "Failed to open file. This is likely a bug. Please report it on github"
-    )
-
-
-def __open_dataset_targets_for_sim_collection(
-    targets: list[DatasetTarget], group_type: FileType
-):
-    if len(targets) == 1:
-        return open_single_dataset(targets[0])
-    # Bad naming, will come back to this.
-    file_target = FileTarget(
-        dataset_group_types={"/": group_type},
-        dataset_targets=targets,
-        dataset_groups={},
-    )
-    match group_type:
-        case FileType.STRUCTURE_COLLECTION:
-            return occ.StructureCollection.open([file_target])
-        # Currently the only nested collection we support, may
-        # extend later
-    raise ValueError(
-        "File has an invalid structure. It looks like it should be a simulation collection, "
-        "but the individual simulation datasets do not have the expected structure"
-    )
-
-
-def __determine_multi_file_collection_type(targets: list[FileTarget]):
-    """
-    When opening several files, the files must be composable into one of our
-    supported collections. Here, we determine what the appropriate collection is.
-
-    Most collections define their own opening logic, so we are free
-    to simply delegate.
-    """
-    properties = []
-    particles_or_profiles = []
-    lightcones = []
-    other_datasets = []
-    # First, split files into their types
-
-    for target in targets:
-        if len(target["dataset_group_types"]) > 1:
-            raise ValueError("Received an invalid combination of files!")
-
-        file_type = next(iter(target["dataset_group_types"].values()))
-
-        if file_type in [
-            FileType.STRUCTURE_COLLECTION,
-            FileType.SIMULATION_COLLECTION,
-        ]:
-            raise ValueError("Invalid combination of files!")
-        if (
-            file_type in (FileType.DATASET, FileType.LIGHTCONE)
-            and target["dataset_targets"][0]["header"].file.data_type == "halo_profiles"
-        ):
-            particles_or_profiles.append(target)
-        elif file_type == FileType.DATASET and target["dataset_targets"][0][
-            "header"
-        ].file.data_type in ["halo_properties", "galaxy_properties"]:
-            properties.append(target)
-        elif file_type == FileType.PARTICLES:
-            particles_or_profiles.append(target)
-        elif file_type == FileType.LIGHTCONE:
-            lightcones.append(target)
-        elif file_type == FileType.DATASET:
-            other_datasets.append(target)
-        else:
-            raise ValueError("Invalid combination of files!")
-
-    return __get_collection_type_from_categorized_lists(
-        properties, particles_or_profiles, lightcones, other_datasets
-    )
-
-
-def __get_collection_type_from_categorized_lists(
-    properties: list[FileTarget],
-    particles_or_profiles: list[FileTarget],
-    lightcones: list[FileTarget],
-    other_datasets: list[FileTarget],
-):
-    """
-    Determines the collection type from a categorized
-    list of files
-    """
-    flags = (
-        len(properties) > 0,
-        len(particles_or_profiles) > 0,
-        len(lightcones) > 0,
-        len(other_datasets) > 0,
-    )
-    match flags:
-        case (True, True, False, False):
-            return occ.StructureCollection
-        case (False, False, True, False):
-            return __identify_lightcone_type(lightcones)
-        case (True, False, False, False):
-            return __get_multi_dataset_type(properties)
-        case (False, False, False, True):
-            return __get_multi_dataset_type(other_datasets)
-        case (False, True, True, False):
-            # A single property dataset on a lightcone will be categorized as a lightcone
-            # The StructureCollection will through an error if there is a weirder setup
-            return occ.StructureCollection
-        case _:
-            raise ValueError("Invalid combination of files")
-
-
-def __identify_lightcone_type(lightcone_targets):
-    dataset_types = reduce(
-        lambda acc, t: (
-            acc
-            + [dt["header"].file.data_type for dt in t["dataset_targets"]]
-            + [
-                dt["header"].file.data_type
-                for datasets in t["dataset_groups"].values()
-                for dt in datasets
+    groups_by_uuid = {group.uuid: group for group in groups if group.uuid is not None}
+    for file_layout in map_layouts:
+        for map_layout in file_layout.maps:
+            reference = groups_by_uuid.get(map_layout.reference)
+            if reference is None:
+                continue
+            invalid_lengths = [
+                (target, length)
+                for target, length in map_layout.primary_lengths
+                if length != reference.row_count
             ]
-        ),
-        lightcone_targets,
-        [],
-    )
+            if invalid_lengths:
+                details = ", ".join(
+                    f"{target} has length {length}"
+                    for target, length in invalid_lengths
+                )
+                raise ValueError(
+                    f"Primary mappings must have the reference dataset length "
+                    f"{reference.row_count}; {details}."
+                )
 
-    dataset_types = set(dataset_types)
-    if len(dataset_types) == 1:
-        return occ.Lightcone
-    else:
-        return occ.StructureCollection
-
-
-def __get_multi_dataset_type(file_targets: list[FileTarget]):
-    """
-    If you have multiple datasets of the same type, we have to figure
-    out how to open them
-    """
-    dtypes = set(
-        ft["dataset_targets"][0]["header"].file.data_type for ft in file_targets
-    )
-    is_lightcone = set(
-        ft["dataset_targets"][0]["header"].file.is_lightcone for ft in file_targets
-    )
-    if dtypes == {"halo_properties", "galaxy_properties"}:  # special case
-        return occ.StructureCollection
-
-    if len(dtypes) == 1 or len(is_lightcone) > 1:
+    if groups and all(is_particle_group(g) for g in groups):
         raise ValueError(
-            "When opening multiple files, they must either be several different data types from a single simulation, "
-            "a single data type from several simulations, or a single lightcone data type from a single simulation"
-        )
-    if is_lightcone.pop():
-        return occ.Lightcone
-    else:
-        return occ.SimulationCollection
-
-
-def __identify_group_types(
-    ds_targets: list[DatasetTarget], group_targets: dict[str, list[DatasetTarget]]
-):
-    """
-    Figure out what our datasets should combine into
-    """
-    if group_targets:
-        return {
-            name: __identify_group_types(targets, {})["/"]
-            for name, targets in group_targets.items()
-        }
-
-    data_types = set(str(t["header"].file.data_type) for t in ds_targets)
-    is_lightcone = [t["header"].file.is_lightcone for t in ds_targets]
-
-    if all("particle" in dt for dt in data_types):  # particles
-        return {"/": FileType.PARTICLES}
-    if len(data_types) == 1 and all(is_lightcone):  # lightcone
-        return {"/": FileType.LIGHTCONE}
-    if len(ds_targets) == 1:  # Just a dataset
-        return {"/": FileType.DATASET}
-
-    parents = set(t["dataset_group"].parent.name for t in ds_targets)
-    if (
-        len(parents) == 1 and len(data_types) > 1
-    ):  # Multiple data types, but not all particles
-        return {"/": FileType.STRUCTURE_COLLECTION}
-    return {"/": FileType.SIMULATION_COLLECTION}  # Organized into multiple groups
-
-
-def __find_all_headers(file_map: dict):
-    return list(filter(lambda key: key.endswith("header"), file_map.keys()))
-
-
-def __find_all_datasets(
-    file_map: dict[str, h5py.File | h5py.Group | h5py.Dataset], open_kwargs
-) -> tuple[list[DatasetTarget], dict[str, list[DatasetTarget]]]:
-    """
-    Search through a file and locate all the datasets. Each dataset is identified
-    with a "data" group. The header associated with the file is the closest
-    header at the same level or above.
-
-    However datasets that are not at the top level need to be grouped. Currently, we
-    have the following options.
-
-    1. The datasets are are lightcone datasets, all have the same type, and all come from the
-       same simulation. These should be grouped and opened as a lightcone.
-    2. Otherwise, we're talking about a simulation collection.
-    """
-
-    known_headers = __find_all_headers(file_map)
-
-    if not known_headers:
-        raise ValueError(
-            f"The file at {next(iter(file_map.values())).file.filename}, does not appear to be an OpenCosmoFile"
+            "Cannot open particle data on its own. Particle datasets must be opened "
+            "together with their properties dataset (e.g. halo or galaxy properties), "
+            "which links to them as a StructureCollection."
         )
 
-    all_file_headers: list[OpenCosmoHeader] = list(
-        map(
-            lambda header_group: read_header(file_map[header_group].parent),
-            known_headers,
-        )
-    )
-    if len(all_file_headers) > 1:
-        known_datasets, known_dataset_groups = __get_collection_dataset_groups(
-            file_map, known_headers, all_file_headers, open_kwargs
-        )
+    scopes = group_by_scope(tuple(ordinary_layouts))
+    if not scopes:
+        raise ValueError("No valid datasets found!")
 
-    else:
-        known_datasets = __find_datasets_under_group(
-            file_map[known_headers[0]].parent.name,
-            file_map,
-            all_file_headers[0],
-            open_kwargs,
-        )
-        known_dataset_groups = {}
-
-    if not known_datasets and not known_dataset_groups:
-        raise ValueError(
-            f"File {next(iter(file_map.values())).file.filename} contains an OpenCosmo header, but does not seem to be formatted correctly!"
-        )
-    return known_datasets, known_dataset_groups
-
-
-def __find_datasets_under_group(
-    group_name: str, file_map, header: OpenCosmoHeader, open_kwargs: dict[str, Any]
-):
-    """
-    Given a header and the group it lives in, find all datasets
-    that live at the same level or below that header.
-    """
-    known_datasets = []
-    if group_name != "/":
-        group_name = f"{group_name}/"
-
-    known_dataset_groups = list(
-        filter(
-            lambda key: key.startswith(f"{group_name}") and key.endswith("/data"),
-            file_map.keys(),
-        )
-    )
-
-    for ds_group_name in known_dataset_groups:
-        ds_group_parent = ds_group_name.rsplit("/", maxsplit=1)[0]
-        ds_group_parent += "/"
-
-        columns = [
-            nds_[1]
-            for nds_ in filter(
-                lambda nds: (
-                    ds_group_parent in nds[0]
-                    and isinstance(nds[1], h5py.Dataset)
-                    and "header" not in nds[0]
-                    and f"{ds_group_parent}index" not in nds[0]
-                ),
-                file_map.items(),
+    children: dict[str, oc.Dataset | oc.collection.Collection] = {}
+    # UUIDs of every dataset this rank actually opened. Only the identities are
+    # needed (map endpoint resolution is pure set membership), so nothing here
+    # requires the Dataset objects themselves.
+    children_by_uuid: dict[str, frozenset[UUID]] = {}
+    available_uuids: set[UUID] = set()
+    for scope_name in sorted(scopes):
+        sub = scopes[scope_name]
+        spec = match_spec(sub)
+        if spec is None:
+            raise ValueError(
+                "Failed to open file. This is likely a bug. Please report it on github"
             )
+        spec.verify(sub)
+        assignments = plan.distribute(sub, mpi_mode, nranks)
+        child, child_uuids = plan.build_from_assignment(
+            assignments[rank], sub, spec, open_kwargs
+        )
+        # A scope whose every dataset was gated out by load/if conditions builds to
+        # None (see plan.build_from_assignment); drop it.
+        if child is not None:
+            children[scope_name] = child
+            children_by_uuid[scope_name] = child_uuids
+            available_uuids |= child_uuids
+
+    if not children:
+        raise ValueError("No valid datasets found!")
+
+    # Resolve mapping files against the UUIDs actually opened on this rank.
+
+    match_set = _resolve_match_set(map_layouts, available_uuids)
+
+    # --- Cross-simulation connectivity check ---
+    #
+    # Detect root-origin scopes structurally: a scope is root-origin when every one
+    # of its GroupLayouts sits at the root path ("/" or "").  Nested multi-simulation
+    # scopes (e.g. /scidac1, /scidac2) have non-root paths and are excluded.  We do
+    # NOT sniff the scope-key string to decide this — g.path is the real signal.
+    #
+    # Only scopes that actually produced a child count: a scope whose every dataset
+    # was gated out by load/if conditions builds to None and was dropped from children
+    # (see the `if child is not None:` guard above).
+    root_scope_names = [
+        scope_name
+        for scope_name, sub in scopes.items()
+        if scope_name in children
+        and all(g.path in ("/", "") for fl in sub for g in fl.groups)
+    ]
+
+    if len(root_scope_names) > 1:
+        # The set of UUIDs the mapping file connects (post-availability-filter).
+        # See DatasetMatchSet.endpoints for why reference_source is included even
+        # when that dataset was not opened.
+        endpoints: frozenset[UUID] = (
+            frozenset() if match_set is None else match_set.endpoints
+        )
+
+        # Per-scope UUIDs come from the discovered layouts, not from the built
+        # children: layouts are identical on every rank, whereas a rank's actual
+        # assignment is not under MpiMode.REDSHIFT.  Deriving the check from
+        # layouts keeps it collective-safe.  Datasets without a persistent
+        # on-disk ``main_uuid`` have a synthesized identity that can never be a
+        # map endpoint.
+        unconnected = [
+            name
+            for name in root_scope_names
+            if not frozenset(
+                g.uuid
+                for fl in scopes[name]
+                for g in fl.groups
+                if g.has_persistent_uuid
+            )
+            & endpoints
         ]
-        index_group = file_map.get(f"{ds_group_parent}index")
-
-        target = DatasetTarget(
-            header=header,
-            dataset_group=file_map[ds_group_name].parent,
-            columns=columns,
-            spatial_index=index_group,
+        if unconnected:
+            raise ValueError(
+                "Cannot open datasets from different simulations without a connecting "
+                "mapping file. Pass a mapping file that defines the correspondence "
+                "between them. Unconnected datasets: "
+                + ", ".join(f"'{n}'" for n in sorted(unconnected))
+                + "."
+            )
+    if match_set is not None:
+        if any(len(uuids) > 1 for uuids in children_by_uuid.values()):
+            raise ValueError("Mapping is currently only supported for single catalogs")
+        match_set = match_set.with_aliases(
+            {
+                normalize_kwarg_name(name): next(iter(uuids))
+                for name, uuids in children_by_uuid.items()
+            }
         )
-        if evaluate_load_conditions(target, open_kwargs):
-            known_datasets.append(target)
 
-    return known_datasets
+    # A mapping resolves to nothing usable whenever fewer than two of its endpoints
+    # were opened — the "ignore unresolvable endpoints" rule applied consistently.
+    # The result is then exactly what it would have been without the mapping file,
+    # including the bare single-child object.
+    if len(children) == 1 and match_set is None:
+        return next(iter(children.values()))
+
+    return occ.SimulationCollection(children, match_set=match_set)
 
 
-def __get_collection_dataset_groups(file_map, header_groups, headers, open_kwargs):
+def _resolve_match_set(
+    map_layouts: list[FileLayout], available: set[UUID]
+) -> DatasetMatchSet | None:
     """
-    If a file has multiple headers, we may need to keep the datasets under each header
-    seperate until we combine them later. It's also possible we are working with a
-    structure collection
+    Resolve discovered mapping files against the datasets actually opened.
+
+    ``available`` is the set of UUIDs the caller actually opened; this function does
+    not rebuild it.
+
+    Only slots whose endpoints are all present survive, so one suite-wide mapping
+    file can be opened against any subset of its simulations. Files are opened
+    without a context manager and their handles deliberately outlive this call: the
+    match set slices them lazily, exactly as build_from_assignment does for data.
+
+    Pre-filtering with ``MapLayout.endpoints`` avoids opening files that cannot
+    possibly resolve: a file is skipped entirely when none of its maps mention any
+    available UUID. Files that are opened but yield no resolving map have their
+    handle closed before moving on.
+
+    First resolvable map wins. Multiple connecting map files are not merged — that
+    is a real design decision, not a cleanup omission.
+
+    This is pure computation over the layouts every rank already holds plus local
+    file opens, so it introduces no collective and cannot diverge across ranks.
     """
-    dataset_groups = {}
-    all_datasets = []
-    for group, header in zip(header_groups, headers):
-        dataset_targets = __find_datasets_under_group(
-            file_map[group].parent.name, file_map, header, open_kwargs
-        )
-        all_datasets += dataset_targets
-        if dataset_targets:
-            dataset_groups[group] = dataset_targets
+    if not map_layouts:
+        return None
 
-    if dataset_groups:
-        dataset_groups = __combine_dataset_groups(dataset_groups)
-    data_types = set(t["header"].file.data_type for t in all_datasets)
-    parent_groups = set([t["dataset_group"].parent for t in all_datasets])
+    import h5py
 
-    if (
-        len(data_types) > 1 and len(parent_groups) == 1
-    ):  # Only possible for a structure collection
-        return all_datasets, {}
+    from opencosmo.mapping.read import read_match_set
 
-    return [], dataset_groups
+    for layout in map_layouts:
+        # Pre-filter: skip this file entirely if no map it carries mentions any
+        # available UUID.  endpoints is a necessary-but-not-sufficient condition —
+        # read_match_set may still return None for a file that passes (e.g. exactly
+        # one primary target available with the reference absent).
+        if not any(map_layout.endpoints & available for map_layout in layout.maps):
+            continue
+
+        f = h5py.File(layout.path, "r")
+        winner = None
+        for map_layout in layout.maps:
+            group = f[map_layout.path]
+            assert isinstance(group, h5py.Group)
+            match_set = read_match_set(group, map_layout, available)
+            if match_set is not None:
+                winner = match_set
+                break
+
+        if winner is not None:
+            # Leave this file's handle open: the match set slices it lazily.
+            # First resolvable map wins; multiple connecting map files are not merged.
+            return winner
+
+        # No map in this file resolved — close the handle rather than leaking it.
+        f.close()
+
+    return None
 
 
-def __combine_dataset_groups(groups: dict[str, list[DatasetTarget]]):
-    """
-    The only context in which datasets are nested two layers deep is if we have a simulation
-    collection with a structure collection inside. This function checks for this case and
-    combines those nested datasets into groups.
-    """
-    output_groups = defaultdict(list)
-    for group_name, datasets in groups.items():
-        output_group_name = group_name.split("/")[1]
-        output_groups[output_group_name].extend(datasets)
-
-    return output_groups
-
-
-def open_single_dataset(
+def open_dataset(
     target: DatasetTarget,
-    metadata_group: Optional[str] = None,
-    bypass_lightcone: bool = False,
-    bypass_mpi: bool = False,
+    index: "IndexSpec",
+    *,
     open_kwargs: dict[str, Any] = {},
-):
-    header = target["header"]
-    ds_group = target["dataset_group"]
-    columns = target["columns"]
+) -> oc.Dataset:
+    header = target.header
 
     assert header is not None
 
@@ -527,78 +431,53 @@ def open_single_dataset(
     except AttributeError:
         box_size = None
 
-    if target["spatial_index"] is not None:
-        tree = open_tree(
-            target["spatial_index"],
-            box_size,
-            header.file.is_lightcone,
-        )
-    else:
-        tree = None
-
+    sim_region = None
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
-    elif header.file.is_lightcone and tree is not None:
-        pixels = tree.get_partitions_with_data(tree.max_level)
-        sim_region = HealpixRegion(pixels, nside=2**tree.max_level)
     elif header.file.data_type == "healpix_map":
         assert header.healpix_map["full_sky"]
         sim_region = FullSkyRegion()
     elif not header.file.is_lightcone:
         p1 = (0, 0, 0)
-        p2 = tuple(header.simulation["box_size"].value for _ in range(3))
+        p2 = tuple(box_size for _ in range(3))
         sim_region = oc.make_box(p1, p2)
 
-    index: Optional[DataIndex] = None
-    ds_length = len(next(iter(columns)))
+    if (spatial_index := target.spatial_index) is not None:
+        tree = open_tree(
+            spatial_index, box_size, header.file.is_lightcone, region=sim_region
+        )
+    else:
+        tree = None
 
-    if not bypass_mpi and (comm := get_comm_world()) is not None:
-        assert partition is not None
-        try:
-            part = partition(comm, header, ds_group["index"], ds_group["data"], tree)
-            if part is None:
-                index = empty()
-            else:
-                index = part.idx
-                sim_region = part.region if part.region is not None else sim_region
-            if header.file.is_lightcone:
-                sim_region = __expand_lightcone_region(sim_region, tree)
-
-        except KeyError:
-            n_ranks = comm.Get_size()
-            n_per = ds_length // n_ranks
-            chunk_boundaries = [i * n_per for i in range(n_ranks + 1)]
-            chunk_boundaries[-1] = ds_length
-            rank = comm.Get_rank()
-            index = from_range(chunk_boundaries[rank], chunk_boundaries[rank + 1])
+    comm = get_comm_world()
+    data_index, sim_region = index(
+        comm, header, target, tree, target.row_count, sim_region
+    )
+    if tree is not None:
+        tree = tree.with_region(sim_region)
 
     state = st.state_from_target(
         target,
         UnitConvention.COMOVING,
         sim_region,
         open_kwargs,
-        index,
-        metadata_group,
+        data_index,
+        tree=tree,
     )
 
     dataset = oc.Dataset(
-        header,
         state,
-        tree=tree,
     )
     dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
-    if header.file.data_type == "healpix_map":
-        return __open_healpix_map(dataset, sim_region)
-    elif header.file.is_lightcone and not bypass_lightcone:
-        return occ.Lightcone.from_datasets(
-            {0: dataset}, header.lightcone["z_range"], **open_kwargs
-        )
-
     return dataset
 
 
-def __open_healpix_map(dataset: oc.Dataset, sim_region):
+def _open_healpix_map(dataset: oc.Dataset):
     header = dataset.header
+    sim_region: Region = FullSkyRegion()
+    if header.file.region is not None:
+        sim_region = from_model(header.file.region)
+
     if (comm := get_comm_world()) is not None and isinstance(
         sim_region, HealpixRegion
     ):  # partitioning has to be done manually since we don't store a spatial index
@@ -613,6 +492,7 @@ def __open_healpix_map(dataset: oc.Dataset, sim_region):
     elif isinstance(sim_region, FullSkyRegion) or header.healpix_map["full_sky"]:
         sim_region = HealpixRegion(dataset.index, nside=header.healpix_map["nside"])
 
+    assert isinstance(sim_region, HealpixRegion)
     return occ.HealpixMap(
         {"data": dataset},
         header.healpix_map["nside"],
@@ -624,7 +504,9 @@ def __open_healpix_map(dataset: oc.Dataset, sim_region):
     )
 
 
-def __expand_lightcone_region(region, tree):
+def _expand_lightcone_region(region, tree):
+    region = region or tree.get_region()
+
     pixels = region.pixels
     npix_ratio = hp.nside2npix(2**tree.max_level) // hp.nside2npix(region.nside)
     pixels = pixels[:, None] * npix_ratio + np.arange(npix_ratio)
@@ -647,11 +529,10 @@ def evaluate_load_conditions(
     Note that some open kwargs may be used in other places in the opening process,
     and will just be ignored here.
     """
-    try:
-        ifgroup = target["dataset_group"]["load/if"]
-    except KeyError:
+    conditions = target.load_conditions
+    if conditions is None:
         return True
-    load = True
-    for key, condition in ifgroup.attrs.items():
-        load = load and (open_kwargs.get(key, False) == condition)
-    return load
+    return all(
+        open_kwargs.get(key, False) == condition
+        for key, condition in conditions.items()
+    )

@@ -13,18 +13,18 @@ from opencosmo.column import add_mag_cols
 
 
 @pytest.fixture
-def core_path_487(diffsky_path):
-    return diffsky_path / "lj_487.hdf5"
+def core_path_487(test_data):
+    return test_data.diffsky.core(487)
 
 
 @pytest.fixture
-def core_path_475(diffsky_path):
-    return diffsky_path / "lj_475.hdf5"
+def core_path_475(test_data):
+    return test_data.diffsky.core(475)
 
 
 @pytest.fixture
-def invalid_data_path(diffsky_path):
-    return diffsky_path / "random_data.hdf5"
+def invalid_data_path(test_data):
+    return test_data.diffsky.invalid
 
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"

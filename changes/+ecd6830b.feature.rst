@@ -1,0 +1,1 @@
+:py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>` and :py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>` can now infer which columns belong to which datasets, allow select calls that look like dataset select calls.

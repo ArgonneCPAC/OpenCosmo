@@ -16,14 +16,14 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
 
 ### Installation
 
-The OpenCosmo library is available for Python 3.11 and up on Linux and MacOS (and Windows via [WSL](https://learn.microsoft.com/en-us/windows/wsl/setup/environment)). It can be installed easily with `pip`:
+The OpenCosmo library is available for Python 3.12 and up on Linux and MacOS (and Windows via [WSL](https://learn.microsoft.com/en-us/windows/wsl/setup/environment)). It can be installed easily with `pip`:
 
 ```bash
 pip install opencosmo
 ```
 
 
-There's a good chance the default version of Python on your system is less than 3.11. Whether or not this is the case, we recommend installing `opencosmo` into a virtual environment. If you're using [Conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html), you can create a new environment and install `opencosmo` into it automatically:
+There's a good chance the default version of Python on your system is less than 3.12. Whether or not this is the case, we recommend installing `opencosmo` into a virtual environment. If you're using [Conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html), you can create a new environment and install `opencosmo` into it automatically:
 
 ```bash
 conda create -n opencosmo_env conda-forge::opencosmo
@@ -143,7 +143,7 @@ In each iteration, "halo properties" will be a dictionary containing the propert
 
 ### Testing
 
-To run tests, first download the test data [from Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing). Set environment variable `OPENCOSMO_DATA_PATH` to the path where the data is stored. Then run the tests with `pytest`:
+To run tests, first download the test data [from Google Drive](https://drive.google.com/drive/folders/1CYmZ4sE-RdhRdLhGuYR3rFfgyA3M1mU-?usp=sharing). Extract it into `test_data/` at the repository root, or set `OPENCOSMO_DATA_PATH` to an extracted data directory elsewhere. See [`test/TEST_DATA.md`](test/TEST_DATA.md) for the expected layout. Then run the tests with `pytest`:
 
 ```bash
 export OPENCOSMO_DATA_PATH=/path/to/data
@@ -157,4 +157,18 @@ Although opencosmo does support multi-core processing via MPI, the default insta
 
 We welcome bug reports and feature requests from the community. If you would like to contribute to the project, please check out the [contributing guide](CONTRIBUTING.md) for more information.
 
+### Citation
+
+If you use OpenCosmo in your work, please cite [the release paper](https://arxiv.org/abs/2607.16059) in any publications:
+
+```latex
+@article{wells2026_opencosmo,
+      title={OpenCosmo: Community Portal and Analysis Framework for Flagship Cosmological Simulations}, 
+      author={Patrick R. Wells and Michael Buelhmann and Patricia Larsen and William M. Hicks and Manpreet Dhillon and Idunnuoluwa A. Adeniji and Katrin Heitmann and Salman Habib and Benoit Côté and Thomas Uram and Gideon McFarland and Andrew Hearin and Ezar Shinabro and Michael E. Papka},
+      year={2026},
+      eprint={2607.16059},
+      archivePrefix={arXiv},
+      primaryClass={astro-ph.IM},
+      url={https://arxiv.org/abs/2607.16059}, 
+}
 ```

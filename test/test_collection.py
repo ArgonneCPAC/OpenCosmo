@@ -5,7 +5,6 @@ import random
 import shutil
 from collections import defaultdict
 from shutil import copy
-from typing import TYPE_CHECKING
 
 import astropy.units as u
 import h5py
@@ -14,10 +13,6 @@ import pytest
 
 import opencosmo as oc
 from opencosmo import StructureCollection
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
@@ -52,29 +47,18 @@ def per_test_dir(
 
 
 @pytest.fixture
-def multi_path(snapshot_path):
-    return snapshot_path / "haloproperties_multi.hdf5"
+def multi_path(test_data):
+    return test_data.snapshot.multi_simulation
 
 
 @pytest.fixture
-def halo_paths(snapshot_path: Path):
-    files = ["haloproperties.hdf5", "haloparticles.hdf5", "sodproperties.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def halo_paths(test_data):
+    return test_data.snapshot.primary.halos
 
 
 @pytest.fixture
-def galaxy_paths(snapshot_path: Path):
-    files = ["galaxyproperties.hdf5", "galaxyparticles.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
-
-
-@pytest.fixture
-def galaxy_paths_2(snapshot_path: Path):
-    files = ["galaxyproperties2.hdf5", "galaxyparticles2.hdf5"]
-    hdf_files = [snapshot_path / file for file in files]
-    return list(hdf_files)
+def galaxy_paths(test_data):
+    return test_data.snapshot.primary.galaxies
 
 
 @pytest.fixture
@@ -135,6 +119,14 @@ def test_link_particles_only(halo_paths):
     assert isinstance(collection, oc.StructureCollection)
     for key in collection.keys():
         assert "particles" in key or key == "halo_properties"
+
+
+def test_open_particles_only_fails(halo_paths):
+    # Particles carry a *_particles data_type and only make sense linked to their
+    # properties dataset. Opening them alone previously produced a bogus
+    # SimulationCollection; it must now raise.
+    with pytest.raises(ValueError):
+        oc.open(halo_paths[1])
 
 
 def test_link_profiles_only(halo_paths):
@@ -264,6 +256,31 @@ def test_select_nested_structures_with_derived(halo_paths, galaxy_paths):
             "gal_star_px",
         }
         assert set(halo["galaxies"]["star_particles"].columns) == {"x", "y", "z"}
+
+
+def test_select_nested_structures_automatically(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+    galaxy_properties = collection["galaxies"]["galaxy_properties"]
+    expected_px = galaxy_properties.select(
+        px=oc.col("gal_mass_star") * oc.col("gal_com_vx")
+    ).get_data("numpy")
+
+    collection = collection.select(
+        "fof_halo_mass",
+        "gal_mass_star",
+        gal_star_px=oc.col("gal_mass_star") * oc.col("gal_com_vx"),
+    )
+
+    assert set(collection["halo_properties"].columns) == {"fof_halo_mass"}
+    galaxies = collection["galaxies"]
+    assert set(galaxies["galaxy_properties"].columns) == {
+        "gal_mass_star",
+        "gal_star_px",
+    }
+    galaxy_data = galaxies["galaxy_properties"].get_data("numpy")
+    assert np.all(galaxy_data["gal_star_px"] == expected_px)
+    assert "x" in collection["dm_particles"].columns
+    assert "x" in galaxies["star_particles"].columns
 
 
 def test_visit_single(halo_paths):
@@ -880,6 +897,33 @@ def test_data_link_drop(halo_paths):
     assert found_dm_particles
 
 
+def test_drop_nested_structures_automatically(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+
+    dropped = collection.drop("fof_halo_mass", "gal_mass_star", "x")
+
+    assert "fof_halo_mass" not in dropped["halo_properties"].columns
+    assert "x" not in dropped["dm_particles"].columns
+    assert "gal_mass_star" not in dropped["galaxies"]["galaxy_properties"].columns
+    assert "x" not in dropped["galaxies"]["star_particles"].columns
+
+
+def test_drop_nested_structures_by_dataset_key(halo_paths, galaxy_paths):
+    collection = oc.open(*halo_paths, *galaxy_paths)
+
+    dropped = collection.drop(
+        halo_properties=["fof_halo_mass"],
+        galaxies={
+            "galaxy_properties": ["gal_mass_star"],
+            "star_particles": ["x"],
+        },
+    )
+
+    assert "fof_halo_mass" not in dropped["halo_properties"].columns
+    assert "gal_mass_star" not in dropped["galaxies"]["galaxy_properties"].columns
+    assert "x" not in dropped["galaxies"]["star_particles"].columns
+
+
 def test_link_halos_to_galaxies(halo_paths, galaxy_paths):
     galaxy_path = galaxy_paths[0]
     collection = oc.open(*halo_paths, galaxy_path)
@@ -1056,6 +1100,34 @@ def test_simulation_collection_evaluate_noinsert(multi_path):
         )
 
 
+@pytest.mark.parametrize("insert", (False, True))
+def test_simulation_collection_evaluate_selected_datasets(multi_path, insert):
+    collection = oc.open(multi_path)
+    selected = next(iter(collection.keys()))
+    unselected = set(collection.keys()) - {selected}
+
+    def fof_px(fof_halo_mass, fof_halo_com_vx):
+        return fof_halo_mass * fof_halo_com_vx
+
+    result = collection.evaluate(
+        fof_px,
+        datasets=selected,
+        vectorize=True,
+        insert=insert,
+        format="numpy",
+    )
+
+    assert all("fof_px" not in dataset.columns for dataset in collection.values())
+    if insert:
+        assert set(result.keys()) == set(collection.keys())
+        assert "fof_px" in result[selected].columns
+        assert all(
+            result[name]._state is collection[name]._state for name in unselected
+        )
+    else:
+        assert set(result) == {selected}
+
+
 def test_simulation_collection_evaluate_map_kwarg(multi_path):
     collection = oc.open(multi_path)
 
@@ -1114,10 +1186,44 @@ def test_simulation_collection_evaluate_overwrite(multi_path):
 def test_simulation_collection_add(multi_path):
     collection = oc.open(multi_path)
     ds_name = next(iter(collection.keys()))
+    unselected = set(collection.keys()) - {ds_name}
     data = np.random.randint(0, 100, len(collection[ds_name]))
-    collection = collection.with_new_columns(datasets=ds_name, random_data=data)
-    stored_data = collection[ds_name].select("random_data").get_data("numpy")
+    updated = collection.with_new_columns(datasets=ds_name, random_data=data)
+    stored_data = updated[ds_name].select("random_data").get_data("numpy")
     assert np.all(stored_data == data)
+    assert all(updated[name]._state is collection[name]._state for name in unselected)
+
+
+def test_simulation_collection_add_selected_mapped_values(multi_path):
+    collection = oc.open(multi_path)
+    ds_name = next(iter(collection.keys()))
+    data = np.random.randint(0, 100, len(collection[ds_name]))
+
+    updated = collection.with_new_columns(
+        datasets=ds_name,
+        random_data={ds_name: data},
+    )
+
+    stored = updated[ds_name].select("random_data").get_data("numpy")
+    assert np.all(stored == data)
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    (
+        "__setitem__",
+        "__delitem__",
+        "clear",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+        "__ior__",
+    ),
+)
+def test_simulation_collection_does_not_expose_mutation_api(multi_path, attribute):
+    collection = oc.open(multi_path)
+    assert not hasattr(collection, attribute)
 
 
 def test_simulation_collection_add_with_descriptions(multi_path):
@@ -1318,24 +1424,3 @@ def test_data_cached_after_objects(halo_paths):
     uuid_data = cache.get_data({(gpe_uuid, "gpe")})
     assert uuid_data.get(gpe_uuid, {}).get("gpe") is not None
     assert dataset.descriptions["gpe"] != "None"
-
-
-def test_modify_metadata_column(halo_paths):
-    ds = oc.open(*halo_paths)
-    galaxyproperties_start = ds["halo_properties"].get_metadata(
-        "galaxyproperties_start"
-    )
-    updated_galprops = oc.col("galaxyproperties_start") + 1000
-
-    ds = ds.with_new_columns(
-        "halo_properties", galaxyproperties_start=updated_galprops, allow_overwrite=True
-    )
-    updated_galaxyproperties_start = ds["halo_properties"].get_metadata(
-        "galaxyproperties_start"
-    )
-    assert np.all(
-        (galaxyproperties_start["galaxyproperties_start"] + 1000)
-        == updated_galaxyproperties_start["galaxyproperties_start"]
-    )
-    assert "galaxyproperties_start" not in ds["halo_properties"].columns
-    assert "galaxyproperties_start" not in ds["halo_properties"].get_data("numpy")

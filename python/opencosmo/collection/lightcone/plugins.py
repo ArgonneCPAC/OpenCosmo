@@ -102,7 +102,21 @@ def radec_from_thetaphi(theta, phi):
 def redshift_from_chi(chi: u.Quantity, cosmology):
     distance = chi.to(u.Mpc, cu.with_H0(cosmology.H0))
 
-    redshift = distance.to(
+    if len(distance) == 0:
+        # astropy's z_at_value (used by the redshift-distance equivalency below)
+        # opens an np.nditer over the input, which raises "Iteration of
+        # zero-sized operands is not enabled" on empty input. Surplus MPI ranks
+        # hold zero-length datasets, so short-circuit with an empty result of the
+        # right unit rather than invoking the solver.
+        return {"redshift": distance.value * cu.redshift}
+
+    z_max = distance.max().to(
         cu.redshift, cu.redshift_distance(cosmology, kind="comoving")
     )
-    return {"redshift": redshift}
+    z_min = distance.min().to(
+        cu.redshift, cu.redshift_distance(cosmology, kind="comoving")
+    )
+    z_grid = np.linspace(z_min.value, z_max.value, 4096)
+    chi_grid = cosmology.comoving_distance(z_grid).to(u.Mpc)
+    z = np.interp(distance.to_value(u.Mpc), chi_grid.to_value(u.Mpc), z_grid)
+    return {"redshift": z * cu.redshift}

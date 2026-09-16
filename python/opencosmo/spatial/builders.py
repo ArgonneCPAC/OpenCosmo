@@ -11,6 +11,7 @@ from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
     HealpixRegionModel,
+    SkyboxRegionModel,
 )
 from opencosmo.spatial.region import BoxRegion, ConeRegion, HealpixRegion, SkyboxRegion
 
@@ -32,6 +33,8 @@ def from_model(model: BaseModel):
             return make_box(model.p1, model.p2)
         case HealpixRegionModel():
             return HealpixRegion(np.array(list(model.pixels)), model.nside)
+        case SkyboxRegionModel():
+            return make_skybox(model.p1, model.p2)
         case _:
             raise ValueError(f"Invalid region model type {type(model)}")
 

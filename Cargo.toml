@@ -9,6 +9,6 @@ name = "_lib"
 crate-type = ["cdylib"]
 
 [dependencies]
-numpy = "0.28"
-pyo3 = "0.28.2"
+numpy = "0.29"
+pyo3 = "0.29"
 

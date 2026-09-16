@@ -2,13 +2,14 @@ import h5py
 import numpy as np
 import pytest
 from astropy.cosmology import units as cu
+from opencosmo.column.select import MissingColumnError
 
 import opencosmo as oc
 
 
 @pytest.fixture
-def input_path(snapshot_path):
-    return snapshot_path / "galaxyproperties.hdf5"
+def input_path(test_data):
+    return test_data.snapshot.primary.galaxy_properties
 
 
 def test_select(input_path):
@@ -114,7 +115,7 @@ def test_select_invalid_column(input_path):
     selected_cols = np.random.choice(cols, 10, replace=False)
     # add an invalid column
     selected_cols = np.append(selected_cols, "invalid_column")
-    with pytest.raises(ValueError):
+    with pytest.raises(MissingColumnError):
         dataset.select(selected_cols)
 
 

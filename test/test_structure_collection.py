@@ -2,36 +2,55 @@ import numpy as np
 import pytest
 
 import opencosmo as oc
+from opencosmo.collection.structure.handler import link_slot_values
+
+
+def _link_slot(collection, link_name):
+    """Per-source-row link slot values (idx with -1, or chunk sizes).
+
+    Reads straight off the collection's match sets -- the same primitive the
+    library itself uses to decide which structures are empty.
+    """
+    handler = collection._StructureCollection__handler
+    source = collection._StructureCollection__source
+    values, _ = link_slot_values(handler.match_sets, source, link_name)
+    return values
 
 
 @pytest.fixture
-def halos_600_path(lightcone_path):
-    properties = lightcone_path / "step_600" / "haloproperties.hdf5"
-    particles = lightcone_path / "step_600" / "haloparticles.hdf5"
-    profiles = lightcone_path / "step_600" / "haloprofiles.hdf5"
-    return [properties, particles, profiles]
+def halos_600_path(test_data):
+    return test_data.lightcone.step(600).halos
 
 
 @pytest.fixture
-def galaxies_600_path(lightcone_path):
-    properties = lightcone_path / "step_600" / "galaxyproperties.hdf5"
-    particles = lightcone_path / "step_600" / "galaxyparticles.hdf5"
-    return [properties, particles]
+def galaxies_600_path(test_data):
+    return test_data.lightcone.step(600).galaxies
 
 
 @pytest.fixture
-def halos_601_path(lightcone_path):
-    properties = lightcone_path / "step_601" / "haloproperties.hdf5"
-    particles = lightcone_path / "step_601" / "haloparticles.hdf5"
-    profiles = lightcone_path / "step_601" / "haloprofiles.hdf5"
-    return [properties, particles, profiles]
+def halos_601_path(test_data):
+    return test_data.lightcone.step(601).halos
 
 
 @pytest.fixture
-def galaxies_601_path(lightcone_path):
-    properties = lightcone_path / "step_601" / "galaxyproperties.hdf5"
-    particles = lightcone_path / "step_601" / "galaxyparticles.hdf5"
-    return [properties, particles]
+def galaxies_601_path(test_data):
+    return test_data.lightcone.step(601).galaxies
+
+
+@pytest.fixture
+def lightcone_files(test_data):
+    """Map a component name to the per-step files that provide it."""
+
+    step_600 = test_data.lightcone.step(600)
+    step_601 = test_data.lightcone.step(601)
+
+    return {
+        "halo_properties": [step_600.halo_properties, step_601.halo_properties],
+        "halo_particles": [step_600.halo_particles, step_601.halo_particles],
+        "halo_profiles": [step_600.halo_profiles, step_601.halo_profiles],
+        "galaxy_properties": [step_600.galaxy_properties, step_601.galaxy_properties],
+        "galaxy_particles": [step_600.galaxy_particles, step_601.galaxy_particles],
+    }
 
 
 @pytest.fixture
@@ -248,9 +267,8 @@ def test_lightcone_ignore_empty(lightcone_files):
 
     # Compute the expected kept set: halos with both a profile and a galaxy,
     # since both datasets were opened.
-    metadata = kept_all["halo_properties"].get_metadata()
-    has_profile = metadata["sod_profile_idx"] != -1
-    has_galaxy = metadata["galaxyproperties_size"] != 0
+    has_profile = _link_slot(kept_all, "halo_profiles") != -1
+    has_galaxy = _link_slot(kept_all, "galaxy_properties") != 0
     expected = int((has_profile & has_galaxy).sum())
 
     assert len(kept_nonempty) == expected
@@ -275,8 +293,8 @@ def test_lightcone_ignore_empty_only_considers_opened(lightcone_files):
     ]
     collection = oc.open(*paths)
 
-    metadata = oc.open(*paths, ignore_empty=False)["halo_properties"].get_metadata()
-    expected = int((metadata["sod_profile_idx"] != -1).sum())
+    kept_all = oc.open(*paths, ignore_empty=False)
+    expected = int((_link_slot(kept_all, "halo_profiles") != -1).sum())
 
     assert len(collection) == expected
     assert len(collection["halo_profiles"]) == expected

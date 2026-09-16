@@ -2,7 +2,7 @@
 from datetime import date
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import ClassVar, Literal, Optional
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
@@ -21,6 +21,7 @@ from opencosmo.units import UnitConvention
 
 from .cosmology import CosmologyParameters
 from .diffsky import DiffskyCatalogInfo, DiffskyVersionInfo
+from .supermock import SuperMockParams
 from .units import register_units
 from .utils import empty_string_to_none
 
@@ -132,7 +133,7 @@ class CosmoToolsParameters(BaseModel):
 
     @field_serializer("cosmotools_steps")
     def serialize_steps(self, steps) -> list[int]:
-        return list(steps)
+        return sorted(steps)
 
 
 class ReformatParameters(BaseModel):
@@ -197,15 +198,30 @@ class ReformatParameters(BaseModel):
         return data
 
 
+class HaccSimulationInfo(BaseModel):
+    """
+    Models the attributes on the ``header/simulation`` group itself (as opposed
+    to ``header/simulation/parameters``).
+
+    Only ``name`` is modelled deliberately: ``date`` would shadow the
+    module-level ``from datetime import date`` import, and the raw config blobs
+    (``raw_indat``, ``raw_cosmotools_config``) are not worth carrying.
+    """
+
+    model_config = ConfigDict(frozen=True)
+    ACCESS_PATH: ClassVar[str] = "simulation"
+    name: str
+
+
 class MapParams(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "healpix_map"
     z_range: Optional[tuple[float, float]] = None
-    nside: Optional[int] = None
-    nside_lr: Optional[int] = None
+    nside: int
+    nside_lr: int
     map_type: Optional[str] = None
-    ordering: Optional[str] = None
-    full_sky: Optional[bool] = None
+    ordering: Literal["NESTED"]
+    full_sky: bool
 
     @model_validator(mode="before")
     @classmethod
@@ -229,7 +245,10 @@ ORIGIN_PARAMETERS = {
         "simulation/cosmotools": CosmoToolsParameters,
         "simulation/cosmology": CosmologyParameters,
     },
-    "optional": {"reformat_hacc/config": ReformatParameters},
+    "optional": {
+        "reformat_hacc/config": ReformatParameters,
+        "simulation": HaccSimulationInfo,
+    },
 }
 
 DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
@@ -242,6 +261,7 @@ DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
         "optional": {
             "diffsky_versions": DiffskyVersionInfo,
             "catalog_info": DiffskyCatalogInfo,
+            "supermock": SuperMockParams,
         }
     },
     "healpix_map": {"required": {"map_params": MapParams}},

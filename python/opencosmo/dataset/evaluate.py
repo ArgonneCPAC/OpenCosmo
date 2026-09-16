@@ -9,10 +9,11 @@ from astropy.units import Quantity
 
 from opencosmo.column.column import EvaluatedColumn
 from opencosmo.column.evaluate import EvaluateStrategy, do_first_evaluation
+from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import concat_chunks, fetch_as_dict
 
 if TYPE_CHECKING:
-    from opencosmo import Dataset
+    from opencosmo.dataset.state import DatasetState
 
 """
 Although the user-facing name for this operation is "evaluate", the pattern 
@@ -56,29 +57,30 @@ def build_evaluated_column(
 
 def visit_dataset(
     column: EvaluatedColumn,
-    dataset: Dataset,
+    state: DatasetState,
     batch_size: int,
 ) -> dict[str, np.ndarray]:
     if column.batch_size > 0:
-        return visit_dataset_batched(column, dataset)
-    data = fetch_as_dict(dataset, column.requires_names, column.format, unpack=False)
-    output = column.evaluate(data, dataset.index)
+        return visit_dataset_batched(column, state)
+    data = fetch_as_dict(state, column.requires_names, column.format, unpack=False)
+    output = column.evaluate(data, state.raw_index)
     if not isinstance(output, dict):
         assert len(column.produces) == 1
         output = {column.produces.pop(): output}
     return output
 
 
-def visit_dataset_batched(column: EvaluatedColumn, dataset: Dataset):
-    ranges = np.arange(0, len(dataset), column.batch_size)
-    if ranges[-1] != len(dataset):
-        ranges = np.append(ranges, len(dataset))
+def visit_dataset_batched(column: EvaluatedColumn, state: DatasetState):
+    length = len(state)
+    ranges = np.arange(0, length, column.batch_size)
+    if ranges[-1] != length:
+        ranges = np.append(ranges, length)
 
     output = defaultdict(list)
 
     for start, end in np.lib.stride_tricks.sliding_window_view(ranges, 2):
         batch_data = fetch_as_dict(
-            dataset.take_range(start, end),
+            dsops.take_range(state, start, end, "local"),
             column.requires_names,
             column.format,
             unpack=False,
@@ -100,7 +102,7 @@ def verify_for_lazy_evaluation(
     strategy: str,
     format: str,
     evaluator_kwargs: dict[str, Any],
-    dataset: Dataset,
+    state: DatasetState,
     batch_size: int,
     allow_none=False,
     skip_evaluation_check=False,
@@ -108,7 +110,7 @@ def verify_for_lazy_evaluation(
     """
     Verify the function behaves correctly and determine the names of its output columns.
     """
-    __verify(func, dataset.columns, evaluator_kwargs.keys())
+    __verify(func, state.columns, evaluator_kwargs.keys())
     sig = signature(func)
     required_arguments = filter(
         lambda param: param.default == Parameter.empty, sig.parameters.values()
@@ -116,17 +118,17 @@ def verify_for_lazy_evaluation(
     required_argument_names = set(map(lambda param: param.name, required_arguments))
     required_columns = required_argument_names.difference(evaluator_kwargs.keys())
 
-    if diff := required_columns.difference(dataset.columns):
+    if diff := required_columns.difference(state.columns):
         raise ValueError(
             f"Function expects columns {diff} which are not in the dataset"
         )
-    dataset = dataset.select(required_columns)
+    state = dsops.select(state, required_columns)
     if skip_evaluation_check:
         first_values = None
         eval_strategy = EvaluateStrategy(strategy)
     else:
         first_values, eval_strategy = do_first_evaluation(
-            func, strategy, format, evaluator_kwargs, dataset
+            func, strategy, format, evaluator_kwargs, state
         )
         if first_values is None and not allow_none:
             raise ValueError(

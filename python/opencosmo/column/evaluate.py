@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 
 if TYPE_CHECKING:
-    from opencosmo import Dataset
+    from opencosmo.dataset.state import DatasetState
 
 
 class EvaluateStrategy(Enum):
@@ -71,28 +71,33 @@ def do_first_evaluation(
     strategy: str,
     format: str,
     kwargs: dict[str, Any],
-    dataset: Dataset,
+    state: DatasetState,
 ):
+    from opencosmo.dataset import operations as dsops
     from opencosmo.dataset.formats import fetch_as_dict
 
     eval_strategy = EvaluateStrategy(strategy)
-    columns = list(dataset.columns)
+    columns = list(state.columns)
     match eval_strategy:
         case EvaluateStrategy.VECTORIZE:
-            values = fetch_as_dict(dataset.take(1), columns, format, unpack=False)
+            values = fetch_as_dict(
+                dsops.take(state, 1, "start", "local"), columns, format, unpack=False
+            )
             return func(**values, **kwargs), eval_strategy
 
         case EvaluateStrategy.ROW_WISE:
-            values = fetch_as_dict(dataset.take(1), columns, format, unpack=False)
+            values = fetch_as_dict(
+                dsops.take(state, 1, "start", "local"), columns, format, unpack=False
+            )
             values = {name: container[0] for name, container in values.items()}
             return func(**values, **kwargs), eval_strategy
 
         case EvaluateStrategy.CHUNKED:
-            index = dataset.index
+            index = state.raw_index
             assert isinstance(index, tuple)
             first_chunk_size = index[1][0]
             first_chunk = fetch_as_dict(
-                dataset.take(first_chunk_size, at="start"),
+                dsops.take(state, first_chunk_size, at="start", mode="local"),
                 columns,
                 format,
                 unpack=False,

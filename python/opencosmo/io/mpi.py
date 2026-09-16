@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import h5py
+import hdf5plugin
 import numpy as np
+from h5py import h5fd, h5p, h5s
 
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import schema_data_length, verify_structure
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
-from opencosmo.mpi import MPI, get_comm_world
+from opencosmo.mpi import MPI, get_all_keys, get_comm_world, get_subcom, sum_scatter
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from _typeshed import SupportsRichComparisonT
 
     from opencosmo.io.schema import Schema
 
@@ -45,6 +45,28 @@ In order to avoid MPI deadlocks, we always sort columns in alphabetical order be
 """
 
 
+def collective_write(dset, start, data=None):
+    """Collective write where any rank may contribute nothing.
+    All ranks in the file's communicator must call this."""
+    dxpl = h5p.create(h5p.DATASET_XFER)
+    dxpl.set_dxpl_mpio(h5fd.MPIO_COLLECTIVE)
+
+    fspace = dset.id.get_space()
+    n = 0 if data is None else len(data)
+
+    if n:
+        arr = np.ascontiguousarray(data, dtype=dset.dtype)
+        mspace = h5s.create_simple(arr.shape)
+        fspace.select_hyperslab((start,) + (0,) * (dset.ndim - 1), arr.shape)
+    else:
+        arr = np.zeros((1,) + dset.shape[1:], dtype=dset.dtype)
+        mspace = h5s.create_simple(arr.shape)
+        mspace.select_none()
+        fspace.select_none()
+
+    dset.id.write(mspace, fspace, arr, dxpl=dxpl)
+
+
 class CombineState(Enum):
     VALID = 1
     ZERO_LENGTH = 2
@@ -67,21 +89,18 @@ def write_parallel(file: Path, file_schema: Schema):
     if len(paths) != 1:
         raise ValueError("Different ranks recieved a different path to output to!")
 
-    try:
-        verify_structure(file_schema)  # Tier 1: structural correctness
-        # Tier 2: does this rank actually contribute any rows?
-        state = (
-            CombineState.VALID
-            if schema_data_length(file_schema) > 0
-            else CombineState.ZERO_LENGTH
-        )
-        results = comm.allgather(state)
-    except ValueError:
-        results = comm.allgather(CombineState.INVALID)
-        raise
+    if schema_data_length(file_schema) == 0:
+        results = comm.allgather(CombineState.ZERO_LENGTH)
+    else:
+        try:
+            verify_structure(file_schema)  # Tier 1: structural correctness
+            # Tier 2: does this rank actually contribute any rows?
+            results = comm.allgather(CombineState.VALID)
+        except ValueError:
+            results = comm.allgather(CombineState.INVALID)
+            raise
     if any(rs == CombineState.INVALID for rs in results):
         raise ValueError("One or more ranks recieved invalid schemas!")
-
     has_data = [i for i, state in enumerate(results) if state == CombineState.VALID]
     if len(has_data) == 0:
         raise ValueError("No ranks have any data to write!")
@@ -93,14 +112,15 @@ def write_parallel(file: Path, file_schema: Schema):
     if new_comm == MPI.COMM_NULL:
         return cleanup_mpi(comm, new_comm, new_group)
 
-    verify_schemas(file_schema, new_comm)
+    file_schema = sync_schemas(file_schema, new_comm)
+    __verify_structure_collective(file_schema, new_comm)
     offsets = __get_all_offsets(file_schema, new_comm, "")
+
     if new_comm.Get_rank() == 0:
         with h5py.File(file, "w") as f:
             __allocate(file_schema, f, new_comm)
     else:
         __allocate(file_schema, None, new_comm)
-
     try:
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
             __write_parallel(file_schema, f, offsets, new_comm)
@@ -118,27 +138,29 @@ def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Gro
     group_write.Free()
 
 
-def get_all_keys(
-    data: dict[SupportsRichComparisonT, Any], comm: Optional[MPI.Comm]
-) -> list[SupportsRichComparisonT]:
-    """
-    Return all keys in the dictionary across all ranks, sorted
-    alphabetically. When defining the file structure, we have to iterate
-    through the schemas in the same order across all ranks, including
-    when one rank doesn't have a given child.
-    """
-    data_names = set(data.keys())
-    if comm is None:
-        return sorted(list(data_names))
+def sync_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
+    from opencosmo.collection.simulation.io import resort_simulation_collection_mpi
 
-    all_data_names: Iterable[SupportsRichComparisonT]
-    all_data_names = data_names.union(*comm.allgather(data_names))
-    all_data_names = list(all_data_names)
-    all_data_names.sort()
-    return all_data_names
+    schema = update_and_verify_schemas(schema, comm)
+    if schema.type == FileEntry.SIMULATION_COLLECTION:
+        schema = resort_simulation_collection_mpi(schema, comm)
+    return schema
 
 
-def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
+def __verify_structure_collective(schema: Schema, comm: MPI.Comm) -> None:
+    """Validate final schemas without allowing one rank to skip a collective."""
+    try:
+        verify_structure(schema)
+        message = None
+    except ValueError as error:
+        message = str(error)
+    messages = comm.allgather(message)
+    invalid_message = next((value for value in messages if value is not None), None)
+    if invalid_message is not None:
+        raise ValueError(invalid_message)
+
+
+def update_and_verify_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
     """
     By this stage, we know that all the ranks that are participating have a valid
     file schema. We now need to verify that they can be made consistent across ranks.
@@ -149,17 +171,17 @@ def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
 
     """
 
-    if comm.Get_size() == 1:  # this shouldn't happen, but include anyway
-        return
-
     file_types = set(comm.allgather(schema.type))
     if len(file_types) > 1:
         raise ValueError(
             "Unable to combine file schemas, as they do not have the same type!"
         )
-
+    if schema.updater is not None:
+        schema = schema.updater(schema, comm)
     verify_columns(schema.columns, comm)
-    verify_attributes(schema.attributes, comm)
+    new_attributes = sync_attributes(schema.attributes, schema.name, comm)
+    schema = schema._replace(attributes=new_attributes)
+
     all_child_names = get_all_keys(schema.children if schema is not None else {}, comm)
 
     for child_name in all_child_names:
@@ -174,12 +196,16 @@ def verify_schemas(schema: Schema, comm: MPI.Comm) -> None:
             new_comm = comm.Create(new_group)
             group.Free()
         if child_name in schema.children:
-            verify_schemas(schema.children[child_name], new_comm)
+            new_schema = update_and_verify_schemas(
+                schema.children[child_name], new_comm
+            )
+            schema.children[child_name] = new_schema
         # Free only the sub-communicator/group we created; never the parent comm.
         if new_group is not None:
             if new_comm != MPI.COMM_NULL:
                 new_comm.Free()
             new_group.Free()
+    return schema
 
 
 def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
@@ -230,18 +256,23 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
             raise ValueError("Metadata was not consistent across ranks!")
 
 
-def verify_attributes(metadata: dict[str, Any], comm: MPI.Comm):
+def sync_attributes(metadata: dict[str, Any], group_name: str, comm: MPI.Comm):
     all_metadata = comm.allgather(metadata)
 
-    if not all(md == all_metadata[0] for md in all_metadata[1:]):
-        raise ValueError("Not all ranks recieved the same metadata!")
+    for md in all_metadata[1:]:
+        if md != all_metadata[0]:
+            print(md, all_metadata[0])
+            raise ValueError(
+                f"Not all ranks recieved the same metadata in {group_name}"
+            )
+    return metadata
 
 
 def __write_parallel(
     schema: Schema,
     group: h5py.File | h5py.Group,
     offsets: dict,
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
 ):
     """
     Used with both the parallel and serial version, though the later passes through
@@ -353,6 +384,7 @@ def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MP
     for column_name in all_column_names:
         column_writer = schema.columns.get(column_name)
         __allocate_column(column_name, column_writer, group, comm)
+
     __write_metadata(schema, group, comm)
 
     all_child_names = get_all_keys(schema.children, comm)
@@ -418,11 +450,12 @@ def __write_metadata(
         attrs = comm.allgather(None)
     else:
         attrs = comm.allgather(schema.attributes)
-    attrs_to_write = list(filter(lambda at: at is not None, attrs))[0]
+
+    attrs_to_write = list(filter(lambda at: at is not None, attrs))
+    if not attrs_to_write:
+        return
     if group is not None:
-        for path, metadata in attrs_to_write.items():
-            metadata_group = group.require_group(path)
-            metadata_group.attrs.update(metadata)
+        group.attrs.update(attrs_to_write[0])
 
 
 def __allocate_column(
@@ -437,7 +470,14 @@ def __allocate_column(
 
     shape, dtype, attrs = get_column_allocation_metadata(column_writer, comm)
     if group is not None:
-        ds = group.create_dataset(name, shape=shape, dtype=dtype)
+        ds = group.create_dataset(
+            name,
+            shape=shape,
+            dtype=dtype,
+            compression=hdf5plugin.Blosc(
+                cname="blosclz", clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE
+            ),
+        )
         ds.attrs.update(attrs)
         return ds
     return None
@@ -447,7 +487,7 @@ def __write_columns(
     schema: Schema,
     group: h5py.File | h5py.Group,
     offsets: dict,
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
 ):
     all_column_names = get_all_keys(schema.columns, comm)
     for cn in all_column_names:
@@ -458,60 +498,66 @@ def __write_columns(
         __write_column(writer, ds, offset, comm)
 
 
+def __write_column_serial(writer, offset, ds):
+    data = writer.get_data()
+    match writer.combine_strategy:
+        case ColumnCombineStrategy.CONCAT:
+            ds[offset : offset + len(data)] = data
+        case ColumnCombineStrategy.SUM:
+            data += ds[:]
+            ds[:] = data
+
+
 def __write_column(
     writer: Optional[ColumnWriter],
     ds: h5py.Dataset,
     offset: int,
-    comm: Optional[MPI.Comm],
+    write_comm: MPI.Comm | None,
 ):
+    if write_comm is None:
+        return __write_column_serial(writer, offset, ds)
+
     strategy = None if writer is None else writer.combine_strategy
-    if comm is not None:
-        strategies = list(
-            filter(lambda strat: strat is not None, comm.allgather(strategy))
-        )
-        strategy = strategies[0]
+    strategies = list(
+        filter(lambda strat: strat is not None, write_comm.allgather(strategy))
+    )
+    strategy = strategies[0]
+    data_comm, new_group = get_subcom(
+        write_comm.allgather(writer is not None), write_comm
+    )
 
-    if comm is not None:
-        participating = comm.allgather(writer is not None)
-        participating_ranks = [i for i in range(len(participating)) if participating[i]]
-        group = comm.Get_group()
-        new_group = group.Incl(participating_ranks)
-        new_comm = comm.Create(new_group)
-        group.Free()
-    else:
-        new_group = None
-        new_comm = None
-
+    data: np.ndarray | None
     match strategy:
         case ColumnCombineStrategy.CONCAT:
             if writer is not None:
-                data = writer.get_data(new_comm)
+                data = writer.get_data(data_comm)
             else:
                 shape = (0,) + ds.shape[1:]
                 data = np.empty(shape, dtype=ds.dtype)
-
-            ds.write_direct(data, dest_sel=np.s_[offset : offset + len(data)])
 
         case ColumnCombineStrategy.SUM:
             if writer is None:
                 data = np.zeros(ds.shape, ds.dtype)
             else:
-                data = writer.get_data(new_comm)
-            if comm is not None:
-                data_to_write = comm.allreduce(data)
-                ds[:] = data_to_write
-            else:
-                data += ds[:]
-                ds[:] = data
+                data = writer.get_data(data_comm)
+            data, offset = sum_scatter(data, write_comm)
+
+        case _:
+            data = None
+
+    if data is None or len(data) == 0:
+        shape = (0,) + ds.shape[1:]
+        data = np.empty(shape, dtype=ds.dtype)
+
+    collective_write(ds, offset, data)
 
     # Free only the sub-communicator/group we created; never the parent comm.
     # Ranks excluded from the sub-communicator get COMM_NULL (which must not be
     # freed) but still own a group handle that must be released.
-    if new_comm is not None and new_comm != MPI.COMM_NULL:
-        new_comm.Free()
-    if new_group is not None:
-        new_group.Free()
-    if comm is not None:
-        comm.Barrier()
+    if data_comm != MPI.COMM_NULL:
+        data_comm.Free()
+
+    new_group.Free()
+    write_comm.Barrier()
 
     ds.file.flush()

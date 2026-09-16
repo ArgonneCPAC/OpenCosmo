@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Type
 
 from astropy.units.typing import UnitLike
+from pydantic import BaseModel
 
 from opencosmo.units import UnitConvention
 from opencosmo.units.get import get_unit_applicators_dict
 
 if TYPE_CHECKING:
     from astropy.cosmology import Cosmology
-    from pydantic import BaseModel
 
 ModelUnitAnnotation = tuple[UnitConvention, dict[str, UnitLike], bool]
 
@@ -44,9 +44,9 @@ def register_units(
 
 
 def __get_unit_transformations(
-    model: BaseModel, cosmology, convention: UnitConvention = UnitConvention.SCALEFREE
+    model_type: Type, cosmology, convention: UnitConvention = UnitConvention.SCALEFREE
 ) -> dict:
-    if (us := __KNOWN_UNITFUL_MODELS__.get(type(model))) is None:
+    if (us := __KNOWN_UNITFUL_MODELS__.get(model_type)) is None:
         return {}
     base_convention, known_units, is_comoving = us
     applicators = get_unit_applicators_dict(
@@ -56,13 +56,19 @@ def __get_unit_transformations(
 
 
 def apply_units(
-    model: BaseModel,
+    model: BaseModel | dict,
+    model_type: Type,
     cosmology: Cosmology,
     convention: UnitConvention = UnitConvention.SCALEFREE,
     unit_kwargs: dict[str, Any] = {},
 ):
-    applicators = __get_unit_transformations(model, cosmology, convention)
-    parameters = model.model_dump()
+    applicators = __get_unit_transformations(model_type, cosmology, convention)
+    if isinstance(model, dict):
+        parameters = model
+    elif isinstance(model, BaseModel):
+        parameters = model.model_dump()
+    else:
+        return model
     for name, applicator in applicators.items():
         parameters[name] = applicator.apply(
             parameters[name], convention, unit_kwargs=unit_kwargs

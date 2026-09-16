@@ -9,10 +9,11 @@ import astropy.units as u  # type: ignore
 import healpy as hp
 import healsparse as hsp
 import numpy as np
-from astropy.table import Column, vstack  # type: ignore
+from astropy.table import Column as AstroColumn  # type: ignore
+from astropy.table import vstack
 
 import opencosmo as oc
-from opencosmo.column.column import DerivedColumn
+from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
@@ -21,14 +22,12 @@ from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
-    from astropy.cosmology import Cosmology
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset import Dataset
     from opencosmo.dataset.build import GroupedColumnData
-    from opencosmo.dtypes.hacc import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.iopen import FileTarget
+    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
 
@@ -138,6 +137,15 @@ class HealpixMap(dict):
         self.__hidden = hidden
         self.__ordered_by = ordered_by
         self.__region = region
+
+    def __getattr__(self, key: str):
+        try:
+            return self.header.parameters[key]
+        except KeyError:
+            return object.__getattribute__(self, key)
+
+    def __dir__(self):
+        return list(self.header.parameters.keys()) + super().__dir__()
 
     @property
     def nside(self):
@@ -275,18 +283,6 @@ class HealpixMap(dict):
         return descriptions
 
     @property
-    def cosmology(self) -> Cosmology:
-        """
-        The cosmology of the simulation this dataset is drawn from as
-        an astropy.cosmology.Cosmology object.
-
-        Returns
-        -------
-        cosmology: astropy.cosmology.Cosmology
-        """
-        return self.__header.cosmology
-
-    @property
     def region(self) -> Region:
         """
         The region this dataset is contained in. If no spatial
@@ -299,18 +295,6 @@ class HealpixMap(dict):
 
         """
         return self.__region
-
-    @property
-    def simulation(self) -> HaccSimulationParameters:
-        """
-        The parameters of the simulation this dataset is drawn
-        from.
-
-        Returns
-        -------
-        parameters: opencosmo.dtypes.hacc.HaccSimulationParameters
-        """
-        return self.__header.simulation
 
     @property
     def z_range(self):
@@ -378,7 +362,7 @@ class HealpixMap(dict):
 
         if format == "healpix":
             npix = hp.nside2npix(self.nside)
-            if isinstance(table, (u.Quantity, Column)):
+            if isinstance(table, (u.Quantity, AstroColumn)):
                 vals = np.zeros(npix, dtype=np.float32)
                 vals[pixels] = table.value
                 storage = {"vals": vals}
@@ -490,9 +474,9 @@ class HealpixMap(dict):
         is_full_sky = self.full_sky and get_comm_world() is None
 
         if len(new_pixels) != out_npix:
-            region = HealpixRegion(new_pixels, nside_out, self.__ordering)
+            region = HealpixRegion(new_pixels, nside_out)
         else:
-            region = HealpixRegion(from_size(out_npix), nside_out, self.__ordering)
+            region = HealpixRegion(from_size(out_npix), nside_out)
 
         return HealpixMap(
             {"data": new_dataset},
@@ -507,7 +491,7 @@ class HealpixMap(dict):
         )
 
     @classmethod
-    def open(cls, targets: list[FileTarget], **kwargs):
+    def open(cls, targets: list[DatasetTarget], **kwargs):
         raise NotImplementedError()
 
     def __map(
@@ -548,13 +532,10 @@ class HealpixMap(dict):
             )
         return output
 
-    def __map_attribute(self, attribute):
-        return {k: getattr(v, attribute) for k, v in self.items()}
-
-    def make_schema(self) -> Schema:
+    def make_schema(self, path: str) -> Schema:
         children = {}
         for name, dataset in self.items():
-            ds_schema = dataset.make_schema()
+            ds_schema = dataset.make_schema("/".join([path, name]))
             children[name] = ds_schema
         if len(children) == 1:
             schema = next(iter(children.values()))
@@ -865,7 +846,7 @@ class HealpixMap(dict):
         ----------
         *columns : str or list[str]
             The column or columns to select.
-        **derived_columns: DerivedColumn
+        **derived_columns: Column
             Any new derived columns that will be instantiated as part of the select
 
         Returns
@@ -1086,7 +1067,7 @@ class HealpixMap(dict):
     def with_new_columns(
         self,
         descriptions: str | dict[str, str] = {},
-        **columns: DerivedColumn | np.ndarray | u.Quantity,
+        **columns: Column | np.ndarray | u.Quantity,
     ):
         """
         Create a new map with additional columns. These new columns can be derived
@@ -1101,7 +1082,7 @@ class HealpixMap(dict):
             :py:attr:`HealpixMap.descriptions <opencosmo.HealpixMap.descriptions>`. If a dictionary,
             should have keys matching the column names.
 
-        ** columns : opencosmo.DerivedColumn | np.ndarray | u.quantity
+        ** columns : opencosmo.Column | np.ndarray | u.quantity
             The new columns
 
         Returns
@@ -1114,7 +1095,7 @@ class HealpixMap(dict):
         derived = {}
         raw = {}
         for name, column in columns.items():
-            if isinstance(column, DerivedColumn):
+            if isinstance(column, Column):
                 derived[name] = column
             elif len(column) != len(self):
                 raise ValueError(

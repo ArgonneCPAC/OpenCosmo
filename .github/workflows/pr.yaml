@@ -4,6 +4,9 @@ on:
     branches:
       - main
       - release
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 jobs:
   lint:
     uses: ./.github/workflows/lint.yaml
@@ -12,12 +15,17 @@ jobs:
     secrets: inherit
   build:
     uses: ./.github/workflows/build.yaml
+  docker:
+    uses: ./.github/workflows/docker.yaml
+    with:
+      tags: docker.io/astropatty/opencosmo:pr
+      push: false
   check-changelog:
     runs-on: ubuntu-latest
 
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - run: git fetch origin ${{ github.event.pull_request.base.ref }}
           
 

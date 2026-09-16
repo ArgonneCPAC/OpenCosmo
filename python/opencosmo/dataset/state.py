@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+from collections import defaultdict
+from copy import copy
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Generator, Optional
@@ -10,15 +12,17 @@ import astropy.units as u
 import numpy as np
 
 from opencosmo.column.cache import ColumnCache
-from opencosmo.column.column import RawColumn
-from opencosmo.column.select import get_column_selection
+from opencosmo.column.column import EvaluatedColumn, RawColumn
+from opencosmo.column.select import MissingColumnError, get_column_selection
 from opencosmo.dataset.columns import add_columns, resort
+from opencosmo.dataset.graph import get_all_required_pairs
 from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
-from opencosmo.index import single_chunk
+from opencosmo.index import from_size, reindex_column, single_chunk
 from opencosmo.index.mask import into_array
+from opencosmo.mpi import gather_index, get_comm_world
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
     HookPoint,
@@ -26,10 +30,14 @@ from opencosmo.plugins.contexts import (
     PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
-from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
-    make_unit_handler_from_hdf5,
+    make_unit_handler_from_unit_strings,
     make_unit_handler_from_units,
+)
+from opencosmo.uuid import (
+    get_in_memory_dataset_uuid,
+    get_raw_column_uuid,
+    get_string_uuid,
 )
 
 if TYPE_CHECKING:
@@ -45,6 +53,8 @@ if TYPE_CHECKING:
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
+    from opencosmo.spatial.tree import Tree
+    from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
 
@@ -53,7 +63,9 @@ def deregister_state(id: int, cache: DataCache):
 
 
 def sort_data(
-    data: dict[str, np.ndarray], sort_by: tuple[str, bool] | None, state: DatasetState
+    data: dict[str, np.ndarray],
+    sort_by: tuple[str, bool, bool] | None,
+    state: DatasetState,
 ):
     if sort_by is None:
         return data
@@ -63,7 +75,7 @@ def sort_data(
         order = order[::-1]
 
     data = {key: value[order] for key, value in data.items()}
-    if sort_by[0] not in state.columns:
+    if sort_by[2] and set(data.keys()) != set(sort_by[0]):
         data.pop(sort_by[0])
     return fold(HookPoint.PostSort, PostSortCtx(state, data, np.argsort(order))).data
 
@@ -75,16 +87,16 @@ class DatasetState:
     itself only exposes basic lookup operations.
     """
 
+    uuid: UUID
     producers: dict[UUID, ConstructedColumn]
     raw_data_handler: DataHandler
     cache: DataCache
     unit_handler: UnitHandler
     header: OpenCosmoHeader
+    tree: Tree | None
     column_map: dict[str, UUID]
-    region: Region
     open_kwargs: dict[str, Any]
-    sort_key: Optional[tuple[str, bool]]
-    metadata_columns: frozenset[str]
+    sort_key: Optional[tuple[str, bool, bool]]
 
     def __post_init__(self):
         self.cache.register_column_group(id(self), self.column_map)
@@ -92,11 +104,11 @@ class DatasetState:
 
     @property
     def columns(self) -> list[str]:
-        return [c for c in self.column_map if c not in self.metadata_columns]
+        sort_to_drop: int | str = -1
+        if self.sort_key is not None and self.sort_key[2]:
+            sort_to_drop = self.sort_key[0]
 
-    @property
-    def meta_columns(self) -> list[str]:
-        return [c for c in self.column_map if c in self.metadata_columns]
+        return [c for c in self.column_map if c != sort_to_drop]
 
     @property
     def descriptions(self):
@@ -111,6 +123,12 @@ class DatasetState:
             for name, description in all_descriptions.items()
             if name in self.columns
         }
+
+    @property
+    def region(self):
+        if self.tree is None:
+            return None
+        return self.tree.get_region()
 
     @property
     def kwargs(self):
@@ -149,65 +167,64 @@ def state_from_target(
     region: Region,
     open_kwargs: dict[str, Any],
     index: Optional[DataIndex] = None,
-    metadata_group: Optional[str] = None,
+    tree: Tree | None = None,
 ) -> DatasetState:
-    data_group = target["dataset_group"]
-    if "load" in data_group.keys():
-        load_conditions = dict(data_group["load/if"].attrs)
-    else:
-        load_conditions = None
-
-    handler = Hdf5Handler.from_columns(
-        target["columns"],
-        index,
-        metadata_group,
-        load_conditions,
+    handler = Hdf5Handler(
+        target.data_group,
+        {cn: None for cn in target.column_names},
+        index if index is not None else from_size(target.row_count),
+        target.load_conditions,
+        descriptions=target.column_descriptions,
     )
-    unit_handler = make_unit_handler_from_hdf5(
-        target["columns"], target["header"], unit_convention
+    unit_handler = make_unit_handler_from_unit_strings(
+        target.column_units, target.header, unit_convention
     )
-    meta_column_names = frozenset(
-        col.name.split("/")[-1]
-        for col in target["columns"]
-        if metadata_group and col.name.split("/")[-2] == metadata_group
-    )
-    descriptions = handler.descriptions
+    descriptions = target.column_descriptions
+    uuids = target.column_uuids
 
     raw_producers = [
-        RawColumn(cname, descriptions.get(cname, "None")) for cname in handler.columns
+        RawColumn(
+            cname,
+            descriptions.get(cname, "None"),
+            _uuid=uuid,
+            on_disk=True,
+        )
+        for cname, uuid in uuids.items()
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
     producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
     cache = ColumnCache.empty()
     return DatasetState(
+        uuid=target.uuid,
         producers=producers,
         raw_data_handler=handler,
         cache=cache,
         unit_handler=unit_handler,
-        header=target["header"],
+        header=target.header,
+        tree=tree,
         column_map=column_map,
-        region=region,
         open_kwargs=open_kwargs,
         sort_key=None,
-        metadata_columns=meta_column_names,
     )
 
 
 def state_in_memory(
     data_columns: dict,
-    metadata_columns: dict,
     header: OpenCosmoHeader,
     unit_convention: UnitConvention,
     region: Region,
     open_kwargs: dict[str, Any],
     descriptions: Optional[dict[str, str]] = None,
     index: Optional[DataIndex] = None,
+    tree: Tree | None = None,
 ) -> DatasetState:
     descriptions = descriptions or {}
 
-    all_columns = dict(data_columns) | dict(metadata_columns)
+    all_columns = dict(data_columns)
     raw_producers = [
-        RawColumn(cname, descriptions.get(cname, "None"))
+        RawColumn(
+            cname, descriptions.get(cname, "None"), get_raw_column_uuid(cname, set())
+        )
         for cname in all_columns.keys()
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
@@ -227,16 +244,16 @@ def state_in_memory(
     unit_handler = make_unit_handler_from_units(units, header, unit_convention)
 
     return DatasetState(
+        uuid=get_in_memory_dataset_uuid(data_columns),
         producers=producers,
         raw_data_handler=EmptyHandler(),
         cache=cache,
         unit_handler=unit_handler,
         header=header,
+        tree=tree,
         column_map=column_map,
-        region=region,
         open_kwargs=open_kwargs,
         sort_key=None,
-        metadata_columns=frozenset(metadata_columns.keys()),
     )
 
 
@@ -252,7 +269,6 @@ def exit_state(state: DatasetState, *exec_details):
 def get_data(
     state: DatasetState,
     ignore_sort: bool = False,
-    metadata_columns: list = [],
     unit_kwargs: dict = {},
 ) -> dict:
     """
@@ -279,16 +295,14 @@ def get_data(
         data = sort_data(data, state.sort_key, state)
 
     new_order = list(state.columns)
-    for name in metadata_columns:
-        if name in state.metadata_columns:
-            new_order.append(name)
+    if state.sort_key is not None and not new_order:
+        new_order = [state.sort_key[0]]
 
     return {name: data[name] for name in new_order}
 
 
 def iter_rows(
     state: DatasetState,
-    metadata_columns: list = [],
     unit_kwargs: dict = {},
 ) -> Generator:
     """
@@ -312,9 +326,7 @@ def iter_rows(
     try:
         for start, end in chunk_ranges:
             chunk = take_rows(state, single_chunk(start, end - start))
-            data = get_data(
-                chunk, metadata_columns=metadata_columns, unit_kwargs=unit_kwargs
-            )
+            data = get_data(chunk, unit_kwargs=unit_kwargs)
             for name in derived_to_collect:
                 derived_storage[name].append(data[name])
 
@@ -336,34 +348,9 @@ def iter_rows(
         raise
 
 
-def get_metadata(
-    state: DatasetState, columns: list = [], ignore_sort: bool = False
-) -> dict:
-    names = list(columns) if columns else list(state.metadata_columns)
-    data = instantiate_dataset(
-        list(state.producers.values()),
-        {name: state.column_map[name] for name in names},
-        state.raw_data_handler,
-        state.cache,
-        state.unit_handler,
-        {},
-        None,
-    )
-    if ignore_sort:
-        return data
-
-    sorted_index = get_sorted_index(state)
-    if sorted_index is not None:
-        data = {name: values[sorted_index] for name, values in data.items()}
-    return data
-
-
-def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
-    """
-    Get metadata columns.
-    """
+def make_schema(state: DatasetState, path: str) -> Schema:
     producers = list(state.producers.values())
-    columns = set(state.column_map.keys()).difference(state.metadata_columns)
+    columns = set(state.column_map.keys())
     derived_names = get_derived_column_names(producers, columns)
     if derived_names:
         selected = select(state, derived_names)
@@ -373,15 +360,24 @@ def make_schema(state: DatasetState, name: Optional[str] = None) -> Schema:
         derived_data = get_data(converted, ignore_sort=True)
     else:
         derived_data = {}
+
+    column_map = copy(state.column_map)
+    if state.sort_key is not None and state.sort_key[2]:
+        column_map.pop(state.sort_key[0])
+
+    name = path.split("/")[-1]
+
     return make_dataset_schema(
         producers,
         state.raw_data_handler,
         state.cache,
-        state.column_map,
-        state.meta_columns,
+        column_map,
         state.header,
+        state.tree,
         state.region,
+        state.raw_index,
         derived_data,
+        get_string_uuid(path),
         name,
     )
 
@@ -400,22 +396,24 @@ def with_new_columns(
         state.unit_handler,
         state.cache,
         state.column_map,
+        set(state.producers.keys()),
         get_sorted_index(state),
         descriptions,
         new_columns,
         len(state),
         allow_overwrite=allow_overwrite,
     )
+    producers = {}
+    for producer in new_producers_list:
+        assert producer.uuid is not None
+        producers[producer.uuid] = producer
+
     return dataclasses.replace(
         state,
-        producers={p.uuid: p for p in new_producers_list},
+        producers=producers,
         column_map=new_column_map,
         unit_handler=new_unit_handler,
     )
-
-
-def with_region(state: DatasetState, region: Region) -> DatasetState:
-    return dataclasses.replace(state, region=region)
 
 
 def select(state: DatasetState, columns: set[str], drop: bool = False) -> DatasetState:
@@ -423,32 +421,38 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     Select a set of columns
     """
     selections, missing = get_column_selection(state.columns, columns)
+    if (
+        len(columns) > 1
+        and state.sort_key is not None
+        and state.sort_key[2]
+        and state.sort_key[0] in columns
+    ):
+        missing.add(state.sort_key[0])
+    elif (
+        len(columns) == 1
+        and state.sort_key is not None
+        and missing == set([state.sort_key[0]])
+    ):
+        selections = columns
+        missing = set()
+
     if missing:
-        raise ValueError(
+        raise MissingColumnError(
             f"Columns are included that are not in this dataset: {missing}"
         )
     elif not selections and columns:
-        raise ValueError("No columns matched the provided wildcards!")
+        raise MissingColumnError("No columns matched the provided wildcards!")
 
     if drop:
         selections = set(state.columns) - selections
 
+    new_sort_key = state.sort_key
+    if state.sort_key is not None and state.sort_key[0] not in selections:
+        selections.add(state.sort_key[0])
+        new_sort_key = (state.sort_key[0], state.sort_key[1], True)
+
     new_column_map = {n: state.column_map[n] for n in selections}
-    new_column_map |= {n: state.column_map[n] for n in state.metadata_columns}
-    return dataclasses.replace(state, column_map=new_column_map)
-
-
-def sort_by(
-    state: DatasetState, column_name: Optional[str], invert: bool
-) -> DatasetState:
-    if column_name is None:
-        sort_key = None
-    elif column_name not in state.columns:
-        raise ValueError(f"This dataset has no column {column_name}")
-    else:
-        sort_key = (column_name, invert)
-
-    return dataclasses.replace(state, sort_key=sort_key)
+    return dataclasses.replace(state, column_map=new_column_map, sort_key=new_sort_key)
 
 
 def get_sorted_index(state: DatasetState) -> np.ndarray | None:
@@ -483,7 +487,7 @@ def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
 
 def with_units(
     state: DatasetState,
-    convention: Optional[str],
+    convention: UnitConvention,
     conversions: dict[u.Unit, u.Unit],
     columns: dict[str, u.Unit],
     cosmology: Cosmology,
@@ -492,29 +496,11 @@ def with_units(
     """
     Update the units of a given state.
     """
-    if convention is None:
-        convention_ = state.unit_handler.current_convention
-    else:
-        convention_ = UnitConvention(convention)
-
-    if (
-        convention_ == UnitConvention.SCALEFREE
-        and UnitConvention(state.header.file.unit_convention)
-        != UnitConvention.SCALEFREE
-    ):
-        raise ValueError(
-            f"Cannot convert units with convention {state.header.file.unit_convention} to convention scalefree"
-        )
-    column_keys = set(columns.keys())
-    missing_columns = column_keys - set(state.columns)
-    if missing_columns:
-        raise ValueError(f"Dataset does not have columns {missing_columns}")
-
-    new_handler = state.unit_handler.with_convention(convention_).with_conversions(
+    new_handler = state.unit_handler.with_convention(convention).with_conversions(
         conversions, columns
     )
 
-    if convention_ == state.unit_handler.current_convention:
+    if convention == state.unit_handler.current_convention:
         cache = state.cache.create_child()
     else:
         all_derived_names: set[str] = set()
@@ -527,4 +513,38 @@ def with_units(
         ).intersection(state.columns)
         columns_to_drop = all_derived_names.union(state.raw_data_handler.columns)
         cache = state.cache.drop(columns_to_drop)
-    return dataclasses.replace(state, unit_handler=new_handler, cache=cache)
+    new_header = state.header.with_units(convention)
+
+    return dataclasses.replace(
+        state, unit_handler=new_handler, cache=cache, header=new_header
+    )
+
+
+def redistribute(state: DatasetState, rows):
+    all_required_producers = get_all_required_pairs(
+        list(state.producers.values()), state.column_map
+    )
+    cached_columns_to_keep = defaultdict(list)
+    for uuid, name in all_required_producers:
+        producer = state.producers[uuid]
+        if isinstance(producer, EvaluatedColumn) or (
+            isinstance(producer, RawColumn) and not producer.on_disk
+        ):
+            cached_columns_to_keep[uuid].append(name)
+
+    comm = get_comm_world()
+    assert comm is not None
+
+    if cached_columns_to_keep:
+        reorder_map = None
+        new_index = gather_index(rows, comm)
+        original_index = gather_index(state.raw_index, comm)
+        if comm.Get_rank() == 0:
+            reorder_map = reindex_column(original_index, new_index)
+        new_cache = state.cache.redistribute(
+            reorder_map, len(rows), cached_columns_to_keep, comm
+        )
+    else:
+        new_cache = state.cache.empty()
+    new_handler = state.raw_data_handler.with_index(rows)
+    return dataclasses.replace(state, cache=new_cache, raw_data_handler=new_handler)

@@ -1,75 +1,125 @@
-import os
-import shutil
-
 import numpy as np
 import pytest
-from mpi4py import MPI
 from opencosmo.mpi import get_comm_world
 
 import opencosmo as oc
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
+@pytest.fixture
+def halos_600_path(test_data):
+    return test_data.lightcone.step(600).halos
 
 
 @pytest.fixture
-def halos_600_path(lightcone_path):
-    properties = lightcone_path / "step_600" / "haloproperties.hdf5"
-    particles = lightcone_path / "step_600" / "haloparticles.hdf5"
-    profiles = lightcone_path / "step_600" / "haloprofiles.hdf5"
-    return [properties, particles, profiles]
+def galaxies_600_path(test_data):
+    return test_data.lightcone.step(600).galaxies
 
 
 @pytest.fixture
-def galaxies_600_path(lightcone_path):
-    properties = lightcone_path / "step_600" / "galaxyproperties.hdf5"
-    particles = lightcone_path / "step_600" / "galaxyparticles.hdf5"
-    return [properties, particles]
+def halos_601_path(test_data):
+    return test_data.lightcone.step(601).halos
 
 
 @pytest.fixture
-def halos_601_path(lightcone_path):
-    properties = lightcone_path / "step_601" / "haloproperties.hdf5"
-    particles = lightcone_path / "step_601" / "haloparticles.hdf5"
-    profiles = lightcone_path / "step_601" / "haloprofiles.hdf5"
-    return [properties, particles, profiles]
+def galaxies_601_path(test_data):
+    return test_data.lightcone.step(601).galaxies
 
 
 @pytest.fixture
-def galaxies_601_path(lightcone_path):
-    properties = lightcone_path / "step_601" / "galaxyproperties.hdf5"
-    particles = lightcone_path / "step_601" / "galaxyparticles.hdf5"
-    return [properties, particles]
+def lightcone_files(test_data):
+    """Map a component name to the per-step files that provide it."""
+
+    step_600 = test_data.lightcone.step(600)
+    step_601 = test_data.lightcone.step(601)
+    return {
+        name: [getattr(step_600, name), getattr(step_601, name)]
+        for name in (
+            "halo_properties",
+            "halo_particles",
+            "halo_profiles",
+            "galaxy_properties",
+            "galaxy_particles",
+        )
+    }
 
 
-@pytest.fixture
-def per_test_dir(
-    tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
-):
+# Each entry is the set of components combined into a lightcone structure
+# collection and the dataset keys we expect the resulting collection to expose.
+LIGHTCONE_COMBINATIONS = {
+    "halo_particles": (
+        ["halo_properties", "halo_particles"],
+        {
+            "agn_particles",
+            "dm_particles",
+            "gas_particles",
+            "star_particles",
+            "halo_properties",
+        },
+    ),
+    "halo_profiles": (
+        ["halo_properties", "halo_profiles"],
+        {"halo_profiles", "halo_properties"},
+    ),
+    "halo_particles_profiles": (
+        ["halo_properties", "halo_particles", "halo_profiles"],
+        {
+            "agn_particles",
+            "dm_particles",
+            "gas_particles",
+            "star_particles",
+            "halo_profiles",
+            "halo_properties",
+        },
+    ),
+    "halo_particles_profiles_galaxy_properties": (
+        ["halo_properties", "halo_particles", "halo_profiles", "galaxy_properties"],
+        {
+            "agn_particles",
+            "dm_particles",
+            "gas_particles",
+            "star_particles",
+            "halo_profiles",
+            "galaxy_properties",
+            "halo_properties",
+        },
+    ),
+    "halo_galaxy_properties": (
+        ["halo_properties", "galaxy_properties"],
+        {"galaxy_properties", "halo_properties"},
+    ),
+    "halo_galaxy_properties_particles": (
+        ["halo_properties", "galaxy_properties", "galaxy_particles"],
+        {"galaxies", "halo_properties"},
+    ),
+    "galaxy_properties_particles": (
+        ["galaxy_properties", "galaxy_particles"],
+        {"star_particles", "galaxy_properties"},
+    ),
+}
+
+COMBINATION_PARAMS = [
+    pytest.param(c, k, id=name) for name, (c, k) in LIGHTCONE_COMBINATIONS.items()
+]
+
+
+def reduce_for_write(collection, components):
+    """Reduce a collection to a manageable size before writing.
+
+    Particles only exist for halos above ~10**13.5, so filtering particle
+    collections by mass loses no linked data while keeping the write small.
+    Collections without particles (e.g. halo profiles, which only exist for a
+    sparse subset of halos) are written in full so that the sparse idx-based
+    links are exercised -- a mass filter would keep only massive halos, which
+    all have profiles, and would hide bugs in how sparse links are written.
     """
-    Creates a unique directory for each test and deletes it after the test finishes.
-
-    Uses tmp_path_factory so you can control base temp location via pytest's
-    tempdir handling, and also so it can be used from broader-scoped fixtures
-    if needed.
-    """
-    # request.node.nodeid is unique across parameterizations; sanitize for filesystem
-    nodeid = (
-        request.node.nodeid.replace("/", "_")
-        .replace("::", "__")
-        .replace("[", "_")
-        .replace("]", "_")
-    )
-
-    path = tmp_path_factory.mktemp(nodeid)
-    comm = MPI.COMM_WORLD
-    path_to_return = comm.bcast(path)
-
-    try:
-        yield path_to_return
-    finally:
-        # Close out storage pressure immediately after each test
-        if IN_GITHUB_ACTIONS:
-            shutil.rmtree(path, ignore_errors=True)
+    if "halo_properties" not in collection.keys():
+        # Galaxy-only collection: no sparse profile links to preserve, so a
+        # plain subset keeps the write small.
+        return collection.take(1000)
+    has_particles = any("particles" in component for component in components)
+    if has_particles:
+        return collection.filter(oc.col("fof_halo_mass") > 10**13.5)
+    return collection
 
 
 @pytest.fixture

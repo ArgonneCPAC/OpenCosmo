@@ -19,13 +19,14 @@ class EmptyHandler:
     def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None) -> Self:
         return self
 
+    def with_index(self, index):
+        return self
+
     def __len__(self) -> int:
         return 0
 
     def make_schema(self, *args, **kwargs):
-        data_schema = make_schema("data", FileEntry.EMPTY)
-        metadata_schema = make_schema("metadata", FileEntry.EMPTY)
-        return data_schema, metadata_schema
+        return make_schema("data", FileEntry.EMPTY)
 
     @property
     def columns(self) -> Iterable[str]:
