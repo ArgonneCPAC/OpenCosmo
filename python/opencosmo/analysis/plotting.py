@@ -57,6 +57,13 @@ def hist2d(ds, column_x, column_y, ax=None, plot_rank="all", plot_kwargs=None, *
     x_params = _set_defaults(column_x)
     y_params = _set_defaults(column_y)
 
+    # set default bin spacing to axis scale ("log" or "linear") if bins aren't explicitly defined
+    if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
+        kwargs["bin_spacing"] = (
+            x_params["plotting"]["scale"],
+            y_params["plotting"]["scale"]
+        )
+
     h, x, y = statistics.hist2d(ds, column_x, column_y, **kwargs)
 
     if plot_rank=="all" or rank == plot_rank:
@@ -80,6 +87,10 @@ def hist2d(ds, column_x, column_y, ax=None, plot_rank="all", plot_kwargs=None, *
 def hist1d(ds, column, differential=None, ax=None, plot_rank="all", plot_kwargs=None, **kwargs):  
     params = _set_defaults(column)
 
+    # set default bin spacing to axis scale ("log" or "linear") if bins aren't explicitly defined
+    if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
+        kwargs["bin_spacing"] = params["plotting"]["scale"]
+
     counts, bin_edges = statistics.hist1d(ds, column, **kwargs)
 
     if differential == "linear":
@@ -97,6 +108,7 @@ def hist1d(ds, column, differential=None, ax=None, plot_rank="all", plot_kwargs=
         raise ValueError(f"Invalid value for differential: {differential}")
 
 
+    fig = None
     if plot_rank=="all" or rank == plot_rank:
         fig, ax = _initialize_fig(ax)
 
@@ -121,6 +133,7 @@ def binned_statistic(ds, column, statistic="mean", bin_by="sod_halo_mass", ax=No
 
     binned_stat, bin_edges = statistics.binned_statistic(ds, column, statistic=statistic, bin_by=bin_by, **kwargs)
 
+    fig=None
     if plot_rank=="all" or rank == plot_rank:
 
         plot_kwargs = _set_plot_kwargs(plot_kwargs, linewidth=2)

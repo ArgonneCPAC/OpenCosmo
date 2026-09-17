@@ -6,6 +6,8 @@ import numpy as np
 from opencosmo.mpi import get_comm_world, get_mpi
 from opencosmo.analysis.default_plotting_params import default_params
 
+import astropy.units as u
+
 MPI = get_mpi()
 comm = get_comm_world()
 rank = comm.Get_rank() if comm is not None else 0
@@ -33,12 +35,31 @@ def _get_statistic(col, statistic, **kwargs):
     raise TypeError("statistic must be a string or callable")
 
 def _compute_bins(min, max, n, bin_spacing="log"):
+
+    if isinstance(min, u.Quantity):
+        # note that this function is only called if bin edges are not explicitly 
+        # passed in by the user, in which case the units for min and max 
+        # should be guaranteed to be in the same units. 
+        # Convert units of max to those of min again just to be safe.
+        unit = min.unit
+
+        min = min.value
+        max = max.to(unit).value
+    else:
+        unit = None
+
+
     if bin_spacing == "log":
-        return np.geomspace(min, max, n)
+        bins = np.geomspace(min, max, n)
     elif bin_spacing == "linear":
-        return np.linspace(min, max, n)
+        bins = np.linspace(min, max, n)
     else:
         raise RuntimeError(f"unrecognized value for bin_spacing: {bin_spacing}")
+
+    if unit is not None:
+        bins = bins * unit
+
+    return bins
 
 def _filter_bad(ds, column):
 
@@ -82,7 +103,7 @@ def binned_statistic(
 
     ds = _filter_bad(ds, column)
 
-    if not isinstance(bins, list):
+    if isinstance(bins, int):
 
         d = ds.select( 
                 bin_min = oc.col(bin_by).min(), 
@@ -124,7 +145,7 @@ def hist1d(
     ds,
     column, 
     bins=20,
-    bin_spacing="log",
+    bin_spacing="linear",
     mode="global",
 ):
 
@@ -133,7 +154,7 @@ def hist1d(
 
     ds = _filter_bad(ds, column)
 
-    if not isinstance(bins, list):
+    if isinstance(bins, int):
 
         d = ds.select( 
                 bin_min = oc.col(column).min(), 
@@ -158,7 +179,7 @@ def hist2d(
     column_x,
     column_y, 
     bins=100,
-    bin_spacing="log",
+    bin_spacing="linear",
     mode="global",
 ):
 
@@ -168,7 +189,7 @@ def hist2d(
     ds = _filter_bad(ds, column_x)
     ds = _filter_bad(ds, column_y)
 
-    if not isinstance(bins, list):
+    if isinstance(bins, int):
         d_x = ds.select( 
                 bin_min = oc.col(column_x).min(), 
                 bin_max = oc.col(column_x).max(),
