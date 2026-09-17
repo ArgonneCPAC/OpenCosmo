@@ -8,7 +8,15 @@
   ],
   "excludeFolders": [
     "changes",
-    "docs/build"
+    "docs/build",
+    "src",
+    ".github",
+    "test"
+  ],
+  "excludeFiles": [
+    "SPEC.md",
+    "Cargo.lock",
+    "uv.lock"
   ],
   "rules": [
     "The entry point is `import opencosmo as oc` and `ds = oc.open(\"file.hdf5\")`. Open collections of related datasets with the same call.",
