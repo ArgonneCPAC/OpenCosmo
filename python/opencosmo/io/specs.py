@@ -320,13 +320,17 @@ class StructureCollectionSpec:
         )
         allowed_data_types = {
             "galaxy_properties",
-            "galaxy_partices",
+            "galaxy_particles",
             "halo_properties",
-            "halo_partices",
-            "halo_profile",
+            "halo_particles",
+            "halo_profiles",
         }
         data_types = {group_data_type(g) for g in groups}
-        return has_properties_link and data_types.issubset(allowed_data_types)
+        return (
+            has_properties_link
+            and len(data_types) > 1
+            and data_types.issubset(allowed_data_types)
+        )
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
         _verify_columns_consistent_per_dataset(layouts)

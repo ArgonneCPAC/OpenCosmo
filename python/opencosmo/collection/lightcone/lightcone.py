@@ -33,6 +33,7 @@ from opencosmo.column.column import (
     resolve_mask_scalars,
 )
 from opencosmo.column.reducer import default_reducer
+from opencosmo.column.select import build_multi_dataset_selections
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import concat_chunks, convert_data, verify_format
@@ -226,6 +227,7 @@ class Lightcone(dict):
     def uuid(self) -> UUID:
         return next(iter(self.values())).uuid
 
+    @property
     def descriptions(self) -> dict[str, Optional[str]]:
         """
         Return the descriptions (if any) of the columns in this lightcone as a dictonary.
@@ -1058,22 +1060,36 @@ class Lightcone(dict):
         """
         from opencosmo.column.column import Column
 
+        if self.__maps is not None:
+            selection_args, selection_kwargs = build_multi_dataset_selections(
+                {"map": self.__maps.columns, "lightcone": self.columns},
+                {"map": len(self.__maps), "lightcone": len(self)},
+                columns,
+                derived_columns,
+            )
+            lightcone_columns = selection_args["lightcone"]
+            lightcone_derived_columns = selection_kwargs["lightcone"]
+            new_maps = self.__maps.select(
+                *selection_args["map"], **selection_kwargs["map"]
+            )
+        else:
+            lightcone_columns = columns
+            lightcone_derived_columns = derived_columns
+            new_maps = None
+
         all_columns: set[str] = set()
-        for col_group in columns:
+        for col_group in lightcone_columns:
             if isinstance(col_group, str):
                 col_group = {col_group}
             all_columns.update(col_group)
+        scalars = {}
+        non_scalars = {}
+        for name, col in lightcone_derived_columns.items():
+            if isinstance(col, DerivedScalarValue):
+                scalars[name] = col
+            else:
+                non_scalars[name] = col
 
-        scalars = {
-            name: col
-            for name, col in derived_columns.items()
-            if isinstance(col, DerivedScalarValue)
-        }
-        non_scalars = {
-            name: col
-            for name, col in derived_columns.items()
-            if not isinstance(col, DerivedScalarValue)
-        }
         if scalars and (all_columns or non_scalars):
             raise ValueError(
                 "Scalar selections cannot be mixed with column selections. "
@@ -1085,11 +1101,13 @@ class Lightcone(dict):
             k: v.with_reducer(reducer)
             if isinstance(v, (Column, DerivedScalarValue))
             else v
-            for k, v in derived_columns.items()
+            for k, v in lightcone_derived_columns.items()
         }
 
         raw_child_columns = set(next(iter(self.values())).columns)
-        plan = self.__scope.plan_select(all_columns, derived_columns, raw_child_columns)
+        plan = self.__scope.plan_select(
+            all_columns, lightcone_derived_columns, raw_child_columns
+        )
 
         hidden = set(self.__hidden) | plan.hidden_additions
 
@@ -1108,6 +1126,7 @@ class Lightcone(dict):
             "select",
             plan.child_positional,
             additional_columns,
+            new_maps=new_maps,
             mapped_arguments={},
             hidden=hidden,
             construct=True,
