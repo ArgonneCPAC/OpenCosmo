@@ -318,8 +318,15 @@ class StructureCollectionSpec:
         has_properties_link = any(
             is_properties_group(g) and has_linked_targets(g) for g in groups
         )
-        n_data_types = len({group_data_type(g) for g in groups})
-        return has_properties_link and n_data_types > 1
+        allowed_data_types = {
+            "galaxy_properties",
+            "galaxy_partices",
+            "halo_properties",
+            "halo_partices",
+            "halo_profile",
+        }
+        data_types = {group_data_type(g) for g in groups}
+        return has_properties_link and data_types.issubset(allowed_data_types)
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
         _verify_columns_consistent_per_dataset(layouts)
@@ -375,9 +382,17 @@ class LightconeSpec:
 
     def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
         groups = _all_groups(layouts)
-        if not groups or not all(is_lightcone_group(g) for g in groups):
+        maps = []
+        datasets = []
+        for group in groups:
+            if is_healpix_map_group(group):
+                maps.append(group)
+            else:
+                datasets.append(group)
+
+        if not groups or not all(is_lightcone_group(g) for g in datasets):
             return False
-        return len({group_data_type(g) for g in groups}) == 1
+        return len({group_data_type(g) for g in datasets}) == 1
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
         _verify_columns_consistent_per_dataset(layouts)

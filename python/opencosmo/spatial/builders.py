@@ -107,10 +107,10 @@ def make_cone(center: Point2d | SkyCoord, radius: float | u.Quantity):
     match center:
         case SkyCoord():
             coord = center
-        case (float(ra) | int(ra), float(dec) | int(dec)):
-            coord = SkyCoord(ra * u.deg, dec * u.deg)
         case (u.Quantity(), u.Quantity()):
             coord = SkyCoord(*center)
+        case (ra, dec):
+            coord = SkyCoord(ra * u.deg, dec * u.deg)
         case _:
             raise ValueError("Invalid center for Cone region")
     if isinstance(radius, (float, int)):

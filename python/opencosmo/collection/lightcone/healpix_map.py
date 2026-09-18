@@ -210,14 +210,16 @@ class HealpixMap(dict):
         if len(self) < 10:
             repr_ds = self
             table_head = ""
+
         else:
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
 
         table_repr = repr_ds.data.__repr__()
+
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
-        head = f"OpenCosmo Healpix Map Dataset (length={length}, "
+        head = f"OpenCosmo Healpix Map Dataset (length={length})"
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
 
@@ -253,6 +255,7 @@ class HealpixMap(dict):
     @property
     def columns(self) -> list[str]:
         """
+
         The names of the columns in this map.
 
         Returns
@@ -698,7 +701,7 @@ class HealpixMap(dict):
             The pixels in these maps that fall within the given region.
 
         """
-        region = oc.make_box(p1, p2)
+        region = oc.make_skybox(p1, p2)
         return self.bound(region)
 
     def evaluate(
