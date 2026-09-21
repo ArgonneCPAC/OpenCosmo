@@ -608,26 +608,3 @@ def hist2d(
         h = _require_comm().allreduce( h, op=MPI.SUM )
 
     return h, x, y
-
-def stacked_profile(
-    ds: Dataset | StructureCollection,
-    column: str,
-    mode: Mode = "global",
-    statistic: Statistic = "mean",
-    stat_space: str = "log",
-) -> None:
-
-    if isinstance(ds, oc.StructureCollection):
-        ds = ds["halo_profiles"]
-
-    return
-
-
-
-
-
-def two_point_correlation_function() -> None:
-    return
-
-def halo_mass_function() -> None:
-    return

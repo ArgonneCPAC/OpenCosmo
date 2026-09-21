@@ -499,25 +499,3 @@ def binned_statistic(
         )
 
     return fig, ax
-
-
-
-
-def _scatter() -> None:
-    return
-
-
-
-
-
-def _stacked_profiles() -> None:
-    # plot stacked profiles. If collection, plot all and color curves by given input column
-    return
-
-def plot_collection() -> None:
-    # plot a binned_statistic for each simulation collection
-    return
-
-def plot_collage() -> None:
-    # TODO: Allow a
-    return
