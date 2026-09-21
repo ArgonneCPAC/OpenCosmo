@@ -1,3 +1,28 @@
+"""
+Matplotlib front ends for the functions in
+:py:mod:`opencosmo.analysis.statistics`.
+
+Each plotting function mirrors the signature of the statistics function it
+wraps, forwarding any extra keyword arguments (``bins``, ``bin_spacing``,
+``mode``, and so on) straight through. On top of that it adds three things:
+
+* An optional ``ax``, so a panel can be dropped into an existing figure. If
+  none is given, a new figure is created.
+* Axis labels and log/linear scales filled in automatically from
+  :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+  Columns with no entry fall back to using the column name as its own label on
+  a linear axis.
+* A ``plot_rank`` switch controlling which MPI ranks draw. The underlying
+  statistic is always computed collectively on every rank -- ``plot_rank``
+  only decides who renders it.
+
+Every function returns a ``(fig, ax)`` pair.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Literal, cast
+
 import opencosmo.analysis.statistics as statistics
 from opencosmo.analysis.default_plotting_params import default_params
 
@@ -11,10 +36,39 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
+
+    from opencosmo import Dataset, StructureCollection
+    from opencosmo.analysis.statistics import Statistic
+
+    Differential = Literal["linear", "log"]
+    PlotRank = int | Literal["all"]
+
 # all functions here should return a matplotlib figure
 # all functions should also take an optional 'ax' input so that this can be easily integrated into collage
 
-def _set_defaults(column):
+def _set_defaults(column: str) -> dict[str, Any]:
+    """
+    Look up the plotting defaults for a column.
+
+    Parameters
+    ----------
+    column : str
+        The column to look up.
+
+    Returns
+    -------
+    params : dict
+        The column's entry in
+        :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+        For a column with no entry, a fallback is synthesized that labels the
+        axis with the raw column name, uses "x" as its math symbol, and puts it
+        on a linear scale.
+    """
     params = default_params.get(column)
 
     if params is None:
@@ -31,7 +85,27 @@ def _set_defaults(column):
 
     return params
 
-def _set_plot_kwargs(plot_kwargs, **defaults):
+def _set_plot_kwargs(
+    plot_kwargs: dict[str, Any] | None, **defaults: Any
+) -> dict[str, Any]:
+    """
+    Merge caller-supplied matplotlib kwargs over a set of defaults.
+
+    Anything the caller passes wins, so a default is only applied when the key
+    is absent. The caller's dictionary is copied rather than mutated.
+
+    Parameters
+    ----------
+    plot_kwargs : dict or None
+        The kwargs supplied by the caller. :code:`None` is treated as empty.
+    **defaults
+        The defaults to fall back on.
+
+    Returns
+    -------
+    plot_kwargs : dict
+        The merged kwargs, ready to hand to a matplotlib artist.
+    """
     plot_kwargs = {} if plot_kwargs is None else plot_kwargs.copy()
 
     for key, value in defaults.items():
@@ -39,18 +113,107 @@ def _set_plot_kwargs(plot_kwargs, **defaults):
 
     return plot_kwargs
 
-def _initialize_fig(ax):
+def _initialize_fig(ax: Axes | None) -> tuple[Figure, Axes]:
+    """
+    Resolve the figure to draw into, creating one if needed.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes or None
+        An existing axis to draw into. If :code:`None`, a new single-panel
+        figure is created.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure owning ``ax``.
+    ax : matplotlib.axes.Axes
+        The axis to draw into.
+    """
     # create new figure if needed
     if ax is None:
         # if no axis is passed in, create a new figure
         fig, ax = plt.subplots()
     else:
-        fig = ax.figure
+        # .figure is typed Figure | SubFigure; an Axes drawn into by these
+        # helpers always belongs to a full Figure.
+        fig = cast("Figure", ax.figure)
 
     return fig, ax
   
 
-def hist2d(ds, column_x, column_y, ax=None, plot_rank="all", plot_kwargs=None, **kwargs):
+def hist2d(
+    ds: Dataset | StructureCollection,
+    column_x: str,
+    column_y: str,
+    ax: Axes | None = None,
+    plot_rank: PlotRank = "all",
+    plot_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> tuple[Figure | None, Axes | None]:
+    """
+    Plot a two-dimensional histogram as a pcolormesh.
+
+    Wraps :py:func:`opencosmo.analysis.statistics.hist2d` and renders the
+    result with a logarithmic color normalization, which is almost always what
+    you want for a halo population spanning many decades in number density.
+    Axis labels and scales are taken from
+    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+
+    .. code-block:: python
+
+        import matplotlib.pyplot as plt
+        import opencosmo as oc
+        from opencosmo.analysis import plotting
+
+        ds = oc.open("haloproperties.hdf5")
+
+        fig, ax = plotting.hist2d(
+            ds,
+            "sod_halo_mass",
+            "sod_halo_cdelta",
+            bins=80,
+            bin_spacing=("log", "linear"),
+            plot_kwargs={"cmap": "magma"},
+        )
+        fig.savefig("concentration_mass.png")
+
+    Parameters
+    ----------
+    ds : opencosmo.Dataset
+        The data to plot.
+    column_x, column_y : str
+        The columns to histogram along the horizontal and vertical axes.
+    ax : matplotlib.axes.Axes, optional
+        An existing axis to draw into. If omitted, a new figure is created.
+        Pass one of these to build a multi-panel figure.
+    plot_rank : str or int, default = "all"
+        Which MPI rank draws the plot. ``"all"`` draws on every rank; an
+        integer draws only on that rank, which is usually what you want when
+        writing a single image to disk. The histogram itself is computed
+        collectively regardless, so this argument must not be used to skip the
+        call on some ranks.
+    plot_kwargs : dict, optional
+        Passed to :py:meth:`~matplotlib.axes.Axes.pcolormesh`. Defaults to
+        :code:`norm=LogNorm(vmin=1)`, which clips empty bins; anything you
+        supply here takes precedence.
+    **kwargs
+        Forwarded to :py:func:`opencosmo.analysis.statistics.hist2d`, e.g.
+        ``bins``, ``bin_spacing``, ``mode``. When ``bin_spacing`` is not given
+        and ``bins`` is a count rather than explicit edges, each axis is binned
+        according to its own ``scale`` from the defaults, so a log-scaled
+        column gets log-spaced bins without you asking. Pass ``bin_spacing``
+        explicitly to override that.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure or None
+        The figure that was drawn into, or :code:`None` on ranks that did not
+        draw.
+    ax : matplotlib.axes.Axes or None
+        The axis that was drawn into. This is the axis that was passed in, if
+        one was. :code:`None` on ranks that did not draw.
+    """
 
     fig=None
 
@@ -84,7 +247,97 @@ def hist2d(ds, column_x, column_y, ax=None, plot_rank="all", plot_kwargs=None, *
     return fig, ax
 
 
-def hist1d(ds, column, differential=None, ax=None, plot_rank="all", plot_kwargs=None, **kwargs):  
+def hist1d(
+    ds: Dataset | StructureCollection,
+    column: str,
+    differential: Differential | None = None,
+    ax: Axes | None = None,
+    plot_rank: PlotRank = "all",
+    plot_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> tuple[Figure | None, Axes | None]:
+    r"""
+    Plot a one-dimensional histogram as a step curve.
+
+    Wraps :py:func:`opencosmo.analysis.statistics.hist1d`. The vertical axis is
+    always logarithmic; the horizontal label and scale come from
+    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+
+    The ``differential`` argument divides the raw counts by the bin widths,
+    turning the histogram into a density that does not depend on the binning
+    you happened to choose. This is what you want for a mass function.
+
+    .. code-block:: python
+
+        import opencosmo as oc
+        from opencosmo.analysis import plotting
+
+        ds = oc.open("haloproperties.hdf5")
+
+        # dN / dlog10(M200c), drawn only on rank 0
+        fig, ax = plotting.hist1d(
+            ds,
+            "sod_halo_mass",
+            differential="log",
+            bins=30,
+            plot_rank=0,
+        )
+
+    Parameters
+    ----------
+    ds : opencosmo.Dataset
+        The data to plot.
+    column : str
+        The column to histogram.
+    differential : str, optional
+        How to normalize the counts by bin width.
+
+        * :code:`None` (default) -- plot raw counts, labeled :math:`N`.
+        * ``"linear"`` -- divide by :math:`\Delta x`, giving :math:`dN/dx`.
+        * ``"log"`` -- divide by :math:`\Delta \log_{10} x`, giving
+          :math:`dN/d\log_{10}(x)`. Pair this with log-spaced bins.
+
+        The vertical axis label is generated from the column's ``symbol``
+        entry in the defaults.
+    ax : matplotlib.axes.Axes, optional
+        An existing axis to draw into. If omitted, a new figure is created.
+    plot_rank : str or int, default = "all"
+        Which MPI rank draws the plot. ``"all"`` draws on every rank; an
+        integer draws only on that rank. The histogram is computed
+        collectively on all ranks regardless.
+    plot_kwargs : dict, optional
+        Passed to :py:meth:`~matplotlib.axes.Axes.step`. Defaults to
+        :code:`where="mid"`, since the curve is drawn at the bin centers;
+        anything you supply here takes precedence.
+    **kwargs
+        Forwarded to :py:func:`opencosmo.analysis.statistics.hist1d`, e.g.
+        ``bins``, ``bin_spacing``, ``mode``. When ``bin_spacing`` is not given
+        and ``bins`` is a count rather than explicit edges, the column's own
+        ``scale`` from the defaults is used, so a log-scaled column gets
+        log-spaced bins without you asking. Pass ``bin_spacing`` explicitly to
+        override that.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure or None
+        The figure that was drawn into, or :code:`None` on ranks that did not
+        draw.
+    ax : matplotlib.axes.Axes or None
+        The axis that was drawn into. This is the axis that was passed in, if
+        one was. :code:`None` on ranks that did not draw.
+
+    Raises
+    ------
+    ValueError
+        If ``differential`` is not :code:`None`, "linear", or "log".
+
+    Notes
+    -----
+    Using ``differential`` requires the bin edges to carry units, since the
+    widths are taken from :code:`bin_edges.value`. This holds for the edges
+    this function generates itself, but not for a plain list of edges passed
+    through as ``bins``.
+    """
     params = _set_defaults(column)
 
     # set default bin spacing to axis scale ("log" or "linear") if bins aren't explicitly defined
@@ -93,12 +346,15 @@ def hist1d(ds, column, differential=None, ax=None, plot_rank="all", plot_kwargs=
 
     counts, bin_edges = statistics.hist1d(ds, column, **kwargs)
 
+    # the differential forms need unit-ful edges; see the Notes in the docstring
+    edges_with_units: Any = bin_edges
+
     if differential == "linear":
-        counts = counts / np.diff(bin_edges.value)
+        counts = counts / np.diff(edges_with_units.value)
         ylabel = rf"$dN/d{params['plotting']['symbol']}$"
 
     elif differential == "log":
-        counts = counts / np.diff(np.log10(bin_edges.value))
+        counts = counts / np.diff(np.log10(edges_with_units.value))
         ylabel = rf"$dN/d\log_{{10}}\left({params['plotting']['symbol']}\right)$"
 
     elif differential is None:
@@ -127,7 +383,98 @@ def hist1d(ds, column, differential=None, ax=None, plot_rank="all", plot_kwargs=
 
     return fig, ax
 
-def binned_statistic(ds, column, statistic="mean", bin_by="sod_halo_mass", ax=None, plot_kwargs=None, plot_rank="all", **kwargs):
+def binned_statistic(
+    ds: Dataset | StructureCollection,
+    column: str,
+    statistic: Statistic = "mean",
+    bin_by: str = "sod_halo_mass",
+    ax: Axes | None = None,
+    plot_kwargs: dict[str, Any] | None = None,
+    plot_rank: PlotRank = "all",
+    **kwargs: Any,
+) -> tuple[Figure | None, Axes | None]:
+    r"""
+    Plot a statistic of ``column`` against ``bin_by`` as a line.
+
+    Wraps :py:func:`opencosmo.analysis.statistics.binned_statistic` and plots
+    the result at the bin centers. Both axes are labeled and scaled from
+    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`
+    -- the horizontal axis from ``bin_by`` and the vertical axis from
+    ``column`` -- so a concentration--mass relation comes out log-linear
+    without any configuration.
+
+    Because the function accepts an ``ax`` and returns the one it drew into,
+    repeated calls compose: overplot several statistics, or several
+    simulations, on one panel.
+
+    .. code-block:: python
+
+        import matplotlib.pyplot as plt
+        import opencosmo as oc
+        from opencosmo.analysis import plotting
+
+        ds = oc.open("haloproperties.hdf5")
+
+        # median concentration-mass relation with a 16th-84th percentile band
+        fig, ax = plotting.binned_statistic(
+            ds, "sod_halo_cdelta", statistic="median"
+        )
+        for q, style in ((0.16, ":"), (0.84, ":")):
+            plotting.binned_statistic(
+                ds,
+                "sod_halo_cdelta",
+                statistic="quantile",
+                q=q,
+                ax=ax,
+                plot_kwargs={"linestyle": style, "color": "k"},
+            )
+
+    Parameters
+    ----------
+    ds : opencosmo.Dataset or opencosmo.StructureCollection
+        The data to plot.
+    column : str
+        The column to compute the statistic of. Sets the vertical axis.
+    statistic : str or Callable, default = "mean"
+        The reduction to apply within each bin. See
+        :py:func:`opencosmo.analysis.statistics.binned_statistic` for the full
+        list, including the "geometric\_" variants.
+    bin_by : str, default = "sod_halo_mass"
+        The column whose values define the bins. Sets the horizontal axis.
+    ax : matplotlib.axes.Axes, optional
+        An existing axis to draw into. If omitted, a new figure is created.
+        Pass the axis returned by an earlier call to overplot.
+    plot_kwargs : dict, optional
+        Passed to :py:meth:`~matplotlib.axes.Axes.plot`. Defaults to
+        :code:`linewidth=2`; anything you supply here takes precedence.
+    plot_rank : str or int, default = "all"
+        Which MPI rank draws the plot. ``"all"`` draws on every rank; an
+        integer draws only on that rank. The statistic is computed
+        collectively on all ranks regardless, so this must not be used to skip
+        the call on some ranks.
+    **kwargs
+        Forwarded to
+        :py:func:`opencosmo.analysis.statistics.binned_statistic`. This covers
+        both the binning arguments (``bins``, ``dataset``, ``mode``) and any
+        arguments consumed by the statistic itself, such as ``q`` for
+        :code:`statistic="quantile"`.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure or None
+        The figure that was drawn into, or :code:`None` on ranks that did not
+        draw.
+    ax : matplotlib.axes.Axes or None
+        The axis that was drawn into. This is the axis that was passed in, if
+        one was. :code:`None` on ranks that did not draw.
+
+    Notes
+    -----
+    The vertical scale is taken from ``column``'s defaults, which describe the
+    column's own values. A statistic that changes the meaning of those values
+    -- "std" of a log-scaled quantity, for instance -- may want a different
+    scale, which you can set on the returned axis.
+    """
     x_params = _set_defaults(bin_by)
     y_params = _set_defaults(column)
 
@@ -140,7 +487,8 @@ def binned_statistic(ds, column, statistic="mean", bin_by="sod_halo_mass", ax=No
 
         fig, ax = _initialize_fig(ax)
 
-        bin_centers = 0.5*(bin_edges[1:] + bin_edges[:-1])
+        edges = np.asarray(bin_edges)
+        bin_centers = 0.5*(edges[1:] + edges[:-1])
         ax.plot(bin_centers, binned_stat, **plot_kwargs)
 
         ax.set(
@@ -155,21 +503,21 @@ def binned_statistic(ds, column, statistic="mean", bin_by="sod_halo_mass", ax=No
 
 
 
-def _scatter():
+def _scatter() -> None:
     return
 
 
 
 
 
-def _stacked_profiles():
+def _stacked_profiles() -> None:
     # plot stacked profiles. If collection, plot all and color curves by given input column
     return
 
-def plot_collection():
+def plot_collection() -> None:
     # plot a binned_statistic for each simulation collection
     return
 
-def plot_collage():
+def plot_collage() -> None:
     # TODO: Allow a
     return

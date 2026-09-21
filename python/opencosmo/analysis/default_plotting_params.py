@@ -1,7 +1,10 @@
+from typing import Any
+
 import astropy.units as u
+
 import opencosmo as oc
 
-default_params = {
+default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass": {
         "filter_bad": oc.col("sod_halo_mass") > 0,
         "plotting": {

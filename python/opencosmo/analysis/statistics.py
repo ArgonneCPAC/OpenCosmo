@@ -1,10 +1,45 @@
-# contains general function for computing various statistics
+"""
+Convenience functions for computing binned statistics and histograms on
+OpenCosmo datasets.
 
-import opencosmo as oc
+Every function in this module is a thin wrapper around the lazy OpenCosmo query
+API (:py:meth:`filter <opencosmo.Dataset.filter>` and
+:py:meth:`select <opencosmo.Dataset.select>`), which means the data is only
+pulled off disk when it is actually needed. The scalar reductions used to
+compute bin ranges and statistics are MPI-aware: when running under MPI with
+:code:`mode="global"` (the default), reductions are combined across all ranks
+before they are returned, so every rank sees the same answer.
+
+Columns listed in
+:py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`
+also carry a :code:`filter_bad` entry describing the sentinel values that mark
+an invalid measurement. These filters are applied automatically, so you do not
+need to remember that (for example) unresolved halos are written out with
+:code:`sod_halo_mass = -1`.
+
+The companion module :py:mod:`opencosmo.analysis.plotting` wraps each of these
+functions with a matplotlib front end.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Literal
+
 import numpy as np
 
-from opencosmo.mpi import get_comm_world, get_mpi
+import opencosmo as oc
 from opencosmo.analysis.default_plotting_params import default_params
+from opencosmo.mpi import get_comm_world, get_mpi
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from opencosmo import Dataset, StructureCollection
+    from opencosmo.column.column import Column, DerivedScalarValue
+
+    Statistic = str | Callable[..., DerivedScalarValue]
+    BinSpacing = Literal["log", "linear"]
+    Mode = Literal["local", "global"]
 
 import astropy.units as u
 
@@ -14,9 +49,53 @@ rank = comm.Get_rank() if comm is not None else 0
 ranks = comm.Get_size() if comm is not None else 1
 
 
-def _get_statistic(col, statistic, **kwargs):
-    # return either result of custom, callable input function or that of 
-    # a builtin method attached to the Column object
+def _require_comm() -> Any:
+    """
+    Return the world communicator, asserting that it exists.
+
+    The MPI branches in this module are guarded by :code:`ranks > 1`, which can
+    only be true when a communicator is present. That invariant is invisible to
+    a type checker, so those branches route through this helper instead of
+    narrowing :code:`comm` at each call site.
+    """
+    assert comm is not None
+    return comm
+
+
+def _get_statistic(
+    col: Column, statistic: Statistic, **kwargs: Any
+) -> DerivedScalarValue:
+    """
+    Build the scalar reduction described by ``statistic`` for a given column.
+
+    Returns either the result of a custom, callable input function or that of
+    a builtin method attached to the Column object. Note that nothing is
+    computed here: the returned object is a lazy
+    :code:`DerivedScalarValue` that is only evaluated when it is passed into
+    :py:meth:`select <opencosmo.Dataset.select>` and the data is read.
+
+    Parameters
+    ----------
+    col : opencosmo.column.Column
+        The column to reduce, e.g. :code:`oc.col("sod_halo_cdelta")`.
+    statistic : str or Callable
+        The name of a builtin reduction on the column ("mean", "std", "var",
+        "min", "max", "median", "sum", "quantile"), the same name prefixed
+        with "geometric_", or a callable taking the column and returning a
+        scalar reduction of it.
+    **kwargs
+        Forwarded to the reduction, e.g. :code:`q=0.84` for "quantile".
+
+    Returns
+    -------
+    statistic : opencosmo.column.DerivedScalarValue
+        The unevaluated reduction.
+
+    Raises
+    ------
+    TypeError
+        If ``statistic`` is neither a string nor callable.
+    """
 
     if isinstance(statistic, str):
         if statistic.startswith("geometric_"):
@@ -34,7 +113,34 @@ def _get_statistic(col, statistic, **kwargs):
 
     raise TypeError("statistic must be a string or callable")
 
-def _compute_bins(min, max, n, bin_spacing="log"):
+def _compute_bins(
+    min: Any, max: Any, n: int, bin_spacing: BinSpacing = "log"
+) -> np.ndarray:
+    """
+    Construct ``n`` bin edges spanning ``[min, max]``.
+
+    Parameters
+    ----------
+    min, max : float or astropy.units.Quantity
+        The endpoints of the binning range, inclusive. If these carry units,
+        the edges are computed on the bare values and the unit is reattached
+        to the result, so the returned edges carry the unit of ``min``.
+    n : int
+        The number of bin *edges* to produce. This is one more than the number
+        of bins.
+    bin_spacing : str, "log" or "linear", default = "log"
+        Whether the edges should be spaced geometrically or arithmetically.
+
+    Returns
+    -------
+    edges : numpy.ndarray or astropy.units.Quantity
+        The ``n`` bin edges, carrying the unit of ``min`` if it had one.
+
+    Raises
+    ------
+    RuntimeError
+        If ``bin_spacing`` is not "log" or "linear".
+    """
 
     if isinstance(min, u.Quantity):
         # note that this function is only called if bin edges are not explicitly 
@@ -61,7 +167,27 @@ def _compute_bins(min, max, n, bin_spacing="log"):
 
     return bins
 
-def _filter_bad(ds, column):
+def _filter_bad(ds: Dataset, column: str) -> Dataset:
+    """
+    Drop rows where ``column`` holds a sentinel or unphysical value.
+
+    The masks are read from the ``filter_bad`` entry of
+    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+    Columns that have no entry, or whose entry sets ``filter_bad`` to
+    :code:`None`, are returned unchanged, so this is always safe to call.
+
+    Parameters
+    ----------
+    ds : opencosmo.Dataset
+        The dataset to filter.
+    column : str
+        The column whose default filters should be applied.
+
+    Returns
+    -------
+    ds : opencosmo.Dataset
+        The filtered dataset, or the original dataset if no filters apply.
+    """
 
     params = default_params.get(column)
     if params is None:
@@ -78,51 +204,150 @@ def _filter_bad(ds, column):
 
 
 def binned_statistic(
-    ds, column, 
-    bin_by="sod_halo_mass", 
-    statistic="mean", 
-    bins=20, 
-    dataset="halo_properties", 
-    mode="global", 
-    **kwargs,
-):
-    # statistic can be either string of a function that takes the column as input
-    #   def cool_stat(col):
-    #       return (col.max()-col.min()) / col.std()
-    #
-    #   stat = cool_stat(oc.col("concentration"))
-    '''
-    Computes a statistic binned by the `bin_by` column (e.g. mean halo concentration in bins of SOD halo mass).
-    The statistic can be any of the pre-build scalar reductions (in string form -- e.g., "mean", "std"), or a custom
-    statistic that takes the column as input. 
-    '''
+    ds: Dataset | StructureCollection,
+    column: str,
+    bin_by: str = "sod_halo_mass",
+    statistic: Statistic = "mean",
+    bins: int | list = 20,
+    dataset: str = "halo_properties",
+    mode: Mode = "global",
+    **kwargs: Any,
+) -> tuple[list, np.ndarray | list]:
+    r"""
+    Compute a statistic of ``column`` in bins of ``bin_by``.
 
+    This is the workhorse of the module: it answers questions of the form
+    "what is the mean halo concentration as a function of SOD halo mass?". The
+    statistic can be any of the prebuilt scalar reductions (in string form --
+    e.g. "mean", "std"), a geometric variant of one, or a custom statistic that
+    takes the column as input.
 
-    if isinstance(ds, oc.StructureCollection):
-        ds = ds[dataset]
+    The column being reduced is first passed through
+    :py:func:`_filter_bad`, so sentinel values for columns known to
+    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`
+    are removed automatically.
 
-    ds = _filter_bad(ds, column)
+    Nothing is read from disk until each bin's reduction is evaluated, and
+    only one scalar per bin is ever materialized, so this is safe to run on
+    datasets far larger than memory.
+
+    .. code-block:: python
+
+        import opencosmo as oc
+        from opencosmo.analysis.statistics import binned_statistic
+
+        ds = oc.open("haloproperties.hdf5")
+
+        # mean concentration in 20 log-spaced bins of M200c
+        c, edges = binned_statistic(ds, "sod_halo_cdelta")
+
+        # lognormal scatter in Y500c, as a multiplicative factor
+        scatter, edges = binned_statistic(
+            ds, "sod_halo_Y500c", statistic="geometric_std"
+        )
+
+        # a custom reduction
+        def dynamic_range(col):
+            return (col.max() - col.min()) / col.std()
+
+        dr, edges = binned_statistic(ds, "sod_halo_cdelta", statistic=dynamic_range)
+
+    Parameters
+    ----------
+    ds : opencosmo.Dataset or opencosmo.StructureCollection
+        The data to operate on. If a :py:class:`StructureCollection
+        <opencosmo.StructureCollection>` is given, the member dataset named by
+        ``dataset`` is used.
+    column : str
+        The column to compute the statistic of.
+    bin_by : str, default = "sod_halo_mass"
+        The column whose values define the bins.
+    statistic : str or Callable, default = "mean"
+        The reduction to apply within each bin. Accepts the name of any scalar
+        reduction defined on a column -- "mean", "std", "var", "min", "max",
+        "median", "sum", or "quantile" -- optionally prefixed with
+        "geometric\_", in which case the reduction is performed on
+        :math:`\log_{10}` of the column and the result is raised back through
+        :math:`10^x`. This is usually what you want for quantities that span
+        orders of magnitude: "geometric_mean" gives the mean in log space, and
+        "geometric_std" the lognormal scatter as a multiplicative factor
+        (:math:`10^{\sigma_{\log_{10} x}}`, so :code:`np.log10` of it recovers
+        the scatter in dex).
+        A callable is also accepted; it receives the column and must return a
+        scalar reduction of it (see the example above).
+    bins : int or list, default = 20
+        The number of bins, or an explicit list of bin edges. When an integer
+        is given, ``bins + 1`` log-spaced edges are placed between the global
+        minimum and maximum of ``bin_by``, which costs one extra pass over
+        that column.
+    dataset : str, default = "halo_properties"
+        Which member dataset to use when ``ds`` is a collection. Ignored
+        otherwise.
+    mode : str, "local" or "global", default = "global"
+        How scalar reductions are combined under MPI. ``"global"`` reduces
+        across all ranks, so every rank computes the same bin edges and the
+        same per-bin statistic over the full dataset. ``"local"`` gives each
+        rank the statistic of its own rows. Has no effect when not running
+        under MPI.
+    **kwargs
+        Forwarded to the statistic, e.g. :code:`q=0.84` when
+        :code:`statistic="quantile"`.
+
+    Returns
+    -------
+    binned_stat : list
+        The value of the statistic in each bin, of length ``len(bins) - 1``.
+    bins : numpy.ndarray or list
+        The bin edges, of length ``len(binned_stat) + 1``. These are the edges
+        that were passed in, or the ones that were computed from the data.
+
+    Raises
+    ------
+    TypeError
+        If ``statistic`` is neither a string nor callable.
+
+    Notes
+    -----
+    Bins are half-open, :code:`[low, high)`, so the largest value in the
+    dataset falls outside the final bin when the edges are derived from the
+    data.
+
+    A bin containing no rows will produce whatever the underlying reduction
+    returns for an empty selection (typically NaN), rather than being dropped.
+    Bin membership is unaffected by ``mode``: the edges are the same on every
+    rank under :code:`mode="global"`, so bins that are empty on one rank may
+    still be populated globally.
+    """
+
+    source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
+    assert not isinstance(source, oc.StructureCollection)
+
+    source = _filter_bad(source, column)
 
     if isinstance(bins, int):
 
-        d = ds.select( 
+        d = source.select(
                 bin_min = oc.col(bin_by).min(), 
                 bin_max = oc.col(bin_by).max(),
                 mode = mode,
             ).get_data()
 
-        bins = np.geomspace(d["bin_min"], d["bin_max"], bins+1)
+        edges: np.ndarray | list = np.geomspace(d["bin_min"], d["bin_max"], bins+1)
 
     # else:
     #   make sure given bins are in the right units
+    else:
+        edges = bins
 
-    binned_stat = []
+    binned_stat: list = []
 
-    for i in range(len(bins)-1):
-        low, high = bins[i], bins[i+1]
+    for i in range(len(edges)-1):
+        low, high = edges[i], edges[i+1]
 
-        d = (
-            ds.filter(oc.col(bin_by) >= low, oc.col(bin_by) < high)
+        # get_data() is typed as a union over table/array/dict, but selecting a
+        # single scalar reduction always unpacks to a scalar here.
+        stat_value: Any = (
+            source.filter(oc.col(bin_by) >= low, oc.col(bin_by) < high)
             .select( 
                 stat = _get_statistic(oc.col(column), statistic, **kwargs),
                 mode = mode,
@@ -132,71 +357,223 @@ def binned_statistic(
 
         # convert back from log-space if doing geometric mean, median, etc.
         if isinstance(statistic, str) and statistic.startswith("geometric_"):
-            d = 10 ** d
+            stat_value = 10 ** stat_value
 
-        binned_stat.append(d)
+        binned_stat.append(stat_value)
 
         if ranks > 1:
-            comm.Barrier()
+            _require_comm().Barrier()
 
-    return binned_stat, bins
+    return binned_stat, edges
 
 def hist1d(
-    ds,
-    column, 
-    bins=20,
-    bin_spacing="linear",
-    mode="global",
-):
+    ds: Dataset | StructureCollection,
+    column: str,
+    bins: int | Sequence = 20,
+    bin_spacing: BinSpacing = "linear",
+    dataset: str = "halo_properties",
+    mode: Mode = "global",
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute a one-dimensional histogram of ``column``.
 
-    if isinstance(ds, oc.StructureCollection):
-        ds = ds[dataset]
+    Unlike :py:func:`binned_statistic`, which performs one lazy reduction per
+    bin, this function reads ``column`` into memory on each rank and hands it
+    to :py:func:`numpy.histogram`. Under MPI the per-rank counts are then
+    summed with an :code:`allreduce`, so every rank receives the histogram of
+    the full dataset.
 
-    ds = _filter_bad(ds, column)
+    Sentinel values are removed automatically for columns known to
+    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+
+    .. code-block:: python
+
+        import opencosmo as oc
+        from opencosmo.analysis.statistics import hist1d
+
+        ds = oc.open("haloproperties.hdf5")
+        counts, edges = hist1d(ds, "sod_halo_mass", bins=30, bin_spacing="log")
+
+    Parameters
+    ----------
+    ds : opencosmo.Dataset or opencosmo.StructureCollection
+        The data to operate on. If a :py:class:`StructureCollection
+        <opencosmo.StructureCollection>` is given, the member dataset named by
+        ``dataset`` is used.
+    column : str
+        The column to histogram.
+    bins : int or sequence, default = 20
+        The number of bins, or an explicit sequence of bin edges. When an
+        integer is given, ``bins + 1`` edges are placed between the global
+        minimum and maximum of ``column`` according to ``bin_spacing``.
+    bin_spacing : str, "log" or "linear", default = "linear"
+        How automatically generated edges are spaced. Ignored when explicit
+        edges are given. Note that
+        :py:func:`opencosmo.analysis.plotting.hist1d` overrides this default
+        with the column's own axis scale, so plotting a log-scaled quantity
+        gives log-spaced bins without you asking for them.
+    dataset : str, default = "halo_properties"
+        Which member dataset to use when ``ds`` is a collection. Ignored
+        otherwise.
+    mode : str, "local" or "global", default = "global"
+        How the minimum and maximum used to derive the bin edges are computed
+        under MPI. ``"global"`` reduces across all ranks so that every rank
+        bins against the same edges. Note that this controls the *edges* only;
+        the counts themselves are always summed across ranks.
+
+    Returns
+    -------
+    counts : numpy.ndarray
+        The number of entries in each bin, of length ``len(bin_edges) - 1``.
+        Summed over all ranks under MPI.
+    bin_edges : numpy.ndarray
+        The bin edges, of length ``len(counts) + 1``. These carry units when
+        they were derived from a unit-ful column.
+
+    Raises
+    ------
+    RuntimeError
+        If ``bin_spacing`` is not "log" or "linear".
+    """
+
+    source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
+    assert not isinstance(source, oc.StructureCollection)
+
+    source = _filter_bad(source, column)
 
     if isinstance(bins, int):
 
-        d = ds.select( 
+        d = source.select(
                 bin_min = oc.col(column).min(), 
                 bin_max = oc.col(column).max(),
                 mode = mode,
             ).get_data()
 
-        bins = _compute_bins(
+        edges: np.ndarray | Sequence = _compute_bins(
             d["bin_min"], d["bin_max"], bins+1, 
             bin_spacing = bin_spacing
         )
 
-    counts, bin_edges = np.histogram( ds.select(column).get_data(), bins=bins )
+    else:
+        edges = bins
+
+    counts, bin_edges = np.histogram(
+        np.asarray(source.select(column).get_data()), bins=edges
+    )
 
     if ranks > 1:
-        counts = comm.allreduce( counts, op=MPI.SUM )
+        counts = _require_comm().allreduce( counts, op=MPI.SUM )
 
     return counts, bin_edges
 
 def hist2d(
-    ds,
-    column_x,
-    column_y, 
-    bins=100,
-    bin_spacing="linear",
-    mode="global",
-):
+    ds: Dataset | StructureCollection,
+    column_x: str,
+    column_y: str,
+    bins: int | Sequence = 100,
+    bin_spacing: BinSpacing | Sequence[BinSpacing] = "linear",
+    dataset: str = "halo_properties",
+    mode: Mode = "global",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute a two-dimensional histogram of ``column_y`` against ``column_x``.
 
-    if isinstance(ds, oc.StructureCollection):
-        ds = ds[dataset]
+    Both columns are read into memory on each rank and passed to
+    :py:func:`numpy.histogram2d`. Under MPI the per-rank count grids are summed
+    with an :code:`allreduce`, so every rank receives the histogram of the full
+    dataset.
 
-    ds = _filter_bad(ds, column_x)
-    ds = _filter_bad(ds, column_y)
+    Sentinel values are removed for *both* columns, so a halo is dropped if
+    either of its two values is bad.
+
+    .. code-block:: python
+
+        import opencosmo as oc
+        from opencosmo.analysis.statistics import hist2d
+
+        ds = oc.open("haloproperties.hdf5")
+
+        # concentration against mass: log bins in mass, linear in concentration
+        h, x, y = hist2d(
+            ds,
+            "sod_halo_mass",
+            "sod_halo_cdelta",
+            bin_spacing=("log", "linear"),
+        )
+
+    Parameters
+    ----------
+    ds : opencosmo.Dataset or opencosmo.StructureCollection
+        The data to operate on. If a :py:class:`StructureCollection
+        <opencosmo.StructureCollection>` is given, the member dataset named by
+        ``dataset`` is used.
+    column_x, column_y : str
+        The columns to histogram along the first and second axes.
+    bins : int or sequence, default = 100
+        The number of bins along *each* axis, or a two-element sequence
+        ``[bins_x, bins_y]`` of explicit edge arrays. When an integer is given,
+        ``bins + 1`` edges are placed between the global minimum and maximum of
+        each column independently.
+    bin_spacing : str or tuple of str, default = "linear"
+        How automatically generated edges are spaced. A single string applies
+        to both axes; a two-element sequence ``(spacing_x, spacing_y)`` sets
+        them independently. Each entry must be "log" or "linear". Ignored when
+        explicit edges are given.
+    dataset : str, default = "halo_properties"
+        Which member dataset to use when ``ds`` is a collection. Ignored
+        otherwise.
+    mode : str, "local" or "global", default = "global"
+        How the per-column minima and maxima used to derive the bin edges are
+        computed under MPI. ``"global"`` reduces across all ranks so that every
+        rank bins against the same grid. The counts themselves are always
+        summed across ranks.
+
+    Returns
+    -------
+    h : numpy.ndarray
+        The counts, with shape ``(len(x) - 1, len(y) - 1)``. Following the
+        convention of :py:func:`numpy.histogram2d`, the first axis indexes
+        ``column_x``, so ``h`` must be transposed before being handed to
+        :py:func:`matplotlib.pyplot.pcolormesh`. Summed over all ranks under
+        MPI.
+    x : numpy.ndarray
+        The bin edges along ``column_x``. These carry units when they were
+        derived from a unit-ful column.
+    y : numpy.ndarray
+        The bin edges along ``column_y``. These carry units when they were
+        derived from a unit-ful column.
+
+    Raises
+    ------
+    RuntimeError
+        If ``bin_spacing`` is neither a string nor a sequence, or if an entry
+        is not "log" or "linear".
+
+    Notes
+    -----
+    Passing explicit edges requires a two-element :code:`list`,
+    :code:`[edges_x, edges_y]`; a single shared edge array is not accepted.
+
+    The ``bin_spacing`` default is "linear", but
+    :py:func:`opencosmo.analysis.plotting.hist2d` overrides it per axis with
+    each column's own scale from the defaults, so plotting a log-scaled
+    quantity gives log-spaced bins on that axis automatically.
+    """
+
+    source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
+    assert not isinstance(source, oc.StructureCollection)
+
+    source = _filter_bad(source, column_x)
+    source = _filter_bad(source, column_y)
 
     if isinstance(bins, int):
-        d_x = ds.select( 
+        d_x = source.select(
                 bin_min = oc.col(column_x).min(), 
                 bin_max = oc.col(column_x).max(),
                 mode = mode,
             ).get_data()
 
-        d_y = ds.select( 
+        d_y = source.select(
                 bin_min = oc.col(column_y).min(), 
                 bin_max = oc.col(column_y).max(),
                 mode = mode,
@@ -223,22 +600,22 @@ def hist2d(
     else:
         bins_x, bins_y = bins
 
-    data = ds.select(column_x, column_y).get_data()
+    data = source.select(column_x, column_y).get_data()
 
     h, x, y = np.histogram2d(data[column_x], data[column_y], bins = [bins_x, bins_y])
 
     if ranks > 1:
-        h = comm.allreduce( h, op=MPI.SUM )
+        h = _require_comm().allreduce( h, op=MPI.SUM )
 
     return h, x, y
 
 def stacked_profile(
-    ds,
-    column,
-    mode="global",
-    statistic="mean",
-    stat_space="log",
-):
+    ds: Dataset | StructureCollection,
+    column: str,
+    mode: Mode = "global",
+    statistic: Statistic = "mean",
+    stat_space: str = "log",
+) -> None:
 
     if isinstance(ds, oc.StructureCollection):
         ds = ds["halo_profiles"]
@@ -249,8 +626,8 @@ def stacked_profile(
 
 
 
-def two_point_correlation_function():
+def two_point_correlation_function() -> None:
     return
 
-def halo_mass_function():
+def halo_mass_function() -> None:
     return
