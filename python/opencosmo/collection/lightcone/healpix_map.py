@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from functools import cached_property, reduce
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Literal,
+    Optional,
+    Self,
+)
 from warnings import warn
 
 import astropy.units as u  # type: ignore
@@ -18,7 +27,13 @@ from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
-from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
+from opencosmo.spatial.healpix import HealPixIndex
+from opencosmo.spatial.region import (
+    ConeRegion,
+    FullSkyRegion,
+    HealpixRegion,
+    SkyboxRegion,
+)
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
@@ -311,7 +326,12 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    def get_data(self, format="healsparse", nside_out: Optional[int] = None, **kwargs):
+    def get_data(
+        self,
+        format: Literal["healsparse", "healpix", "raw"] = "healsparse",
+        nside_out: Optional[int] = None,
+        **kwargs,
+    ):
         """
         Get the data in this dataset as healsparse map or as healpix maps
         (nest-ordered numpy array). Note that a dataset does not load data from
@@ -343,7 +363,7 @@ class HealpixMap(dict):
                 "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
             )
             format = kwargs["output"]
-        if format not in {"healsparse", "healpix"}:
+        if format not in {"healsparse", "healpix", "raw"}:
             raise ValueError(f"Unknown format type {format}")
 
         if nside_out is not None:
@@ -392,6 +412,10 @@ class HealpixMap(dict):
 
         elif format == "healsparse":
             return make_healsparse_maps(table, self.nside, self.nside_lr)
+        elif format == "raw":
+            output = {name: np.array(c) for name, c in dict(table).items()}
+            pixel = output.pop("pixel")
+            return (pixel, output)
 
     @property
     def data(self):
@@ -600,20 +624,25 @@ class HealpixMap(dict):
             If the query region does not overlap with the coverage of this map
             in
         """
-        # The best we can do here is turn
-        if not isinstance(region, ConeRegion):
-            raise TypeError(
-                "Currently only cone regions are supported when performing spatial queries on HealpixMaps"
+        if isinstance(region, SkyboxRegion):
+            level = int(np.log2(self.nside))
+            pixels = np.union1d(*HealPixIndex().query(region, int(level))[level])
+
+        elif isinstance(region, ConeRegion):
+            vec = hp.ang2vec(
+                region.center.ra.value, region.center.dec.value, lonlat=True
+            )
+            pixels = hp.query_disc(
+                self.nside,
+                vec,
+                region.radius.to(u.radian).value,
+                inclusive=inclusive,
+                nest=self.__ordering == "NESTED",
             )
 
-        vec = hp.ang2vec(region.center.ra.value, region.center.dec.value, lonlat=True)
-        pixels = hp.query_disc(
-            self.nside,
-            vec,
-            region.radius.to(u.radian).value,
-            inclusive=inclusive,
-            nest=self.__ordering == "NESTED",
-        )
+        else:
+            raise TypeError("Didn't recieve a 2d region!")
+
         new_datasets = {}
         current_pixels = self.pixels
 

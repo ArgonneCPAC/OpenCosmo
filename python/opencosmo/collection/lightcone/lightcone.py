@@ -24,6 +24,7 @@ import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
+from opencosmo.collection.lightcone.reproject import reproject_to_cartesian
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import (
     Column,
@@ -221,6 +222,10 @@ class Lightcone(dict):
         if self.__maps is None:
             return None
         return self.__maps.columns
+
+    @property
+    def map(self):
+        return self.__maps
 
     # Internal identity used by link/mapping resolution.
     @property
@@ -502,7 +507,14 @@ class Lightcone(dict):
             raise ValueError()
         for entry in self.rows():
             center = (entry["ra"].value, entry["dec"].value)
-            cutout = self.__maps.cone_search(center, size)
+            p1 = (center[0] - size, center[1] - size)
+            p2 = (center[0] + size, center[1] + size)
+
+            pixels, cutout = self.__maps.box_search(p1, p2).get_data("raw")
+            cutout = reproject_to_cartesian(
+                pixels, cutout, self.__maps.nside, center, size, 512
+            )
+
             yield entry, cutout
 
     def with_redshift_range(self, z_low: float, z_high: float):
@@ -1097,7 +1109,7 @@ class Lightcone(dict):
             )
 
         reducer = default_reducer(mode)
-        derived_columns = {
+        lightcone_derived_columns = {
             k: v.with_reducer(reducer)
             if isinstance(v, (Column, DerivedScalarValue))
             else v

@@ -1317,7 +1317,6 @@ def test_redshift_mpi_scalar_reduction_equivalence(
         ).ravel()[0]
     )
 
-    assert False
     parallel_assert(
         np.isclose(got_min, expected_min),
         f"redshift min {got_min} != spatial min {expected_min}",
