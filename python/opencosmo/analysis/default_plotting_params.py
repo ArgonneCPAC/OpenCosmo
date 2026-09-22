@@ -1,7 +1,4 @@
 from typing import Any
-
-import astropy.units as u
-
 import opencosmo as oc
 
 default_params: dict[str, dict[str, Any]] = {
@@ -9,7 +6,7 @@ default_params: dict[str, dict[str, Any]] = {
     "fof_halo_mass": {
         "filter_bad": oc.col("fof_halo_mass") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{FOF}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{FOF}$",
             "symbol": r"M_\mathrm{FOF}",
             "scale": "log",
         },
@@ -17,7 +14,7 @@ default_params: dict[str, dict[str, Any]] = {
     "fof_halo_1D_vel_disp": {
         "filter_bad": oc.col("fof_halo_1D_vel_disp") > 0,
         "plotting": {
-            "label": r"$\sigma_\mathrm{v,FOF}\,\,[\mathrm{km\,s^{-1}}]$",
+            "label": r"$\sigma_\mathrm{v,FOF}$",
             "symbol": r"\sigma_\mathrm{v,FOF}",
             "scale": "log",
         },
@@ -26,7 +23,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass": {
         "filter_bad": oc.col("sod_halo_mass") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{200c}$",
             "symbol": r"M_\mathrm{200c}",
             "scale": "log",
         },
@@ -34,7 +31,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_M200m": {
         "filter_bad": oc.col("sod_halo_M200m") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{200m}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{200m}$",
             "symbol": r"M_\mathrm{200m}",
             "scale": "log",
         },
@@ -42,7 +39,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_M500c": {
         "filter_bad": oc.col("sod_halo_M500c") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{500c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{500c}$",
             "symbol": r"M_\mathrm{500c}",
             "scale": "log",
         },
@@ -50,7 +47,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MVir": {
         "filter_bad": oc.col("sod_halo_MVir") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{vir}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{vir}$",
             "symbol": r"M_\mathrm{vir}",
             "scale": "log",
         },
@@ -59,7 +56,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_radius": {
         "filter_bad": oc.col("sod_halo_radius") > 0,
         "plotting": {
-            "label": r"$R_\mathrm{200c}\,\,[\mathrm{Mpc}]$",
+            "label": r"$R_\mathrm{200c}$",
             "symbol": r"R_\mathrm{200c}",
             "scale": "log",
         },
@@ -67,7 +64,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_R200m": {
         "filter_bad": oc.col("sod_halo_R200m") > 0,
         "plotting": {
-            "label": r"$R_\mathrm{200m}\,\,[\mathrm{Mpc}]$",
+            "label": r"$R_\mathrm{200m}$",
             "symbol": r"R_\mathrm{200m}",
             "scale": "log",
         },
@@ -75,7 +72,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_R500c": {
         "filter_bad": oc.col("sod_halo_R500c") > 0,
         "plotting": {
-            "label": r"$R_\mathrm{500c}\,\,[\mathrm{Mpc}]$",
+            "label": r"$R_\mathrm{500c}$",
             "symbol": r"R_\mathrm{500c}",
             "scale": "log",
         },
@@ -83,7 +80,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_RVir": {
         "filter_bad": oc.col("sod_halo_RVir") > 0,
         "plotting": {
-            "label": r"$R_\mathrm{vir}\,\,[\mathrm{Mpc}]$",
+            "label": r"$R_\mathrm{vir}$",
             "symbol": r"R_\mathrm{vir}",
             "scale": "log",
         },
@@ -92,7 +89,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_dm": {
         "filter_bad": oc.col("sod_halo_mass_dm") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{DM,200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{DM,200c}$",
             "symbol": r"M_\mathrm{DM,200c}",
             "scale": "log",
         },
@@ -100,7 +97,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_gas": {
         "filter_bad": oc.col("sod_halo_mass_gas") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{gas,200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{gas,200c}$",
             "symbol": r"M_\mathrm{gas,200c}",
             "scale": "log",
         },
@@ -108,7 +105,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_star": {
         "filter_bad": oc.col("sod_halo_mass_star") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{*,200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{*,200c}$",
             "symbol": r"M_\mathrm{*,200c}",
             "scale": "log",
         },
@@ -116,7 +113,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_agn": {
         "filter_bad": oc.col("sod_halo_mass_agn") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{AGN,200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{AGN,200c}$",
             "symbol": r"M_\mathrm{AGN,200c}",
             "scale": "log",
         },
@@ -124,7 +121,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_sfgas": {
         "filter_bad": oc.col("sod_halo_mass_sfgas") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{SFgas,200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{SFgas,200c}$",
             "symbol": r"M_\mathrm{SFgas,200c}",
             "scale": "log",
         },
@@ -132,7 +129,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_wind": {
         "filter_bad": oc.col("sod_halo_mass_wind") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{wind,200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{wind,200c}$",
             "symbol": r"M_\mathrm{wind,200c}",
             "scale": "log",
         },
@@ -140,7 +137,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_nHI": {
         "filter_bad": oc.col("sod_halo_mass_nHI") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{HI,200c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{HI,200c}$",
             "symbol": r"M_\mathrm{HI,200c}",
             "scale": "log",
         },
@@ -148,7 +145,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mmagn_mass": {
         "filter_bad": oc.col("sod_halo_mmagn_mass") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{AGN,max}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{AGN,max}$",
             "symbol": r"M_\mathrm{AGN,max}",
             "scale": "log",
         },
@@ -157,7 +154,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MGas200m": {
         "filter_bad": oc.col("sod_halo_MGas200m") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{gas,200m}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{gas,200m}$",
             "symbol": r"M_\mathrm{gas,200m}",
             "scale": "log",
         },
@@ -165,7 +162,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MGas500c": {
         "filter_bad": oc.col("sod_halo_MGas500c") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{gas,500c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{gas,500c}$",
             "symbol": r"M_\mathrm{gas,500c}",
             "scale": "log",
         },
@@ -173,7 +170,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MGas2500c": {
         "filter_bad": oc.col("sod_halo_MGas2500c") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{gas,2500c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{gas,2500c}$",
             "symbol": r"M_\mathrm{gas,2500c}",
             "scale": "log",
         },
@@ -181,7 +178,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MGasVir": {
         "filter_bad": oc.col("sod_halo_MGasVir") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{gas,vir}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{gas,vir}$",
             "symbol": r"M_\mathrm{gas,vir}",
             "scale": "log",
         },
@@ -189,7 +186,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MGasHot500c": {
         "filter_bad": oc.col("sod_halo_MGasHot500c") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{hot\,gas,500c}\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{hot\,gas,500c}$",
             "symbol": r"M_\mathrm{hot\,gas,500c}",
             "scale": "log",
         },
@@ -198,7 +195,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MStar200m": {
         "filter_bad": oc.col("sod_halo_MStar200m") > 0,
         "plotting": {
-            "label": r"$M_{*,\mathrm{200m}}\,\,[M_\odot]$",
+            "label": r"$M_{*,\mathrm{200m}}$",
             "symbol": r"M_{*,\mathrm{200m}}",
             "scale": "log",
         },
@@ -206,7 +203,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MStar500c": {
         "filter_bad": oc.col("sod_halo_MStar500c") > 0,
         "plotting": {
-            "label": r"$M_{*,\mathrm{500c}}\,\,[M_\odot]$",
+            "label": r"$M_{*,\mathrm{500c}}$",
             "symbol": r"M_{*,\mathrm{500c}}",
             "scale": "log",
         },
@@ -214,7 +211,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MStar2500c": {
         "filter_bad": oc.col("sod_halo_MStar2500c") > 0,
         "plotting": {
-            "label": r"$M_{*,\mathrm{2500c}}\,\,[M_\odot]$",
+            "label": r"$M_{*,\mathrm{2500c}}$",
             "symbol": r"M_{*,\mathrm{2500c}}",
             "scale": "log",
         },
@@ -222,7 +219,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_MStarVir": {
         "filter_bad": oc.col("sod_halo_MStarVir") > 0,
         "plotting": {
-            "label": r"$M_{*,\mathrm{vir}}\,\,[M_\odot]$",
+            "label": r"$M_{*,\mathrm{vir}}$",
             "symbol": r"M_{*,\mathrm{vir}}",
             "scale": "log",
         },
@@ -290,7 +287,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_1D_vel_disp": {
         "filter_bad": oc.col("sod_halo_1D_vel_disp") > 0,
         "plotting": {
-            "label": r"$\sigma_\mathrm{v,200c}\,\,[\mathrm{km\,s^{-1}}]$",
+            "label": r"$\sigma_\mathrm{v,200c}$",
             "symbol": r"\sigma_\mathrm{v,200c}",
             "scale": "log",
         },
@@ -299,7 +296,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_T500c": {
         "filter_bad": oc.col("sod_halo_T500c") > 0,
         "plotting": {
-            "label": r"$T_\mathrm{500c}\,\,[\mathrm{K}]$",
+            "label": r"$T_\mathrm{500c}$",
             "symbol": r"T_\mathrm{500c}",
             "scale": "log",
         },
@@ -307,7 +304,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_T500cBolo": {
         "filter_bad": oc.col("sod_halo_T500cBolo") > 0,
         "plotting": {
-            "label": r"$T_\mathrm{500c}^\mathrm{bolo}\,\,[\mathrm{K}]$",
+            "label": r"$T_\mathrm{500c}^\mathrm{bolo}$",
             "symbol": r"T_\mathrm{500c}^\mathrm{bolo}",
             "scale": "log",
         },
@@ -315,7 +312,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_T500cBoloEx": {
         "filter_bad": oc.col("sod_halo_T500cBoloEx") > 0,
         "plotting": {
-            "label": r"$T_\mathrm{500c}^\mathrm{bolo,ex}\,\,[\mathrm{K}]$",
+            "label": r"$T_\mathrm{500c}^\mathrm{bolo,ex}$",
             "symbol": r"T_\mathrm{500c}^\mathrm{bolo,ex}",
             "scale": "log",
         },
@@ -324,7 +321,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_Y500c": {
         "filter_bad": oc.col("sod_halo_Y500c") > 0,
         "plotting": {
-            "label": r"$Y_\mathrm{500c}\,\,[\mathrm{Mpc^2}]$",
+            "label": r"$Y_\mathrm{500c}$",
             "symbol": r"Y_\mathrm{500c}",
             "scale": "log",
         },
@@ -332,7 +329,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_Y5R500c": {
         "filter_bad": oc.col("sod_halo_Y5R500c") > 0,
         "plotting": {
-            "label": r"$Y_\mathrm{5R500c}\,\,[\mathrm{Mpc^2}]$",
+            "label": r"$Y_\mathrm{5R500c}$",
             "symbol": r"Y_\mathrm{5R500c}",
             "scale": "log",
         },
@@ -343,7 +340,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cBolo": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{bolo}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{bolo}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{bolo}",
             "scale": "linear",
         },
@@ -351,7 +348,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cBoloEx": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{bolo,ex}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{bolo,ex}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{bolo,ex}",
             "scale": "linear",
         },
@@ -359,7 +356,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cErositaLo": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,lo}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,lo}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{eROSITA,lo}",
             "scale": "linear",
         },
@@ -367,7 +364,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cErositaLoEx": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,lo,ex}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,lo,ex}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{eROSITA,lo,ex}",
             "scale": "linear",
         },
@@ -375,7 +372,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cErositaHi": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,hi}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,hi}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{eROSITA,hi}",
             "scale": "linear",
         },
@@ -383,7 +380,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cErositaHiEx": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,hi,ex}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{eROSITA,hi,ex}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{eROSITA,hi,ex}",
             "scale": "linear",
         },
@@ -391,7 +388,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cRosat": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{ROSAT}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{ROSAT}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{ROSAT}",
             "scale": "linear",
         },
@@ -399,7 +396,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_L500cRosatEx": {
         "filter_bad": None,
         "plotting": {
-            "label": r"$L_\mathrm{500c}^\mathrm{ROSAT,ex}\,\,[\log_{10}(\mathrm{erg\,s^{-1}})]$",
+            "label": r"$L_\mathrm{500c}^\mathrm{ROSAT,ex}$",
             "symbol": r"L_\mathrm{500c}^\mathrm{ROSAT,ex}",
             "scale": "linear",
         },
@@ -408,7 +405,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_core_entropy": {
         "filter_bad": oc.col("sod_halo_core_entropy") > 0,
         "plotting": {
-            "label": r"$K_\mathrm{core}\,\,[\mathrm{keV\,cm^2}]$",
+            "label": r"$K_\mathrm{core}$",
             "symbol": r"K_\mathrm{core}",
             "scale": "log",
         },
@@ -416,7 +413,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_core_ne": {
         "filter_bad": oc.col("sod_halo_core_ne") > 0,
         "plotting": {
-            "label": r"$n_\mathrm{e,core}\,\,[\mathrm{cm^{-3}}]$",
+            "label": r"$n_\mathrm{e,core}$",
             "symbol": r"n_\mathrm{e,core}",
             "scale": "log",
         },
@@ -424,7 +421,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_core_tcool": {
         "filter_bad": oc.col("sod_halo_core_tcool") > 0,
         "plotting": {
-            "label": r"$t_\mathrm{cool,core}\,\,[\mathrm{Gyr}]$",
+            "label": r"$t_\mathrm{cool,core}$",
             "symbol": r"t_\mathrm{cool,core}",
             "scale": "log",
         },
@@ -433,7 +430,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_sfr": {
         "filter_bad": oc.col("sod_halo_sfr") > 0,
         "plotting": {
-            "label": r"$\mathrm{SFR}\,\,[M_\odot\,\mathrm{yr^{-1}}]$",
+            "label": r"$\mathrm{SFR}$",
             "symbol": r"\mathrm{SFR}",
             "scale": "log",
         },

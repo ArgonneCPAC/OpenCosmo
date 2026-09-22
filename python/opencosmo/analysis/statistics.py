@@ -250,9 +250,6 @@ def binned_statistic(
     Parameters
     ----------
     ds : opencosmo.Dataset or opencosmo.StructureCollection
-        The data to operate on. If a :py:class:`StructureCollection
-        <opencosmo.StructureCollection>` is given, the member dataset named by
-        ``dataset`` is used.
     column : str
         The column to compute the statistic of.
     bin_by : str, default = "sod_halo_mass"
@@ -379,9 +376,6 @@ def hist1d(
     Parameters
     ----------
     ds : opencosmo.Dataset or opencosmo.StructureCollection
-        The data to operate on. If a :py:class:`StructureCollection
-        <opencosmo.StructureCollection>` is given, the member dataset named by
-        ``dataset`` is used.
     column : str
         The column to histogram. e.g., "sod_halo_mass"
     bins : int or sequence, default = 20
@@ -481,9 +475,6 @@ def hist2d(
     Parameters
     ----------
     ds : opencosmo.Dataset or opencosmo.StructureCollection
-        The data to operate on. If a :py:class:`StructureCollection
-        <opencosmo.StructureCollection>` is given, the member dataset named by
-        ``dataset`` is used.
     column_x, column_y : str
         The columns to histogram along the first and second axes.
     bins : int or sequence, default = 100

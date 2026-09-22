@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+import opencosmo as oc
 import opencosmo.analysis.statistics as statistics
 from opencosmo.analysis.default_plotting_params import default_params
 
@@ -48,15 +49,14 @@ if TYPE_CHECKING:
     Differential = Literal["linear", "log"]
     PlotRank = int | Literal["all"]
 
-# all functions here should return a matplotlib figure
-# all functions should also take an optional 'ax' input so that this can be easily integrated into collage
-
-def _set_defaults(column: str) -> dict[str, Any]:
+def _set_params(ds: Dataset, column: str) -> dict[str, Any]:
     """
-    Look up the plotting defaults for a column.
+    Set filtering and plotting params.
 
     Parameters
     ----------
+    ds: opencosmo.Dataset
+        Needed for finding the column units
     column : str
         The column to look up.
 
@@ -80,6 +80,13 @@ def _set_defaults(column: str) -> dict[str, Any]:
                 "scale": "linear",
             },
         }
+
+    # add a unit label
+    params["plotting"]["unit_label"] = None
+
+    units = ds.units[column]
+    if units is not None:
+        params["plotting"]["unit_label"] = units.to_string('latex_inline').strip("$")
 
     return params
 
@@ -144,6 +151,7 @@ def hist2d(
     ds: Dataset | StructureCollection,
     column_x: str,
     column_y: str,
+    dataset: str = "halo_properties",
     ax: Axes | None = None,
     plot_rank: PlotRank = "all",
     plot_kwargs: dict[str, Any] | None = None,
@@ -176,9 +184,11 @@ def hist2d(
     Parameters
     ----------
     ds : opencosmo.Dataset
-        The data to plot.
     column_x, column_y : str
         The columns to histogram along the horizontal and vertical axes.
+    dataset : str, default = "halo_properties"
+        Which member dataset to use when ``ds`` is a collection. Ignored
+        otherwise.
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
         Pass one of these to build a multi-panel figure.
@@ -204,10 +214,13 @@ def hist2d(
         The axis that was drawn into, or :code:`None` on ranks that did not draw.
     """
 
+    source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
+    assert not isinstance(source, oc.StructureCollection)
+
     fig=None
 
-    x_params = _set_defaults(column_x)
-    y_params = _set_defaults(column_y)
+    x_params = _set_params(source, column_x)
+    y_params = _set_params(source, column_y)
 
     # set default bin spacing to axis scale ("log" or "linear") if bins aren't explicitly defined
     if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
@@ -216,7 +229,7 @@ def hist2d(
             y_params["plotting"]["scale"]
         )
 
-    h, x, y = statistics.hist2d(ds, column_x, column_y, **kwargs)
+    h, x, y = statistics.hist2d(source, column_x, column_y, **kwargs)
 
     if plot_rank=="all" or rank == plot_rank:
         fig, ax = _initialize_fig(ax)
@@ -226,9 +239,15 @@ def hist2d(
         X, Y = np.meshgrid(x, y)
         ax.pcolormesh(X, Y, h.T, **plot_kwargs)
 
+        xunit = x_params["plotting"]["unit_label"]
+        yunit = y_params["plotting"]["unit_label"]
+
+        xlabel = x_params["plotting"]["label"] if xunit is None else x_params["plotting"]["label"] + rf"$\,\,[{xunit}]$"
+        ylabel = y_params["plotting"]["label"] if yunit is None else y_params["plotting"]["label"] + rf"$\,\,[{yunit}]$"
+
         ax.set(
-            xlabel=x_params["plotting"]["label"],
-            ylabel=y_params["plotting"]["label"],
+            xlabel=xlabel,
+            ylabel=ylabel,
             xscale=x_params["plotting"]["scale"],
             yscale=y_params["plotting"]["scale"],
         )
@@ -239,6 +258,7 @@ def hist2d(
 def hist1d(
     ds: Dataset | StructureCollection,
     column: str,
+    dataset: str = "halo_properties",
     differential: Differential | None = None,
     yscale: str = "log",
     ax: Axes | None = None,
@@ -273,9 +293,11 @@ def hist1d(
     Parameters
     ----------
     ds : opencosmo.Dataset
-        The data to plot.
     column : str
         The column to histogram.
+    dataset : str, default = "halo_properties"
+        Which member dataset to use when ``ds`` is a collection. Ignored
+        otherwise.
     differential : str, optional
         How to normalize the counts by bin width.
 
@@ -310,13 +332,16 @@ def hist1d(
     ValueError
         If ``differential`` is not :code:`None`, "linear", or "log".
     """
-    params = _set_defaults(column)
+    source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
+    assert not isinstance(source, oc.StructureCollection)
+
+    params = _set_params(source, column)
 
     # set default bin spacing to axis scale ("log" or "linear") if bins aren't explicitly defined
     if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
         kwargs["bin_spacing"] = params["plotting"]["scale"]
 
-    counts, bin_edges = statistics.hist1d(ds, column, **kwargs)
+    counts, bin_edges = statistics.hist1d(source, column, **kwargs)
 
     # the differential forms need unit-ful edges
     edges_with_units: Any = bin_edges
@@ -346,8 +371,11 @@ def hist1d(
 
         ax.step(bin_centers, counts, **plot_kwargs)
 
+        unit = params["plotting"]["unit_label"]
+        xlabel = params["plotting"]["label"] if unit is None else params["plotting"]["label"] + rf"$\,\,[{unit}]$"
+
         ax.set(
-            xlabel=params["plotting"]["label"],
+            xlabel=xlabel,
             ylabel=ylabel,
             xscale=params["plotting"]["scale"],
             yscale=yscale
@@ -360,6 +388,7 @@ def binned_statistic(
     column: str,
     statistic: Statistic = "mean",
     bin_by: str = "sod_halo_mass",
+    dataset: str = "halo_properties",
     ax: Axes | None = None,
     plot_kwargs: dict[str, Any] | None = None,
     plot_rank: PlotRank = "all",
@@ -399,7 +428,6 @@ def binned_statistic(
     Parameters
     ----------
     ds : opencosmo.Dataset or opencosmo.StructureCollection
-        The data to plot.
     column : str
         The column to compute the statistic of. Sets the vertical axis.
     statistic : str or Callable, default = "mean"
@@ -408,6 +436,9 @@ def binned_statistic(
         list, including the "geometric\_" variants.
     bin_by : str, default = "sod_halo_mass"
         The column whose values define the bins. Sets the horizontal axis.
+    dataset : str, default = "halo_properties"
+        Which member dataset to use when ``ds`` is a collection. Ignored
+        otherwise.
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
     plot_kwargs : dict, optional
@@ -432,13 +463,17 @@ def binned_statistic(
     ax : matplotlib.axes.Axes or None
         The axis that was drawn into, or :code:`None` on ranks that did not draw.
     """
-    x_params = _set_defaults(bin_by)
-    y_params = _set_defaults(column)
+
+    source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
+    assert not isinstance(source, oc.StructureCollection)
+
+    x_params = _set_params(source, bin_by)
+    y_params = _set_params(source, column)
 
     if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
         kwargs["bin_spacing"] = x_params["plotting"]["scale"]
 
-    binned_stat, bin_edges = statistics.binned_statistic(ds, column, statistic=statistic, bin_by=bin_by, **kwargs)
+    binned_stat, bin_edges = statistics.binned_statistic(source, column, statistic=statistic, bin_by=bin_by, **kwargs)
 
     fig=None
     if plot_rank=="all" or rank == plot_rank:
@@ -451,9 +486,15 @@ def binned_statistic(
         bin_centers = 0.5*(edges[1:] + edges[:-1])
         ax.plot(bin_centers, binned_stat, **plot_kwargs)
 
+        xunit = x_params["plotting"]["unit_label"]
+        yunit = y_params["plotting"]["unit_label"]
+
+        xlabel = x_params["plotting"]["label"] if xunit is None else x_params["plotting"]["label"] + rf"$\,\,[{xunit}]$"
+        ylabel = y_params["plotting"]["label"] if yunit is None else y_params["plotting"]["label"] + rf"$\,\,[{yunit}]$"
+
         ax.set(
-            xlabel=x_params["plotting"]["label"],
-            ylabel=y_params["plotting"]["label"],
+            xlabel=xlabel,
+            ylabel=ylabel,
             xscale=x_params["plotting"]["scale"],
             yscale=y_params["plotting"]["scale"]
         )
