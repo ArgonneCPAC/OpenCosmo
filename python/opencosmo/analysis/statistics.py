@@ -1,24 +1,21 @@
 """
-Convenience functions for computing binned statistics and histograms on
+Convenience functions for computing various statistics on
 OpenCosmo datasets.
 
-Every function in this module is a thin wrapper around the lazy OpenCosmo query
-API (:py:meth:`filter <opencosmo.Dataset.filter>` and
-:py:meth:`select <opencosmo.Dataset.select>`), which means the data is only
-pulled off disk when it is actually needed. The scalar reductions used to
-compute bin ranges and statistics are MPI-aware: when running under MPI with
-:code:`mode="global"` (the default), reductions are combined across all ranks
-before they are returned, so every rank sees the same answer.
+Functions in this module should make use of OpenCosmo's builtin functionality 
+for filtering and reducing data as much as possible, and should be MPI-aware. 
+The calling sequence should be the same whether it is run in serial or parallel.
+
+The companion module :py:mod:`opencosmo.analysis.plotting` wraps many of these
+functions with a matplotlib front end.
 
 Columns listed in
 :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`
 also carry a :code:`filter_bad` entry describing the sentinel values that mark
-an invalid measurement. These filters are applied automatically, so you do not
+an invalid measurement. These filters are applied automatically, so the user does not
 need to remember that (for example) unresolved halos are written out with
 :code:`sod_halo_mass = -1`.
 
-The companion module :py:mod:`opencosmo.analysis.plotting` wraps each of these
-functions with a matplotlib front end.
 """
 
 from __future__ import annotations
@@ -209,6 +206,7 @@ def binned_statistic(
     bin_by: str = "sod_halo_mass",
     statistic: Statistic = "mean",
     bins: int | list = 20,
+    bin_spacing: BinSpacing = "linear",
     dataset: str = "halo_properties",
     mode: Mode = "global",
     **kwargs: Any,
@@ -216,20 +214,17 @@ def binned_statistic(
     r"""
     Compute a statistic of ``column`` in bins of ``bin_by``.
 
-    This is the workhorse of the module: it answers questions of the form
-    "what is the mean halo concentration as a function of SOD halo mass?". The
-    statistic can be any of the prebuilt scalar reductions (in string form --
+    The statistic can be any of the prebuilt scalar reductions (in string form --
     e.g. "mean", "std"), a geometric variant of one, or a custom statistic that
     takes the column as input.
-
-    The column being reduced is first passed through
-    :py:func:`_filter_bad`, so sentinel values for columns known to
-    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`
-    are removed automatically.
 
     Nothing is read from disk until each bin's reduction is evaluated, and
     only one scalar per bin is ever materialized, so this is safe to run on
     datasets far larger than memory.
+
+    This function is MPI-aware. When ``mode = "global"``, the scalar reduction
+    for each bin is performed across all ranks. When ``mode = "local"``, the reduction
+    is performed on each rank separately.
 
     .. code-block:: python
 
@@ -239,11 +234,11 @@ def binned_statistic(
         ds = oc.open("haloproperties.hdf5")
 
         # mean concentration in 20 log-spaced bins of M200c
-        c, edges = binned_statistic(ds, "sod_halo_cdelta")
+        c, edges = binned_statistic(ds, "sod_halo_cdelta", bin_spacing="log", statistic="mean")
 
-        # lognormal scatter in Y500c, as a multiplicative factor
+        # log-space scatter in Y500c
         scatter, edges = binned_statistic(
-            ds, "sod_halo_Y500c", statistic="geometric_std"
+            ds, "sod_halo_Y500c", bin_spacing="log", statistic="geometric_std"
         )
 
         # a custom reduction
@@ -268,18 +263,17 @@ def binned_statistic(
         "median", "sum", or "quantile" -- optionally prefixed with
         "geometric\_", in which case the reduction is performed on
         :math:`\log_{10}` of the column and the result is raised back through
-        :math:`10^x`. This is usually what you want for quantities that span
-        orders of magnitude: "geometric_mean" gives the mean in log space, and
-        "geometric_std" the lognormal scatter as a multiplicative factor
-        (:math:`10^{\sigma_{\log_{10} x}}`, so :code:`np.log10` of it recovers
-        the scatter in dex).
-        A callable is also accepted; it receives the column and must return a
+        :math:`10^x`. For example, "geometric_mean" gives the mean in log space, and
+        "geometric_std" gives the lognormal scatter.
+        A custom, callable function is also accepted; it receives the column and must return a
         scalar reduction of it (see the example above).
     bins : int or list, default = 20
         The number of bins, or an explicit list of bin edges. When an integer
-        is given, ``bins + 1`` log-spaced edges are placed between the global
-        minimum and maximum of ``bin_by``, which costs one extra pass over
-        that column.
+        is given, ``bins + 1`` edges are placed between the global
+        minimum and maximum of ``bin_by``.
+    bin_spacing : str, "log" or "linear", default = "linear"
+        How automatically generated edges are spaced. Ignored when explicit
+        edges are given via ``bins``.
     dataset : str, default = "halo_properties"
         Which member dataset to use when ``ds`` is a collection. Ignored
         otherwise.
@@ -305,18 +299,6 @@ def binned_statistic(
     ------
     TypeError
         If ``statistic`` is neither a string nor callable.
-
-    Notes
-    -----
-    Bins are half-open, :code:`[low, high)`, so the largest value in the
-    dataset falls outside the final bin when the edges are derived from the
-    data.
-
-    A bin containing no rows will produce whatever the underlying reduction
-    returns for an empty selection (typically NaN), rather than being dropped.
-    Bin membership is unaffected by ``mode``: the edges are the same on every
-    rank under :code:`mode="global"`, so bins that are empty on one rank may
-    still be populated globally.
     """
 
     source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
@@ -332,7 +314,10 @@ def binned_statistic(
                 mode = mode,
             ).get_data()
 
-        edges: np.ndarray | list = np.geomspace(d["bin_min"], d["bin_max"], bins+1)
+        edges: np.ndarray | Sequence = _compute_bins(
+            d["bin_min"], d["bin_max"], bins+1, 
+            bin_spacing = bin_spacing
+        )
 
     # else:
     #   make sure given bins are in the right units
@@ -379,12 +364,9 @@ def hist1d(
 
     Unlike :py:func:`binned_statistic`, which performs one lazy reduction per
     bin, this function reads ``column`` into memory on each rank and hands it
-    to :py:func:`numpy.histogram`. Under MPI the per-rank counts are then
+    to :py:func:`numpy.histogram`. Under MPI (with `mode = "global"`) the per-rank counts are then
     summed with an :code:`allreduce`, so every rank receives the histogram of
     the full dataset.
-
-    Sentinel values are removed automatically for columns known to
-    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
 
     .. code-block:: python
 
@@ -401,25 +383,23 @@ def hist1d(
         <opencosmo.StructureCollection>` is given, the member dataset named by
         ``dataset`` is used.
     column : str
-        The column to histogram.
+        The column to histogram. e.g., "sod_halo_mass"
     bins : int or sequence, default = 20
         The number of bins, or an explicit sequence of bin edges. When an
         integer is given, ``bins + 1`` edges are placed between the global
         minimum and maximum of ``column`` according to ``bin_spacing``.
     bin_spacing : str, "log" or "linear", default = "linear"
-        How automatically generated edges are spaced. Ignored when explicit
-        edges are given. Note that
-        :py:func:`opencosmo.analysis.plotting.hist1d` overrides this default
-        with the column's own axis scale, so plotting a log-scaled quantity
-        gives log-spaced bins without you asking for them.
+        How automatically generated bin edges are spaced. Ignored when explicit
+        edges are given.
     dataset : str, default = "halo_properties"
         Which member dataset to use when ``ds`` is a collection. Ignored
         otherwise.
     mode : str, "local" or "global", default = "global"
-        How the minimum and maximum used to derive the bin edges are computed
-        under MPI. ``"global"`` reduces across all ranks so that every rank
-        bins against the same edges. Note that this controls the *edges* only;
-        the counts themselves are always summed across ranks.
+        How the histogram is computed under MPI. ``"global"`` reduces
+        across all ranks, so every rank computes the same bin edges and the
+        same bin counts are summed across all ranks. ``"local"`` computes 
+        a separate histogram on each rank. Has no effect when not running
+        under MPI.
 
     Returns
     -------
@@ -461,7 +441,7 @@ def hist1d(
         np.asarray(source.select(column).get_data()), bins=edges
     )
 
-    if ranks > 1:
+    if ranks > 1 and mode == "global":
         counts = _require_comm().allreduce( counts, op=MPI.SUM )
 
     return counts, bin_edges
@@ -479,12 +459,9 @@ def hist2d(
     Compute a two-dimensional histogram of ``column_y`` against ``column_x``.
 
     Both columns are read into memory on each rank and passed to
-    :py:func:`numpy.histogram2d`. Under MPI the per-rank count grids are summed
+    :py:func:`numpy.histogram2d`. Under MPI (with `mode="global"`) the per-rank count grids are summed
     with an :code:`allreduce`, so every rank receives the histogram of the full
     dataset.
-
-    Sentinel values are removed for *both* columns, so a halo is dropped if
-    either of its two values is bad.
 
     .. code-block:: python
 
@@ -523,10 +500,9 @@ def hist2d(
         Which member dataset to use when ``ds`` is a collection. Ignored
         otherwise.
     mode : str, "local" or "global", default = "global"
-        How the per-column minima and maxima used to derive the bin edges are
-        computed under MPI. ``"global"`` reduces across all ranks so that every
-        rank bins against the same grid. The counts themselves are always
-        summed across ranks.
+        How the 2d histogram is computed under MPI. ``"global"`` reduces across all ranks
+        to create one integrated 2d histogram, while ``"local"`` computes a separate 
+        2d histogram on each rank.
 
     Returns
     -------
@@ -535,7 +511,7 @@ def hist2d(
         convention of :py:func:`numpy.histogram2d`, the first axis indexes
         ``column_x``, so ``h`` must be transposed before being handed to
         :py:func:`matplotlib.pyplot.pcolormesh`. Summed over all ranks under
-        MPI.
+        MPI with `mode = "global"`.
     x : numpy.ndarray
         The bin edges along ``column_x``. These carry units when they were
         derived from a unit-ful column.
@@ -548,16 +524,6 @@ def hist2d(
     RuntimeError
         If ``bin_spacing`` is neither a string nor a sequence, or if an entry
         is not "log" or "linear".
-
-    Notes
-    -----
-    Passing explicit edges requires a two-element :code:`list`,
-    :code:`[edges_x, edges_y]`; a single shared edge array is not accepted.
-
-    The ``bin_spacing`` default is "linear", but
-    :py:func:`opencosmo.analysis.plotting.hist2d` overrides it per axis with
-    each column's own scale from the defaults, so plotting a log-scaled
-    quantity gives log-spaced bins on that axis automatically.
     """
 
     source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
@@ -604,7 +570,7 @@ def hist2d(
 
     h, x, y = np.histogram2d(data[column_x], data[column_y], bins = [bins_x, bins_y])
 
-    if ranks > 1:
+    if ranks > 1 and mode == "global":
         h = _require_comm().allreduce( h, op=MPI.SUM )
 
     return h, x, y

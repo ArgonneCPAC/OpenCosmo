@@ -155,10 +155,7 @@ def hist2d(
     Plot a two-dimensional histogram as a pcolormesh.
 
     Wraps :py:func:`opencosmo.analysis.statistics.hist2d` and renders the
-    result with a logarithmic color normalization, which is almost always what
-    you want for a halo population spanning many decades in number density.
-    Axis labels and scales are taken from
-    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+    result with a logarithmic color normalization.
 
     .. code-block:: python
 
@@ -190,20 +187,15 @@ def hist2d(
     plot_rank : str or int, default = "all"
         Which MPI rank draws the plot. ``"all"`` draws on every rank; an
         integer draws only on that rank, which is usually what you want when
-        writing a single image to disk. The histogram itself is computed
-        collectively regardless, so this argument must not be used to skip the
-        call on some ranks.
+        writing a single image to disk (especially when working with a large number of ranks). 
+        The histogram itself is computed collectively regardless.
     plot_kwargs : dict, optional
         Passed to :py:meth:`~matplotlib.axes.Axes.pcolormesh`. Defaults to
-        :code:`norm=LogNorm(vmin=1)`, which clips empty bins; anything you
+        :code:`{"norm": LogNorm(vmin=1)}`, which clips empty bins; anything you
         supply here takes precedence.
     **kwargs
         Forwarded to :py:func:`opencosmo.analysis.statistics.hist2d`, e.g.
-        ``bins``, ``bin_spacing``, ``mode``. When ``bin_spacing`` is not given
-        and ``bins`` is a count rather than explicit edges, each axis is binned
-        according to its own ``scale`` from the defaults, so a log-scaled
-        column gets log-spaced bins without you asking. Pass ``bin_spacing``
-        explicitly to override that.
+        ``bins``, ``bin_spacing``, ``mode``.
 
     Returns
     -------
@@ -211,8 +203,7 @@ def hist2d(
         The figure that was drawn into, or :code:`None` on ranks that did not
         draw.
     ax : matplotlib.axes.Axes or None
-        The axis that was drawn into. This is the axis that was passed in, if
-        one was. :code:`None` on ranks that did not draw.
+        The axis that was drawn into, or :code:`None` on ranks that did not draw.
     """
 
     fig=None
@@ -251,6 +242,7 @@ def hist1d(
     ds: Dataset | StructureCollection,
     column: str,
     differential: Differential | None = None,
+    yscale: str = "log"
     ax: Axes | None = None,
     plot_rank: PlotRank = "all",
     plot_kwargs: dict[str, Any] | None = None,
@@ -259,13 +251,10 @@ def hist1d(
     r"""
     Plot a one-dimensional histogram as a step curve.
 
-    Wraps :py:func:`opencosmo.analysis.statistics.hist1d`. The vertical axis is
-    always logarithmic; the horizontal label and scale come from
-    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`.
+    Wraps :py:func:`opencosmo.analysis.statistics.hist1d`.
 
     The ``differential`` argument divides the raw counts by the bin widths,
-    turning the histogram into a density that does not depend on the binning
-    you happened to choose. This is what you want for a mass function.
+    turning the histogram into a density.
 
     .. code-block:: python
 
@@ -295,10 +284,7 @@ def hist1d(
         * :code:`None` (default) -- plot raw counts, labeled :math:`N`.
         * ``"linear"`` -- divide by :math:`\Delta x`, giving :math:`dN/dx`.
         * ``"log"`` -- divide by :math:`\Delta \log_{10} x`, giving
-          :math:`dN/d\log_{10}(x)`. Pair this with log-spaced bins.
-
-        The vertical axis label is generated from the column's ``symbol``
-        entry in the defaults.
+          :math:`dN/d\log_{10}(x)`.
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
     plot_rank : str or int, default = "all"
@@ -307,15 +293,11 @@ def hist1d(
         collectively on all ranks regardless.
     plot_kwargs : dict, optional
         Passed to :py:meth:`~matplotlib.axes.Axes.step`. Defaults to
-        :code:`where="mid"`, since the curve is drawn at the bin centers;
+        :code:`{"where": "mid"}` to draw the curve at the bin centers;
         anything you supply here takes precedence.
     **kwargs
         Forwarded to :py:func:`opencosmo.analysis.statistics.hist1d`, e.g.
-        ``bins``, ``bin_spacing``, ``mode``. When ``bin_spacing`` is not given
-        and ``bins`` is a count rather than explicit edges, the column's own
-        ``scale`` from the defaults is used, so a log-scaled column gets
-        log-spaced bins without you asking. Pass ``bin_spacing`` explicitly to
-        override that.
+        ``bins``, ``bin_spacing``, ``mode``.
 
     Returns
     -------
@@ -323,20 +305,12 @@ def hist1d(
         The figure that was drawn into, or :code:`None` on ranks that did not
         draw.
     ax : matplotlib.axes.Axes or None
-        The axis that was drawn into. This is the axis that was passed in, if
-        one was. :code:`None` on ranks that did not draw.
+        The axis that was drawn into, or :code:`None` on ranks that did not draw.
 
     Raises
     ------
     ValueError
         If ``differential`` is not :code:`None`, "linear", or "log".
-
-    Notes
-    -----
-    Using ``differential`` requires the bin edges to carry units, since the
-    widths are taken from :code:`bin_edges.value`. This holds for the edges
-    this function generates itself, but not for a plain list of edges passed
-    through as ``bins``.
     """
     params = _set_defaults(column)
 
@@ -346,7 +320,7 @@ def hist1d(
 
     counts, bin_edges = statistics.hist1d(ds, column, **kwargs)
 
-    # the differential forms need unit-ful edges; see the Notes in the docstring
+    # the differential forms need unit-ful edges
     edges_with_units: Any = bin_edges
 
     if differential == "linear":
@@ -378,7 +352,7 @@ def hist1d(
             xlabel=params["plotting"]["label"],
             ylabel=ylabel,
             xscale=params["plotting"]["scale"],
-            yscale="log"
+            yscale=yscale
         )
 
     return fig, ax
@@ -397,15 +371,10 @@ def binned_statistic(
     Plot a statistic of ``column`` against ``bin_by`` as a line.
 
     Wraps :py:func:`opencosmo.analysis.statistics.binned_statistic` and plots
-    the result at the bin centers. Both axes are labeled and scaled from
-    :py:data:`default_params <opencosmo.analysis.default_plotting_params.default_params>`
-    -- the horizontal axis from ``bin_by`` and the vertical axis from
-    ``column`` -- so a concentration--mass relation comes out log-linear
-    without any configuration.
+    the result at the bin centers.
 
     Because the function accepts an ``ax`` and returns the one it drew into,
-    repeated calls compose: overplot several statistics, or several
-    simulations, on one panel.
+    calling this function repeatedly allows one to overplot several curves on one panel.
 
     .. code-block:: python
 
@@ -443,15 +412,13 @@ def binned_statistic(
         The column whose values define the bins. Sets the horizontal axis.
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
-        Pass the axis returned by an earlier call to overplot.
     plot_kwargs : dict, optional
         Passed to :py:meth:`~matplotlib.axes.Axes.plot`. Defaults to
         :code:`linewidth=2`; anything you supply here takes precedence.
     plot_rank : str or int, default = "all"
         Which MPI rank draws the plot. ``"all"`` draws on every rank; an
         integer draws only on that rank. The statistic is computed
-        collectively on all ranks regardless, so this must not be used to skip
-        the call on some ranks.
+        collectively on all ranks regardless.
     **kwargs
         Forwarded to
         :py:func:`opencosmo.analysis.statistics.binned_statistic`. This covers
@@ -465,15 +432,7 @@ def binned_statistic(
         The figure that was drawn into, or :code:`None` on ranks that did not
         draw.
     ax : matplotlib.axes.Axes or None
-        The axis that was drawn into. This is the axis that was passed in, if
-        one was. :code:`None` on ranks that did not draw.
-
-    Notes
-    -----
-    The vertical scale is taken from ``column``'s defaults, which describe the
-    column's own values. A statistic that changes the meaning of those values
-    -- "std" of a log-scaled quantity, for instance -- may want a different
-    scale, which you can set on the returned axis.
+        The axis that was drawn into, or :code:`None` on ranks that did not draw.
     """
     x_params = _set_defaults(bin_by)
     y_params = _set_defaults(column)
