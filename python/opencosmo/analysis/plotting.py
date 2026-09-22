@@ -78,8 +78,6 @@ def _set_defaults(column: str) -> dict[str, Any]:
                 "label": column,
                 "symbol": r"x",
                 "scale": "linear",
-                "min": None,
-                "max": None,
             },
         }
 
@@ -242,7 +240,7 @@ def hist1d(
     ds: Dataset | StructureCollection,
     column: str,
     differential: Differential | None = None,
-    yscale: str = "log"
+    yscale: str = "log",
     ax: Axes | None = None,
     plot_rank: PlotRank = "all",
     plot_kwargs: dict[str, Any] | None = None,

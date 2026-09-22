@@ -205,12 +205,12 @@ def binned_statistic(
     column: str,
     bin_by: str = "sod_halo_mass",
     statistic: Statistic = "mean",
-    bins: int | list = 20,
+    bins: int | Sequence = 20,
     bin_spacing: BinSpacing = "linear",
     dataset: str = "halo_properties",
     mode: Mode = "global",
     **kwargs: Any,
-) -> tuple[list, np.ndarray | list]:
+) -> tuple[list, np.ndarray | Sequence]:
     r"""
     Compute a statistic of ``column`` in bins of ``bin_by``.
 
