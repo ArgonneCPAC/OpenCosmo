@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import os
+import sys
+from functools import cache
 from logging import getLogger
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import rustworkx as rx
@@ -12,8 +14,26 @@ from .specs import get_specs
 if TYPE_CHECKING:
     from .specs import DependencySpec
 
-CONDA_ENV = os.environ.get("CONDA_DEFAULT_ENV")
 logger = getLogger("opencosmo")
+
+
+@cache
+def is_conda_env():
+    meta_path = Path(sys.prefix) / "conda-meta"
+    return meta_path.exists()
+
+
+@cache
+def is_uv_env():
+    cfg_path = Path(sys.prefix) / "pyvenv.cfg"
+
+    if cfg_path.exists():
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            # Look for a line starting with 'uv ='
+            res = any(line.strip().startswith("uv =") for line in f)
+            return res
+
+    return False
 
 
 def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool = False):
@@ -65,8 +85,9 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
 
 def resolve_method(version: Optional[str], method: Optional[str]):
     if version is None or "+g" not in version:
-        if method in (None, "conda-forge") and CONDA_ENV is not None:
+        if method in (None, "conda-forge") and is_conda_env():
             return "conda-forge"
+
     elif "+g" in version:
         return "pip-git"
     elif method is not None:

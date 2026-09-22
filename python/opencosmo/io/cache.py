@@ -11,6 +11,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Iterator
 
+import click
+
 if TYPE_CHECKING:
     from opencosmo.io.discover import FileLayout
 
@@ -122,7 +124,7 @@ def get_directory_read_cache_dir(directory: Path) -> Path:
 
     shared_cache_path = directory / SHARED_CACHE_DIRNAME
     shared_db_path = shared_cache_path / "files.db"
-    if shared_db_path.is_file() and not os.access(directory, os.W_OK):
+    if shared_db_path.is_file():
         return shared_cache_path
 
     return __user_cache_dir()
@@ -258,6 +260,20 @@ def write_layouts(
         __ensure_cache_tables(conn)
         cursor = conn.cursor()
         cursor.executemany(query, db_entries)
+
+
+@click.command(name="cache-layouts")
+@click.argument(
+    "directory",
+    type=click.Path(
+        exists=True, file_okay=False, dir_okay=True, resolve_path=True, path_type=Path
+    ),
+    required=True,
+)
+@click.option("--pattern", type=str, required=False, default="*.hdf5")
+@click.option("--relative", "-r", is_flag=True)
+def cache_layouts_cli(directory: Path, pattern: str, relative: bool = False):
+    return populate_directory_cache(directory, pattern=pattern, relative_path=relative)
 
 
 def populate_directory_cache(
