@@ -108,7 +108,7 @@ default_params: dict[str, dict[str, Any]] = {
     "sod_halo_mass_star": {
         "filter_bad": oc.col("sod_halo_mass_star") > 0,
         "plotting": {
-            "label": r"$M_\mathrm{*,200c)\,\,[M_\odot]$",
+            "label": r"$M_\mathrm{*,200c}\,\,[M_\odot]$",
             "symbol": r"M_\mathrm{*,200c}",
             "scale": "log",
         },

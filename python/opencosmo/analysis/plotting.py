@@ -435,6 +435,9 @@ def binned_statistic(
     x_params = _set_defaults(bin_by)
     y_params = _set_defaults(column)
 
+    if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
+        kwargs["bin_spacing"] = x_params["plotting"]["scale"]
+
     binned_stat, bin_edges = statistics.binned_statistic(ds, column, statistic=statistic, bin_by=bin_by, **kwargs)
 
     fig=None

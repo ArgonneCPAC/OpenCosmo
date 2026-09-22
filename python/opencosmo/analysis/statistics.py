@@ -438,7 +438,7 @@ def hist1d(
         edges = bins
 
     counts, bin_edges = np.histogram(
-        np.asarray(source.select(column).get_data()), bins=edges
+        source.select(column).get_data(), bins=edges
     )
 
     if ranks > 1 and mode == "global":
