@@ -118,11 +118,18 @@ def make_cone(center: Point2d | SkyCoord, radius: float | u.Quantity):
     return ConeRegion(coord, radius)
 
 
-def make_skybox(p1: tuple[float, float] | SkyCoord, p2: tuple[float, float] | SkyCoord):
+def make_skybox(
+    p1: tuple[float, float] | SkyCoord, p2: int | float | tuple[float, float] | SkyCoord
+):
     """
     Make a box on the plane of the sky defined by two points. These points can be passed
     as a tuple of values or astropy sky coordinates.
+
+    Warning: This is only truly a "box" for relatively small queries.
     """
+    if isinstance(p2, (int, float, u.Quantity)):
+        p1, p2 = make_skbyox_points_from_center_size(p1, p2)
+
     if not isinstance(p1, SkyCoord):
         try:
             p1 = SkyCoord(*p1)
@@ -141,3 +148,21 @@ def make_skybox(p1: tuple[float, float] | SkyCoord, p2: tuple[float, float] | Sk
         )
 
     return SkyboxRegion(p1, p2)
+
+
+def make_skbyox_points_from_center_size(center, size):
+    """ """
+    if not isinstance(center, SkyCoord):
+        try:
+            center = SkyCoord(*center)
+        except u.UnitTypeError:
+            center = SkyCoord(*center, unit="deg")
+    try:
+        size = size.to(u.deg)
+    except AttributeError:
+        size = size * u.deg
+
+    frame = center.skyoffset_frame()
+    h = size / np.sqrt(2)
+    coords = SkyCoord([-h, h], [-h, h], frame=frame).icrs
+    return coords[0], coords[1]

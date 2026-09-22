@@ -22,11 +22,14 @@ from astropy.table import Column as AstroColumn  # type: ignore
 from astropy.table import vstack
 
 import opencosmo as oc
+from opencosmo.collection.lightcone.cutout import get_included_pixels
+from opencosmo.collection.lightcone.reproject import reproject_to_cartesian
 from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
+from opencosmo.spatial import make_skybox
 from opencosmo.spatial.healpix import HealPixIndex
 from opencosmo.spatial.region import (
     ConeRegion,
@@ -664,6 +667,31 @@ class HealpixMap(dict):
             self.__hidden,
             self.__ordered_by,
         )
+
+    def cutouts(self, centers: SkyCoord, size: float, format: str = "none"):
+        pixels = get_included_pixels(centers, size, self.nside)
+        if not self.full_sky:
+            _, idx, _ = np.intersect1d(pixels, self.pixels, return_indices=True)
+            pixels = pixels[idx]
+
+        _, data = self.take_rows(pixels).get_data("raw")
+
+        for center in centers:
+            region_pixels = make_skybox(center, size).get_healpix_intersections(
+                self.nside
+            )
+            region_pixels, index_to_include, _ = np.intersect1d(
+                region_pixels, pixels, assume_unique=True, return_indices=True
+            )
+            region_data = {k: d[index_to_include] for k, d in data.items()}
+            yield reproject_to_cartesian(
+                region_pixels,
+                region_data,
+                self.nside,
+                (center.ra.deg, center.dec.deg),
+                size,
+                64,
+            )
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """

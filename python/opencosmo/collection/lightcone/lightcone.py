@@ -18,13 +18,13 @@ from warnings import warn
 
 import healpy as hp
 import numpy as np
+from astropy.coordinates import SkyCoord
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
-from opencosmo.collection.lightcone.reproject import reproject_to_cartesian
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import (
     Column,
@@ -63,7 +63,6 @@ if TYPE_CHECKING:
 
     import astropy.units as u  # type: ignore
     import numpy.typing as npt
-    from astropy.coordinates import SkyCoord
 
     from opencosmo.collection.lightcone.healpix_map import HealpixMap
     from opencosmo.column.column import (
@@ -503,18 +502,14 @@ class Lightcone(dict):
         ).lightcone
 
     def cutouts(self, shape: Literal["circle", "square"], size: float, format: str):
+
         if self.__maps is None:
             raise ValueError()
-        for entry in self.rows():
-            center = (entry["ra"].value, entry["dec"].value)
-            p1 = (center[0] - size, center[1] - size)
-            p2 = (center[0] + size, center[1] + size)
 
-            pixels, cutout = self.__maps.box_search(p1, p2).get_data("raw")
-            cutout = reproject_to_cartesian(
-                pixels, cutout, self.__maps.nside, center, size, 512
-            )
+        centers = SkyCoord(**self.select("ra", "dec").get_data())
+        cutouts = self.__maps.cutouts(centers, size)
 
+        for entry, cutout in zip(self.rows(), cutouts):
             yield entry, cutout
 
     def with_redshift_range(self, z_low: float, z_high: float):

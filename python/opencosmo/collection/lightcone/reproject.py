@@ -11,6 +11,9 @@ def reproject_to_cartesian(
     width: float,
     resolution: int,
 ):
+    from time import time
+
+    start = time()
     wcs = WCS(naxis=2)
     wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
     wcs.wcs.crval = [center[0], center[1]]
@@ -37,4 +40,6 @@ def reproject_to_cartesian(
         output[name] = (
             (output_arr[inv] * wts).sum(axis=0).reshape(resolution, resolution)
         )
+    end = time()
+    print(round(end - start, 3))
     return output
