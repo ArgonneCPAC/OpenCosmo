@@ -61,7 +61,7 @@ test-mpi = [
 ]
 
 [project.scripts]
-opencosmo = "opencosmo.analysis.cli:cli"
+opencosmo = "opencosmo.cli:cli"
 
 [project.optional-dependencies]
 io = [
