@@ -321,6 +321,12 @@ def binned_statistic(
 
     binned_stat: list = []
 
+    # call select() upfront before the loop to cache results and speed up subsequent select() calls
+    source.select( 
+            stat = _get_statistic(oc.col(column), statistic, **kwargs),
+            mode = mode,
+        ).get_data()
+
     for i in range(len(edges)-1):
         low, high = edges[i], edges[i+1]
 
