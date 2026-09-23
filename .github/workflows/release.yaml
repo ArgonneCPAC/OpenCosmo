@@ -47,6 +47,10 @@ jobs:
         if: steps.check-version.outputs.prerelease == 'false'
         run: uv run towncrier build --yes --version ${{ inputs.version }}
 
+      - name: Group changelog by minor version
+        if: steps.check-version.outputs.prerelease == 'false'
+        run: python .github/group_changelog.py
+
       - name: Commit, tag, and push release branch
         if: steps.check-version.outputs.prerelease == 'false'
         run: |

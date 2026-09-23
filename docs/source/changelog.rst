@@ -1,110 +1,107 @@
+Changelog
+=========
+
+.. towncrier release notes start
+
+1.3
+---
+
 opencosmo 1.3.12 (2026-09-16)
-=============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause OpenCosmo to keep multiple copies of some Diffsky hosts when :code:`keep_top_host = True` is passed at open time.
 
-
 opencosmo 1.3.11 (2026-07-23)
-=============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fixed a failure when writing a lightcone after dropping its angular coordinate columns (`ra`/`dec` or `theta`/`phi`). (268a)
 - Fixed a `KeyError` when writing a dataset after dropping a derived column, such as `top_host_idx` in diffsky data. (268b)
 
-
 opencosmo 1.3.10 (2026-07-20)
-=============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a ``StopIteration`` when writing a sorted structure collection whose links are all of the start/size kind (e.g. halo properties + halo particles) with no idx-style link.
 - Fix a ``TypeError: len() of unsized object`` when doing a global sorted ``take`` in an MPI environment where a rank holds a single-row dataset, which caused the sort column to collapse to a scalar.
 
-
 opencosmo 1.3.9 (2026-07-19)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause writes of sparse lightcone structure collections to fail in MPI environments.
 
-
 opencosmo 1.3.8 (2026-07-16)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Documentation
--------------
+^^^^^^^^^^^^^
 
 - Update installation docs to correctly indicate requirement of python 3.12+
 
-
 opencosmo 1.3.7 (2026-07-14)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix several bugs affecting lightcone structure collections. Collections built from halo properties combined with halo profiles, or with galaxy properties (without galaxy particles), can now be opened. Writing a halo properties + galaxy properties collection and reopening it now correctly produces a structure collection rather than a plain lightcone. Sparse idx-based links (such as halo profiles, which only exist for a subset of halos) are now written correctly, so writing and reopening a collection containing halo profiles no longer fails or corrupts the links. The ``ignore_empty`` option now takes effect on lightcone structure collections, and only considers the linked datasets that were actually opened, so structures are no longer dropped based on links the user did not request. (#259)
 - Fix a bug that could cause MPI writes to crash due to a failure to clean up subcommunicators
 
-
 opencosmo 1.3.6 (2026-07-08)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause :py:meth:`box_search <opencosmo.Lightcone.box_search>` to exclude objects near the declination limit that should be included.
 
-
 opencosmo 1.3.5 (2026-06-22)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` to fail when a `dataset` argument was passed. (#255)
 
-
 opencosmo 1.3.4 (2026-06-09)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that caused data to be fetched as single values rather than arrays in certain evaluation contexts.
 
-
 opencosmo 1.3.3 (2026-06-03)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Remove checks in the SimulationCollection take operations and to keep behavior consistent with dataset.
 
-
 opencosmo 1.3.2 (2026-06-03)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fixed missing :code:`mode` argument on :py:meth:`SimulationCollection.take <opencosmo.SimulationCollection.take>` and :py:meth:`SimulationCollection.take_range <opencosmo.SimulationCollection.take_range>`
 
-
 opencosmo 1.3.1 (2026-05-27)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Requesting more rows than exist via :py:meth:`take <opencosmo.Dataset.take>` or :py:meth:`take_range <opencosmo.Dataset.take_range>` no longer raises a ``ValueError``. Instead, all available rows are returned. This applies to :py:class:`Dataset <opencosmo.Dataset>`, :py:class:`Lightcone <opencosmo.Lightcone>`, and :py:class:`StructureCollection <opencosmo.StructureCollection>`. (#240)
 - Fix a bug that could cause renamed columns to be instantiated without the correct units
@@ -114,7 +111,7 @@ Bugfixes
 
 
 New Features
-------------
+^^^^^^^^^^^^
 
 - :py:meth:`take <opencosmo.Dataset.take>`, :py:meth:`take_range <opencosmo.Dataset.take_range>`, and their equivalents on :py:class:`Lightcone <opencosmo.Lightcone>` and :py:class:`StructureCollection <opencosmo.StructureCollection>` now accept a ``mode`` keyword argument. Setting ``mode="global"`` when running under MPI causes ``n`` (or ``start``/``end``) to be interpreted across all ranks combined rather than per-rank. When the dataset is sorted, ranks coordinate to select from the globally-sorted order, so ``ds.sort_by("fof_halo_mass").take(1000, mode="global")`` returns exactly the 1000 most massive halos distributed across all ranks. (#240)
 - :py:meth:`Dataset.filter <opencosmo.Dataset.filter>` now accepts masks created from expressions built from column arithmetic.
@@ -131,7 +128,7 @@ New Features
 
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - Conversion to healsparse in :py:meth:`HealpixMap.get_data <opencosmo.HealpixMap.get_data` with `format = healsparse` has been rewritten, improving performance by roughly a factor of 5.
 - Dataset instantiation and backend process has been reworked to allow for dynamic column updating.
@@ -144,79 +141,81 @@ Improvements
 
 
 Miscellaneous
--------------
+^^^^^^^^^^^^^
 
 - The DatasetState object has been broken up to allow for more flexibility in instantiating datasets, laying the groundwork for future optimizations.
 
 
+
+1.2
+^^^
+
+1.2
+---
+
 opencosmo 1.2.5 (2026-04-15)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause column expressions to fail when they contain an astropy unit
 
 
 New Features
-------------
+^^^^^^^^^^^^
 
 - :py:func:`reduce <opencosmo.analysis.reduce>` now accepts a `plotting_function` argument, which allows production of a plot after reduction is performed.
 
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - Data handlers and cache are now protocol-based to allow for new backends
 
-
 opencosmo 1.2.4 (2026-03-27)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Miscellaneous
--------------
+^^^^^^^^^^^^^
 
 - Remove healsparse pin and allow any version >=1.11
 
-
 opencosmo 1.2.3 (2026-03-23)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Deprecations and Removals
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - :py:meth:`evaluate <opencosmo.Dataset.evaluate>` no longer broadcasts array keyword arguments that have the same length as the dataset. You can still use arrays in this way by setting :code:`vectorize = True` or first inserting the array as a new column with :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>`
 
-
 opencosmo 1.2.2 (2026-03-23)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause evaluations to fail with small numbers of columns.
 
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - Bumped numba version to >=0.64 to allow support for numpy == 2.4
 
-
 opencosmo 1.2.1 (2026-03-23)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that prevented documentation for new versions from being rendered on readthedocs
 
-
 opencosmo 1.2.0 (2026-03-23)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause evaluation verification to fail because of unit checks
 - Fix a bug that could cause spatial queries to fail if there were no objects in the parts of the spatial index that
@@ -227,7 +226,7 @@ Bugfixes
 
 
 New Features
-------------
+^^^^^^^^^^^^
 
 - Add :py:meth:`box_search <opencosmo.Lightcone.box_search>` to the Lightcone API for performing
   spatial regions in a given RA and Dec range. (feature)
@@ -245,7 +244,7 @@ New Features
 
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - :py:meth:`StructureCollection.with_datasets <opencosmo.StructureCollection.with_datasets>` now accepts any iterable rather than just lists.
 - Headers are now no longer as strict about what groups are required, assuring non-hacc datasets can be used without modifying the available parameter models.
@@ -254,81 +253,83 @@ Improvements
 
 
 Miscellaneous
--------------
+^^^^^^^^^^^^^
 
 - The :code:`output` parameter in :py:meth:`Dataset.get_data <opencosmo.Dataset.get_data>` has been renamed to :code:`format`. The method will continue to accept :code:`output` as a keyword argument for the time being, but will print a deprecation warning.
 
 
 Deprecations and Removals
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - This is the last release that will support Python 3.11
 - hdf5plugin 5.1 is now explicitly excluded because of user reports of issues with blosc filters.
 
 
+
+1.1
+^^^
+
+1.1
+---
+
 Opencosmo 1.1.5 (2026-03-11)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause evaluations to fail when requesting 2d columns
 
-
 Opencosmo 1.1.4 (2026-02-25)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause `get_data()` to fail if performed on a zero-length dataset with in-memory columns.
 - Fix a bug that could cause lightcones to not properly handle constituent datasets that had zero length
 
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - Lightcone datasets now bypass verifying derived columns when the test passes on the first dataset
 
-
 opencosmo 1.1.3 (2026-02-18)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause columns stored in units of 1/H0 to not be correctly converted.
 
-
 opencosmo 1.1.2 (2026-02-16)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause structure collection evaluations to fail when not evaluating into halo_properties
 
-
 opencosmo 1.1.1 (2026-02-16)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Documentation
--------------
+^^^^^^^^^^^^^
 
 - Regularize some issues in the documentation, provide some additional information in the getting started doc.
 
 
 Deprecations and Removals
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - Retrieving data with the :py:meth:`.data <opencosmo.Dataset.data>` attribute has been marked as deprecated.
 
-
 opencosmo 1.1.0 (2026-02-10)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 New Features
-------------
+^^^^^^^^^^^^
 
 - Add a new :meth:`reduce <opencosmo.analysis.reduce>` function, which allows results from multiple processes to be combined into a single result by summing, multiplying, or averaging.
 - Lightcones now correctly carry a :py:class:`HealpixRegion <opencosmo.spatial.HealpixRegion>` with the pixels that
@@ -337,57 +338,60 @@ New Features
 
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - Healpix Regions now print nicely
 - Healpix maps no longer need to store their pixel numbers in a file when they cover the full sky.
 - The OpenCosmo Header can now store large arrays.
 
 
+
+1.0
+^^^
+
+1.0
+---
+
 opencosmo 1.0.4 (2026-02-04)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Dictionary kwargs with the same name as the datasets in a lightcone are now correctly mapped
 - Fix a bug that could prevent unitless columns to be converted to numpy arrays when `format = "numpy"` is set
 - Fix a bug that that could cause data used for verification of evaluated columns to carry units even if the evaluated column requested data without units
 
-
 opencosmo 1.0.3 (2026-01-30)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause MPI writes to fail because dynamically-created communicators were not cleaned up correctly.
 
-
 opencosmo 1.0.2 (2026-01-28)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause a bad error message when a dependnecy cycle is detected in derived columns.
 - Fix a bug that could cause derived column instantiation to fail if other derived columns with specific properties were not included in the selection.
 
-
 opencosmo 1.0.1 (2026-01-21)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - Disable unneeded verification step for eagerly-evaluate columns in :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`.
 
-
 opencosmo 1.0.0 (2026-01-21)
-===============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that caused structure collections to not open correctly if the individual datasets were lightcone datasets. (#103)
 - Fix a bug that prevented adding together columns with logarithmic units (#142)
@@ -406,7 +410,7 @@ Bugfixes
 
 
 New Features
-------------
+^^^^^^^^^^^^
 
 - :code:`with_units` can now be used to provide unit conversions, in addition to changing conventions (#43)
 - Descriptions of columns can now be accessed with :py:class:`Dataset.descriptions <opencosmo.Dataset.descriptions>` (#122)
@@ -425,7 +429,7 @@ New Features
 
 
 Improvements
-------------
+^^^^^^^^^^^^
 
 - :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>` and :py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>` now follow the same semantics as :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` for passing columns from multiple datasets in a single function call.
 - :py:meth:`StructureCollection.select <opencosmo.StructureCollection.select>`, :py:meth:`StructureCollection.drop <opencosmo.StructureCollection.drop>`, and :py:meth:`StructureCollection.evaluate <opencosmo.StructureCollection.evaluate>` now support specifying columns in nested collections.
@@ -440,7 +444,7 @@ Improvements
 
 
 Miscellaneous
--------------
+^^^^^^^^^^^^^
 
 - Column management has been reworked and centralized
 - Move all annotation-only imports behind a :code:`TYPE_CHECKING` block and add :code:`from __future__ import annotations` to most files. This significantly improves initial import time.
@@ -448,7 +452,7 @@ Miscellaneous
 
 
 Deprecations and Removals
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - Functions passed into :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>` must now always explicitly list columns as arguments"
 - opencosmo.read (deprecated since 0.7) has been removed.
@@ -456,55 +460,58 @@ Deprecations and Removals
 - opencosmo.Dataset.collect has been removed
 
 
+
+0.9
+^^^
+
+0.9
+---
+
 opencosmo 0.9.6 (2025-10-20)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Make diffstar pop optional in diffsky parameters
 
 opencosmo 0.9.4 (2025-09-26)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a bug that could cause opening halos and galaxies only to fail
 
-
 opencosmo 0.9.3 (2025-09-25)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix an issue that could cause opens with multiple files to fail in MPI contexts
 
-
 opencosmo 0.9.2 (2025-09-25)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fix a but that could cause opening properties and profiles without particles to fail.
 
-
 opencosmo 0.9.1 (2025-09-16)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
---------
+^^^^^^^^
 
 - Re-add license file to package for conda-forge compatability
 
-
 opencosmo 0.9.0 (2025-09-15)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Features
---------
+^^^^^^^^
 
 - Unitful values in headers now carry astropy units and transform under unit transformations (#70)
 - :py:meth:`with_new_columns <opencosmo.Dataset.with_new_columns>` can now take numpy arrays or astropy quantities (#77)
@@ -517,7 +524,7 @@ Features
 
 
 Bugfixes
---------
+^^^^^^^^
 
 - Fixed a bug that could cause MPI writes to stall after queries that returned small numbers of rows. (#99)
 - Fixed a bug that could cause printing lightcone summary to fail when column originally contained "redshift" column that had been dropped. (#101)
@@ -525,13 +532,13 @@ Bugfixes
 
 
 Deprecations and Removals
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - StructureCollections now always require a dataset be specified when calling :py:meth:`select <opencosmo.StructureCollection.collect>`
 
 
 Misc
-----
+^^^^
 
 - #106
 - Dependency management now handled by UV
@@ -543,11 +550,18 @@ Misc
 - Update evaluate to respect default parameters
 
 
+
+0.8
+^^^
+
+0.8
+---
+
 opencosmo 0.8.0 (2025-07-22)
-============================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Features
---------
+^^^^^^^^
 
 - StructureCollections now filter out structures with no particles by default (#75)
 - Columns can now be dropped with `Dataset.drop <opencosmo.Dataset.drop>` (inverse of "select") (#77)
@@ -560,31 +574,29 @@ Features
 
 
 Bugfixes
---------
+^^^^^^^^
 
 - StructureCollection and Datasets no longer raises StopIteration error if empty (prints warning) (#84)
 - Fixed yt interface for gravity-only simulations (#90)
 
 
 Improved Documentation
-----------------------
+^^^^^^^^^^^^^^^^^^^^^^
 
 - Add towncrier for automated changelog management
 
 
 Deprecations and Removals
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - open_linked_files has been depcrecated and will be removed in the future. Use :py:meth:`opencosmo.open` instead.
 
 
 Misc
-----
+^^^^
 
 - Add installation from files with multiple datasets
 - Data opening logic has been rewritten from scratch, singnificantly improving performance when opening many file.
 - Partitioning in MPI now ignores regions that do not have data
 - The header reading logic has been generalized to allow more flexibility in defining new data types
 - Unit handling now supports data stored in conventions other than scalefree
-
-
