@@ -1,1 +1,0 @@
-Added companion statistics and plotting modules. Currently, these contain functions for computing and plotting 1D + 2D histograms and binned statistics.

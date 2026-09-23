@@ -1,2 +1,0 @@
-Add :py:meth:`SimulationCollection.match <opencosmo.SimulationCollection.match>`, which allows matching of objects between
-simulations.
