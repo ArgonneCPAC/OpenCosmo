@@ -61,7 +61,7 @@ test-mpi = [
 ]
 
 [project.scripts]
-opencosmo = "opencosmo.analysis.cli:cli"
+opencosmo = "opencosmo.cli:cli"
 
 [project.optional-dependencies]
 io = [
@@ -103,6 +103,7 @@ directory = "changes"
 package = "opencosmo"
 name = "opencosmo"
 filename = "docs/source/changelog.rst"
+underlines = ["~", "^", "\""]
 
 [tool.towncrier.fragment.improvement]
 name = "Improvements"
@@ -122,4 +123,3 @@ name = "Deprecations and Removals"
 
 [tool.towncrier.fragment.misc]
 name = "Miscellaneous"
-
