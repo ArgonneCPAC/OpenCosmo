@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import healpy as hp
 import numpy as np
-from astropy.coordinates import SkyCoord
-from scipy.spatial import cKDTree
+
+from opencosmo._lib import spatial as spatlib
+
+if TYPE_CHECKING:
+    from astropy.coordinates import SkyCoord
+
 
 # Rings of coarse-pixel dilation applied around the pixels containing the
 # cutout centers. The coarse grid is chosen so a cutout disc is no larger
@@ -96,11 +102,17 @@ def get_included_pixels(coordinates: SkyCoord, size: float, nside: int) -> np.nd
     # Keep the candidates whose nearest cutout center lies within the disc.
     # Angular separation is monotonic in chord length on the unit sphere, so
     # the cut can be applied directly in Cartesian space.
-    center_vecs = np.asarray(
-        hp.ang2vec(centers.ra.deg, centers.dec.deg, lonlat=True)
-    ).reshape(-1, 3)
-    candidate_vecs = np.asarray(hp.pix2vec(nside, candidates, nest=True)).T
-    distances, _ = cKDTree(center_vecs).query(
-        candidate_vecs, k=1, distance_upper_bound=2.0 * np.sin(radius / 2.0)
+    center_vecs = (
+        np.asarray(hp.ang2vec(centers.ra.deg, centers.dec.deg, lonlat=True))
+        .reshape(-1, 3)
+        .astype(np.float64)
+    )  # Will revisit in the future
+    candidate_vecs = (
+        np.asarray(hp.pix2vec(nside, candidates, nest=True))
+        .reshape(-1, 3)
+        .astype(np.float64)
+    )
+    distances = spatlib.get_closest_distance_3d(
+        center_vecs, candidate_vecs.astype(np.float64), 1
     )
     return np.sort(candidates[np.isfinite(distances)])
