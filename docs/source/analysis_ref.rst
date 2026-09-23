@@ -20,3 +20,21 @@ Analysis
 .. autofunction:: opencosmo.analysis.ProfilePlot
 
 .. autofunction:: opencosmo.analysis.PhasePlot
+
+Statistics
+----------
+
+.. autofunction:: opencosmo.analysis.statistics.binned_statistic
+
+.. autofunction:: opencosmo.analysis.statistics.hist1d
+
+.. autofunction:: opencosmo.analysis.statistics.hist2d
+
+Plotting
+--------
+
+.. autofunction:: opencosmo.analysis.plotting.binned_statistic
+
+.. autofunction:: opencosmo.analysis.plotting.hist1d
+
+.. autofunction:: opencosmo.analysis.plotting.hist2d
