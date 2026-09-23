@@ -111,14 +111,24 @@ def index_spec_for(
     is_empty_ref: bool,
     *,
     is_source: bool,
+    is_replicated: bool = False,
 ) -> IndexSpec:
     """Resolve the appropriate index spec for a node's role and distribution mode.
 
     Semantic map (from retire-open-kwargs-indexspec.md):
+    - Replicated nodes → full, regardless of mode or empty-ref status
     - Source in spatial mode → spatial (MPI-partitioned, with region feedback)
     - Linked children, redshift-split nodes → full (whole dataset on this rank)
     - Empty reference ranks → empty_ref (read nothing)
+
+    ``is_replicated`` marks a node that must be whole on every rank. It is checked
+    before ``is_empty_ref`` because the latter is a per-rank flag and would
+    otherwise empty a replicated node on reference ranks. The only current use is
+    a healpix map opened as a companion to a catalog, where cutouts near a
+    partition edge need map pixels this rank's catalog rows do not cover.
     """
+    if is_replicated:
+        return full
     if is_empty_ref:
         return empty_ref
     if index_kind == "spatial" and is_source:

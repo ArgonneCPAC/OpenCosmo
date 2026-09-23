@@ -450,15 +450,15 @@ class Lightcone(dict):
                 continue
 
             group_name = ds_target.name
-            group_name = group_name.lstrip(f"{ds_target.header.file.step}_")
+            step_prefix = f"{ds_target.header.file.step}_"
+            if group_name.startswith(step_prefix):
+                group_name = group_name[len(step_prefix) :]
 
             ds = iopen.open_dataset(
                 ds_target,
                 index_spec_for(index_kind, is_empty_ref, is_source=True),
                 open_kwargs=open_kwargs,
             )
-            if ds.dtype == "healpix_map":
-                print("Hello")
             step = ds_target.header.file.step
             if step is None:
                 step = i
@@ -478,11 +478,17 @@ class Lightcone(dict):
 
         healpix_maps = None
         if maps:
+            # A map opened alongside a catalog is replicated, not partitioned: a
+            # cutout around an object near a partition edge needs map pixels that
+            # this rank's catalog rows do not cover.
             healpix_maps = specs.HealpixMapSpec().build_from_targets(
                 maps,
                 index_kind=index_kind,
                 is_empty_ref=is_empty_ref,
                 open_kwargs=open_kwargs,
+                index=index_spec_for(
+                    index_kind, is_empty_ref, is_source=True, is_replicated=True
+                ),
             )
 
         result = cls(output, healpix_maps)
@@ -647,10 +653,12 @@ class Lightcone(dict):
             }
             children.update(child_schemas)
 
+        comm = get_comm_world()
+        rank = 0 if comm is None else comm.Get_rank()
         if self.__maps is not None:
-            children["healpix_maps"] = self.__maps.make_schema(
-                "/".join([path, "healpix_maps"])
-            )
+            healpix_schema = self.__maps.make_schema("/".join([path, "healpix_maps"]))
+            if rank == 0:
+                children["healpix_maps"] = healpix_schema
         name = path.split("/")[-1]
         return make_schema(name, FileEntry.LIGHTCONE, children=children)
 

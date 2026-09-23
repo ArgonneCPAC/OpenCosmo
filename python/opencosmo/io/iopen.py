@@ -13,6 +13,7 @@ from opencosmo.dataset import state as st
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import plan
 from opencosmo.io.discover import discover_all, has_maps, is_particle_group
+from opencosmo.index import into_array
 from opencosmo.io.specs import group_by_scope, match_spec
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
@@ -478,15 +479,13 @@ def _open_healpix_map(dataset: oc.Dataset):
     if header.file.region is not None:
         sim_region = from_model(header.file.region)
 
-    if (comm := get_comm_world()) is not None and isinstance(
-        sim_region, HealpixRegion
-    ):  # partitioning has to be done manually since we don't store a spatial index
-        pixels = sim_region.pixels
-        splits = np.array(comm.allgather(len(dataset)))
-        splits = np.insert(np.cumsum(splits), 0, 0)
-        rank = comm.Get_rank()
+    if isinstance(sim_region, HealpixRegion):
+        # No spatial index is stored for maps, so the region is narrowed to the rows
+        # this rank actually read. Deriving it from the index covers both the
+        # partitioned and replicated cases without a collective: a replicated map
+        # holds every row and so keeps its full pixel set.
         sim_region = HealpixRegion(
-            pixels[splits[rank] : splits[rank + 1]],
+            sim_region.pixels[into_array(dataset.index)],
             nside=header.healpix_map["nside"],
         )
     elif isinstance(sim_region, FullSkyRegion) or header.healpix_map["full_sky"]:

@@ -261,7 +261,6 @@ def sync_attributes(metadata: dict[str, Any], group_name: str, comm: MPI.Comm):
 
     for md in all_metadata[1:]:
         if md != all_metadata[0]:
-            print(md, all_metadata[0])
             raise ValueError(
                 f"Not all ranks recieved the same metadata in {group_name}"
             )

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     import opencosmo as oc
     from opencosmo.io.discover import GroupLayout
+    from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
 
 """
@@ -195,21 +196,27 @@ def group_by_scope(
 
 
 def _build_single_dataset(
-    targets: list[DatasetTarget], open_kwargs: dict[str, Any]
+    targets: list[DatasetTarget],
+    open_kwargs: dict[str, Any],
+    index: IndexSpec | None = None,
 ) -> oc.Dataset | oc.collection.Collection:
     """Build one dataset from a single-target file list.
 
     Shared by DatasetSpec and HealpixMapSpec. open_dataset returns a raw Dataset;
     a healpix_map header is then wrapped into a HealpixMap here (DatasetSpec only
     ever matches plain non-lightcone, non-healpix groups, so its build passes the
-    Dataset straight through). The single-dataset open is always spatially
+    Dataset straight through). The single-dataset open defaults to spatially
     partitioned — serial opens (comm is None) fall through to no restriction inside
     the spatial spec.
+
+    ``index`` overrides that default. A caller that knows the dataset must be whole
+    on every rank — ``Lightcone.open`` building a companion healpix map — passes an
+    explicit spec rather than relying on the standalone default.
     """
     from opencosmo.io.index_spec import spatial
     from opencosmo.io.iopen import _open_healpix_map, open_dataset
 
-    ds = open_dataset(targets[0], spatial, open_kwargs=open_kwargs)
+    ds = open_dataset(targets[0], index or spatial, open_kwargs=open_kwargs)
     if ds.header.file.data_type == "healpix_map":
         return _open_healpix_map(ds)
     return ds
@@ -375,8 +382,9 @@ class HealpixMapSpec:
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
+        index: IndexSpec | None = None,
     ) -> oc.Dataset | oc.collection.Collection:
-        return _build_single_dataset(targets, open_kwargs)
+        return _build_single_dataset(targets, open_kwargs, index)
 
 
 class LightconeSpec:

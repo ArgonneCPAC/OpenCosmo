@@ -23,7 +23,7 @@ from astropy.table import vstack
 
 import opencosmo as oc
 from opencosmo.collection.lightcone.cutout import get_included_pixels
-from opencosmo.collection.lightcone.reproject import reproject_to_cartesian
+from opencosmo.collection.lightcone.reproject import convert_format
 from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
@@ -668,29 +668,54 @@ class HealpixMap(dict):
             self.__ordered_by,
         )
 
-    def cutouts(self, centers: SkyCoord, size: float, format: str = "none"):
-        pixels = get_included_pixels(centers, size, self.nside)
+    def cutouts(
+        self,
+        centers: SkyCoord,
+        angular_size: float,
+        format: str = "hdul",
+        npix: int | None = 64,
+    ):
+        """
+        Create a set of square cutouts centered at points defined by `centered` with
+        size `size`. Several output formats are available:
+
+            healsparse: Return a healsparse map containing all pixels that overlap with the cutout
+            hdu: Return an in-memory HDU List with WCS in the header.
+                 Data is re-projected onto a grid with `npix` pixels to a side
+
+
+
+
+        Warning: This method is intended for use with small, postage stamp coutouts
+        around individual objects. Very large cutouts may not look exactly like you expect.
+        """
+
+        pixels = get_included_pixels(centers, angular_size, self.nside)
         if not self.full_sky:
             _, idx, _ = np.intersect1d(pixels, self.pixels, return_indices=True)
             pixels = pixels[idx]
 
+        print(pixels.max() - len(self))
+        print(len(pixels))
         _, data = self.take_rows(pixels).get_data("raw")
+        print(data)
 
         for center in centers:
-            region_pixels = make_skybox(center, size).get_healpix_intersections(
+            region_pixels = make_skybox(center, angular_size).get_healpix_intersections(
                 self.nside
             )
             region_pixels, index_to_include, _ = np.intersect1d(
                 region_pixels, pixels, assume_unique=True, return_indices=True
             )
             region_data = {k: d[index_to_include] for k, d in data.items()}
-            yield reproject_to_cartesian(
+            yield convert_format(
+                format,
                 region_pixels,
                 region_data,
                 self.nside,
                 (center.ra.deg, center.dec.deg),
-                size,
-                64,
+                angular_size,
+                npix,
             )
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
