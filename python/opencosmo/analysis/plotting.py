@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     from opencosmo.analysis.statistics import Statistic
 
     Differential = Literal["linear", "log"]
-    PlotRank = int | Literal["all"]
 
 def _set_params(ds: Dataset, column: str) -> dict[str, Any]:
     """
@@ -153,7 +152,7 @@ def hist2d(
     column_y: str,
     dataset: str = "halo_properties",
     ax: Axes | None = None,
-    plot_rank: PlotRank = "all",
+    all: bool = False,
     plot_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[Figure | None, Axes | None]:
@@ -192,11 +191,11 @@ def hist2d(
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
         Pass one of these to build a multi-panel figure.
-    plot_rank : str or int, default = "all"
-        Which MPI rank draws the plot. ``"all"`` draws on every rank; an
-        integer draws only on that rank, which is usually what you want when
-        writing a single image to disk (especially when working with a large number of ranks). 
-        The histogram itself is computed collectively regardless.
+    all : bool, default = False
+        Whether to draw a matplotlib figure on all ranks when running in parallel, 
+        or restrict plotting to rank 0. The histogram itself is computed collectively regardless.
+        Note that when `all=False`, any manipulation of the matplotlib figure (saving, editing, etc.)
+        needs to be done on rank 0. This is irrelevant when not running with MPI.
     plot_kwargs : dict, optional
         Passed to :py:meth:`~matplotlib.axes.Axes.pcolormesh`. Defaults to
         :code:`{"norm": LogNorm(vmin=1)}`, which clips empty bins; anything you
@@ -231,7 +230,7 @@ def hist2d(
 
     h, x, y = statistics.hist2d(source, column_x, column_y, **kwargs)
 
-    if plot_rank=="all" or rank == plot_rank:
+    if all or rank == 0:
         fig, ax = _initialize_fig(ax)
 
         plot_kwargs = _set_plot_kwargs(plot_kwargs, norm=LogNorm(vmin=1))
@@ -262,7 +261,7 @@ def hist1d(
     differential: Differential | None = None,
     yscale: str = "log",
     ax: Axes | None = None,
-    plot_rank: PlotRank = "all",
+    all: bool = False,
     plot_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[Figure | None, Axes | None]:
@@ -307,10 +306,11 @@ def hist1d(
           :math:`dN/d\log_{10}(x)`.
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
-    plot_rank : str or int, default = "all"
-        Which MPI rank draws the plot. ``"all"`` draws on every rank; an
-        integer draws only on that rank. The histogram is computed
-        collectively on all ranks regardless.
+    all : bool, default = False
+        Whether to draw a matplotlib figure on all ranks when running in parallel, 
+        or restrict plotting to rank 0. The histogram itself is computed collectively regardless.
+        Note that when `all=False`, any manipulation of the matplotlib figure (saving, editing, etc.)
+        needs to be done on rank 0. This is irrelevant when not running with MPI.
     plot_kwargs : dict, optional
         Passed to :py:meth:`~matplotlib.axes.Axes.step`. Defaults to
         :code:`{"where": "mid"}` to draw the curve at the bin centers;
@@ -362,7 +362,7 @@ def hist1d(
 
 
     fig = None
-    if plot_rank=="all" or rank == plot_rank:
+    if all or rank == 0:
         fig, ax = _initialize_fig(ax)
 
         plot_kwargs = _set_plot_kwargs(plot_kwargs, where="mid")        
@@ -391,7 +391,7 @@ def binned_statistic(
     dataset: str = "halo_properties",
     ax: Axes | None = None,
     plot_kwargs: dict[str, Any] | None = None,
-    plot_rank: PlotRank = "all",
+    all: bool = False,
     **kwargs: Any,
 ) -> tuple[Figure | None, Axes | None]:
     r"""
@@ -441,13 +441,15 @@ def binned_statistic(
         otherwise.
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
+    all : bool, default = False
+        Whether to draw a matplotlib figure on all ranks when running in parallel, 
+        or restrict plotting to rank 0. The histogram itself is computed collectively regardless.
+        Note that when `all=False`, any manipulation of the matplotlib figure (saving, editing, etc.)
+        needs to be done on rank 0. This is irrelevant when not running with MPI.
     plot_kwargs : dict, optional
         Passed to :py:meth:`~matplotlib.axes.Axes.plot`. Defaults to
         :code:`linewidth=2`; anything you supply here takes precedence.
-    plot_rank : str or int, default = "all"
-        Which MPI rank draws the plot. ``"all"`` draws on every rank; an
-        integer draws only on that rank. The statistic is computed
-        collectively on all ranks regardless.
+
     **kwargs
         Forwarded to
         :py:func:`opencosmo.analysis.statistics.binned_statistic`. This covers
@@ -476,7 +478,7 @@ def binned_statistic(
     binned_stat, bin_edges = statistics.binned_statistic(source, column, statistic=statistic, bin_by=bin_by, **kwargs)
 
     fig=None
-    if plot_rank=="all" or rank == plot_rank:
+    if all or rank == 0:
 
         plot_kwargs = _set_plot_kwargs(plot_kwargs, linewidth=2)
 

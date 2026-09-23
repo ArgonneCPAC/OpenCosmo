@@ -316,8 +316,6 @@ def binned_statistic(
             bin_spacing = bin_spacing
         )
 
-    # else:
-    #   make sure given bins are in the right units
     else:
         edges = bins
 
