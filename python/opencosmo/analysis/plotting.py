@@ -28,18 +28,12 @@ import opencosmo.analysis.statistics as statistics
 from opencosmo.analysis.default_plotting_params import default_params
 
 from opencosmo.mpi import get_comm_world, get_mpi
-MPI = get_mpi()
-comm = get_comm_world()
-rank = comm.Get_rank() if comm is not None else 0
-ranks = comm.Get_size() if comm is not None else 1
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
@@ -47,6 +41,11 @@ if TYPE_CHECKING:
     from opencosmo.analysis.statistics import Statistic
 
     Differential = Literal["linear", "log"]
+
+MPI = get_mpi()
+comm = get_comm_world()
+rank = comm.Get_rank() if comm is not None else 0
+ranks = comm.Get_size() if comm is not None else 1
 
 def _set_params(ds: Dataset, column: str) -> dict[str, Any]:
     """
