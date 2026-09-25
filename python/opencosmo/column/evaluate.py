@@ -20,6 +20,7 @@ def evaluate_rows(
     func: Callable,
     kwargs: dict[str, Any],
     format: str,
+    should_unpack_data: bool,
 ):
     from opencosmo.dataset.formats import stack_rows
 
@@ -27,7 +28,10 @@ def evaluate_rows(
     per_column: dict[str, list] = {}
     for i in range(data_length):
         iterable_inputs = {name: values[i] for name, values in data.items()}
-        output = func(**iterable_inputs, **kwargs)
+        if should_unpack_data:
+            output = func(**iterable_inputs, **kwargs)
+        else:
+            output = func(data=iterable_inputs, **kwargs)
         if not isinstance(output, dict):
             output = {func.__name__: output}
         for name, value in output.items():
@@ -41,6 +45,7 @@ def evaluate_chunks(
     kwargs: dict[str, Any],
     chunk_sizes: np.ndarray,
     format: str,
+    should_unpack_data: bool,
 ):
     from opencosmo.dataset.formats import concat_chunks
 
@@ -51,7 +56,10 @@ def evaluate_chunks(
         chunk_input_data = {
             name: arr[int(start) : int(end)] for name, arr in data.items()
         }
-        output = func(**chunk_input_data, **kwargs)
+        if should_unpack_data:
+            output = func(**chunk_input_data, **kwargs)
+        else:
+            output = func(data=chunk_input_data, **kwargs)
         if not isinstance(output, dict):
             output = {func.__name__: output}
         for name, value in output.items():
@@ -59,11 +67,15 @@ def evaluate_chunks(
     return {name: concat_chunks(chunks, format) for name, chunks in per_column.items()}
 
 
-def evaluate_vectorized(data, func, kwargs, index):
+def evaluate_vectorized(data, func, kwargs, index, should_unpack_data):
     try:
-        return func(**data, **kwargs, index=index)
+        if should_unpack_data:
+            return func(**data, **kwargs, index=index)
+        return func(data=data, **kwargs, index=index)
     except TypeError:
-        return func(**data, **kwargs)
+        if should_unpack_data:
+            return func(**data, **kwargs)
+        return func(data=data, **kwargs)
 
 
 def do_first_evaluation(
@@ -72,6 +84,7 @@ def do_first_evaluation(
     format: str,
     kwargs: dict[str, Any],
     state: DatasetState,
+    should_unpack_data: bool,
 ):
     from opencosmo.dataset import operations as dsops
     from opencosmo.dataset.formats import fetch_as_dict
@@ -83,14 +96,18 @@ def do_first_evaluation(
             values = fetch_as_dict(
                 dsops.take(state, 1, "start", "local"), columns, format, unpack=False
             )
-            return func(**values, **kwargs), eval_strategy
+            if should_unpack_data:
+                return func(**values, **kwargs), eval_strategy
+            return func(data=values, **kwargs), eval_strategy
 
         case EvaluateStrategy.ROW_WISE:
             values = fetch_as_dict(
                 dsops.take(state, 1, "start", "local"), columns, format, unpack=False
             )
             values = {name: container[0] for name, container in values.items()}
-            return func(**values, **kwargs), eval_strategy
+            if should_unpack_data:
+                return func(**values, **kwargs), eval_strategy
+            return func(data=values, **kwargs), eval_strategy
 
         case EvaluateStrategy.CHUNKED:
             index = state.raw_index
@@ -102,4 +119,6 @@ def do_first_evaluation(
                 format,
                 unpack=False,
             )
-            return func(**first_chunk, **kwargs), eval_strategy
+            if should_unpack_data:
+                return func(**first_chunk, **kwargs), eval_strategy
+            return func(data=first_chunk, **kwargs), eval_strategy

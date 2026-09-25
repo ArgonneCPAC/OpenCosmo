@@ -390,6 +390,42 @@ def test_visit_vectorize_multiple_noinsert(input_path):
     assert np.all(result["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
+def test_evaluate_data_binding_passes_all_columns(input_path):
+    ds = oc.open(input_path).take(50)
+
+    def fof_total(data, offset):
+        # Ensure the evaluator passes the full selected dataset under `data`.
+        assert set(data.keys()) == set(ds.columns)
+        return data["fof_halo_mass"] + offset
+
+    result = ds.evaluate(
+        fof_total, offset=3, vectorize=False, insert=False, format="numpy"
+    )
+    expected = ds.get_data("numpy")["fof_halo_mass"] + 3
+    assert np.all(result["fof_total"] == expected)
+
+
+def test_evaluate_vectorize_passes_matching_column_arguments(input_path):
+    ds = oc.open(input_path).take(50)
+
+    def fof_double(fof_halo_mass):
+        return fof_halo_mass * 2
+
+    result = ds.evaluate(fof_double, vectorize=True, insert=False, format="numpy")
+    expected = ds.get_data("numpy")["fof_halo_mass"] * 2
+    assert np.all(result["fof_double"] == expected)
+
+
+def test_evaluate_rejects_signature_without_columns_or_data(input_path):
+    ds = oc.open(input_path)
+
+    def invalid(not_a_column):
+        return not_a_column
+
+    with pytest.raises(ValueError, match="column names|data"):
+        ds.evaluate(invalid, vectorize=True, insert=False, format="numpy")
+
+
 def test_visit_rows_nfw(input_path):
     ds = oc.open(input_path).filter(oc.col("sod_halo_cdelta") > 0)
 

@@ -1039,6 +1039,7 @@ class EvaluatedColumn:
         units: dict[str, Optional[u.Unit]],
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         batch_size: int = -1,
+        should_unpack_data: bool = True,
         description: Optional[str] = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = False,
@@ -1047,6 +1048,7 @@ class EvaluatedColumn:
     ):
         self.__func = func
         self.__requires = requires
+        self.__should_unpack_data = should_unpack_data
         self.__kwargs = kwargs
         self.__produces = produces
         self.__units = units
@@ -1086,6 +1088,7 @@ class EvaluatedColumn:
             self.__units,
             self.__strategy,
             self.__batch_size,
+            self.__should_unpack_data,
             self.description,
             _dep_map=dep_map,
             no_cache=self.__no_cache,
@@ -1110,6 +1113,7 @@ class EvaluatedColumn:
             self.__units,
             self.__strategy,
             self.__batch_size,
+            self.__should_unpack_data,
             self.description,
             _dep_map=self.__dep_map,
             **new_kwargs,
@@ -1173,16 +1177,33 @@ class EvaluatedColumn:
 
         match strategy:
             case EvaluateStrategy.VECTORIZE:
-                return evaluate_vectorized(data, self.__func, self.__kwargs, index)
+                return evaluate_vectorized(
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    index,
+                    self.__should_unpack_data,
+                )
             case EvaluateStrategy.ROW_WISE:
-                return evaluate_rows(data, self.__func, self.__kwargs, self.__format)
+                return evaluate_rows(
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    self.__format,
+                    self.__should_unpack_data,
+                )
             case EvaluateStrategy.CHUNKED:
                 if chunk_sizes is None:
                     raise ValueError(
                         "Cannot evaluate in CHUNKED strategy with a non-chunked index"
                     )
                 return evaluate_chunks(
-                    data, self.__func, self.__kwargs, chunk_sizes, self.__format
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    chunk_sizes,
+                    self.__format,
+                    self.__should_unpack_data,
                 )
 
     def evaluate_for_storage(

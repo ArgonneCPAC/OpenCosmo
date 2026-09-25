@@ -311,9 +311,16 @@ class Dataset:
         columns will not change under unit transformations. You may also choose to simply return the result
         instead of adding it as a column.
 
-        The function should take in arguments with the same name as the columns in this dataset that
-        are needed for the computation, and should return a dictionary of output values. Any addition
-        arguments needed by the function can be passed as keyword arguments to :code:`evaluate`.
+        The function can take one of two supported kinds of inputs:
+
+        1. **Column arguments:** the function explicitly declares parameters whose names
+           match dataset column names it needs (e.g. ``func(fof_halo_mass)``).
+        2. **Data mapping:** the function declares a single ``data`` parameter and does **not** declare
+           any dataset column-name parameters (e.g. ``func(data)``). In this mode, all selected dataset
+           columns are provided under ``data``.
+
+        In both cases, any additional external arguments needed by the function can be passed as keyword
+        arguments to :code:`evaluate`.
 
         The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
         data from disk. The new columns will have the same names as the keys of the output dictionary
@@ -325,7 +332,8 @@ class Dataset:
         rows will be passed to the function one at a time. If the function returns None, this method
         will also return None as output.
 
-        Keyword arguments can be used to pass in external values that are not columns in the dataset.
+        Keyword arguments can be used to pass in external values (i.e., values that are not dataset
+        columns) to the function.
         For example, we can compute each halo's gas fraction bias — how much gas it retains relative to
         the cosmic baryon fraction — by passing the dataset's cosmology object as a keyword argument:
 
@@ -364,8 +372,7 @@ class Dataset:
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
-            to the function as keyword arguments. If a kwarg is an array of values with the same length as the dataset,
-            it will be treated as an additional column.
+            to the function as keyword arguments.
 
         Returns
         -------
