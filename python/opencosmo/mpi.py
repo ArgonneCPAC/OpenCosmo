@@ -68,16 +68,23 @@ def parallel_assert_same_dtype(value: np.ndarray, comm: MPI.Comm | None = None):
     parallel_assert(len(set(all_dtypes)) == 1, comm)
 
 
-def parallel_assert_compatible_shapes(value: np.ndarray, comm: MPI.Comm | None = None):
+def parallel_assert_compatible_shapes(
+    value: np.ndarray, comm: MPI.Comm | None = None, start_dim=1
+):
     parallel_assert(isinstance(value, np.ndarray), comm)
     assert comm is not None
-    shapes = [s[1:] for s in comm.allgather(value.shape)]
+    shapes = [s[start_dim:] for s in comm.allgather(value.shape)]
     parallel_assert(len(set(shapes)) == 1, comm)
 
 
 def parallel_assert_can_stack(value: np.ndarray, comm: MPI.Comm | None = None):
     parallel_assert_same_dtype(value, comm)
     parallel_assert_compatible_shapes(value, comm)
+
+
+def parallel_assert_can_reduce(value: np.ndarray, comm: MPI.Comm | None = None):
+    parallel_assert_same_dtype(value, comm)
+    parallel_assert_compatible_shapes(value, comm, start_dim=0)
 
 
 def get_subcom(include: list[bool], comm: MPI.Comm):
@@ -178,6 +185,30 @@ def gather_data(data: np.ndarray, comm: MPI.Comm, all: bool = False):
     if recvbuf is None:
         return None
     return recvbuf.reshape((int(np.sum(row_counts)), *data.shape[1:]))
+
+
+def reduce_data(
+    data: np.ndarray, comm: MPI.Comm, all: bool = False, op: MPI.Op = MPI.SUM
+):
+    parallel_assert_can_reduce(data, comm)
+
+    assert MPI is not None
+    mpi_dtype = MPI.Datatype.fromcode(data.dtype.char)
+
+    if all or comm.Get_rank() == 0:
+        recvbuf = [np.zeros_like(data).reshape(-1), mpi_dtype]
+    else:
+        recvbuf = None
+
+    if all:
+        comm.Allreduce(sendbuf=data.reshape(-1), recvbuf=recvbuf, op=op)
+    else:
+        comm.Reduce(
+            sendbuf=[data.reshape(-1), mpi_dtype], recvbuf=recvbuf, root=0, op=op
+        )
+    if recvbuf is None:
+        return None
+    return recvbuf[0].reshape(data.shape)
 
 
 def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):

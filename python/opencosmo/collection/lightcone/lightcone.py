@@ -737,6 +737,7 @@ class Lightcone(dict):
         format: str = "astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
+        combine: Literal["concat", "sum"] = "concat",
         **evaluate_kwargs,
     ):
         """

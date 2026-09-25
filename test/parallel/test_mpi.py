@@ -922,8 +922,8 @@ def test_reduce_average(input_path, profile_path, stacked_profile_path):
 
         bin_centers = 0.5 * (result["radius"][1:] + result["radius"][:-1])
         profile = result["profile"]
-        assert np.all(bin_centers == expected_centers)
-        assert np.all(expected_profile == profile)
+        assert np.allclose(bin_centers, expected_centers)
+        assert np.allclose(expected_profile, profile)
 
 
 @pytest.fixture

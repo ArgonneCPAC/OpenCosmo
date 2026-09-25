@@ -15,6 +15,7 @@ from opencosmo.mpi import (
     get_all_keys,
     get_comm_world,
     parallel_assert,
+    reduce_data,
 )
 
 if TYPE_CHECKING:
@@ -195,7 +196,6 @@ def __reduce_single_dataset_result(
 ) -> Any:
     results_to_combine = __verify_results(result, comm)
     keys = get_all_keys(results_to_combine, comm)
-    reduce_func = comm.allreduce if all else comm.reduce
     output: dict[str, Any] = {}
 
     match op:
@@ -212,7 +212,9 @@ def __reduce_single_dataset_result(
             combine_operation = MPI.PROD
 
     for key in keys:
-        output[key] = reduce_func(results_to_combine[key], op=combine_operation)
+        output[key] = reduce_data(
+            results_to_combine[key], comm, all=all, op=combine_operation
+        )
 
     if not isinstance(result, dict):
         return next(iter(output.values()))
