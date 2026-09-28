@@ -206,6 +206,7 @@ def reduce_data(
         recvbuf = None
 
     if all:
+        assert recvbuf is not None
         comm.Allreduce(sendbuf=data.reshape(-1), recvbuf=recvbuf, op=op)
     else:
         comm.Reduce(
