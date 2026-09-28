@@ -1,10 +1,10 @@
-opencosmo 1.4.1 (2026-09-25)
+opencosmo 1.4.2 (2026-09-28)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Improvements
-^^^^^^^^^^^^
+Bugfixes
+^^^^^^^^
 
-- :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>` now correctly handles columns that do not take column names as explicit arguments
+- :py:meth:`reduce <opencosmo.analysis.reduce>` now correctly handles lightcones.
 
 
 
