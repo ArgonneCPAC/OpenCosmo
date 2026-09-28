@@ -259,6 +259,8 @@ Evaluating on Lightcones and Simulation Collections
 
 Using :py:meth:`Lightcone.evaluate <opencosmo.Lightcone.evaluate>` is identical to using :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`. Although OpenCosmo represents lighcones internally as a collection of :py:class:`Datasets <opencosmo.Dataset>`, the details of broadcasting over these datasets are handled for you.
 
+When ``insert=False``, results from the underlying datasets are concatenated by default. Set ``combine_mode`` to ``"sum"``, ``"prod"``, or ``"avg"`` to combine those results element-wise instead. These modes require every underlying result to have the same length. Averages are weighted by the number of rows in each underlying dataset. :py:func:`opencosmo.analysis.reduce` selects the matching mode automatically when reducing a lightcone.
+
 Using :py:meth:`SimulationCollection.evaluate <opencosmo.SimulationCollection.evaluate>` should also feel very familiar. However if you plan to provide arguments on a per-dataset basis (i.e. an extra numpy array that is used in the calculation) these arguments must be provided as a dictionary with the same keys as the names of the dataset in the :py:class:`SimulationCollection <opencosmo.SimulationCollection>`. For example:
 
 .. code-block:: python

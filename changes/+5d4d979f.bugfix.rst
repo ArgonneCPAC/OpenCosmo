@@ -1,0 +1,1 @@
+:py:meth:`reduce <opencosmo.analysis.reduce>` now correctly handles lightcones.
