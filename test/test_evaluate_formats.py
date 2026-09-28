@@ -337,7 +337,8 @@ def test_lightcone_evaluate_noinsert(lc_paths, format):
 
 
 @pytest.mark.parametrize("format", FORMATS)
-def test_lightcone_evaluate_noinsert_sum(lc_paths, format):
+@pytest.mark.parametrize("combine_mode", ["sum", "prod", "avg"])
+def test_lightcone_evaluate_noinsert_reduce(lc_paths, format, combine_mode):
     ds = oc.open(*lc_paths).take(100)
 
     def count(fof_halo_mass):
@@ -355,7 +356,15 @@ def test_lightcone_evaluate_noinsert_sum(lc_paths, format):
         vectorize=True,
         insert=False,
         format=format,
-        combine_mode="sum",
+        combine_mode=combine_mode,
     )
 
-    assert np.array_equal(_to_numpy(result["count"]), [len(ds)])
+    child_lengths = np.array([len(child) for child in ds.values()])
+    if combine_mode == "sum":
+        expected = child_lengths.sum()
+    elif combine_mode == "prod":
+        expected = child_lengths.prod()
+    else:
+        expected = np.average(child_lengths, weights=child_lengths)
+
+    assert np.allclose(_to_numpy(result["count"]), [expected])
