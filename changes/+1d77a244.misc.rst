@@ -1,1 +1,0 @@
-Replaced "deprecated" library with a custom "deprecated" wrapper.

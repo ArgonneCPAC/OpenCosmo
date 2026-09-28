@@ -112,23 +112,57 @@ def verify_for_lazy_evaluation(
     """
     __verify(func, state.columns, evaluator_kwargs.keys())
     sig = signature(func)
-    required_arguments = filter(
-        lambda param: param.default == Parameter.empty, sig.parameters.values()
-    )
-    required_argument_names = set(map(lambda param: param.name, required_arguments))
-    required_columns = required_argument_names.difference(evaluator_kwargs.keys())
+    parameter_names = set(sig.parameters.keys())
+    required_parameters = {
+        name
+        for name, param in sig.parameters.items()
+        if param.default == Parameter.empty
+    }
 
-    if diff := required_columns.difference(state.columns):
+    # Required parameters that correspond to dataset columns.
+    column_arguments = required_parameters.intersection(state.columns)
+    # Required parameters that are not satisfied by evaluator kwargs.
+    required_not_columns = required_parameters.difference(state.columns)
+    required_not_columns = required_not_columns.difference(evaluator_kwargs.keys())
+
+    # Validate that any remaining required (non-kwarg) inputs are either `data` (data-mapping
+    # mode) or empty (column-unpacking mode).
+    unknown_required = required_not_columns.difference({"data"})
+    if unknown_required:
         raise ValueError(
-            f"Function expects columns {diff} which are not in the dataset"
+            f"Function expects columns {unknown_required} which are not in the dataset"
         )
+
+    should_unpack_data: bool
+    required_columns: set[str]
+    if column_arguments:
+        should_unpack_data = True
+        required_columns = set(column_arguments)
+        if "data" in parameter_names:
+            raise ValueError(
+                "data cannot be used as an argument to an evaluated function that explicitly takes columns as arguments"
+            )
+    elif "data" in parameter_names:
+        # No column-named parameters: pass the full dataset under `data`.
+        should_unpack_data = False
+        required_columns = set(state.columns)
+    else:
+        raise ValueError(
+            "Function must either explicitly take column names as arguments, or it must explicitly take a 'data' argument."
+        )
+
     state = dsops.select(state, required_columns)
     if skip_evaluation_check:
         first_values = None
         eval_strategy = EvaluateStrategy(strategy)
     else:
         first_values, eval_strategy = do_first_evaluation(
-            func, strategy, format, evaluator_kwargs, state
+            func,
+            strategy,
+            format,
+            evaluator_kwargs,
+            state,
+            should_unpack_data,
         )
         if first_values is None and not allow_none:
             raise ValueError(
@@ -156,7 +190,8 @@ def verify_for_lazy_evaluation(
         format,
         units,
         eval_strategy,
-        batch_size,
+        batch_size=batch_size,
+        should_unpack_data=should_unpack_data,
         **evaluator_kwargs,
     )
     return column

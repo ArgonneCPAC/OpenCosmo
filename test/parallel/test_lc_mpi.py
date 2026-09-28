@@ -9,6 +9,7 @@ from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
+from opencosmo.analysis import reduce
 
 
 @pytest.fixture
@@ -68,6 +69,41 @@ def _global_raw(lc):
         ]
     )
     return np.concatenate(comm.allgather(local))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_reduce_lightcone_operations(haloproperties_600_path, haloproperties_601_path):
+    comm = get_comm_world()
+    lc = oc.open(haloproperties_600_path, haloproperties_601_path)
+
+    def count(fof_halo_mass):
+        return np.array([len(fof_halo_mass)], dtype=float)
+
+    local_lengths = [len(child) for child in lc.values()]
+    child_lengths = np.array(
+        [
+            length
+            for rank_lengths in comm.allgather(local_lengths)
+            for length in rank_lengths
+        ],
+        dtype=float,
+    )
+    expected = {
+        "sum": child_lengths.sum(),
+        "prod": child_lengths.prod(),
+        "avg": np.average(child_lengths, weights=child_lengths),
+    }
+
+    for operation in ("sum", "prod", "avg"):
+        result = reduce(
+            lc,
+            count,
+            operation=operation,
+            vectorize=True,
+            format="numpy",
+            all=True,
+        )
+        parallel_assert(np.allclose(result["count"], [expected[operation]]))
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")

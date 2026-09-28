@@ -8,7 +8,13 @@ For these kinds of cases, OpenCosmo provides the :py:meth:`evaluate <opencosmo.D
 Evaluating on Datasets
 ----------------------
 
-To evaluate a function on all rows in a single dataset, simply write a function that takes in arguments with the same name as some of the columns in your dataset and returns a dictionary of values:
+To evaluate a function on all rows in a single dataset, your function must match one of two binding
+styles and return a dictionary of values:
+
+* **Column arguments:** the function explicitly declares parameters whose names match dataset column
+  names (e.g. ``def f(fof_halo_mass): ...``).
+* **Data mapping:** the function declares a ``data`` parameter and does not declare any dataset column
+  name parameters. In this mode, all selected dataset columns are provided under ``data``.
 
 .. code-block:: python
 
@@ -32,7 +38,9 @@ Your dataset will now include a column named "nfw_radius" with the radius values
 Additional Arguments
 ^^^^^^^^^^^^^^^^^^^^
 
-If your function requires more arguments than just column names, you can pass them directly as keyword arguments to :py:meth:`evaluate <opencosmo.Dataset.evaluate>`. These arguments will be passed along to the underlying without modification. For example, suppose we wanted to perturb the true mass of a halo by some random amount to simulate the uncertainty associated with inferring masses through observation:
+If your function requires more arguments than just dataset-bound inputs (column arguments or ``data``),
+you can pass them directly as keyword arguments to :py:meth:`evaluate <opencosmo.Dataset.evaluate>`. These
+arguments are passed through without modification.
 
 .. code-block:: python
 
@@ -66,13 +74,14 @@ Although the above example will work it involves performing the computation one 
         ds = oc.open("haloproperties.hdf5")
         dm_vals = lambda: norm.rvs(1, 0.25, len(ds))
 
-        def perturbed_mass(sod_halo_cdelta, sod_halo_mass, dm):
-                mass_perturbation = sod_halo_mass * dm / sod_halo_cdelta
-                return mass_perturbation
+         def perturbed_mass(sod_halo_cdelta, sod_halo_mass, dm):
+                 mass_perturbation = sod_halo_mass * dm / sod_halo_cdelta
+                 return mass_perturbation
                 
         result = ds.evaluate(perturbed_mass, dm = dm_vals)
 
-The toolkit will automatically detect that dm_vals is the same length as the dataset, and break it up by row accordingly.
+Note: if an external kwarg has the same length as the dataset, OpenCosmo may provide it in a row-wise fashion.
+If you need explicit vectorized behavior, set ``vectorize=True``.
 
 However this is still not very efficient. This entire computation can be vectorized by simply doing the computation with the entire columns. Because Astropy columns are just numpy arrays, standard numpy syntax will work without issue. You can request vectorization by simply setting :code:`vectorize = True` in the call to :py:meth:`evaluate <opencosmo.Dataset.evaluate>`:
 
@@ -249,6 +258,8 @@ Evaluating on Lightcones and Simulation Collections
 ---------------------------------------------------
 
 Using :py:meth:`Lightcone.evaluate <opencosmo.Lightcone.evaluate>` is identical to using :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`. Although OpenCosmo represents lighcones internally as a collection of :py:class:`Datasets <opencosmo.Dataset>`, the details of broadcasting over these datasets are handled for you.
+
+When ``insert=False``, results from the underlying datasets are concatenated by default. Set ``combine_mode`` to ``"sum"``, ``"prod"``, or ``"avg"`` to combine those results element-wise instead. These modes require every underlying result to have the same length. Averages are weighted by the number of rows in each underlying dataset. :py:func:`opencosmo.analysis.reduce` selects the matching mode automatically when reducing a lightcone.
 
 Using :py:meth:`SimulationCollection.evaluate <opencosmo.SimulationCollection.evaluate>` should also feel very familiar. However if you plan to provide arguments on a per-dataset basis (i.e. an extra numpy array that is used in the calculation) these arguments must be provided as a dictionary with the same keys as the names of the dataset in the :py:class:`SimulationCollection <opencosmo.SimulationCollection>`. For example:
 
