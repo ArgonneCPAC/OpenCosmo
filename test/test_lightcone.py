@@ -374,6 +374,60 @@ def test_lc_collection_evaluate_noinsert(
     assert np.all(result["offset"] > 0)
 
 
+def test_lc_collection_evaluate_noinsert_sum(
+    haloproperties_600_path, haloproperties_601_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def statistics(fof_halo_mass):
+        return np.array([len(fof_halo_mass), fof_halo_mass.sum()])
+
+    result = ds.evaluate(
+        statistics,
+        vectorize=True,
+        insert=False,
+        format="numpy",
+        combine_mode="sum",
+    )
+    mass = ds.select("fof_halo_mass").get_data("numpy")
+
+    assert np.allclose(result["statistics"], [len(ds), mass.sum()])
+
+
+def test_lc_collection_evaluate_combine_mode_only_applies_without_insert(
+    haloproperties_600_path, haloproperties_601_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def double_mass(fof_halo_mass):
+        return 2 * fof_halo_mass
+
+    result = ds.evaluate(
+        double_mass,
+        vectorize=True,
+        insert=True,
+        format="numpy",
+        combine_mode="sum",
+    )
+
+    assert len(result.select("double_mass").get_data("numpy")) == len(ds)
+
+
+@pytest.mark.parametrize("insert", [False, True])
+def test_lc_collection_evaluate_rejects_unknown_combine_mode_before_evaluation(
+    haloproperties_600_path, haloproperties_601_path, insert
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    with pytest.raises(ValueError, match="Unknown combine mode invalid"):
+        ds.evaluate(
+            lambda fof_halo_mass: fof_halo_mass,
+            vectorize=True,
+            insert=insert,
+            combine_mode="invalid",
+        )
+
+
 class Counter:
     def __init__(self):
         self.__counts = []

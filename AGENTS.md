@@ -80,6 +80,7 @@ uv run towncrier create <issue_number>.<type>  # Types: feature, bugfix, improve
 - Discovery, schema construction, serialization, and MPI planning must be deterministic. Sort file, group, and column inputs and never depend on set iteration or caller path order where ranks must agree.
 - Accept `str | Path` at public file boundaries, normalize to `Path`, and use context managers for owned HDF5 resources. Frozen discovery and planning records must not retain live h5py objects.
 - Match existing exception semantics: `TypeError` for unsupported object kinds, `ValueError` for invalid domain values or combinations, filesystem-specific exceptions for paths, `UnitsError` for unit arithmetic, and `RuntimeError` for broken internal invariants. Treat changes to tested user-facing error messages as behavioral changes.
+- Validate user inputs before performing potentially expensive I/O or computation so invalid requests fail fast.
 - Public APIs use NumPy-style docstrings compatible with Sphinx Napoleon. Update the relevant guide or reference page when user-visible behavior changes.
 
 ### Rust Guidelines

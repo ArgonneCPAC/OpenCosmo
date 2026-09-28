@@ -334,3 +334,28 @@ def test_lightcone_evaluate_noinsert(lc_paths, format):
     )
     assert "fof_px" in result
     assert len(result["fof_px"]) == len(ds)
+
+
+@pytest.mark.parametrize("format", FORMATS)
+def test_lightcone_evaluate_noinsert_sum(lc_paths, format):
+    ds = oc.open(*lc_paths).take(100)
+
+    def count(fof_halo_mass):
+        values = [len(fof_halo_mass)]
+        if format == "jax":
+            return jnp.array(values)
+        if format == "pandas":
+            return pd.Series(values)
+        if format == "polars":
+            return pl.Series(values)
+        return pa.array(values)
+
+    result = ds.evaluate(
+        count,
+        vectorize=True,
+        insert=False,
+        format=format,
+        combine_mode="sum",
+    )
+
+    assert np.array_equal(_to_numpy(result["count"]), [len(ds)])

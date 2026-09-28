@@ -35,7 +35,12 @@ from opencosmo.column.column import (
 from opencosmo.column.reducer import default_reducer
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
-from opencosmo.dataset.formats import concat_chunks, convert_data, verify_format
+from opencosmo.dataset.formats import (
+    concat_chunks,
+    convert_data,
+    sum_chunks,
+    verify_format,
+)
 from opencosmo.dataset.take import (
     get_end_take_index,
     get_random_take_index,
@@ -737,7 +742,7 @@ class Lightcone(dict):
         format: str = "astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
-        combine: Literal["concat", "sum"] = "concat",
+        combine_mode: Literal["concatenate", "sum"] = "concatenate",
         **evaluate_kwargs,
     ):
         """
@@ -783,11 +788,17 @@ class Lightcone(dict):
         insert: bool, default = True
             If true, the data will be inserted as a column in this dataset. Otherwise the data will be returned.
 
+        combine_mode: str, "concatenate" or "sum", default = "concatenate"
+            How to combine results from the lightcone's underlying datasets when
+            ``insert=False``. This argument has no effect when ``insert=True``.
+
         Returns
         -------
         dataset : Lightcone
             The new lightcone dataset with the evaluated column(s)
         """
+        if combine_mode not in ("concatenate", "sum"):
+            raise ValueError(f"Unknown combine mode {combine_mode}")
 
         mapped_kwargs = {}
         kwargs_names = list(evaluate_kwargs.keys())
@@ -837,6 +848,10 @@ class Lightcone(dict):
                 allow_overwrite=allow_overwrite,
             )
 
+        child_evaluate_kwargs = dict(evaluate_kwargs)
+        if all(isinstance(dataset, Lightcone) for dataset in self.values()):
+            child_evaluate_kwargs["combine_mode"] = combine_mode
+
         result = self.__map(
             "evaluate",
             func=func,
@@ -847,7 +862,7 @@ class Lightcone(dict):
             batch_size=batch_size,
             allow_overwrite=allow_overwrite,
             construct=insert,
-            **evaluate_kwargs,
+            **child_evaluate_kwargs,
         )
         if next(iter(result.values())) is None:
             return
@@ -856,7 +871,11 @@ class Lightcone(dict):
         keys = next(iter(result.values())).keys()
         output = {}
         for key in keys:
-            output[key] = concat_chunks([r[key] for r in result.values()], format)
+            chunks = [r[key] for r in result.values()]
+            if combine_mode == "concatenate":
+                output[key] = concat_chunks(chunks, format)
+            else:
+                output[key] = sum_chunks(chunks, format)
         return output
 
     def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Self:

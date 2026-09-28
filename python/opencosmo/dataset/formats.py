@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from functools import reduce
 from importlib import import_module
+from operator import add
 from typing import TYPE_CHECKING, Any, Iterable
 
 import astropy.units as u
@@ -206,6 +208,15 @@ def concat_chunks(chunks: list, output_format: str):
             return pa.concat_arrays(chunks)
         case _:
             raise ValueError(f"Unknown data output format {output_format}")
+
+
+def sum_chunks(chunks: list, output_format: str):
+    """Sum a list of per-chunk arrays element-wise."""
+    if output_format == "arrow":
+        import pyarrow.compute as pc  # type: ignore
+
+        return reduce(pc.add, chunks)
+    return reduce(add, chunks)
 
 
 def __convert_to_astropy(
