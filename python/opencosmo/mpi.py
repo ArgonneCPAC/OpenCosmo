@@ -213,7 +213,9 @@ def reduce_data(
         )
     if recvbuf is None:
         return None
-    return recvbuf[0].reshape(data.shape)
+
+    arr = recvbuf[0]
+    return arr.reshape(data.shape)  # type: ignore
 
 
 def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
