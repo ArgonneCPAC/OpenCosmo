@@ -188,11 +188,16 @@ def gather_data(data: np.ndarray, comm: MPI.Comm, all: bool = False):
 
 
 def reduce_data(
-    data: np.ndarray, comm: MPI.Comm, all: bool = False, op: MPI.Op = MPI.SUM
+    data: np.ndarray, comm: MPI.Comm, all: bool = False, op: MPI.Op | None = None
 ):
+    """
+    Defaults to sum
+    """
     parallel_assert_can_reduce(data, comm)
 
     assert MPI is not None
+    if op is None:
+        op = MPI.SUM
     mpi_dtype = MPI.Datatype.fromcode(data.dtype.char)
 
     if all or comm.Get_rank() == 0:
