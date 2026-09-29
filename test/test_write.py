@@ -1,3 +1,4 @@
+import astropy.units as u
 import numpy as np
 import pytest
 from opencosmo.header import read_header, write_header
@@ -63,6 +64,30 @@ def test_write_evaluate_to_dataset_round_trip(halo_properties_path, tmp_path):
     assert actual["mass"].unit == expected["mass"].unit
     np.testing.assert_array_equal(actual["mass"], expected["mass"])
     np.testing.assert_array_equal(actual["rank"], expected["rank"])
+
+
+def test_write_evaluate_to_dataset_resets_conversions_and_preserves_base(
+    halo_properties_path, tmp_path
+):
+    source = oc.open(halo_properties_path).take(4, at="start")
+    converted = source.with_units(conversions={u.Mpc: u.km})
+
+    def copy_position(fof_halo_center_x):
+        return {"position": fof_halo_center_x}
+
+    evaluated = converted.evaluate_to_dataset(copy_position, vectorize=True)
+    output_path = tmp_path / "evaluated_converted.hdf5"
+    write(output_path, evaluated)
+    reopened = oc.open(output_path)
+
+    assert evaluated.get_data().unit == u.km
+    assert reopened._state.unit_handler.blanket_conversions == {}
+    assert reopened.get_data().unit == u.Mpc
+
+    expected_base = source.with_units("scalefree").get_data()["fof_halo_center_x"]
+    reopened_base = reopened.with_units("scalefree").get_data()
+    assert reopened_base.unit == expected_base.unit
+    np.testing.assert_array_equal(reopened_base, expected_base)
 
 
 def test_write_mints_fresh_persistent_dataset_uuid(halo_properties_path, tmp_path):
