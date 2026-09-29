@@ -20,6 +20,7 @@ from opencosmo.dataset.instantiate import instantiate_dataset
 from opencosmo.dataset.output import get_derived_column_names, make_dataset_schema
 from opencosmo.handler.empty import EmptyHandler
 from opencosmo.handler.hdf5 import Hdf5Handler
+from opencosmo.handler.memory import InMemoryHandler
 from opencosmo.index import from_size, reindex_column, single_chunk
 from opencosmo.index.mask import into_array
 from opencosmo.mpi import gather_index, get_comm_world
@@ -30,6 +31,7 @@ from opencosmo.plugins.contexts import (
     PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
+from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_unit_strings,
     make_unit_handler_from_units,
@@ -53,7 +55,6 @@ if TYPE_CHECKING:
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.tree import Tree
-    from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
 
@@ -250,6 +251,56 @@ def state_in_memory(
         tree=tree,
         column_map=column_map,
         open_kwargs=open_kwargs,
+        sort_key=None,
+    )
+
+
+def state_from_evaluated_data(
+    data_columns: dict[str, np.ndarray | u.Quantity],
+    header: OpenCosmoHeader,
+) -> DatasetState:
+    """Build a dataset from evaluated values in the file's unit convention."""
+    descriptions = {name: "None" for name in data_columns}
+    all_known_uuids: set[UUID] = set()
+    raw_producers = []
+    for name in data_columns:
+        producer = RawColumn(
+            name,
+            descriptions[name],
+            get_raw_column_uuid(name, all_known_uuids),
+            no_cache=True,
+            on_disk=True,
+        )
+        raw_producers.append(producer)
+        all_known_uuids.add(producer.uuid)
+    column_map = {producer.name: producer.uuid for producer in raw_producers}
+    producers: dict[UUID, ConstructedColumn] = {
+        producer.uuid: producer for producer in raw_producers
+    }
+    units = {
+        name: column.unit if isinstance(column, u.Quantity) else None
+        for name, column in data_columns.items()
+    }
+    raw_data = {
+        name: column.value if isinstance(column, u.Quantity) else column
+        for name, column in data_columns.items()
+    }
+    length = len(next(iter(raw_data.values()))) if raw_data else 0
+    handler = InMemoryHandler(raw_data, units, descriptions, from_size(length))
+    unit_convention = UnitConvention(header.file.unit_convention)
+
+    return DatasetState(
+        uuid=get_in_memory_dataset_uuid(data_columns),
+        producers=producers,
+        raw_data_handler=handler,
+        cache=ColumnCache.empty(),
+        unit_handler=make_unit_handler_from_units(
+            units, header, target_convention=unit_convention
+        ),
+        header=header.with_units(unit_convention),
+        tree=None,
+        column_map=column_map,
+        open_kwargs={},
         sort_key=None,
     )
 
