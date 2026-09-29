@@ -459,7 +459,6 @@ def open_dataset(
     state = st.state_from_target(
         target,
         UnitConvention.COMOVING,
-        sim_region,
         open_kwargs,
         data_index,
         tree=tree,

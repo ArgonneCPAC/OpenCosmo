@@ -126,7 +126,7 @@ evaluation produces a new table rather than columns aligned with the input datas
 The function is evaluated immediately, and its NumPy array or Astropy quantity outputs
 become the columns of a new in-memory dataset. All outputs must have equal lengths, but
 that length does not need to match the input dataset. The new dataset retains the input
-dataset's header and region.
+dataset's header but does not carry its spatial information.
 
 With the default row-wise evaluation, each input row may return a different number
 of output rows. OpenCosmo concatenates those arrays in input-row order.

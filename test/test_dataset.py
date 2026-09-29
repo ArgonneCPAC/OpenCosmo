@@ -440,7 +440,6 @@ def test_evaluate_to_dataset_allows_different_length(input_path):
 
     assert len(result) == 3
     assert result.header is ds.header
-    assert result.region is ds.region
     assert data["mass"].unit == ds.units["fof_halo_mass"]
     np.testing.assert_array_equal(data["rank"], np.arange(3))
 

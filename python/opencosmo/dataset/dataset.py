@@ -299,7 +299,6 @@ class Dataset:
         format="astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
-        _verify: bool = True,
         **evaluate_kwargs,
     ) -> Dataset | dict[str, np.ndarray]:
         """
@@ -388,7 +387,6 @@ class Dataset:
             format,
             batch_size,
             allow_overwrite,
-            _verify,
             **evaluate_kwargs,
         )
         if not insert:
@@ -457,7 +455,6 @@ class Dataset:
                 format,
                 batch_size,
                 allow_overwrite,
-                _verify,
                 **evaluate_kwargs,
             ),
         )
@@ -480,7 +477,7 @@ class Dataset:
                 raise ValueError("Evaluate output columns must have equal lengths")
 
         return build_dataset_from_data(
-            {"data": result}, self.header, self.region, spatial_index_data=None
+            {"data": result}, self.header, spatial_index_data=None
         )
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
