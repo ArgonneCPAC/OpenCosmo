@@ -21,7 +21,6 @@ import numpy as np
 from opencosmo.column.evaluate import (
     EvaluateStrategy,
     evaluate_chunks,
-    evaluate_rows,
     evaluate_vectorized,
 )
 from opencosmo.units import UnitsError
@@ -1165,12 +1164,8 @@ class EvaluatedColumn:
         chunk_sizes = index[1] if isinstance(index, tuple) else None
 
         if self.batch_size > 0:
-            length = len(next(iter(data.values())))
             strategy = EvaluateStrategy.CHUNKED
-            chunk_sizes = np.full(
-                np.ceil(length / self.batch_size).astype(int), self.batch_size
-            )
-            chunk_sizes[-1] = (length % self.batch_size) or self.batch_size
+            chunk_sizes = self.batch_size
 
         else:
             strategy = self.__strategy
@@ -1185,10 +1180,11 @@ class EvaluatedColumn:
                     self.__should_unpack_data,
                 )
             case EvaluateStrategy.ROW_WISE:
-                return evaluate_rows(
+                return evaluate_chunks(
                     data,
                     self.__func,
                     self.__kwargs,
+                    1,
                     self.__format,
                     self.__should_unpack_data,
                 )

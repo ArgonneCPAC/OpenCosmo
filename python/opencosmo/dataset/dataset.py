@@ -9,6 +9,7 @@ from typing import (
     Mapping,
     Optional,
     TypeAlias,
+    cast,
 )
 from warnings import warn
 
@@ -393,6 +394,94 @@ class Dataset:
         if not insert:
             return result
         return Dataset(result)
+
+    def evaluate_to_dataset(
+        self,
+        func: Callable,
+        vectorize=False,
+        format="astropy",
+        batch_size: int = -1,
+        allow_overwrite: bool = False,
+        _verify: bool = True,
+        **evaluate_kwargs,
+    ) -> Dataset:
+        """Evaluate a function and use its outputs to construct a new dataset.
+
+        Unlike :meth:`evaluate`, this method always evaluates ``func`` immediately
+        and places only its output columns in the returned dataset. Output columns
+        must be NumPy arrays or Astropy quantities with equal lengths. Their length
+        does not need to match this dataset.
+
+        Parameters
+        ----------
+        func : Callable
+            The function to evaluate on the rows in the dataset.
+        vectorize : bool, default=False
+            Whether to provide full columns instead of individual rows. Ignored
+            when ``batch_size`` is set.
+        insert : bool, default=True
+            Accepted for compatibility with :meth:`evaluate`. The function is
+            always evaluated with ``insert=False``.
+        format : str, default="astropy"
+            The format in which column data is provided to ``func``.
+        batch_size : int, default=-1
+            If positive, provide data to ``func`` in batches of this size.
+        allow_overwrite : bool, default=False
+            Accepted for compatibility with :meth:`evaluate`; the returned dataset
+            contains no columns from the original dataset to overwrite.
+        **evaluate_kwargs : Any
+            Additional keyword arguments passed to ``func``.
+
+        Returns
+        -------
+        Dataset
+            A new in-memory dataset containing the evaluated output columns and
+            retaining this dataset's header and region.
+
+        Raises
+        ------
+        TypeError
+            If an output is not a NumPy array or Astropy quantity.
+        ValueError
+            If the output columns do not all have equal lengths.
+        """
+        from opencosmo.dataset.build import build_dataset_from_data
+
+        result = cast(
+            "dict[str, np.ndarray | u.Quantity]",
+            dsops.evaluate(
+                self.__state,
+                func,
+                vectorize,
+                False,
+                format,
+                batch_size,
+                allow_overwrite,
+                _verify,
+                **evaluate_kwargs,
+            ),
+        )
+
+        output_length: int | None = None
+        for name, output in result.items():
+            if not isinstance(output, (np.ndarray, u.Quantity)):
+                raise TypeError(
+                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity, "
+                    f"not {type(output).__name__}"
+                )
+            if output.ndim == 0:
+                raise TypeError(
+                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity "
+                    "with a length"
+                )
+            if output_length is None:
+                output_length = len(output)
+            elif len(output) != output_length:
+                raise ValueError("Evaluate output columns must have equal lengths")
+
+        return build_dataset_from_data(
+            {"data": result}, self.header, self.region, spatial_index_data=None
+        )
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """

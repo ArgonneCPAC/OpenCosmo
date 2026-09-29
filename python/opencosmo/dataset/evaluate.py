@@ -22,7 +22,13 @@ we are using here is known as a "visitor."
 
 
 def build_evaluated_column(
-    dataset, func, vectorize, insert, format, batch_size, evaluate_kwargs
+    dataset,
+    func,
+    vectorize,
+    insert,
+    format,
+    batch_size,
+    evaluate_kwargs,
 ):
     kwarg_columns = set(evaluate_kwargs.keys()).intersection(dataset.columns)
     if kwarg_columns:

@@ -186,7 +186,13 @@ def evaluate(
 ):
     verify_format(format)
     evaluated_column = build_evaluated_column(
-        state, func, vectorize, insert, format, batch_size, evaluate_kwargs
+        state,
+        func,
+        vectorize,
+        insert,
+        format,
+        batch_size,
+        evaluate_kwargs,
     )
 
     if not insert:

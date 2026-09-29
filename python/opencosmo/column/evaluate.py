@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 import numpy as np
 
@@ -15,44 +15,32 @@ class EvaluateStrategy(Enum):
     CHUNKED = "chunked"
 
 
-def evaluate_rows(
-    data: dict[str, Any],
-    func: Callable,
-    kwargs: dict[str, Any],
-    format: str,
-    should_unpack_data: bool,
-):
-    from opencosmo.dataset.formats import stack_rows
-
-    data_length = len(next(iter(data.values())))
-    per_column: dict[str, list] = {}
-    for i in range(data_length):
-        iterable_inputs = {name: values[i] for name, values in data.items()}
-        if should_unpack_data:
-            output = func(**iterable_inputs, **kwargs)
-        else:
-            output = func(data=iterable_inputs, **kwargs)
-        if not isinstance(output, dict):
-            output = {func.__name__: output}
-        for name, value in output.items():
-            per_column.setdefault(name, []).append(value)
-    return {name: stack_rows(values, format) for name, values in per_column.items()}
-
-
 def evaluate_chunks(
     data: dict[str, Any],
     func: Callable,
     kwargs: dict[str, Any],
-    chunk_sizes: np.ndarray,
+    chunk_sizes: int | np.ndarray,
     format: str,
     should_unpack_data: bool,
 ):
-    from opencosmo.dataset.formats import concat_chunks
+    from opencosmo.dataset.formats import concat_chunks, stack_rows
 
-    chunk_splits = np.cumsum(chunk_sizes)
-    starts = np.concatenate([[0], chunk_splits[:-1]])
+    ranges: Iterable[tuple[int | np.integer, int | np.integer]]
+    if isinstance(chunk_sizes, int):
+        if chunk_sizes <= 0:
+            raise ValueError("Chunk size must be positive")
+        data_length = len(next(iter(data.values())))
+        ranges = (
+            (start, min(start + chunk_sizes, data_length))
+            for start in range(0, data_length, chunk_sizes)
+        )
+    else:
+        chunk_splits = np.cumsum(chunk_sizes)
+        starts = np.concatenate([[0], chunk_splits[:-1]])
+        ranges = zip(starts, chunk_splits)
+
     per_column: dict[str, list] = {}
-    for start, end in zip(starts, chunk_splits):
+    for start, end in ranges:
         chunk_input_data = {
             name: arr[int(start) : int(end)] for name, arr in data.items()
         }
@@ -64,7 +52,14 @@ def evaluate_chunks(
             output = {func.__name__: output}
         for name, value in output.items():
             per_column.setdefault(name, []).append(value)
-    return {name: concat_chunks(chunks, format) for name, chunks in per_column.items()}
+
+    output = {}
+    for name, column_chunks in per_column.items():
+        try:
+            output[name] = concat_chunks(column_chunks, format)
+        except (TypeError, ValueError):
+            output[name] = stack_rows(column_chunks, format)
+    return output
 
 
 def evaluate_vectorized(data, func, kwargs, index, should_unpack_data):

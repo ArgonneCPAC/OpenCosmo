@@ -118,6 +118,29 @@ In some cases you may want to operate on may rows at once, but it would not be f
 
 Setting :code:`batch_size` causes :code:`vectorize` to be ignored. Data will be passed into your function in batches which are *at most* this size. In certain cases they may also be smaller, but they will never be larger.
 
+Building a Dataset from Evaluated Results
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use :py:meth:`evaluate_to_dataset <opencosmo.Dataset.evaluate_to_dataset>` when an
+evaluation produces a new table rather than columns aligned with the input dataset.
+The function is evaluated immediately, and its NumPy array or Astropy quantity outputs
+become the columns of a new in-memory dataset. All outputs must have equal lengths, but
+that length does not need to match the input dataset. The new dataset retains the input
+dataset's header and region.
+
+With the default row-wise evaluation, each input row may return a different number
+of output rows. OpenCosmo concatenates those arrays in input-row order.
+
+.. code-block:: python
+
+        def summary(data):
+                return {
+                        "minimum": np.array([data["mass"].min()]),
+                        "maximum": np.array([data["mass"].max()]),
+                }
+
+        summary_dataset = ds.evaluate_to_dataset(summary, vectorize=True)
+
 Evaluating on Structure Collections
 -----------------------------------
 

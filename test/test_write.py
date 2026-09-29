@@ -40,6 +40,31 @@ def test_write_dataset(halo_properties_path, tmp_path):
     assert all(ds.get_data() == new_ds.get_data())
 
 
+def test_write_evaluate_to_dataset_round_trip(halo_properties_path, tmp_path):
+    source = oc.open(halo_properties_path).take(4, at="start")
+    row_number = iter(range(4))
+
+    def summarize(fof_halo_mass):
+        length = next(row_number) + 1
+        return {
+            "mass": np.repeat(fof_halo_mass, length),
+            "rank": np.arange(length, dtype=np.int64),
+        }
+
+    evaluated = source.evaluate_to_dataset(summarize)
+    output_path = tmp_path / "evaluated.hdf5"
+    write(output_path, evaluated)
+    reopened = oc.open(output_path)
+
+    expected = evaluated.get_data()
+    actual = reopened.get_data()
+    assert reopened.header == source.header
+    assert set(actual.colnames) == {"mass", "rank"}
+    assert actual["mass"].unit == expected["mass"].unit
+    np.testing.assert_array_equal(actual["mass"], expected["mass"])
+    np.testing.assert_array_equal(actual["rank"], expected["rank"])
+
+
 def test_write_mints_fresh_persistent_dataset_uuid(halo_properties_path, tmp_path):
     """Test that writing mints a new on-disk dataset identity."""
     source = oc.open(halo_properties_path)

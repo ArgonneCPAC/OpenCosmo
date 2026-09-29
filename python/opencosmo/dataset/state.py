@@ -94,6 +94,7 @@ class DatasetState:
     unit_handler: UnitHandler
     header: OpenCosmoHeader
     tree: Tree | None
+    spatial_region: Region
     column_map: dict[str, UUID]
     open_kwargs: dict[str, Any]
     sort_key: Optional[tuple[str, bool, bool]]
@@ -126,9 +127,9 @@ class DatasetState:
 
     @property
     def region(self):
-        if self.tree is None:
-            return None
-        return self.tree.get_region()
+        if self.tree is not None:
+            return self.tree.get_region()
+        return self.spatial_region
 
     @property
     def kwargs(self):
@@ -202,6 +203,7 @@ def state_from_target(
         unit_handler=unit_handler,
         header=target.header,
         tree=tree,
+        spatial_region=region,
         column_map=column_map,
         open_kwargs=open_kwargs,
         sort_key=None,
@@ -251,6 +253,7 @@ def state_in_memory(
         unit_handler=unit_handler,
         header=header,
         tree=tree,
+        spatial_region=region,
         column_map=column_map,
         open_kwargs=open_kwargs,
         sort_key=None,
