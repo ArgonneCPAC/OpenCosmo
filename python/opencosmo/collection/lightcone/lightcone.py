@@ -484,9 +484,7 @@ class Lightcone(dict):
             z_high, z_low = z_low, z_high
 
         if z_high < z_range[0] or z_low > z_range[1]:
-            raise ValueError(
-                f"This lightcone only ranges from z = {z_range[0]} to z = {z_range[1]}"
-            )
+            return self.take(0, at="start")
 
         elif z_low == z_high:
             raise ValueError("Low and high values of the redshift range are the same!")
@@ -497,8 +495,7 @@ class Lightcone(dict):
             new_dataset = dataset.filter(
                 oc.col("redshift") > z_low, oc.col("redshift") < z_high
             )
-            if len(new_dataset) > 0:
-                new_datasets[key] = new_dataset
+            new_datasets[key] = new_dataset
         return Lightcone(
             new_datasets, (z_low, z_high), self.__hidden, self.__sort_key, self.__scope
         )
