@@ -426,6 +426,73 @@ def test_evaluate_rejects_signature_without_columns_or_data(input_path):
         ds.evaluate(invalid, vectorize=True, insert=False, format="numpy")
 
 
+def test_evaluate_to_dataset_allows_different_length(input_path):
+    ds = oc.open(input_path).take(50)
+
+    def summarize(fof_halo_mass):
+        return {
+            "mass": fof_halo_mass[:3],
+            "rank": np.arange(3),
+        }
+
+    result = ds.evaluate_to_dataset(summarize, vectorize=True)
+    data = result.get_data()
+
+    assert len(result) == 3
+    assert result.header is ds.header
+    assert data["mass"].unit == ds.units["fof_halo_mass"]
+    np.testing.assert_array_equal(data["rank"], np.arange(3))
+
+
+def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+    row_number = iter(range(4))
+
+    def expand(fof_halo_mass):
+        count = next(row_number) + 1
+        return {
+            "mass": np.repeat(fof_halo_mass, count),
+            "copy": np.arange(count),
+        }
+
+    result = ds.evaluate_to_dataset(expand)
+    data = result.get_data()
+    source_mass = ds.get_data()["fof_halo_mass"]
+
+    assert len(result) == 10
+    np.testing.assert_array_equal(data["mass"], np.repeat(source_mass, [1, 2, 3, 4]))
+    np.testing.assert_array_equal(data["copy"], [0, 0, 1, 0, 1, 2, 0, 1, 2, 3])
+
+
+def test_evaluate_noinsert_requires_2d_output_for_2d_column(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+
+    def profile(fof_halo_mass):
+        return np.full((1, 3), fof_halo_mass.value)
+
+    result = ds.evaluate(profile, insert=False, format="astropy")
+
+    assert result["profile"].shape == (4, 3)
+
+
+@pytest.mark.parametrize(
+    ("output", "error", "message"),
+    [
+        ({"first": np.arange(2), "second": np.arange(3)}, ValueError, "equal lengths"),
+        ({"invalid": [1, 2]}, TypeError, "NumPy array or Astropy quantity"),
+        ({"scalar": np.array(1)}, TypeError, "with a length"),
+    ],
+)
+def test_evaluate_to_dataset_validates_outputs(input_path, output, error, message):
+    ds = oc.open(input_path).take(10)
+
+    def invalid(data):
+        return output
+
+    with pytest.raises(error, match=message):
+        ds.evaluate_to_dataset(invalid, vectorize=True)
+
+
 def test_visit_rows_nfw(input_path):
     ds = oc.open(input_path).filter(oc.col("sod_halo_cdelta") > 0)
 

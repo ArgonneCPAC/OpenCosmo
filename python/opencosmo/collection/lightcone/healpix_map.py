@@ -460,7 +460,6 @@ class HealpixMap(dict):
         new_dataset = build_dataset_from_data(
             new_data,
             new_header,
-            self.region,
             None,
             descriptions={
                 "data": {

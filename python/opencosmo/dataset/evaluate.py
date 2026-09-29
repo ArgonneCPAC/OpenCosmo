@@ -22,7 +22,13 @@ we are using here is known as a "visitor."
 
 
 def build_evaluated_column(
-    dataset, func, vectorize, insert, format, batch_size, evaluate_kwargs
+    dataset,
+    func,
+    vectorize,
+    insert,
+    format,
+    batch_size,
+    evaluate_kwargs,
 ):
     kwarg_columns = set(evaluate_kwargs.keys()).intersection(dataset.columns)
     if kwarg_columns:
@@ -39,6 +45,8 @@ def build_evaluated_column(
             default_strategy = "vectorize"
 
     strategy = evaluate_kwargs.pop("strategy", default_strategy)
+    if not insert and strategy == "row_wise":
+        strategy = "concatenate_rows"
     # Structure collections pass the "chunked" strategy to datasets, which causes the dataset
     # To be evaluated on a structure-by-structure basis. This supersedes all other options.
     if strategy == "chunked":

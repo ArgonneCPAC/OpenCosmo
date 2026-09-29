@@ -52,7 +52,6 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.spatial.protocols import Region
     from opencosmo.spatial.tree import Tree
     from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
@@ -126,9 +125,9 @@ class DatasetState:
 
     @property
     def region(self):
-        if self.tree is None:
-            return None
-        return self.tree.get_region()
+        if self.tree is not None:
+            return self.tree.get_region()
+        return None
 
     @property
     def kwargs(self):
@@ -164,7 +163,6 @@ class DatasetState:
 def state_from_target(
     target: DatasetTarget,
     unit_convention: UnitConvention,
-    region: Region,
     open_kwargs: dict[str, Any],
     index: Optional[DataIndex] = None,
     tree: Tree | None = None,
@@ -212,7 +210,6 @@ def state_in_memory(
     data_columns: dict,
     header: OpenCosmoHeader,
     unit_convention: UnitConvention,
-    region: Region,
     open_kwargs: dict[str, Any],
     descriptions: Optional[dict[str, str]] = None,
     index: Optional[DataIndex] = None,
