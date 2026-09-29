@@ -481,7 +481,6 @@ def test_evaluate_to_dataset_allows_rank_local_lengths(input_path):
     data = result.get_data("numpy")
 
     parallel_assert(len(result) == rank + 1)
-    parallel_assert(result.header is source.header)
     parallel_assert(np.all(data["rank"] == rank))
 
 

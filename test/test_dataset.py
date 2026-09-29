@@ -439,9 +439,65 @@ def test_evaluate_to_dataset_allows_different_length(input_path):
     data = result.get_data()
 
     assert len(result) == 3
-    assert result.header is ds.header
+    assert result.header == ds.header
     assert data["mass"].unit == ds.units["fof_halo_mass"]
     np.testing.assert_array_equal(data["rank"], np.arange(3))
+
+
+def test_evaluate_to_dataset_uses_baseline_units_and_does_not_cache(input_path):
+    original = oc.open(input_path).take(5, at="start")
+    base_convention = original._state.unit_handler.base_convention.value
+    baseline = original.with_units(base_convention)
+    source = original.with_units("physical", conversions={u.Mpc: u.km})
+    seen_units = []
+
+    def copy_position(fof_halo_center_x):
+        seen_units.append(fof_halo_center_x.unit)
+        return {
+            "position": fof_halo_center_x,
+            "row": np.arange(len(fof_halo_center_x)),
+        }
+
+    result = source.evaluate_to_dataset(copy_position, vectorize=True)
+    expected = baseline.get_data()["fof_halo_center_x"]
+    data = result.get_data()
+
+    assert seen_units == [expected.unit]
+    assert result._state.unit_handler.current_convention.value == "physical"
+    expected_output = original.with_units("physical").get_data()["fof_halo_center_x"]
+    assert data["position"].unit == u.km
+    np.testing.assert_allclose(data["position"].value, expected_output.to_value(u.km))
+    np.testing.assert_array_equal(data["row"], np.arange(5))
+    assert result._state.cache.columns == set()
+
+    result.get_data()
+    converted = result.with_units("physical", position=u.m)
+    converted.get_data()
+    assert result._state.cache.columns == set()
+    assert converted._state.cache.columns == set()
+
+    source_data = source.get_data()["fof_halo_center_x"]
+    assert source_data.unit == u.km
+
+
+def test_evaluate_to_dataset_converts_conventions_without_caching(input_path):
+    source = oc.open(input_path).take(5, at="start")
+
+    def copy_position(fof_halo_center_x):
+        return {"position": fof_halo_center_x}
+
+    result = source.evaluate_to_dataset(copy_position, vectorize=True)
+    physical = result.with_units("physical")
+    expected = source.with_units("physical").get_data()["fof_halo_center_x"]
+    actual = physical.get_data()
+
+    assert actual.unit == expected.unit
+    np.testing.assert_allclose(actual.value, expected.value)
+    assert result._state.cache.columns == set()
+    assert physical._state.cache.columns == set()
+
+    taken = physical.take(2, at="start").get_data()
+    np.testing.assert_allclose(taken.value, expected[:2].value)
 
 
 def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):

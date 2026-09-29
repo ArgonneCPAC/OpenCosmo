@@ -128,6 +128,13 @@ become the columns of a new in-memory dataset. All outputs must have equal lengt
 that length does not need to match the input dataset. The new dataset retains the input
 dataset's header but does not carry its spatial information.
 
+The function receives data in the source file's baseline unit convention. After the
+result is stored in that baseline convention, the new dataset is returned using the
+source dataset's current unit convention and blanket unit conversions. Per-column
+conversions are not transferred because the evaluation defines a new set of columns.
+Astropy quantity outputs become convention-aware columns in the new dataset, while
+plain NumPy array outputs are unitless.
+
 With the default row-wise evaluation, each input row may return a different number
 of output rows. OpenCosmo concatenates those arrays in input-row order.
 

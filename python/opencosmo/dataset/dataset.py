@@ -411,11 +411,15 @@ class Dataset:
         """Evaluate a function and use its outputs to construct a new dataset.
 
         Unlike :meth:`evaluate`, this method always evaluates ``func`` immediately
-        and places only its output columns in the returned dataset. Output columns
-        must be NumPy arrays or Astropy quantities with equal lengths. Their length
-        does not need to match this dataset. During row-wise evaluation, arrays from
-        successive input rows are concatenated, so each input row may produce a
-        different number of output rows.
+        and places only its output columns in the returned dataset. Evaluation uses
+        the file's baseline unit convention and ignores explicit conversions on this
+        dataset. The returned dataset restores this dataset's unit convention and
+        blanket unit conversions. Output columns must be NumPy arrays or Astropy
+        quantities with equal lengths. Quantities become convention-aware columns in
+        the returned dataset; NumPy arrays remain unitless. Their length does not need
+        to match this dataset. During row-wise evaluation, arrays from successive input
+        rows are concatenated, so each input row may produce a different number of
+        output rows.
 
         Parameters
         ----------
@@ -447,12 +451,18 @@ class Dataset:
         ValueError
             If the output columns do not all have equal lengths.
         """
-        from opencosmo.dataset.build import build_dataset_from_data
+        from opencosmo.dataset.build import build_dataset_from_evaluated_data
+
+        baseline_state = dsops.with_units(
+            self.__state,
+            self.__state.unit_handler.base_convention.value,
+            {},
+        )
 
         result = cast(
             "dict[str, np.ndarray | u.Quantity]",
             dsops.evaluate(
-                self.__state,
+                baseline_state,
                 func,
                 vectorize,
                 False,
@@ -480,9 +490,13 @@ class Dataset:
             elif len(output) != output_length:
                 raise ValueError("Evaluate output columns must have equal lengths")
 
-        return build_dataset_from_data(
-            {"data": result}, self.header, spatial_index_data=None
+        evaluated = build_dataset_from_evaluated_data(result, baseline_state.header)
+        output_state = dsops.with_units(
+            evaluated._state,
+            self.__state.unit_handler.current_convention.value,
+            self.__state.unit_handler.blanket_conversions,
         )
+        return Dataset(output_state)
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """

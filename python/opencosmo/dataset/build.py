@@ -13,6 +13,8 @@ from opencosmo.spatial.tree import Tree
 from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
+    from astropy import units as u
+
     from opencosmo.header import OpenCosmoHeader
 
 T = TypeVar("T")
@@ -50,6 +52,13 @@ def build_dataset_from_data(
         tree=tree,
     )
     return Dataset(new_state)
+
+
+def build_dataset_from_evaluated_data(
+    data: dict[str, np.ndarray | u.Quantity], header: OpenCosmoHeader
+) -> Dataset:
+    """Build an in-memory dataset from results in the file's unit convention."""
+    return Dataset(state.state_from_evaluated_data(data, header))
 
 
 def make_spatial_index(data: SpatialIndexData):
