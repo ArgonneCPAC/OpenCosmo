@@ -85,6 +85,10 @@ class UnitHandler:
         return self.__base_convention
 
     @property
+    def blanket_conversions(self) -> dict[u.Unit, u.Unit]:
+        return {u.Unit(source): target for source, target in self.__conversions.items()}
+
+    @property
     def columns_with_conversions(self):
         return {
             name

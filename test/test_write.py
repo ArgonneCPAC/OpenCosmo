@@ -56,7 +56,7 @@ def test_write_evaluate_to_dataset_round_trip(halo_properties_path, tmp_path):
     write(output_path, evaluated)
     reopened = oc.open(output_path)
 
-    expected = evaluated.with_units("comoving").get_data()
+    expected = evaluated.get_data()
     actual = reopened.get_data()
     assert reopened.header == source.header
     assert set(actual.colnames) == {"mass", "rank"}
