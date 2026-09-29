@@ -131,6 +131,13 @@ dataset's header but does not carry its spatial information.
 With the default row-wise evaluation, each input row may return a different number
 of output rows. OpenCosmo concatenates those arrays in input-row order.
 
+This differs from row-wise :py:meth:`evaluate <opencosmo.Dataset.evaluate>` with
+``insert=True``. When inserting, an array returned for one input row is treated as
+one entry in a multidimensional column, and the per-row arrays are stacked. When
+``insert=False`` (including the evaluation performed by ``evaluate_to_dataset``),
+the arrays are concatenated instead. To directly return a two-dimensional array in
+this mode, return an array shaped ``(1, width)`` for each input row.
+
 .. code-block:: python
 
         def summary(data):

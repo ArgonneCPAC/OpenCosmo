@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 class EvaluateStrategy(Enum):
     VECTORIZE = "vectorize"
     ROW_WISE = "row_wise"
+    CONCATENATE_ROWS = "concatenate_rows"
     CHUNKED = "chunked"
 
 
@@ -22,6 +23,7 @@ def evaluate_chunks(
     chunk_sizes: int | np.ndarray,
     format: str,
     should_unpack_data: bool,
+    stack_chunks: bool = False,
 ):
     from opencosmo.dataset.formats import concat_chunks, stack_rows
 
@@ -42,7 +44,8 @@ def evaluate_chunks(
     per_column: dict[str, list] = {}
     for start, end in ranges:
         chunk_input_data = {
-            name: arr[int(start) : int(end)] for name, arr in data.items()
+            name: arr[start] if chunk_sizes == 1 else arr[int(start) : int(end)]
+            for name, arr in data.items()
         }
         if should_unpack_data:
             output = func(**chunk_input_data, **kwargs)
@@ -55,6 +58,9 @@ def evaluate_chunks(
 
     output = {}
     for name, column_chunks in per_column.items():
+        if stack_chunks:
+            output[name] = stack_rows(column_chunks, format)
+            continue
         try:
             output[name] = concat_chunks(column_chunks, format)
         except (TypeError, ValueError):

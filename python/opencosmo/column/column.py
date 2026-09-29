@@ -1161,7 +1161,9 @@ class EvaluatedColumn:
 
     def evaluate(self, data: dict[str, np.ndarray], index: DataIndex | None):
         data = {name: data[name] for name in self.__requires}
-        chunk_sizes = index[1] if isinstance(index, tuple) else None
+        chunk_sizes: int | np.ndarray | None = (
+            index[1] if isinstance(index, tuple) else None
+        )
 
         if self.batch_size > 0:
             strategy = EvaluateStrategy.CHUNKED
@@ -1180,6 +1182,16 @@ class EvaluatedColumn:
                     self.__should_unpack_data,
                 )
             case EvaluateStrategy.ROW_WISE:
+                return evaluate_chunks(
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    1,
+                    self.__format,
+                    self.__should_unpack_data,
+                    stack_chunks=True,
+                )
+            case EvaluateStrategy.CONCATENATE_ROWS:
                 return evaluate_chunks(
                     data,
                     self.__func,

@@ -332,6 +332,12 @@ class Dataset:
         rows will be passed to the function one at a time. If the function returns None, this method
         will also return None as output.
 
+        During row-wise evaluation, array outputs have different interpretations depending on
+        ``insert``. With ``insert=True``, each returned array is one entry in a potentially
+        multidimensional column, so the per-row arrays are stacked. With ``insert=False``,
+        per-row arrays are concatenated. Return a two-dimensional array with shape
+        ``(1, width)`` from each row when directly returning a two-dimensional result.
+
         Keyword arguments can be used to pass in external values (i.e., values that are not dataset
         columns) to the function.
         For example, we can compute each halo's gas fraction bias — how much gas it retains relative to
@@ -400,7 +406,6 @@ class Dataset:
         format="astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
-        _verify: bool = True,
         **evaluate_kwargs,
     ) -> Dataset:
         """Evaluate a function and use its outputs to construct a new dataset.
@@ -408,7 +413,9 @@ class Dataset:
         Unlike :meth:`evaluate`, this method always evaluates ``func`` immediately
         and places only its output columns in the returned dataset. Output columns
         must be NumPy arrays or Astropy quantities with equal lengths. Their length
-        does not need to match this dataset.
+        does not need to match this dataset. During row-wise evaluation, arrays from
+        successive input rows are concatenated, so each input row may produce a
+        different number of output rows.
 
         Parameters
         ----------
@@ -417,9 +424,6 @@ class Dataset:
         vectorize : bool, default=False
             Whether to provide full columns instead of individual rows. Ignored
             when ``batch_size`` is set.
-        insert : bool, default=True
-            Accepted for compatibility with :meth:`evaluate`. The function is
-            always evaluated with ``insert=False``.
         format : str, default="astropy"
             The format in which column data is provided to ``func``.
         batch_size : int, default=-1
@@ -434,7 +438,7 @@ class Dataset:
         -------
         Dataset
             A new in-memory dataset containing the evaluated output columns and
-            retaining this dataset's header and region.
+            retaining this dataset's header. Spatial information is not retained.
 
         Raises
         ------

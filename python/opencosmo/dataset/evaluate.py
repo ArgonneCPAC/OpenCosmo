@@ -45,6 +45,8 @@ def build_evaluated_column(
             default_strategy = "vectorize"
 
     strategy = evaluate_kwargs.pop("strategy", default_strategy)
+    if not insert and strategy == "row_wise":
+        strategy = "concatenate_rows"
     # Structure collections pass the "chunked" strategy to datasets, which causes the dataset
     # To be evaluated on a structure-by-structure basis. This supersedes all other options.
     if strategy == "chunked":

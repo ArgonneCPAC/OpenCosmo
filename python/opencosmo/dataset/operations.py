@@ -181,6 +181,7 @@ def evaluate(
     format="astropy",
     batch_size: int = -1,
     allow_overwrite: bool = False,
+    require_length: bool = True,
     **evaluate_kwargs,
 ):
     verify_format(format)

@@ -464,6 +464,17 @@ def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):
     np.testing.assert_array_equal(data["copy"], [0, 0, 1, 0, 1, 2, 0, 1, 2, 3])
 
 
+def test_evaluate_noinsert_requires_2d_output_for_2d_column(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+
+    def profile(fof_halo_mass):
+        return np.full((1, 3), fof_halo_mass.value)
+
+    result = ds.evaluate(profile, insert=False, format="astropy")
+
+    assert result["profile"].shape == (4, 3)
+
+
 @pytest.mark.parametrize(
     ("output", "error", "message"),
     [
