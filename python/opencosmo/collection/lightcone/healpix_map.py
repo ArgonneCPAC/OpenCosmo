@@ -40,6 +40,7 @@ from opencosmo.spatial.region import (
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
+    from astropy.io import fits
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset import Dataset
@@ -672,23 +673,42 @@ class HealpixMap(dict):
         self,
         centers: SkyCoord,
         angular_size: float,
-        format: str = "hdul",
-        npix: int | None = 64,
-    ):
+        npix: int = 64,
+    ) -> Generator[fits.HDUList, None, None]:
+        """Create square map cutouts centered at sky coordinates.
+
+        Parameters
+        ----------
+        centers : astropy.coordinates.SkyCoord
+            Centers of the requested cutouts.
+        angular_size : float
+            Angular width of each cutout, in degrees. Must be positive.
+        npix : int, default=64
+            Number of pixels along each side of each output image. Must be
+            positive.
+
+        Yields
+        ------
+        cutout : astropy.io.fits.HDUList
+            An in-memory FITS file containing one image extension per map
+            column. Image extensions use a celestial TAN WCS.
+
+        Raises
+        ------
+        ValueError
+            If ``angular_size`` or ``npix`` is not positive.
+        TypeError
+            If ``npix`` is not an integer.
+
+        Notes
+        -----
+        This method is intended for small postage-stamp cutouts. Very large
+        cutouts may be significantly distorted by the TAN projection.
         """
-        Create a set of square cutouts centered at points defined by `centered` with
-        size `size`. Several output formats are available:
-
-            healsparse: Return a healsparse map containing all pixels that overlap with the cutout
-            hdu: Return an in-memory HDU List with WCS in the header.
-                 Data is re-projected onto a grid with `npix` pixels to a side
-
-
-
-
-        Warning: This method is intended for use with small, postage stamp coutouts
-        around individual objects. Very large cutouts may not look exactly like you expect.
-        """
+        if not isinstance(npix, int) or isinstance(npix, bool):
+            raise TypeError("npix must be an integer")
+        if npix <= 0:
+            raise ValueError("npix must be positive")
 
         pixels = get_included_pixels(centers, angular_size, self.nside)
         if not self.full_sky:
@@ -709,7 +729,7 @@ class HealpixMap(dict):
             )
             region_data = {k: d[index_to_include] for k, d in data.items()}
             yield convert_format(
-                format,
+                "hdul",
                 region_pixels,
                 region_data,
                 self.nside,

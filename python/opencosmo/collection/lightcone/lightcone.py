@@ -63,6 +63,7 @@ if TYPE_CHECKING:
 
     import astropy.units as u  # type: ignore
     import numpy.typing as npt
+    from astropy.io import fits
 
     from opencosmo.collection.lightcone.healpix_map import HealpixMap
     from opencosmo.column.column import (
@@ -507,13 +508,44 @@ class Lightcone(dict):
             HookPoint.LightconeOpen, LightconeOpenCtx(result, open_kwargs)
         ).lightcone
 
-    def cutouts(self, shape: Literal["circle", "square"], size: float, format: str):
+    def cutouts(
+        self, size: float, npix: int = 64
+    ) -> Generator[tuple[dict[str, float | u.Quantity], fits.HDUList], None, None]:
+        """Create square map cutouts centered on the catalog objects.
 
+        The map opened alongside this lightcone is sampled around each object's
+        ``ra`` and ``dec`` coordinates. Each result contains the catalog row and
+        a FITS HDU list holding the corresponding square cutout.
+
+        Parameters
+        ----------
+        size : float
+            Angular width of each cutout, in degrees. Must be positive.
+        npix : int, default=64
+            Number of pixels along each side of the output image. Must be
+            positive.
+
+        Yields
+        ------
+        row : dict
+            The catalog row at the center of the cutout.
+        cutout : astropy.io.fits.HDUList
+            An in-memory FITS file containing one image extension per map
+            column. Image extensions use a celestial TAN WCS.
+
+        Raises
+        ------
+        ValueError
+            If no map was opened with the lightcone, or if ``size`` or ``npix``
+            is not positive.
+        TypeError
+            If ``npix`` is not an integer.
+        """
         if self.__maps is None:
-            raise ValueError()
+            raise ValueError("No map was opened with this lightcone")
 
         centers = SkyCoord(**self.select("ra", "dec").get_data())
-        cutouts = self.__maps.cutouts(centers, size)
+        cutouts = self.__maps.cutouts(centers, size, npix=npix)
 
         for entry, cutout in zip(self.rows(), cutouts):
             yield entry, cutout
