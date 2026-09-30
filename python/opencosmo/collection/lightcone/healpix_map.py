@@ -711,14 +711,20 @@ class HealpixMap(dict):
             raise ValueError("npix must be positive")
 
         pixels = get_included_pixels(centers, angular_size, self.nside)
-        if not self.full_sky:
-            _, idx, _ = np.intersect1d(pixels, self.pixels, return_indices=True)
-            pixels = pixels[idx]
+        if len(centers) == 0:
+            return
 
-        print(pixels.max() - len(self))
-        print(len(pixels))
-        _, data = self.take_rows(pixels).get_data("raw")
-        print(data)
+        if self.full_sky:
+            rows = pixels
+        else:
+            pixels, _, rows = np.intersect1d(
+                pixels, self.pixels, assume_unique=True, return_indices=True
+            )
+
+        if len(rows) == 0:
+            data = {name: np.empty(0, dtype=np.float64) for name in self.columns}
+        else:
+            pixels, data = self.__take_rows(rows).get_data("raw")
 
         for center in centers:
             region_pixels = make_skybox(center, angular_size).get_healpix_intersections(

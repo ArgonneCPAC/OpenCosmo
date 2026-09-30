@@ -4,10 +4,12 @@ import healsparse as hsp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
 from healsparse import HealSparseMap
 from opencosmo.spatial.healpix import HealpixRegion
 
 import opencosmo as oc
+from opencosmo.collection.lightcone import healpix_map as healpix_map_module
 
 
 @pytest.fixture
@@ -39,6 +41,45 @@ def test_healpix_index(healpix_map_path):
     seps = seps.to(u.degree)
     assert all(seps < radius)
     assert len(data["tsz"].valid_pixels) == n_raw
+
+
+def test_partial_sky_cutout_uses_map_row_positions(healpix_map_path, monkeypatch):
+    center = SkyCoord(45, -45, unit="deg")
+    healpix_map = oc.open(healpix_map_path).bound(oc.make_cone(center, 2 * u.deg))
+    cutout_pixels = oc.make_skybox(center, 0.25).get_healpix_intersections(
+        healpix_map.nside
+    )
+    monkeypatch.setattr(
+        healpix_map_module,
+        "get_included_pixels",
+        lambda centers, angular_size, nside: cutout_pixels,
+    )
+
+    cutout = next(healpix_map.cutouts(SkyCoord([center]), 0.25, npix=8))
+
+    assert isinstance(cutout, fits.HDUList)
+    assert cutout["TSZ"].data.shape == (8, 8)
+    assert np.isfinite(cutout["TSZ"].data).any()
+
+
+def test_partial_sky_cutout_without_coverage_is_nan(healpix_map_path):
+    covered_center = SkyCoord(45, -45, unit="deg")
+    uncovered_center = SkyCoord(225, 45, unit="deg")
+    healpix_map = oc.open(healpix_map_path).bound(
+        oc.make_cone(covered_center, 2 * u.deg)
+    )
+
+    cutout = next(healpix_map.cutouts(SkyCoord([uncovered_center]), 0.25, npix=8))
+
+    assert cutout["TSZ"].data.shape == (8, 8)
+    assert np.isnan(cutout["TSZ"].data).all()
+
+
+def test_map_cutouts_accept_empty_centers(healpix_map_path):
+    healpix_map = oc.open(healpix_map_path)
+    centers = SkyCoord([], [], unit="deg")
+
+    assert list(healpix_map.cutouts(centers, 0.25, npix=8)) == []
 
 
 def test_healpix_downgrade(healpix_map_path):
