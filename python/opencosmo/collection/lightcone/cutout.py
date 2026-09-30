@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from numbers import Real
 from typing import TYPE_CHECKING
 
 import healpy as hp
 import numpy as np
+from astropy import units as u
 
 from opencosmo._lib import spatial as spatlib
 
@@ -19,7 +21,31 @@ if TYPE_CHECKING:
 DILATION_RINGS = 2
 
 
-def get_included_pixels(coordinates: SkyCoord, size: float, nside: int) -> np.ndarray:
+def validate_cutout_size(size: float | u.Quantity) -> float:
+    """Validate a cutout width and return it in degrees."""
+    if isinstance(size, u.Quantity):
+        if not size.isscalar:
+            raise TypeError("Cutout size must be a scalar")
+        if size.unit == u.dimensionless_unscaled:
+            size = float(size.value)
+        else:
+            try:
+                size = float(size.to_value(u.deg))
+            except u.UnitConversionError as error:
+                raise ValueError("Cutout size must have angular units") from error
+    elif isinstance(size, Real) and not isinstance(size, bool):
+        size = float(size)
+    else:
+        raise TypeError("Cutout size must be a numeric value or angular quantity")
+
+    if not np.isfinite(size) or size <= 0:
+        raise ValueError("Cutout size must be a positive finite value")
+    return size
+
+
+def get_included_pixels(
+    coordinates: SkyCoord, size: float | u.Quantity, nside: int
+) -> np.ndarray:
     """
     Find every HEALPix pixel touched by a set of equally-sized square cutouts.
 
@@ -34,8 +60,9 @@ def get_included_pixels(coordinates: SkyCoord, size: float, nside: int) -> np.nd
     ----------
     coordinates : SkyCoord
         Centers of the cutouts.
-    size : float
-        Angular width of each (square) cutout, in degrees.
+    size : float or astropy.units.Quantity
+        Angular width of each square cutout. Values without units are assumed
+        to be in degrees.
     nside : int
         HEALPix resolution of the map the cutouts will be drawn from. Must be
         a positive power of two.
@@ -62,8 +89,7 @@ def get_included_pixels(coordinates: SkyCoord, size: float, nside: int) -> np.nd
     level = np.log2(nside)
     if not level.is_integer() or level < 0:
         raise ValueError("nside must be a positive power of two!")
-    if size <= 0:
-        raise ValueError("Cutout size must be positive!")
+    size = validate_cutout_size(size)
 
     centers = coordinates.reshape(-1)
     if len(centers) == 0:
@@ -102,17 +128,14 @@ def get_included_pixels(coordinates: SkyCoord, size: float, nside: int) -> np.nd
     # Keep the candidates whose nearest cutout center lies within the disc.
     # Angular separation is monotonic in chord length on the unit sphere, so
     # the cut can be applied directly in Cartesian space.
-    center_vecs = (
-        np.asarray(hp.ang2vec(centers.ra.deg, centers.dec.deg, lonlat=True))
-        .reshape(-1, 3)
-        .astype(np.float64)
-    )  # Will revisit in the future
-    candidate_vecs = (
-        np.asarray(hp.pix2vec(nside, candidates, nest=True))
-        .reshape(-1, 3)
-        .astype(np.float64)
-    )
+    center_vecs = np.asarray(
+        hp.ang2vec(centers.ra.deg, centers.dec.deg, lonlat=True), dtype=np.float64
+    ).reshape(-1, 3)
+    candidate_vecs = np.asarray(
+        hp.pix2vec(nside, candidates, nest=True), dtype=np.float64
+    ).T
+    max_squared_chord_distance = 2.0 - 2.0 * np.cos(radius)
     distances = spatlib.get_closest_distance_3d(
-        center_vecs, candidate_vecs.astype(np.float64), 1
+        center_vecs, candidate_vecs, max_squared_chord_distance
     )
     return np.sort(candidates[np.isfinite(distances)])

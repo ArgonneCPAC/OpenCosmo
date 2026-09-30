@@ -236,8 +236,9 @@ object using its ``ra`` and ``dec`` coordinates:
    for object_row, cutout in lightcone.cutouts(size=0.25, npix=64):
       image = cutout["TSZ"].data
 
-``size`` is the width of the cutout in degrees and ``npix`` is the number of
-pixels along each side. Each cutout is returned as an in-memory
+``size`` is the angular width of the cutout and can be an Astropy quantity such
+as ``15 * astropy.units.arcmin``. Values without units are interpreted as
+degrees. ``npix`` is the number of pixels along each side. Each cutout is returned as an in-memory
 ``astropy.io.fits.HDUList`` with a celestial TAN WCS.
 
 

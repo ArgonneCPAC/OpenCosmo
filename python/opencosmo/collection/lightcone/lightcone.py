@@ -509,7 +509,7 @@ class Lightcone(dict):
         ).lightcone
 
     def cutouts(
-        self, size: float, npix: int = 64
+        self, size: float | u.Quantity, npix: int = 64
     ) -> Generator[tuple[dict[str, float | u.Quantity], fits.HDUList], None, None]:
         """Create square map cutouts centered on the catalog objects.
 
@@ -519,8 +519,9 @@ class Lightcone(dict):
 
         Parameters
         ----------
-        size : float
-            Angular width of each cutout, in degrees. Must be positive.
+        size : float or astropy.units.Quantity
+            Angular width of each cutout. Values without units are assumed to
+            be in degrees. Must be positive.
         npix : int, default=64
             Number of pixels along each side of the output image. Must be
             positive.
@@ -536,13 +537,20 @@ class Lightcone(dict):
         Raises
         ------
         ValueError
-            If no map was opened with the lightcone, or if ``size`` or ``npix``
-            is not positive.
+            If no map was opened with the lightcone, if ``size`` has
+            non-angular units, or if ``size`` or ``npix`` is not positive.
         TypeError
-            If ``npix`` is not an integer.
+            If ``size`` is not a scalar number or quantity, or ``npix`` is not
+            an integer.
         """
         if self.__maps is None:
             raise ValueError("No map was opened with this lightcone")
+        missing_coordinates = {"ra", "dec"}.difference(self.columns)
+        if missing_coordinates:
+            missing = ", ".join(sorted(missing_coordinates))
+            raise ValueError(
+                f"Lightcone cutouts require ra and dec columns; missing: {missing}"
+            )
 
         centers = SkyCoord(**self.select("ra", "dec").get_data())
         cutouts = self.__maps.cutouts(centers, size, npix=npix)

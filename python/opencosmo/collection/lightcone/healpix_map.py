@@ -22,7 +22,10 @@ from astropy.table import Column as AstroColumn  # type: ignore
 from astropy.table import vstack
 
 import opencosmo as oc
-from opencosmo.collection.lightcone.cutout import get_included_pixels
+from opencosmo.collection.lightcone.cutout import (
+    get_included_pixels,
+    validate_cutout_size,
+)
 from opencosmo.collection.lightcone.reproject import convert_format
 from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
@@ -672,7 +675,7 @@ class HealpixMap(dict):
     def cutouts(
         self,
         centers: SkyCoord,
-        angular_size: float,
+        angular_size: float | u.Quantity,
         npix: int = 64,
     ) -> Generator[fits.HDUList, None, None]:
         """Create square map cutouts centered at sky coordinates.
@@ -681,8 +684,9 @@ class HealpixMap(dict):
         ----------
         centers : astropy.coordinates.SkyCoord
             Centers of the requested cutouts.
-        angular_size : float
-            Angular width of each cutout, in degrees. Must be positive.
+        angular_size : float or astropy.units.Quantity
+            Angular width of each cutout. Values without units are assumed to
+            be in degrees. Must be positive.
         npix : int, default=64
             Number of pixels along each side of each output image. Must be
             positive.
@@ -696,9 +700,10 @@ class HealpixMap(dict):
         Raises
         ------
         ValueError
-            If ``angular_size`` or ``npix`` is not positive.
+            If ``angular_size`` has non-angular units, or if ``angular_size``
+            or ``npix`` is not positive.
         TypeError
-            If ``npix`` is not an integer.
+            If ``angular_size`` is not scalar or ``npix`` is not an integer.
 
         Notes
         -----
@@ -709,6 +714,7 @@ class HealpixMap(dict):
             raise TypeError("npix must be an integer")
         if npix <= 0:
             raise ValueError("npix must be positive")
+        angular_size = validate_cutout_size(angular_size)
 
         pixels = get_included_pixels(centers, angular_size, self.nside)
         if len(centers) == 0:
