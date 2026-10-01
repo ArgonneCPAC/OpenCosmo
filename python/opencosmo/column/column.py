@@ -21,7 +21,6 @@ import numpy as np
 from opencosmo.column.evaluate import (
     EvaluateStrategy,
     evaluate_chunks,
-    evaluate_rows,
     evaluate_vectorized,
 )
 from opencosmo.units import UnitsError
@@ -1039,6 +1038,7 @@ class EvaluatedColumn:
         units: dict[str, Optional[u.Unit]],
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         batch_size: int = -1,
+        should_unpack_data: bool = True,
         description: Optional[str] = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = False,
@@ -1047,6 +1047,7 @@ class EvaluatedColumn:
     ):
         self.__func = func
         self.__requires = requires
+        self.__should_unpack_data = should_unpack_data
         self.__kwargs = kwargs
         self.__produces = produces
         self.__units = units
@@ -1086,6 +1087,7 @@ class EvaluatedColumn:
             self.__units,
             self.__strategy,
             self.__batch_size,
+            self.__should_unpack_data,
             self.description,
             _dep_map=dep_map,
             no_cache=self.__no_cache,
@@ -1110,6 +1112,7 @@ class EvaluatedColumn:
             self.__units,
             self.__strategy,
             self.__batch_size,
+            self.__should_unpack_data,
             self.description,
             _dep_map=self.__dep_map,
             **new_kwargs,
@@ -1158,31 +1161,57 @@ class EvaluatedColumn:
 
     def evaluate(self, data: dict[str, np.ndarray], index: DataIndex | None):
         data = {name: data[name] for name in self.__requires}
-        chunk_sizes = index[1] if isinstance(index, tuple) else None
+        chunk_sizes: int | np.ndarray | None = (
+            index[1] if isinstance(index, tuple) else None
+        )
 
         if self.batch_size > 0:
-            length = len(next(iter(data.values())))
             strategy = EvaluateStrategy.CHUNKED
-            chunk_sizes = np.full(
-                np.ceil(length / self.batch_size).astype(int), self.batch_size
-            )
-            chunk_sizes[-1] = (length % self.batch_size) or self.batch_size
+            chunk_sizes = self.batch_size
 
         else:
             strategy = self.__strategy
 
         match strategy:
             case EvaluateStrategy.VECTORIZE:
-                return evaluate_vectorized(data, self.__func, self.__kwargs, index)
+                return evaluate_vectorized(
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    index,
+                    self.__should_unpack_data,
+                )
             case EvaluateStrategy.ROW_WISE:
-                return evaluate_rows(data, self.__func, self.__kwargs, self.__format)
+                return evaluate_chunks(
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    1,
+                    self.__format,
+                    self.__should_unpack_data,
+                    stack_chunks=True,
+                )
+            case EvaluateStrategy.CONCATENATE_ROWS:
+                return evaluate_chunks(
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    1,
+                    self.__format,
+                    self.__should_unpack_data,
+                )
             case EvaluateStrategy.CHUNKED:
                 if chunk_sizes is None:
                     raise ValueError(
                         "Cannot evaluate in CHUNKED strategy with a non-chunked index"
                     )
                 return evaluate_chunks(
-                    data, self.__func, self.__kwargs, chunk_sizes, self.__format
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    chunk_sizes,
+                    self.__format,
+                    self.__should_unpack_data,
                 )
 
     def evaluate_for_storage(

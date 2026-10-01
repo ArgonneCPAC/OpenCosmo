@@ -412,6 +412,49 @@ def test_shared_cache_is_readable_from_readonly_directory(
             os.chmod(p, mode)
 
 
+def _discover_readonly_without_walking(data_dir: Path, path: Path) -> tuple:
+    """Discover ``path`` with ``data_dir`` read-only, failing if HDF5 is walked."""
+    import opencosmo.io.discover as discover_module
+
+    original_modes = {p: p.stat().st_mode for p in (data_dir, *data_dir.rglob("*"))}
+    for p in original_modes:
+        os.chmod(p, 0o555)
+
+    def _fail(p: "Path"):
+        raise AssertionError(f"walked {p}")
+
+    original_discover = discover_module.discover_file
+    discover_module.discover_file = _fail  # type: ignore[assignment]
+    try:
+        return discover_module.discover_all([path], comm=None)
+    finally:
+        discover_module.discover_file = original_discover  # type: ignore[assignment]
+        for p, mode in original_modes.items():
+            os.chmod(p, mode)
+
+
+def test_relative_cache_survives_a_move(test_data, tmp_path: "Path") -> None:
+    """A relative cache still hits after the data dir is mounted elsewhere."""
+    from opencosmo.io.cache import populate_directory_cache
+
+    src = test_data.snapshot.primary.halo_properties
+    data_dir = tmp_path / "original"
+    data_dir.mkdir()
+    (data_dir / "haloproperties.hdf5").write_bytes(src.read_bytes())
+
+    populate_directory_cache(data_dir, relative_path=True)
+
+    moved = tmp_path / "container" / "mnt" / "data"
+    moved.parent.mkdir(parents=True)
+    data_dir.rename(moved)
+
+    layouts = _discover_readonly_without_walking(moved, moved / "haloproperties.hdf5")
+
+    assert len(layouts) == 1
+    assert layouts[0].error is None
+    assert layouts[0].path == moved / "haloproperties.hdf5"
+
+
 class TestCacheDirSelection:
     """The read path may use a directory-shared cache; the write path never may."""
 

@@ -13,8 +13,9 @@ from opencosmo.spatial.tree import Tree
 from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
+    from astropy import units as u
+
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.spatial import Region
 
 T = TypeVar("T")
 GroupedColumnData = dict[str, dict[str, T]]
@@ -24,7 +25,6 @@ SpatialIndexData = dict[int, tuple[np.ndarray, int]]
 def build_dataset_from_data(
     data: GroupedColumnData[np.ndarray],
     header: OpenCosmoHeader,
-    region: Region,
     spatial_index_data: Optional[SpatialIndexData],
     descriptions: GroupedColumnData[str] = {},
 ) -> Dataset:
@@ -47,12 +47,18 @@ def build_dataset_from_data(
         data_group,
         header,
         header.file.unit_convention,
-        region,
         {},
         data_descriptions,
         tree=tree,
     )
     return Dataset(new_state)
+
+
+def build_dataset_from_evaluated_data(
+    data: dict[str, np.ndarray | u.Quantity], header: OpenCosmoHeader
+) -> Dataset:
+    """Build an in-memory dataset from results in the file's unit convention."""
+    return Dataset(state.state_from_evaluated_data(data, header))
 
 
 def make_spatial_index(data: SpatialIndexData):

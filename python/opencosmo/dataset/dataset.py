@@ -9,6 +9,7 @@ from typing import (
     Mapping,
     Optional,
     TypeAlias,
+    cast,
 )
 from warnings import warn
 
@@ -298,7 +299,6 @@ class Dataset:
         format="astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
-        _verify: bool = True,
         **evaluate_kwargs,
     ) -> Dataset | dict[str, np.ndarray]:
         """
@@ -311,9 +311,16 @@ class Dataset:
         columns will not change under unit transformations. You may also choose to simply return the result
         instead of adding it as a column.
 
-        The function should take in arguments with the same name as the columns in this dataset that
-        are needed for the computation, and should return a dictionary of output values. Any addition
-        arguments needed by the function can be passed as keyword arguments to :code:`evaluate`.
+        The function can take one of two supported kinds of inputs:
+
+        1. **Column arguments:** the function explicitly declares parameters whose names
+           match dataset column names it needs (e.g. ``func(fof_halo_mass)``).
+        2. **Data mapping:** the function declares a single ``data`` parameter and does **not** declare
+           any dataset column-name parameters (e.g. ``func(data)``). In this mode, all selected dataset
+           columns are provided under ``data``.
+
+        In both cases, any additional external arguments needed by the function can be passed as keyword
+        arguments to :code:`evaluate`.
 
         The dataset will automatically selected the needed columns to avoid reading unnecessarily reading
         data from disk. The new columns will have the same names as the keys of the output dictionary
@@ -325,7 +332,14 @@ class Dataset:
         rows will be passed to the function one at a time. If the function returns None, this method
         will also return None as output.
 
-        Keyword arguments can be used to pass in external values that are not columns in the dataset.
+        During row-wise evaluation, array outputs have different interpretations depending on
+        ``insert``. With ``insert=True``, each returned array is one entry in a potentially
+        multidimensional column, so the per-row arrays are stacked. With ``insert=False``,
+        per-row arrays are concatenated. Return a two-dimensional array with shape
+        ``(1, width)`` from each row when directly returning a two-dimensional result.
+
+        Keyword arguments can be used to pass in external values (i.e., values that are not dataset
+        columns) to the function.
         For example, we can compute each halo's gas fraction bias — how much gas it retains relative to
         the cosmic baryon fraction — by passing the dataset's cosmology object as a keyword argument:
 
@@ -364,8 +378,7 @@ class Dataset:
 
         **evaluate_kwargs: any,
             Any additional arguments that are required for your function to run. These will be passed directly
-            to the function as keyword arguments. If a kwarg is an array of values with the same length as the dataset,
-            it will be treated as an additional column.
+            to the function as keyword arguments.
 
         Returns
         -------
@@ -380,12 +393,110 @@ class Dataset:
             format,
             batch_size,
             allow_overwrite,
-            _verify,
             **evaluate_kwargs,
         )
         if not insert:
             return result
         return Dataset(result)
+
+    def evaluate_to_dataset(
+        self,
+        func: Callable,
+        vectorize=False,
+        format="astropy",
+        batch_size: int = -1,
+        allow_overwrite: bool = False,
+        **evaluate_kwargs,
+    ) -> Dataset:
+        """Evaluate a function and use its outputs to construct a new dataset.
+
+        Unlike :meth:`evaluate`, this method always evaluates ``func`` immediately
+        and places only its output columns in the returned dataset. Evaluation uses
+        the file's baseline unit convention and ignores explicit conversions on this
+        dataset. The returned dataset restores this dataset's unit convention and
+        blanket unit conversions. Output columns must be NumPy arrays or Astropy
+        quantities with equal lengths. Quantities become convention-aware columns in
+        the returned dataset; NumPy arrays remain unitless. Their length does not need
+        to match this dataset. During row-wise evaluation, arrays from successive input
+        rows are concatenated, so each input row may produce a different number of
+        output rows.
+
+        Parameters
+        ----------
+        func : Callable
+            The function to evaluate on the rows in the dataset.
+        vectorize : bool, default=False
+            Whether to provide full columns instead of individual rows. Ignored
+            when ``batch_size`` is set.
+        format : str, default="astropy"
+            The format in which column data is provided to ``func``.
+        batch_size : int, default=-1
+            If positive, provide data to ``func`` in batches of this size.
+        allow_overwrite : bool, default=False
+            Accepted for compatibility with :meth:`evaluate`; the returned dataset
+            contains no columns from the original dataset to overwrite.
+        **evaluate_kwargs : Any
+            Additional keyword arguments passed to ``func``.
+
+        Returns
+        -------
+        Dataset
+            A new in-memory dataset containing the evaluated output columns and
+            retaining this dataset's header. Spatial information is not retained.
+
+        Raises
+        ------
+        TypeError
+            If an output is not a NumPy array or Astropy quantity.
+        ValueError
+            If the output columns do not all have equal lengths.
+        """
+        from opencosmo.dataset.build import build_dataset_from_evaluated_data
+
+        baseline_state = dsops.with_units(
+            self.__state,
+            self.__state.unit_handler.base_convention.value,
+            {},
+        )
+
+        result = cast(
+            "dict[str, np.ndarray | u.Quantity]",
+            dsops.evaluate(
+                baseline_state,
+                func,
+                vectorize,
+                False,
+                format,
+                batch_size,
+                allow_overwrite,
+                **evaluate_kwargs,
+            ),
+        )
+
+        output_length: int | None = None
+        for name, output in result.items():
+            if not isinstance(output, (np.ndarray, u.Quantity)):
+                raise TypeError(
+                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity, "
+                    f"not {type(output).__name__}"
+                )
+            if output.ndim == 0:
+                raise TypeError(
+                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity "
+                    "with a length"
+                )
+            if output_length is None:
+                output_length = len(output)
+            elif len(output) != output_length:
+                raise ValueError("Evaluate output columns must have equal lengths")
+
+        evaluated = build_dataset_from_evaluated_data(result, baseline_state.header)
+        output_state = dsops.with_units(
+            evaluated._state,
+            self.__state.unit_handler.current_convention.value,
+            self.__state.unit_handler.blanket_conversions,
+        )
+        return Dataset(output_state)
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """

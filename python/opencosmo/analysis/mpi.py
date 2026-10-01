@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from opencosmo import SimulationCollection
+from opencosmo import Lightcone, SimulationCollection
 from opencosmo.dataset.formats import convert_data, verify_format
 from opencosmo.mpi import (
     MPI,
@@ -15,6 +15,7 @@ from opencosmo.mpi import (
     get_all_keys,
     get_comm_world,
     parallel_assert,
+    reduce_data,
 )
 
 if TYPE_CHECKING:
@@ -27,6 +28,18 @@ class EvalOperation(Enum):
     SUM = "sum"
     PROD = "prod"
     AVG = "avg"
+
+
+def __evaluate_for_reduce(
+    dataset,
+    function: Callable,
+    operation: EvalOperation,
+    evaluate_kwargs: dict[str, Any],
+):
+    kwargs = dict(evaluate_kwargs)
+    if isinstance(dataset, Lightcone):
+        kwargs["combine_mode"] = operation.value
+    return dataset.evaluate(function, insert=False, **kwargs)
 
 
 def reduce(
@@ -104,6 +117,10 @@ def reduce(
     each value has the same shape a single dataset would produce. If you pass a
     :code:`plotting_function`, it will receive these simulation-name keys as keyword arguments.
 
+    If :code:`dataset` is a :py:class:`Lightcone <opencosmo.Lightcone>`, results from its
+    underlying datasets are combined with the requested operation before results are combined
+    across MPI processes.
+
     Parameters
     ----------
     dataset: Dataset | Collection
@@ -143,15 +160,15 @@ def reduce(
     evaluate_kwargs |= ekwargs
 
     _ = evaluate_kwargs.pop("insert", None)
+    op = EvalOperation(operation)
     comm = get_comm_world()
     if comm is None:
-        result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
+        result = __evaluate_for_reduce(dataset, function, op, evaluate_kwargs)
         return process_output(
             result, plotting_function, plotting_kwargs, evaluate_kwargs
         )
 
-    op = EvalOperation(operation)
-    result = dataset.evaluate(function, insert=False, **evaluate_kwargs)
+    result = __evaluate_for_reduce(dataset, function, op, evaluate_kwargs)
 
     if isinstance(dataset, SimulationCollection):
         output = __reduce_multi_dataset_result(dataset, result, op, all, comm)
@@ -195,7 +212,6 @@ def __reduce_single_dataset_result(
 ) -> Any:
     results_to_combine = __verify_results(result, comm)
     keys = get_all_keys(results_to_combine, comm)
-    reduce_func = comm.allreduce if all else comm.reduce
     output: dict[str, Any] = {}
 
     match op:
@@ -212,7 +228,9 @@ def __reduce_single_dataset_result(
             combine_operation = MPI.PROD
 
     for key in keys:
-        output[key] = reduce_func(results_to_combine[key], op=combine_operation)
+        output[key] = reduce_data(
+            results_to_combine[key], comm, all=all, op=combine_operation
+        )
 
     if not isinstance(result, dict):
         return next(iter(output.values()))

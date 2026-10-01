@@ -8,6 +8,7 @@ from astropy.wcs import WCS
 from numpy import random
 
 import opencosmo as oc
+from opencosmo.analysis import reduce
 
 
 @pytest.fixture
@@ -401,6 +402,140 @@ def test_lc_collection_evaluate_noinsert(
 
     assert len(result["offset"]) == len(ds)
     assert np.all(result["offset"] > 0)
+
+
+def test_lc_collection_evaluate_noinsert_sum(
+    haloproperties_600_path, haloproperties_601_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def statistics(fof_halo_mass):
+        return np.array([len(fof_halo_mass), fof_halo_mass.sum()])
+
+    result = ds.evaluate(
+        statistics,
+        vectorize=True,
+        insert=False,
+        format="numpy",
+        combine_mode="sum",
+    )
+    mass = ds.select("fof_halo_mass").get_data("numpy")
+
+    assert np.allclose(result["statistics"], [len(ds), mass.sum()])
+
+
+@pytest.mark.parametrize("combine_mode", ["prod", "avg"])
+def test_lc_collection_evaluate_noinsert_other_reductions(
+    haloproperties_600_path, haloproperties_601_path, combine_mode
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def count(fof_halo_mass):
+        return np.array([len(fof_halo_mass)], dtype=float)
+
+    result = ds.evaluate(
+        count,
+        vectorize=True,
+        insert=False,
+        format="numpy",
+        combine_mode=combine_mode,
+    )
+    child_lengths = np.array([len(child) for child in ds.values()])
+    if combine_mode == "prod":
+        expected = child_lengths.prod()
+    else:
+        expected = np.average(child_lengths, weights=child_lengths)
+
+    assert np.allclose(result["count"], [expected])
+
+
+@pytest.mark.parametrize("operation", ["sum", "prod", "avg"])
+def test_reduce_lightcone_uses_combine_mode(
+    haloproperties_600_path, haloproperties_601_path, operation
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def count(fof_halo_mass):
+        return np.array([len(fof_halo_mass)], dtype=float)
+
+    result = reduce(
+        ds,
+        count,
+        operation=operation,
+        vectorize=True,
+        format="numpy",
+    )
+    child_lengths = np.array([len(child) for child in ds.values()])
+    if operation == "sum":
+        expected = child_lengths.sum()
+    elif operation == "prod":
+        expected = child_lengths.prod()
+    else:
+        expected = np.average(child_lengths, weights=child_lengths)
+
+    assert np.allclose(result["count"], [expected])
+
+
+def test_lc_collection_evaluate_combine_mode_only_applies_without_insert(
+    haloproperties_600_path, haloproperties_601_path
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    def double_mass(fof_halo_mass):
+        return 2 * fof_halo_mass
+
+    result = ds.evaluate(
+        double_mass,
+        vectorize=True,
+        insert=True,
+        format="numpy",
+        combine_mode="sum",
+    )
+
+    assert len(result.select("double_mass").get_data("numpy")) == len(ds)
+
+
+@pytest.mark.parametrize("insert", [False, True])
+def test_lc_collection_evaluate_rejects_unknown_combine_mode_before_evaluation(
+    haloproperties_600_path, haloproperties_601_path, insert
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+
+    with pytest.raises(ValueError, match="Unknown combine mode invalid"):
+        ds.evaluate(
+            lambda fof_halo_mass: fof_halo_mass,
+            vectorize=True,
+            insert=insert,
+            combine_mode="invalid",
+        )
+
+
+@pytest.mark.parametrize("combine_mode", ["sum", "prod", "avg"])
+def test_lc_collection_evaluate_reduction_requires_equal_result_lengths(
+    haloproperties_600_path, haloproperties_601_path, combine_mode
+):
+    ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
+    output_sizes = {name: index + 1 for index, name in enumerate(ds)}
+
+    def statistic(fof_halo_mass, output_size):
+        return np.arange(output_size)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            f"Cannot combine evaluated output 'statistic' with "
+            f"combine_mode='{combine_mode}': all underlying dataset results "
+            "must have the same length; got"
+        ),
+    ):
+        ds.evaluate(
+            statistic,
+            vectorize=True,
+            insert=False,
+            format="numpy",
+            combine_mode=combine_mode,
+            output_size=output_sizes,
+        )
 
 
 class Counter:

@@ -8,7 +8,13 @@ For these kinds of cases, OpenCosmo provides the :py:meth:`evaluate <opencosmo.D
 Evaluating on Datasets
 ----------------------
 
-To evaluate a function on all rows in a single dataset, simply write a function that takes in arguments with the same name as some of the columns in your dataset and returns a dictionary of values:
+To evaluate a function on all rows in a single dataset, your function must match one of two binding
+styles and return a dictionary of values:
+
+* **Column arguments:** the function explicitly declares parameters whose names match dataset column
+  names (e.g. ``def f(fof_halo_mass): ...``).
+* **Data mapping:** the function declares a ``data`` parameter and does not declare any dataset column
+  name parameters. In this mode, all selected dataset columns are provided under ``data``.
 
 .. code-block:: python
 
@@ -32,7 +38,9 @@ Your dataset will now include a column named "nfw_radius" with the radius values
 Additional Arguments
 ^^^^^^^^^^^^^^^^^^^^
 
-If your function requires more arguments than just column names, you can pass them directly as keyword arguments to :py:meth:`evaluate <opencosmo.Dataset.evaluate>`. These arguments will be passed along to the underlying without modification. For example, suppose we wanted to perturb the true mass of a halo by some random amount to simulate the uncertainty associated with inferring masses through observation:
+If your function requires more arguments than just dataset-bound inputs (column arguments or ``data``),
+you can pass them directly as keyword arguments to :py:meth:`evaluate <opencosmo.Dataset.evaluate>`. These
+arguments are passed through without modification.
 
 .. code-block:: python
 
@@ -66,13 +74,14 @@ Although the above example will work it involves performing the computation one 
         ds = oc.open("haloproperties.hdf5")
         dm_vals = lambda: norm.rvs(1, 0.25, len(ds))
 
-        def perturbed_mass(sod_halo_cdelta, sod_halo_mass, dm):
-                mass_perturbation = sod_halo_mass * dm / sod_halo_cdelta
-                return mass_perturbation
+         def perturbed_mass(sod_halo_cdelta, sod_halo_mass, dm):
+                 mass_perturbation = sod_halo_mass * dm / sod_halo_cdelta
+                 return mass_perturbation
                 
         result = ds.evaluate(perturbed_mass, dm = dm_vals)
 
-The toolkit will automatically detect that dm_vals is the same length as the dataset, and break it up by row accordingly.
+Note: if an external kwarg has the same length as the dataset, OpenCosmo may provide it in a row-wise fashion.
+If you need explicit vectorized behavior, set ``vectorize=True``.
 
 However this is still not very efficient. This entire computation can be vectorized by simply doing the computation with the entire columns. Because Astropy columns are just numpy arrays, standard numpy syntax will work without issue. You can request vectorization by simply setting :code:`vectorize = True` in the call to :py:meth:`evaluate <opencosmo.Dataset.evaluate>`:
 
@@ -108,6 +117,43 @@ In some cases you may want to operate on may rows at once, but it would not be f
         result = ds.evaluate(perturbed_mass, dm = dm_vals, batch_size = 100_000)
 
 Setting :code:`batch_size` causes :code:`vectorize` to be ignored. Data will be passed into your function in batches which are *at most* this size. In certain cases they may also be smaller, but they will never be larger.
+
+Building a Dataset from Evaluated Results
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use :py:meth:`evaluate_to_dataset <opencosmo.Dataset.evaluate_to_dataset>` when an
+evaluation produces a new table rather than columns aligned with the input dataset.
+The function is evaluated immediately, and its NumPy array or Astropy quantity outputs
+become the columns of a new in-memory dataset. All outputs must have equal lengths, but
+that length does not need to match the input dataset. The new dataset retains the input
+dataset's header but does not carry its spatial information.
+
+The function receives data in the source file's baseline unit convention. After the
+result is stored in that baseline convention, the new dataset is returned using the
+source dataset's current unit convention and blanket unit conversions. Per-column
+conversions are not transferred because the evaluation defines a new set of columns.
+Astropy quantity outputs become convention-aware columns in the new dataset, while
+plain NumPy array outputs are unitless.
+
+With the default row-wise evaluation, each input row may return a different number
+of output rows. OpenCosmo concatenates those arrays in input-row order.
+
+This differs from row-wise :py:meth:`evaluate <opencosmo.Dataset.evaluate>` with
+``insert=True``. When inserting, an array returned for one input row is treated as
+one entry in a multidimensional column, and the per-row arrays are stacked. When
+``insert=False`` (including the evaluation performed by ``evaluate_to_dataset``),
+the arrays are concatenated instead. To directly return a two-dimensional array in
+this mode, return an array shaped ``(1, width)`` for each input row.
+
+.. code-block:: python
+
+        def summary(data):
+                return {
+                        "minimum": np.array([data["mass"].min()]),
+                        "maximum": np.array([data["mass"].max()]),
+                }
+
+        summary_dataset = ds.evaluate_to_dataset(summary, vectorize=True)
 
 Evaluating on Structure Collections
 -----------------------------------
@@ -249,6 +295,8 @@ Evaluating on Lightcones and Simulation Collections
 ---------------------------------------------------
 
 Using :py:meth:`Lightcone.evaluate <opencosmo.Lightcone.evaluate>` is identical to using :py:meth:`Dataset.evaluate <opencosmo.Dataset.evaluate>`. Although OpenCosmo represents lighcones internally as a collection of :py:class:`Datasets <opencosmo.Dataset>`, the details of broadcasting over these datasets are handled for you.
+
+When ``insert=False``, results from the underlying datasets are concatenated by default. Set ``combine_mode`` to ``"sum"``, ``"prod"``, or ``"avg"`` to combine those results element-wise instead. These modes require every underlying result to have the same length. Averages are weighted by the number of rows in each underlying dataset. :py:func:`opencosmo.analysis.reduce` selects the matching mode automatically when reducing a lightcone.
 
 Using :py:meth:`SimulationCollection.evaluate <opencosmo.SimulationCollection.evaluate>` should also feel very familiar. However if you plan to provide arguments on a per-dataset basis (i.e. an extra numpy array that is used in the calculation) these arguments must be provided as a dictionary with the same keys as the names of the dataset in the :py:class:`SimulationCollection <opencosmo.SimulationCollection>`. For example:
 

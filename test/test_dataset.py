@@ -390,6 +390,165 @@ def test_visit_vectorize_multiple_noinsert(input_path):
     assert np.all(result["fof_px"] == data["fof_halo_mass"] * data["fof_halo_com_vx"])
 
 
+def test_evaluate_data_binding_passes_all_columns(input_path):
+    ds = oc.open(input_path).take(50)
+
+    def fof_total(data, offset):
+        # Ensure the evaluator passes the full selected dataset under `data`.
+        assert set(data.keys()) == set(ds.columns)
+        return data["fof_halo_mass"] + offset
+
+    result = ds.evaluate(
+        fof_total, offset=3, vectorize=False, insert=False, format="numpy"
+    )
+    expected = ds.get_data("numpy")["fof_halo_mass"] + 3
+    assert np.all(result["fof_total"] == expected)
+
+
+def test_evaluate_vectorize_passes_matching_column_arguments(input_path):
+    ds = oc.open(input_path).take(50)
+
+    def fof_double(fof_halo_mass):
+        return fof_halo_mass * 2
+
+    result = ds.evaluate(fof_double, vectorize=True, insert=False, format="numpy")
+    expected = ds.get_data("numpy")["fof_halo_mass"] * 2
+    assert np.all(result["fof_double"] == expected)
+
+
+def test_evaluate_rejects_signature_without_columns_or_data(input_path):
+    ds = oc.open(input_path)
+
+    def invalid(not_a_column):
+        return not_a_column
+
+    with pytest.raises(ValueError, match="column names|data"):
+        ds.evaluate(invalid, vectorize=True, insert=False, format="numpy")
+
+
+def test_evaluate_to_dataset_allows_different_length(input_path):
+    ds = oc.open(input_path).take(50)
+
+    def summarize(fof_halo_mass):
+        return {
+            "mass": fof_halo_mass[:3],
+            "rank": np.arange(3),
+        }
+
+    result = ds.evaluate_to_dataset(summarize, vectorize=True)
+    data = result.get_data()
+
+    assert len(result) == 3
+    assert result.header == ds.header
+    assert data["mass"].unit == ds.units["fof_halo_mass"]
+    np.testing.assert_array_equal(data["rank"], np.arange(3))
+
+
+def test_evaluate_to_dataset_uses_baseline_units_and_does_not_cache(input_path):
+    original = oc.open(input_path).take(5, at="start")
+    base_convention = original._state.unit_handler.base_convention.value
+    baseline = original.with_units(base_convention)
+    source = original.with_units("physical", conversions={u.Mpc: u.km})
+    seen_units = []
+
+    def copy_position(fof_halo_center_x):
+        seen_units.append(fof_halo_center_x.unit)
+        return {
+            "position": fof_halo_center_x,
+            "row": np.arange(len(fof_halo_center_x)),
+        }
+
+    result = source.evaluate_to_dataset(copy_position, vectorize=True)
+    expected = baseline.get_data()["fof_halo_center_x"]
+    data = result.get_data()
+
+    assert seen_units == [expected.unit]
+    assert result._state.unit_handler.current_convention.value == "physical"
+    expected_output = original.with_units("physical").get_data()["fof_halo_center_x"]
+    assert data["position"].unit == u.km
+    np.testing.assert_allclose(data["position"].value, expected_output.to_value(u.km))
+    np.testing.assert_array_equal(data["row"], np.arange(5))
+    assert result._state.cache.columns == set()
+
+    result.get_data()
+    converted = result.with_units("physical", position=u.m)
+    converted.get_data()
+    assert result._state.cache.columns == set()
+    assert converted._state.cache.columns == set()
+
+    source_data = source.get_data()["fof_halo_center_x"]
+    assert source_data.unit == u.km
+
+
+def test_evaluate_to_dataset_converts_conventions_without_caching(input_path):
+    source = oc.open(input_path).take(5, at="start")
+
+    def copy_position(fof_halo_center_x):
+        return {"position": fof_halo_center_x}
+
+    result = source.evaluate_to_dataset(copy_position, vectorize=True)
+    physical = result.with_units("physical")
+    expected = source.with_units("physical").get_data()["fof_halo_center_x"]
+    actual = physical.get_data()
+
+    assert actual.unit == expected.unit
+    np.testing.assert_allclose(actual.value, expected.value)
+    assert result._state.cache.columns == set()
+    assert physical._state.cache.columns == set()
+
+    taken = physical.take(2, at="start").get_data()
+    np.testing.assert_allclose(taken.value, expected[:2].value)
+
+
+def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+    row_number = iter(range(4))
+
+    def expand(fof_halo_mass):
+        count = next(row_number) + 1
+        return {
+            "mass": np.repeat(fof_halo_mass, count),
+            "copy": np.arange(count),
+        }
+
+    result = ds.evaluate_to_dataset(expand)
+    data = result.get_data()
+    source_mass = ds.get_data()["fof_halo_mass"]
+
+    assert len(result) == 10
+    np.testing.assert_array_equal(data["mass"], np.repeat(source_mass, [1, 2, 3, 4]))
+    np.testing.assert_array_equal(data["copy"], [0, 0, 1, 0, 1, 2, 0, 1, 2, 3])
+
+
+def test_evaluate_noinsert_requires_2d_output_for_2d_column(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+
+    def profile(fof_halo_mass):
+        return np.full((1, 3), fof_halo_mass.value)
+
+    result = ds.evaluate(profile, insert=False, format="astropy")
+
+    assert result["profile"].shape == (4, 3)
+
+
+@pytest.mark.parametrize(
+    ("output", "error", "message"),
+    [
+        ({"first": np.arange(2), "second": np.arange(3)}, ValueError, "equal lengths"),
+        ({"invalid": [1, 2]}, TypeError, "NumPy array or Astropy quantity"),
+        ({"scalar": np.array(1)}, TypeError, "with a length"),
+    ],
+)
+def test_evaluate_to_dataset_validates_outputs(input_path, output, error, message):
+    ds = oc.open(input_path).take(10)
+
+    def invalid(data):
+        return output
+
+    with pytest.raises(error, match=message):
+        ds.evaluate_to_dataset(invalid, vectorize=True)
+
+
 def test_visit_rows_nfw(input_path):
     ds = oc.open(input_path).filter(oc.col("sod_halo_cdelta") > 0)
 

@@ -33,7 +33,14 @@ from opencosmo.column.reducer import default_reducer
 from opencosmo.column.select import build_multi_dataset_selections
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
-from opencosmo.dataset.formats import concat_chunks, convert_data, verify_format
+from opencosmo.dataset.formats import (
+    average_chunks,
+    concat_chunks,
+    convert_data,
+    product_chunks,
+    sum_chunks,
+    verify_format,
+)
 from opencosmo.dataset.take import (
     get_end_take_index,
     get_random_take_index,
@@ -577,9 +584,7 @@ class Lightcone(dict):
             z_high, z_low = z_low, z_high
 
         if z_high < z_range[0] or z_low > z_range[1]:
-            raise ValueError(
-                f"This lightcone only ranges from z = {z_range[0]} to z = {z_range[1]}"
-            )
+            return self.take(0, at="start")
 
         elif z_low == z_high:
             raise ValueError("Low and high values of the redshift range are the same!")
@@ -590,8 +595,7 @@ class Lightcone(dict):
             new_dataset = dataset.filter(
                 oc.col("redshift") > z_low, oc.col("redshift") < z_high
             )
-            if len(new_dataset) > 0:
-                new_datasets[key] = new_dataset
+            new_datasets[key] = new_dataset
         return Lightcone(
             new_datasets,
             self.__maps,
@@ -863,6 +867,7 @@ class Lightcone(dict):
         format: str = "astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
+        combine_mode: Literal["concatenate", "sum", "prod", "avg"] = "concatenate",
         **evaluate_kwargs,
     ):
         """
@@ -908,11 +913,20 @@ class Lightcone(dict):
         insert: bool, default = True
             If true, the data will be inserted as a column in this dataset. Otherwise the data will be returned.
 
+        combine_mode: str, "concatenate", "sum", "prod", or "avg", default = "concatenate"
+            How to combine results from the lightcone's underlying datasets when
+            ``insert=False``. ``avg`` weights each underlying result by the number
+            of rows in its dataset. All underlying results must have the same length
+            for modes other than ``concatenate``. This argument has no effect when
+            ``insert=True``.
+
         Returns
         -------
         dataset : Lightcone
             The new lightcone dataset with the evaluated column(s)
         """
+        if combine_mode not in ("concatenate", "sum", "prod", "avg"):
+            raise ValueError(f"Unknown combine mode {combine_mode}")
 
         mapped_kwargs = {}
         kwargs_names = list(evaluate_kwargs.keys())
@@ -962,6 +976,10 @@ class Lightcone(dict):
                 allow_overwrite=allow_overwrite,
             )
 
+        child_evaluate_kwargs = dict(evaluate_kwargs)
+        if all(isinstance(dataset, Lightcone) for dataset in self.values()):
+            child_evaluate_kwargs["combine_mode"] = combine_mode
+
         result = self.__map(
             "evaluate",
             func=func,
@@ -972,16 +990,38 @@ class Lightcone(dict):
             batch_size=batch_size,
             allow_overwrite=allow_overwrite,
             construct=insert,
-            **evaluate_kwargs,
+            **child_evaluate_kwargs,
         )
         if next(iter(result.values())) is None:
             return
 
         assert isinstance(result, dict)
         keys = next(iter(result.values())).keys()
+        chunks_by_key = {
+            key: [child_result[key] for child_result in result.values()] for key in keys
+        }
+        if combine_mode != "concatenate":
+            for key, chunks in chunks_by_key.items():
+                lengths = [len(chunk) for chunk in chunks]
+                if len(set(lengths)) != 1:
+                    raise ValueError(
+                        f"Cannot combine evaluated output '{key}' with "
+                        f"combine_mode='{combine_mode}': all underlying dataset "
+                        f"results must have the same length; got {lengths}"
+                    )
+
         output = {}
-        for key in keys:
-            output[key] = concat_chunks([r[key] for r in result.values()], format)
+        for key, chunks in chunks_by_key.items():
+            match combine_mode:
+                case "concatenate":
+                    output[key] = concat_chunks(chunks, format)
+                case "sum":
+                    output[key] = sum_chunks(chunks, format)
+                case "prod":
+                    output[key] = product_chunks(chunks, format)
+                case "avg":
+                    weights = [len(self[name]) for name in result]
+                    output[key] = average_chunks(chunks, weights, format)
         return output
 
     def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Self:

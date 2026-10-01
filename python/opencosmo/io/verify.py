@@ -32,7 +32,7 @@ def verify_structure(
 ):
     match schema.type:
         case FileEntry.DATASET:
-            return verify_dataset_data(schema)
+            return verify_dataset_data(schema, has_index="index" in schema.children)
         case FileEntry.STRUCTURE_COLLECTION:
             return verify_structure_collection_data(schema)
         case FileEntry.LIGHTCONE:

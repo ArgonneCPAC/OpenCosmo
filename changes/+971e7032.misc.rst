@@ -1,1 +1,0 @@
-Add references to OpenCosmo paper to documentation and README.

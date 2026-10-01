@@ -7,19 +7,22 @@ import os
 import sqlite3
 import sys
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Iterator
+
+import click
 
 if TYPE_CHECKING:
     from opencosmo.io.discover import FileLayout
 
-from opencosmo.uuid import get_path_uuid
+from opencosmo.uuid import get_string_uuid
 
 logger = logging.getLogger(__name__)
 
 LAYOUT_VERSION = 1
 CACHE_DISABLED = os.environ.get("OPENCOSMO_DISABLE_CACHE", "") not in ("", "0")
+SHARED_CACHE_DIRNAME = ".opencosmo"
 
 
 def __user_cache_dir() -> Path:
@@ -119,9 +122,9 @@ def get_directory_read_cache_dir(directory: Path) -> Path:
             f"Expected a directory for cache resolution: {directory}"
         )
 
-    shared_cache_path = directory / ".opencosmo"
+    shared_cache_path = directory / SHARED_CACHE_DIRNAME
     shared_db_path = shared_cache_path / "files.db"
-    if shared_db_path.is_file() and not os.access(directory, os.W_OK):
+    if shared_db_path.is_file():
         return shared_cache_path
 
     return __user_cache_dir()
@@ -134,6 +137,48 @@ def get_directory_write_cache_dir(directory: Path) -> Path:
             f"Expected a directory for cache resolution: {directory}"
         )
     return __user_cache_dir()
+
+
+def __relative_cache_root(cache_dir: Path) -> Path | None:
+    """
+    Return the data directory a shared cache is anchored to, or None.
+
+    Relative keys are only meaningful for a directory-local shared cache, where
+    the data files live alongside the ``.opencosmo`` directory holding the
+    SQLite database. The per-user cache has no such anchor.
+    """
+    if cache_dir.name != SHARED_CACHE_DIRNAME:
+        return None
+    return cache_dir.parent
+
+
+def build_cache_key(path: Path, root: Path | None) -> str:
+    """
+    Build the string used to key a file in the SQLite index and name its blob.
+
+    ``root`` is the directory the key is taken relative to, or None for an
+    absolute key.
+    """
+    if root is None:
+        return str(path)
+    return str(path.relative_to(root))
+
+
+def __candidate_cache_keys(cache_dir: Path, path: Path) -> tuple[str, ...]:
+    """
+    Keys a file may be stored under, in order of preference.
+
+    A shared cache may have been populated either with absolute paths or with
+    paths relative to the data directory, so reads have to consider both.
+    """
+    keys = [str(path)]
+    root = __relative_cache_root(cache_dir)
+    if root is not None:
+        try:
+            keys.append(build_cache_key(path, root))
+        except ValueError:
+            pass
+    return tuple(keys)
 
 
 def sort_files_by_cache_dir(file_paths: Iterable[Path]) -> dict[Path, list[Path]]:
@@ -171,7 +216,16 @@ def cache_layouts(layouts: list[FileLayout]) -> None:
         write_layouts(cache_dir, cache_layouts_)
 
 
-def write_layouts(cache_dir: Path, layouts: list[FileLayout]) -> None:
+def write_layouts(
+    cache_dir: Path, layouts: list[FileLayout], root: Path | None = None
+) -> None:
+    """
+    Write layouts and their SQLite index entries into ``cache_dir``.
+
+    When ``root`` is given, files are keyed by their path relative to it rather
+    than by their absolute path, so the cache stays valid when the same data
+    directory is mounted somewhere else.
+    """
     if not layouts:
         return
 
@@ -180,7 +234,8 @@ def write_layouts(cache_dir: Path, layouts: list[FileLayout]) -> None:
     for layout in layouts:
         if layout.error is not None:
             continue
-        uuid = get_path_uuid(layout.path)
+        key = build_cache_key(layout.path, root)
+        uuid = get_string_uuid(key)
         from opencosmo.io import discover
 
         blob = discover.encode_file_layout_blob(layout)
@@ -189,7 +244,7 @@ def write_layouts(cache_dir: Path, layouts: list[FileLayout]) -> None:
         with open(tmp_blob_path, "w", encoding="utf-8") as f:
             json.dump(blob, f)
         os.replace(tmp_blob_path, final_blob_path)
-        db_entries.append(build_db_entry(layout.path))
+        db_entries.append(build_db_entry(layout.path, key))
 
     if not db_entries:
         return
@@ -207,8 +262,22 @@ def write_layouts(cache_dir: Path, layouts: list[FileLayout]) -> None:
         cursor.executemany(query, db_entries)
 
 
+@click.command(name="cache-layouts")
+@click.argument(
+    "directory",
+    type=click.Path(
+        exists=True, file_okay=False, dir_okay=True, resolve_path=True, path_type=Path
+    ),
+    required=True,
+)
+@click.option("--pattern", type=str, required=False, default="*.hdf5")
+@click.option("--relative", "-r", is_flag=True)
+def cache_layouts_cli(directory: Path, pattern: str, relative: bool = False):
+    return populate_directory_cache(directory, pattern=pattern, relative_path=relative)
+
+
 def populate_directory_cache(
-    directory: Path, *, pattern: str = "*.hdf5"
+    directory: Path, *, pattern: str = "*.hdf5", relative_path: bool = False
 ) -> PopulateResult:
     """
     Build layouts for every matching file in ``directory`` and write a shared cache.
@@ -231,6 +300,12 @@ def populate_directory_cache(
         Directory of OpenCosmo HDF5 files to index. Not searched recursively.
     pattern : str, default "*.hdf5"
         Glob pattern selecting which files to index.
+    relative_path : bool, default False
+        Key cached files by their path relative to ``directory`` rather than by
+        their absolute path. Use this when the cache travels with the data and
+        the data is mounted at different absolute paths by different readers,
+        such as containerized query backends. Reads accept either form, so a
+        relative cache does not need any reader configuration.
 
     Returns
     -------
@@ -250,12 +325,11 @@ def populate_directory_cache(
     if not directory.is_dir():
         raise NotADirectoryError(f"Not a directory: {directory}")
 
-    cache_dir = directory.resolve() / ".opencosmo"
+    root = directory.resolve()
+    cache_dir = root / SHARED_CACHE_DIRNAME
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    paths = sorted(
-        p.resolve() for p in directory.resolve().glob(pattern) if p.is_file()
-    )
+    paths = sorted(p.resolve() for p in root.glob(pattern) if p.is_file())
 
     layouts: list[FileLayout] = []
     failures: dict[Path, str] = {}
@@ -266,7 +340,7 @@ def populate_directory_cache(
             continue
         layouts.append(layout)
 
-    write_layouts(cache_dir, layouts)
+    write_layouts(cache_dir, layouts, root if relative_path else None)
     __finalize_shared_db(cache_dir)
 
     return PopulateResult(
@@ -312,14 +386,17 @@ class PopulateResult:
     """Paths that failed discovery, mapped to the discovery error message."""
 
 
-def build_db_entry(path: Path) -> dict[str, object]:
+def build_db_entry(path: Path, key: str | None = None) -> dict[str, object]:
     # Any change to FileLayout/GroupLayout/LinkLayout fields or to
     # encode_file_layout_blob requires bumping it.
     #
     # Validity is mtime equality, not ordering, so a file restored from backup or
     # given an older timestamp invalidates too.
+    #
+    # ``key`` is the stored lookup key, which may be relative to the cache root.
+    # ``path`` is only used to stat the file.
     return {
-        "path": str(path),
+        "path": key if key is not None else str(path),
         "mtime": float(path.stat().st_mtime),
         "layout_version": LAYOUT_VERSION,
     }
@@ -342,8 +419,15 @@ def read_layouts_from_cache(
     if not file_paths:
         return {}
 
+    # A file may be stored under an absolute or a cache-root-relative key, so
+    # resolve every candidate key back to the path the caller asked for.
+    paths_by_key: dict[str, Path] = {}
+    for file_path in file_paths:
+        for key in __candidate_cache_keys(cache_dir, file_path):
+            paths_by_key.setdefault(key, file_path)
+
     try:
-        entries = get_cache_entries(cache_dir, file_paths)
+        entries = get_cache_entries(cache_dir, list(paths_by_key))
     except Exception:
         logger.debug("cache read failed", exc_info=True)
         return {}
@@ -353,7 +437,10 @@ def read_layouts_from_cache(
         try:
             if entry.get("layout_version") != LAYOUT_VERSION:
                 continue
-            path = Path(str(entry["path"]))
+            key = str(entry["path"])
+            path = paths_by_key.get(key)
+            if path is None or path in output:
+                continue
             try:
                 current_mtime = path.stat().st_mtime
             except OSError:
@@ -361,10 +448,11 @@ def read_layouts_from_cache(
             if current_mtime != float(str(entry["mtime"])):
                 continue
 
-            layout = read_blob(cache_dir, path)
+            layout = read_blob(cache_dir, key)
             if layout is None:
                 continue
-            output[path] = layout
+            # Output layout may be relative
+            output[path] = replace(layout, path=path)
         except Exception:
             logger.debug("cache entry processing failed", exc_info=True)
             continue
@@ -372,8 +460,8 @@ def read_layouts_from_cache(
     return output
 
 
-def read_blob(cache_dir: Path, path: Path) -> FileLayout | None:
-    blob_uuid = get_path_uuid(path)
+def read_blob(cache_dir: Path, key: str) -> FileLayout | None:
+    blob_uuid = get_string_uuid(key)
     blob_path = cache_dir / f"{blob_uuid}.json"
     if not blob_path.exists():
         return None
@@ -389,20 +477,17 @@ def read_blob(cache_dir: Path, path: Path) -> FileLayout | None:
         return None
 
 
-def get_cache_entries(
-    cache_dir: Path, file_paths: list[Path]
-) -> list[dict[str, object]]:
+def get_cache_entries(cache_dir: Path, keys: list[str]) -> list[dict[str, object]]:
     try:
-        placeholders = ",".join("?" for _ in file_paths)
+        placeholders = ",".join("?" for _ in keys)
         query = f"SELECT * FROM files WHERE path IN ({placeholders})"
-        file_strs = [str(fp) for fp in file_paths]
 
         with open_cache_db_for_read(cache_dir) as conn:
             if conn is None:
                 return []
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute(query, file_strs)
+            cursor.execute(query, keys)
             return [dict(row) for row in cursor.fetchall()]
     except (sqlite3.OperationalError, sqlite3.DatabaseError, OSError):
         logger.debug("cache db read failed", exc_info=True)

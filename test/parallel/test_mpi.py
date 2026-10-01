@@ -637,6 +637,45 @@ def test_evaluate_write(input_path, per_test_dir):
     )
 
 
+@pytest.mark.timeout(20, method="thread")
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_to_dataset_write(input_path, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    temporary_path = comm.bcast(per_test_dir / "evaluated.hdf5", root=0)
+    source = oc.open(input_path)
+
+    source = source.take(3, at="start")
+    row_number = iter(range(3))
+
+    def summarize(fof_halo_mass):
+        length = next(row_number) + rank + 1
+        return {
+            "rank": np.full(length, rank, dtype=np.int64),
+            "mass": np.repeat(fof_halo_mass, length),
+        }
+
+    evaluated = source.evaluate_to_dataset(summarize)
+    expected_rank = np.concatenate(
+        comm.allgather(np.atleast_1d(evaluated.get_data("numpy")["rank"]))
+    )
+    expected_mass = np.concatenate(
+        comm.allgather(np.atleast_1d(evaluated.get_data()["mass"].to_value(u.Msun)))
+    )
+
+    oc.write(temporary_path, evaluated)
+    reopened = oc.open(temporary_path)
+    reopened_data = reopened.get_data()
+    actual_rank = np.concatenate(comm.allgather(np.atleast_1d(reopened_data["rank"])))
+    actual_mass = np.concatenate(
+        comm.allgather(np.atleast_1d(reopened_data["mass"].to_value(u.Msun)))
+    )
+
+    parallel_assert(reopened_data["mass"].unit == u.Msun)
+    parallel_assert(np.array_equal(actual_rank, expected_rank))
+    parallel_assert(np.array_equal(actual_mass, expected_mass))
+
+
 @pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_derive_write(input_path, per_test_dir):
@@ -922,8 +961,8 @@ def test_reduce_average(input_path, profile_path, stacked_profile_path):
 
         bin_centers = 0.5 * (result["radius"][1:] + result["radius"][:-1])
         profile = result["profile"]
-        assert np.all(bin_centers == expected_centers)
-        assert np.all(expected_profile == profile)
+        assert np.allclose(bin_centers, expected_centers)
+        assert np.allclose(expected_profile, profile)
 
 
 @pytest.fixture

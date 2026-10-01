@@ -462,3 +462,46 @@ def test_select_scalar_global_all_empty_raises(input_path):
 
     with pytest.raises(ValueError, match="globally empty"):
         empty.select(mn=oc.col("fof_halo_mass").min(), mode="global").get_data()
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_to_dataset_allows_rank_local_lengths(input_path):
+    comm = get_comm_world()
+    rank = comm.Get_rank()
+    source = oc.open(input_path)
+
+    def summarize(data):
+        length = rank + 1
+        return {
+            "rank": np.full(length, rank, dtype=np.int64),
+            "position": np.arange(length, dtype=np.int64),
+        }
+
+    result = source.evaluate_to_dataset(summarize, vectorize=True, format="numpy")
+    data = result.get_data("numpy")
+
+    parallel_assert(len(result) == rank + 1)
+    parallel_assert(np.all(data["rank"] == rank))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):
+    comm = get_comm_world()
+    rank = comm.Get_rank()
+    source = oc.open(input_path).take(3, at="start")
+    row_number = iter(range(3))
+
+    def expand(fof_halo_mass):
+        length = next(row_number) + rank + 1
+        return {
+            "mass": np.repeat(fof_halo_mass, length),
+            "rank": np.full(length, rank, dtype=np.int64),
+        }
+
+    result = source.evaluate_to_dataset(expand)
+    data = result.get_data()
+    expected_length = 3 * (rank + 1) + 3
+
+    parallel_assert(len(result) == expected_length)
+    parallel_assert(len(data["mass"]) == expected_length)
+    parallel_assert(np.all(data["rank"] == rank))

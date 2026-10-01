@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from functools import reduce
 from importlib import import_module
+from operator import add, mul
 from typing import TYPE_CHECKING, Any, Iterable
 
 import astropy.units as u
@@ -206,6 +208,46 @@ def concat_chunks(chunks: list, output_format: str):
             return pa.concat_arrays(chunks)
         case _:
             raise ValueError(f"Unknown data output format {output_format}")
+
+
+def sum_chunks(chunks: list, output_format: str):
+    """Sum a list of per-chunk arrays element-wise."""
+    if output_format == "arrow":
+        import pyarrow.compute as pc  # type: ignore
+
+        return reduce(pc.add, chunks)
+    return reduce(add, chunks)
+
+
+def product_chunks(chunks: list, output_format: str):
+    """Multiply a list of per-chunk arrays element-wise."""
+    if output_format == "arrow":
+        import pyarrow.compute as pc  # type: ignore
+
+        return reduce(pc.multiply, chunks)
+    return reduce(mul, chunks)
+
+
+def average_chunks(chunks: list, weights: list[int], output_format: str):
+    """Compute an element-wise average weighted by chunk row counts."""
+    weighted = [
+        (chunk, weight) for chunk, weight in zip(chunks, weights, strict=True) if weight
+    ]
+    if output_format == "arrow":
+        import pyarrow.compute as pc  # type: ignore
+
+        if not weighted:
+            return pc.multiply(chunks[0], 0)
+        total = sum(weight for _, weight in weighted)
+        numerator = reduce(
+            pc.add, [pc.multiply(chunk, float(weight)) for chunk, weight in weighted]
+        )
+        return pc.divide(numerator, float(total))
+
+    if not weighted:
+        return chunks[0] * 0
+    total = sum(weight for _, weight in weighted)
+    return reduce(add, [chunk * weight for chunk, weight in weighted]) / total
 
 
 def __convert_to_astropy(
