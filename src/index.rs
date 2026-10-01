@@ -1,21 +1,18 @@
 use pyo3::prelude::*;
 #[pymodule]
 pub(crate) mod index {
+    use crate::arrays::unpack_array;
     use numpy::ndarray::s;
     use numpy::ndarray::{Array1, ArrayView1};
-    use numpy::{IntoPyArray, PyArray1, PyArrayMethods, PyReadonlyArray1};
-    use pyo3::exceptions::{PyTypeError, PyValueError};
+    use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
+    use pyo3::exceptions::PyValueError;
     use pyo3::prelude::*;
     use pyo3::types::PyList;
     use std::collections::HashMap;
     use std::iter::zip;
 
     fn unpack_index_array<'py>(index: &Bound<'py, PyAny>) -> PyResult<PyReadonlyArray1<'py, i64>> {
-        let index_data = index
-            .cast::<PyArray1<i64>>()
-            .map_err(|_| PyTypeError::new_err("Indices should be a 1-d array of i64"))?;
-
-        Ok(index_data.readonly())
+        Ok(unpack_array::<i64, 1>(index)?)
     }
 
     fn unpack_chunked_index<'py>(
