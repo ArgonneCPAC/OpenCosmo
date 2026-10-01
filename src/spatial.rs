@@ -4,13 +4,12 @@ use pyo3::prelude::*;
 pub(crate) mod spatial {
     use core::f64;
 
+    use crate::arrays::unpack_array;
     use kiddo::dist::SquaredEuclidean;
     use kiddo::MutableKdTree;
     use numpy::ndarray::{Array1, ArrayView2};
-    use numpy::{
-        IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2, PyUntypedArrayMethods,
-    };
-    use pyo3::exceptions::{PyTypeError, PyValueError};
+    use numpy::{IntoPyArray, PyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
+    use pyo3::exceptions::PyValueError;
     use pyo3::prelude::*;
     struct SafeRawBuffer(*mut f64);
 
@@ -29,15 +28,11 @@ pub(crate) mod spatial {
     unsafe impl Sync for SafeRawBuffer {}
 
     fn unpack_points<'py>(array: &Bound<'py, PyAny>) -> PyResult<PyReadonlyArray2<'py, f64>> {
-        let data = array
-            .cast::<PyArray2<f64>>()
-            .map_err(|err| PyTypeError::new_err(format!("Expected a 2d array {:?}", err)))?;
-
+        let data = unpack_array::<f64, 2>(array)?;
         if data.shape()[1] != 3 {
-            return Err(PyValueError::new_err("Expected an array of points!"));
+            return Err(PyValueError::new_err("Expected an array of 3d points!"));
         }
-
-        Ok(data.readonly())
+        Ok(data)
     }
 
     #[pyfunction(name = "get_closest_distance_3d")]

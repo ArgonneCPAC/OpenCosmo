@@ -5,12 +5,12 @@
 ///
 use pyo3::prelude::*;
 
+mod arrays;
 mod index;
 mod spatial;
 
 #[pymodule]
 mod _lib {
-    use pyo3::prelude::*;
 
     #[pymodule_export]
     use crate::index::index;
