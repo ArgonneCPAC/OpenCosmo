@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
 
 
-def allocate(group: h5py.File | h5py.Group, schema: Schema):
+def allocate(group: h5py.File | h5py.Group, schema: Schema, compress: bool):
     for column_name, column_writer in schema.columns.items():
         group.require_dataset(
             column_name,
@@ -18,11 +18,13 @@ def allocate(group: h5py.File | h5py.Group, schema: Schema):
             column_writer.dtype,
             compression=hdf5plugin.Blosc(
                 cname="blosclz", clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE
-            ),
+            )
+            if compress
+            else None,
         )
     for child_name, child_schema in schema.children.items():
         child_group = group.require_group(child_name)
-        allocate(child_group, child_schema)
+        allocate(child_group, child_schema, compress)
 
 
 def write_columns(group: h5py.File | h5py.Group, schema: Schema):

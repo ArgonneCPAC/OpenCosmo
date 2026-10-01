@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import h5py
 import hdf5plugin
@@ -73,7 +73,7 @@ class CombineState(Enum):
     INVALID = 3
 
 
-def write_parallel(file: Path, file_schema: Schema):
+def write_parallel(file: Path, file_schema: Schema, compress: bool):
     """
     Main entry point for writing data in parallel. Proceeds
     in three steps:
@@ -118,9 +118,9 @@ def write_parallel(file: Path, file_schema: Schema):
 
     if new_comm.Get_rank() == 0:
         with h5py.File(file, "w") as f:
-            __allocate(file_schema, f, new_comm)
+            __allocate(file_schema, f, new_comm, compress)
     else:
-        __allocate(file_schema, None, new_comm)
+        __allocate(file_schema, None, new_comm, compress)
     try:
         with h5py.File(file, "a", driver="mpio", comm=new_comm) as f:
             __write_parallel(file_schema, f, offsets, new_comm)
@@ -375,14 +375,16 @@ def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
     return output
 
 
-def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm):
+def __allocate(
+    schema: Schema, group: h5py.File | h5py.Group | None, comm: MPI.Comm, compress: bool
+):
     """
     Allocate the file.
     """
     all_column_names = get_all_keys(schema.columns, comm)
     for column_name in all_column_names:
         column_writer = schema.columns.get(column_name)
-        __allocate_column(column_name, column_writer, group, comm)
+        __allocate_column(column_name, column_writer, group, comm, compress)
 
     __write_metadata(schema, group, comm)
 
@@ -395,10 +397,10 @@ def __allocate(schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MP
 
         child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
 
-        __allocate(child_schema, new_group, comm)
+        __allocate(child_schema, new_group, comm, compress)
 
 
-def get_column_allocation_metadata(column: Optional[ColumnWriter], comm: MPI.Comm):
+def get_column_allocation_metadata(column: ColumnWriter | None, comm: MPI.Comm):
     """
     Determine how to allocate the column. The most important thing this does is
     determine the overal shape. Keep in mind we have already done verification
@@ -426,7 +428,7 @@ def get_column_allocation_metadata(column: Optional[ColumnWriter], comm: MPI.Com
     return shape, all_dtypes[0], all_meta[0][2]
 
 
-def get_column_offset(column: Optional[ColumnWriter], comm: MPI.Comm):
+def get_column_offset(column: ColumnWriter | None, comm: MPI.Comm):
     """
     Determine the offset for a given column on this rank.
     """
@@ -440,7 +442,7 @@ def get_column_offset(column: Optional[ColumnWriter], comm: MPI.Comm):
 
 
 def __write_metadata(
-    schema: Schema, group: Optional[h5py.File | h5py.Group], comm: MPI.Comm
+    schema: Schema, group: h5py.File | h5py.Group | None, comm: MPI.Comm
 ):
     """
     Write metadata-only groups.
@@ -459,10 +461,11 @@ def __write_metadata(
 
 def __allocate_column(
     name: str,
-    column_writer: Optional[ColumnWriter],
-    group: Optional[h5py.Group | h5py.File],
+    column_writer: ColumnWriter | None,
+    group: h5py.Group | h5py.File | None,
     comm: MPI.Comm,
-) -> Optional[h5py.Dataset]:
+    compress: bool,
+) -> h5py.Dataset | None:
     """
     Allocate a single column
     """
@@ -475,7 +478,9 @@ def __allocate_column(
             dtype=dtype,
             compression=hdf5plugin.Blosc(
                 cname="blosclz", clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE
-            ),
+            )
+            if compress
+            else None,
         )
         ds.attrs.update(attrs)
         return ds
@@ -508,7 +513,7 @@ def __write_column_serial(writer, offset, ds):
 
 
 def __write_column(
-    writer: Optional[ColumnWriter],
+    writer: ColumnWriter | None,
     ds: h5py.Dataset,
     offset: int,
     write_comm: MPI.Comm | None,
