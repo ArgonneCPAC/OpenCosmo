@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 import h5py
 
@@ -12,6 +12,7 @@ from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from types import ModuleType
 
     import opencosmo as oc
@@ -19,8 +20,8 @@ if TYPE_CHECKING:
 
     from .protocols import Writeable
 
-    mpiio: Optional[ModuleType]
-    partition: Optional[Callable]
+    mpiio: ModuleType | None
+    partition: Callable | None
 
 if get_comm_world() is not None:
     from opencosmo.dataset.mpi import partition
@@ -158,7 +159,9 @@ def open(
     # For now the only way to open multiple files is with a StructureCollection
 
 
-def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> None:
+def write(
+    path: Path, dataset: Writeable, overwrite=False, compress=True, **schema_kwargs
+) -> None:
     """
     Write a dataset or collection to the file at the sepecified path.
 
@@ -189,7 +192,7 @@ def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> N
     schema = dataset.make_schema(**schema_kwargs, path=str(path))
 
     if mpiio is not None:
-        return mpiio.write_parallel(path, schema)
+        return mpiio.write_parallel(path, schema, compress)
 
     from opencosmo.io.schema import FileEntry
     from opencosmo.mapping.write import lower_collection_coordinates
@@ -200,6 +203,6 @@ def write(path: Path, dataset: Writeable, overwrite=False, **schema_kwargs) -> N
 
     verify_structure(schema)
     file = h5py.File(path, "w")
-    allocate(file, schema)
+    allocate(file, schema, compress)
     write_metadata(file, schema)
     write_columns(file, schema)
