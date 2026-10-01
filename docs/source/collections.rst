@@ -231,15 +231,26 @@ object using its ``ra`` and ``dec`` coordinates:
 
 .. code-block:: python
 
+   import astropy.units as u
+
    lightcone = oc.open(*catalog_paths, healpix_map_path)
 
-   for object_row, cutout in lightcone.cutouts(size=0.25, npix=64):
+   for object_row, cutout in lightcone.cutouts(size=5 * u.arcmin, npix=64):
       image = cutout["TSZ"].data
 
 ``size`` is the angular width of the cutout and can be an Astropy quantity such
-as ``15 * astropy.units.arcmin``. Values without units are interpreted as
-degrees. ``npix`` is the number of pixels along each side. Each cutout is returned as an in-memory
-``astropy.io.fits.HDUList`` with a celestial TAN WCS.
+as ``5 * u.arcmin``. Values without units are interpreted as
+degrees. ``npix`` is the number of pixels along each side and defaults to 64.
+Each cutout is returned as an in-memory ``astropy.io.fits.HDUList`` containing
+one image extension per selected map column.
+
+Cutouts are always square and use an equatorial ``RA---TAN``/``DEC--TAN`` WCS.
+The input map is assumed to use nested HEALPix ordering in the same celestial
+frame. Reprojection uses four-pixel HEALPix interpolation. If any pixel in an
+output sample's interpolation stencil is unavailable, that output sample is
+NaN; a cutout entirely outside the map coverage is consequently an all-NaN
+image with valid WCS metadata. The TAN projection is intended for small
+postage-stamp cutouts and may significantly distort very large cutouts.
 
 
 

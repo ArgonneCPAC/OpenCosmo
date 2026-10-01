@@ -6,12 +6,7 @@ from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Mapping,
-    Optional,
     Self,
 )
 from warnings import warn
@@ -24,6 +19,7 @@ from astropy.table import vstack  # type: ignore
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import utils as lcutils
+from opencosmo.collection.lightcone.healpix_map import HealpixMap
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import (
@@ -59,13 +55,13 @@ from opencosmo.plugins.contexts import (
 from opencosmo.plugins.hook import fold
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Iterable, Mapping
     from uuid import UUID
 
     import astropy.units as u  # type: ignore
     import numpy.typing as npt
     from astropy.io import fits
 
-    from opencosmo.collection.lightcone.healpix_map import HealpixMap
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
@@ -96,10 +92,10 @@ class Lightcone(dict):
         self,
         datasets: Mapping[Any, Dataset | Lightcone],
         maps: HealpixMap | None = None,
-        z_range: Optional[tuple[float, float]] = None,
-        hidden: Optional[set[str]] = None,
-        sort_key: Optional[tuple[str, bool]] = None,
-        scope: Optional[Any] = None,
+        z_range: tuple[float, float] | None = None,
+        hidden: set[str] | None = None,
+        sort_key: tuple[str, bool] | None = None,
+        scope: Any | None = None,
     ):
         from opencosmo.collection.lightcone.scope import LightconeScope
 
@@ -233,7 +229,7 @@ class Lightcone(dict):
         return next(iter(self.values())).uuid
 
     @property
-    def descriptions(self) -> dict[str, Optional[str]]:
+    def descriptions(self) -> dict[str, str | None]:
         """
         Return the descriptions (if any) of the columns in this lightcone as a dictonary.
         Columns without a description will be included in the dictionary with a value
@@ -252,7 +248,7 @@ class Lightcone(dict):
         return descriptions
 
     @cached_property
-    def units(self) -> dict[str, Optional[u.Unit]]:
+    def units(self) -> dict[str, u.Unit | None]:
         """
         Return the units of the columns in this lightcone. Columns without a unit will
         return a value of None
@@ -285,7 +281,7 @@ class Lightcone(dict):
         return regions[0].combine(*regions[1:])
 
     @property
-    def sorted_by(self) -> Optional[str]:
+    def sorted_by(self) -> str | None:
         """
         The column this dataset is sorted by. If not sorted, returns None.
 
@@ -452,8 +448,7 @@ class Lightcone(dict):
 
             group_name = ds_target.name
             step_prefix = f"{ds_target.header.file.step}_"
-            if group_name.startswith(step_prefix):
-                group_name = group_name[len(step_prefix) :]
+            group_name = group_name.removeprefix(step_prefix)
 
             ds = iopen.open_dataset(
                 ds_target,
@@ -491,6 +486,7 @@ class Lightcone(dict):
                     index_kind, is_empty_ref, is_source=True, is_replicated=True
                 ),
             )
+        assert healpix_maps is None or isinstance(healpix_maps, HealpixMap)
 
         result = cls(output, healpix_maps)
         return fold(HookPoint.LightconeOpen, LightconeOpenCtx(result, kwargs)).lightcone
@@ -499,8 +495,8 @@ class Lightcone(dict):
     def from_datasets(
         cls,
         datasets: Mapping[int, oc.Dataset],
-        z_range: Optional[tuple[float, float]] = None,
-        scope: Optional[Any] = None,
+        z_range: tuple[float, float] | None = None,
+        scope: Any | None = None,
         **open_kwargs,
     ):
         result = cls(datasets, None, z_range, scope=scope)
@@ -542,6 +538,14 @@ class Lightcone(dict):
         TypeError
             If ``size`` is not a scalar number or quantity, or ``npix`` is not
             an integer.
+
+        Notes
+        -----
+        Cutouts are square and use a 64-by-64 pixel grid by default. The output
+        uses an equatorial ``RA---TAN``/``DEC--TAN`` WCS and assumes the input
+        map uses nested HEALPix ordering in the same celestial frame. Output
+        samples whose interpolation stencil includes unavailable map pixels are
+        set to NaN.
         """
         if self.__maps is None:
             raise ValueError("No map was opened with this lightcone")
@@ -601,11 +605,11 @@ class Lightcone(dict):
         self,
         method,
         *args,
-        new_maps: Optional[HealpixMap] = None,
-        hidden: Optional[set[str]] = None,
+        new_maps: HealpixMap | None = None,
+        hidden: set[str] | None = None,
         mapped_arguments: dict[str, dict[str, Any]] = {},
         construct: bool = True,
-        scope: Optional[Any] = None,
+        scope: Any | None = None,
         **kwargs,
     ):
         """
@@ -702,7 +706,7 @@ class Lightcone(dict):
         name = path.split("/")[-1]
         return make_schema(name, FileEntry.LIGHTCONE, children=children)
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
+    def bound(self, region: Region, select_by: str | None = None):
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -1117,7 +1121,7 @@ class Lightcone(dict):
 
         if self.__maps is not None:
             selection_args, selection_kwargs = build_multi_dataset_selections(
-                {"map": self.__maps.columns, "lightcone": self.columns},
+                {"map": set(self.__maps.columns), "lightcone": set(self.columns)},
                 {"map": len(self.__maps), "lightcone": len(self)},
                 columns,
                 derived_columns,
@@ -1225,7 +1229,7 @@ class Lightcone(dict):
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
-    ) -> "Lightcone":
+    ) -> Lightcone:
         """
         Create a new dataset from some number of rows from this dataset.
 
@@ -1494,7 +1498,7 @@ class Lightcone(dict):
             new_scope,
         )
 
-    def sort_by(self, column: Optional[str], invert: bool = False):
+    def sort_by(self, column: str | None, invert: bool = False):
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -1541,7 +1545,7 @@ class Lightcone(dict):
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: str | None = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Self:

@@ -26,7 +26,7 @@ from opencosmo.collection.lightcone.cutout import (
     get_included_pixels,
     validate_cutout_size,
 )
-from opencosmo.collection.lightcone.reproject import convert_format
+from opencosmo.collection.lightcone.reproject import make_hdulist
 from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
@@ -707,6 +707,13 @@ class HealpixMap(dict):
 
         Notes
         -----
+        Cutouts are square and use a 64-by-64 pixel grid by default. The output
+        uses an equatorial ``RA---TAN``/``DEC--TAN`` WCS and assumes this map
+        uses nested HEALPix ordering in the same celestial frame. Output samples
+        whose four-pixel interpolation stencil includes an unavailable map
+        pixel are set to NaN. A cutout with no map coverage is therefore an
+        all-NaN image with valid WCS metadata.
+
         This method is intended for small postage-stamp cutouts. Very large
         cutouts may be significantly distorted by the TAN projection.
         """
@@ -740,8 +747,7 @@ class HealpixMap(dict):
                 region_pixels, pixels, assume_unique=True, return_indices=True
             )
             region_data = {k: d[index_to_include] for k, d in data.items()}
-            yield convert_format(
-                "hdul",
+            yield make_hdulist(
                 region_pixels,
                 region_data,
                 self.nside,

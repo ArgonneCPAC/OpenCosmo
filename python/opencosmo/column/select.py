@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Iterable, Mapping
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -15,6 +15,8 @@ from opencosmo.column.column import (
 from opencosmo.dataset import operations as dsops
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
     from opencosmo import Dataset
     from opencosmo.dataset.state import DatasetState
 
@@ -118,7 +120,7 @@ def do_multi_dataset_drops(
 def build_multi_dataset_selections(
     columns_by_ds: dict[Any, set[str]],
     ds_lengths: dict[Any, int],
-    select_args: tuple[str | list[str], ...],
+    select_args: tuple[str | Iterable[str], ...],
     select_kwargs: dict[str, Any],
 ):
     flat_args = []
@@ -130,7 +132,7 @@ def build_multi_dataset_selections(
     assert set(columns_by_ds.keys()) == set(ds_lengths.keys())
 
     wildcards = []
-    output_args: dict[Any, list[str]] = {name: [] for name in columns_by_ds.keys()}
+    output_args: dict[Any, list[str]] = {name: [] for name in columns_by_ds}
     missing = set()
     for arg in flat_args:
         if not isinstance(arg, str):
@@ -152,9 +154,7 @@ def build_multi_dataset_selections(
         )
     for ds_selection in output_args.values():
         ds_selection.extend(wildcards)
-    output_kwargs: dict[Any, dict[str, Any]] = {
-        name: {} for name in columns_by_ds.keys()
-    }
+    output_kwargs: dict[Any, dict[str, Any]] = {name: {} for name in columns_by_ds}
     missing = set()
     missing_lengths = set()
     for kwarg_name, kwarg_value in select_kwargs.items():

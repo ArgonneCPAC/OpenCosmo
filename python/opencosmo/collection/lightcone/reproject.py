@@ -4,8 +4,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 
-def convert_format(
-    format: str,
+def make_hdulist(
     region_pixels: np.ndarray,
     region_data: dict[str, np.ndarray],
     nside: int,
@@ -13,20 +12,17 @@ def convert_format(
     angular_size: float,
     npix: int,
 ) -> fits.HDUList:
-    if format == "hdul":
-        reprojected_data = reproject_to_cartesian(
-            region_pixels, region_data, nside, center, angular_size, npix
-        )
-        wcs = reprojected_data.pop("wcs")
-        assert isinstance(wcs, WCS)
-        header = wcs.to_header()
-        extensions = [
-            fits.ImageHDU(data=data, header=header, name=name)
-            for name, data in reprojected_data.items()
-        ]
-        return fits.HDUList([fits.PrimaryHDU(header=header), *extensions])
-
-    raise ValueError(f"Unsupported cutout format: {format!r}")
+    reprojected_data = reproject_to_cartesian(
+        region_pixels, region_data, nside, center, angular_size, npix
+    )
+    wcs = reprojected_data.pop("wcs")
+    assert isinstance(wcs, WCS)
+    header = wcs.to_header()
+    extensions = [
+        fits.ImageHDU(data=data, header=header, name=name)
+        for name, data in reprojected_data.items()
+    ]
+    return fits.HDUList([fits.PrimaryHDU(header=header), *extensions])
 
 
 def reproject_to_cartesian(
@@ -37,7 +33,6 @@ def reproject_to_cartesian(
     width: float,
     resolution: int,
 ) -> dict[str, np.ndarray | WCS]:
-
     wcs = WCS(naxis=2)
     wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
     wcs.wcs.crval = [center[0], center[1]]

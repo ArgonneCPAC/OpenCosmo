@@ -82,6 +82,24 @@ def test_map_cutouts_accept_empty_centers(healpix_map_path):
     assert list(healpix_map.cutouts(centers, 0.25, npix=8)) == []
 
 
+def test_map_cutouts_mixed_coverage(healpix_map_path):
+    covered_center = SkyCoord(45, -45, unit="deg")
+    uncovered_center = SkyCoord(225, 45, unit="deg")
+    healpix_map = oc.open(healpix_map_path).bound(
+        oc.make_cone(covered_center, 2 * u.deg)
+    )
+
+    cutouts = list(
+        healpix_map.cutouts(
+            SkyCoord([covered_center, uncovered_center]), 5 * u.arcmin, npix=8
+        )
+    )
+
+    assert len(cutouts) == 2
+    assert np.isfinite(cutouts[0]["TSZ"].data).any()
+    assert np.isnan(cutouts[1]["TSZ"].data).all()
+
+
 def test_healpix_downgrade(healpix_map_path):
     ds = oc.open(healpix_map_path).select("tsz")
     downgraded_ds = ds.with_resolution(int(ds.nside / 2))
