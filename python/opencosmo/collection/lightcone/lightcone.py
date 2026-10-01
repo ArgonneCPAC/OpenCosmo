@@ -6,23 +6,20 @@ from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Mapping,
-    Optional,
     Self,
 )
 from warnings import warn
 
 import healpy as hp
 import numpy as np
+from astropy.coordinates import SkyCoord
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import utils as lcutils
+from opencosmo.collection.lightcone.healpix_map import HealpixMap
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column.column import (
@@ -33,6 +30,7 @@ from opencosmo.column.column import (
     resolve_mask_scalars,
 )
 from opencosmo.column.reducer import default_reducer
+from opencosmo.column.select import build_multi_dataset_selections
 from opencosmo.dataset import Dataset
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import (
@@ -51,7 +49,7 @@ from opencosmo.dataset.take import (
 )
 from opencosmo.deprecated import deprecated
 from opencosmo.index import get_range, into_array, rebuild_by_ranges
-from opencosmo.io import iopen
+from opencosmo.io import iopen, specs
 from opencosmo.io.index_spec import index_spec_for
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
@@ -64,11 +62,12 @@ from opencosmo.plugins.contexts import (
 from opencosmo.plugins.hook import fold
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Iterable, Mapping
     from uuid import UUID
 
     import astropy.units as u  # type: ignore
     import numpy.typing as npt
-    from astropy.coordinates import SkyCoord
+    from astropy.io import fits
 
     from opencosmo.column.column import (
         ColumnMask,
@@ -99,14 +98,16 @@ class Lightcone(dict):
     def __init__(
         self,
         datasets: Mapping[Any, Dataset | Lightcone],
-        z_range: Optional[tuple[float, float]] = None,
-        hidden: Optional[set[str]] = None,
-        sort_key: Optional[tuple[str, bool]] = None,
-        scope: Optional[Any] = None,
+        maps: HealpixMap | None = None,
+        z_range: tuple[float, float] | None = None,
+        hidden: set[str] | None = None,
+        sort_key: tuple[str, bool] | None = None,
+        scope: Any | None = None,
     ):
         from opencosmo.collection.lightcone.scope import LightconeScope
 
         self.update(datasets)
+        self.__maps = maps
         z_range = (
             z_range
             if z_range is not None
@@ -211,13 +212,31 @@ class Lightcone(dict):
         cols.extend(name for name in self.__scope.names() if name not in cols)
         return cols
 
+    @property
+    def map_columns(self) -> list[str] | None:
+        """
+        If this lightcone has a map, return the columns
+        in the map. If the lightcone does not have a map, returns None.
+
+        Returns
+        -------
+        map_columns: list[str] | None
+        """
+        if self.__maps is None:
+            return None
+        return self.__maps.columns
+
+    @property
+    def map(self):
+        return self.__maps
+
     # Internal identity used by link/mapping resolution.
     @property
     def uuid(self) -> UUID:
         return next(iter(self.values())).uuid
 
-    @cached_property
-    def descriptions(self) -> dict[str, Optional[str]]:
+    @property
+    def descriptions(self) -> dict[str, str | None]:
         """
         Return the descriptions (if any) of the columns in this lightcone as a dictonary.
         Columns without a description will be included in the dictionary with a value
@@ -236,7 +255,7 @@ class Lightcone(dict):
         return descriptions
 
     @cached_property
-    def units(self) -> dict[str, Optional[u.Unit]]:
+    def units(self) -> dict[str, u.Unit | None]:
         """
         Return the units of the columns in this lightcone. Columns without a unit will
         return a value of None
@@ -269,7 +288,7 @@ class Lightcone(dict):
         return regions[0].combine(*regions[1:])
 
     @property
-    def sorted_by(self) -> Optional[str]:
+    def sorted_by(self) -> str | None:
         """
         The column this dataset is sorted by. If not sorted, returns None.
 
@@ -426,11 +445,18 @@ class Lightcone(dict):
         **kwargs,
     ):
         datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
-        for i, ds_target in enumerate(targets):
-            group_name = ds_target.name
-            group_name = group_name.lstrip(f"{ds_target.header.file.step}_")
+        maps: list[DatasetTarget] = []
 
-            open_kwargs = dict(kwargs)
+        open_kwargs = dict(kwargs)
+        for i, ds_target in enumerate(targets):
+            if ds_target.header.file.data_type == "healpix_map":
+                maps.append(ds_target)
+                continue
+
+            group_name = ds_target.name
+            step_prefix = f"{ds_target.header.file.step}_"
+            group_name = group_name.removeprefix(step_prefix)
+
             ds = iopen.open_dataset(
                 ds_target,
                 index_spec_for(index_kind, is_empty_ref, is_source=True),
@@ -453,21 +479,95 @@ class Lightcone(dict):
         ):
             raise ValueError()
 
-        result = cls(output)
+        healpix_maps = None
+        if maps:
+            # A map opened alongside a catalog is replicated, not partitioned: a
+            # cutout around an object near a partition edge needs map pixels that
+            # this rank's catalog rows do not cover.
+            healpix_maps = specs.HealpixMapSpec().build_from_targets(
+                maps,
+                index_kind=index_kind,
+                is_empty_ref=is_empty_ref,
+                open_kwargs=open_kwargs,
+                index=index_spec_for(
+                    index_kind, is_empty_ref, is_source=True, is_replicated=True
+                ),
+            )
+        assert healpix_maps is None or isinstance(healpix_maps, HealpixMap)
+
+        result = cls(output, healpix_maps)
         return fold(HookPoint.LightconeOpen, LightconeOpenCtx(result, kwargs)).lightcone
 
     @classmethod
     def from_datasets(
         cls,
         datasets: Mapping[int, oc.Dataset],
-        z_range: Optional[tuple[float, float]] = None,
-        scope: Optional[Any] = None,
+        z_range: tuple[float, float] | None = None,
+        scope: Any | None = None,
         **open_kwargs,
     ):
-        result = cls(datasets, z_range, scope=scope)
+        result = cls(datasets, None, z_range, scope=scope)
         return fold(
             HookPoint.LightconeOpen, LightconeOpenCtx(result, open_kwargs)
         ).lightcone
+
+    def cutouts(
+        self, size: float | u.Quantity, npix: int = 64
+    ) -> Generator[tuple[dict[str, float | u.Quantity], fits.HDUList], None, None]:
+        """Create square map cutouts centered on the catalog objects.
+
+        The map opened alongside this lightcone is sampled around each object's
+        ``ra`` and ``dec`` coordinates. Each result contains the catalog row and
+        a FITS HDU list holding the corresponding square cutout.
+
+        Parameters
+        ----------
+        size : float or astropy.units.Quantity
+            Angular width of each cutout. Values without units are assumed to
+            be in degrees. Must be positive.
+        npix : int, default=64
+            Number of pixels along each side of the output image. Must be
+            positive.
+
+        Yields
+        ------
+        row : dict
+            The catalog row at the center of the cutout.
+        cutout : astropy.io.fits.HDUList
+            An in-memory FITS file containing one image extension per map
+            column. Image extensions use a celestial TAN WCS.
+
+        Raises
+        ------
+        ValueError
+            If no map was opened with the lightcone, if ``size`` has
+            non-angular units, or if ``size`` or ``npix`` is not positive.
+        TypeError
+            If ``size`` is not a scalar number or quantity, or ``npix`` is not
+            an integer.
+
+        Notes
+        -----
+        Cutouts are square and use a 64-by-64 pixel grid by default. The output
+        uses an equatorial ``RA---TAN``/``DEC--TAN`` WCS and assumes the input
+        map uses nested HEALPix ordering in the same celestial frame. Output
+        samples whose interpolation stencil includes unavailable map pixels are
+        set to NaN.
+        """
+        if self.__maps is None:
+            raise ValueError("No map was opened with this lightcone")
+        missing_coordinates = {"ra", "dec"}.difference(self.columns)
+        if missing_coordinates:
+            missing = ", ".join(sorted(missing_coordinates))
+            raise ValueError(
+                f"Lightcone cutouts require ra and dec columns; missing: {missing}"
+            )
+
+        centers = SkyCoord(**self.select("ra", "dec").get_data())
+        cutouts = self.__maps.cutouts(centers, size, npix=npix)
+
+        for entry, cutout in zip(self.rows(), cutouts):
+            yield entry, cutout
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
@@ -497,17 +597,23 @@ class Lightcone(dict):
             )
             new_datasets[key] = new_dataset
         return Lightcone(
-            new_datasets, (z_low, z_high), self.__hidden, self.__sort_key, self.__scope
+            new_datasets,
+            self.__maps,
+            (z_low, z_high),
+            self.__hidden,
+            self.__sort_key,
+            self.__scope,
         )
 
     def __map(
         self,
         method,
         *args,
-        hidden: Optional[set[str]] = None,
+        new_maps: HealpixMap | None = None,
+        hidden: set[str] | None = None,
         mapped_arguments: dict[str, dict[str, Any]] = {},
         construct: bool = True,
-        scope: Optional[Any] = None,
+        scope: Any | None = None,
         **kwargs,
     ):
         """
@@ -535,7 +641,14 @@ class Lightcone(dict):
         if not output:
             output = zero_length_output
         if construct:
-            return Lightcone(output, self.z_range, hidden, self.__sort_key, scope)
+            return Lightcone(
+                output,
+                new_maps or self.__maps,
+                self.z_range,
+                hidden,
+                self.__sort_key,
+                scope,
+            )
         return output
 
     def __map_attribute(self, attribute):
@@ -588,10 +701,16 @@ class Lightcone(dict):
             }
             children.update(child_schemas)
 
+        comm = get_comm_world()
+        rank = 0 if comm is None else comm.Get_rank()
+        if self.__maps is not None:
+            healpix_schema = self.__maps.make_schema("/".join([path, "healpix_maps"]))
+            if rank == 0:
+                children["healpix_maps"] = healpix_schema
         name = path.split("/")[-1]
         return make_schema(name, FileEntry.LIGHTCONE, children=children)
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
+    def bound(self, region: Region, select_by: str | None = None):
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -617,7 +736,9 @@ class Lightcone(dict):
         AttributeError:
             If the dataset does not contain a spatial index
         """
-        return self.__map("bound", region, select_by)
+        new_maps = None if self.__maps is None else self.__maps.bound(region)
+
+        return self.__map("bound", region, select_by, new_maps=new_maps)
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
@@ -730,7 +851,12 @@ class Lightcone(dict):
             rows = ds.tree.project_on_index(level, ds.index, pixels)
             output[name] = ds.take_rows(rows)
         return Lightcone(
-            output, self.z_range, self.__hidden, self.__sort_key, self.__scope
+            output,
+            self.__maps,
+            self.z_range,
+            self.__hidden,
+            self.__sort_key,
+            self.__scope,
         )
 
     def evaluate(
@@ -1033,22 +1159,36 @@ class Lightcone(dict):
         """
         from opencosmo.column.column import Column
 
+        if self.__maps is not None:
+            selection_args, selection_kwargs = build_multi_dataset_selections(
+                {"map": set(self.__maps.columns), "lightcone": set(self.columns)},
+                {"map": len(self.__maps), "lightcone": len(self)},
+                columns,
+                derived_columns,
+            )
+            lightcone_columns = selection_args["lightcone"]
+            lightcone_derived_columns = selection_kwargs["lightcone"]
+            new_maps = self.__maps.select(
+                *selection_args["map"], **selection_kwargs["map"]
+            )
+        else:
+            lightcone_columns = columns
+            lightcone_derived_columns = derived_columns
+            new_maps = None
+
         all_columns: set[str] = set()
-        for col_group in columns:
+        for col_group in lightcone_columns:
             if isinstance(col_group, str):
                 col_group = {col_group}
             all_columns.update(col_group)
+        scalars = {}
+        non_scalars = {}
+        for name, col in lightcone_derived_columns.items():
+            if isinstance(col, DerivedScalarValue):
+                scalars[name] = col
+            else:
+                non_scalars[name] = col
 
-        scalars = {
-            name: col
-            for name, col in derived_columns.items()
-            if isinstance(col, DerivedScalarValue)
-        }
-        non_scalars = {
-            name: col
-            for name, col in derived_columns.items()
-            if not isinstance(col, DerivedScalarValue)
-        }
         if scalars and (all_columns or non_scalars):
             raise ValueError(
                 "Scalar selections cannot be mixed with column selections. "
@@ -1056,15 +1196,17 @@ class Lightcone(dict):
             )
 
         reducer = default_reducer(mode)
-        derived_columns = {
+        lightcone_derived_columns = {
             k: v.with_reducer(reducer)
             if isinstance(v, (Column, DerivedScalarValue))
             else v
-            for k, v in derived_columns.items()
+            for k, v in lightcone_derived_columns.items()
         }
 
         raw_child_columns = set(next(iter(self.values())).columns)
-        plan = self.__scope.plan_select(all_columns, derived_columns, raw_child_columns)
+        plan = self.__scope.plan_select(
+            all_columns, lightcone_derived_columns, raw_child_columns
+        )
 
         hidden = set(self.__hidden) | plan.hidden_additions
 
@@ -1083,6 +1225,7 @@ class Lightcone(dict):
             "select",
             plan.child_positional,
             additional_columns,
+            new_maps=new_maps,
             mapped_arguments={},
             hidden=hidden,
             construct=True,
@@ -1126,7 +1269,7 @@ class Lightcone(dict):
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
-    ) -> "Lightcone":
+    ) -> Lightcone:
         """
         Create a new dataset from some number of rows from this dataset.
 
@@ -1288,7 +1431,12 @@ class Lightcone(dict):
             output = {key: ds for key, ds in output.items() if len(ds) > 0}
 
         return Lightcone(
-            output, self.z_range, self.__hidden, self.__sort_key, self.__scope
+            output,
+            self.__maps,
+            self.z_range,
+            self.__hidden,
+            self.__sort_key,
+            self.__scope,
         )
 
     def with_new_columns(
@@ -1382,10 +1530,15 @@ class Lightcone(dict):
             )
             new_datasets[ds_name] = new_dataset
         return Lightcone(
-            new_datasets, self.z_range, self.__hidden, self.__sort_key, new_scope
+            new_datasets,
+            self.__maps,
+            self.z_range,
+            self.__hidden,
+            self.__sort_key,
+            new_scope,
         )
 
-    def sort_by(self, column: Optional[str], invert: bool = False):
+    def sort_by(self, column: str | None, invert: bool = False):
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -1427,12 +1580,12 @@ class Lightcone(dict):
             sort_key = (column, invert)
 
         return Lightcone(
-            dict(self), self.z_range, self.__hidden, sort_key, self.__scope
+            dict(self), self.__maps, self.z_range, self.__hidden, sort_key, self.__scope
         )
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: str | None = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Self:

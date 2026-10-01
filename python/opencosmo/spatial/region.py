@@ -262,11 +262,8 @@ class SkyboxRegion:
         # pixels straddling the RA edges are treated as intersecting.
         cos_dec = min(np.cos(np.radians(dec0)), np.cos(np.radians(dec1)))
         margin = np.degrees(max_pixrad(nside)) / max(cos_dec, 1e-6)
-        if self.__ra_width >= 360.0:
-            keep = np.ones(strip.shape, dtype=bool)
-        else:
-            offset = (strip_ra - self.__ra_start) % 360.0
-            keep = (offset <= self.__ra_width + margin) | (offset >= 360.0 - margin)
+        offset = (strip_ra - self.__ra_start) % 360.0
+        keep = (offset <= self.__ra_width + margin) | (offset >= 360.0 - margin)
         # query_strip does not return pixels in ascending order; downstream index
         # projection requires the intersection pixels to be sorted.
         return np.sort(strip[keep])

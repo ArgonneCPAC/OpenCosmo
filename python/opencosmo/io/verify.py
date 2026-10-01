@@ -171,7 +171,8 @@ def verify_lightcone_collection_schema(schema: Schema):
         # Single-dataset lightcone
         return verify_dataset_data(schema)
     for key, child_schema in schema.children.items():
-        verify_dataset_data(child_schema)
+        has_index = key != "healpix_maps"
+        verify_dataset_data(child_schema, has_index=has_index)
 
 
 def verify_structure_collection_data(schema: Schema):

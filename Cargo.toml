@@ -9,6 +9,7 @@ name = "_lib"
 crate-type = ["cdylib"]
 
 [dependencies]
+kiddo = "6.3.0"
 numpy = "0.29"
 pyo3 = "0.29"
 

@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from functools import cached_property, reduce
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, Self
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Literal,
+    Optional,
+    Self,
+)
 from warnings import warn
 
 import astropy.units as u  # type: ignore
@@ -13,15 +22,28 @@ from astropy.table import Column as AstroColumn  # type: ignore
 from astropy.table import vstack
 
 import opencosmo as oc
+from opencosmo.collection.lightcone.cutout import (
+    get_included_pixels,
+    validate_cutout_size,
+)
+from opencosmo.collection.lightcone.reproject import make_hdulist
 from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
-from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
+from opencosmo.spatial import make_skybox
+from opencosmo.spatial.healpix import HealPixIndex
+from opencosmo.spatial.region import (
+    ConeRegion,
+    FullSkyRegion,
+    HealpixRegion,
+    SkyboxRegion,
+)
 
 if TYPE_CHECKING:
     from astropy.coordinates import SkyCoord
+    from astropy.io import fits
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset import Dataset
@@ -210,14 +232,16 @@ class HealpixMap(dict):
         if len(self) < 10:
             repr_ds = self
             table_head = ""
+
         else:
             repr_ds = self.take(10, at="start")
             table_head = "First 10 rows:\n"
 
         table_repr = repr_ds.data.__repr__()
+
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
-        head = f"OpenCosmo Healpix Map Dataset (length={length}, "
+        head = f"OpenCosmo Healpix Map Dataset (length={length})"
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
 
@@ -253,6 +277,7 @@ class HealpixMap(dict):
     @property
     def columns(self) -> list[str]:
         """
+
         The names of the columns in this map.
 
         Returns
@@ -308,7 +333,12 @@ class HealpixMap(dict):
 
         return self.__header.healpix_map["z_range"]
 
-    def get_data(self, format="healsparse", nside_out: Optional[int] = None, **kwargs):
+    def get_data(
+        self,
+        format: Literal["healsparse", "healpix", "raw"] = "healsparse",
+        nside_out: Optional[int] = None,
+        **kwargs,
+    ):
         """
         Get the data in this dataset as healsparse map or as healpix maps
         (nest-ordered numpy array). Note that a dataset does not load data from
@@ -340,7 +370,7 @@ class HealpixMap(dict):
                 "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
             )
             format = kwargs["output"]
-        if format not in {"healsparse", "healpix"}:
+        if format not in {"healsparse", "healpix", "raw"}:
             raise ValueError(f"Unknown format type {format}")
 
         if nside_out is not None:
@@ -389,6 +419,10 @@ class HealpixMap(dict):
 
         elif format == "healsparse":
             return make_healsparse_maps(table, self.nside, self.nside_lr)
+        elif format == "raw":
+            output = {name: np.array(c) for name, c in dict(table).items()}
+            pixel = output.pop("pixel")
+            return (pixel, output)
 
     @property
     def data(self):
@@ -596,20 +630,25 @@ class HealpixMap(dict):
             If the query region does not overlap with the coverage of this map
             in
         """
-        # The best we can do here is turn
-        if not isinstance(region, ConeRegion):
-            raise TypeError(
-                "Currently only cone regions are supported when performing spatial queries on HealpixMaps"
+        if isinstance(region, SkyboxRegion):
+            level = int(np.log2(self.nside))
+            pixels = np.union1d(*HealPixIndex().query(region, int(level))[level])
+
+        elif isinstance(region, ConeRegion):
+            vec = hp.ang2vec(
+                region.center.ra.value, region.center.dec.value, lonlat=True
+            )
+            pixels = hp.query_disc(
+                self.nside,
+                vec,
+                region.radius.to(u.radian).value,
+                inclusive=inclusive,
+                nest=self.__ordering == "NESTED",
             )
 
-        vec = hp.ang2vec(region.center.ra.value, region.center.dec.value, lonlat=True)
-        pixels = hp.query_disc(
-            self.nside,
-            vec,
-            region.radius.to(u.radian).value,
-            inclusive=inclusive,
-            nest=self.__ordering == "NESTED",
-        )
+        else:
+            raise TypeError("Didn't recieve a 2d region!")
+
         new_datasets = {}
         current_pixels = self.pixels
 
@@ -631,6 +670,90 @@ class HealpixMap(dict):
             self.__hidden,
             self.__ordered_by,
         )
+
+    def cutouts(
+        self,
+        centers: SkyCoord,
+        angular_size: float | u.Quantity,
+        npix: int = 64,
+    ) -> Generator[fits.HDUList, None, None]:
+        """Create square map cutouts centered at sky coordinates.
+
+        Parameters
+        ----------
+        centers : astropy.coordinates.SkyCoord
+            Centers of the requested cutouts.
+        angular_size : float or astropy.units.Quantity
+            Angular width of each cutout. Values without units are assumed to
+            be in degrees. Must be positive.
+        npix : int, default=64
+            Number of pixels along each side of each output image. Must be
+            positive.
+
+        Yields
+        ------
+        cutout : astropy.io.fits.HDUList
+            An in-memory FITS file containing one image extension per map
+            column. Image extensions use a celestial TAN WCS.
+
+        Raises
+        ------
+        ValueError
+            If ``angular_size`` has non-angular units, or if ``angular_size``
+            or ``npix`` is not positive.
+        TypeError
+            If ``angular_size`` is not scalar or ``npix`` is not an integer.
+
+        Notes
+        -----
+        Cutouts are square and use a 64-by-64 pixel grid by default. The output
+        uses an equatorial ``RA---TAN``/``DEC--TAN`` WCS and assumes this map
+        uses nested HEALPix ordering in the same celestial frame. Output samples
+        whose four-pixel interpolation stencil includes an unavailable map
+        pixel are set to NaN. A cutout with no map coverage is therefore an
+        all-NaN image with valid WCS metadata.
+
+        This method is intended for small postage-stamp cutouts. Very large
+        cutouts may be significantly distorted by the TAN projection.
+        """
+        if not isinstance(npix, int) or isinstance(npix, bool):
+            raise TypeError("npix must be an integer")
+        if npix <= 0:
+            raise ValueError("npix must be positive")
+        angular_size = validate_cutout_size(angular_size)
+
+        pixels = get_included_pixels(centers, angular_size, self.nside)
+        if len(centers) == 0:
+            return
+
+        if self.full_sky:
+            rows = pixels
+        else:
+            pixels, _, rows = np.intersect1d(
+                pixels, self.pixels, assume_unique=True, return_indices=True
+            )
+
+        if len(rows) == 0:
+            data = {name: np.empty(0, dtype=np.float64) for name in self.columns}
+        else:
+            pixels, data = self.__take_rows(rows).get_data("raw")
+
+        for center in centers:
+            region_pixels = make_skybox(center, angular_size).get_healpix_intersections(
+                self.nside
+            )
+            region_pixels, index_to_include, _ = np.intersect1d(
+                region_pixels, pixels, assume_unique=True, return_indices=True
+            )
+            region_data = {k: d[index_to_include] for k, d in data.items()}
+            yield make_hdulist(
+                region_pixels,
+                region_data,
+                self.nside,
+                (center.ra.deg, center.dec.deg),
+                angular_size,
+                npix,
+            )
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
@@ -697,7 +820,7 @@ class HealpixMap(dict):
             The pixels in these maps that fall within the given region.
 
         """
-        region = oc.make_box(p1, p2)
+        region = oc.make_skybox(p1, p2)
         return self.bound(region)
 
     def evaluate(

@@ -239,6 +239,108 @@ class TestDistributeRedshift:
         assert all(a.index_kind == "spatial" for a in assignments)
         assert all(a.file_indices == (0, 1) for a in assignments)
 
+    def test_redshift_map_replicated_and_steps_preserved(self) -> None:
+        """A healpix map alongside step files is replicated, not step-grouped.
+
+        Without the step exemption the map lands in its own step bucket and adds a
+        second data_type, which makes the layout non-plain and silently degrades the
+        whole lightcone to spatial distribution.
+        """
+        layouts = (
+            _layout("/file_step0.hdf5", step=0, is_lightcone=True, row_count=100),
+            _layout("/file_step1.hdf5", step=1, is_lightcone=True, row_count=200),
+            _layout("/file_step2.hdf5", step=2, is_lightcone=True, row_count=150),
+            _layout(
+                "/map.hdf5",
+                step=None,
+                data_type="healpix_map",
+                is_lightcone=False,
+                row_count=999,
+            ),
+        )
+        nranks = 3
+        assignments = distribute(layouts, MpiMode.REDSHIFT, nranks)
+
+        # Step distribution survived the presence of the map.
+        assert all(a.index_kind == "redshift_step" for a in assignments)
+
+        # The map (index 3) is on every rank.
+        assert all(3 in a.file_indices for a in assignments)
+
+        # The step files are still partitioned, each appearing exactly once.
+        step_indices = sorted(
+            i
+            for a in assignments
+            if not a.is_empty_ref
+            for i in a.file_indices
+            if i != 3
+        )
+        assert step_indices == [0, 1, 2]
+
+    def test_redshift_map_replicated_onto_empty_ref_ranks(self) -> None:
+        """Empty reference ranks still receive the replicated map.
+
+        is_empty_ref is per-rank, so the map must be in file_indices there too; the
+        node-level index spec is what keeps it whole.
+        """
+        layouts = (
+            _layout("/file_step0.hdf5", step=0, is_lightcone=True, row_count=100),
+            _layout("/file_step1.hdf5", step=1, is_lightcone=True, row_count=200),
+            _layout(
+                "/map.hdf5",
+                step=None,
+                data_type="healpix_map",
+                is_lightcone=False,
+                row_count=999,
+            ),
+        )
+        assignments = distribute(layouts, MpiMode.REDSHIFT, nranks=4)
+
+        assert any(a.is_empty_ref for a in assignments)
+        assert all(2 in a.file_indices for a in assignments)
+
+    def test_redshift_single_step_plus_map_falls_back(self) -> None:
+        """One step file plus a map is not distributable by step.
+
+        Only one steppable file remains after exemption, so the len(steppable) > 1
+        guard sends this down the spatial path rather than step-grouping a single file.
+        """
+        layouts = (
+            _layout("/file_step0.hdf5", step=0, is_lightcone=True, row_count=100),
+            _layout(
+                "/map.hdf5",
+                step=None,
+                data_type="healpix_map",
+                is_lightcone=False,
+                row_count=999,
+            ),
+        )
+        assignments = distribute(layouts, MpiMode.REDSHIFT, nranks=2)
+
+        assert all(a.index_kind == "spatial" for a in assignments)
+        assert all(a.file_indices == (0, 1) for a in assignments)
+
+    def test_redshift_standalone_map_unchanged(self) -> None:
+        """A map opened on its own is untouched by the exemption.
+
+        steppable is empty, so the guard fails and the spatial fallback gives every
+        rank the file — exactly the pre-change behavior.
+        """
+        layouts = (
+            _layout(
+                "/map.hdf5",
+                step=None,
+                data_type="healpix_map",
+                is_lightcone=False,
+                row_count=999,
+            ),
+        )
+        assignments = distribute(layouts, MpiMode.REDSHIFT, nranks=3)
+
+        assert all(a.index_kind == "spatial" for a in assignments)
+        assert all(a.file_indices == (0,) for a in assignments)
+        assert not any(a.is_empty_ref for a in assignments)
+
     def test_redshift_none_mode_treated_as_spatial(self) -> None:
         """mpi_mode=None is treated as spatial (every rank gets every file)."""
         layouts = (

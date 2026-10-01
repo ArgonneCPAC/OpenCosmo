@@ -225,6 +225,33 @@ Maps contain pixelized spatial data, integrated over a redshift range, in a sing
    pix_list = tsz_map.valid_pixels
    vals = tsz_map.get_values_pix(pix_list)
 
+Maps can also be opened alongside a lightcone catalog. The map is available as
+``lightcone.map``, and square FITS cutouts can be generated around every catalog
+object using its ``ra`` and ``dec`` coordinates:
+
+.. code-block:: python
+
+   import astropy.units as u
+
+   lightcone = oc.open(*catalog_paths, healpix_map_path)
+
+   for object_row, cutout in lightcone.cutouts(size=5 * u.arcmin, npix=64):
+      image = cutout["TSZ"].data
+
+``size`` is the angular width of the cutout and can be an Astropy quantity such
+as ``5 * u.arcmin``. Values without units are interpreted as
+degrees. ``npix`` is the number of pixels along each side and defaults to 64.
+Each cutout is returned as an in-memory ``astropy.io.fits.HDUList`` containing
+one image extension per selected map column.
+
+Cutouts are always square and use an equatorial ``RA---TAN``/``DEC--TAN`` WCS.
+The input map is assumed to use nested HEALPix ordering in the same celestial
+frame. Reprojection uses four-pixel HEALPix interpolation. If any pixel in an
+output sample's interpolation stencil is unavailable, that output sample is
+NaN; a cutout entirely outside the map coverage is consequently an all-NaN
+image with valid WCS metadata. The TAN projection is intended for small
+postage-stamp cutouts and may significantly distort very large cutouts.
+
 
 
 

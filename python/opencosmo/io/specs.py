@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     import opencosmo as oc
     from opencosmo.io.discover import GroupLayout
+    from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
 
 """
@@ -195,21 +196,27 @@ def group_by_scope(
 
 
 def _build_single_dataset(
-    targets: list[DatasetTarget], open_kwargs: dict[str, Any]
+    targets: list[DatasetTarget],
+    open_kwargs: dict[str, Any],
+    index: IndexSpec | None = None,
 ) -> oc.Dataset | oc.collection.Collection:
     """Build one dataset from a single-target file list.
 
     Shared by DatasetSpec and HealpixMapSpec. open_dataset returns a raw Dataset;
     a healpix_map header is then wrapped into a HealpixMap here (DatasetSpec only
     ever matches plain non-lightcone, non-healpix groups, so its build passes the
-    Dataset straight through). The single-dataset open is always spatially
+    Dataset straight through). The single-dataset open defaults to spatially
     partitioned — serial opens (comm is None) fall through to no restriction inside
     the spatial spec.
+
+    ``index`` overrides that default. A caller that knows the dataset must be whole
+    on every rank — ``Lightcone.open`` building a companion healpix map — passes an
+    explicit spec rather than relying on the standalone default.
     """
     from opencosmo.io.index_spec import spatial
     from opencosmo.io.iopen import _open_healpix_map, open_dataset
 
-    ds = open_dataset(targets[0], spatial, open_kwargs=open_kwargs)
+    ds = open_dataset(targets[0], index or spatial, open_kwargs=open_kwargs)
     if ds.header.file.data_type == "healpix_map":
         return _open_healpix_map(ds)
     return ds
@@ -318,8 +325,19 @@ class StructureCollectionSpec:
         has_properties_link = any(
             is_properties_group(g) and has_linked_targets(g) for g in groups
         )
-        n_data_types = len({group_data_type(g) for g in groups})
-        return has_properties_link and n_data_types > 1
+        allowed_data_types = {
+            "galaxy_properties",
+            "galaxy_particles",
+            "halo_properties",
+            "halo_particles",
+            "halo_profiles",
+        }
+        data_types = {group_data_type(g) for g in groups}
+        return (
+            has_properties_link
+            and len(data_types) > 1
+            and data_types.issubset(allowed_data_types)
+        )
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
         _verify_columns_consistent_per_dataset(layouts)
@@ -364,8 +382,9 @@ class HealpixMapSpec:
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
+        index: IndexSpec | None = None,
     ) -> oc.Dataset | oc.collection.Collection:
-        return _build_single_dataset(targets, open_kwargs)
+        return _build_single_dataset(targets, open_kwargs, index)
 
 
 class LightconeSpec:
@@ -375,9 +394,17 @@ class LightconeSpec:
 
     def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
         groups = _all_groups(layouts)
-        if not groups or not all(is_lightcone_group(g) for g in groups):
+        maps = []
+        datasets = []
+        for group in groups:
+            if is_healpix_map_group(group):
+                maps.append(group)
+            else:
+                datasets.append(group)
+
+        if not groups or not all(is_lightcone_group(g) for g in datasets):
             return False
-        return len({group_data_type(g) for g in groups}) == 1
+        return len({group_data_type(g) for g in datasets}) == 1
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
         _verify_columns_consistent_per_dataset(layouts)

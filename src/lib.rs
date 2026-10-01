@@ -4,7 +4,9 @@
 ///
 ///
 use pyo3::prelude::*;
+
 mod index;
+mod spatial;
 
 #[pymodule]
 mod _lib {
@@ -13,9 +15,6 @@ mod _lib {
     #[pymodule_export]
     use crate::index::index;
 
-    /// Formats the sum of two numbers as string.
-    #[pyfunction]
-    fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-        Ok((a + b).to_string())
-    }
+    #[pymodule_export]
+    use crate::spatial::spatial;
 }
