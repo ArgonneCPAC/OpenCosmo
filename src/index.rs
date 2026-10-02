@@ -11,6 +11,29 @@ pub(crate) mod index {
     use std::collections::HashMap;
     use std::iter::zip;
 
+    type PyIndexPair<'py> = (Bound<'py, PyArray1<i64>>, Bound<'py, PyArray1<i64>>);
+
+    fn checked_range_end(start: i64, size: i64) -> PyResult<i64> {
+        if start < 0 || size < 0 {
+            return Err(PyValueError::new_err(
+                "Index range starts and sizes must be nonnegative",
+            ));
+        }
+        start
+            .checked_add(size)
+            .ok_or_else(|| PyValueError::new_err("Index range end overflowed int64"))
+    }
+
+    fn checked_allocation_length(sizes: ArrayView1<'_, i64>) -> PyResult<usize> {
+        sizes.iter().try_fold(0usize, |total, &size| {
+            let size = usize::try_from(size)
+                .map_err(|_| PyValueError::new_err("Index range sizes must be nonnegative"))?;
+            total
+                .checked_add(size)
+                .ok_or_else(|| PyValueError::new_err("Index allocation length overflowed usize"))
+        })
+    }
+
     fn unpack_index_array<'py>(index: &Bound<'py, PyAny>) -> PyResult<PyReadonlyArray1<'py, i64>> {
         Ok(unpack_array::<i64, 1>(index)?)
     }
@@ -35,7 +58,7 @@ pub(crate) mod index {
         get_simple_range(index_arr.as_array())
     }
     fn get_simple_range(index: ArrayView1<'_, i64>) -> PyResult<(i64, i64)> {
-        if index.len() == 0 {
+        if index.is_empty() {
             return Ok((0, 0));
         }
         let mut index_range = (index[0], index[0]);
@@ -63,12 +86,12 @@ pub(crate) mod index {
         start: ArrayView1<'_, i64>,
         size: ArrayView1<'_, i64>,
     ) -> PyResult<(i64, i64)> {
-        if start.len() == 0 {
+        if start.is_empty() {
             return Ok((0, 0));
         }
-        let mut index_range = (start[0], start[0] + size[0]);
+        let mut index_range = (start[0], checked_range_end(start[0], size[0])?);
         for (&st, &si) in zip(start, size) {
-            let end = st + si;
+            let end = checked_range_end(st, si)?;
             if st < index_range.0 {
                 index_range = (st, index_range.1);
             }
@@ -94,7 +117,7 @@ pub(crate) mod index {
             size_arr.as_array(),
             range_start_arr.as_array(),
             range_size_arr.as_array(),
-        );
+        )?;
         Ok(result.into_pyarray(py))
     }
 
@@ -103,30 +126,26 @@ pub(crate) mod index {
         size: ArrayView1<'_, i64>,
         range_start: ArrayView1<'_, i64>,
         range_size: ArrayView1<'_, i64>,
-    ) -> Array1<i64> {
+    ) -> PyResult<Array1<i64>> {
         let mut output = Array1::<i64>::zeros(range_start.len());
-        if start.len() == 0 {
-            return output;
+        if start.is_empty() {
+            return Ok(output);
         }
-        let end = &start + &size;
         for (i, (&rst, &rsi)) in zip(range_start, range_size).enumerate() {
-            let chunk_end = rst + rsi;
-            let total = zip(start, &end)
-                .filter(|(s, e)| !(**s > chunk_end || **e < rst))
-                .map(|(&s, &e)| {
-                    let mut cr = (s, e);
-                    if chunk_end < e {
-                        cr = (cr.0, chunk_end)
-                    }
-                    if rst > s {
-                        cr = (rst, cr.1)
-                    }
-                    cr.1 - cr.0
-                })
-                .sum();
+            let range_end = checked_range_end(rst, rsi)?;
+            let mut total = 0i64;
+            for (&st, &si) in zip(start, size) {
+                let end = checked_range_end(st, si)?;
+                let overlap = end.min(range_end) - st.max(rst);
+                if overlap > 0 {
+                    total = total.checked_add(overlap).ok_or_else(|| {
+                        PyValueError::new_err("Index overlap count overflowed int64")
+                    })?;
+                }
+            }
             output[i] = total;
         }
-        output
+        Ok(output)
     }
     #[pyfunction(name = "chunked_into_array")]
     pub(crate) fn chunked_into_array_py<'py>(
@@ -135,21 +154,24 @@ pub(crate) mod index {
         size: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyArray1<i64>>> {
         let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
-        let output = chunked_into_array(start_arr.as_array(), size_arr.as_array());
+        let output = chunked_into_array(start_arr.as_array(), size_arr.as_array())?;
         Ok(output.into_pyarray(py))
     }
-    fn chunked_into_array(start: ArrayView1<'_, i64>, size: ArrayView1<'_, i64>) -> Array1<i64> {
-        let total_length = size.sum();
-        let mut output = Array1::<i64>::zeros(total_length as usize);
-        let mut rs: i64 = 0;
+    fn chunked_into_array(
+        start: ArrayView1<'_, i64>,
+        size: ArrayView1<'_, i64>,
+    ) -> PyResult<Array1<i64>> {
+        let total_length = checked_allocation_length(size)?;
+        let mut output = Array1::<i64>::zeros(total_length);
+        let mut output_index = 0usize;
         for (&st, &si) in zip(start, size) {
-            let range = Array1::from_iter(st..st + si);
-            output
-                .slice_mut(s![rs as usize..(rs + si) as usize])
-                .assign(&range);
-            rs += si;
+            let end = checked_range_end(st, si)?;
+            for value in st..end {
+                output[output_index] = value;
+                output_index += 1;
+            }
         }
-        output
+        Ok(output)
     }
 
     #[pyfunction(name = "take_chunked_from_simple")]
@@ -174,21 +196,28 @@ pub(crate) mod index {
         start: ArrayView1<'_, i64>,
         size: ArrayView1<'_, i64>,
     ) -> Result<Array1<i64>, PyErr> {
-        let total_length = size.sum();
-        let mut output = Array1::<i64>::zeros(total_length as usize);
-        let mut rs: i64 = 0;
+        let total_length = checked_allocation_length(size)?;
+        let mut output = Array1::<i64>::zeros(total_length);
+        let mut output_index = 0usize;
         for (&st, &si) in zip(start, size) {
-            let end = st + si;
-            if end as usize > simple.len() {
+            let end = checked_range_end(st, si)?;
+            let start_index = usize::try_from(st)
+                .map_err(|_| PyValueError::new_err("Index range starts must be nonnegative"))?;
+            let end_index = usize::try_from(end)
+                .map_err(|_| PyValueError::new_err("Index range end exceeds usize"))?;
+            if end_index > simple.len() {
                 return Err(PyValueError::new_err(
                     "The chunked index is outside of the range of the simple index!",
                 ));
             }
-            let to_insert = simple.slice(s![st as usize..end as usize]);
+            let to_insert = simple.slice(s![start_index..end_index]);
+            let output_end = output_index
+                .checked_add(to_insert.len())
+                .ok_or_else(|| PyValueError::new_err("Index output position overflowed usize"))?;
             output
-                .slice_mut(s![rs as usize..(rs + si) as usize])
+                .slice_mut(s![output_index..output_end])
                 .assign(&to_insert);
-            rs += si
+            output_index = output_end;
         }
         Ok(output)
     }
@@ -200,7 +229,7 @@ pub(crate) mod index {
         size: &Bound<'_, PyAny>,
         take_start: &Bound<'_, PyAny>,
         take_size: &Bound<'_, PyAny>,
-    ) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray1<i64>>)> {
+    ) -> PyResult<PyIndexPair<'py>> {
         let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
         let (take_start_arr, take_size_arr) = unpack_chunked_index(take_start, take_size)?;
         let result = take_chunked_from_chunked(
@@ -212,17 +241,7 @@ pub(crate) mod index {
         Ok((result.0.into_pyarray(py), result.1.into_pyarray(py)))
     }
     fn find_chunk(prefix: &[i64], x: i64) -> usize {
-        let mut lo = 0usize;
-        let mut hi = prefix.len() - 1;
-        while lo + 1 < hi {
-            let mid = (lo + hi) / 2;
-            if prefix[mid] <= x {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        lo
+        prefix.partition_point(|&offset| offset <= x) - 1
     }
 
     fn take_chunked_from_chunked(
@@ -231,7 +250,7 @@ pub(crate) mod index {
         take_start: ArrayView1<'_, i64>,
         take_size: ArrayView1<'_, i64>,
     ) -> Result<(Array1<i64>, Array1<i64>), PyErr> {
-        if take_start.len() == 0 {
+        if take_start.is_empty() {
             return Ok((Array1::<i64>::zeros(0), Array1::<i64>::zeros(0)));
         }
         let mut output_start: Vec<i64> = Vec::new();
@@ -239,12 +258,24 @@ pub(crate) mod index {
 
         let mut prefix = vec![0i64; size.len() + 1];
         for i in 0..size.len() {
-            prefix[i + 1] = prefix[i] + size[i];
+            checked_range_end(start[i], size[i])?;
+            prefix[i + 1] = prefix[i]
+                .checked_add(size[i])
+                .ok_or_else(|| PyValueError::new_err("Index length overflowed int64"))?;
         }
         let total = prefix[size.len()];
 
         for (&tstart, &tsize) in zip(take_start, take_size) {
-            if tstart + tsize > total {
+            let take_end = checked_range_end(tstart, tsize)?;
+            if take_end > total {
+                return Err(PyValueError::new_err(
+                    "You can't take more elements than exist in an index!",
+                ));
+            }
+            if tsize == 0 {
+                continue;
+            }
+            if size.is_empty() {
                 return Err(PyValueError::new_err(
                     "You can't take more elements than exist in an index!",
                 ));
@@ -263,7 +294,11 @@ pub(crate) mod index {
                     (size_in_chunk, false)
                 };
 
-                output_start.push(start[chunk_index] + start_in_chunk);
+                output_start.push(
+                    start[chunk_index]
+                        .checked_add(start_in_chunk)
+                        .ok_or_else(|| PyValueError::new_err("Index range end overflowed int64"))?,
+                );
                 output_size.push(take);
                 chunk_taken += take;
 
@@ -327,7 +362,7 @@ pub(crate) mod index {
             size_arr.as_array(),
             range_starts_arr.as_array(),
             range_sizes_arr.as_array(),
-        );
+        )?;
         PyList::new(
             py,
             output
@@ -341,16 +376,16 @@ pub(crate) mod index {
         sizes: ArrayView1<'_, i64>,
         range_starts: ArrayView1<'_, i64>,
         range_sizes: ArrayView1<'_, i64>,
-    ) -> Vec<(Array1<i64>, Array1<i64>)> {
+    ) -> PyResult<Vec<(Array1<i64>, Array1<i64>)>> {
         let n_datasets = range_starts.len();
         let mut outputs: Vec<(Vec<i64>, Vec<i64>)> =
             (0..n_datasets).map(|_| (Vec::new(), Vec::new())).collect();
 
-        if starts.len() == 0 || n_datasets == 0 {
-            return outputs
+        if starts.is_empty() || n_datasets == 0 {
+            return Ok(outputs
                 .into_iter()
                 .map(|(st, si)| (Array1::from_vec(st), Array1::from_vec(si)))
-                .collect();
+                .collect());
         }
 
         let mut i = 0usize;
@@ -358,9 +393,9 @@ pub(crate) mod index {
 
         while i < starts.len() && j < n_datasets {
             let chunk_start = starts[i];
-            let chunk_end = chunk_start + sizes[i];
+            let chunk_end = checked_range_end(chunk_start, sizes[i])?;
             let ds_start = range_starts[j];
-            let ds_end = ds_start + range_sizes[j];
+            let ds_end = checked_range_end(ds_start, range_sizes[j])?;
 
             if chunk_end <= ds_start {
                 i += 1;
@@ -380,10 +415,10 @@ pub(crate) mod index {
             }
         }
 
-        outputs
+        Ok(outputs
             .into_iter()
             .map(|(st, si)| (Array1::from_vec(st), Array1::from_vec(si)))
-            .collect()
+            .collect())
     }
     #[pyfunction(name = "rebuild_simple_by_ranges")]
     fn rebuild_simple_by_ranges_py<'py>(
@@ -398,7 +433,7 @@ pub(crate) mod index {
             index_arr.as_array(),
             start_arr.as_array(),
             size_arr.as_array(),
-        );
+        )?;
         PyList::new(py, output.drain(0..).map(|a| a.into_pyarray(py)))
     }
 
@@ -415,7 +450,7 @@ pub(crate) mod index {
             simple_arr.as_array(),
             start_arr.as_array(),
             size_arr.as_array(),
-        );
+        )?;
         Ok(result.into_pyarray(py))
     }
 
@@ -423,17 +458,19 @@ pub(crate) mod index {
         simple: ArrayView1<'_, i64>,
         start: ArrayView1<'_, i64>,
         size: ArrayView1<'_, i64>,
-    ) -> Array1<i64> {
+    ) -> PyResult<Array1<i64>> {
         let mut output: Vec<i64> = Vec::new();
         let n_chunks = start.len();
         if simple.is_empty() || n_chunks == 0 {
-            return Array1::from_vec(output);
+            return Ok(Array1::from_vec(output));
         }
 
         let mut chunk_idx = 0usize;
         for (i, &val) in simple.iter().enumerate() {
             // Advance past chunks whose end is at or before val.
-            while chunk_idx < n_chunks && val >= start[chunk_idx] + size[chunk_idx] {
+            while chunk_idx < n_chunks
+                && val >= checked_range_end(start[chunk_idx], size[chunk_idx])?
+            {
                 chunk_idx += 1;
             }
             if chunk_idx >= n_chunks {
@@ -445,19 +482,19 @@ pub(crate) mod index {
             }
             output.push(i as i64);
         }
-        Array1::from_vec(output)
+        Ok(Array1::from_vec(output))
     }
 
     fn rebuild_simple_by_ranges(
         index: ArrayView1<'_, i64>,
         range_starts: ArrayView1<'_, i64>,
         range_sizes: ArrayView1<'_, i64>,
-    ) -> Vec<Array1<i64>> {
+    ) -> PyResult<Vec<Array1<i64>>> {
         let n_ranges = range_starts.len();
         let mut outputs: Vec<Vec<i64>> = (0..n_ranges).map(|_| Vec::new()).collect();
 
-        if n_ranges == 0 || index.len() == 0 {
-            return outputs.into_iter().map(Array1::from_vec).collect();
+        if n_ranges == 0 || index.is_empty() {
+            return Ok(outputs.into_iter().map(Array1::from_vec).collect());
         }
 
         let mut j = 0usize;
@@ -465,7 +502,7 @@ pub(crate) mod index {
             // Advance past all ranges whose end is at or before idx.
             // Using a while loop handles the case where idx skips multiple ranges
             // and prevents an OOB panic when advancing past the last range.
-            while j < n_ranges && idx >= range_starts[j] + range_sizes[j] {
+            while j < n_ranges && idx >= checked_range_end(range_starts[j], range_sizes[j])? {
                 j += 1;
             }
             if j >= n_ranges {
@@ -478,6 +515,6 @@ pub(crate) mod index {
             outputs[j].push(idx - range_starts[j]);
         }
 
-        outputs.into_iter().map(Array1::from_vec).collect()
+        Ok(outputs.into_iter().map(Array1::from_vec).collect())
     }
 }
