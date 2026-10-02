@@ -4,6 +4,7 @@ import math
 
 import numpy as np
 import pytest
+from opencosmo.spatial.normalize import SpatialNormalizationContext
 from opencosmo.spatial.query import (
     BoxQuery,
     ConeQuery,
@@ -129,3 +130,23 @@ def test_validate_nested_promotion() -> None:
 
     with pytest.raises(ValueError, match="target"):
         validate_nested_promotion(8, 2)
+
+
+def test_normalization_context_copies_coordinate_names() -> None:
+    names = ["x", "y", "z"]
+    context = SpatialNormalizationContext(3, names)  # type: ignore[arg-type]
+
+    names[0] = "other"
+
+    assert context.coordinate_names == ("x", "y", "z")
+
+
+@pytest.mark.parametrize(
+    ("dimensions", "coordinate_names"),
+    [(1, ("x",)), (2, ("x",)), (3, ("x", "y"))],
+)
+def test_normalization_context_validates_dimensions_and_names(
+    dimensions: int, coordinate_names: tuple[str, ...]
+) -> None:
+    with pytest.raises(ValueError):
+        SpatialNormalizationContext(dimensions, coordinate_names)  # type: ignore[arg-type]

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-def __coordinates(
+def _coordinates(
     values: tuple[float, float, float], name: str
 ) -> tuple[float, float, float]:
     if len(values) != 3:
@@ -20,9 +20,6 @@ def __coordinates(
     if not all(isfinite(value) for value in coordinates):
         raise ValueError(f"{name} coordinates must be finite")
     return cast("tuple[float, float, float]", coordinates)
-
-
-_coordinates = __coordinates
 
 
 @dataclass(frozen=True, slots=True)
