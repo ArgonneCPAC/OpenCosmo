@@ -200,6 +200,21 @@ def test_normalize_healpix_region_canonicalizes_pixel_ranges() -> None:
     assert np.array_equal(query.sizes, [2, 3])
 
 
+def test_regions_do_not_retain_mutable_array_or_list_inputs() -> None:
+    pixels = np.array([1, 2], dtype=np.int64)
+    center = [1, 2, 3]
+    halfwidths = [1, 1, 1]
+    healpix = HealpixRegion(pixels, 1)
+    box = BoxRegion(center, halfwidths)  # type: ignore[arg-type]
+
+    pixels[0] = 9
+    center[0] = 9
+    halfwidths[0] = 9
+
+    assert np.array_equal(healpix.pixels, [1, 2])
+    assert box.bounds == [(0.0, 2.0), (1.0, 3.0), (2.0, 4.0)]
+
+
 def test_normalize_full_sky_region() -> None:
     context = SpatialNormalizationContext(2, ("ra", "dec"))
 
