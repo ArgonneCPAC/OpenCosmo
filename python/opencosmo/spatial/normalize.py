@@ -13,6 +13,7 @@ from opencosmo.spatial.query import (
 
 if TYPE_CHECKING:
     from opencosmo.spatial.query import NormalizedRegion
+    from opencosmo.units.handler import UnitHandler
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +22,8 @@ class SpatialNormalizationContext:
 
     dimensions: Literal[2, 3]
     coordinate_names: tuple[str, ...]
+    unit_handler: UnitHandler | None = None
+    unit_kwargs: tuple[tuple[str, float], ...] = ()
 
     def __post_init__(self) -> None:
         if self.dimensions not in (2, 3):
@@ -30,7 +33,13 @@ class SpatialNormalizationContext:
             raise ValueError("coordinate name count must match spatial dimensions")
         if not all(isinstance(name, str) and name for name in coordinate_names):
             raise ValueError("coordinate names must be nonempty strings")
+        unit_kwargs = tuple(
+            (str(name), float(value)) for name, value in self.unit_kwargs
+        )
+        if not all(np.isfinite(value) for _, value in unit_kwargs):
+            raise ValueError("unit conversion values must be finite")
         object.__setattr__(self, "coordinate_names", coordinate_names)
+        object.__setattr__(self, "unit_kwargs", unit_kwargs)
 
 
 def normalize_region(
@@ -44,6 +53,21 @@ def normalize_region(
             if context.dimensions != 3:
                 raise ValueError("box regions require a three-dimensional context")
             lower, upper = zip(*region.bounds)
+            if context.unit_handler is not None:
+                lower = tuple(
+                    value.value
+                    for value in context.unit_handler.into_base_convention(
+                        dict(zip(context.coordinate_names, lower)),
+                        dict(context.unit_kwargs),
+                    ).values()
+                )
+                upper = tuple(
+                    value.value
+                    for value in context.unit_handler.into_base_convention(
+                        dict(zip(context.coordinate_names, upper)),
+                        dict(context.unit_kwargs),
+                    ).values()
+                )
             return BoxQuery(lower, upper)
         case HealpixRegion():
             if context.dimensions != 2:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, Iterable, TypeVar, cast
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -20,6 +20,7 @@ from opencosmo.spatial.models import (
     HealpixRegionModel,
     SkyboxRegionModel,
 )
+from opencosmo.spatial.query import BoxQuery
 from opencosmo.spatial.relations import (
     contains_2d,
     contains_3d,
@@ -446,19 +447,28 @@ class BoxRegion:
         from_: UnitConvention,
         unit_kwargs: dict[str, Any] = {},
     ):
-        center = {col: dim for col, dim in zip(columns, self.__center)}
-        halfwidth = {col: dim for col, dim in zip(columns, self.__halfwidths)}
-
-        new_center = tuple(
-            v.value
-            for v in unit_handler.into_base_convention(center, unit_kwargs).values()
-        )
-        new_halfwidth = tuple(
-            v.value
-            for v in unit_handler.into_base_convention(halfwidth, unit_kwargs).values()
+        from opencosmo.spatial.normalize import (
+            SpatialNormalizationContext,
+            normalize_region,
         )
 
-        return BoxRegion(new_center, new_halfwidth)
+        query = normalize_region(
+            self,
+            context=SpatialNormalizationContext(
+                3,
+                tuple(columns),
+                unit_handler,
+                tuple(unit_kwargs.items()),
+            ),
+        )
+        assert isinstance(query, BoxQuery)
+        center = tuple(
+            (lower + upper) / 2 for lower, upper in zip(query.lower, query.upper)
+        )
+        halfwidths = tuple(
+            (upper - lower) / 2 for lower, upper in zip(query.lower, query.upper)
+        )
+        return BoxRegion(cast("Point3d", center), cast("BoxSize", halfwidths))
 
     @property
     def bounds(self):
