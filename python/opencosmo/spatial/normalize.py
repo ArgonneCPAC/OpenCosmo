@@ -7,6 +7,7 @@ import numpy as np
 
 from opencosmo.spatial.query import (
     BoxQuery,
+    ConeQuery,
     FullSkyQuery,
     PixelSelection,
 )
@@ -46,7 +47,12 @@ def normalize_region(
     region: object, *, context: SpatialNormalizationContext
 ) -> NormalizedRegion:
     """Convert supported public regions into immutable numeric query specifications."""
-    from opencosmo.spatial.region import BoxRegion, FullSkyRegion, HealpixRegion
+    from opencosmo.spatial.region import (
+        BoxRegion,
+        ConeRegion,
+        FullSkyRegion,
+        HealpixRegion,
+    )
 
     match region:
         case BoxRegion():
@@ -85,5 +91,14 @@ def normalize_region(
             if context.dimensions != 2:
                 raise ValueError("full-sky regions require a two-dimensional context")
             return FullSkyQuery()
+        case ConeRegion():
+            if context.dimensions != 2:
+                raise ValueError("cone regions require a two-dimensional context")
+            center = region.center.cartesian.xyz.value
+            radius = region.radius.to_value("rad")
+            return ConeQuery(
+                (float(center[0]), float(center[1]), float(center[2])),
+                float(2 - 2 * np.cos(radius)),
+            )
         case _:
             raise TypeError(f"unsupported region type {type(region).__name__}")

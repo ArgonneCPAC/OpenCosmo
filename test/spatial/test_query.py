@@ -13,7 +13,7 @@ from opencosmo.spatial.query import (
     SkyboxQuery,
     validate_nested_promotion,
 )
-from opencosmo.spatial.region import BoxRegion, FullSkyRegion, HealpixRegion
+from opencosmo.spatial.region import BoxRegion, ConeRegion, FullSkyRegion, HealpixRegion
 
 
 def test_box_query_accepts_finite_ordered_bounds() -> None:
@@ -183,3 +183,17 @@ def test_normalize_region_rejects_incompatible_context() -> None:
 
     with pytest.raises(ValueError, match="three-dimensional"):
         normalize_region(BoxRegion((1, 2, 3), (1, 1, 1)), context=context)
+
+
+def test_normalize_cone_region_uses_unit_vector_and_squared_chord_distance() -> None:
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+
+    context = SpatialNormalizationContext(2, ("ra", "dec"))
+    region = ConeRegion(SkyCoord(0 * u.deg, 0 * u.deg), 60 * u.deg)
+
+    query = normalize_region(region, context=context)
+
+    assert isinstance(query, ConeQuery)
+    assert np.allclose(query.center, (1, 0, 0))
+    assert query.max_squared_chord_distance == pytest.approx(1)
