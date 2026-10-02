@@ -80,7 +80,7 @@ def normalize_region(
         case HealpixRegion():
             if context.dimensions != 2:
                 raise ValueError("HEALPix regions require a two-dimensional context")
-            pixels = region.pixels
+            pixels = np.unique(region.pixels)
             if pixels.size == 0:
                 starts = np.array([], dtype=np.int64)
                 sizes = np.array([], dtype=np.int64)

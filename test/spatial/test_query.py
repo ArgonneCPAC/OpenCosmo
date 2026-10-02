@@ -150,6 +150,16 @@ def test_validate_nested_promotion() -> None:
     with pytest.raises(ValueError, match="target"):
         validate_nested_promotion(8, 2)
 
+    with pytest.raises(ValueError, match="power of two"):
+        validate_nested_promotion(2, 6)
+
+
+def test_healpix_region_rejects_invalid_promotion_before_expansion() -> None:
+    region = HealpixRegion(np.array([1], dtype=np.int64), 2)
+
+    with pytest.raises(ValueError, match="power of two"):
+        region.into_healpix_region(6)
+
 
 def test_normalization_context_copies_coordinate_names() -> None:
     names = ["x", "y", "z"]
@@ -181,7 +191,7 @@ def test_normalize_box_region() -> None:
 
 def test_normalize_healpix_region_canonicalizes_pixel_ranges() -> None:
     context = SpatialNormalizationContext(2, ("ra", "dec"))
-    region = HealpixRegion(np.array([1, 2, 4, 5, 6], dtype=np.int64), 1)
+    region = HealpixRegion(np.array([6, 2, 1, 5, 4, 2], dtype=np.int64), 1)
 
     query = normalize_region(region, context=context)
 

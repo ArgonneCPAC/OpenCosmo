@@ -21,7 +21,7 @@ from opencosmo.spatial.models import (
     HealpixRegionModel,
     SkyboxRegionModel,
 )
-from opencosmo.spatial.query import BoxQuery
+from opencosmo.spatial.query import BoxQuery, validate_nested_promotion
 from opencosmo.spatial.relations import (
     contains_2d,
     contains_3d,
@@ -359,9 +359,7 @@ class HealpixRegion:
     def into_healpix_region(self, nside: int):
         if nside == self.nside:
             return self
-        if nside < self.nside:
-            raise ValueError("New nside must be greater than current nside!")
-        factor = nside // self.nside
+        factor = validate_nested_promotion(self.nside, nside)
         num_subpixels = factor**2
         starts = self.pixels * num_subpixels
         sizes = np.full_like(starts, num_subpixels)
