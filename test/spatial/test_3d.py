@@ -1,6 +1,7 @@
 import random
 
 import numpy as np
+import pytest
 
 import opencosmo as oc
 from opencosmo.dataset import operations as dsops
@@ -202,6 +203,55 @@ def test_box_query_chain_failure(halo_properties_path):
     ds = ds.bound(reg1)
     ds = ds.bound(reg2)
     assert len(ds) == 0
+
+
+def test_box_query_outside_domain(halo_properties_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+
+    result = ds.bound(oc.make_box((140, 140, 140), (150, 150, 150)))
+
+    assert len(result) == 0
+    assert len(result.get_data()) == 0
+
+
+def test_box_query_partially_outside_domain(halo_properties_path):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    region = oc.make_box((-10, -10, -10), (40, 40, 40))
+
+    with pytest.warns(UserWarning, match="not fully contained"):
+        result = ds.bound(region)
+
+    assert 0 < len(result) < len(ds)
+
+
+@pytest.mark.parametrize("operation", ["filter", "sort", "take"])
+def test_box_query_after_row_operation(halo_properties_path, operation):
+    ds = oc.open(halo_properties_path).with_units("scalefree")
+    if operation == "filter":
+        ds = ds.filter(oc.col("fof_halo_mass") > 1e13)
+    elif operation == "sort":
+        ds = ds.sort_by("fof_halo_mass", invert=True)
+    else:
+        ds = ds.take(1000, at="start")
+
+    source = ds.select(
+        "fof_halo_tag",
+        "fof_halo_center_x",
+        "fof_halo_center_y",
+        "fof_halo_center_z",
+    ).get_data("numpy")
+    mask = np.ones(len(source["fof_halo_tag"]), dtype=bool)
+    for dimension in ("x", "y", "z"):
+        values = source[f"fof_halo_center_{dimension}"]
+        mask &= (values > 30) & (values < 60)
+
+    result = ds.bound(oc.make_box((30, 30, 30), (60, 60, 60)))
+    tags = result.select("fof_halo_tag").get_data("numpy")
+
+    assert set(tags) == set(source["fof_halo_tag"][mask])
+    if operation == "sort":
+        masses = result.select("fof_halo_mass").get_data("numpy")
+        assert np.all(masses[:-1] >= masses[1:])
 
 
 def test_box_query_chain_write_failure(halo_properties_path, tmp_path):
