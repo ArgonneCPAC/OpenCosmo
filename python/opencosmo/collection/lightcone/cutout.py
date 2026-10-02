@@ -135,7 +135,7 @@ def get_included_pixels(
         hp.pix2vec(nside, candidates, nest=True), dtype=np.float64
     ).T
     max_squared_chord_distance = 2.0 - 2.0 * np.cos(radius)
-    distances = spatlib.get_closest_squared_distance_3d(
+    distances = spatlib.get_closest_distance_3d(
         center_vecs, candidate_vecs, max_squared_chord_distance
     )
     return np.sort(candidates[np.isfinite(distances)])
