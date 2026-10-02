@@ -117,8 +117,8 @@ class ConeRegion:
     """
 
     def __init__(self, center: SkyCoord, radius: u.Quantity):
-        self.__center = center
-        self.__radius = radius
+        self.__center = center.copy()
+        self.__radius = radius.copy()
 
     def __hash__(self):
         return hash(
@@ -151,7 +151,7 @@ class ConeRegion:
         -------
         coordinate: astropy.coordinates.SkyCoord
         """
-        return self.__center
+        return self.__center.copy()
 
     @property
     def radius(self):
@@ -162,7 +162,7 @@ class ConeRegion:
         -------
         radius: astropy.units.Quantity
         """
-        return self.__radius
+        return self.__radius.copy()
 
     def contains(self, other: Any):
         """
@@ -211,8 +211,8 @@ class SkyboxRegion:
     """
 
     def __init__(self, p1: SkyCoord, p2: SkyCoord):
-        self.__p1 = p1
-        self.__p2 = p2
+        self.__p1 = p1.copy()
+        self.__p2 = p2.copy()
         self.__ra_start = p1.ra.deg % 360.0
         self.__ra_width = (p2.ra.deg - p1.ra.deg) % 360.0
         self.__dec_bounds = (
@@ -289,7 +289,10 @@ class SkyboxRegion:
 
 class HealpixRegion:
     def __init__(self, idxs: DataIndex, nside: int):
-        self.__idxs = idxs
+        if isinstance(idxs, tuple):
+            self.__idxs: DataIndex = (idxs[0].copy(), idxs[1].copy())
+        else:
+            self.__idxs = idxs.copy()
         self.__nside = nside
 
     def __repr__(self):
@@ -327,7 +330,7 @@ class HealpixRegion:
         """
         The Healpix pixels contained in this region.
         """
-        return into_array(self.__idxs)
+        return into_array(self.__idxs).copy()
 
     @property
     def nside(self):
@@ -402,11 +405,12 @@ class BoxRegion:
     """
 
     def __init__(self, center: Point3d, halfwidths: BoxSize):
-        self.__center = center
-        self.__halfwidths = halfwidths
-        self.__bounds: list[tuple[float, float]] = [
-            (c - hw, c + hw) for c, hw in zip(self.__center, self.__halfwidths)
-        ]
+        self.__center = tuple(float(value) for value in center)
+        self.__halfwidths = tuple(float(value) for value in halfwidths)
+        self.__bounds = tuple(
+            (center_value - halfwidth, center_value + halfwidth)
+            for center_value, halfwidth in zip(self.__center, self.__halfwidths)
+        )
 
     def __repr__(self):
         return f"Box with bounds {self.bounds}"
@@ -465,7 +469,7 @@ class BoxRegion:
         -------
         bounds: list[tuple(float,float), ....]
         """
-        return self.__bounds
+        return list(self.__bounds)
 
     def contains(self, other: Any) -> bool | np.ndarray:
         """
