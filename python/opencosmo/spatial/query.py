@@ -51,10 +51,12 @@ class ConeQuery:
 
     def __post_init__(self) -> None:
         center = _coordinates(self.center, "center")
+        if not np.isclose(np.dot(center, center), 1.0):
+            raise ValueError("cone center must be a Cartesian unit vector")
         threshold = float(self.max_squared_chord_distance)
-        if not isfinite(threshold) or threshold < 0:
+        if not isfinite(threshold) or not 0 <= threshold <= 4:
             raise ValueError(
-                "max_squared_chord_distance must be finite and nonnegative"
+                "max_squared_chord_distance must be finite and between 0 and 4"
             )
         object.__setattr__(self, "center", center)
         object.__setattr__(self, "max_squared_chord_distance", threshold)

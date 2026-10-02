@@ -58,6 +58,13 @@ def test_cone_query_rejects_invalid_threshold(threshold: float) -> None:
         ConeQuery((1, 0, 0), threshold)
 
 
+def test_cone_query_rejects_non_unit_center_and_excessive_threshold() -> None:
+    with pytest.raises(ValueError, match="unit vector"):
+        ConeQuery((2, 0, 0), 1)
+    with pytest.raises(ValueError, match="between 0 and 4"):
+        ConeQuery((1, 0, 0), 5)
+
+
 def test_skybox_query_validates_declination_bounds() -> None:
     query = SkyboxQuery(350, 20, -10, 10, "wrapped")
 
