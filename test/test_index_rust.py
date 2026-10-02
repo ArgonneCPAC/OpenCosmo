@@ -121,6 +121,69 @@ def test_take_chunked_from_simple_rejects_out_of_bounds_range():
         idxlib.take_chunked_from_simple(index([10, 11]), index([1]), index([2]))
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda: idxlib.get_chunked_range(index([0]), index([-1])),
+        lambda: idxlib.n_in_range_chunked(
+            index([0]), index([1]), index([0]), index([-1])
+        ),
+        lambda: idxlib.chunked_into_array(index([0]), index([-1])),
+        lambda: idxlib.take_chunked_from_simple(index([0]), index([-1]), index([1])),
+        lambda: idxlib.take_chunked_from_chunked(
+            index([0]), index([1]), index([-1]), index([1])
+        ),
+        lambda: idxlib.rebuild_chunked_by_ranges(
+            index([0]), index([-1]), index([0]), index([1])
+        ),
+        lambda: idxlib.rebuild_simple_by_ranges(index([0]), index([0]), index([-1])),
+        lambda: idxlib.project_chunked_on_simple(index([0]), index([0]), index([-1])),
+    ],
+)
+def test_chunked_operations_reject_negative_ranges(operation):
+    with pytest.raises(ValueError, match="nonnegative"):
+        operation()
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda: idxlib.get_chunked_range(index([np.iinfo(np.int64).max]), index([1])),
+        lambda: idxlib.n_in_range_chunked(
+            index([0]),
+            index([1]),
+            index([np.iinfo(np.int64).max]),
+            index([1]),
+        ),
+        lambda: idxlib.chunked_into_array(index([np.iinfo(np.int64).max]), index([1])),
+        lambda: idxlib.take_chunked_from_simple(
+            index([0]), index([np.iinfo(np.int64).max]), index([1])
+        ),
+        lambda: idxlib.take_chunked_from_chunked(
+            index([0]),
+            index([1]),
+            index([np.iinfo(np.int64).max]),
+            index([1]),
+        ),
+        lambda: idxlib.rebuild_chunked_by_ranges(
+            index([np.iinfo(np.int64).max]),
+            index([1]),
+            index([0]),
+            index([1]),
+        ),
+        lambda: idxlib.rebuild_simple_by_ranges(
+            index([0]), index([np.iinfo(np.int64).max]), index([1])
+        ),
+        lambda: idxlib.project_chunked_on_simple(
+            index([0]), index([np.iinfo(np.int64).max]), index([1])
+        ),
+    ],
+)
+def test_chunked_operations_reject_range_overflow(operation):
+    with pytest.raises(ValueError, match="overflowed"):
+        operation()
+
+
 def test_index_bindings_validate_shared_array_contract():
     with pytest.raises(TypeError, match="numpy array"):
         idxlib.get_simple_range([1, 2])
