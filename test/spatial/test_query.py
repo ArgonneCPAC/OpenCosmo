@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 import pytest
-from opencosmo.spatial.normalize import SpatialNormalizationContext
+from opencosmo.spatial.normalize import SpatialNormalizationContext, normalize_region
 from opencosmo.spatial.query import (
     BoxQuery,
     ConeQuery,
@@ -13,6 +13,7 @@ from opencosmo.spatial.query import (
     SkyboxQuery,
     validate_nested_promotion,
 )
+from opencosmo.spatial.region import BoxRegion, FullSkyRegion, HealpixRegion
 
 
 def test_box_query_accepts_finite_ordered_bounds() -> None:
@@ -150,3 +151,35 @@ def test_normalization_context_validates_dimensions_and_names(
 ) -> None:
     with pytest.raises(ValueError):
         SpatialNormalizationContext(dimensions, coordinate_names)  # type: ignore[arg-type]
+
+
+def test_normalize_box_region() -> None:
+    context = SpatialNormalizationContext(3, ("x", "y", "z"))
+
+    query = normalize_region(BoxRegion((1, 2, 3), (1, 2, 3)), context=context)
+
+    assert query == BoxQuery((0, 0, 0), (2, 4, 6))
+
+
+def test_normalize_healpix_region_canonicalizes_pixel_ranges() -> None:
+    context = SpatialNormalizationContext(2, ("ra", "dec"))
+    region = HealpixRegion(np.array([1, 2, 4, 5, 6], dtype=np.int64), 1)
+
+    query = normalize_region(region, context=context)
+
+    assert isinstance(query, PixelSelection)
+    assert np.array_equal(query.starts, [1, 4])
+    assert np.array_equal(query.sizes, [2, 3])
+
+
+def test_normalize_full_sky_region() -> None:
+    context = SpatialNormalizationContext(2, ("ra", "dec"))
+
+    assert normalize_region(FullSkyRegion(), context=context) == FullSkyQuery()
+
+
+def test_normalize_region_rejects_incompatible_context() -> None:
+    context = SpatialNormalizationContext(2, ("ra", "dec"))
+
+    with pytest.raises(ValueError, match="three-dimensional"):
+        normalize_region(BoxRegion((1, 2, 3), (1, 1, 1)), context=context)
