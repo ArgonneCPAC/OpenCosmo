@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -305,7 +306,9 @@ class HealpixRegion:
         return self
 
     def into_model(self):
-        return HealpixRegionModel(pixels=into_array(self.__idxs), nside=self.nside)
+        return HealpixRegionModel(
+            pixels=frozenset(into_array(self.__idxs)), nside=self.nside
+        )
 
     def combine(self, *others: HealpixRegion) -> HealpixRegion:
         if not others:

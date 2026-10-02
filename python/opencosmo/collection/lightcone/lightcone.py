@@ -175,7 +175,7 @@ class Lightcone(dict):
             return object.__getattribute__(self, key)
 
     def __dir__(self):
-        return list(self.header.parameters.keys()) + super().__dir__()
+        return list(self.header.parameters.keys()).extend(super().__dir__())
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -1024,7 +1024,7 @@ class Lightcone(dict):
                     output[key] = average_chunks(chunks, weights, format)
         return output
 
-    def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Self:
+    def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Lightcone:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.

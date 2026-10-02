@@ -11,10 +11,10 @@ from opencosmo.mpi import redistribute_data
 
 if TYPE_CHECKING:
     import h5py
+    from mpi4py.MPI import Comm
     from numpy.typing import DTypeLike
 
     from opencosmo.index import DataIndex, SimpleIndex
-    from opencosmo.mpi import MPI
 
 
 class ColumnCombineStrategy(Enum):
@@ -112,7 +112,7 @@ class ColumnWriter:
         return ColumnWriter(new_sources, self.combine_strategy, self.__attrs)
 
     def set_transformation(
-        self, transformation: Callable[[np.ndarray, Optional[MPI.Comm]], np.ndarray]
+        self, transformation: Callable[[np.ndarray, Optional[Comm]], np.ndarray]
     ):
         if self.__transformation is not None:
             raise ValueError(
@@ -156,7 +156,7 @@ class ColumnWriter:
     def sources(self) -> list[ColumnSource]:
         return self.__sources
 
-    def get_data(self, comm: Optional[MPI.Comm] = None) -> np.ndarray:
+    def get_data(self, comm: Optional[Comm] = None) -> np.ndarray:
         match self.combine_strategy:
             case ColumnCombineStrategy.CONCAT | ColumnCombineStrategy.EXACT:
                 data = np.concatenate([source.data for source in self.__sources])

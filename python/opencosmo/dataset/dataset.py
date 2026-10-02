@@ -1,13 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Generator, Iterable, Mapping
 from typing import (
     TYPE_CHECKING,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Mapping,
-    Optional,
     TypeAlias,
     cast,
 )
@@ -75,7 +71,7 @@ class Dataset:
         return len(self.__state)
 
     def __dir__(self):
-        return list(self.header.parameters.keys()) + super().__dir__()
+        return list(self.header.parameters.keys()).extend(super().__dir__())
 
     @property
     def _state(self) -> st.DatasetState:
@@ -126,7 +122,7 @@ class Dataset:
         return self.__state.columns
 
     @property
-    def descriptions(self) -> dict[str, Optional[str]]:
+    def descriptions(self) -> dict[str, str | None]:
         """
         Return the descriptions (if any) of the columns in this dataset as a dictonary.
         Columns without a description will be included in the dictionary with a value
@@ -141,7 +137,7 @@ class Dataset:
         return self.__state.descriptions
 
     @property
-    def units(self) -> dict[str, Optional[u.Unit]]:
+    def units(self) -> dict[str, u.Unit | None]:
         """
         Return the current units of all columns in the dataset. Columns without units will
         return None.
@@ -170,7 +166,7 @@ class Dataset:
         return self.__state.region
 
     @property
-    def sorted_by(self) -> Optional[str]:
+    def sorted_by(self) -> str | None:
         """
         The column this dataset is sorted by. If not sorted, returns None.
 
@@ -181,7 +177,7 @@ class Dataset:
         return self.__state.sort_key[0] if self.__state.sort_key is not None else None
 
     @property
-    def tree(self) -> Optional[Tree]:
+    def tree(self) -> Tree | None:
         return self.__state.tree
 
     # Internal identity used by link/mapping resolution.
@@ -260,7 +256,7 @@ class Dataset:
             format = kwargs["output"]
         return dsops.get_data(self.__state, format, unpack, wrap_single, **kwargs)
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
+    def bound(self, region: Region, select_by: str | None = None):
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -642,7 +638,7 @@ class Dataset:
             new_state,
         )
 
-    def sort_by(self, column: Optional[str], invert: bool = False) -> Dataset:
+    def sort_by(self, column: str | None, invert: bool = False) -> Dataset:
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -869,7 +865,7 @@ class Dataset:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: str | None = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Dataset:

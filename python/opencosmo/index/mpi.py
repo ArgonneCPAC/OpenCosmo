@@ -8,13 +8,13 @@ from opencosmo.mpi import get_mpi
 
 if TYPE_CHECKING:
     import numpy.typing as npt
-    from mpi4py import MPI
+    from mpi4py.MPI import Comm
 
 BOR_CHUNK = 1 << 28
 
 
 def is_in_global_index(
-    values: npt.ArrayLike, index: npt.ArrayLike, comm: MPI.Comm
+    values: npt.ArrayLike, index: npt.ArrayLike, comm: Comm
 ) -> npt.NDArray[np.bool_]:
     """
     Test each local value for membership in the union of `index` across all ranks.

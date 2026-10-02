@@ -6,7 +6,7 @@ from copy import copy
 from functools import cache
 from itertools import chain
 from types import UnionType
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
@@ -30,10 +30,10 @@ from opencosmo.units import UnitConvention
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from mpi4py.MPI import Comm
     from pydantic import BaseModel
 
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
 
 HEADER_WRITE_OVERRIDES = {"region_pixels": ColumnCombineStrategy.CONCAT}
@@ -400,7 +400,7 @@ class OpenCosmoHeader:
 
 @file_writer
 def write_header(
-    path: Path, header: OpenCosmoHeader, dataset_name: Optional[str] = None
+    path: Path, header: OpenCosmoHeader, dataset_name: str | None = None
 ) -> None:
     """
     Write the header of an OpenCosmo file
@@ -422,7 +422,7 @@ def write_header(
 
 
 def get_access_table(all_models, unit_convention, redshift):
-    table = defaultdict(dict)
+    table: dict[str, Any] = defaultdict(dict)
     known_paramater_exports = set()
     all_models = list(all_models)
     cosmology_pars = [
@@ -436,6 +436,7 @@ def get_access_table(all_models, unit_convention, redshift):
     del all_models[cosmology_pars[0]]
 
     cosmology = table.get("cosmology")
+    assert cosmology is not None
     scale_factor = None
     if redshift is not None:
         scale_factor = cosmology.scale_factor(redshift)
@@ -532,7 +533,7 @@ def read_header(
 def read_parameter_groups(
     file: h5py.File | h5py.Group,
     parameter_groups: dict[str, dict[str, type[BaseModel]]],
-    additional_required: Optional[tuple] = None,
+    additional_required: tuple | None = None,
 ):
     """
     An "origin" describes the original source of a given dataset. Currently the only
@@ -586,7 +587,7 @@ def load_union_model(
     raise ValueError("Input attributes do not match any of the models in the union")
 
 
-def combine_header_regions(schema: Schema, comm: MPI.Comm | None) -> Schema:
+def combine_header_regions(schema: Schema, comm: Comm | None) -> Schema:
     if comm is None:
         return schema
     metadata = schema.attributes | {

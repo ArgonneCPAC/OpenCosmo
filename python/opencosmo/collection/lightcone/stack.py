@@ -12,11 +12,11 @@ from opencosmo.mpi import get_all_keys, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
+    from mpi4py.MPI import Comm
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
 
 
-def update_order(data: np.ndarray, comm: Optional[MPI.Comm], order: np.ndarray):
+def update_order(data: np.ndarray, comm: Optional[Comm], order: np.ndarray):
     if comm is not None:
         return update_global_order_mpi(data, comm, order)
 
@@ -47,7 +47,7 @@ def _global_inverse_order_mpi(order: np.ndarray, comm) -> np.ndarray:
 
 def update_top_host_idx(
     data: np.ndarray,
-    comm: Optional[MPI.Comm],
+    comm: Optional[Comm],
     order: np.ndarray,
     slice_sizes: list[int],
 ):

@@ -10,8 +10,8 @@ from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, Hdf5Source
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from mpi4py.MPI import Comm
     from opencosmo.index import SimpleIndex
-    from opencosmo.mpi import MPI
 
 
 class FileEntry(Enum):
@@ -33,7 +33,7 @@ class Schema(NamedTuple):
     children: dict[str, Schema]
     columns: dict[str, ColumnWriter]
     attributes: dict[str, str | int | UUID]
-    updater: Callable[[Schema, MPI.Comm | None], Schema] | None = None
+    updater: Callable[[Schema, Comm | None], Schema] | None = None
 
 
 def dataset_schema_length(schema: Schema) -> Optional[int]:

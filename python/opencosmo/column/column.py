@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import operator as op
+from collections.abc import Callable, Iterable
 from copy import copy
 from functools import partial, partialmethod, wraps
 from inspect import currentframe, signature
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Iterable,
-    Optional,
     Protocol,
     Self,
     Union,
@@ -148,10 +146,10 @@ class Column:
     def __init__(
         self,
         lhs: ColumnOrScalar,
-        rhs: Optional[ColumnOrScalar],
+        rhs: ColumnOrScalar | None,
         operation: Callable,
-        description: Optional[str] = None,
-        output_name: Optional[str] = None,
+        description: str | None = None,
+        output_name: str | None = None,
         _dep_map: dict[str, UUID] | None = None,
         _uuid: UUID | None = None,
         no_cache: bool = False,
@@ -167,7 +165,10 @@ class Column:
         self.__no_cache = no_cache
 
     def __repr__(self):
-        caller = currentframe().f_back.f_code.co_qualname
+        frame = currentframe()
+        if frame is None or frame.f_back is None:
+            return "[]"
+        caller = frame.f_back.f_code.co_qualname
         if self.operation is ident:
             return self.lhs
         op_ = render_op(self.operation)
@@ -630,8 +631,6 @@ def _arctan2(left: Any, right: Any) -> Any:
 
 
 class ConstructedColumn(Protocol):
-    pass
-
     @property
     def uuid(self) -> UUID | None: ...
 
@@ -648,7 +647,7 @@ class ConstructedColumn(Protocol):
     def produces(self) -> set[str]: ...
 
     @property
-    def description(self) -> Optional[str]: ...
+    def description(self) -> str | None: ...
 
     def bind(
         self,
@@ -779,8 +778,8 @@ class DerivedScalarValue:
         lhs: ColumnOrScalar | DerivedScalarValue,
         rhs: ColumnOrScalar | DerivedScalarValue | None,
         operation: Callable,
-        description: Optional[str] = None,
-        output_name: Optional[str] = None,
+        description: str | None = None,
+        output_name: str | None = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = True,
         _uuid: UUID | None = None,
@@ -1035,11 +1034,11 @@ class EvaluatedColumn:
         requires: set[str],
         produces: set[str],
         format: str,
-        units: dict[str, Optional[u.Unit]],
+        units: dict[str, u.Unit | None],
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         batch_size: int = -1,
         should_unpack_data: bool = True,
-        description: Optional[str] = None,
+        description: str | None = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = False,
         _uuid: UUID | None = None,
@@ -1349,15 +1348,8 @@ class CompoundColumnMask:
         self.op = op
 
     @property
-    def requires(self):
-        columns = set()
-        columns |= self.left.requires
-        columns |= self.right.requires
-        return columns
-
-    @property
     def requires_names(self):
-        columns = set()
+        columns: set[str] = set()
         columns |= self.left.requires_names
         columns |= self.right.requires_names
         return columns

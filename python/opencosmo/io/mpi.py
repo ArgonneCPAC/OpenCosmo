@@ -16,6 +16,7 @@ from opencosmo.mpi import MPI, get_all_keys, get_comm_world, get_subcom, sum_sca
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from mpi4py.MPI import Comm, Group
     from opencosmo.io.schema import Schema
 
 
@@ -131,14 +132,14 @@ def write_parallel(file: Path, file_schema: Schema, compress: bool):
     cleanup_mpi(comm, new_comm, new_group)
 
 
-def cleanup_mpi(comm_world: MPI.Comm, comm_write: MPI.Comm, group_write: MPI.Group):
+def cleanup_mpi(comm_world: Comm, comm_write: Comm, group_write: Group):
     comm_world.Barrier()
     if comm_write != MPI.COMM_NULL:
         comm_write.Free()
     group_write.Free()
 
 
-def sync_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
+def sync_schemas(schema: Schema, comm: Comm) -> Schema:
     from opencosmo.collection.simulation.io import resort_simulation_collection_mpi
 
     schema = update_and_verify_schemas(schema, comm)
@@ -147,7 +148,7 @@ def sync_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
     return schema
 
 
-def __verify_structure_collective(schema: Schema, comm: MPI.Comm) -> None:
+def __verify_structure_collective(schema: Schema, comm: Comm) -> None:
     """Validate final schemas without allowing one rank to skip a collective."""
     try:
         verify_structure(schema)
@@ -160,7 +161,7 @@ def __verify_structure_collective(schema: Schema, comm: MPI.Comm) -> None:
         raise ValueError(invalid_message)
 
 
-def update_and_verify_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
+def update_and_verify_schemas(schema: Schema, comm: Comm) -> Schema:
     """
     By this stage, we know that all the ranks that are participating have a valid
     file schema. We now need to verify that they can be made consistent across ranks.
@@ -208,7 +209,7 @@ def update_and_verify_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
     return schema
 
 
-def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
+def verify_columns(columns: dict[str, ColumnWriter], comm: Comm):
     """
     Verify a group of columns in a schema. Note, the single-threaded verification
     process already ensures that all columns in the data group have the same
@@ -256,7 +257,7 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
             raise ValueError("Metadata was not consistent across ranks!")
 
 
-def sync_attributes(metadata: dict[str, Any], group_name: str, comm: MPI.Comm):
+def sync_attributes(metadata: dict[str, Any], group_name: str, comm: Comm):
     all_metadata = comm.allgather(metadata)
 
     for md in all_metadata[1:]:
@@ -271,7 +272,7 @@ def __write_parallel(
     schema: Schema,
     group: h5py.File | h5py.Group,
     offsets: dict,
-    comm: MPI.Comm | None,
+    comm: Comm | None,
 ):
     """
     Used with both the parallel and serial version, though the later passes through
@@ -285,7 +286,7 @@ def __write_parallel(
         __write_parallel(child_schema, new_group, offsets, comm)
 
 
-def __write_serial(schema: Schema, file_path: Path, offsets: dict, comm: MPI.Comm):
+def __write_serial(schema: Schema, file_path: Path, offsets: dict, comm: Comm):
     """
     We do NOT have parallel hdf5, so we have to write one rank at a time.
     """
@@ -297,7 +298,7 @@ def __write_serial(schema: Schema, file_path: Path, offsets: dict, comm: MPI.Com
         comm.Barrier()
 
 
-def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
+def __replace_writers_with_updates(schema: Schema, comm: Comm):
     """
     For columns that require updates, compute the update and replace. The most common form
     of updated is "start/size" indexes, since "start" must be updated consistently across
@@ -354,7 +355,7 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
     return schema
 
 
-def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
+def __get_all_offsets(schema: Schema, comm: Comm, name: str):
     """
     Get the rank-wise offset for every column.
     """
@@ -376,7 +377,7 @@ def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
 
 
 def __allocate(
-    schema: Schema, group: h5py.File | h5py.Group | None, comm: MPI.Comm, compress: bool
+    schema: Schema, group: h5py.File | h5py.Group | None, comm: Comm, compress: bool
 ):
     """
     Allocate the file.
@@ -400,7 +401,7 @@ def __allocate(
         __allocate(child_schema, new_group, comm, compress)
 
 
-def get_column_allocation_metadata(column: ColumnWriter | None, comm: MPI.Comm):
+def get_column_allocation_metadata(column: ColumnWriter | None, comm: Comm):
     """
     Determine how to allocate the column. The most important thing this does is
     determine the overal shape. Keep in mind we have already done verification
@@ -428,7 +429,7 @@ def get_column_allocation_metadata(column: ColumnWriter | None, comm: MPI.Comm):
     return shape, all_dtypes[0], all_meta[0][2]
 
 
-def get_column_offset(column: ColumnWriter | None, comm: MPI.Comm):
+def get_column_offset(column: ColumnWriter | None, comm: Comm):
     """
     Determine the offset for a given column on this rank.
     """
@@ -441,9 +442,7 @@ def get_column_offset(column: ColumnWriter | None, comm: MPI.Comm):
     return offsets[comm.Get_rank()]
 
 
-def __write_metadata(
-    schema: Schema, group: h5py.File | h5py.Group | None, comm: MPI.Comm
-):
+def __write_metadata(schema: Schema, group: h5py.File | h5py.Group | None, comm: Comm):
     """
     Write metadata-only groups.
     """
@@ -463,7 +462,7 @@ def __allocate_column(
     name: str,
     column_writer: ColumnWriter | None,
     group: h5py.Group | h5py.File | None,
-    comm: MPI.Comm,
+    comm: Comm,
     compress: bool,
 ) -> h5py.Dataset | None:
     """
@@ -491,7 +490,7 @@ def __write_columns(
     schema: Schema,
     group: h5py.File | h5py.Group,
     offsets: dict,
-    comm: MPI.Comm | None,
+    comm: Comm | None,
 ):
     all_column_names = get_all_keys(schema.columns, comm)
     for cn in all_column_names:
@@ -516,7 +515,7 @@ def __write_column(
     writer: ColumnWriter | None,
     ds: h5py.Dataset,
     offset: int,
-    write_comm: MPI.Comm | None,
+    write_comm: Comm | None,
 ):
     if write_comm is None:
         return __write_column_serial(writer, offset, ds)

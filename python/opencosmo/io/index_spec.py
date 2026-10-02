@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
 from opencosmo.index.build import empty, from_range
 
 if TYPE_CHECKING:
-    from mpi4py import MPI
+    from mpi4py.MPI import Comm
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     # state, so each spec is just a function of this shape, not a class.
     IndexSpec = Callable[
         [
-            Optional[MPI.Comm],
+            Optional[Comm],
             OpenCosmoHeader,
             DatasetTarget,
             Optional[Tree],
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 
 def spatial(
-    comm: Optional[MPI.Comm],
+    comm: Optional[Comm],
     header: OpenCosmoHeader,
     target: DatasetTarget,
     tree: Optional[Tree],
@@ -82,7 +82,7 @@ def spatial(
 
 
 def full(
-    comm: Optional[MPI.Comm],
+    comm: Optional[Comm],
     header: OpenCosmoHeader,
     target: DatasetTarget,
     tree: Optional[Tree],
@@ -95,7 +95,7 @@ def full(
 
 
 def empty_ref(
-    comm: Optional[MPI.Comm],
+    comm: Optional[Comm],
     header: OpenCosmoHeader,
     target: DatasetTarget,
     tree: Optional[Tree],

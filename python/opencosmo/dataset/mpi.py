@@ -10,14 +10,14 @@ from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
     import h5py
-    from mpi4py import MPI
+    from mpi4py.MPI import Comm
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.spatial.tree import Tree
 
 
 def partition(
-    comm: MPI.Comm,
+    comm: Comm,
     header: OpenCosmoHeader,
     index_group: h5py.Group,
     data_group: h5py.Group,

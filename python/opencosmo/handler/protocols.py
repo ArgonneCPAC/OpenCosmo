@@ -6,8 +6,8 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     import numpy as np
+    from mpi4py.MPI import Comm
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
 
     from opencosmo.index import DataIndex, SimpleIndex
 
@@ -69,7 +69,7 @@ class DataCache(Protocol):
         reorder_map: SimpleIndex | None,
         length: int,
         columns_to_keep: dict[UUID, list[str]],
-        comm: MPI.Comm,
+        comm: Comm,
     ) -> Self: ...
 
     @classmethod

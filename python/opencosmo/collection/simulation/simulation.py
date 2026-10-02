@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping
 from copy import copy
-from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, cast
+from typing import TYPE_CHECKING, Literal, TypeGuard, cast
 from uuid import UUID
 
 import numpy as np
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     import astropy.units as u
     import h5py
 
+    from opencosmo import StructureCollection
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset.dataset import OpenCosmoData
@@ -34,6 +36,12 @@ if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
     from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region
+
+
+def is_all_datasets(
+    datasets: dict[str, DatasetState | StructureCollection],
+) -> TypeGuard[dict[str, DatasetState]]:
+    return all(isinstance(d, DatasetState) for d in datasets.values())
 
 
 def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
@@ -176,7 +184,7 @@ class SimulationCollection:
         }
         self.__match_set = match_set
         self.__match_source = match_source
-        self.__rebuilt = rebuilt
+        self.__rebuilt = rebuilt or {name: True for name in self.keys()}
 
     def __getattr__(self, key: str):
         output = {}
@@ -199,7 +207,7 @@ class SimulationCollection:
     def values(self):
         self.__rebuild_all()
 
-        values = []
+        values: list[Dataset | StructureCollection] = []
         for v in self.__datasets.values():
             if isinstance(v, DatasetState):
                 values.append(Dataset(v))
@@ -234,6 +242,8 @@ class SimulationCollection:
                 key: self.__datasets[key],
             }
 
+            assert self.__match_set is not None
+            assert is_all_datasets(datasets)
             new_datasets = prepare_matched_datasets(
                 self.__match_set, datasets, self.__match_source
             )
@@ -248,17 +258,19 @@ class SimulationCollection:
         if self.__match_source is None:
             return
 
+        assert self.__match_set is not None
+
         datasets = {
             key: ds
             for key, ds in self.__datasets.items()
             if key != self.__match_source and not self.__rebuilt[key]
-        }
+        } | {self.__match_source: self.__datasets[self.__match_source]}
+
+        assert is_all_datasets(datasets)
         if not datasets:
             return
         self.__datasets |= prepare_matched_datasets(
-            self.__match_set,
-            datasets | {self.__match_source: self.__datasets[self.__match_source]},
-            self.__match_source,
+            self.__match_set, datasets, self.__match_source
         )
         self.__rebuilt = {key: True for key in self.__datasets.keys()}
 
@@ -330,7 +342,7 @@ class SimulationCollection:
         method,
         *args,
         construct=True,
-        datasets: Optional[str | Iterable[str]] = None,
+        datasets: str | Iterable[str] | None = None,
         **kwargs,
     ):
         """
@@ -587,7 +599,7 @@ class SimulationCollection:
         return SimulationCollection(self.__datasets, self.__match_set)
 
     def bound(
-        self, region: Region, select_by: Optional[str] = None
+        self, region: Region, select_by: str | None = None
     ) -> SimulationCollection:
         """
         Restrict the datasets to some region. Note that the SimulationCollection does
@@ -770,7 +782,7 @@ class SimulationCollection:
     def with_new_columns(
         self,
         *args,
-        datasets: Optional[str | Iterable[str]] = None,
+        datasets: str | Iterable[str] | None = None,
         descriptions: str | dict[str, str] = {},
         allow_overwrite: bool = False,
         **new_columns: ConstructedColumn | np.ndarray,
@@ -814,7 +826,7 @@ class SimulationCollection:
     def evaluate(
         self,
         func: Callable,
-        datasets: Optional[str | Iterable[str]] = None,
+        datasets: str | Iterable[str] | None = None,
         format: str = "astropy",
         vectorize: bool = False,
         insert: bool = False,
@@ -900,7 +912,7 @@ class SimulationCollection:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: str | None = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> SimulationCollection:

@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     import h5py
     import numpy as np
     from astropy.table import Table
-    from mpi4py import MPI
+    from mpi4py.MPI import Comm
 
     from opencosmo import Dataset, Lightcone
     from opencosmo.dataset.state import DatasetState
@@ -119,7 +119,7 @@ class PartitionCtx:
     This hook uses query() semantics: at most one plugin responds.
     """
 
-    comm: MPI.Comm
+    comm: Comm
     header: OpenCosmoHeader
     index_group: h5py.Group
     data_group: h5py.Group

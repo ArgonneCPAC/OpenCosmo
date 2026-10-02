@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from astropy.table import QTable
+    from mpi4py.MPI import Comm
 
 
 class EvalOperation(Enum):
@@ -186,7 +187,7 @@ def __reduce_multi_dataset_result(
     result: dict[str, Any],
     op: EvalOperation,
     all: bool,
-    comm: MPI.Comm,
+    comm: Comm,
 ) -> dict[str, Any]:
     """
     Reduce a per-dataset result mapping produced by
@@ -208,7 +209,7 @@ def __reduce_single_dataset_result(
     dataset_len: int,
     op: EvalOperation,
     all: bool,
-    comm: MPI.Comm,
+    comm: Comm,
 ) -> Any:
     results_to_combine = __verify_results(result, comm)
     keys = get_all_keys(results_to_combine, comm)
@@ -384,7 +385,7 @@ def gather(
 
 
 def __concatenate_multi_dataset_rank_data(
-    data: dict[str, dict[str, np.ndarray]], all: bool, format, comm: MPI.Comm
+    data: dict[str, dict[str, np.ndarray]], all: bool, format, comm: Comm
 ):
     new_data = {}
     for name in get_all_keys(data, comm):
@@ -393,7 +394,7 @@ def __concatenate_multi_dataset_rank_data(
     return new_data
 
 
-def __concatenate_rank_data(data: QTable, all: bool, format, comm: MPI.Comm):
+def __concatenate_rank_data(data: QTable, all: bool, format, comm: Comm):
     output = {}
     data = dict(data)
     for name, arr in get_all_entries(data, comm):
@@ -410,7 +411,7 @@ def __concatenate_rank_data(data: QTable, all: bool, format, comm: MPI.Comm):
 
 
 def __verify_results(
-    result: dict[str, np.ndarray] | np.ndarray, comm: MPI.Comm
+    result: dict[str, np.ndarray] | np.ndarray, comm: Comm
 ) -> dict[str, np.ndarray]:
     if not isinstance(result, dict):
         result_to_check = {"output": result}

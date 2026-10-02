@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 from collections import defaultdict
+from collections.abc import Generator
 from copy import copy
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Generator, Optional
+from typing import TYPE_CHECKING, Any
 from weakref import finalize
 
 import astropy.units as u
@@ -96,7 +97,7 @@ class DatasetState:
     tree: Tree | None
     column_map: dict[str, UUID]
     open_kwargs: dict[str, Any]
-    sort_key: Optional[tuple[str, bool, bool]]
+    sort_key: tuple[str, bool, bool] | None
 
     def __post_init__(self):
         self.cache.register_column_group(id(self), self.column_map)
@@ -112,7 +113,7 @@ class DatasetState:
 
     @property
     def descriptions(self):
-        all_descriptions = {}
+        all_descriptions: dict[str, str | None] = {}
         for producer in self.producers.values():
             update = {name: producer.description for name in producer.produces}
             all_descriptions |= update
@@ -165,7 +166,7 @@ def state_from_target(
     target: DatasetTarget,
     unit_convention: UnitConvention,
     open_kwargs: dict[str, Any],
-    index: Optional[DataIndex] = None,
+    index: DataIndex | None = None,
     tree: Tree | None = None,
 ) -> DatasetState:
     handler = Hdf5Handler(
@@ -212,8 +213,8 @@ def state_in_memory(
     header: OpenCosmoHeader,
     unit_convention: UnitConvention,
     open_kwargs: dict[str, Any],
-    descriptions: Optional[dict[str, str]] = None,
-    index: Optional[DataIndex] = None,
+    descriptions: dict[str, str] | None = None,
+    index: DataIndex | None = None,
     tree: Tree | None = None,
 ) -> DatasetState:
     descriptions = descriptions or {}
@@ -223,7 +224,7 @@ def state_in_memory(
         RawColumn(
             cname, descriptions.get(cname, "None"), get_raw_column_uuid(cname, set())
         )
-        for cname in all_columns.keys()
+        for cname in all_columns
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
     producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}

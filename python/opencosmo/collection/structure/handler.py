@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Mapping, Optional, cast
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -95,7 +96,7 @@ def link_slot_values(
         return _slot_values(source, match_sets[source.uuid], name, source.index)
 
     values: list[np.ndarray] = []
-    chunked: Optional[bool] = None
+    chunked: bool | None = None
     for _, step_source in source.items():
         step_values, step_chunked = _slot_values(
             step_source, match_sets[step_source.uuid], name, step_source.index
@@ -173,7 +174,7 @@ def resort_datasets(
 
 def apply_step_indices(
     target: oc.Lightcone | oc.StructureCollection,
-    per_step_index: dict[Any, Optional[DataIndex]],
+    per_step_index: dict[Any, DataIndex | None],
 ) -> oc.Lightcone | oc.StructureCollection:
     """Apply step-local indices to a Lightcone or nested StructureCollection."""
 
@@ -205,7 +206,7 @@ def resolve_links_per_step(
 ) -> dict[str, oc.Lightcone | oc.StructureCollection]:
     new_datasets: dict[str, oc.Lightcone | oc.StructureCollection] = {}
     for name, target in datasets.items():
-        per_step_index: dict[Any, Optional[DataIndex]] = {}
+        per_step_index: dict[Any, DataIndex | None] = {}
         for step, step_source in source.items():
             match_set = match_sets[step_source.uuid]
             target_uuid = _target_uuid(match_set, name)
@@ -221,7 +222,7 @@ def resolve_links_per_step(
     return new_datasets
 
 
-def _none_if_empty(index: DataIndex) -> Optional[DataIndex]:
+def _none_if_empty(index: DataIndex) -> DataIndex | None:
     if isinstance(index, tuple):
         return index if len(index[0]) else None
     return index if len(index) else None
@@ -233,7 +234,7 @@ def rebuild_links_per_step(
     datasets: Mapping[str, oc.Lightcone | sc.StructureCollection],
     match_sets: dict[UUID, DatasetMatchSet],
 ) -> dict[str, oc.Lightcone | oc.StructureCollection]:
-    per_step_index: dict[str, dict[Any, Optional[DataIndex]]] = defaultdict(dict)
+    per_step_index: dict[str, dict[Any, DataIndex | None]] = defaultdict(dict)
     for step, new_step_source in new_source.items():
         old_step_source = derived_from[step]
         match_set = match_sets[old_step_source.uuid]
@@ -257,7 +258,7 @@ def resort_datasets_per_step(
     datasets: Mapping[str, oc.Lightcone | sc.StructureCollection],
     match_sets: dict[UUID, DatasetMatchSet],
 ) -> dict[str, oc.Lightcone | oc.StructureCollection]:
-    per_step_index: dict[str, dict[Any, Optional[DataIndex]]] = defaultdict(dict)
+    per_step_index: dict[str, dict[Any, DataIndex | None]] = defaultdict(dict)
     for step, step_source in source.items():
         match_set = match_sets[step_source.uuid]
         sort_index = compute_sort_index(step_source)
@@ -276,7 +277,7 @@ class LinkHandler:
     def __init__(
         self,
         match_sets: dict[UUID, DatasetMatchSet],
-        derived_from: Optional[oc.Dataset | oc.Lightcone],
+        derived_from: oc.Dataset | oc.Lightcone | None,
     ) -> None:
         self.__derived_from = derived_from
         self.match_sets = match_sets
@@ -372,7 +373,7 @@ class LinkHandler:
             new_datasets[name] = dataset.take_rows(index)
         return new_datasets
 
-    def make_derived(self, source: oc.Dataset) -> LinkHandler:
+    def make_derived(self, source: oc.Dataset | oc.Lightcone) -> LinkHandler:
         """Record the source from which deferred linked rebuilding begins."""
         derived_from = self.__derived_from
         if self.__derived_from is None:

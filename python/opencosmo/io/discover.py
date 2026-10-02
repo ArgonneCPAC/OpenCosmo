@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from pathlib import Path
     from uuid import UUID
 
+    from mpi4py.MPI import Comm
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.mpi import MPI
 
 
 @dataclass(frozen=True)
@@ -659,7 +659,7 @@ def discover_file(path: Path) -> FileLayout:
 
 def discover_all(
     paths: list[Path],
-    comm: Optional["MPI.Comm"] = None,
+    comm: Optional[Comm] = None,
 ) -> tuple[FileLayout, ...]:
     """
     Discover metadata from all files, distributing the walk across MPI ranks.

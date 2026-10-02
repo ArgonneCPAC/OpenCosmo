@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Optional
 import numpy as np
 
 if TYPE_CHECKING:
-    from opencosmo.mpi import MPI
+    from mpi4py.MPI import Comm
 
 
-def offset_index(data: np.ndarray, offset: int = 0, comm: Optional[MPI.Comm] = None):
+def offset_index(data: np.ndarray, offset: int = 0, comm: Optional[Comm] = None):
     valid = data >= 0
     result = np.full(len(data), -1, dtype=np.int64)
     if comm is not None:
@@ -19,7 +19,7 @@ def offset_index(data: np.ndarray, offset: int = 0, comm: Optional[MPI.Comm] = N
     return result
 
 
-def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+def do_idx_update(data: np.ndarray, comm: Optional[Comm] = None):
     # An idx metadata column links each structure to at most one row in a target
     # dataset, using -1 to mark structures with no linked row (e.g. halos without
     # a profile). The target dataset is written containing only the linked rows,

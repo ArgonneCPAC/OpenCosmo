@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from copy import copy
 from enum import Enum
 from functools import cache
 from itertools import product
-from typing import TYPE_CHECKING, Iterable, Optional, TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 import numpy as np
 
@@ -189,7 +190,7 @@ class Octant:
         idx: Index3d,
         center: Point3d,
         halfwidth: float,
-        children: Optional[list[Octant]] = None,
+        children: list[Octant] | None = None,
     ):
         self.idx = idx
         self.center = center
@@ -230,8 +231,9 @@ class Octant:
 
     @cache
     def bounding_box(self):
-        p1 = tuple(ci - self.halfwidth for ci in self.center)
-        p2 = tuple(ci + self.halfwidth for ci in self.center)
+        x, y, z = self.center
+        p1 = (x - self.halfwidth, y - self.halfwidth, z - self.halfwidth)
+        p2 = (x + self.halfwidth, y + self.halfwidth, z + self.halfwidth)
 
         return oc.make_box(p1, p2)
 
@@ -241,7 +243,7 @@ class Octant:
         current_level: int,
         max_level: int,
         containment: dict[Octant, Intersection],
-    ) -> Optional[Octant]:
+    ) -> Octant | None:
         if not isinstance(region, BoxRegion):
             raise ValueError("Did not recieve a 3D region!")
         if region.contains(self.bounding_box()):

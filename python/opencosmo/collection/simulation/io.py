@@ -22,7 +22,7 @@ from opencosmo.mpi import (
 )
 
 if TYPE_CHECKING:
-    from opencosmo.mpi import MPI
+    from mpi4py.MPI import Comm
 
 
 def resort_simulation_collection(schema):
@@ -102,7 +102,7 @@ def __plan_dataset_output(
 
 
 def __get_dataset_output_lookup(
-    raw_ids: np.ndarray, comm: MPI.Comm
+    raw_ids: np.ndarray, comm: Comm
 ) -> tuple[DatasetOutputLookup, np.ndarray]:
     """Collectively plan output ownership and return this rank's destinations."""
     gathered_raw_ids = gather_index(raw_ids, comm)
@@ -134,7 +134,7 @@ def __get_dataset_output_lookup(
 
 
 def redistribute_simulation_collection_data(
-    schema: Schema, comm: MPI.Comm
+    schema: Schema, comm: Comm
 ) -> tuple[Schema, dict[str, DatasetOutputLookup]]:
     """Redistribute dataset rows and retain their global output lookups.
 
@@ -185,7 +185,7 @@ def redistribute_simulation_collection_data(
     return schema._replace(children=new_children), output_lookups
 
 
-def __collective_error(message: str | None, comm: MPI.Comm) -> None:
+def __collective_error(message: str | None, comm: Comm) -> None:
     """Raise the first local validation error on every rank."""
     messages = comm.allgather(message)
     error = next((value for value in messages if value is not None), None)
@@ -198,7 +198,7 @@ def __lower_primary_values(
     raw_targets: np.ndarray,
     reference_lookup: DatasetOutputLookup,
     target_lookup: DatasetOutputLookup,
-    comm: MPI.Comm,
+    comm: Comm,
 ) -> np.ndarray:
     """Route one raw-coordinate primary slot to its source output owners."""
     source_raw_ids = np.asarray(source_raw_ids, dtype=np.int64)
@@ -251,7 +251,7 @@ def __lower_auxiliary_values(
     raw_target: np.ndarray,
     source_lookup: DatasetOutputLookup,
     target_lookup: DatasetOutputLookup,
-    comm: MPI.Comm,
+    comm: Comm,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Route one raw-coordinate auxiliary pair to its source output owners."""
     raw_source = np.asarray(raw_source, dtype=np.int64)
@@ -277,7 +277,7 @@ def __lower_auxiliary_values(
 
 
 def __dataset_names_and_lookups(
-    schema: Schema, output_lookups: dict[str, DatasetOutputLookup], comm: MPI.Comm
+    schema: Schema, output_lookups: dict[str, DatasetOutputLookup], comm: Comm
 ) -> tuple[dict[str, str], dict[str, DatasetOutputLookup]]:
     """Collect UUID-to-name and lookup maps from asymmetric dataset children."""
     local_uuids = {}
@@ -302,7 +302,7 @@ def __dataset_names_and_lookups(
     return uuid_to_name, lookups_by_name
 
 
-def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
+def resort_simulation_collection_mpi(schema: Schema, comm: Comm):
     """Redistribute dataset rows and lower maps to output coordinates."""
     rank_has_map = "map" in schema.children
     has_map = comm.allgather(rank_has_map)

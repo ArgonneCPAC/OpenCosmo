@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     import h5py
-    from mpi4py import MPI
+    from mpi4py.MPI import Comm
 
     from opencosmo.io.discover import LinkLayout
     from opencosmo.io.iopen import DatasetTarget
@@ -524,7 +524,7 @@ def __build_structure_collection(
         )
 
 
-def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+def do_idx_update(data: np.ndarray, comm: Optional[Comm] = None):
     # An idx metadata column links each structure to at most one row in a target
     # dataset, using -1 to mark structures with no linked row (e.g. halos without
     # a profile). The target dataset is written containing only the linked rows,
@@ -545,7 +545,7 @@ def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
     return result
 
 
-def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[Comm]):
     psum = np.insert(np.cumsum(size), 0, 0)[:-1]
     if comm is None:
         return psum

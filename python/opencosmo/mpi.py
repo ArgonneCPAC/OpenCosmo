@@ -9,6 +9,7 @@ from opencosmo.index import coalesce_chunks, into_array, sort
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
+    from mpi4py.MPI import Comm, Op
 
 try:
     from mpi4py import MPI
@@ -21,7 +22,7 @@ def has_mpi() -> bool:
 
 
 @cache
-def get_comm_world() -> Optional["MPI.Comm"]:
+def get_comm_world() -> Optional[Comm]:
     if MPI is None or MPI.COMM_WORLD.Get_size() == 1:
         return None
     return MPI.COMM_WORLD.Dup()
@@ -31,7 +32,7 @@ def get_mpi():
     return MPI
 
 
-def parallel_assert(condition: bool, comm: MPI.Comm | None = None):
+def parallel_assert(condition: bool, comm: Comm | None = None):
     comm = comm or get_comm_world()
     assert comm is not None
     is_bool = comm.allgather(isinstance(condition, (np.bool, bool)))
@@ -43,13 +44,13 @@ def parallel_assert(condition: bool, comm: MPI.Comm | None = None):
         raise ValueError(f"Parallel assertion failed on ranks {failed}")
 
 
-def parallel_assert_is_simple_index(value, comm: MPI.Comm | None = None):
+def parallel_assert_is_simple_index(value, comm: Comm | None = None):
     parallel_assert(isinstance(value, np.ndarray), comm)
     parallel_assert(value.ndim == 1, comm)
     parallel_assert(value.dtype == np.int64, comm)
 
 
-def parallel_assert_is_chunked_index(value: tuple, comm: MPI.Comm | None = None):
+def parallel_assert_is_chunked_index(value: tuple, comm: Comm | None = None):
     has_shape = (
         len(value) == 2
         and isinstance(value[0], np.ndarray)
@@ -61,7 +62,7 @@ def parallel_assert_is_chunked_index(value: tuple, comm: MPI.Comm | None = None)
     parallel_assert(value[0].dtype == np.int64 and value[1].dtype == np.int64, comm)
 
 
-def parallel_assert_same_dtype(value: np.ndarray, comm: MPI.Comm | None = None):
+def parallel_assert_same_dtype(value: np.ndarray, comm: Comm | None = None):
     parallel_assert(isinstance(value, np.ndarray), comm)
     assert comm is not None
     all_dtypes = comm.allgather(value.dtype)
@@ -69,7 +70,7 @@ def parallel_assert_same_dtype(value: np.ndarray, comm: MPI.Comm | None = None):
 
 
 def parallel_assert_compatible_shapes(
-    value: np.ndarray, comm: MPI.Comm | None = None, start_dim=1
+    value: np.ndarray, comm: Comm | None = None, start_dim=1
 ):
     parallel_assert(isinstance(value, np.ndarray), comm)
     assert comm is not None
@@ -77,17 +78,17 @@ def parallel_assert_compatible_shapes(
     parallel_assert(len(set(shapes)) == 1, comm)
 
 
-def parallel_assert_can_stack(value: np.ndarray, comm: MPI.Comm | None = None):
+def parallel_assert_can_stack(value: np.ndarray, comm: Comm | None = None):
     parallel_assert_same_dtype(value, comm)
     parallel_assert_compatible_shapes(value, comm)
 
 
-def parallel_assert_can_reduce(value: np.ndarray, comm: MPI.Comm | None = None):
+def parallel_assert_can_reduce(value: np.ndarray, comm: Comm | None = None):
     parallel_assert_same_dtype(value, comm)
     parallel_assert_compatible_shapes(value, comm, start_dim=0)
 
 
-def get_subcom(include: list[bool], comm: MPI.Comm):
+def get_subcom(include: list[bool], comm: Comm):
     group = comm.Get_group()
     new_group = group.Incl(np.flatnonzero(include).tolist())
     new_comm = comm.Create(new_group)
@@ -97,7 +98,7 @@ def get_subcom(include: list[bool], comm: MPI.Comm):
 
 def gather_index(
     index: np.ndarray | tuple[np.ndarray, np.ndarray],
-    comm: MPI.Comm,
+    comm: Comm,
     all: bool = False,
     sorted=False,
 ):
@@ -126,7 +127,7 @@ def gather_index(
     return sort(result) if sorted else result
 
 
-def sum_scatter(data: np.ndarray, comm: MPI.Comm):
+def sum_scatter(data: np.ndarray, comm: Comm):
     parallel_assert_can_stack(data, comm)
     row_counts = np.asarray(comm.allgather(len(data)), dtype=np.int64)
     parallel_assert(len(np.unique(row_counts)) == 1, comm)
@@ -153,7 +154,7 @@ def sum_scatter(data: np.ndarray, comm: MPI.Comm):
     return (recvbuf, offset)
 
 
-def gather_data(data: np.ndarray, comm: MPI.Comm, all: bool = False):
+def gather_data(data: np.ndarray, comm: Comm, all: bool = False):
     from mpi4py.util import dtlib
 
     parallel_assert_can_stack(data, comm)
@@ -187,9 +188,7 @@ def gather_data(data: np.ndarray, comm: MPI.Comm, all: bool = False):
     return recvbuf.reshape((int(np.sum(row_counts)), *data.shape[1:]))
 
 
-def reduce_data(
-    data: np.ndarray, comm: MPI.Comm, all: bool = False, op: MPI.Op | None = None
-):
+def reduce_data(data: np.ndarray, comm: Comm, all: bool = False, op: Op | None = None):
     """
     Defaults to sum
     """
@@ -219,7 +218,7 @@ def reduce_data(
     return arr.reshape(data.shape)  # type: ignore
 
 
-def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
+def scatter_index(index: np.ndarray | None, length: int, comm: Comm):
     counts = comm.allgather(length)
     index_length = comm.bcast(len(index) if index is not None else None)
     parallel_assert(np.sum(counts) == index_length, comm)
@@ -243,7 +242,7 @@ def scatter_index(index: np.ndarray | None, length: int, comm: MPI.Comm):
     # Note the uppercase 'G' which indicates a buffer/array optimization wrapper
 
 
-def scatter_data(data: np.ndarray | None, length: int, comm: MPI.Comm):
+def scatter_data(data: np.ndarray | None, length: int, comm: Comm):
     from mpi4py.util import dtlib
 
     row_counts = np.asarray(comm.allgather(length), dtype=np.int64)
@@ -272,7 +271,7 @@ def scatter_data(data: np.ndarray | None, length: int, comm: MPI.Comm):
     return recvbuf.reshape((length, *trailing_shape))
 
 
-def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm):
+def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: Comm):
     from mpi4py.util import dtlib
 
     parallel_assert_is_simple_index(target_rank, comm)
@@ -315,7 +314,7 @@ def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm)
 
 
 def get_all_keys[T: SupportsRichComparison](
-    data: dict[T, Any], comm: Optional[MPI.Comm]
+    data: dict[T, Any], comm: Optional[Comm]
 ) -> list[T]:
     """
     Return all keys in the dictionary across all ranks, sorted
@@ -332,7 +331,7 @@ def get_all_keys[T: SupportsRichComparison](
 
 
 def get_all_entries[T: (SupportsRichComparison), U](
-    data: dict[T, U], comm: Optional[MPI.Comm]
+    data: dict[T, U], comm: Optional[Comm]
 ) -> Generator[tuple[T, U | None]]:
     for key in get_all_keys(data, comm):
         yield key, data.get(key)

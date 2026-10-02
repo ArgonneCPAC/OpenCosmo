@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable, Generator, Iterable, Mapping
 from functools import wraps
 from inspect import signature
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Mapping,
-    Optional,
     cast,
 )
 from warnings import warn
@@ -32,6 +28,7 @@ from .handler import LinkHandler, link_slot_values
 
 if TYPE_CHECKING:
     import astropy.units as u
+    from mpi4py.MPI import Comm
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.dtypes import HaccSimulationParameters
@@ -39,17 +36,16 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
 
 
-def filter_source_by_dataset(
-    dataset: oc.Dataset,
-    source: oc.Dataset,
+def filter_source_by_dataset[T: (oc.Dataset, oc.Lightcone)](
+    dataset: T,
+    source: T,
     header: oc.header.OpenCosmoHeader,
     *masks,
     mode: str = "global",
-) -> oc.Dataset:
+) -> T:
     masked_dataset = dataset.filter(*masks, mode=mode)
     linked_column: str
     if header.file.data_type == "halo_properties":
@@ -57,12 +53,13 @@ def filter_source_by_dataset(
     elif header.file.data_type == "galaxy_properties":
         linked_column = "gal_tag"
 
-    tags = masked_dataset.select(linked_column).data
+    tags = masked_dataset.select(linked_column).get_data("numpy")
+    assert isinstance(tags, np.ndarray)
     new_source = source.filter(oc.col(linked_column).isin(tags))
-    return new_source
+    return cast("T", new_source)
 
 
-def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+def do_idx_update(data: np.ndarray, comm: Comm | None = None):
     if comm is None:
         return np.arange(len(data))
     lengths = comm.allgather(len(data))
@@ -72,7 +69,7 @@ def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
     return result
 
 
-def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: Comm | None):
     psum = np.insert(np.cumsum(size), 0, 0)[:-1]
     if comm is None:
         return psum
@@ -109,11 +106,11 @@ class StructureCollection:
 
     def __init__(
         self,
-        source: oc.Dataset,
-        datasets: Mapping[str, oc.Dataset | StructureCollection],
+        source: oc.Dataset | oc.Lightcone,
+        datasets: Mapping[str, oc.Dataset | StructureCollection | oc.Lightcone],
         hide_source: bool = False,
-        link_handler: Optional[LinkHandler] = None,
-        derived_columns: Optional[set[str]] = None,
+        link_handler: LinkHandler | None = None,
+        derived_columns: set[str] | None = None,
         *,
         resolve_links: bool = False,
         **kwargs,
@@ -192,7 +189,7 @@ class StructureCollection:
         )
 
     def __repr__(self):
-        structure_type = self.__source.header.file.data_type.split("_")[0] + "s"
+        structure_type = str(self.__source.header.file.data_type).split("_")[0] + "s"
         is_lightcone = isinstance(self.__source, lc.Lightcone)
         keys = list(self.keys())
         if len(keys) == 2:
@@ -208,7 +205,7 @@ class StructureCollection:
         return len(self.__source)
 
     def __dir__(self):
-        return list(self.source.header.parameters.keys()) + super().__dir__()
+        return list(self.source.header.parameters.keys()).extend(super().__dir__())
 
     def __getattr__(self, key: str):
         try:
@@ -234,8 +231,7 @@ class StructureCollection:
 
     @property
     def dtype(self):
-        structure_type = self.__source.header.file.dt
-        return structure_type
+        return self.__source.header.file.data_type
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -250,7 +246,7 @@ class StructureCollection:
         return self.__source.columns
 
     @property
-    def sorted_by(self) -> Optional[str]:
+    def sorted_by(self) -> str | None:
         """
         The column this collection is currently sorted by, or ``None`` if unsorted.
 
@@ -321,7 +317,7 @@ class StructureCollection:
         return self.__source.region
 
     def bound(
-        self, region: Region, select_by: Optional[str] = None
+        self, region: Region, select_by: str | None = None
     ) -> StructureCollection:
         """
         Restrict this collection to only contain structures in the specified region.
@@ -532,7 +528,7 @@ class StructureCollection:
     def evaluate(
         self,
         func: Callable,
-        dataset: Optional[str] = None,
+        dataset: str | None = None,
         format: str = "astropy",
         insert: bool = True,
         allow_overwrite: bool = False,
@@ -727,7 +723,7 @@ class StructureCollection:
     def evaluate_on_dataset(
         self,
         func: Callable,
-        dataset: Optional[str] = None,
+        dataset: str | None = None,
         vectorize: bool = False,
         format: str = "astropy",
         insert: bool = True,
@@ -919,7 +915,7 @@ class StructureCollection:
             raise ValueError("Dataset galaxy_properties not found in collection.")
         else:
             galaxy_properties = self["galaxy_properties"]
-            assert isinstance(galaxy_properties, oc.Dataset)
+            assert isinstance(galaxy_properties, (oc.Dataset, oc.Lightcone))
             filtered = filter_source_by_dataset(
                 galaxy_properties,
                 self.__source,
@@ -1198,7 +1194,7 @@ class StructureCollection:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: str | None = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **dataset_conversions: dict,
     ):
@@ -1557,7 +1553,7 @@ class StructureCollection:
         )
 
     def objects(
-        self, data_types: Optional[Iterable[str]] = None, ignore_empty=True
+        self, data_types: Iterable[str] | None = None, ignore_empty=True
     ) -> Iterable[dict[str, Any]]:
         """
         Iterate over the objects in this collection as pairs of
