@@ -4,6 +4,7 @@ import math
 
 import numpy as np
 import pytest
+from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.normalize import SpatialNormalizationContext, normalize_region
 from opencosmo.spatial.query import (
     BoxQuery,
@@ -242,3 +243,11 @@ def test_normalize_skybox_region_rejects_zero_width() -> None:
 
     with pytest.raises(ValueError, match="nonzero"):
         normalize_region(region, context=context)
+
+
+def test_full_sky_region_model_round_trip() -> None:
+    region = FullSkyRegion()
+
+    restored = from_model(region.into_model())
+
+    assert isinstance(restored, FullSkyRegion)

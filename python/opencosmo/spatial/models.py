@@ -31,4 +31,14 @@ class HealpixRegionModel(BaseModel):
         return np.sort(pixels).tolist()
 
 
-RegionModel = BoxRegionModel | ConeRegionModel | HealpixRegionModel | SkyboxRegionModel
+class FullSkyRegionModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+RegionModel = (
+    BoxRegionModel
+    | ConeRegionModel
+    | HealpixRegionModel
+    | SkyboxRegionModel
+    | FullSkyRegionModel
+)

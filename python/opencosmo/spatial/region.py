@@ -17,6 +17,7 @@ from opencosmo.index import get_length, into_array
 from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
+    FullSkyRegionModel,
     HealpixRegionModel,
     SkyboxRegionModel,
 )
@@ -383,8 +384,8 @@ class FullSkyRegion:
     def into_base_convention(self, *args, **kwargs):
         return self
 
-    def into_model(self):
-        return None
+    def into_model(self) -> FullSkyRegionModel:
+        return FullSkyRegionModel()
 
     def contains(self, other: Any):
         return contains_2d(self, other)

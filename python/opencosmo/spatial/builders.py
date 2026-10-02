@@ -10,10 +10,17 @@ from astropy.coordinates import SkyCoord  # type: ignore
 from opencosmo.spatial.models import (
     BoxRegionModel,
     ConeRegionModel,
+    FullSkyRegionModel,
     HealpixRegionModel,
     SkyboxRegionModel,
 )
-from opencosmo.spatial.region import BoxRegion, ConeRegion, HealpixRegion, SkyboxRegion
+from opencosmo.spatial.region import (
+    BoxRegion,
+    ConeRegion,
+    FullSkyRegion,
+    HealpixRegion,
+    SkyboxRegion,
+)
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -35,6 +42,8 @@ def from_model(model: BaseModel):
             return HealpixRegion(np.array(list(model.pixels)), model.nside)
         case SkyboxRegionModel():
             return make_skybox(model.p1, model.p2)
+        case FullSkyRegionModel():
+            return FullSkyRegion()
         case _:
             raise ValueError(f"Invalid region model type {type(model)}")
 
