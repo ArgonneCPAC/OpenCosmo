@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
-from opencosmo.spatial.query import BoxQuery, ConeQuery, FullSkyQuery, SkyboxQuery
+from opencosmo.spatial.query import (
+    BoxQuery,
+    ConeQuery,
+    FullSkyQuery,
+    PixelSelection,
+    SkyboxQuery,
+    validate_nested_promotion,
+)
 
 
 def test_box_query_accepts_finite_ordered_bounds() -> None:
@@ -56,3 +64,68 @@ def test_full_sky_query_is_immutable() -> None:
 
     with pytest.raises(AttributeError):
         object.__setattr__(query, "value", 1)
+
+
+def test_pixel_selection_copies_and_freezes_canonical_ranges() -> None:
+    starts = np.array([1, 5], dtype=np.int64)
+    sizes = np.array([2, 3], dtype=np.int64)
+    selection = PixelSelection(2, "nested", starts, sizes)
+
+    starts[0] = 10
+    sizes[0] = 10
+
+    assert np.array_equal(selection.starts, [1, 5])
+    assert np.array_equal(selection.sizes, [2, 3])
+    with pytest.raises(ValueError):
+        selection.starts[0] = 10
+
+
+@pytest.mark.parametrize(
+    ("starts", "sizes"),
+    [
+        (np.array([1], dtype=np.int32), np.array([1], dtype=np.int32)),
+        (np.array([[1]], dtype=np.int64), np.array([1], dtype=np.int64)),
+        (np.array([1], dtype=np.int64), np.array([1, 2], dtype=np.int64)),
+        (np.array([-1], dtype=np.int64), np.array([1], dtype=np.int64)),
+        (np.array([1], dtype=np.int64), np.array([0], dtype=np.int64)),
+        (np.array([2, 1], dtype=np.int64), np.array([1, 1], dtype=np.int64)),
+        (np.array([1, 2], dtype=np.int64), np.array([2, 1], dtype=np.int64)),
+    ],
+)
+def test_pixel_selection_rejects_noncanonical_ranges(
+    starts: np.ndarray, sizes: np.ndarray
+) -> None:
+    with pytest.raises(ValueError):
+        PixelSelection(1, "nested", starts, sizes)
+
+
+def test_pixel_selection_rejects_invalid_metadata_and_bounds() -> None:
+    empty = np.array([], dtype=np.int64)
+
+    with pytest.raises(ValueError, match="nside"):
+        PixelSelection(3, "nested", empty, empty)
+    with pytest.raises(ValueError, match="ordering"):
+        PixelSelection(1, "invalid", empty, empty)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="exceed"):
+        PixelSelection(
+            1,
+            "nested",
+            np.array([11], dtype=np.int64),
+            np.array([2], dtype=np.int64),
+        )
+
+
+def test_pixel_selection_accepts_empty_ranges() -> None:
+    empty = np.array([], dtype=np.int64)
+
+    selection = PixelSelection(1, "ring", empty, empty)
+
+    assert selection.starts.size == 0
+    assert selection.sizes.size == 0
+
+
+def test_validate_nested_promotion() -> None:
+    assert validate_nested_promotion(2, 8) == 4
+
+    with pytest.raises(ValueError, match="target"):
+        validate_nested_promotion(8, 2)

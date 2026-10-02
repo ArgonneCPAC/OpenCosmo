@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
+
+import numpy as np
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 def __coordinates(
@@ -87,4 +92,79 @@ class FullSkyQuery:
     """Normalized full-sky query."""
 
 
-NormalizedRegion: TypeAlias = BoxQuery | ConeQuery | SkyboxQuery | FullSkyQuery
+def __nside(nside: int) -> int:
+    if not isinstance(nside, int) or isinstance(nside, bool) or nside <= 0:
+        raise ValueError("nside must be a positive power of two")
+    if nside & (nside - 1):
+        raise ValueError("nside must be a positive power of two")
+    return nside
+
+
+def __ranges(
+    starts: NDArray[np.int64], sizes: NDArray[np.int64], nside: int
+) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    if not isinstance(starts, np.ndarray) or not isinstance(sizes, np.ndarray):
+        raise ValueError("pixel ranges must be NumPy arrays")
+    if starts.dtype != np.int64 or sizes.dtype != np.int64:
+        raise ValueError("pixel ranges must use int64 arrays")
+    if starts.ndim != 1 or sizes.ndim != 1:
+        raise ValueError("pixel ranges must be one-dimensional")
+    if len(starts) != len(sizes):
+        raise ValueError("pixel range starts and sizes must have matching lengths")
+
+    copied_starts = starts.copy()
+    copied_sizes = sizes.copy()
+    limit = 12 * nside**2
+    previous_stop = 0
+    for start, size in zip(copied_starts, copied_sizes):
+        if start < 0 or size <= 0:
+            raise ValueError(
+                "pixel range starts must be nonnegative and sizes positive"
+            )
+        stop = int(start) + int(size)
+        if stop > limit:
+            raise ValueError("pixel ranges must not exceed the nside pixel count")
+        if start < previous_stop:
+            raise ValueError("pixel ranges must be sorted and disjoint")
+        previous_stop = stop
+
+    copied_starts.flags.writeable = False
+    copied_sizes.flags.writeable = False
+    return copied_starts, copied_sizes
+
+
+_nside = __nside
+_ranges = __ranges
+
+
+@dataclass(frozen=True, slots=True)
+class PixelSelection:
+    """Canonical HEALPix pixel ranges with explicit resolution and ordering."""
+
+    nside: int
+    ordering: Literal["nested", "ring"]
+    starts: NDArray[np.int64]
+    sizes: NDArray[np.int64]
+
+    def __post_init__(self) -> None:
+        nside = _nside(self.nside)
+        if self.ordering not in ("nested", "ring"):
+            raise ValueError("pixel ordering must be 'nested' or 'ring'")
+        starts, sizes = _ranges(self.starts, self.sizes, nside)
+        object.__setattr__(self, "nside", nside)
+        object.__setattr__(self, "starts", starts)
+        object.__setattr__(self, "sizes", sizes)
+
+
+def validate_nested_promotion(source_nside: int, target_nside: int) -> int:
+    """Validate nested HEALPix promotion and return its integer resolution factor."""
+    source_nside = __nside(source_nside)
+    target_nside = __nside(target_nside)
+    if target_nside < source_nside or target_nside % source_nside:
+        raise ValueError("target nside must be a compatible nested resolution")
+    return target_nside // source_nside
+
+
+NormalizedRegion: TypeAlias = (
+    BoxQuery | ConeQuery | SkyboxQuery | FullSkyQuery | PixelSelection
+)
