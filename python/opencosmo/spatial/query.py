@@ -68,6 +68,7 @@ class SkyboxQuery:
     ra_width_degrees: float
     dec_min_degrees: float
     dec_max_degrees: float
+    ra_interval: Literal["non_wrapped", "wrapped", "full"]
 
     def __post_init__(self) -> None:
         values = (
@@ -82,6 +83,21 @@ class SkyboxQuery:
             raise ValueError(
                 "skybox declination bounds must be between -90 and 90 degrees"
             )
+        if self.ra_interval == "full":
+            if self.ra_width_degrees != 360:
+                raise ValueError("full-RA skyboxes must have a 360 degree width")
+        elif self.ra_interval == "wrapped":
+            if not 0 < self.ra_width_degrees < 360 or (
+                self.ra_start_degrees % 360 + self.ra_width_degrees <= 360
+            ):
+                raise ValueError("wrapped skybox interval is invalid")
+        elif self.ra_interval == "non_wrapped":
+            if not 0 < self.ra_width_degrees < 360 or (
+                self.ra_start_degrees % 360 + self.ra_width_degrees > 360
+            ):
+                raise ValueError("non-wrapped skybox interval is invalid")
+        else:
+            raise ValueError("skybox RA interval must be non_wrapped, wrapped, or full")
 
 
 @dataclass(frozen=True, slots=True)

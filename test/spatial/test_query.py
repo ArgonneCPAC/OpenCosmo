@@ -13,7 +13,13 @@ from opencosmo.spatial.query import (
     SkyboxQuery,
     validate_nested_promotion,
 )
-from opencosmo.spatial.region import BoxRegion, ConeRegion, FullSkyRegion, HealpixRegion
+from opencosmo.spatial.region import (
+    BoxRegion,
+    ConeRegion,
+    FullSkyRegion,
+    HealpixRegion,
+    SkyboxRegion,
+)
 
 
 def test_box_query_accepts_finite_ordered_bounds() -> None:
@@ -52,13 +58,24 @@ def test_cone_query_rejects_invalid_threshold(threshold: float) -> None:
 
 
 def test_skybox_query_validates_declination_bounds() -> None:
-    query = SkyboxQuery(350, 20, -10, 10)
+    query = SkyboxQuery(350, 20, -10, 10, "wrapped")
 
     assert query.ra_start_degrees == 350
     assert query.ra_width_degrees == 20
 
     with pytest.raises(ValueError, match="declination"):
-        SkyboxQuery(0, 10, -91, 10)
+        SkyboxQuery(0, 10, -91, 10, "non_wrapped")
+
+
+@pytest.mark.parametrize(
+    ("start", "width", "interval"),
+    [(0, 10, "wrapped"), (350, 20, "non_wrapped"), (0, 0, "non_wrapped")],
+)
+def test_skybox_query_validates_ra_interval(
+    start: float, width: float, interval: str
+) -> None:
+    with pytest.raises(ValueError):
+        SkyboxQuery(start, width, -10, 10, interval)  # type: ignore[arg-type]
 
 
 def test_full_sky_query_is_immutable() -> None:
@@ -197,3 +214,31 @@ def test_normalize_cone_region_uses_unit_vector_and_squared_chord_distance() -> 
     assert isinstance(query, ConeQuery)
     assert np.allclose(query.center, (1, 0, 0))
     assert query.max_squared_chord_distance == pytest.approx(1)
+
+
+def test_normalize_skybox_region_distinguishes_wrapped_intervals() -> None:
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+
+    context = SpatialNormalizationContext(2, ("ra", "dec"))
+    region = SkyboxRegion(
+        SkyCoord(350 * u.deg, -10 * u.deg), SkyCoord(10 * u.deg, 10 * u.deg)
+    )
+
+    query = normalize_region(region, context=context)
+
+    assert isinstance(query, SkyboxQuery)
+    assert query.ra_interval == "wrapped"
+
+
+def test_normalize_skybox_region_rejects_zero_width() -> None:
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+
+    context = SpatialNormalizationContext(2, ("ra", "dec"))
+    region = SkyboxRegion(
+        SkyCoord(10 * u.deg, -10 * u.deg), SkyCoord(10 * u.deg, 10 * u.deg)
+    )
+
+    with pytest.raises(ValueError, match="nonzero"):
+        normalize_region(region, context=context)

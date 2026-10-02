@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 
@@ -10,6 +10,7 @@ from opencosmo.spatial.query import (
     ConeQuery,
     FullSkyQuery,
     PixelSelection,
+    SkyboxQuery,
 )
 
 if TYPE_CHECKING:
@@ -52,6 +53,7 @@ def normalize_region(
         ConeRegion,
         FullSkyRegion,
         HealpixRegion,
+        SkyboxRegion,
     )
 
     match region:
@@ -99,6 +101,21 @@ def normalize_region(
             return ConeQuery(
                 (float(center[0]), float(center[1]), float(center[2])),
                 float(2 - 2 * np.cos(radius)),
+            )
+        case SkyboxRegion():
+            if context.dimensions != 2:
+                raise ValueError("skybox regions require a two-dimensional context")
+            if region.ra_width == 0:
+                raise ValueError("skybox RA interval must have nonzero width")
+            interval = cast(
+                "Literal['wrapped', 'non_wrapped']",
+                "wrapped" if region.ra_start + region.ra_width > 360 else "non_wrapped",
+            )
+            return SkyboxQuery(
+                region.ra_start,
+                region.ra_width,
+                *region.dec_bounds,
+                interval,
             )
         case _:
             raise TypeError(f"unsupported region type {type(region).__name__}")
