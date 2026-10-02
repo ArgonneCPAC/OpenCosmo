@@ -305,16 +305,14 @@ def bound(state: DatasetState, region, select_by):
             "region this dataset is in. This may result in unexpected behavior"
         )
 
-    query_state = dataclasses.replace(state, sort_key=None)
-
     contained_index: DataIndex
     intersects_index: DataIndex
     contained_index, intersects_index = state.tree.query(check_region)
 
-    contained_index = project(query_state.raw_index, contained_index)
-    intersects_index = project(query_state.raw_index, intersects_index)
+    contained_index = project(state.raw_index, contained_index)
+    intersects_index = project(state.raw_index, intersects_index)
 
-    check_state = st.take_rows(query_state, intersects_index)
+    check_state = st.take_rows(state, intersects_index)
     if not state.header.file.is_lightcone:
         check_state = with_units(check_state, "scalefree", {})
 
@@ -332,8 +330,8 @@ def bound(state: DatasetState, region, select_by):
 
     new_tree = state.tree.with_region(check_region)
 
-    new_state = st.take_rows(query_state, new_index)
-    return dataclasses.replace(new_state, tree=new_tree, sort_key=state.sort_key)
+    new_state = st.take_rows(state, new_index)
+    return dataclasses.replace(new_state, tree=new_tree)
 
 
 def with_units(

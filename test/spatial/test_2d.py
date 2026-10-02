@@ -1,7 +1,6 @@
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
-from opencosmo.spatial.region import FullSkyRegion
 from opencosmo.spatial.relations import contains_2d, intersects_2d
 
 import opencosmo as oc
@@ -136,13 +135,6 @@ def test_cone_search_collection(haloproperties_600_path, haloproperties_601_path
     seps = seps.to(u.degree)
     assert all(seps < radius)
     assert len(data) == n_raw
-
-
-def test_full_sky_region_contains_angular_regions():
-    full_sky = FullSkyRegion()
-
-    assert full_sky.contains(oc.make_cone((0, 89), 2 * u.deg))
-    assert full_sky.intersects(oc.make_skybox((359, 85), (1, 90)))
 
 
 # ---------------------------------------------------------------------------

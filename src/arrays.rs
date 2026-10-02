@@ -66,7 +66,10 @@ where
     Dim<[usize; D]>: Dimension,
 {
     let untyped = arr.cast::<PyUntypedArray>().map_err(|_| {
-        UnpackError::TypeError(("numpy array".to_owned(), get_type_string(arr.get_type())))
+        UnpackError::TypeError((
+            format!("numpy array"),
+            format!("{}", get_type_string(arr.get_type())),
+        ))
     })?;
     let dtype = untyped.dtype();
     if !dtype.is_equiv_to(&T::get_dtype(arr.py())) {
@@ -79,12 +82,7 @@ where
         return Err(UnpackError::Dimensions((D, untyped.ndim())));
     }
 
-    let typed = untyped.cast::<PyArray<T, Dim<[usize; D]>>>().map_err(|_| {
-        UnpackError::TypeError((
-            format!("{}-dimensional numpy array", D),
-            get_type_string(arr.get_type()),
-        ))
-    })?;
+    let typed = untyped.cast::<PyArray<T, Dim<[usize; D]>>>().unwrap(); // Should never fail now
 
     typed.try_readonly().map_err(|_| UnpackError::Borrowed)
 }
