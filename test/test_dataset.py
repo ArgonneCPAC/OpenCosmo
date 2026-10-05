@@ -520,6 +520,100 @@ def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):
     np.testing.assert_array_equal(data["copy"], [0, 0, 1, 0, 1, 2, 0, 1, 2, 3])
 
 
+def test_evaluate_to_dataset_without_coordinates_does_not_require_them(input_path):
+    ds = oc.open(input_path).select("fof_halo_mass").take(4, at="start")
+
+    def copy_mass(fof_halo_mass):
+        return fof_halo_mass
+
+    result = ds.evaluate_to_dataset(copy_mass, vectorize=True)
+
+    assert result.columns == ["copy_mass"]
+
+
+def test_evaluate_to_dataset_copies_explicit_coordinates(input_path):
+    coordinate_names = [
+        "fof_halo_center_x",
+        "fof_halo_center_y",
+        "fof_halo_center_z",
+    ]
+    ds = oc.open(input_path).take(4, at="start")
+
+    def expand(fof_halo_mass, fof_halo_center_x, fof_halo_center_y, fof_halo_center_z):
+        return np.repeat(fof_halo_mass, 2)
+
+    result = ds.evaluate_to_dataset(expand, coordinates=coordinate_names)
+    data = result.get_data()
+    source = ds.select(coordinate_names).get_data()
+
+    for name in coordinate_names:
+        np.testing.assert_array_equal(data[name], np.repeat(source[name], 2))
+
+
+def test_evaluate_to_dataset_copies_coordinates_for_data_mapping(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+
+    def expand(data):
+        return np.repeat(data["fof_halo_mass"], 2)
+
+    result = ds.evaluate_to_dataset(expand, coordinates="copy")
+    data = result.get_data()
+    source = ds.select("fof_halo_center_x").get_data()
+
+    np.testing.assert_array_equal(data["fof_halo_center_x"], np.repeat(source, 2))
+
+
+def test_evaluate_to_dataset_rejects_vectorized_coordinate_length_mismatch(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+
+    def summarize(fof_halo_mass):
+        return fof_halo_mass[:2]
+
+    with pytest.raises(ValueError, match="same length as the coordinates"):
+        ds.evaluate_to_dataset(summarize, vectorize=True, coordinates="copy")
+
+
+def test_evaluate_to_dataset_accepts_produced_coordinates(input_path):
+    ds = oc.open(input_path).select("fof_halo_mass").take(4, at="start")
+
+    def make_coordinates(fof_halo_mass):
+        return {
+            "x": np.arange(len(fof_halo_mass)),
+            "y": np.arange(len(fof_halo_mass)) + 1,
+            "mass": fof_halo_mass,
+        }
+
+    result = ds.evaluate_to_dataset(
+        make_coordinates, vectorize=True, coordinates=["x", "y"]
+    )
+
+    assert result.columns == ["x", "y", "mass"]
+
+
+def test_evaluate_to_dataset_rejects_mixed_source_and_produced_coordinates(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+
+    def make_coordinates(fof_halo_mass):
+        return {"custom_y": np.arange(len(fof_halo_mass))}
+
+    with pytest.raises(ValueError, match="all be source columns or all be produced"):
+        ds.evaluate_to_dataset(
+            make_coordinates,
+            vectorize=True,
+            coordinates=["fof_halo_center_x", "custom_y"],
+        )
+
+
+def test_evaluate_to_dataset_requires_requested_produced_coordinates(input_path):
+    ds = oc.open(input_path).select("fof_halo_mass").take(4, at="start")
+
+    def make_coordinates(fof_halo_mass):
+        return {"x": np.arange(len(fof_halo_mass))}
+
+    with pytest.raises(ValueError, match="did not produce coordinate columns"):
+        ds.evaluate_to_dataset(make_coordinates, vectorize=True, coordinates=["x", "y"])
+
+
 def test_evaluate_noinsert_requires_2d_output_for_2d_column(input_path):
     ds = oc.open(input_path).take(4, at="start")
 

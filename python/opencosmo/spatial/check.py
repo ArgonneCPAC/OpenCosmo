@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from functools import wraps
-from inspect import Parameter, signature
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -19,82 +17,6 @@ ALLOWED_COORDINATES_3D = {
         "sod": "sod_halo_com_",
     }
 }
-
-
-def wrap_evaluate_with_coordinates(coordinate_names: list[str]):
-    def outer_wrapper(func):
-        current_signature = signature(func)
-        names = current_signature.parameters.keys()
-        if "data" not in names:
-            coordinates_to_add = set(coordinate_names).difference(names)
-            new_parameters = list(current_signature.parameters.values()) + [
-                Parameter(name, kind=Parameter.KEYWORD_ONLY)
-                for name in coordinates_to_add
-            ]
-
-            new_signature = current_signature.replace(parameters=new_parameters)
-        else:
-            coordinates_to_add = set()
-            new_signature = current_signature
-
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            _ = new_signature.bind(*args, **kwargs)
-            coordinates = {
-                name: kwargs.pop(name) if name in coordinates_to_add else kwargs[name]
-                for name in coordinate_names
-            }
-
-            results = func(*args, **kwargs)
-            if not isinstance(results, dict):
-                results = {func.__name__: results}
-            if not coordinates_to_add:
-                return results
-            return __build_output(results, coordinates)
-
-        wrapper.__signature__ = new_signature
-        return wrapper
-
-    return outer_wrapper
-
-
-def __build_output(results: dict, coordinates: dict):
-    """
-    Two allowed situations:
-    1. The results are arrays and the coordinates are arrays of the same length -> just combine
-    2. The results are arrays and the coordinates are single elements ->
-    """
-    first_output = next(iter(results.values()))
-    coordinate_length = len(
-        np.atleast_1d(next(iter(coordinates.values())))
-    )  # weird size mismatches are caught elsehwere
-    has_units = hasattr(next(iter(coordinates.values())), "unit")
-
-    try:
-        length = len(first_output)
-        if coordinate_length == length:
-            return results | coordinates
-        elif coordinate_length == 1:
-            new_coordinates = {
-                name: np.full(length, c) for name, c in coordinates.items()
-            }
-            if has_units:
-                new_coordinates = {
-                    name: c * coordinates[name].unit
-                    for name, c in new_coordinates.items()
-                }
-            return results | new_coordinates
-
-        else:
-            raise ValueError(
-                "The output of the function must be the same length as the coordinates!"
-            )
-
-    except TypeError:
-        if coordinate_length == 1:
-            return results | coordinates
-        else:
-            raise ValueError
 
 
 def check_containment(

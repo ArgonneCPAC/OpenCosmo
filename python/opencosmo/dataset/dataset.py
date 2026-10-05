@@ -4,7 +4,6 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     TypeAlias,
-    cast,
 )
 from warnings import warn
 
@@ -14,12 +13,8 @@ from astropy.table import QTable  # type: ignore
 
 import opencosmo.dataset.state as st
 from opencosmo.dataset import operations as dsops
+from opencosmo.dataset.evaluate_to_dataset import evaluate_to_dataset
 from opencosmo.deprecated import deprecated
-from opencosmo.spatial.check import (
-    find_coordinate_names_2d,
-    find_coordinate_names_3d,
-    wrap_evaluate_with_coordinates,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
@@ -438,6 +433,13 @@ class Dataset:
             The format in which column data is provided to ``func``.
         batch_size : int, default=-1
             If positive, provide data to ``func`` in batches of this size.
+        coordinates : {"copy", list[str], None}, default=None
+            Coordinate columns to retain in the output. ``"copy"`` detects the
+            dataset's canonical spatial coordinates. A list either explicitly
+            selects source columns to retain or names coordinate columns produced
+            by ``func``; source and produced names cannot be mixed. Source
+            coordinates are repeated for row-wise outputs with more than one row
+            per input row.
         allow_overwrite : bool, default=False
             Accepted for compatibility with :meth:`evaluate`; the returned dataset
             contains no columns from the original dataset to overwrite.
@@ -448,7 +450,8 @@ class Dataset:
         -------
         Dataset
             A new in-memory dataset containing the evaluated output columns and
-            retaining this dataset's header. Spatial information is not retained.
+            retaining this dataset's header. Retained coordinate columns do not
+            create a spatial index.
 
         Raises
         ------
@@ -457,62 +460,16 @@ class Dataset:
         ValueError
             If the output columns do not all have equal lengths.
         """
-        from opencosmo.dataset.build import build_dataset_from_evaluated_data
-
-        baseline_state = dsops.with_units(
-            self.__state,
-            self.__state.unit_handler.base_convention.value,
-            {},
+        return evaluate_to_dataset(
+            self,
+            func,
+            vectorize,
+            format,
+            batch_size,
+            coordinates,
+            allow_overwrite,
+            evaluate_kwargs,
         )
-        if self.header.file.is_lightcone:
-            coordinate_names = find_coordinate_names_2d(self.__state)
-        else:
-            coordinate_names = find_coordinate_names_3d(self.__state, self.dtype)
-        if coordinates == "copy":
-            func = wrap_evaluate_with_coordinates(coordinate_names)(func)
-        elif coordinates is None:
-            coordinate_names = []
-        else:
-            coordinate_names = coordinates
-
-        result = cast(
-            "dict[str, np.ndarray | u.Quantity]",
-            dsops.evaluate(
-                baseline_state,
-                func,
-                vectorize,
-                False,
-                format,
-                batch_size,
-                allow_overwrite,
-                **evaluate_kwargs,
-            ),
-        )
-
-        output_length: int | None = None
-        for name, output in result.items():
-            if not isinstance(output, (np.ndarray, u.Quantity)):
-                raise TypeError(
-                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity, "
-                    f"not {type(output).__name__}"
-                )
-            if output.ndim == 0:
-                raise TypeError(
-                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity "
-                    "with a length"
-                )
-            if output_length is None:
-                output_length = len(output)
-            elif len(output) != output_length:
-                raise ValueError("Evaluate output columns must have equal lengths")
-
-        evaluated = build_dataset_from_evaluated_data(result, baseline_state.header)
-        output_state = dsops.with_units(
-            evaluated._state,
-            self.__state.unit_handler.current_convention.value,
-            self.__state.unit_handler.blanket_conversions,
-        )
-        return Dataset(output_state)
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """
