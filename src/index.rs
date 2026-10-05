@@ -11,7 +11,9 @@ pub(crate) mod index {
     use std::collections::HashMap;
     use std::iter::zip;
 
-    fn unpack_index_array<'py>(index: &Bound<'py, PyAny>) -> PyResult<PyReadonlyArray1<'py, i64>> {
+    pub(crate) fn unpack_index_array<'py>(
+        index: &Bound<'py, PyAny>,
+    ) -> PyResult<PyReadonlyArray1<'py, i64>> {
         Ok(unpack_array::<i64, 1>(index)?)
     }
 

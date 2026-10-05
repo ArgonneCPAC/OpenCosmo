@@ -3,9 +3,7 @@ from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
     Any,
-    Iterable,
     NamedTuple,
-    Optional,
     Protocol,
     Union,
 )
@@ -14,6 +12,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from opencosmo.index import DataIndex, SimpleIndex
     from opencosmo.spatial.models import RegionModel
     from opencosmo.spatial.region import BoxRegion, HealpixRegion
@@ -32,13 +32,13 @@ class Region(Protocol):
     support both 2d regions and 3d regions.
     """
 
-    def intersects(self, other: "Region") -> bool: ...
+    def intersects(self, other: Region) -> bool: ...
     def contains(self, other: SpatialObject): ...
-    def into_base_convention(
+    def regularize(
         self,
-        converters: list["UnitApplicator"],
+        converters: list[UnitApplicator],
         columns: Iterable[str],
-        from_: "UnitConvention",
+        from_: UnitConvention,
         unit_kwargs: dict[str, Any],
     ): ...
     def into_model(self) -> RegionModel: ...
@@ -51,13 +51,13 @@ class Region2d(Region, Protocol):
 
 
 class Region3d(Region, Protocol):
-    def bounding_box(self) -> "BoxRegion": ...
+    def bounding_box(self) -> BoxRegion: ...
 
 
 class TreePartition(NamedTuple):
     idx: DataIndex
-    region: Optional[Region]
-    level: Optional[int]
+    region: Region | None
+    level: int | None
 
 
 class SpatialIndex(Protocol):
@@ -68,7 +68,7 @@ class SpatialIndex(Protocol):
 
     def query(
         self, region: Region, max_level: int
-    ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]:
+    ) -> list[tuple[SimpleIndex, SimpleIndex]]:
         """
         Given a region in space, return a dictionary where each key is a level and each
         value is a tuple of DataIndexes. The first DataIndex corresponds to the regions

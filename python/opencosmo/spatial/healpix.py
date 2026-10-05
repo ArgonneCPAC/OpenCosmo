@@ -26,7 +26,7 @@ class HealPixIndex:
 
     def query(
         self, region: Region, level: int = 1
-    ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]:
+    ) -> list[tuple[SimpleIndex, SimpleIndex]]:
         """
         Raw healpix data is
 
@@ -61,6 +61,10 @@ class HealPixIndex:
         coords = SkyCoord(*hp.vec2ang(boundaries, lonlat=True), unit="deg")
         coord_is_contained = region.contains(coords)
         pixel_is_contained = np.all(coord_is_contained.reshape(-1, 4), axis=1)
-        return {
-            level: (intersects[pixel_is_contained], intersects[~pixel_is_contained])
-        }
+        result = [
+            (np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64))
+            for _ in range(level)
+        ]
+
+        result.append((intersects[pixel_is_contained], intersects[~pixel_is_contained]))
+        return result

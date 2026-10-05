@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -28,6 +28,8 @@ from opencosmo.spatial.relations import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from astropy.coordinates import SkyCoord  # type: ignore
     from astropy.cosmology import FLRW
 
@@ -133,7 +135,7 @@ class ConeRegion:
             f"Cone Region (center: RA={ra:.4f}°, Dec={dec:.4f}°, radius={radius:.4f}°)"
         )
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self) -> ConeRegionModel:
@@ -272,7 +274,7 @@ class SkyboxRegion:
         pixels = self.get_healpix_intersections(nside)
         return HealpixRegion(pixels, nside)
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self) -> SkyboxRegionModel:
@@ -301,7 +303,7 @@ class HealpixRegion:
         )
         return res
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self):
@@ -376,7 +378,7 @@ class FullSkyRegion:
     def __repr__(self):
         return "Full Sky Region"
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self):
@@ -435,7 +437,7 @@ class BoxRegion:
         halfwidth = tuple((b[1] - b[0]) / 2 for b in bounds)
         return BoxRegion(center, halfwidth)
 
-    def into_base_convention(
+    def regularize(
         self,
         unit_handler: UnitHandler,
         columns: Iterable[str],
@@ -446,12 +448,10 @@ class BoxRegion:
         halfwidth = {col: dim for col, dim in zip(columns, self.__halfwidths)}
 
         new_center = tuple(
-            v.value
-            for v in unit_handler.into_base_convention(center, unit_kwargs).values()
+            v.value for v in unit_handler.regularize(center, unit_kwargs).values()
         )
         new_halfwidth = tuple(
-            v.value
-            for v in unit_handler.into_base_convention(halfwidth, unit_kwargs).values()
+            v.value for v in unit_handler.regularize(halfwidth, unit_kwargs).values()
         )
 
         return BoxRegion(new_center, new_halfwidth)

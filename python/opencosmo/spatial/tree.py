@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING
 from uuid import uuid1
 
 import h5py
@@ -32,13 +32,15 @@ from opencosmo.spatial.protocols import TreePartition
 from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from opencosmo.index import ChunkedIndex, DataIndex
     from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
 def open_tree(
     tree_group: h5py.Group,
-    box_size: Optional[int],
+    box_size: int | None,
     is_lightcone: bool = False,
     region: Region | None = None,
 ):
@@ -209,7 +211,7 @@ class Tree:
         return np.searchsorted(starts, into_array(index), side="right") - 1
 
     def project_on_index(
-        self, level: int, index: DataIndex, partitions: Optional[DataIndex]
+        self, level: int, index: DataIndex, partitions: DataIndex | None
     ):
         if level > self.max_level:
             raise ValueError(
@@ -225,7 +227,7 @@ class Tree:
         )
 
     def partition(
-        self, n_partitions: int, counts: h5py.Group, min_level: Optional[int] = None
+        self, n_partitions: int, counts: h5py.Group, min_level: int | None = None
     ) -> Sequence[TreePartition]:
         """
         Partition into n trees, where each tree contains an equally sized
@@ -259,7 +261,7 @@ class Tree:
 
         contains = []
         intersects = []
-        for level, (cidx, iidx) in indices.items():
+        for level, (cidx, iidx) in enumerate(indices):
             level_key = f"level_{level}"
             level_starts, level_sizes = from_start_size_group(
                 self.__columns[f"{level_key}"]

@@ -22,7 +22,8 @@ from opencosmo.units.convention import UnitConvention
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
-    from typing import Callable, Iterable, Literal
+    from collections.abc import Callable, Iterable
+    from typing import Literal
 
     from opencosmo.column.column import (
         ColumnMask,
@@ -283,7 +284,7 @@ def bound(state: DatasetState, region, select_by):
             state, str(state.header.file.data_type), select_by
         )
 
-        check_region = region.into_base_convention(
+        check_region = region.regularize(
             state.unit_handler,  # type: ignore[arg-type]
             columns,
             state.convention,
