@@ -86,7 +86,9 @@ def __build_output(results: dict, coordinates: dict):
             return results | new_coordinates
 
         else:
-            raise ValueError("Placeholder")
+            raise ValueError(
+                "The output of the function must be the same length as the coordinates!"
+            )
 
     except TypeError:
         if coordinate_length == 1:
@@ -108,6 +110,12 @@ def check_containment(
         return __check_containment_3d(state, region, dtype, select_by)
 
 
+def find_coordinate_names_2d(state):
+    if len(state.columns.intersection(set(["ra", "dec"]))) == 2:
+        return ["ra", "dec"]
+    raise ValueError("Dataset does not contain coordinates")
+
+
 def find_coordinates_2d(state: DatasetState):
     from opencosmo.dataset import operations as dsops
 
@@ -119,7 +127,9 @@ def find_coordinates_2d(state: DatasetState):
     raise ValueError("Dataset does not contain coordinates")
 
 
-def find_coordinates_3d(state: DatasetState, dtype: str, select_by: str | None = None):
+def find_coordinate_names_3d(
+    state: DatasetState, dtype: str, select_by: str | None = None
+):
     try:
         allowed_coordinates = ALLOWED_COORDINATES_3D[dtype]
     except KeyError:
@@ -149,7 +159,7 @@ def __check_containment_3d(
 ):
     from opencosmo.dataset import operations as dsops
 
-    columns = find_coordinates_3d(state, dtype, select_by)
+    columns = find_coordinate_names_3d(state, dtype, select_by)
     selected = dsops.select(state, columns)
     data = dsops.get_data(selected, "astropy")
 

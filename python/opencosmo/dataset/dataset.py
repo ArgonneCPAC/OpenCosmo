@@ -15,6 +15,11 @@ from astropy.table import QTable  # type: ignore
 import opencosmo.dataset.state as st
 from opencosmo.dataset import operations as dsops
 from opencosmo.deprecated import deprecated
+from opencosmo.spatial.check import (
+    find_coordinate_names_2d,
+    find_coordinate_names_3d,
+    wrap_evaluate_with_coordinates,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
@@ -93,6 +98,10 @@ class Dataset:
             return self.header.parameters[key]
         except KeyError:
             return object.__getattribute__(self, key)
+
+    @property
+    def dtyps(self) -> str:
+        return str(self.header.file.data_type)
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -401,7 +410,7 @@ class Dataset:
         vectorize=False,
         format="astropy",
         batch_size: int = -1,
-        keep_coordinates: bool = False,
+        coordinates: Literal["copy"] | list[str] | None = None,
         allow_overwrite: bool = False,
         **evaluate_kwargs,
     ) -> Dataset:
@@ -455,6 +464,16 @@ class Dataset:
             self.__state.unit_handler.base_convention.value,
             {},
         )
+        if self.header.file.is_lightcone:
+            coordinate_names = find_coordinate_names_2d(self.__state)
+        else:
+            coordinate_names = find_coordinate_names_3d(self.__state, self.dtype)
+        if coordinates == "copy":
+            func = wrap_evaluate_with_coordinates(coordinate_names)(func)
+        elif coordinates is None:
+            coordinate_names = []
+        else:
+            coordinate_names = coordinates
 
         result = cast(
             "dict[str, np.ndarray | u.Quantity]",

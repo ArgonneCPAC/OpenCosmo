@@ -22,7 +22,8 @@ from opencosmo.units.convention import UnitConvention
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
-    from typing import Callable, Iterable, Literal
+    from collections.abc import Callable, Iterable
+    from typing import Literal
 
     from opencosmo.column.column import (
         ColumnMask,
@@ -279,7 +280,7 @@ def bound(state: DatasetState, region, select_by):
         )
 
     if not state.header.file.is_lightcone:
-        columns = check.find_coordinates_3d(
+        columns = check.find_coordinate_names_3d(
             state, str(state.header.file.data_type), select_by
         )
 
