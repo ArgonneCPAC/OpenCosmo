@@ -550,6 +550,41 @@ def test_evaluate_to_dataset_copies_explicit_coordinates(input_path):
         np.testing.assert_array_equal(data[name], np.repeat(source[name], 2))
 
 
+def test_evaluate_to_dataset_builds_queryable_snapshot_tree(input_path):
+    ds = oc.open(input_path).take(100, at="start")
+
+    def copy_mass(fof_halo_mass):
+        return fof_halo_mass
+
+    result = ds.evaluate_to_dataset(copy_mass, vectorize=True, coordinates="copy")
+    bounded = result.bound(oc.make_box((0, 0, 0), (127.99, 127.99, 127.99))).get_data()
+
+    assert result.tree is not None
+    assert len(bounded) > 0
+
+
+def test_evaluate_to_dataset_spatial_tree_survives_write(input_path, tmp_path):
+    source = oc.open(input_path).take(100, at="start")
+
+    def copy_mass(fof_halo_mass):
+        return fof_halo_mass
+
+    evaluated = source.evaluate_to_dataset(
+        copy_mass, vectorize=True, coordinates="copy"
+    )
+    path = tmp_path / "evaluated.hdf5"
+    region = oc.make_box((0, 0, 0), (127.99, 127.99, 127.99))
+
+    oc.write(path, evaluated)
+    reopened = oc.open(path)
+
+    assert reopened.tree is not None
+    np.testing.assert_equal(
+        reopened.bound(region).get_data()["copy_mass"],
+        evaluated.bound(region).get_data()["copy_mass"],
+    )
+
+
 def test_evaluate_to_dataset_copies_coordinates_for_data_mapping(input_path):
     ds = oc.open(input_path).take(4, at="start")
 
@@ -578,16 +613,29 @@ def test_evaluate_to_dataset_accepts_produced_coordinates(input_path):
 
     def make_coordinates(fof_halo_mass):
         return {
-            "x": np.arange(len(fof_halo_mass)),
-            "y": np.arange(len(fof_halo_mass)) + 1,
+            "fof_halo_center_x": np.arange(len(fof_halo_mass)),
+            "fof_halo_center_y": np.arange(len(fof_halo_mass)) + 1,
+            "fof_halo_center_z": np.arange(len(fof_halo_mass)) + 2,
             "mass": fof_halo_mass,
         }
 
     result = ds.evaluate_to_dataset(
-        make_coordinates, vectorize=True, coordinates=["x", "y"]
+        make_coordinates,
+        vectorize=True,
+        coordinates=[
+            "fof_halo_center_x",
+            "fof_halo_center_y",
+            "fof_halo_center_z",
+        ],
     )
 
-    assert result.columns == ["x", "y", "mass"]
+    assert result.tree is not None
+    assert result.columns == [
+        "fof_halo_center_x",
+        "fof_halo_center_y",
+        "fof_halo_center_z",
+        "mass",
+    ]
 
 
 def test_evaluate_to_dataset_rejects_mixed_source_and_produced_coordinates(input_path):

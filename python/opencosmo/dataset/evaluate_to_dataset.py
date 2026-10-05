@@ -99,7 +99,12 @@ def evaluate_to_dataset(
         elif len(output) != output_length:
             raise ValueError("Evaluate output columns must have equal lengths")
 
-    evaluated = build_dataset_from_evaluated_data(result, baseline_state.header)
+    evaluated = build_dataset_from_evaluated_data(
+        result,
+        state.header.with_units(state.unit_handler.base_convention),
+        coordinate_names=coordinate_names or None,
+        max_level=state.tree.max_level if state.tree is not None else None,
+    )
     output_state = dsops.with_units(
         evaluated._state,
         state.unit_handler.current_convention.value,

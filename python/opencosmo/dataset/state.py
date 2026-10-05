@@ -31,7 +31,6 @@ from opencosmo.plugins.contexts import (
     PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
-from opencosmo.units import UnitConvention
 from opencosmo.units.handler import (
     make_unit_handler_from_unit_strings,
     make_unit_handler_from_units,
@@ -55,6 +54,7 @@ if TYPE_CHECKING:
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.tree import Tree
+    from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
 
@@ -258,6 +258,7 @@ def state_in_memory(
 def state_from_evaluated_data(
     data_columns: dict[str, np.ndarray | u.Quantity],
     header: OpenCosmoHeader,
+    tree: Tree | None = None,
 ) -> DatasetState:
     """Build a dataset from evaluated values in the file's unit convention."""
     descriptions = {name: "None" for name in data_columns}
@@ -287,7 +288,7 @@ def state_from_evaluated_data(
     }
     length = len(next(iter(raw_data.values()))) if raw_data else 0
     handler = InMemoryHandler(raw_data, units, descriptions, from_size(length))
-    unit_convention = UnitConvention(header.file.unit_convention)
+    unit_convention = header.unit_convention
 
     return DatasetState(
         uuid=get_in_memory_dataset_uuid(data_columns),
@@ -298,7 +299,7 @@ def state_from_evaluated_data(
             units, header, target_convention=unit_convention
         ),
         header=header.with_units(unit_convention),
-        tree=None,
+        tree=tree,
         column_map=column_map,
         open_kwargs={},
         sort_key=None,
