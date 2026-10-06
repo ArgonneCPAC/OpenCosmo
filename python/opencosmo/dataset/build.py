@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import h5py
 import numpy as np
 
-import opencosmo.dataset.state as state
-from opencosmo.dataset import Dataset
-from opencosmo.spatial.healpix import HealPixIndex
+from opencosmo.dataset import Dataset, state
+from opencosmo.spatial.index import HealpixIndex
 from opencosmo.spatial.tree import Tree
 from opencosmo.spatial.utils import combine_upwards
 
@@ -25,7 +24,7 @@ SpatialIndexData = dict[int, tuple[np.ndarray, int]]
 def build_dataset_from_data(
     data: GroupedColumnData[np.ndarray],
     header: OpenCosmoHeader,
-    spatial_index_data: Optional[SpatialIndexData],
+    spatial_index_data: SpatialIndexData | None,
     descriptions: GroupedColumnData[str] = {},
 ) -> Dataset:
     data_keys = set(data.keys())
@@ -39,7 +38,7 @@ def build_dataset_from_data(
     tree = None
     if isinstance(spatial_index_data, dict):
         spatial_index_columns = make_spatial_index(spatial_index_data)
-        tree = Tree(HealPixIndex(), spatial_index_columns)
+        tree = Tree(HealpixIndex(), spatial_index_columns)
     data_group = data.pop("data")
 
     data_descriptions = descriptions.get("data", {})

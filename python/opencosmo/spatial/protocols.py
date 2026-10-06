@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    NamedTuple,
-    Protocol,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, Union, runtime_checkable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -44,12 +38,13 @@ class Region(Protocol):
     def into_model(self) -> RegionModel: ...
 
 
+@runtime_checkable
 class Region2d(Region, Protocol):
-    def bounds(self): ...
     def get_healpix_intersections(self, nside: int): ...
     def into_healpix_region(self, nside: int) -> HealpixRegion: ...
 
 
+@runtime_checkable
 class Region3d(Region, Protocol):
     def bounding_box(self) -> BoxRegion: ...
 
@@ -63,11 +58,11 @@ class TreePartition(NamedTuple):
 class SpatialIndex(Protocol):
     @property
     def subdivision_factor(self) -> int: ...
-    def get_partition_region(self, index: SimpleIndex, level: int) -> Region:
+    def get_partition_from_index(self, index: SimpleIndex, level: int) -> Region:
         pass
 
     def query(
-        self, region: Region, max_level: int
+        self, region: Region, level: int
     ) -> list[tuple[SimpleIndex, SimpleIndex]]:
         """
         Given a region in space, return a dictionary where each key is a level and each

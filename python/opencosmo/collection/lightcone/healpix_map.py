@@ -5,11 +5,7 @@ from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Optional,
     Self,
 )
 from warnings import warn
@@ -33,7 +29,7 @@ from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial import make_skybox
-from opencosmo.spatial.healpix import HealPixIndex
+from opencosmo.spatial.index import HealpixIndex
 from opencosmo.spatial.region import (
     ConeRegion,
     FullSkyRegion,
@@ -42,6 +38,8 @@ from opencosmo.spatial.region import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Iterable
+
     from astropy.coordinates import SkyCoord
     from astropy.io import fits
 
@@ -87,7 +85,7 @@ def make_healsparse_maps(
 
 
 def take_from_sorted(
-    healpix_map: "HealpixMap", sort_by: str, invert: bool, n: int, at: str | int
+    healpix_map: HealpixMap, sort_by: str, invert: bool, n: int, at: str | int
 ):
     column = np.concatenate(
         [ds.select(sort_by).get_data("numpy") for ds in healpix_map.values()]
@@ -129,8 +127,8 @@ class HealpixMap(dict):
         full_sky: bool,
         z_range: tuple[float, float],
         region: HealpixRegion,
-        hidden: Optional[set[str]] = None,
-        ordered_by: Optional[tuple[str, bool]] = None,
+        hidden: set[str] | None = None,
+        ordered_by: tuple[str, bool] | None = None,
     ):
         if len(datasets) > 1:
             raise NotImplementedError(
@@ -289,7 +287,7 @@ class HealpixMap(dict):
         return cols
 
     @cached_property
-    def descriptions(self) -> dict[str, Optional[str]]:
+    def descriptions(self) -> dict[str, str | None]:
         """
         Return the descriptions (if any) of the columns in this map as a dictonary.
         Columns without a description will be included in the dictionary with a value
@@ -336,7 +334,7 @@ class HealpixMap(dict):
     def get_data(
         self,
         format: Literal["healsparse", "healpix", "raw"] = "healsparse",
-        nside_out: Optional[int] = None,
+        nside_out: int | None = None,
         **kwargs,
     ):
         """
@@ -531,7 +529,7 @@ class HealpixMap(dict):
         self,
         method,
         *args,
-        hidden: Optional[set[str]] = None,
+        hidden: set[str] | None = None,
         mapped_arguments: dict[str, dict[str, Any]] = {},
         construct: bool = True,
         **kwargs,
@@ -632,7 +630,7 @@ class HealpixMap(dict):
         """
         if isinstance(region, SkyboxRegion):
             level = int(np.log2(self.nside))
-            pixels = np.union1d(*HealPixIndex().query(region, int(level))[level])
+            pixels = np.union1d(*HealpixIndex().query(region, int(level))[level])
 
         elif isinstance(region, ConeRegion):
             vec = hp.ang2vec(
@@ -1033,7 +1031,7 @@ class HealpixMap(dict):
         kept_columns = current_columns - dropped_columns
         return self.select(kept_columns)
 
-    def take(self, n: int, at: str = "random") -> "HealpixMap":
+    def take(self, n: int, at: str = "random") -> HealpixMap:
         """
         Create a new dataset from some number of rows from this map.
 
@@ -1291,7 +1289,7 @@ class HealpixMap(dict):
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: str | None = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Self:

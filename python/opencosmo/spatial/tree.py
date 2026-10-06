@@ -26,9 +26,9 @@ from opencosmo.io.writer import (
     ColumnWriter,
     Hdf5Source,
 )
-from opencosmo.spatial.healpix import HealPixIndex, HealpixRegion
-from opencosmo.spatial.octree import OctTreeIndex
+from opencosmo.spatial.index import HealpixIndex, OctTreeIndex
 from opencosmo.spatial.protocols import TreePartition
+from opencosmo.spatial.region import HealpixRegion
 from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
@@ -57,12 +57,13 @@ def open_tree(
     dataset, so this is the HIGHEST it can be.
     """
 
+    spatial_index: SpatialIndex
     if is_lightcone:
-        spatial_index = HealPixIndex()
+        spatial_index = HealpixIndex()
     elif box_size is None:
         raise ValueError("Cannot open a snapshot spatial index without a box size")
     else:
-        spatial_index = OctTreeIndex.from_box_size(box_size)
+        spatial_index = OctTreeIndex(box_size)
 
     return Tree(spatial_index, tree_group, region)
 
@@ -157,7 +158,7 @@ class Tree:
     def __init__(
         self,
         index: SpatialIndex,
-        tree_columns: dict[str, h5py.Dataset | np.ndarray],
+        tree_columns: h5py.Group,
         region: Region | None = None,
     ):
         self.__region = region
@@ -181,7 +182,7 @@ class Tree:
 
     def get_region(self):
         if self.__region is None:
-            assert isinstance(self.__index, HealPixIndex)
+            assert isinstance(self.__index, HealpixIndex)
             pixels = self.get_partitions_with_data(self.max_level)
             self.__region = HealpixRegion(pixels, nside=2**self.max_level)
         return self.__region
@@ -251,7 +252,7 @@ class Tree:
             partition_start = index_starts[0]
             partition_size = np.sum(index_sizes)
             idx = (np.atleast_1d(partition_start), np.atleast_1d(partition_size))
-            region = self.__index.get_partition_region(index_, split_level)
+            region = self.__index.get_partition_from_index(index_, split_level)
             partitions.append(TreePartition(idx, region, split_level))
 
         return partitions
