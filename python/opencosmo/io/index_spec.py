@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
-    from opencosmo.spatial.tree import Tree
+    from opencosmo.spatial.protocols import SpatialIndex
 
 
 class ResolvedIndex(NamedTuple):
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
             Optional[MPI.Comm],
             OpenCosmoHeader,
             DatasetTarget,
-            Optional[Tree],
+            SpatialIndex | None,
             int,
             object,
         ],
@@ -43,7 +43,7 @@ def spatial(
     comm: Optional[MPI.Comm],
     header: OpenCosmoHeader,
     target: DatasetTarget,
-    tree: Optional[Tree],
+    spatial_index: SpatialIndex | None,
     ds_length: int,
     sim_region: object,
 ) -> ResolvedIndex:
@@ -60,14 +60,20 @@ def spatial(
 
     try:
         ds_group = target.group
-        part = partition(comm, header, ds_group["index"], ds_group["data"], tree)
+        part = partition(
+            comm,
+            header,
+            ds_group["index"],
+            ds_group["data"],
+            spatial_index,
+        )
         if part is None:
             index = empty()
         else:
             index = part.idx  # type: ignore[assignment]
             sim_region = part.region if part.region is not None else sim_region
         if header.file.is_lightcone:
-            sim_region = _expand_lightcone_region(sim_region, tree)
+            sim_region = _expand_lightcone_region(sim_region, spatial_index)
         return ResolvedIndex(index, sim_region)
     except KeyError:
         n_ranks = comm.Get_size()
@@ -85,7 +91,7 @@ def full(
     comm: Optional[MPI.Comm],
     header: OpenCosmoHeader,
     target: DatasetTarget,
-    tree: Optional[Tree],
+    spatial_index: SpatialIndex | None,
     ds_length: int,
     sim_region: object,
 ) -> ResolvedIndex:
@@ -98,7 +104,7 @@ def empty_ref(
     comm: Optional[MPI.Comm],
     header: OpenCosmoHeader,
     target: DatasetTarget,
-    tree: Optional[Tree],
+    spatial_index: SpatialIndex | None,
     ds_length: int,
     sim_region: object,
 ) -> ResolvedIndex:

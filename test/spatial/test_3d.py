@@ -154,7 +154,8 @@ def test_write_tree(halo_properties_path, tmp_path):
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
 
     ds = oc.open(tmp_path / "bound_dataset.hdf5").with_units("scalefree")
-    tree_data = ds._Dataset__state.tree._Tree__columns
+    assert ds.spatial_index is not None
+    tree_data = ds.spatial_index.spatial_index_data
     for i in range(3):
         starts = tree_data[f"level_{i}/start"][:]
         sizes = tree_data[f"level_{i}/size"][:]

@@ -8,9 +8,10 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from opencosmo.index import DataIndex, SimpleIndex
+    from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
     from opencosmo.spatial.models import RegionModel
     from opencosmo.spatial.region import BoxRegion, HealpixRegion
+    from opencosmo.spatial.types import SpatialIndexData
     from opencosmo.units import UnitConvention
     from opencosmo.units.get import UnitApplicator
 
@@ -58,12 +59,15 @@ class TreePartition(NamedTuple):
 class SpatialIndex(Protocol):
     @property
     def subdivision_factor(self) -> int: ...
-    def get_partition_from_index(self, index: SimpleIndex, level: int) -> Region:
+    @property
+    def level(self) -> int: ...
+    @property
+    def spatial_index_data(self) -> SpatialIndexData: ...
+    def with_level(self, level: int) -> SpatialIndex: ...
+    def get_partition_from_index(self, index: SimpleIndex) -> Region:
         pass
 
-    def query(
-        self, region: Region, level: int
-    ) -> list[tuple[SimpleIndex, SimpleIndex]]:
+    def query(self, region: Region) -> tuple[ChunkedIndex, ChunkedIndex]:
         """
         Given a region in space, return a dictionary where each key is a level and each
         value is a tuple of DataIndexes. The first DataIndex corresponds to the regions

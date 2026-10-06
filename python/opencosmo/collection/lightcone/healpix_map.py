@@ -29,7 +29,7 @@ from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial import make_skybox
-from opencosmo.spatial.index import HealpixIndex
+from opencosmo.spatial.index import query_healpix_partitions
 from opencosmo.spatial.region import (
     ConeRegion,
     FullSkyRegion,
@@ -630,7 +630,7 @@ class HealpixMap(dict):
         """
         if isinstance(region, SkyboxRegion):
             level = int(np.log2(self.nside))
-            pixels = np.union1d(*HealpixIndex().query(region, int(level))[level])
+            pixels = np.union1d(*query_healpix_partitions(region, level)[level])
 
         elif isinstance(region, ConeRegion):
             vec = hp.ang2vec(

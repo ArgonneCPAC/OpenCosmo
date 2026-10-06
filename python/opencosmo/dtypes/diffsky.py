@@ -14,7 +14,7 @@ from opencosmo.index.ops import reindex_column
 from opencosmo.mpi import get_mpi
 from opencosmo.plugins.contexts import HookPoint
 from opencosmo.plugins.hook import hook
-from opencosmo.spatial.tree import TreePartition
+from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
     from astropy.table import Table

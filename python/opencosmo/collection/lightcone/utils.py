@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING
 
 import healpy as hp
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.dataset import dataset as ds
+from opencosmo.spatial.index import get_partitions_with_data
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from astropy.table import Table
 
 
@@ -107,18 +110,20 @@ def take_from_sorted(
     return sorted_indices
 
 
-def determine_max_level(lightcone: lc.Lightcone) -> Optional[int]:
+def determine_max_level(lightcone: lc.Lightcone) -> int | None:
     """
     Return the minimum tree max_level across all datasets in the lightcone, or
     None if any dataset has no spatial index.
     """
-    max_level: Optional[int] = None
+    max_level: int | None = None
     for ds_ in lightcone.values():
         if isinstance(ds_, lc.Lightcone):
             ds_level = determine_max_level(ds_)
         else:
             assert isinstance(ds_, ds.Dataset)
-            ds_level = ds_.tree.max_level if ds_.tree is not None else None
+            ds_level = (
+                ds_.spatial_index.level if ds_.spatial_index is not None else None
+            )
         if ds_level is None:
             return None
         if max_level is None or ds_level < max_level:
@@ -127,7 +132,7 @@ def determine_max_level(lightcone: lc.Lightcone) -> Optional[int]:
 
 
 def get_pixels(
-    lightcone: lc.Lightcone, level: int, is_occupied: Optional[np.ndarray] = None
+    lightcone: lc.Lightcone, level: int, is_occupied: np.ndarray | None = None
 ):
     # We know nside is a power of two at this point
     available_level = determine_max_level(lightcone)
@@ -148,12 +153,12 @@ def get_pixels(
             continue
 
         assert isinstance(ds_, ds.Dataset)
-        tree = ds_.tree
-        if tree is None:
+        spatial_index = ds_.spatial_index
+        if spatial_index is None:
             raise ValueError(
                 "One or more datasets in this lightcone does not have a spatial index!"
             )
-        read_level = tree.max_level if tree.max_level < level else level
-        ds_pixels = tree.get_occupied_partitions(read_level, ds_.index)
+        read_level = min(spatial_index.level, level)
+        ds_pixels = get_partitions_with_data(spatial_index, read_level, ds_.index)
         is_occupied[ds_pixels] = True
     return np.where(is_occupied)[0]
