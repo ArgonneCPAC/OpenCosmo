@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex, IndexArray
-    from opencosmo.spatial.tree import Tree
+    from opencosmo.spatial.protocols import SpatialIndex
 
 
 class HookPoint(StrEnum):
@@ -123,5 +123,5 @@ class PartitionCtx:
     header: OpenCosmoHeader
     index_group: h5py.Group
     data_group: h5py.Group
-    tree: Optional[Tree] = None
+    spatial_index: SpatialIndex | None = None
     min_level: Optional[int] = None

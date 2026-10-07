@@ -33,8 +33,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
-    from opencosmo.spatial.protocols import Region
-    from opencosmo.spatial.tree import Tree
+    from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
 OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
@@ -156,7 +155,7 @@ class Dataset:
         return self.__state.units
 
     @property
-    def region(self) -> Region:
+    def region(self) -> Region | None:
         """
         The region this dataset is contained in. If no spatial
         queries have been performed, this will be the entire
@@ -181,8 +180,8 @@ class Dataset:
         return self.__state.sort_key[0] if self.__state.sort_key is not None else None
 
     @property
-    def tree(self) -> Optional[Tree]:
-        return self.__state.tree
+    def spatial_index(self) -> SpatialIndex | None:
+        return self.__state.spatial_index
 
     # Internal identity used by link/mapping resolution.
     @property

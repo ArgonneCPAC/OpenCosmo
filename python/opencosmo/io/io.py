@@ -12,7 +12,6 @@ from opencosmo.io.serial import allocate, write_columns, write_metadata
 from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from types import ModuleType
 
     import opencosmo as oc
@@ -21,14 +20,11 @@ if TYPE_CHECKING:
     from .protocols import Writeable
 
     mpiio: ModuleType | None
-    partition: Callable | None
 
 if get_comm_world() is not None:
-    from opencosmo.dataset.mpi import partition
     from opencosmo.io import mpi as mpiio
 else:
     mpiio = None
-    partition = None
 
     """
     This module defines the main user-facing io functions: open and write

@@ -5,7 +5,7 @@ from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Generator, Optional
+from typing import TYPE_CHECKING, Any
 from weakref import finalize
 
 import astropy.units as u
@@ -43,6 +43,7 @@ from opencosmo.uuid import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from uuid import UUID
 
     from astropy import table
@@ -54,7 +55,7 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.spatial.tree import Tree
+    from opencosmo.spatial.protocols import Region, SpatialIndex
     from opencosmo.units.handler import UnitHandler
 
 
@@ -93,10 +94,11 @@ class DatasetState:
     cache: DataCache
     unit_handler: UnitHandler
     header: OpenCosmoHeader
-    tree: Tree | None
+    spatial_index: SpatialIndex | None
+    region: Region | None
     column_map: dict[str, UUID]
     open_kwargs: dict[str, Any]
-    sort_key: Optional[tuple[str, bool, bool]]
+    sort_key: tuple[str, bool, bool] | None
 
     def __post_init__(self):
         self.cache.register_column_group(id(self), self.column_map)
@@ -123,12 +125,6 @@ class DatasetState:
             for name, description in all_descriptions.items()
             if name in self.columns
         }
-
-    @property
-    def region(self):
-        if self.tree is not None:
-            return self.tree.get_region()
-        return None
 
     @property
     def kwargs(self):
@@ -165,8 +161,9 @@ def state_from_target(
     target: DatasetTarget,
     unit_convention: UnitConvention,
     open_kwargs: dict[str, Any],
-    index: Optional[DataIndex] = None,
-    tree: Tree | None = None,
+    index: DataIndex | None = None,
+    spatial_index: SpatialIndex | None = None,
+    region: Region | None = None,
 ) -> DatasetState:
     handler = Hdf5Handler(
         target.data_group,
@@ -200,7 +197,8 @@ def state_from_target(
         cache=cache,
         unit_handler=unit_handler,
         header=target.header,
-        tree=tree,
+        spatial_index=spatial_index,
+        region=region,
         column_map=column_map,
         open_kwargs=open_kwargs,
         sort_key=None,
@@ -212,9 +210,10 @@ def state_in_memory(
     header: OpenCosmoHeader,
     unit_convention: UnitConvention,
     open_kwargs: dict[str, Any],
-    descriptions: Optional[dict[str, str]] = None,
-    index: Optional[DataIndex] = None,
-    tree: Tree | None = None,
+    descriptions: dict[str, str] | None = None,
+    index: DataIndex | None = None,
+    spatial_index: SpatialIndex | None = None,
+    region: Region | None = None,
 ) -> DatasetState:
     descriptions = descriptions or {}
 
@@ -223,7 +222,7 @@ def state_in_memory(
         RawColumn(
             cname, descriptions.get(cname, "None"), get_raw_column_uuid(cname, set())
         )
-        for cname in all_columns.keys()
+        for cname in all_columns
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
     producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
@@ -248,7 +247,8 @@ def state_in_memory(
         cache=cache,
         unit_handler=unit_handler,
         header=header,
-        tree=tree,
+        spatial_index=spatial_index,
+        region=region,
         column_map=column_map,
         open_kwargs=open_kwargs,
         sort_key=None,
@@ -298,7 +298,8 @@ def state_from_evaluated_data(
             units, header, target_convention=unit_convention
         ),
         header=header.with_units(unit_convention),
-        tree=None,
+        spatial_index=None,
+        region=None,
         column_map=column_map,
         open_kwargs={},
         sort_key=None,
@@ -421,7 +422,7 @@ def make_schema(state: DatasetState, path: str) -> Schema:
         state.cache,
         column_map,
         state.header,
-        state.tree,
+        state.spatial_index,
         state.region,
         state.raw_index,
         derived_data,

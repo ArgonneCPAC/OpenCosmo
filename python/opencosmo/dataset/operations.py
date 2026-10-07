@@ -22,7 +22,8 @@ from opencosmo.units.convention import UnitConvention
 from opencosmo.units.converters import get_scale_factor
 
 if TYPE_CHECKING:
-    from typing import Callable, Iterable, Literal
+    from collections.abc import Callable, Iterable
+    from typing import Literal
 
     from opencosmo.column.column import (
         ColumnMask,
@@ -272,7 +273,7 @@ def rows(
 
 
 def bound(state: DatasetState, region, select_by):
-    if state.tree is None:
+    if state.spatial_index is None:
         raise AttributeError(
             "Your dataset does not contain a spatial index, "
             "so spatial querying is not available"
@@ -283,7 +284,7 @@ def bound(state: DatasetState, region, select_by):
             state, str(state.header.file.data_type), select_by
         )
 
-        check_region = region.into_base_convention(
+        check_region = region.regularize(
             state.unit_handler,  # type: ignore[arg-type]
             columns,
             state.convention,
@@ -296,6 +297,8 @@ def bound(state: DatasetState, region, select_by):
     else:
         check_region = region
 
+    if state.region is None:
+        raise RuntimeError("A spatially indexed dataset must have a region")
     if not state.region.intersects(check_region):
         return st.take_rows(state, empty())
 
@@ -307,8 +310,7 @@ def bound(state: DatasetState, region, select_by):
 
     contained_index: DataIndex
     intersects_index: DataIndex
-    contained_index, intersects_index = state.tree.query(check_region)
-
+    contained_index, intersects_index = state.spatial_index.query(check_region)
     contained_index = project(state.raw_index, contained_index)
     intersects_index = project(state.raw_index, intersects_index)
 
@@ -328,10 +330,8 @@ def bound(state: DatasetState, region, select_by):
         np.concatenate([into_array(contained_index), into_array(new_intersects_index)])
     )
 
-    new_tree = state.tree.with_region(check_region)
-
     new_state = st.take_rows(state, new_index)
-    return dataclasses.replace(new_state, tree=new_tree)
+    return dataclasses.replace(new_state, region=check_region)
 
 
 def with_units(

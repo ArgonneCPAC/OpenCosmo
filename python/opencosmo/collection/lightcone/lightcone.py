@@ -60,6 +60,7 @@ from opencosmo.plugins.contexts import (
     PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
+from opencosmo.spatial.index import project_on_index
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
@@ -848,7 +849,9 @@ class Lightcone(dict):
             if isinstance(ds, Lightcone):
                 output[name] = ds.pixel_search(pixels, nside)
                 continue
-            rows = ds.tree.project_on_index(level, ds.index, pixels)
+            if ds.spatial_index is None:
+                raise ValueError("Lightcone does not have a spatial index!")
+            rows = project_on_index(ds.spatial_index, level, ds.index, pixels)
             output[name] = ds.take_rows(rows)
         return Lightcone(
             output,

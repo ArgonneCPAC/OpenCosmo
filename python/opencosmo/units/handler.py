@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 
@@ -13,6 +13,7 @@ from opencosmo.units.get import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
     import numpy as np
@@ -23,8 +24,8 @@ if TYPE_CHECKING:
 
 def make_unit_handler_from_units(
     columns: dict[str, u.Unit | None],
-    header: "OpenCosmoHeader",
-    target_convention: Optional[UnitConvention] = None,
+    header: OpenCosmoHeader,
+    target_convention: UnitConvention | None = None,
 ):
     applicators = get_unit_applicators_dict(
         columns, header.file.unit_convention, header.cosmology
@@ -44,8 +45,8 @@ def make_unit_handler_from_units(
 
 def make_unit_handler_from_unit_strings(
     unit_strings: dict[str, str | None],
-    header: "OpenCosmoHeader",
-    target_convention: Optional[UnitConvention] = None,
+    header: OpenCosmoHeader,
+    target_convention: UnitConvention | None = None,
 ):
     """
     Cached-metadata counterpart to `make_unit_handler_from_units`. Builds a
@@ -188,7 +189,7 @@ class UnitHandler:
             new_column_conversions,
         )
 
-    def into_base_convention(
+    def regularize(
         self,
         data: Mapping[str, float | np.ndarray | u.Quantity],
         unit_kwargs: dict = {},

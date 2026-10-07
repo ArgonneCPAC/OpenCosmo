@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from mpi4py import MPI
 
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.spatial.tree import Tree
+    from opencosmo.spatial.protocols import SpatialIndex
 
 
 def partition(
@@ -21,7 +21,7 @@ def partition(
     header: OpenCosmoHeader,
     index_group: h5py.Group,
     data_group: h5py.Group,
-    tree: Optional[Tree],
+    spatial_index: SpatialIndex | None,
     min_level: Optional[int] = None,
 ) -> Optional[TreePartition]:
     """
@@ -31,13 +31,27 @@ def partition(
     """
     partition_plugin_result = query(
         HookPoint.Partition,
-        PartitionCtx(comm, header, index_group, data_group, tree, min_level),
+        PartitionCtx(
+            comm,
+            header,
+            index_group,
+            data_group,
+            spatial_index,
+            min_level,
+        ),
     )
     if partition_plugin_result is not None:
         return partition_plugin_result
 
-    if tree is not None:
-        partitions = tree.partition(comm.Get_size(), index_group, min_level)
+    if spatial_index is not None:
+        from opencosmo.spatial.index import partition as partition_spatial_index
+
+        partitions = partition_spatial_index(
+            spatial_index,
+            comm.Get_size(),
+            index_group,
+            min_level,
+        )
         try:
             part = partitions[comm.Get_rank()]
         except IndexError:

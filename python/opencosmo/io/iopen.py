@@ -11,16 +11,20 @@ import opencosmo as oc
 from opencosmo import collection as occ
 from opencosmo.dataset import state as st
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.index import into_array
 from opencosmo.io import plan
 from opencosmo.io.discover import discover_all, has_maps, is_particle_group
-from opencosmo.index import into_array
 from opencosmo.io.specs import group_by_scope, match_spec
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
 from opencosmo.plugins.hook import fold
 from opencosmo.spatial.builders import from_model
+from opencosmo.spatial.index import (
+    get_partitions_with_data,
+    get_region,
+    open_spatial_index,
+)
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
-from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 from opencosmo.utils import normalize_kwarg_name
 from opencosmo.uuid import get_column_uuid
@@ -161,7 +165,7 @@ class DatasetTarget:
 def open_files(
     paths: list[Path],
     open_kwargs: dict[str, Any],
-    mpi_mode: "MpiMode | None" = None,
+    mpi_mode: MpiMode | None = None,
 ) -> oc.Dataset | oc.collection.Collection:
     """
     Main back-end entry point for opening files.
@@ -419,7 +423,7 @@ def _resolve_match_set(
 
 def open_dataset(
     target: DatasetTarget,
-    index: "IndexSpec",
+    index: IndexSpec,
     *,
     open_kwargs: dict[str, Any] = {},
 ) -> oc.Dataset:
@@ -443,26 +447,32 @@ def open_dataset(
         p2 = tuple(box_size for _ in range(3))
         sim_region = oc.make_box(p1, p2)
 
-    if (spatial_index := target.spatial_index) is not None:
-        tree = open_tree(
-            spatial_index, box_size, header.file.is_lightcone, region=sim_region
-        )
-    else:
-        tree = None
+    spatial_index_data = target.spatial_index
+    spatial_index = (
+        open_spatial_index(spatial_index_data, box_size, header.file.is_lightcone)
+        if spatial_index_data is not None
+        else None
+    )
+    if spatial_index is not None:
+        sim_region = get_region(spatial_index, sim_region)
 
     comm = get_comm_world()
     data_index, sim_region = index(
-        comm, header, target, tree, target.row_count, sim_region
+        comm,
+        header,
+        target,
+        spatial_index,
+        target.row_count,
+        sim_region,
     )
-    if tree is not None:
-        tree = tree.with_region(sim_region)
 
     state = st.state_from_target(
         target,
         UnitConvention.COMOVING,
         open_kwargs,
         data_index,
-        tree=tree,
+        spatial_index=spatial_index,
+        region=sim_region,
     )
 
     dataset = oc.Dataset(
@@ -502,17 +512,17 @@ def _open_healpix_map(dataset: oc.Dataset):
     )
 
 
-def _expand_lightcone_region(region, tree):
-    region = region or tree.get_region()
+def _expand_lightcone_region(region, spatial_index):
+    region = get_region(spatial_index, region)
 
     pixels = region.pixels
-    npix_ratio = hp.nside2npix(2**tree.max_level) // hp.nside2npix(region.nside)
+    npix_ratio = hp.nside2npix(2**spatial_index.level) // hp.nside2npix(region.nside)
     pixels = pixels[:, None] * npix_ratio + np.arange(npix_ratio)
     pixels = pixels.flatten()
 
-    full_pixels = tree.get_partitions_with_data(tree.max_level)
+    full_pixels = get_partitions_with_data(spatial_index, spatial_index.level)
     full_pixels = np.intersect1d(pixels, full_pixels)
-    return HealpixRegion(full_pixels, 2**tree.max_level)
+    return HealpixRegion(full_pixels, 2**spatial_index.level)
 
 
 def evaluate_load_conditions(
