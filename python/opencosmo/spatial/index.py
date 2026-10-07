@@ -12,7 +12,12 @@ from astropy.coordinates import SkyCoord
 from opencosmo._lib import spatial as spatlib
 from opencosmo.index import from_size, get_data, into_array, n_in_range, project
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, Hdf5Source
+from opencosmo.io.writer import (
+    ColumnCombineStrategy,
+    ColumnWriter,
+    Hdf5Source,
+    NumpySource,
+)
 from opencosmo.spatial import builders
 from opencosmo.spatial.protocols import Region2d, Region3d, TreePartition
 from opencosmo.spatial.region import HealpixRegion
@@ -26,28 +31,6 @@ if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region, SpatialIndex
     from opencosmo.spatial.types import SpatialIndexData
 
-Index3d = tuple[int, int, int]
-
-
-"""
-In an oct tree, the space is subdivided into octants. At level one, the space is 
-subdivided into 8 octants with indexes (0, 0, 0) -> (1, 1, 1). At the next level, we 
-have 64 octants labeled (0,0,0) -> (4,4,4) and so on.
-
-To query, we traverse recursively. If the octant is completely enclosed by the query 
-region, we simply return a version of that octant with no children. If the octant 
-itersects the query region, we call the function on the octant's children. We then 
-return a copy of an octant WITH the children that 
-
-To evaluate the tree, we again traverse it recursively. If an octant has no children, 
-we know all objects in that octant should be included in the output. Otherwise, we move 
-on to the children.
-
-However at the lowest level of the octant this breaks down. Here we instead get all the 
-data for all of the octants, and check if they are contained by our query region.
-
-"""
-
 
 def build_data_index(
     indices: list[tuple[SimpleIndex, SimpleIndex]], spatial_index_data: SpatialIndexData
@@ -55,8 +38,9 @@ def build_data_index(
     contains = []
     intersects = []
     for level, (contained, overlapping) in enumerate(indices):
-        contains.append(_get_level_data(spatial_index_data, level, contained))
-        intersects.append(_get_level_data(spatial_index_data, level, overlapping))
+        starts, sizes = __get_level_columns(spatial_index_data, level)
+        contains.append((get_data(starts, contained), get_data(sizes, contained)))
+        intersects.append((get_data(starts, overlapping), get_data(sizes, overlapping)))
     return (
         np.concatenate([item[0] for item in contains]),
         np.concatenate([item[1] for item in contains]),
@@ -85,34 +69,37 @@ def query_healpix_partitions(
     return result
 
 
-def _get_level_data(
-    columns: SpatialIndexData, level: int, index: DataIndex | None = None
+def __get_level_columns(
+    columns: SpatialIndexData, level: int
 ) -> tuple[h5py.Dataset | np.ndarray, h5py.Dataset | np.ndarray]:
     key = f"level_{level}"
     if key in columns:
         level_data = columns[key]
-        start = level_data["start"]
-        size = level_data["size"]
-    else:
-        start = columns[f"{key}/start"]
-        size = columns[f"{key}/size"]
+        return level_data["start"], level_data["size"]
+    return columns[f"{key}/start"], columns[f"{key}/size"]
+
+
+def __get_level_data(
+    columns: SpatialIndexData, level: int, index: DataIndex | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    start, size = __get_level_columns(columns, level)
     if index is None:
         index = from_size(len(start))
     return get_data(start, index), get_data(size, index)
 
 
 def apply_index(spatial_index: SpatialIndex, index: DataIndex) -> SpatialIndex:
+    if not isinstance(spatial_index, (OctTreeIndex, HealpixIndex)):
+        raise TypeError(
+            f"Unsupported spatial index type: {type(spatial_index).__name__}"
+        )
     columns = spatial_index.spatial_index_data
-    starts, sizes = _get_level_data(columns, spatial_index.level)
+    starts, sizes = __get_level_data(columns, spatial_index.level)
     n = n_in_range(index, starts, sizes)
     target = h5py.File(f"{uuid1()}.hdf5", "w", driver="core", backing_store=False)
     indexed_data = combine_upwards(
         n, spatial_index.subdivision_factor, spatial_index.level, target
     )
-    if not isinstance(spatial_index, (OctTreeIndex, HealpixIndex)):
-        raise TypeError(
-            f"Unsupported spatial index type: {type(spatial_index).__name__}"
-        )
     return replace(spatial_index, spatial_index_data=indexed_data)
 
 
@@ -133,25 +120,6 @@ def get_region(spatial_index: SpatialIndex, region: Region | None) -> Region:
         raise RuntimeError("A snapshot spatial index requires an explicit region")
     pixels = get_partitions_with_data(spatial_index, spatial_index.level)
     return HealpixRegion(pixels, nside=2**spatial_index.level)
-
-
-def apply_range_mask(
-    mask: np.ndarray,
-    range_: tuple[int, int],
-    starts: dict[int, np.ndarray],
-    sizes: dict[int, np.ndarray],
-) -> dict[int, tuple[int, np.ndarray]]:
-    """Given an index range, apply a same-sized mask to produce new sizes."""
-    output_sizes = {}
-    for level, st in starts.items():
-        ends = st + sizes[level]
-        overlaps_mask = ~((st > range_[1]) | (ends < range_[0]))
-        first_start_index = int(np.argmax(overlaps_mask))
-        st = st[overlaps_mask]
-        st[0] = range_[0]
-        st = st - range_[0]
-        output_sizes[level] = (first_start_index, np.add.reduceat(mask, st))
-    return output_sizes
 
 
 def partition_index(
@@ -183,12 +151,31 @@ def get_partitions_with_data(
     index: DataIndex | None = None,
 ) -> np.ndarray:
     columns = spatial_index.spatial_index_data
-    if level > get_max_level(columns):
-        raise ValueError("Requested level is greater than the max level of this tree!")
-    starts, sizes = _get_level_data(columns, level)
+    __validate_level(
+        columns,
+        level,
+        "Requested level is greater than the max level of this tree!",
+    )
     if index is None:
-        return np.where(sizes > 0)[0]
-    return np.searchsorted(starts, into_array(index), side="right") - 1
+        return __get_nonempty_partitions(columns, level)
+    return __get_partitions_for_rows(columns, level, index)
+
+
+def __validate_level(columns: SpatialIndexData, level: int, message: str) -> None:
+    if level < 0 or level > get_max_level(columns):
+        raise ValueError(message)
+
+
+def __get_nonempty_partitions(columns: SpatialIndexData, level: int) -> np.ndarray:
+    _, sizes = __get_level_columns(columns, level)
+    return np.flatnonzero(sizes[:])
+
+
+def __get_partitions_for_rows(
+    columns: SpatialIndexData, level: int, index: DataIndex
+) -> np.ndarray:
+    starts, _ = __get_level_columns(columns, level)
+    return np.searchsorted(starts[:], into_array(index), side="right") - 1
 
 
 def project_on_index(
@@ -198,11 +185,12 @@ def project_on_index(
     partitions: DataIndex | None,
 ) -> DataIndex:
     columns = spatial_index.spatial_index_data
-    if level > get_max_level(columns):
-        raise ValueError(
-            "Level must be less than or equal to the max level of this tree"
-        )
-    starts, sizes = _get_level_data(columns, level, partitions)
+    __validate_level(
+        columns,
+        level,
+        "Level must be less than or equal to the max level of this tree",
+    )
+    starts, sizes = __get_level_data(columns, level, partitions)
     return project(index, (starts, sizes))
 
 
@@ -212,16 +200,16 @@ def partition(
     counts: h5py.Group,
     min_level: int | None = None,
 ) -> Sequence[TreePartition]:
-    partition_indices, split_level = partition_index(
-        n_partitions, counts, min_level or 0
-    )
+    min_level = 0 if min_level is None else min_level
+    partition_indices, split_level = partition_index(n_partitions, counts, min_level)
     partitions = []
     for index in partition_indices:
         if len(index) == 0:
             continue
-        index_starts, index_sizes = _get_level_data(
+        index_starts, index_sizes = __get_level_data(
             spatial_index.spatial_index_data, split_level, index
         )
+        # array_split yields ordered adjacent partitions, so they form one data range.
         idx = (
             np.atleast_1d(index_starts[0]),
             np.atleast_1d(np.sum(index_sizes)),
@@ -235,10 +223,18 @@ def make_tree_schema(spatial_index: SpatialIndex) -> Schema:
     columns = spatial_index.spatial_index_data
     level_schemas = {}
     for level in range(get_max_level(columns) + 1):
-        starts, sizes = _get_level_data(columns, level)
+        starts, sizes = __get_level_columns(columns, level)
         index = from_size(len(starts))
-        start_source = Hdf5Source(starts, index)
-        size_source = Hdf5Source(sizes, index)
+        start_source = (
+            Hdf5Source(starts, index)
+            if isinstance(starts, h5py.Dataset)
+            else NumpySource(starts)
+        )
+        size_source = (
+            Hdf5Source(sizes, index)
+            if isinstance(sizes, h5py.Dataset)
+            else NumpySource(sizes)
+        )
         level_schemas[f"level_{level}"] = make_schema(
             f"level_{level}",
             FileEntry.COLUMNS,
