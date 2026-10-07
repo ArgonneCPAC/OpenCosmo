@@ -1,42 +1,22 @@
-"""Validated messages for dataset operations."""
+"""Validated messages for dataset transformations."""
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Annotated, Literal, Self
 
-import astropy.units as u
-import healpy as hp
-from pydantic import (
-    Field,
-    StrictInt,
-    field_serializer,
-    field_validator,
-    model_validator,
-)
+from pydantic import Field, field_validator, model_validator
 
 from opencosmo.units import UnitConvention  # noqa: TC001
 
-from .expression import Expression, ExpressionModel, FiniteNumber, Mask  # noqa: TC001
-
-type ColumnName = Annotated[str, Field(min_length=1)]
-type NonNegativeInt = Annotated[StrictInt, Field(ge=0)]
-type PositiveInt = Annotated[StrictInt, Field(gt=0)]
-
-
-class ReductionMode(StrEnum):
-    """Scope used to compute scalar reductions."""
-
-    LOCAL = "local"
-    GLOBAL = "global"
-
-
-class TakePosition(StrEnum):
-    """Position from which rows are selected."""
-
-    START = "start"
-    END = "end"
-    RANDOM = "random"
+from ..expression import Expression, ExpressionModel, Mask  # noqa: TC001
+from .common import (
+    ColumnName,  # noqa: TC001
+    NonNegativeInt,  # noqa: TC001
+    ReductionMode,
+    TakePosition,
+    normalize_unit,
+)
+from .region import RegionMessage  # noqa: TC001
 
 
 class FilterMessage(ExpressionModel):
@@ -121,59 +101,6 @@ class TakeRowsMessage(ExpressionModel):
     rows: tuple[NonNegativeInt, ...]
 
 
-class BoxRegionMessage(ExpressionModel):
-    """A three-dimensional box query."""
-
-    kind: Literal["box"] = "box"
-    p1: tuple[FiniteNumber, FiniteNumber, FiniteNumber]
-    p2: tuple[FiniteNumber, FiniteNumber, FiniteNumber]
-
-
-class ConeRegionMessage(ExpressionModel):
-    """A circular sky query in degrees."""
-
-    kind: Literal["cone"] = "cone"
-    center: tuple[FiniteNumber, FiniteNumber]
-    radius: Annotated[FiniteNumber, Field(gt=0)]
-
-
-class SkyboxRegionMessage(ExpressionModel):
-    """A rectangular sky query in degrees."""
-
-    kind: Literal["skybox"] = "skybox"
-    p1: tuple[FiniteNumber, FiniteNumber]
-    p2: tuple[FiniteNumber, FiniteNumber]
-
-
-class HealpixRegionMessage(ExpressionModel):
-    """A HEALPix query containing explicit nested pixel identifiers."""
-
-    kind: Literal["healpix"] = "healpix"
-    pixels: frozenset[NonNegativeInt]
-    nside: PositiveInt
-
-    @model_validator(mode="after")
-    def validate_healpix(self) -> Self:
-        """Validate the resolution and pixel range."""
-        if not hp.isnsideok(self.nside) or self.nside & (self.nside - 1):
-            raise ValueError("nside must be a positive power of two")
-        pixel_count = hp.nside2npix(self.nside)
-        if any(pixel >= pixel_count for pixel in self.pixels):
-            raise ValueError(f"pixels must be less than {pixel_count} for this nside")
-        return self
-
-    @field_serializer("pixels")
-    def serialize_pixels(self, pixels: frozenset[int]) -> list[int]:
-        """Serialize pixel identifiers in deterministic order."""
-        return sorted(pixels)
-
-
-type RegionMessage = Annotated[
-    BoxRegionMessage | ConeRegionMessage | SkyboxRegionMessage | HealpixRegionMessage,
-    Field(discriminator="kind"),
-]
-
-
 class BoundMessage(ExpressionModel):
     """A request to spatially bound a dataset."""
 
@@ -217,22 +144,22 @@ class WithUnitsMessage(ExpressionModel):
         """Validate and normalize blanket unit conversions."""
         normalized: dict[str, str] = {}
         for source, target in values.items():
-            source_unit = _normalize_unit(source)
+            source_unit = normalize_unit(source)
             if source_unit in normalized:
                 raise ValueError(
                     f"Duplicate source unit after normalization: {source_unit}"
                 )
-            normalized[source_unit] = _normalize_unit(target)
+            normalized[source_unit] = normalize_unit(target)
         return normalized
 
     @field_validator("columns")
     @classmethod
     def validate_column_units(cls, values: dict[str, str]) -> dict[str, str]:
         """Validate and normalize per-column target units."""
-        return {name: _normalize_unit(unit) for name, unit in values.items()}
+        return {name: normalize_unit(unit) for name, unit in values.items()}
 
 
-type DatasetMessage = Annotated[
+type DatasetMessageType = (
     FilterMessage
     | SelectMessage
     | DropMessage
@@ -242,38 +169,20 @@ type DatasetMessage = Annotated[
     | TakeRowsMessage
     | BoundMessage
     | WithNewColumnsMessage
-    | WithUnitsMessage,
-    Field(discriminator="kind"),
-]
+    | WithUnitsMessage
+)
 
-
-def _normalize_unit(value: str) -> str:
-    if not value:
-        raise ValueError("Unit strings must not be empty")
-    try:
-        return u.Unit(value).to_string()
-    except (TypeError, ValueError) as error:
-        raise ValueError(f"Invalid Astropy unit: {value!r}") from error
+type DatasetMessage = Annotated[DatasetMessageType, Field(discriminator="kind")]
 
 
 __all__ = [
     "BoundMessage",
-    "BoxRegionMessage",
-    "ColumnName",
-    "ConeRegionMessage",
     "DatasetMessage",
     "DropMessage",
     "FilterMessage",
-    "HealpixRegionMessage",
-    "NonNegativeInt",
-    "PositiveInt",
-    "RegionMessage",
-    "ReductionMode",
     "SelectMessage",
-    "SkyboxRegionMessage",
     "SortByMessage",
     "TakeMessage",
-    "TakePosition",
     "TakeRangeMessage",
     "TakeRowsMessage",
     "WithNewColumnsMessage",

@@ -12,6 +12,7 @@ from opencosmo.serde import (
     HealpixMapSummary,
     LightconeSummary,
     ResultSummary,
+    SerdeError,
     SimulationCollectionSummary,
     StructureCollectionSummary,
     serialize_result,
@@ -309,5 +310,9 @@ def test_collection_member_rejects_unknown_result_kind():
 
 
 def test_serialize_result_rejects_unsupported_types():
-    with pytest.raises(TypeError, match="Unsupported result type: object"):
-        serialize_result(object())
+    result = serialize_result(object())
+
+    assert isinstance(result, SerdeError)
+    assert result.operation == "serialize_result"
+    assert result.category == "unsupported_type"
+    assert result.input_type == "object"

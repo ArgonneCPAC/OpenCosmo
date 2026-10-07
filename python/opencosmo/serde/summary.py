@@ -22,6 +22,8 @@ from opencosmo.spatial.models import (
 from opencosmo.spatial.region import HealpixRegion
 from opencosmo.units import UnitConvention
 
+from .errors import SerdeError, make_serde_error
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -281,13 +283,13 @@ def _members(
     return tuple(
         CollectionMember(
             key=str(key),
-            value=serialize_result(child, resolve_uuid=resolver),
+            value=_serialize_result(child, resolve_uuid=resolver),
         )
         for key, child in items
     )
 
 
-def serialize_result(
+def _serialize_result(
     value: SerializableResult,
     *,
     resolve_uuid: UUIDResolver | None = None,
@@ -380,10 +382,29 @@ def _serialize_map(
 ) -> HealpixMapSummary | None:
     if value is None:
         return None
-    summary = serialize_result(value, resolve_uuid=resolver)
+    summary = _serialize_result(value, resolve_uuid=resolver)
     if not isinstance(summary, HealpixMapSummary):
         raise RuntimeError("HEALPix map serialization produced an invalid result")
     return summary
+
+
+type SerializeResultResponse = ResultSummary | SerdeError
+
+
+def serialize_result(
+    value: SerializableResult,
+    *,
+    resolve_uuid: UUIDResolver | None = None,
+) -> SerializeResultResponse:
+    """Serialize result metadata, returning a structured error on failure."""
+    try:
+        return _serialize_result(value, resolve_uuid=resolve_uuid)
+    except Exception as error:
+        return make_serde_error(
+            "serialize_result",
+            error,
+            input_type=type(value).__name__,
+        )
 
 
 CollectionMember.model_rebuild()
@@ -404,6 +425,7 @@ __all__ = [
     "RegionSummary",
     "ResultSummary",
     "SerializableResult",
+    "SerializeResultResponse",
     "SimulationCollectionSummary",
     "SkyboxRegionSummary",
     "StructureCollectionSummary",
