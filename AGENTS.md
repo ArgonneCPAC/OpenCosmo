@@ -71,7 +71,7 @@ uv run towncrier create <issue_number>.<type>  # Types: feature, bugfix, improve
 - Prefix backend module functions with `__` when they are not used outside their defining module.
 - Avoid over-commenting. Add concise comments only when the logic is not obvious.
 - Do not use class inheritance except where an existing framework requires it, such as Pydantic models.
-- Add type hints to all code. Avoid `Any` whenever a more specific type can be used.
+- Add type hints to all code. Avoid `Any` and `object` unless absolutely necessary.
 - Target Python 3.12+ syntax. Put annotation-only imports behind `TYPE_CHECKING` unless a framework such as Pydantic requires the object at runtime.
 - Use `Protocol` for interchangeable backend or plugin contracts, `TypedDict` for established dictionary payloads, `NamedTuple` when tuple behavior matters, and frozen dataclasses for richer immutable records. Add `@runtime_checkable` only for actual runtime checks.
 - Use narrow, rule-specific `# noqa` or `# type: ignore[...]` suppressions. Do not use a broad suppression when the type or lint rule can be expressed accurately.
