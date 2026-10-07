@@ -6,6 +6,19 @@ Changelog
 1.4
 ---
 
+opencosmo 1.4.5 (2026-10-07)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Bugfixes
+^^^^^^^^
+
+- Fixed bug that would cause statistics.binned_statistic() to fail for quantities with units (#317)
+
+opencosmo 1.4.4 (2026-10-01)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+No significant changes.
+
 opencosmo 1.4.3 (2026-09-29)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

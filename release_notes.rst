@@ -1,10 +1,10 @@
-opencosmo 1.4.3 (2026-09-29)
+opencosmo 1.4.5 (2026-10-07)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bugfixes
 ^^^^^^^^
 
-- Fix a bug that caused :py:meth:`Lightcone.with_redshift_range <opencosmo.Lightcone.with_redshift_range>` to error instead of returning an empty lightcone when it contains no objects within the redshift range.
+- Fixed bug that would cause statistics.binned_statistic() to fail for quantities with units (#317)
 
 
 
