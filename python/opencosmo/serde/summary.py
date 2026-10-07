@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Annotated, Literal, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Annotated, Literal, Protocol, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -88,7 +88,7 @@ class HealpixRegionSummary(SummaryModel):
     pixel_count: int = Field(ge=0)
 
 
-RegionSummary: TypeAlias = Annotated[
+type RegionSummary = Annotated[
     BoxRegionSummary | ConeRegionSummary | SkyboxRegionSummary | HealpixRegionSummary,
     Field(discriminator="kind"),
 ]
