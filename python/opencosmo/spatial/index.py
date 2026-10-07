@@ -39,8 +39,18 @@ def build_data_index(
     intersects = []
     for level, (contained, overlapping) in enumerate(indices):
         starts, sizes = __get_level_columns(spatial_index_data, level)
-        contains.append((get_data(starts, contained), get_data(sizes, contained)))
-        intersects.append((get_data(starts, overlapping), get_data(sizes, overlapping)))
+        contains.append(
+            (
+                get_data(starts, contained).astype(np.int64, copy=False),
+                get_data(sizes, contained).astype(np.int64, copy=False),
+            )
+        )
+        intersects.append(
+            (
+                get_data(starts, overlapping).astype(np.int64, copy=False),
+                get_data(sizes, overlapping).astype(np.int64, copy=False),
+            )
+        )
     return (
         np.concatenate([item[0] for item in contains]),
         np.concatenate([item[1] for item in contains]),
@@ -85,7 +95,10 @@ def __get_level_data(
     start, size = __get_level_columns(columns, level)
     if index is None:
         index = from_size(len(start))
-    return get_data(start, index), get_data(size, index)
+    return (
+        get_data(start, index).astype(np.int64, copy=False),
+        get_data(size, index).astype(np.int64, copy=False),
+    )
 
 
 def apply_index(spatial_index: SpatialIndex, index: DataIndex) -> SpatialIndex:
