@@ -343,14 +343,17 @@ def binned_statistic(
 
         # convert back from log-space if doing geometric mean, median, etc.
         if isinstance(statistic, str) and statistic.startswith("geometric_"):
-            stat_value = 10 ** stat_value
+            if hasattr(stat_value, "physical"):
+                stat_value = stat_value.physical
+            else:
+                stat_value = 10 ** stat_value
 
         binned_stat.append(stat_value)
 
         if ranks > 1:
             _require_comm().Barrier()
 
-    return binned_stat, edges
+    return u.Quantity(binned_stat), edges
 
 def hist1d(
     ds: Dataset | StructureCollection,
