@@ -28,3 +28,8 @@ def test_lightcone_extends_dataset():
     lightcone = DESCRIPTORS["Lightcone"].allowed_messages
     assert dataset.items() <= lightcone.items()
     assert {"with_redshift_range", "pixel_search"} <= lightcone.keys()
+
+
+@pytest.mark.parametrize("name", list(DESCRIPTORS))
+def test_type_name_matches_summary_kind(name):
+    assert DESCRIPTORS[name].summary_type.model_fields["kind"].default == name

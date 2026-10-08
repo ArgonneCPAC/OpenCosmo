@@ -209,14 +209,14 @@ def test_summary_models_forbid_extra_fields():
 def test_result_summary_validates_recursive_discriminator():
     summary = TypeAdapter(ResultSummary).validate_python(
         {
-            "kind": "simulation_collection",
+            "kind": "SimulationCollection",
             "uuid": None,
             "length": 1,
             "members": [
                 {
                     "key": "run-a",
                     "value": {
-                        "kind": "dataset",
+                        "kind": "Dataset",
                         "uuid": None,
                         "length": 0,
                         "columns": [],

@@ -16,7 +16,7 @@ HEADER = {
 
 def __dataset(length=3, columns=(), region=None, sorted_by=None):
     return {
-        "kind": "dataset",
+        "kind": "Dataset",
         "length": length,
         "columns": list(columns),
         "header": HEADER,
@@ -64,7 +64,7 @@ def test_simulation_collection_counts_and_members():
     text = format_summary(
         __build(
             {
-                "kind": "simulation_collection",
+                "kind": "SimulationCollection",
                 "length": 2,
                 "members": [
                     {"key": "a", "value": __dataset()},
@@ -81,7 +81,7 @@ def test_structure_collection_header():
     text = format_summary(
         __build(
             {
-                "kind": "structure_collection",
+                "kind": "StructureCollection",
                 "length": 4,
                 "data_type": "halo_properties",
                 "header": HEADER,

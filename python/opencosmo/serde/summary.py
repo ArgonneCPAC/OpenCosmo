@@ -109,7 +109,7 @@ class HealpixMetadata(SummaryModel):
 class DatasetSummary(SummaryModel):
     """Metadata describing a dataset without its row data."""
 
-    kind: Literal["dataset"] = "dataset"
+    kind: Literal["Dataset"] = "Dataset"
     uuid: UUID | None = None
     length: int = Field(ge=0)
     columns: tuple[ColumnSummary, ...]
@@ -122,7 +122,7 @@ class DatasetSummary(SummaryModel):
 class LightconeSummary(SummaryModel):
     """Metadata describing a lightcone and its members."""
 
-    kind: Literal["lightcone"] = "lightcone"
+    kind: Literal["Lightcone"] = "Lightcone"
     uuid: UUID | None = None
     length: int = Field(ge=0)
     columns: tuple[ColumnSummary, ...]
@@ -138,7 +138,7 @@ class LightconeSummary(SummaryModel):
 class HealpixMapSummary(SummaryModel):
     """Metadata describing a HEALPix map and its layers."""
 
-    kind: Literal["healpix_map"] = "healpix_map"
+    kind: Literal["HealpixMap"] = "HealpixMap"
     uuid: UUID | None = None
     length: int = Field(ge=0)
     columns: tuple[ColumnSummary, ...]
@@ -153,7 +153,7 @@ class HealpixMapSummary(SummaryModel):
 class StructureCollectionSummary(SummaryModel):
     """Metadata describing a structure collection and its datasets."""
 
-    kind: Literal["structure_collection"] = "structure_collection"
+    kind: Literal["StructureCollection"] = "StructureCollection"
     uuid: UUID | None = None
     length: int = Field(ge=0)
     data_type: DatasetType
@@ -166,7 +166,7 @@ class StructureCollectionSummary(SummaryModel):
 class SimulationCollectionSummary(SummaryModel):
     """Metadata describing a collection of simulation scopes."""
 
-    kind: Literal["simulation_collection"] = "simulation_collection"
+    kind: Literal["SimulationCollection"] = "SimulationCollection"
     uuid: UUID | None = None
     length: int = Field(ge=0)
     members: tuple[CollectionMember, ...]
