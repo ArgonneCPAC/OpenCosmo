@@ -1,6 +1,7 @@
 """Validated wire representations of OpenCosmo objects."""
 
 from .descriptors import DESCRIPTORS, DataClassDescriptor
+from .display import format_region, format_summary
 from .errors import SerdeError, SerdeErrorCategory, SerdeFieldError
 from .expression import (
     Arctan2Expression,
@@ -94,6 +95,8 @@ from .summary import (
 )
 
 __all__ = [
+    "format_region",
+    "format_summary",
     "DESCRIPTORS",
     "DataClassDescriptor",
     "ArithmeticExpression",
