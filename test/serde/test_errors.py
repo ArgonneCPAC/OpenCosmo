@@ -23,6 +23,8 @@ def test_only_public_serde_functions_are_boundaries():
         "format_region",
         "format_summary",
         "message_signature",
+        "serialize_column_expression",
+        "serialize_column_mask",
         "serialize_result",
     }
 

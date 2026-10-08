@@ -39,7 +39,13 @@ class SerdeError(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["error"] = "error"
-    operation: Literal["serialize_result", "apply_message", "decode_message"]
+    operation: Literal[
+        "serialize_result",
+        "apply_message",
+        "decode_message",
+        "serialize_column_expression",
+        "serialize_column_mask",
+    ]
     category: SerdeErrorCategory
     message: str
     exception_type: str
@@ -50,7 +56,13 @@ class SerdeError(BaseModel):
 
 
 def make_serde_error(
-    operation: Literal["serialize_result", "apply_message", "decode_message"],
+    operation: Literal[
+        "serialize_result",
+        "apply_message",
+        "decode_message",
+        "serialize_column_expression",
+        "serialize_column_mask",
+    ],
     error: Exception,
     *,
     input_type: str | None = None,

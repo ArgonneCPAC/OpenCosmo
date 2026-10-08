@@ -80,6 +80,12 @@ from .params import (
     message_signature,
 )
 from .rehydrate import ApplyMessageResponse, apply_message
+from .serialize_expression import (
+    SerializeExpressionResponse,
+    SerializeMaskResponse,
+    serialize_column_expression,
+    serialize_column_mask,
+)
 from .summary import (
     BoxRegionSummary,
     CollectionKey,
@@ -104,6 +110,10 @@ from .summary import (
 )
 
 __all__ = [
+    "SerializeExpressionResponse",
+    "SerializeMaskResponse",
+    "serialize_column_expression",
+    "serialize_column_mask",
     "KeywordOnly",
     "MessageParameter",
     "ParameterRole",
