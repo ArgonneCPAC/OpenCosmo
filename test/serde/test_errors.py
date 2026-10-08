@@ -17,7 +17,13 @@ def test_only_public_serde_functions_are_boundaries():
         if callable(getattr(serde, name)) and not isinstance(getattr(serde, name), type)
     }
 
-    assert public_functions == {"apply_message", "serialize_result"}
+    assert public_functions == {
+        "apply_message",
+        "decode_message",
+        "format_region",
+        "format_summary",
+        "serialize_result",
+    }
 
 
 def test_serialize_result_returns_structured_error():

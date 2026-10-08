@@ -1,5 +1,6 @@
 """Validated wire representations of OpenCosmo objects."""
 
+from .decode import decode_message
 from .descriptors import DESCRIPTORS, DataClassDescriptor
 from .display import format_region, format_summary
 from .errors import SerdeError, SerdeErrorCategory, SerdeFieldError
@@ -95,6 +96,7 @@ from .summary import (
 )
 
 __all__ = [
+    "decode_message",
     "format_region",
     "format_summary",
     "DESCRIPTORS",
