@@ -9,6 +9,7 @@ from pydantic import Field, field_validator, model_validator
 from opencosmo.units import UnitConvention  # noqa: TC001
 
 from ..expression import Expression, ExpressionModel, Mask  # noqa: TC001
+from ..params import KeywordOnly, VarArgs, VarKwargs  # noqa: TC001
 from .common import (
     ColumnName,  # noqa: TC001
     ReductionMode,
@@ -30,9 +31,9 @@ class StructureFilterMessage(ExpressionModel):
     """A request to filter structures by source or galaxy properties."""
 
     kind: Literal["structure_filter"] = "structure_filter"
-    masks: tuple[Mask, ...] = ()
-    on_galaxies: bool = False
-    mode: ReductionMode = ReductionMode.GLOBAL
+    masks: Annotated[tuple[Mask, ...], VarArgs()] = ()
+    on_galaxies: Annotated[bool, KeywordOnly()] = False
+    mode: Annotated[ReductionMode, KeywordOnly()] = ReductionMode.GLOBAL
 
 
 class StructureSelectionTarget(ExpressionModel):
@@ -87,10 +88,10 @@ class StructureWithNewColumnsMessage(ExpressionModel):
 
     kind: Literal["structure_with_new_columns"] = "structure_with_new_columns"
     dataset: DatasetPath
-    columns: dict[ColumnName, Expression] = Field(min_length=1)
     descriptions: str | dict[ColumnName, str] = Field(default_factory=dict)
     allow_overwrite: bool = False
     mode: ReductionMode = ReductionMode.GLOBAL
+    columns: Annotated[dict[ColumnName, Expression], VarKwargs()] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_descriptions(self) -> Self:
@@ -137,7 +138,9 @@ class StructureWithUnitsMessage(ExpressionModel):
     kind: Literal["structure_with_units"] = "structure_with_units"
     convention: UnitConvention | None = None
     conversions: dict[str, str] = Field(default_factory=dict)
-    datasets: dict[DatasetPath, StructureUnitTarget] = Field(default_factory=dict)
+    dataset_conversions: Annotated[
+        dict[DatasetPath, StructureUnitTarget], VarKwargs()
+    ] = Field(default_factory=dict)
 
     @field_validator("conversions")
     @classmethod
@@ -153,7 +156,7 @@ class StructureWithUnitsMessage(ExpressionModel):
             normalized[source_unit] = normalize_unit(target)
         return normalized
 
-    @field_validator("datasets")
+    @field_validator("dataset_conversions")
     @classmethod
     def validate_datasets(
         cls, values: dict[str, StructureUnitTarget]

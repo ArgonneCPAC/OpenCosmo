@@ -60,7 +60,7 @@ def test_simulation_message_union_includes_shared_and_control_messages():
         SelectMessage,
     )
     assert isinstance(
-        adapter.validate_python({"kind": "match", "source": "gravity"}),
+        adapter.validate_python({"kind": "match", "dataset": "gravity"}),
         MatchMessage,
     )
     assert isinstance(
@@ -71,7 +71,7 @@ def test_simulation_message_union_includes_shared_and_control_messages():
 @pytest.mark.parametrize("name", ["", ".gravity", "gravity.run"])
 def test_simulation_names_reject_invalid_values(name):
     with pytest.raises(ValidationError):
-        MatchMessage(source=name)
+        MatchMessage(dataset=name)
 
 
 def test_simulation_dataset_select_and_drop_route_by_schema(dataset_collection):
@@ -137,7 +137,7 @@ def test_simulation_with_new_columns_targets_children(dataset_collection):
     result = apply_message(
         dataset_collection,
         SimulationWithNewColumnsMessage(
-            simulations=("gravity",),
+            datasets=("gravity",),
             columns={
                 "mass2": ArithmeticExpression(
                     operator="multiply",
@@ -171,7 +171,7 @@ def test_simulation_structure_new_columns_delegate(structure_collection):
 
 
 def test_simulation_match_and_source_controlled_range(mapped_collection):
-    matched = apply_message(mapped_collection, MatchMessage(source=REFERENCE))
+    matched = apply_message(mapped_collection, MatchMessage(dataset=REFERENCE))
     result = apply_message(matched, TakeRangeMessage(start=2, end=9))
 
     source_tags = result[REFERENCE].select("fof_halo_tag").get_data("numpy")
@@ -183,7 +183,7 @@ def test_simulation_match_and_source_controlled_range(mapped_collection):
 
 
 def test_simulation_match_rejects_unknown_source(mapped_collection):
-    result = apply_message(mapped_collection, MatchMessage(source="unknown"))
+    result = apply_message(mapped_collection, MatchMessage(dataset="unknown"))
 
     assert isinstance(result, SerdeError)
     assert "does not have a simulation named unknown" in result.message

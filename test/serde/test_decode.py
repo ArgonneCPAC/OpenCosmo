@@ -53,7 +53,7 @@ def test_nested_payload_decodes():
 
 
 def test_kind_not_allowed_for_target():
-    result = decode_message("Dataset", {"kind": "match", "source": "a"})
+    result = decode_message("Dataset", {"kind": "match", "dataset": "a"})
     assert isinstance(result, SerdeError)
     assert result.operation == "decode_message"
     assert result.target_type == "Dataset"
@@ -61,7 +61,7 @@ def test_kind_not_allowed_for_target():
 
 
 def test_same_kind_decodes_for_other_target():
-    result = decode_message("SimulationCollection", {"kind": "match", "source": "a"})
+    result = decode_message("SimulationCollection", {"kind": "match", "dataset": "a"})
     assert not isinstance(result, SerdeError)
 
 

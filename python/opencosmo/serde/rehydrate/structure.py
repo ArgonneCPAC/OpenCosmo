@@ -109,7 +109,7 @@ def apply_structure_message(
         case StructureWithUnitsMessage(
             convention=convention,
             conversions=conversions,
-            datasets=datasets,
+            dataset_conversions=dataset_conversions,
         ):
             return collection.with_units(
                 None if convention is None else convention.value,
@@ -119,7 +119,7 @@ def apply_structure_message(
                 },
                 **{
                     name: _unit_target_to_live(target)
-                    for name, target in datasets.items()
+                    for name, target in dataset_conversions.items()
                 },
             )
         case WithDatasetsMessage(datasets=datasets):

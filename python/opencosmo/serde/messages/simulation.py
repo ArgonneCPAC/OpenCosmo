@@ -7,6 +7,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, model_validator
 
 from ..expression import Expression, ExpressionModel  # noqa: TC001
+from ..params import KeywordOnly, VarKwargs  # noqa: TC001
 from .common import ColumnName  # noqa: TC001
 from .dataset import (
     BoundMessage,
@@ -35,7 +36,7 @@ class MatchMessage(ExpressionModel):
     """A request to align simulations to a matching source."""
 
     kind: Literal["match"] = "match"
-    source: SimulationName
+    dataset: SimulationName
 
 
 class ClearMatchMessage(ExpressionModel):
@@ -48,20 +49,22 @@ class SimulationWithNewColumnsMessage(ExpressionModel):
     """A request to add derived columns to selected simulations."""
 
     kind: Literal["simulation_with_new_columns"] = "simulation_with_new_columns"
-    simulations: tuple[SimulationName, ...] | None = None
     dataset: DatasetPath | None = None
-    columns: dict[ColumnName, Expression] = Field(min_length=1)
-    descriptions: str | dict[ColumnName, str] = Field(default_factory=dict)
-    allow_overwrite: bool = False
+    datasets: Annotated[tuple[SimulationName, ...] | None, KeywordOnly()] = None
+    descriptions: Annotated[str | dict[ColumnName, str], KeywordOnly()] = Field(
+        default_factory=dict
+    )
+    allow_overwrite: Annotated[bool, KeywordOnly()] = False
+    columns: Annotated[dict[ColumnName, Expression], VarKwargs()] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_message(self) -> Self:
         """Validate targets and descriptions."""
-        if self.simulations is not None:
-            if not self.simulations:
-                raise ValueError("simulations must not be empty")
-            if len(set(self.simulations)) != len(self.simulations):
-                raise ValueError("simulations must not contain duplicates")
+        if self.datasets is not None:
+            if not self.datasets:
+                raise ValueError("datasets must not be empty")
+            if len(set(self.datasets)) != len(self.datasets):
+                raise ValueError("datasets must not contain duplicates")
         if isinstance(self.descriptions, dict):
             unknown = self.descriptions.keys() - self.columns.keys()
             if unknown:

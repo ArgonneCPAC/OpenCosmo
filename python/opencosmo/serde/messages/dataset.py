@@ -9,6 +9,7 @@ from pydantic import Field, field_validator, model_validator
 from opencosmo.units import UnitConvention  # noqa: TC001
 
 from ..expression import Expression, ExpressionModel, Mask  # noqa: TC001
+from ..params import KeywordOnly, VarArgs, VarKwargs  # noqa: TC001
 from .common import (
     ColumnName,  # noqa: TC001
     NonNegativeInt,  # noqa: TC001
@@ -23,17 +24,19 @@ class FilterMessage(ExpressionModel):
     """A request to filter a dataset with one or more masks."""
 
     kind: Literal["filter"] = "filter"
-    masks: tuple[Mask, ...] = ()
-    mode: ReductionMode = ReductionMode.GLOBAL
+    masks: Annotated[tuple[Mask, ...], VarArgs()] = ()
+    mode: Annotated[ReductionMode, KeywordOnly()] = ReductionMode.GLOBAL
 
 
 class SelectMessage(ExpressionModel):
     """A request to select existing and derived dataset columns."""
 
     kind: Literal["select"] = "select"
-    columns: tuple[str, ...] = ()
-    derived_columns: dict[str, Expression] = Field(default_factory=dict)
-    mode: ReductionMode = ReductionMode.GLOBAL
+    columns: Annotated[tuple[str, ...], VarArgs()] = ()
+    mode: Annotated[ReductionMode, KeywordOnly()] = ReductionMode.GLOBAL
+    derived_columns: Annotated[dict[str, Expression], VarKwargs()] = Field(
+        default_factory=dict
+    )
 
     @field_validator("columns")
     @classmethod
@@ -58,7 +61,7 @@ class DropMessage(ExpressionModel):
     """A request to remove visible dataset columns or wildcard matches."""
 
     kind: Literal["drop"] = "drop"
-    columns: tuple[ColumnName, ...] = Field(min_length=1)
+    columns: Annotated[tuple[ColumnName, ...], VarArgs()] = Field(min_length=1)
 
 
 class SortByMessage(ExpressionModel):
@@ -113,10 +116,10 @@ class WithNewColumnsMessage(ExpressionModel):
     """A request to add expression-derived columns to a dataset."""
 
     kind: Literal["with_new_columns"] = "with_new_columns"
-    columns: dict[ColumnName, Expression] = Field(min_length=1)
     descriptions: str | dict[ColumnName, str] = Field(default_factory=dict)
     allow_overwrite: bool = False
     mode: ReductionMode = ReductionMode.GLOBAL
+    columns: Annotated[dict[ColumnName, Expression], VarKwargs()] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_descriptions(self) -> Self:
@@ -136,7 +139,7 @@ class WithUnitsMessage(ExpressionModel):
     kind: Literal["with_units"] = "with_units"
     convention: UnitConvention | None = None
     conversions: dict[str, str] = Field(default_factory=dict)
-    columns: dict[ColumnName, str] = Field(default_factory=dict)
+    columns: Annotated[dict[ColumnName, str], VarKwargs()] = Field(default_factory=dict)
 
     @field_validator("conversions")
     @classmethod

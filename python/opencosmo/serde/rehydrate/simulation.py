@@ -45,8 +45,8 @@ def apply_simulation_message(
 ) -> SimulationCollection:
     """Apply a validated transformation message to a simulation collection."""
     match message:
-        case MatchMessage(source=source):
-            return collection.match(source)
+        case MatchMessage(dataset=dataset):
+            return collection.match(dataset)
         case ClearMatchMessage():
             return collection.clear_match()
         case FilterMessage(masks=masks, mode=mode):
@@ -142,16 +142,16 @@ def apply_simulation_message(
                 **_live_columns(columns),  # type: ignore[arg-type]
             )
         case SimulationWithNewColumnsMessage(
-            simulations=simulations,
             dataset=dataset,
-            columns=columns,
+            datasets=datasets,
             descriptions=descriptions,
             allow_overwrite=allow_overwrite,
+            columns=columns,
         ):
             args = () if dataset is None else (dataset,)
             return collection.with_new_columns(
                 *args,
-                datasets=simulations,
+                datasets=datasets,
                 descriptions=descriptions,
                 allow_overwrite=allow_overwrite,
                 **_live_columns(columns),

@@ -16,6 +16,7 @@ from .messages import (
     SimulationMessage,
     StructureMessage,
 )
+from .params import message_signature
 from .summary import (
     DatasetSummary,
     HealpixMapSummary,
@@ -25,6 +26,7 @@ from .summary import (
 )
 
 if TYPE_CHECKING:
+    from .params import MessageParameter
     from .summary import SummaryModel
 
 
@@ -32,12 +34,14 @@ if TYPE_CHECKING:
 class DataClassDescriptor:
     """Everything a consumer needs to build a proxy for one result type.
 
-    ``allowed_messages`` maps each message ``kind`` to its model class.
+    ``allowed_messages`` maps each message ``kind`` to its model class, and
+    ``signatures`` maps it to the ordered call signature of that message.
     """
 
     type_name: str
     summary_type: type[SummaryModel]
     allowed_messages: dict[str, type[ExpressionModel]]
+    signatures: dict[str, tuple[MessageParameter, ...]]
 
 
 def __flatten(annotation: object) -> list[type[BaseModel]]:
@@ -61,25 +65,29 @@ def __messages(alias: object) -> dict[str, type[ExpressionModel]]:
     }
 
 
+def __descriptor(
+    type_name: str, summary_type: type[SummaryModel], alias: object
+) -> DataClassDescriptor:
+    messages = __messages(alias)
+    return DataClassDescriptor(
+        type_name,
+        summary_type,
+        messages,
+        {kind: message_signature(model) for kind, model in messages.items()},
+    )
+
+
 DESCRIPTORS: dict[str, DataClassDescriptor] = {
     descriptor.type_name: descriptor
     for descriptor in (
-        DataClassDescriptor("Dataset", DatasetSummary, __messages(DatasetMessage)),
-        DataClassDescriptor(
-            "Lightcone", LightconeSummary, __messages(LightconeMessage)
+        __descriptor("Dataset", DatasetSummary, DatasetMessage),
+        __descriptor("Lightcone", LightconeSummary, LightconeMessage),
+        __descriptor("HealpixMap", HealpixMapSummary, HealpixMapMessage),
+        __descriptor(
+            "StructureCollection", StructureCollectionSummary, StructureMessage
         ),
-        DataClassDescriptor(
-            "HealpixMap", HealpixMapSummary, __messages(HealpixMapMessage)
-        ),
-        DataClassDescriptor(
-            "StructureCollection",
-            StructureCollectionSummary,
-            __messages(StructureMessage),
-        ),
-        DataClassDescriptor(
-            "SimulationCollection",
-            SimulationCollectionSummary,
-            __messages(SimulationMessage),
+        __descriptor(
+            "SimulationCollection", SimulationCollectionSummary, SimulationMessage
         ),
     )
 }

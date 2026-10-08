@@ -171,7 +171,7 @@ def test_structure_with_units_targets_dataset(halo_collection):
     result = apply_message(
         halo_collection,
         StructureWithUnitsMessage(
-            datasets={
+            dataset_conversions={
                 "halo_properties": StructureUnitTarget(columns={"fof_halo_mass": "kg"})
             }
         ),

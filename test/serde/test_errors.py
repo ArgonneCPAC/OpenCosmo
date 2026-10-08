@@ -22,6 +22,7 @@ def test_only_public_serde_functions_are_boundaries():
         "decode_message",
         "format_region",
         "format_summary",
+        "message_signature",
         "serialize_result",
     }
 
