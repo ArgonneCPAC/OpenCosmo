@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 
 import astropy.units as u
 from pydantic import (
@@ -20,6 +20,9 @@ class ExpressionModel(BaseModel):
     """Base configuration for serialized expressions and masks."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Set only on messages: the name of the method the message represents.
+    method: ClassVar[str]
 
 
 type FiniteNumber = Annotated[

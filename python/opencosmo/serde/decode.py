@@ -26,7 +26,7 @@ def __decode(target_type: str, payload: bytes | str | dict[str, object]):
     kind = data.get("kind")
     if not isinstance(kind, str):
         raise ValueError("Message is missing a string 'kind'")
-    model = descriptor.allowed_messages.get(kind)
+    model = descriptor.messages_by_kind.get(kind)
     if model is None:
         raise ValueError(f"Message kind {kind!r} is not supported for {target_type}")
     return model.model_validate(data)

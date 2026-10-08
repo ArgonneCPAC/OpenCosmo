@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 
 from pydantic import Field, field_serializer, model_validator
 
@@ -16,6 +16,7 @@ class WithRedshiftRangeMessage(ExpressionModel):
     """A request to restrict a lightcone to a redshift interval."""
 
     kind: Literal["with_redshift_range"] = "with_redshift_range"
+    method: ClassVar[str] = "with_redshift_range"
     z_low: FiniteNumber
     z_high: FiniteNumber
 
@@ -31,6 +32,7 @@ class PixelSearchMessage(ExpressionModel):
     """A request to restrict a lightcone to nested HEALPix pixels."""
 
     kind: Literal["pixel_search"] = "pixel_search"
+    method: ClassVar[str] = "pixel_search"
     pixels: frozenset[NonNegativeInt] = Field(min_length=1)
     nside: PositiveInt = 64
 

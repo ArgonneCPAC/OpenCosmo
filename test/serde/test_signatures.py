@@ -18,15 +18,6 @@ TARGETS = {
     "SimulationCollection": SimulationCollection,
 }
 
-# Message kinds whose method name differs from the kind.
-METHOD_NAMES = {
-    "structure_filter": "filter",
-    "structure_with_units": "with_units",
-    "structure_with_new_columns": "with_new_columns",
-    "healpix_bound": "bound",
-    "simulation_with_new_columns": "with_new_columns",
-}
-
 # Messages that cannot be compared parameter by parameter.
 SKIPPED = {
     ("StructureCollection", "structure_select"): "dataset-keyed kwargs",
@@ -69,16 +60,23 @@ ROLES = {
 }
 
 CASES = [
-    (target, kind)
+    (target, method, index)
     for target, descriptor in DESCRIPTORS.items()
-    for kind in descriptor.allowed_messages
-    if (target, kind) not in SKIPPED
+    for method, models in descriptor.allowed_messages.items()
+    for index, model in enumerate(models)
+    if (target, model.model_fields["kind"].default) not in SKIPPED
 ]
 
 
-@pytest.mark.parametrize(("target", "kind"), CASES)
-def test_message_matches_method_signature(target, kind):
-    method = getattr(TARGETS[target], METHOD_NAMES.get(kind, kind))
+@pytest.mark.parametrize(("target", "method_name", "index"), CASES)
+def test_message_matches_method_signature(target, method_name, index):
+    kind = (
+        DESCRIPTORS[target]
+        .allowed_messages[method_name][index]
+        .model_fields["kind"]
+        .default
+    )
+    method = getattr(TARGETS[target], method_name)
     forwarded = IGNORED_METHOD_PARAMS.get((target, kind), set())
     expected = [
         (p.name, ROLES[p.kind])
@@ -88,7 +86,7 @@ def test_message_matches_method_signature(target, kind):
     ignored = UNSUPPORTED_FIELDS.get((target, kind), set())
     actual = [
         (p.name, p.role)
-        for p in DESCRIPTORS[target].signatures[kind]
+        for p in DESCRIPTORS[target].signatures[method_name][index]
         if p.name not in ignored
     ]
 
@@ -101,4 +99,4 @@ def test_message_matches_method_signature(target, kind):
 
 def test_skips_and_ignores_reference_real_messages():
     for target, kind in [*SKIPPED, *UNSUPPORTED_FIELDS, *IGNORED_METHOD_PARAMS]:
-        assert kind in DESCRIPTORS[target].allowed_messages
+        assert kind in DESCRIPTORS[target].messages_by_kind

@@ -16,11 +16,30 @@ def test_descriptor_types():
 
 
 @pytest.mark.parametrize("name", list(DESCRIPTORS))
-def test_messages_keyed_by_kind(name):
+def test_messages_keyed_by_method(name):
     descriptor = DESCRIPTORS[name]
     assert descriptor.type_name == name
-    for kind, model in descriptor.allowed_messages.items():
-        assert model.model_fields["kind"].default == kind
+    for method, models in descriptor.allowed_messages.items():
+        assert models
+        assert len(descriptor.signatures[method]) == len(models)
+        for model in models:
+            assert model.method == method
+            kind = model.model_fields["kind"].default
+            assert descriptor.messages_by_kind[kind] is model
+
+
+def test_methods_use_plain_method_names():
+    structure = DESCRIPTORS["StructureCollection"].allowed_messages
+    assert "select" in structure
+    assert not any(method.startswith("structure_") for method in structure)
+    assert "bound" in DESCRIPTORS["HealpixMap"].allowed_messages
+
+
+def test_simulation_methods_have_several_candidates():
+    messages = DESCRIPTORS["SimulationCollection"].allowed_messages
+    kinds = {m.model_fields["kind"].default for m in messages["select"]}
+    assert kinds == {"select", "structure_select"}
+    assert len(messages["with_new_columns"]) == 3
 
 
 def test_lightcone_extends_dataset():

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
@@ -31,6 +31,7 @@ class StructureFilterMessage(ExpressionModel):
     """A request to filter structures by source or galaxy properties."""
 
     kind: Literal["structure_filter"] = "structure_filter"
+    method: ClassVar[str] = "filter"
     masks: Annotated[tuple[Mask, ...], VarArgs()] = ()
     on_galaxies: Annotated[bool, KeywordOnly()] = False
     mode: Annotated[ReductionMode, KeywordOnly()] = ReductionMode.GLOBAL
@@ -47,6 +48,7 @@ class StructureSelectMessage(ExpressionModel):
     """A request to select columns across a structure collection."""
 
     kind: Literal["structure_select"] = "structure_select"
+    method: ClassVar[str] = "select"
     columns: tuple[ColumnName, ...] = ()
     derived_columns: dict[ColumnName, Expression] = Field(default_factory=dict)
     targets: dict[DatasetPath, StructureSelectionTarget] = Field(default_factory=dict)
@@ -72,6 +74,7 @@ class StructureDropMessage(ExpressionModel):
     """A request to drop automatically routed or explicitly targeted columns."""
 
     kind: Literal["structure_drop"] = "structure_drop"
+    method: ClassVar[str] = "drop"
     columns: tuple[ColumnName, ...] = ()
     targets: dict[DatasetPath, StructureDropTarget] = Field(default_factory=dict)
 
@@ -87,6 +90,7 @@ class StructureWithNewColumnsMessage(ExpressionModel):
     """A request to add derived columns to a targeted dataset."""
 
     kind: Literal["structure_with_new_columns"] = "structure_with_new_columns"
+    method: ClassVar[str] = "with_new_columns"
     dataset: DatasetPath
     descriptions: str | dict[ColumnName, str] = Field(default_factory=dict)
     allow_overwrite: bool = False
@@ -136,6 +140,7 @@ class StructureWithUnitsMessage(ExpressionModel):
     """A request to apply collection-wide and per-dataset unit conversions."""
 
     kind: Literal["structure_with_units"] = "structure_with_units"
+    method: ClassVar[str] = "with_units"
     convention: UnitConvention | None = None
     conversions: dict[str, str] = Field(default_factory=dict)
     dataset_conversions: Annotated[
@@ -171,6 +176,7 @@ class WithDatasetsMessage(ExpressionModel):
     """A request to retain selected datasets in a structure collection."""
 
     kind: Literal["with_datasets"] = "with_datasets"
+    method: ClassVar[str] = "with_datasets"
     datasets: tuple[DatasetPath, ...] = Field(min_length=1)
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -36,6 +36,7 @@ class MatchMessage(ExpressionModel):
     """A request to align simulations to a matching source."""
 
     kind: Literal["match"] = "match"
+    method: ClassVar[str] = "match"
     dataset: SimulationName
 
 
@@ -43,12 +44,14 @@ class ClearMatchMessage(ExpressionModel):
     """A request to clear an active simulation match source."""
 
     kind: Literal["clear_match"] = "clear_match"
+    method: ClassVar[str] = "clear_match"
 
 
 class SimulationWithNewColumnsMessage(ExpressionModel):
     """A request to add derived columns to selected simulations."""
 
     kind: Literal["simulation_with_new_columns"] = "simulation_with_new_columns"
+    method: ClassVar[str] = "with_new_columns"
     dataset: DatasetPath | None = None
     datasets: Annotated[tuple[SimulationName, ...] | None, KeywordOnly()] = None
     descriptions: Annotated[str | dict[ColumnName, str], KeywordOnly()] = Field(

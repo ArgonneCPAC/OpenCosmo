@@ -1,6 +1,6 @@
 """Validated messages for HEALPix-map transformations."""
 
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 
 from pydantic import Field
 
@@ -27,6 +27,7 @@ class HealpixBoundMessage(ExpressionModel):
     """A request to spatially bound a HEALPix map."""
 
     kind: Literal["healpix_bound"] = "healpix_bound"
+    method: ClassVar[str] = "bound"
     region: HealpixBoundRegionMessage
     inclusive: bool = False
 

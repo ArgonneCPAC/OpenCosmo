@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
@@ -24,6 +24,7 @@ class FilterMessage(ExpressionModel):
     """A request to filter a dataset with one or more masks."""
 
     kind: Literal["filter"] = "filter"
+    method: ClassVar[str] = "filter"
     masks: Annotated[tuple[Mask, ...], VarArgs()] = ()
     mode: Annotated[ReductionMode, KeywordOnly()] = ReductionMode.GLOBAL
 
@@ -32,6 +33,7 @@ class SelectMessage(ExpressionModel):
     """A request to select existing and derived dataset columns."""
 
     kind: Literal["select"] = "select"
+    method: ClassVar[str] = "select"
     columns: Annotated[tuple[str, ...], VarArgs()] = ()
     mode: Annotated[ReductionMode, KeywordOnly()] = ReductionMode.GLOBAL
     derived_columns: Annotated[dict[str, Expression], VarKwargs()] = Field(
@@ -61,6 +63,7 @@ class DropMessage(ExpressionModel):
     """A request to remove visible dataset columns or wildcard matches."""
 
     kind: Literal["drop"] = "drop"
+    method: ClassVar[str] = "drop"
     columns: Annotated[tuple[ColumnName, ...], VarArgs()] = Field(min_length=1)
 
 
@@ -68,6 +71,7 @@ class SortByMessage(ExpressionModel):
     """A request to sort a dataset or clear its current sorting."""
 
     kind: Literal["sort_by"] = "sort_by"
+    method: ClassVar[str] = "sort_by"
     column: ColumnName | None = None
     invert: bool = False
 
@@ -76,6 +80,7 @@ class TakeMessage(ExpressionModel):
     """A request to select a number of rows from a dataset."""
 
     kind: Literal["take"] = "take"
+    method: ClassVar[str] = "take"
     n: NonNegativeInt
     at: TakePosition = TakePosition.RANDOM
     mode: ReductionMode = ReductionMode.LOCAL
@@ -85,6 +90,7 @@ class TakeRangeMessage(ExpressionModel):
     """A request to select a half-open range of dataset rows."""
 
     kind: Literal["take_range"] = "take_range"
+    method: ClassVar[str] = "take_range"
     start: NonNegativeInt
     end: NonNegativeInt
     mode: ReductionMode = ReductionMode.LOCAL
@@ -101,6 +107,7 @@ class TakeRowsMessage(ExpressionModel):
     """A request to select explicit dataset row positions."""
 
     kind: Literal["take_rows"] = "take_rows"
+    method: ClassVar[str] = "take_rows"
     rows: tuple[NonNegativeInt, ...]
 
 
@@ -108,6 +115,7 @@ class BoundMessage(ExpressionModel):
     """A request to spatially bound a dataset."""
 
     kind: Literal["bound"] = "bound"
+    method: ClassVar[str] = "bound"
     region: RegionMessage
     select_by: ColumnName | None = None
 
@@ -116,6 +124,7 @@ class WithNewColumnsMessage(ExpressionModel):
     """A request to add expression-derived columns to a dataset."""
 
     kind: Literal["with_new_columns"] = "with_new_columns"
+    method: ClassVar[str] = "with_new_columns"
     descriptions: str | dict[ColumnName, str] = Field(default_factory=dict)
     allow_overwrite: bool = False
     mode: ReductionMode = ReductionMode.GLOBAL
@@ -137,6 +146,7 @@ class WithUnitsMessage(ExpressionModel):
     """A request to change unit convention or apply unit conversions."""
 
     kind: Literal["with_units"] = "with_units"
+    method: ClassVar[str] = "with_units"
     convention: UnitConvention | None = None
     conversions: dict[str, str] = Field(default_factory=dict)
     columns: Annotated[dict[ColumnName, str], VarKwargs()] = Field(default_factory=dict)

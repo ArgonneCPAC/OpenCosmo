@@ -34,14 +34,18 @@ if TYPE_CHECKING:
 class DataClassDescriptor:
     """Everything a consumer needs to build a proxy for one result type.
 
-    ``allowed_messages`` maps each message ``kind`` to its model class, and
-    ``signatures`` maps it to the ordered call signature of that message.
+    ``allowed_messages`` maps each method name to the message models that can
+    represent a call to it. Most methods have exactly one; collections that
+    delegate to children of different types may have several. ``signatures``
+    holds the call signature of each candidate, in the same order, and
+    ``messages_by_kind`` finds a model from its wire ``kind``.
     """
 
     type_name: str
     summary_type: type[SummaryModel]
-    allowed_messages: dict[str, type[ExpressionModel]]
-    signatures: dict[str, tuple[MessageParameter, ...]]
+    allowed_messages: dict[str, tuple[type[ExpressionModel], ...]]
+    signatures: dict[str, tuple[tuple[MessageParameter, ...], ...]]
+    messages_by_kind: dict[str, type[ExpressionModel]]
 
 
 def __flatten(annotation: object) -> list[type[BaseModel]]:
@@ -57,23 +61,26 @@ def __flatten(annotation: object) -> list[type[BaseModel]]:
     raise TypeError(f"Cannot extract message models from {annotation!r}")
 
 
-def __messages(alias: object) -> dict[str, type[ExpressionModel]]:
-    return {
-        str(model.model_fields["kind"].default): model
-        for model in __flatten(alias)
-        if issubclass(model, ExpressionModel)
-    }
-
-
 def __descriptor(
     type_name: str, summary_type: type[SummaryModel], alias: object
 ) -> DataClassDescriptor:
-    messages = __messages(alias)
+    models = [
+        model
+        for model in __flatten(alias)
+        if issubclass(model, ExpressionModel) and hasattr(model, "method")
+    ]
+    by_method: dict[str, list[type[ExpressionModel]]] = {}
+    for model in models:
+        by_method.setdefault(model.method, []).append(model)
     return DataClassDescriptor(
         type_name,
         summary_type,
-        messages,
-        {kind: message_signature(model) for kind, model in messages.items()},
+        {method: tuple(group) for method, group in by_method.items()},
+        {
+            method: tuple(message_signature(model) for model in group)
+            for method, group in by_method.items()
+        },
+        {str(model.model_fields["kind"].default): model for model in models},
     )
 
 

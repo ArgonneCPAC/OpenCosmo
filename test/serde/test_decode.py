@@ -24,7 +24,7 @@ def test_decodes_dict_str_and_bytes():
 def test_round_trips_every_default_constructible_message():
     # A message whose model validates from {} just from its kind.
     for name, descriptor in DESCRIPTORS.items():
-        for kind, model in descriptor.allowed_messages.items():
+        for kind, model in descriptor.messages_by_kind.items():
             try:
                 message = model.model_validate({})
             except Exception:
