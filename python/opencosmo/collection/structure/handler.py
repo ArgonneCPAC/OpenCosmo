@@ -106,7 +106,7 @@ def link_slot_values(
         values.append(step_values)
 
     output = np.concatenate(values)
-    sort_key = source._Lightcone__sort_key
+    sort_key = source._state.sort_key
     if sort_key is not None:
         order = np.argsort(source.select(sort_key[0]).get_data("numpy"))
         if sort_key[1]:
