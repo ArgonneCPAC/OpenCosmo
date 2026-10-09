@@ -140,3 +140,9 @@ def test_nested_evaluate_noinsert_broadcasts_mapped_kwargs(nested_lightcone):
     )
     step_lengths = [len(step) for step in nested_lightcone.values()]
     assert np.array_equal(result["y"], np.repeat(list(weights.values()), step_lengths))
+
+
+def test_header_follows_first_remaining_step(plain_lightcone):
+    filtered = plain_lightcone.filter(oc.col("redshift") < 0.0395)
+    assert filtered.header.file.step == 601
+    assert filtered.z_range == plain_lightcone.z_range

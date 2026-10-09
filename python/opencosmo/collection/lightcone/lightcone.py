@@ -10,13 +10,13 @@ from typing import (
 )
 from warnings import warn
 
-import healpy as hp
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
+from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.healpix_map import HealpixMap
@@ -48,7 +48,7 @@ from opencosmo.dataset.take import (
     get_rows_take_index,
 )
 from opencosmo.deprecated import deprecated
-from opencosmo.index import get_range, into_array, rebuild_by_ranges
+from opencosmo.index import get_range, into_array
 from opencosmo.io import iopen, specs
 from opencosmo.io.index_spec import index_spec_for
 from opencosmo.io.schema import FileEntry, make_schema
@@ -60,7 +60,6 @@ from opencosmo.plugins.contexts import (
     PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
-from opencosmo.spatial.index import project_on_index
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
@@ -331,7 +330,7 @@ class Lightcone(dict):
         if not level.is_integer() or level < 0:
             raise ValueError("nside must be a positive power of two!")
 
-        return lcutils.get_pixels(self, int(level))
+        return lcutils.get_pixels(self.__state, int(level))
 
     def get_data(
         self,
@@ -584,30 +583,8 @@ class Lightcone(dict):
         :py:meth:`Lightcone.z_range <opencosmo.collection.Lightcone.z_range>`,
         so you should always use it rather than filteringo n the column directly.
         """
-        z_range = self.__state.header.lightcone["z_range"]
-        if z_high < z_low:
-            z_high, z_low = z_low, z_high
-
-        if z_high < z_range[0] or z_low > z_range[1]:
-            return self.take(0, at="start")
-
-        elif z_low == z_high:
-            raise ValueError("Low and high values of the redshift range are the same!")
-        new_datasets = {}
-        for key, dataset in self.items():
-            if not lcutils.is_in_range(dataset, z_low, z_high):
-                continue
-            new_dataset = dataset.filter(
-                oc.col("redshift") > z_low, oc.col("redshift") < z_high
-            )
-            new_datasets[key] = new_dataset
-        return Lightcone(
-            new_datasets,
-            self.__state.maps,
-            (z_low, z_high),
-            self.__state.hidden,
-            self.__state.sort_key,
-            self.__state.scope,
+        return Lightcone._from_state(
+            lcops.with_redshift_range(self.__state, z_low, z_high)
         )
 
     def __map(
@@ -743,11 +720,7 @@ class Lightcone(dict):
         AttributeError:
             If the dataset does not contain a spatial index
         """
-        new_maps = (
-            None if self.__state.maps is None else self.__state.maps.bound(region)
-        )
-
-        return self.__map("bound", region, select_by, new_maps=new_maps)
+        return Lightcone._from_state(lcops.bound(self.__state, region, select_by))
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
@@ -842,33 +815,7 @@ class Lightcone(dict):
             If ``nside`` is not a positive power of two, or if ``pixels``
             contains values that are out of range for the given ``nside``.
         """
-        level = np.log2(nside)
-        if not level.is_integer() or level < 0:
-            raise ValueError("nside must be a positive power of two!")
-        level = int(level)
-        pixels = np.atleast_1d(pixels)
-        pixels = np.unique(pixels)
-        if not np.isdtype(pixels.dtype, "integral") or len(pixels) == 0:
-            raise ValueError("Pixels must be a 1d array of positive integers")
-        if pixels[0] < 0 or pixels[-1] >= hp.nside2npix(nside):
-            raise ValueError("Pixels must be a 1d array of positive integers")
-        output = {}
-        for name, ds in self.items():
-            if isinstance(ds, Lightcone):
-                output[name] = ds.pixel_search(pixels, nside)
-                continue
-            if ds.spatial_index is None:
-                raise ValueError("Lightcone does not have a spatial index!")
-            rows = project_on_index(ds.spatial_index, level, ds.index, pixels)
-            output[name] = ds.take_rows(rows)
-        return Lightcone(
-            output,
-            self.__state.maps,
-            self.z_range,
-            self.__state.hidden,
-            self.__state.sort_key,
-            self.__state.scope,
-        )
+        return Lightcone._from_state(lcops.pixel_search(self.__state, pixels, nside))
 
     def evaluate(
         self,
@@ -1035,7 +982,7 @@ class Lightcone(dict):
                     output[key] = average_chunks(chunks, weights, format)
         return output
 
-    def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Self:
+    def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Lightcone:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
@@ -1069,7 +1016,9 @@ class Lightcone(dict):
             else mask
             for mask in masks
         ]
-        return self.__map("filter", *new_masks, mode=mode, **kwargs)
+        return Lightcone._from_state(
+            lcops.filter(self.__state, *new_masks, mode=mode, **kwargs)
+        )
 
     def __scalar_evaluator(self, mode: str) -> Callable[[DerivedScalarValue], Any]:
         """
@@ -1433,27 +1382,7 @@ class Lightcone(dict):
         Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorted.
         For internal use only.
         """
-        sizes = np.fromiter((len(ds) for ds in self.values()), dtype=np.int64)
-        starts = np.zeros_like(sizes)
-        starts[1:] = np.cumsum(sizes)[:-1]
-        projected = rebuild_by_ranges(rows, (starts, sizes))
-        output = {}
-        for (name, ds), index in zip(self.items(), projected):
-            output[name] = ds.take_rows(index)
-        if all(len(ds) == 0 for ds in output.values()):
-            key = next(iter(output.keys()))
-            output = {key: output[key]}
-        else:
-            output = {key: ds for key, ds in output.items() if len(ds) > 0}
-
-        return Lightcone(
-            output,
-            self.__state.maps,
-            self.z_range,
-            self.__state.hidden,
-            self.__state.sort_key,
-            self.__state.scope,
-        )
+        return Lightcone._from_state(lcops.take_rows_unsorted(self.__state, rows))
 
     def with_new_columns(
         self,
@@ -1588,28 +1517,14 @@ class Lightcone(dict):
 
         """
 
-        if column is None:
-            sort_key = None
-        elif column not in self.columns:
-            raise ValueError(f"Column {column} does not exist in this dataset!")
-        else:
-            sort_key = (column, invert)
-
-        return Lightcone(
-            dict(self),
-            self.__state.maps,
-            self.z_range,
-            self.__state.hidden,
-            sort_key,
-            self.__state.scope,
-        )
+        return Lightcone._from_state(lcops.sort_by(self.__state, column, invert))
 
     def with_units(
         self,
         convention: str | None = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
-    ) -> Self:
+    ) -> Lightcone:
         r"""
         Create a new lightcone from this one with a different unit convention or
         with certain columns converted to a different compatible unit.
@@ -1661,9 +1576,6 @@ class Lightcone(dict):
         lightcone : Lightcone
             The new lightcone with the requested unit convention and/or conversions.
         """
-        return self.__map(
-            "with_units",
-            convention=convention,
-            conversions=conversions,
-            **columns,
+        return Lightcone._from_state(
+            lcops.with_units(self.__state, convention, conversions, **columns)
         )
