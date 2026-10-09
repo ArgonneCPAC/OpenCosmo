@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
@@ -55,7 +55,7 @@ def do_multi_dataset_selections(
     datasets: Mapping[Any, Dataset | DatasetState],
     select_args: tuple[str | list[str], ...],
     select_kwargs: dict[str, Any],
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ):
     from opencosmo.dataset.state import DatasetState
 

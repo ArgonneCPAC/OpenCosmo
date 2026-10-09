@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Callable,
     Generator,
     Iterable,
@@ -24,8 +25,11 @@ from opencosmo.deprecated import deprecated
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from annotated_types import Ge
+
     from opencosmo.column.column import (
         ColumnMask,
+        CompoundColumnMask,
         ConstructedColumn,
         DerivedScalarValue,
     )
@@ -498,7 +502,11 @@ class Dataset:
         )
         return Dataset(output_state)
 
-    def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
+    def filter(
+        self,
+        *masks: ColumnMask | CompoundColumnMask,
+        mode: Literal["local", "global"] = "global",
+    ) -> Dataset:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
@@ -562,7 +570,7 @@ class Dataset:
     def select(
         self,
         *columns: str | Iterable[str],
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **derived_columns: ConstructedColumn | DerivedScalarValue,
     ) -> Dataset:
         """
@@ -681,7 +689,10 @@ class Dataset:
         )
 
     def take(
-        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+        self,
+        n: Annotated[int, Ge(0)],
+        at: Literal["start", "end", "random"] = "random",
+        mode: Literal["local", "global"] = "local",
     ) -> Dataset:
         """
         Create a new dataset from some number of rows from this dataset.
@@ -724,7 +735,10 @@ class Dataset:
         return Dataset(new_state)
 
     def take_range(
-        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+        self,
+        start: Annotated[int, Ge(0)],
+        end: Annotated[int, Ge(0)],
+        mode: Literal["local", "global"] = "local",
     ) -> Dataset:
         """
         Create a new dataset from a row range in this dataset. We use standard
@@ -790,7 +804,7 @@ class Dataset:
         self,
         descriptions: str | dict[str, str] = {},
         allow_overwrite: bool = False,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """
@@ -869,7 +883,9 @@ class Dataset:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: Optional[
+            Literal["scalefree", "comoving", "physical", "unitless"]
+        ] = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **columns: u.Unit,
     ) -> Dataset:

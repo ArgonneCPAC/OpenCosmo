@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import (
         ColumnMask,
+        CompoundColumnMask,
         ConstructedColumn,
         DerivedScalarValue,
     )
@@ -66,11 +67,15 @@ def get_data(
     return convert_data(data, format, wrap_single=wrap_single)
 
 
-def filter(state: DatasetState, *masks: ColumnMask, mode: str = "global"):
+def filter(
+    state: DatasetState,
+    *masks: ColumnMask | CompoundColumnMask,
+    mode: Literal["local", "global"] = "global",
+):
     reducer = default_reducer(mode)
     masks = tuple(m.with_reducer(reducer) for m in masks)
     bool_mask = np.ones(len(state), dtype=bool)
-    required_columns = set()
+    required_columns: set[str] = set()
     for m in masks:
         required_columns |= m.requires_names
 
