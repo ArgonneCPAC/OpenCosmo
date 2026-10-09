@@ -48,7 +48,7 @@ def filter_source_by_dataset(
     source: oc.Dataset,
     header: oc.header.OpenCosmoHeader,
     *masks,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ) -> oc.Dataset:
     masked_dataset = dataset.filter(*masks, mode=mode)
     linked_column: str
@@ -869,7 +869,10 @@ class StructureCollection:
         )
 
     def filter(
-        self, *masks, on_galaxies: bool = False, mode: str = "global"
+        self,
+        *masks,
+        on_galaxies: bool = False,
+        mode: Literal["local", "global"] = "global",
     ) -> StructureCollection:
         """
         Apply a filter to the halo or galaxy properties. Filters are constructed with
@@ -940,7 +943,7 @@ class StructureCollection:
     def select(
         self,
         *select_args,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **select_kwargs: str | Iterable[str] | dict,
     ) -> StructureCollection:
         """
@@ -1198,7 +1201,9 @@ class StructureCollection:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
+        convention: Optional[
+            Literal["scalefree", "comoving", "physical", "unitless"]
+        ] = None,
         conversions: dict[u.Unit, u.Unit] = {},
         **dataset_conversions: dict,
     ):
@@ -1299,7 +1304,10 @@ class StructureCollection:
         )
 
     def take(
-        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+        self,
+        n: int,
+        at: Literal["start", "end", "random"] = "random",
+        mode: Literal["local", "global"] = "local",
     ):
         """
         Take some number of structures from the collection.
@@ -1419,7 +1427,7 @@ class StructureCollection:
         dataset: str,
         descriptions: str | dict[str, str] = {},
         allow_overwrite: bool = False,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **new_columns: ConstructedColumn | np.ndarray,
     ):
         """
