@@ -6,6 +6,7 @@ import healpy as hp
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo.collection.lightcone.state import header_z_range
 from opencosmo.dataset import dataset as ds
 from opencosmo.spatial.index import get_partitions_with_data
 
@@ -56,15 +57,7 @@ def get_redshift_range(datasets: Sequence[ds.Dataset | lc.Lightcone]):
 def get_single_redshift_range(dataset: ds.Dataset | lc.Lightcone):
     if isinstance(dataset, lc.Lightcone):
         return dataset.z_range
-    redshift_range = dataset.header.lightcone["z_range"]
-    if redshift_range is not None:
-        return redshift_range
-    step_zs = dataset.header.simulation["step_zs"]
-    step = dataset.header.file.step
-    assert step is not None
-    min_redshift = step_zs[step]
-    max_redshift = step_zs[step - 1]
-    return (min_redshift, max_redshift)
+    return header_z_range(dataset.header)
 
 
 def is_in_range(dataset: ds.Dataset, z_low: float, z_high: float):
