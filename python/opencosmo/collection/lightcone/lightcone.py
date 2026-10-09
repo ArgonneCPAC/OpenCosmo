@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import cached_property, reduce
 from itertools import chain
 from typing import (
@@ -70,15 +71,27 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from astropy.io import fits
 
+    from opencosmo.collection.lightcone.scope import LightconeScope
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
     )
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
+
+
+@dataclass(frozen=True)
+class LightconeState:
+    datasets: Mapping[str | int, DatasetState | LightconeState]
+    maps: HealpixMap | None = None
+    z_range: tuple[float, float] | None = None
+    hidden: set[str] | None = None
+    sort_key: tuple[str, bool | None] = (None,)
+    scope: LightconeScope | None = None
 
 
 class Lightcone(dict):
