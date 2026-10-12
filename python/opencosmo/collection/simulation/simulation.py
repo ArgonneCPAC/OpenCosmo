@@ -24,7 +24,6 @@ from opencosmo.utils import normalize_kwarg_name
 
 if TYPE_CHECKING:
     import astropy.units as u
-    import h5py
 
     from opencosmo.collection.protocols import Collection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
@@ -34,14 +33,6 @@ if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
     from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region
-
-
-def verify_datasets_exist(file: h5py.File, datasets: Iterable[str]):
-    """
-    Verify a set of datasets exist in a given file.
-    """
-    if not set(datasets).issubset(set(file.keys())):
-        raise ValueError(f"Some of {', '.join(datasets)} not found in file.")
 
 
 def prepare_matched_datasets(
