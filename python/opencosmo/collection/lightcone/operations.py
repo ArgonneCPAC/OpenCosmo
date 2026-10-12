@@ -2,14 +2,26 @@ from __future__ import annotations
 
 import dataclasses
 from collections import defaultdict
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import healpy as hp
 import numpy as np
 
 from opencosmo.collection.lightcone import state as lcst
+from opencosmo.collection.lightcone import utils as lcutils
+from opencosmo.collection.lightcone.scope import partition_columns
 from opencosmo.column import col
+from opencosmo.column.column import Column, DerivedScalarValue, EvaluatedColumn
+from opencosmo.column.reducer import default_reducer
+from opencosmo.column.select import build_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
+from opencosmo.dataset.evaluate import build_evaluated_column
+from opencosmo.dataset.formats import (
+    average_chunks,
+    concat_chunks,
+    product_chunks,
+    sum_chunks,
+)
 from opencosmo.dataset.take import (
     get_end_take_index,
     get_random_take_index,
@@ -20,14 +32,18 @@ from opencosmo.index import empty, get_range, into_array, rebuild_by_ranges
 from opencosmo.spatial.index import project_on_index
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     import astropy.units as u
     import numpy.typing as npt
 
     from opencosmo.collection.lightcone.healpix_map import HealpixMap
     from opencosmo.collection.lightcone.state import LeafKey, LightconeState
-    from opencosmo.column.column import ColumnMask, CompoundColumnMask
+    from opencosmo.column.column import (
+        ColumnMask,
+        CompoundColumnMask,
+        ConstructedColumn,
+    )
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
@@ -118,6 +134,241 @@ def pixel_search(
         rows = project_on_index(leaf.spatial_index, level, leaf.raw_index, pixels)
         leaves.append((key, dsops.take_rows(leaf, rows)))
     return __with_leaves(state, tuple(leaves))
+
+
+def select(
+    state: LightconeState,
+    *columns: str | Iterable[str],
+    mode: str = "global",
+    **derived_columns: ConstructedColumn,
+) -> LightconeState:
+    if state.maps is not None:
+        selection_args, selection_kwargs = build_multi_dataset_selections(
+            {"map": set(state.maps.columns), "lightcone": set(state.columns)},
+            {"map": len(state.maps), "lightcone": len(state)},
+            columns,
+            derived_columns,
+        )
+        lightcone_columns = selection_args["lightcone"]
+        lightcone_derived_columns = selection_kwargs["lightcone"]
+        new_maps = state.maps.select(*selection_args["map"], **selection_kwargs["map"])
+    else:
+        lightcone_columns = columns
+        lightcone_derived_columns = derived_columns
+        new_maps = None
+
+    all_columns: set[str] = set()
+    for col_group in lightcone_columns:
+        all_columns.update({col_group} if isinstance(col_group, str) else col_group)
+
+    has_scalars = any(
+        isinstance(c, DerivedScalarValue) for c in lightcone_derived_columns.values()
+    )
+    has_non_scalars = any(
+        not isinstance(c, DerivedScalarValue)
+        for c in lightcone_derived_columns.values()
+    )
+    if has_scalars and (all_columns or has_non_scalars):
+        raise ValueError(
+            "Scalar selections cannot be mixed with column selections. "
+            "Call select() with only scalar kwargs, or only column selections."
+        )
+
+    reducer = default_reducer(mode)
+    lightcone_derived_columns = {
+        k: v.with_reducer(reducer) if isinstance(v, (Column, DerivedScalarValue)) else v
+        for k, v in lightcone_derived_columns.items()
+    }
+
+    raw_child_columns = set(state.leaves[0][1].columns)
+    plan = state.scope.plan_select(
+        all_columns, lightcone_derived_columns, raw_child_columns
+    )
+
+    # Some columns must be retained even when the user does not ask for them,
+    # otherwise the lightcone cannot be written. They are kept but hidden.
+    required = lcutils.get_required_columns(
+        raw_child_columns, state.header.parameters["dtype"]
+    )
+    if state.sort_key is not None:
+        required.add(state.sort_key[0])
+
+    required_extras = required.difference(all_columns)
+    leaf_columns = plan.child_positional | plan.child_additional | required_extras
+    selected = __map_leaves(
+        state,
+        lambda leaf: dsops.select(leaf, leaf_columns, mode=mode, **plan.child_scoped),
+        maps=new_maps or state.maps,
+    )
+    return dataclasses.replace(
+        selected,
+        hidden=state.hidden | required_extras,
+        scope=plan.new_scope,
+    )
+
+
+def drop(state: LightconeState, *columns: str | Iterable[str]) -> LightconeState:
+    dropped_columns: set[str] = set()
+    for col_group in columns:
+        dropped_columns.update({col_group} if isinstance(col_group, str) else col_group)
+
+    current_columns = set(state.columns)
+    if missing := dropped_columns.difference(current_columns):
+        raise ValueError(
+            f"Tried to drop columns that are not in this dataset: {missing}"
+        )
+    return select(state, current_columns - dropped_columns)
+
+
+def with_new_columns(
+    state: LightconeState,
+    descriptions: str | dict[str, str],
+    allow_overwrite: bool,
+    mode: str = "global",
+    **columns: ConstructedColumn | np.ndarray | u.Quantity,
+) -> LightconeState:
+    if any(isinstance(col, DerivedScalarValue) for col in columns.values()):
+        raise ValueError(
+            "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
+        )
+    reducer = default_reducer(mode)
+    columns = {
+        k: v.with_reducer(reducer) if isinstance(v, Column) else v
+        for k, v in columns.items()
+    }
+    derived: dict[str, ConstructedColumn] = {}
+    raw: dict[str, np.ndarray] = {}
+    for name, column in columns.items():
+        if isinstance(column, (Column, EvaluatedColumn)):
+            derived[name] = column
+        elif not isinstance(column, np.ndarray):
+            raise ValueError(f"Invalid column type: {type(columns)}")
+        elif len(column) != len(state):
+            raise ValueError(
+                f"New column {name} has length {len(column)} but this dataset "
+                f"has length {len(state)}"
+            )
+        else:
+            raw[name] = column
+
+    if (sort_index := get_sort_index(state)) is not None:
+        inverse = np.argsort(sort_index)
+        raw = {name: raw_data[inverse] for name, raw_data in raw.items()}
+
+    raw_child_columns = set(state.leaves[0][1].columns) | set(raw.keys())
+    _, child_scoped = partition_columns(derived, raw_child_columns, state.scope)
+    new_scope = state.scope.add(derived, raw_child_columns)
+
+    split_points = np.cumsum([len(leaf) for _, leaf in state.leaves])[:-1]
+    raw_split = {name: np.split(arr, split_points) for name, arr in raw.items()}
+    leaves = tuple(
+        (
+            key,
+            dsops.with_new_columns(
+                leaf,
+                descriptions,
+                allow_overwrite,
+                mode=mode,
+                **{name: arrs[i] for name, arrs in raw_split.items()},
+                **child_scoped,
+            ),
+        )
+        for i, (key, leaf) in enumerate(state.leaves)
+    )
+    return dataclasses.replace(__with_leaves(state, leaves), scope=new_scope)
+
+
+def evaluate(
+    state: LightconeState,
+    func: Callable,
+    vectorize: bool,
+    insert: bool,
+    format: str,
+    batch_size: int,
+    allow_overwrite: bool,
+    combine_mode: Literal["concatenate", "sum", "prod", "avg"],
+    **evaluate_kwargs: Any,
+) -> LightconeState | dict[str, Any] | None:
+    if combine_mode not in ("concatenate", "sum", "prod", "avg"):
+        raise ValueError(f"Unknown combine mode {combine_mode}")
+
+    steps = set(lcst.public_keys(state))
+    mapped_kwargs = {
+        name: evaluate_kwargs.pop(name)
+        for name, value in list(evaluate_kwargs.items())
+        if isinstance(value, dict) and set(value.keys()) == steps
+    }
+
+    def leaf_kwargs(key: LeafKey) -> dict[str, Any]:
+        return {name: values[key[0]] for name, values in mapped_kwargs.items()}
+
+    if insert:
+        first_key, first_leaf = state.leaves[0]
+        evaluated_column = build_evaluated_column(
+            first_leaf,
+            func,
+            vectorize,
+            insert,
+            format,
+            batch_size,
+            evaluate_kwargs | leaf_kwargs(first_key),
+        )
+        leaves = tuple(
+            (
+                key,
+                dsops.with_new_columns(
+                    leaf,
+                    {},
+                    allow_overwrite,
+                    **{func.__name__: evaluated_column.with_kwargs(**leaf_kwargs(key))},
+                ),
+            )
+            for key, leaf in state.leaves
+        )
+        # Nested steps never pruned their own subtypes here; only steps are pruned.
+        return __with_leaves(state, __prune_empty(leaves, depth=1))
+
+    results = [
+        dsops.evaluate(
+            leaf,
+            func,
+            vectorize,
+            insert,
+            format,
+            batch_size,
+            allow_overwrite,
+            **evaluate_kwargs,
+            **leaf_kwargs(key),
+        )
+        for key, leaf in state.leaves
+    ]
+    if results[0] is None:
+        return None
+
+    chunks_by_key = {key: [result[key] for result in results] for key in results[0]}
+    if combine_mode != "concatenate":
+        for key, chunks in chunks_by_key.items():
+            lengths = [len(chunk) for chunk in chunks]
+            if len(set(lengths)) != 1:
+                raise ValueError(
+                    f"Cannot combine evaluated output '{key}' with "
+                    f"combine_mode='{combine_mode}': all underlying dataset "
+                    f"results must have the same length; got {lengths}"
+                )
+
+    output = {}
+    for key, chunks in chunks_by_key.items():
+        match combine_mode:
+            case "concatenate":
+                output[key] = concat_chunks(chunks, format)
+            case "sum":
+                output[key] = sum_chunks(chunks, format)
+            case "prod":
+                output[key] = product_chunks(chunks, format)
+            case "avg":
+                weights = [len(leaf) for _, leaf in state.leaves]
+                output[key] = average_chunks(chunks, weights, format)
+    return output
 
 
 def take(
@@ -216,15 +467,19 @@ def __group_by_step(leaves: Leaves) -> dict[int | str, Leaves]:
     return {step: tuple(group) for step, group in groups.items()}
 
 
-def __prune_empty(leaves: Leaves, keep_all_empty: bool = True) -> Leaves:
+def __prune_empty(
+    leaves: Leaves, keep_all_empty: bool = True, depth: int | None = None
+) -> Leaves:
     """
-    Drop empty groups at every key level. If every group at a level is empty,
-    keep all of them (``keep_all_empty``) or only the first.
+    Drop empty groups at each key level, down to ``depth`` levels (all levels if
+    None). If every group at a level is empty, keep all of them
+    (``keep_all_empty``) or only the first.
     """
-    if not leaves[0][0]:
+    if not leaves[0][0] or depth == 0:
         return leaves
+    child_depth = None if depth is None else depth - 1
     pruned = {
-        step: __prune_empty(group, keep_all_empty)
+        step: __prune_empty(group, keep_all_empty, child_depth)
         for step, group in __group_by_step(leaves).items()
     }
     kept = {
