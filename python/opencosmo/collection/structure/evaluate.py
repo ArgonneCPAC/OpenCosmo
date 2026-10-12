@@ -5,23 +5,29 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from astropy.units import Quantity  # type: ignore
 
-from opencosmo import dataset as ds
+from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo.collection.lightcone.state import LightconeState
+from opencosmo.collection.structure import operations as scops
+from opencosmo.collection.structure import structure as sc
+from opencosmo.collection.structure.state import StructureState, public_keys
+from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import concat_chunks, stack_rows
+from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
-    from opencosmo import StructureCollection
+    from collections.abc import Mapping
 
 
 def verify_evaluate_on_collection(
     function: Callable,
-    collection: StructureCollection,
+    state: StructureState,
     evaluate_kwargs: dict[str, Any],
     dataset: Optional[str],
 ):
     # Case 1/3
     function_signature = signature(function)
     function_arg_names = set(function_signature.parameters.keys())
-    datasets_in_collection = set(collection.keys())
+    datasets_in_collection = set(public_keys(state))
     if not (
         requested_datasets := function_arg_names.intersection(datasets_in_collection)
     ):
@@ -49,19 +55,19 @@ def verify_evaluate_on_collection(
     return spec, evaluate_kwargs
 
 
-def visit_structure_collection_eagerly(
+def visit_structure_eagerly(
     function: Callable,
-    collection: StructureCollection,
+    state: StructureState,
     format: str = "astropy",
     dataset: Optional[str] = None,
     evaluate_kwargs: dict[str, Any] = {},
     insert: bool = True,
 ):
     spec, kwargs = verify_evaluate_on_collection(
-        function, collection, evaluate_kwargs, dataset
+        function, state, evaluate_kwargs, dataset
     )
 
-    to_visit = __prepare_collection(spec, collection)
+    to_visit = __prepare_state(spec, state)
 
     if dataset is None:
         return evaluate_into_properties(function, to_visit, format, kwargs, insert)
@@ -73,13 +79,13 @@ def visit_structure_collection_eagerly(
 
 def evaluate_into_properties(
     function: Callable,
-    collection: StructureCollection,
+    state: StructureState,
     format: str,
     kwargs: dict[str, Any],
     insert: bool,
 ):
     per_column: dict[str, list] = {}
-    for structure in collection.objects():
+    for structure in scops.iter_objects(state):
         input_structure = __make_input(structure, format)
         output = function(**input_structure, **kwargs)
         if output is None and insert:
@@ -98,14 +104,14 @@ def evaluate_into_properties(
 
 def evaluate_into_dataset(
     function: Callable,
-    collection: StructureCollection,
+    state: StructureState,
     format: str,
     kwargs: dict[str, Any],
     dataset: str,
     insert: bool,
 ):
     per_column: dict[str, list] = {}
-    for i, structure in enumerate(collection.objects()):
+    for i, structure in enumerate(scops.iter_objects(state)):
         expected_length = len(structure[dataset])
         input_structure = __make_input(structure, format)
         output = function(**input_structure, **kwargs)
@@ -129,14 +135,19 @@ def evaluate_into_dataset(
     return {name: concat_chunks(data, format) for name, data in per_column.items()}
 
 
-def __make_input(structure: dict, format: str = "astropy"):
+def __make_input(structure: Mapping[str, Any], format: str = "astropy"):
     values = {}
     for name, element in structure.items():
         if isinstance(element, dict):
             values[name] = __make_input(element, format)
-        elif isinstance(element, ds.Dataset):
-            data = element.get_data(format, wrap_single=True, unpack=False)
-            values[name] = data
+        elif isinstance(element, DatasetState):
+            values[name] = dsops.get_data(
+                element, format, unpack=False, wrap_single=True
+            )
+        elif isinstance(element, StructureState):
+            values[name] = sc.StructureCollection(element)
+        elif isinstance(element, LightconeState):
+            values[name] = lc.Lightcone(element)
         elif isinstance(element, Quantity) and format != "astropy":
             values[name] = element.value
         else:
@@ -144,10 +155,9 @@ def __make_input(structure: dict, format: str = "astropy"):
     return values
 
 
-def __prepare_collection(
-    spec: dict[str, Optional[list[str]]], collection: StructureCollection
-) -> StructureCollection:
-    collection = collection.with_datasets(list(spec.keys()))
+def __prepare_state(
+    spec: dict[str, Optional[list[str]]], state: StructureState
+) -> StructureState:
+    state = scops.with_datasets(state, list(spec.keys()))
     selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}
-    collection = collection.select(**selections)  # type: ignore
-    return collection
+    return scops.select(state, **selections)  # type: ignore[arg-type]

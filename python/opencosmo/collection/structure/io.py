@@ -3,31 +3,36 @@ from __future__ import annotations
 from collections import defaultdict
 from functools import partial
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional, TypeGuard
+from typing import TYPE_CHECKING, Iterable, Mapping, Optional
 
 import numpy as np
 
-from opencosmo import dataset as d
 from opencosmo import io
-from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.structure import structure as sc
-from opencosmo.collection.structure.handler import (
-    LINK_ALIASES,
-    LinkHandler,
-    link_slot_values,
-)
+from opencosmo.collection.lightcone import operations as lcops
+from opencosmo.collection.lightcone import state as lcst
+from opencosmo.collection.lightcone.state import LightconeState
+from opencosmo.collection.structure import links
+from opencosmo.collection.structure import state as scst
+from opencosmo.collection.structure.links import LINK_ALIASES
+from opencosmo.collection.structure.state import StructureState
+from opencosmo.dataset import operations as dsops
+from opencosmo.dataset.state import DatasetState
 from opencosmo.io.index_spec import index_spec_for
+from opencosmo.io.updaters import do_idx_update, do_start_update
 from opencosmo.mapping.read import read_link_set
 
 if TYPE_CHECKING:
     from uuid import UUID
 
     import h5py
-    from mpi4py import MPI
 
+    from opencosmo.collection.structure.state import Source, StructureChild
     from opencosmo.io.discover import LinkLayout
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.mapping.mapping import DatasetMatchSet
+
+    # Link targets resolved against one source dataset (one lightcone step).
+    StepTarget = DatasetState | StructureState
 
 ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
     "halo_properties": ["halo_particles", "halo_profiles", "galaxy_properties"],
@@ -37,29 +42,26 @@ ALLOWED_LINKS = {  # h5py.Files that can serve as a link holder and
 
 def resolve_link_targets(
     layout: LinkLayout,
-    targets: Mapping[str, d.Dataset | sc.StructureCollection],
+    targets: Mapping[str, StepTarget],
 ) -> tuple[dict[str, UUID], dict[str, UUID]]:
     """Resolve on-disk link prefixes against opened targets.
 
     Returns ``(prefix_to_uuid, name_to_uuid)``: the first keyed by on-disk link
     prefix for ``read_link_set``, the second by collection-facing name for
-    ``DatasetMatchSet.with_aliases``.
+    ``DatasetMatchSet.with_aliases``. A nested galaxy collection is still keyed
+    as "galaxy_properties" here; ``StructureState.from_parts`` renames it.
     """
     prefix_to_uuid: dict[str, UUID] = {}
     name_to_uuid: dict[str, UUID] = {}
     for slot in layout.slots:
         name = LINK_ALIASES[slot.prefix]
-        # ``targets`` is keyed the way StructureCollection will key it, so a
-        # nested galaxy collection appears as "galaxies" rather than
-        # "galaxy_properties". Follow that rename when it applies.
-        if name == "galaxy_properties" and name not in targets:
-            name = "galaxies"
         target = targets.get(name)
         if target is None:
             continue
-        if isinstance(target, sc.StructureCollection):
-            target = target[str(target.header.file.data_type)]
-        assert isinstance(target, d.Dataset)
+        if isinstance(target, StructureState):
+            source = target.source
+            assert isinstance(source, DatasetState)
+            target = source
         prefix_to_uuid[slot.prefix] = target.uuid
         name_to_uuid[name] = target.uuid
     return prefix_to_uuid, name_to_uuid
@@ -67,8 +69,8 @@ def resolve_link_targets(
 
 def build_match_sets(
     source_target: DatasetTarget,
-    source: d.Dataset,
-    targets: Mapping[str, d.Dataset | sc.StructureCollection],
+    source: DatasetState,
+    targets: Mapping[str, StepTarget],
 ) -> dict[UUID, DatasetMatchSet]:
     """Build the resolved link match set for one properties source dataset."""
     # Discovery sets link_layout if and only if the group has a /data_linked group,
@@ -88,35 +90,21 @@ def build_match_sets(
     return {source.uuid: match_set.with_aliases(name_to_uuid)}
 
 
-def __with_galaxies_alias[T](targets: Mapping[str, T]) -> dict[str, T]:
-    """Key nested galaxy collections as "galaxies", mirroring StructureCollection.
-
-    ``StructureCollection.__init__`` renames ``galaxy_properties`` to ``galaxies``
-    only when the target is a nested collection. Link aliases must agree, or the
-    handler cannot resolve the link by name.
-    """
-    resolved = dict(targets)
-    if isinstance(resolved.get("galaxy_properties"), sc.StructureCollection):
-        resolved["galaxies"] = resolved.pop("galaxy_properties")
-    return resolved
-
-
 def __step_targets(
-    targets: Mapping[str, d.Dataset | lc.Lightcone | sc.StructureCollection],
-    step: int,
-) -> dict[str, d.Dataset | sc.StructureCollection]:
-    resolved: dict[str, d.Dataset | sc.StructureCollection] = {}
-    for name, target in __with_galaxies_alias(targets).items():
-        if isinstance(target, lc.Lightcone):
-            step_target = target[step]
-            assert isinstance(step_target, d.Dataset)
+    targets: Mapping[str, StructureChild], step: int
+) -> dict[str, StepTarget]:
+    resolved: dict[str, StepTarget] = {}
+    for name, target in targets.items():
+        if isinstance(target, LightconeState):
+            step_target = lcst.view(target, step)
+            assert isinstance(step_target, DatasetState)
             resolved[name] = step_target
-        elif isinstance(target, sc.StructureCollection):
-            source = target[str(target.header.file.data_type)]
-            if isinstance(source, lc.Lightcone):
-                resolved[name] = source[step]
-            else:
-                resolved[name] = target
+        elif isinstance(target, StructureState) and isinstance(
+            target.source, LightconeState
+        ):
+            step_source = lcst.view(target.source, step)
+            assert isinstance(step_source, DatasetState)
+            resolved[name] = step_source
         else:
             resolved[name] = target
     return resolved
@@ -124,8 +112,8 @@ def __step_targets(
 
 def __build_lightcone_match_sets(
     source_targets: Iterable[DatasetTarget],
-    source_datasets: Iterable[d.Dataset],
-    targets: Mapping[str, d.Dataset | lc.Lightcone | sc.StructureCollection],
+    source_datasets: Iterable[DatasetState],
+    targets: Mapping[str, StructureChild],
 ) -> dict[UUID, DatasetMatchSet]:
     sources = tuple(source_datasets)
     targets_by_step = {
@@ -149,10 +137,10 @@ def __build_lightcone_match_sets(
 
 
 def remove_empty(
-    dataset: d.Dataset | lc.Lightcone,
-    match_sets: dict[UUID, DatasetMatchSet],
+    source: Source,
+    match_sets: Mapping[UUID, DatasetMatchSet],
     opened_datasets: Optional[Iterable[str]] = None,
-) -> d.Dataset | lc.Lightcone:
+) -> Source:
     """
     Drop structures that are empty in the linked datasets that were actually
     opened. When a user opens, say, particles and profiles together, they should
@@ -165,32 +153,23 @@ def remove_empty(
     galaxy or particle links), so restricting to opened datasets avoids dropping
     structures based on links the user never asked for.
     """
-    names = {name for match_set in match_sets.values() for name in match_set.aliases}
-
+    names = set(links.link_names(match_sets))
     if opened_datasets is not None:
-        # A nested galaxy collection is exposed as "galaxies" but keyed as
-        # "galaxy_properties" in the link targets; treat them as the same link.
-        opened = {
-            "galaxies" if name == "galaxy_properties" else name
-            for name in opened_datasets
-        }
-        names &= opened
-
+        names &= set(opened_datasets)
     if not names:
-        return dataset
+        return source
 
-    mask = np.ones(len(dataset), dtype=bool)
+    mask = np.ones(len(source), dtype=bool)
     for name in sorted(names):
-        values, is_chunked = link_slot_values(match_sets, dataset, name)
+        values, is_chunked = links.slot_values(match_sets, source, name)
         mask &= values != 0 if is_chunked else values != -1
 
-    if not mask.all():
-        dataset = dataset.take_rows(np.where(mask)[0])
-    return dataset
-
-
-def is_dataset(ds: Any) -> TypeGuard[d.Dataset]:
-    return isinstance(ds, d.Dataset)
+    if mask.all():
+        return source
+    rows = np.where(mask)[0]
+    if isinstance(source, DatasetState):
+        return dsops.take_rows(source, rows)
+    return lcops.take_rows(source, rows)
 
 
 def validate_linked_groups(groups: dict[str, h5py.Group]):
@@ -226,15 +205,32 @@ def __link_target_name(target: io.iopen.DatasetTarget, prefix: str) -> str:
     return name
 
 
+def __open_state(
+    target: DatasetTarget, index_kind: str, is_empty_ref: bool, *, is_source: bool
+) -> DatasetState:
+    spec = index_spec_for(index_kind, is_empty_ref, is_source=is_source)
+    return io.iopen.open_dataset(target, spec)._state
+
+
+def __lightcone_of(datasets: Iterable[DatasetState]) -> LightconeState:
+    """Stack per-step datasets into a lightcone, running the lightcone open hooks."""
+    leaves = []
+    for dataset in datasets:
+        step = dataset.header.file.step
+        assert step is not None
+        leaves.append(((step,), dataset))
+    return lcops.from_dataset_states(leaves)
+
+
 def build_structure_collection(
     targets: list[io.iopen.DatasetTarget],
     ignore_empty: bool,
     index_kind: str = "none",
     is_empty_ref: bool = False,
-):
+) -> StructureState:
     link_sources: dict[str, list[io.iopen.DatasetTarget]] = defaultdict(list)
-    link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]] = (
-        defaultdict(lambda: defaultdict(list))
+    link_targets: dict[str, dict[str, list[DatasetState]]] = defaultdict(
+        lambda: defaultdict(list)
     )
 
     for target in targets:
@@ -249,9 +245,7 @@ def build_structure_collection(
                 if data_type.startswith("halo")
                 else "galaxy_properties"
             )
-            dataset = io.iopen.open_dataset(
-                target, index_spec_for(index_kind, is_empty_ref, is_source=False)
-            )
+            dataset = __open_state(target, index_kind, is_empty_ref, is_source=False)
             name = __link_target_name(target, source_type)
             link_targets[source_type][name].append(dataset)
         else:
@@ -281,9 +275,7 @@ def build_structure_collection(
     if link_sources["galaxy_properties"]:
         galaxy_properties_target = link_sources["galaxy_properties"][0]
 
-    input_link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]] = (
-        defaultdict(dict)
-    )
+    input_link_targets: dict[str, dict[str, StructureChild]] = defaultdict(dict)
     for source_type, source_targets in link_targets.items():
         if any(len(ts) > 1 for ts in source_targets.values()):
             raise ValueError("Found more than one linked file of a given type!")
@@ -303,11 +295,11 @@ def build_structure_collection(
 
 def build_lightcone_structure_collection(
     link_sources: dict[str, list[io.iopen.DatasetTarget]],
-    link_targets: dict[str, dict[str, list[d.Dataset | sc.StructureCollection]]],
+    link_targets: dict[str, dict[str, list[DatasetState]]],
     ignore_empty: bool = True,
     index_kind: str = "none",
     is_empty_ref: bool = False,
-):
+) -> StructureState:
     found_redshift_steps: set[int] = set()
     for source_type, source_list in link_sources.items():
         if not all(t.header.file.is_lightcone for t in source_list):
@@ -328,6 +320,11 @@ def build_lightcone_structure_collection(
                 raise ValueError(
                     "All datasets must have the same set of redshift steps!"
                 )
+
+    # Linked children of the halo source that are already built, rather than
+    # lists of per-step datasets.
+    built_halo_targets: dict[str, StructureChild] = {}
+
     # NOTE: link_targets is a defaultdict, so accessing link_targets[source_type]
     # in the validation loop above may have created an empty "galaxy_properties"
     # entry. Use a truthy check (non-empty dict) rather than `in` so that the
@@ -339,47 +336,31 @@ def build_lightcone_structure_collection(
         # Galaxy properties and galaxy particles
         is_galaxy_source = len(link_sources.get("halo_properties", [])) == 0
         galaxy_datasets = [
-            io.iopen.open_dataset(
-                t,
-                index_spec_for(index_kind, is_empty_ref, is_source=is_galaxy_source),
-            )
+            __open_state(t, index_kind, is_empty_ref, is_source=is_galaxy_source)
             for t in link_sources["galaxy_properties"]
         ]
-        galaxy_source_by_step: dict[int, d.Dataset] = {}
-        for ds in galaxy_datasets:
-            assert ds.header.file.step is not None
-            galaxy_source_by_step[ds.header.file.step] = ds
-        galaxy_lightcone = lc.Lightcone.from_datasets(galaxy_source_by_step)
-        galaxy_target_datasets = {}
-        for target_type, targets in link_targets["galaxy_properties"].items():
-            galaxy_target_datasets[target_type] = lc.Lightcone.from_datasets(
-                {ds.header.file.step: ds for ds in targets}  # type: ignore
-            )
+        galaxy_lightcone = __lightcone_of(galaxy_datasets)
+        galaxy_targets: dict[str, StructureChild] = {
+            target_type: __lightcone_of(targets)
+            for target_type, targets in link_targets["galaxy_properties"].items()
+        }
         galaxy_match_sets = __build_lightcone_match_sets(
             link_sources["galaxy_properties"],
             galaxy_datasets,
-            galaxy_target_datasets,
+            galaxy_targets,
         )
         if len(link_sources.get("halo_properties", [])) > 0:
-            collection = sc.StructureCollection(
-                galaxy_lightcone,
-                galaxy_target_datasets,
-                False,
-                LinkHandler(galaxy_match_sets, None),
-                resolve_links=True,
+            built_halo_targets["galaxy_properties"] = scst.from_parts(
+                galaxy_lightcone, galaxy_targets, galaxy_match_sets, resolve=True
             )
-            link_targets["halo_properties"]["galaxy_properties"] = collection  # type: ignore[assignment]
         else:
+            galaxy_source: Source = galaxy_lightcone
             if ignore_empty:
-                galaxy_lightcone = remove_empty(
-                    galaxy_lightcone, galaxy_match_sets, galaxy_target_datasets.keys()
+                galaxy_source = remove_empty(
+                    galaxy_lightcone, galaxy_match_sets, galaxy_targets.keys()
                 )
-            return sc.StructureCollection(
-                galaxy_lightcone,
-                galaxy_target_datasets,
-                False,
-                LinkHandler(galaxy_match_sets, None),
-                resolve_links=True,
+            return scst.from_parts(
+                galaxy_source, galaxy_targets, galaxy_match_sets, resolve=True
             )
 
     elif (
@@ -390,101 +371,76 @@ def build_lightcone_structure_collection(
         # the galaxy properties as a plain per-step linked dataset under the
         # halos, exactly like halo profiles.
         link_targets["halo_properties"]["galaxy_properties"] = [
-            io.iopen.open_dataset(
-                t, index_spec_for(index_kind, is_empty_ref, is_source=False)
-            )
+            __open_state(t, index_kind, is_empty_ref, is_source=False)
             for t in link_sources["galaxy_properties"]
         ]
 
     halo_source_list = link_sources["halo_properties"]
     halo_datasets = [
-        io.iopen.open_dataset(
-            t,
-            index_spec_for(index_kind, is_empty_ref, is_source=True),
-        )
+        __open_state(t, index_kind, is_empty_ref, is_source=True)
         for t in halo_source_list
     ]
-    halo_source_by_step: dict[int, d.Dataset] = {}
-    for ds in halo_datasets:
-        assert ds.header.file.step is not None
-        halo_source_by_step[ds.header.file.step] = ds
-    source_lightcone = lc.Lightcone.from_datasets(halo_source_by_step)
+    source: Source = __lightcone_of(halo_datasets)
 
-    output_targets = {}
     # Iterate the linked type names in a deterministic (sorted) order so that
-    # StructureCollection.make_schema's local, union-free iteration produces the
-    # same child ordering on every rank under redshift-split -- defensive lockstep
-    # for the mixed-type write path.
-    for target_type in sorted(link_targets["halo_properties"].keys()):
-        targets = link_targets["halo_properties"][target_type]
-        if isinstance(targets, (d.Dataset, sc.StructureCollection)):
-            output_targets[target_type] = targets
-            continue
-        output_targets_of_type: dict[int, d.Dataset] = {}
-        for linked_ds in targets:
-            assert isinstance(linked_ds, d.Dataset)
-            assert linked_ds.header.file.step is not None
-            output_targets_of_type[linked_ds.header.file.step] = linked_ds
-
-        output_targets[target_type] = lc.Lightcone.from_datasets(output_targets_of_type)
+    # make_schema's local, union-free iteration produces the same child ordering
+    # on every rank under redshift-split -- defensive lockstep for the mixed-type
+    # write path.
+    output_targets: dict[str, StructureChild] = {}
+    for target_type in sorted(
+        link_targets["halo_properties"].keys() | built_halo_targets.keys()
+    ):
+        if target_type in built_halo_targets:
+            output_targets[target_type] = built_halo_targets[target_type]
+        else:
+            output_targets[target_type] = __lightcone_of(
+                link_targets["halo_properties"][target_type]
+            )
     halo_match_sets = __build_lightcone_match_sets(
-        halo_source_list,
-        halo_datasets,
-        __with_galaxies_alias(output_targets),
+        halo_source_list, halo_datasets, output_targets
     )
     if ignore_empty:
-        source_lightcone = remove_empty(
-            source_lightcone, halo_match_sets, output_targets.keys()
-        )
-    return sc.StructureCollection(
-        source_lightcone,
-        output_targets,
-        False,
-        LinkHandler(halo_match_sets, None),
-        resolve_links=True,
-    )
+        source = remove_empty(source, halo_match_sets, output_targets.keys())
+    return scst.from_parts(source, output_targets, halo_match_sets, resolve=True)
 
 
 def __build_structure_collection(
     halo_properties_target: Optional[io.iopen.DatasetTarget],
     galaxy_properties_target: Optional[io.iopen.DatasetTarget],
-    link_targets: dict[str, dict[str, d.Dataset | sc.StructureCollection]],
+    link_targets: dict[str, dict[str, StructureChild]],
     ignore_empty: bool,
     index_kind: str = "none",
     is_empty_ref: bool = False,
-):
+) -> StructureState:
     if galaxy_properties_target is not None and "galaxy_properties" in link_targets:
         # Galaxy properties and galaxy particles
-        source_dataset = io.iopen.open_dataset(
+        galaxy_source: Source = __open_state(
             galaxy_properties_target,
-            index_spec_for(
-                index_kind, is_empty_ref, is_source=halo_properties_target is None
-            ),
+            index_kind,
+            is_empty_ref,
+            is_source=halo_properties_target is None,
         )
+        assert isinstance(galaxy_source, DatasetState)
         galaxy_match_sets = build_match_sets(
             galaxy_properties_target,
-            source_dataset,
-            link_targets["galaxy_properties"],
+            galaxy_source,
+            __dataset_targets(link_targets["galaxy_properties"]),
         )
         if ignore_empty and halo_properties_target is None:
-            filtered_dataset = remove_empty(
-                source_dataset,
+            galaxy_source = remove_empty(
+                galaxy_source,
                 galaxy_match_sets,
                 link_targets["galaxy_properties"].keys(),
             )
-            assert isinstance(filtered_dataset, d.Dataset)
-            source_dataset = filtered_dataset
-        collection = sc.StructureCollection(
-            source_dataset,
+        collection = scst.from_parts(
+            galaxy_source,
             link_targets["galaxy_properties"],
-            False,
-            LinkHandler(galaxy_match_sets, None),
-            resolve_links=True,
+            galaxy_match_sets,
+            resolve=True,
         )
-        if halo_properties_target is not None:
-            link_targets["halo_properties"]["galaxy_properties"] = collection
-        else:
+        if halo_properties_target is None:
             return collection
+        link_targets["halo_properties"]["galaxy_properties"] = collection
 
     if (
         halo_properties_target is not None
@@ -492,69 +448,38 @@ def __build_structure_collection(
         and "galaxy_properties" not in link_targets
     ):
         # Halo properties and galaxy properties, but no galaxy particles
-        galaxy_properties = io.iopen.open_dataset(
-            galaxy_properties_target,
-            index_spec_for(index_kind, is_empty_ref, is_source=False),
-        )
-        link_targets["halo_properties"]["galaxy_properties"] = galaxy_properties
-
-    if halo_properties_target is not None and link_targets["halo_properties"]:
-        source_dataset = io.iopen.open_dataset(
-            halo_properties_target,
-            index_spec_for(index_kind, is_empty_ref, is_source=True),
-        )
-        halo_match_sets = build_match_sets(
-            halo_properties_target,
-            source_dataset,
-            __with_galaxies_alias(link_targets["halo_properties"]),
-        )
-        if ignore_empty:
-            filtered_dataset = remove_empty(
-                source_dataset,
-                halo_match_sets,
-                link_targets["halo_properties"].keys(),
-            )
-            assert isinstance(filtered_dataset, d.Dataset)
-            source_dataset = filtered_dataset
-
-        return sc.StructureCollection(
-            source_dataset,
-            link_targets["halo_properties"],
-            False,
-            LinkHandler(halo_match_sets, None),
-            resolve_links=True,
+        link_targets["halo_properties"]["galaxy_properties"] = __open_state(
+            galaxy_properties_target, index_kind, is_empty_ref, is_source=False
         )
 
+    if halo_properties_target is None or not link_targets["halo_properties"]:
+        raise RuntimeError("Unable to build a structure collection from these files")
 
-def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
-    # An idx metadata column links each structure to at most one row in a target
-    # dataset, using -1 to mark structures with no linked row (e.g. halos without
-    # a profile). The target dataset is written containing only the linked rows,
-    # in structure order, so the rewritten idx must give each linked structure a
-    # contiguous 0-based index while preserving the -1 sentinels. Under MPI the
-    # target is concatenated across ranks, so each rank offsets its indices by the
-    # number of linked rows on the ranks before it.
-    valid = data >= 0
-    n_valid = int(valid.sum())
-    if comm is None:
-        offset = 0
-    else:
-        counts = comm.allgather(n_valid)
-        offset = int(np.sum(counts[: comm.Get_rank()]))
-
-    result = np.full(len(data), -1, dtype=np.int64)
-    result[valid] = np.arange(offset, offset + n_valid)
-    return result
+    source: Source = __open_state(
+        halo_properties_target, index_kind, is_empty_ref, is_source=True
+    )
+    assert isinstance(source, DatasetState)
+    halo_match_sets = build_match_sets(
+        halo_properties_target,
+        source,
+        __dataset_targets(link_targets["halo_properties"]),
+    )
+    if ignore_empty:
+        source = remove_empty(
+            source, halo_match_sets, link_targets["halo_properties"].keys()
+        )
+    return scst.from_parts(
+        source, link_targets["halo_properties"], halo_match_sets, resolve=True
+    )
 
 
-def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
-    psum = np.insert(np.cumsum(size), 0, 0)[:-1]
-    if comm is None:
-        return psum
-    lengths = comm.allgather(np.sum(size))
-    offsets = np.insert(np.cumsum(lengths), 0, 0)
-    offset = offsets[comm.Get_rank()]
-    return psum + offset
+def __dataset_targets(targets: Mapping[str, StructureChild]) -> dict[str, StepTarget]:
+    """Snapshot link targets: datasets and nested collections, never lightcones."""
+    resolved: dict[str, StepTarget] = {}
+    for name, target in targets.items():
+        assert not isinstance(target, LightconeState)
+        resolved[name] = target
+    return resolved
 
 
 def rebuild_data_linked(source_schema):

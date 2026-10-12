@@ -285,6 +285,13 @@ def pixel_search(
     return __with_leaves(state, tuple(leaves))
 
 
+def get_pixels(state: LightconeState, nside: int) -> np.ndarray:
+    level = np.log2(nside)
+    if not level.is_integer() or level < 0:
+        raise ValueError("nside must be a positive power of two!")
+    return lcutils.get_pixels(state, int(level))
+
+
 def select(
     state: LightconeState,
     *columns: str | Iterable[str],

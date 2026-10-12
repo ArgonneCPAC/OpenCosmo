@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from opencosmo import Dataset
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
 
 
@@ -52,11 +53,13 @@ def get_column_selection(
 
 
 def do_multi_dataset_selections(
-    datasets: Mapping[Any, Dataset | DatasetState],
-    select_args: tuple[str | list[str], ...],
+    datasets: Mapping[Any, Dataset | DatasetState | LightconeState],
+    select_args: tuple[str | Iterable[str], ...],
     select_kwargs: dict[str, Any],
     mode: str = "global",
 ):
+    from opencosmo.collection.lightcone import operations as lcops
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
 
     mode = select_kwargs.pop("mode", mode)
@@ -76,6 +79,8 @@ def do_multi_dataset_selections(
         try:
             if isinstance(dataset, DatasetState):
                 new_ds = dsops.select(dataset, *ds_args, **ds_kwargs, mode=mode)
+            elif isinstance(dataset, LightconeState):
+                new_ds = lcops.select(dataset, *ds_args, **ds_kwargs, mode=mode)
             else:
                 new_ds = dataset.select(*ds_args, **ds_kwargs, mode=mode)
         except MissingColumnError:
@@ -87,9 +92,11 @@ def do_multi_dataset_selections(
 
 
 def do_multi_dataset_drops(
-    datasets: Mapping[Any, Dataset | DatasetState],
-    drop_args: tuple[str | list[str], ...],
+    datasets: Mapping[Any, Dataset | DatasetState | LightconeState],
+    drop_args: tuple[str | Iterable[str], ...],
 ):
+    from opencosmo.collection.lightcone import operations as lcops
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
 
     columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
@@ -106,6 +113,8 @@ def do_multi_dataset_drops(
         try:
             if isinstance(dataset, DatasetState):
                 new_ds = dsops.drop(dataset, *ds_args)
+            elif isinstance(dataset, LightconeState):
+                new_ds = lcops.drop(dataset, *ds_args)
             else:
                 new_ds = dataset.drop(*ds_args)
         # Do NOT fail if the only selections are wildcards, just return the raw dataset

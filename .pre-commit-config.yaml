@@ -5,12 +5,12 @@ repos:
     rev: 'v1.18.2'  # Use the sha / tag you want to point at
     hooks:
     -   id: mypy
-        additional_dependencies: ["numpy", "types-deprecated", "types-docutils"]
+        additional_dependencies: ["numpy", "types-deprecated"]
 -   repo: https://github.com/astral-sh/ruff-pre-commit
     rev: 'v0.13.2'
     hooks:
         - id: ruff-format
-        - id: ruff
+        - id: ruff-check
           args: ["--fix"]
-        - id: ruff
+        - id: ruff-check
           args: ["--select", "I", "--fix"]
