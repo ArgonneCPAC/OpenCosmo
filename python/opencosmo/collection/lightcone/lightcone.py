@@ -41,14 +41,7 @@ from opencosmo.dataset.formats import (
     sum_chunks,
     verify_format,
 )
-from opencosmo.dataset.take import (
-    get_end_take_index,
-    get_random_take_index,
-    get_range_take_index,
-    get_rows_take_index,
-)
 from opencosmo.deprecated import deprecated
-from opencosmo.index import get_range, into_array
 from opencosmo.io import iopen, specs
 from opencosmo.io.index_spec import index_spec_for
 from opencosmo.io.schema import FileEntry, make_schema
@@ -1266,23 +1259,7 @@ class Lightcone(dict):
             or if 'at' is invalid.
 
         """
-        if at == "random":
-            index = get_random_take_index(n, len(self), mode)
-        elif at == "start":
-            index = get_range_take_index(self, self.__state.sort_key, 0, n, mode)
-            if self.__state.sort_key is not None:
-                sort_index = self.__make_sort_index()
-                index = np.sort(sort_index[into_array(index)])
-        elif at == "end":
-            index = get_end_take_index(n, self, self.__state.sort_key, mode)
-            if self.__state.sort_key is not None:
-                sort_index = self.__make_sort_index()
-                index = np.sort(sort_index[into_array(index)])
-        else:
-            raise ValueError(
-                f'"at" should be one of ("start", "end", "random", got {at}'
-            )
-        return self.__take_rows(index)
+        return Lightcone._from_state(lcops.take(self.__state, n, at, mode))
 
     def take_range(
         self, start: int, end: int, mode: Literal["local", "global"] = "local"
@@ -1323,16 +1300,7 @@ class Lightcone(dict):
             or if end is greater than start.
 
         """
-        if start < 0:
-            raise ValueError("Tried to take negative rows!")
-
-        index = get_range_take_index(
-            self, self.__state.sort_key, start, end - start, mode
-        )
-        if self.__state.sort_key is not None:
-            sort_index = self.__make_sort_index()
-            index = np.sort(sort_index[into_array(index)])
-        return self.__take_rows(index)
+        return Lightcone._from_state(lcops.take_range(self.__state, start, end, mode))
 
     def take_rows(self, rows: DataIndex):
         """
@@ -1355,34 +1323,7 @@ class Lightcone(dict):
             lightcone.
 
         """
-        index_range = get_range(rows)
-
-        if index_range[0] < 0 or index_range[1] > len(self):
-            raise ValueError(
-                "Rows must be between 0 and the length of this dataset - 1"
-            )
-        rows = get_rows_take_index(self, rows, self.__state.sort_key)
-        return self.__take_rows(rows)
-
-    def __make_sort_index(self):
-        if self.__state.sort_key is None:
-            return None
-        data = np.concatenate(
-            [
-                ds.select(self.__state.sort_key[0]).get_data("numpy")
-                for ds in self.values()
-            ]
-        )
-        if self.__state.sort_key[1]:
-            data = -data
-        return np.argsort(data)
-
-    def __take_rows(self, rows: DataIndex):
-        """
-        Takes rows from this lightcone while ignoring sort. "rows" is assumed to be sorted.
-        For internal use only.
-        """
-        return Lightcone._from_state(lcops.take_rows_unsorted(self.__state, rows))
+        return Lightcone._from_state(lcops.take_rows(self.__state, rows))
 
     def with_new_columns(
         self,
@@ -1445,10 +1386,9 @@ class Lightcone(dict):
             else:
                 raw[name] = column
 
-        if self.__state.sort_key is not None:
-            sort_index = self.__make_sort_index()
-            sort_index = np.argsort(sort_index)
-            raw = {name: raw_data[sort_index] for name, raw_data in raw.items()}
+        if (sort_index := lcops.get_sort_index(self.__state)) is not None:
+            inverse = np.argsort(sort_index)
+            raw = {name: raw_data[inverse] for name, raw_data in raw.items()}
 
         from opencosmo.collection.lightcone.scope import partition_columns
 

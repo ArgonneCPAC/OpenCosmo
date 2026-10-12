@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import healpy as hp
 import numpy as np
@@ -10,7 +10,13 @@ import numpy as np
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.column import col
 from opencosmo.dataset import operations as dsops
-from opencosmo.index import empty, rebuild_by_ranges
+from opencosmo.dataset.take import (
+    get_end_take_index,
+    get_random_take_index,
+    get_range_take_index,
+    get_rows_take_index,
+)
+from opencosmo.index import empty, get_range, into_array, rebuild_by_ranges
 from opencosmo.spatial.index import project_on_index
 
 if TYPE_CHECKING:
@@ -114,6 +120,53 @@ def pixel_search(
     return __with_leaves(state, tuple(leaves))
 
 
+def take(
+    state: LightconeState, n: int, at: str, mode: Literal["local", "global"]
+) -> LightconeState:
+    if at == "random":
+        return take_rows_unsorted(state, get_random_take_index(n, len(state), mode))
+    elif at == "start":
+        index = get_range_take_index(state, state.sort_key, 0, n, mode)
+    elif at == "end":
+        index = get_end_take_index(n, state, state.sort_key, mode)
+    else:
+        raise ValueError(f'"at" should be one of ("start", "end", "random", got {at}')
+    return take_rows_unsorted(state, __sorted_to_physical(state, index))
+
+
+def take_range(
+    state: LightconeState, start: int, end: int, mode: Literal["local", "global"]
+) -> LightconeState:
+    if start < 0:
+        raise ValueError("Tried to take negative rows!")
+    index = get_range_take_index(state, state.sort_key, start, end - start, mode)
+    return take_rows_unsorted(state, __sorted_to_physical(state, index))
+
+
+def take_rows(state: LightconeState, rows: DataIndex) -> LightconeState:
+    index_range = get_range(rows)
+    if index_range[0] < 0 or index_range[1] > len(state):
+        raise ValueError("Rows must be between 0 and the length of this dataset - 1")
+    rows = get_rows_take_index(state, rows, state.sort_key)
+    return take_rows_unsorted(state, rows)
+
+
+def get_sort_index(state: LightconeState) -> np.ndarray | None:
+    """Physical row positions in sorted order, or None if the lightcone is unsorted."""
+    if state.sort_key is None:
+        return None
+    column, invert = state.sort_key
+    data = np.concatenate(
+        [
+            dsops.get_data(dsops.select(leaf, column), "numpy")
+            for _, leaf in state.leaves
+        ]
+    )
+    if invert:
+        data = -data
+    return np.argsort(data)
+
+
 def take_rows_unsorted(state: LightconeState, rows: DataIndex) -> LightconeState:
     """
     Take rows by physical (stacked, unsorted) position. ``rows`` is assumed to be
@@ -184,3 +237,10 @@ def __prune_empty(leaves: Leaves, keep_all_empty: bool = True) -> Leaves:
     return tuple(
         ((step, *key), leaf) for step, group in kept.items() for key, leaf in group
     )
+
+
+def __sorted_to_physical(state: LightconeState, index: DataIndex) -> DataIndex:
+    sort_index = get_sort_index(state)
+    if sort_index is None:
+        return index
+    return np.sort(sort_index[into_array(index)])
