@@ -217,11 +217,6 @@ def test_sorted_lightcone_objects_align_with_links(lightcone_halo_paths, invert)
     assert n_checked == len(collection)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Per-structure evaluate on a nested path stores the result under the "
-    "dotted key instead of replacing the nested collection",
-)
 def test_evaluate_nested_path_replaces_nested_collection(halo_paths, galaxy_paths):
     collection = oc.open(*halo_paths, *galaxy_paths).take(10)
 
@@ -244,9 +239,6 @@ def _assert_cached_after_objects(collection, dataset_name, column):
     assert cached.get(uuid, {}).get(column) is not None
 
 
-@pytest.mark.xfail(
-    strict=True, reason="with_units drops derived_columns, so objects() skips them"
-)
 def test_derived_columns_survive_with_units(halo_paths):
     collection = oc.open(*halo_paths).with_new_columns(
         "dm_particles", gpe=oc.col("mass") * oc.col("phi")
@@ -257,11 +249,6 @@ def test_derived_columns_survive_with_units(halo_paths):
     _assert_cached_after_objects(collection, "dm_particles", "gpe")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Nested-path with_new_columns drops derived_columns, so objects() "
-    "skips them",
-)
 def test_derived_columns_survive_nested_with_new_columns(halo_paths, galaxy_paths):
     collection = oc.open(*halo_paths, *galaxy_paths).with_new_columns(
         "dm_particles", gpe=oc.col("mass") * oc.col("phi")

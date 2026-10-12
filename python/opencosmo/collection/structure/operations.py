@@ -325,11 +325,8 @@ def with_new_columns(
             mode=mode,
             **new_columns,
         )
-        # Known inconsistency: this drops derived_columns.
         return replace(
-            resolved,
-            linked={**resolved.linked, collection_name: new_nested},
-            derived_columns=frozenset(),
+            resolved, linked={**resolved.linked, collection_name: new_nested}
         )
 
     if dataset == state.dtype:
@@ -393,10 +390,7 @@ def with_units(
         name: __with_child_units(child, convention, dataset_conversions.get(name, {}))
         for name, child in state.linked.items()
     }
-    # Known inconsistency: this drops derived_columns.
-    return replace(
-        state, source=new_source, linked=new_linked, derived_columns=frozenset()
-    )
+    return replace(state, source=new_source, linked=new_linked)
 
 
 def with_datasets(
@@ -534,8 +528,7 @@ def evaluate(
         if not insert:
             return result
         assert isinstance(result, StructureState)
-        # Known inconsistency: a nested path is stored under the dotted key.
-        return replace(resolved, linked={**resolved.linked, dataset: result})
+        return replace(resolved, linked={**resolved.linked, dataset_path[0]: result})
 
     keys = public_keys(state)
     required_datasets = set(signature(func).parameters).intersection(keys)

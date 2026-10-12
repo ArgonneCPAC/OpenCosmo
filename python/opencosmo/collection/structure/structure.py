@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -8,7 +7,6 @@ from typing import (
     Generator,
     Iterable,
     Literal,
-    Mapping,
     Optional,
     cast,
 )
@@ -24,7 +22,6 @@ from opencosmo.dataset.state import DatasetState
 if TYPE_CHECKING:
     import astropy.units as u
 
-    from opencosmo.collection.structure.handler import LinkHandler
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
@@ -68,40 +65,8 @@ class StructureCollection:
     operate on this dataset.
     """
 
-    def __init__(
-        self,
-        source: oc.Dataset | oc.Lightcone,
-        datasets: Mapping[str, oc.Dataset | oc.Lightcone | StructureCollection],
-        hide_source: bool = False,
-        link_handler: Optional[LinkHandler] = None,
-        derived_columns: Optional[set[str]] = None,
-        *,
-        resolve_links: bool = False,
-        **kwargs,
-    ):
-        """
-        Initialize a linked collection with the provided datasets and links.
-        """
-        if link_handler is None:
-            raise ValueError("Structure collections require a link handler")
-
-        state = scst.from_parts(
-            source._state,
-            {name: dataset._state for name, dataset in datasets.items()},
-            link_handler.match_sets,
-            resolve=resolve_links,
-            hide_source=hide_source,
-            derived_columns=frozenset(derived_columns or ()),
-        )
-        if link_handler.derived_from is not None:
-            state = replace(state, linked_source=link_handler.derived_from._state)
+    def __init__(self, state: scst.StructureState):
         self.__state = state
-
-    @classmethod
-    def _from_state(cls, state: scst.StructureState) -> StructureCollection:
-        collection = cls.__new__(cls)
-        collection.__state = state
-        return collection
 
     @property
     def _state(self) -> scst.StructureState:
@@ -111,7 +76,7 @@ class StructureCollection:
     def __with_state(self, state: scst.StructureState) -> StructureCollection:
         if state is self.__state:
             return self
-        return StructureCollection._from_state(state)
+        return StructureCollection(state)
 
     @staticmethod
     def __wrap(
@@ -120,7 +85,7 @@ class StructureCollection:
         if isinstance(child, DatasetState):
             return oc.Dataset(child)
         if isinstance(child, scst.StructureState):
-            return StructureCollection._from_state(child)
+            return StructureCollection(child)
         return lc.Lightcone(child)
 
     def __repr__(self):
@@ -160,7 +125,7 @@ class StructureCollection:
         is_empty_ref: bool = False,
         **kwargs,
     ) -> StructureCollection:
-        return cls._from_state(
+        return cls(
             scops.open_state(
                 targets,
                 ignore_empty,

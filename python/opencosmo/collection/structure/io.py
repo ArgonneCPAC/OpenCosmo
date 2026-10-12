@@ -13,7 +13,7 @@ from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.structure import links
 from opencosmo.collection.structure import state as scst
-from opencosmo.collection.structure.handler import LINK_ALIASES
+from opencosmo.collection.structure.links import LINK_ALIASES
 from opencosmo.collection.structure.state import StructureState
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState

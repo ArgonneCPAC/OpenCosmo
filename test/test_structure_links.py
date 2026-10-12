@@ -77,7 +77,7 @@ def test_take_per_leaf_nested_collection(halo_paths, galaxy_paths):
     taken = links.take_per_leaf(galaxies._state, {(): np.arange(3)})
     assert isinstance(taken, scst.StructureState)
     assert len(taken) == 3
-    assert len(oc.StructureCollection._from_state(taken)) == 3
+    assert len(oc.StructureCollection(taken)) == 3
 
 
 def test_stacked_index_offsets_lightcone_leaves(plain_lightcone):

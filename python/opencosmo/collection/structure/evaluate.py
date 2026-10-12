@@ -145,7 +145,7 @@ def __make_input(structure: Mapping[str, Any], format: str = "astropy"):
                 element, format, unpack=False, wrap_single=True
             )
         elif isinstance(element, StructureState):
-            values[name] = sc.StructureCollection._from_state(element)
+            values[name] = sc.StructureCollection(element)
         elif isinstance(element, LightconeState):
             values[name] = lc.Lightcone(element)
         elif isinstance(element, Quantity) and format != "astropy":
