@@ -34,7 +34,7 @@ def lightcone_children(test_data):
 
 
 def _collection(children):
-    return oc.SimulationCollection(children)
+    return oc.SimulationCollection.from_datasets(children)
 
 
 def test_dataset_children_mapping(multi_path):
@@ -171,3 +171,30 @@ def test_lightcone_children_column_operations(lightcone_children):
         assert set(selected[name].columns) == {"fof_halo_mass", "fof_halo_tag"}
         assert dropped[name].columns == ["fof_halo_mass"]
         assert len(dropped[name]) == len(lightcone_children[name])
+
+
+def test_take_rows_applies_to_every_member(multi_path):
+    collection = oc.open(multi_path)
+    rows = np.array([0, 3, 8, 21], dtype=np.int64)
+
+    result = collection.take_rows(rows)
+
+    for name, child in result.items():
+        expected = collection[name].take_rows(rows)
+        np.testing.assert_array_equal(
+            child.select("fof_halo_tag").get_data("numpy"),
+            expected.select("fof_halo_tag").get_data("numpy"),
+        )
+
+
+def test_take_rows_out_of_range_raises(multi_path):
+    collection = oc.open(multi_path)
+    too_far = max(len(child) for child in collection.values())
+    with pytest.raises(ValueError, match="Row indices must be between"):
+        collection.take_rows(np.array([0, too_far], dtype=np.int64))
+
+
+def test_from_datasets_rejects_unsupported_members(multi_path):
+    dataset = next(iter(oc.open(multi_path).values()))
+    with pytest.raises(ValueError, match="only accepts datasets"):
+        oc.SimulationCollection.from_datasets({"a": dataset, "b": object()})

@@ -295,6 +295,20 @@ def test_matched_take_range_is_driven_by_active_source(source, mapped_paths, tes
     _assert_source_driven_result(original, expected_source, result, source, pairwise)
 
 
+@pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
+def test_matched_take_rows_is_driven_by_active_source(source, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(source)
+    rows = np.array([2, 5, 11, 17, 40], dtype=np.int64)
+    expected_source = matched[source].take_rows(rows)
+
+    result = matched.take_rows(rows)
+
+    _assert_source_driven_result(original, expected_source, result, source, pairwise)
+    assert {len(dataset) for dataset in result.values()} == {len(rows)}
+
+
 def test_matched_filter_is_evaluated_only_on_active_source(mapped_paths, test_data):
     original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
     pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
@@ -593,9 +607,6 @@ def test_column_operation_on_pending_targets(transform, check, mapped_paths, tes
     assert all(check(dataset) for dataset in result.values())
 
 
-@pytest.mark.xfail(
-    reason="with_new_columns maps over targets before realignment", strict=True
-)
 def test_matched_with_new_columns_arrays_on_pending_targets(mapped_paths, test_data):
     pending = (
         _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)

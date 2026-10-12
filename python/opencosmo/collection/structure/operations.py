@@ -9,7 +9,7 @@ operations that need row-aligned children start from the resolved children.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from inspect import signature
 from typing import TYPE_CHECKING, Any
 from warnings import warn
@@ -33,7 +33,7 @@ from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
+    from collections.abc import Callable, Generator, Iterable, Mapping
     from uuid import UUID
 
     import astropy.units as u
@@ -49,62 +49,14 @@ if TYPE_CHECKING:
     Leaves = Mapping[tuple[str, ...], DatasetState | LightconeState]
 
 
-@dataclass(frozen=True)
-class SourceOps:
-    """The dataset or lightcone operations a structure collection forwards."""
-
-    filter: Callable[..., Source]
-    bound: Callable[..., Source]
-    sort_by: Callable[..., Source]
-    take: Callable[..., Source]
-    take_range: Callable[..., Source]
-    take_rows: Callable[..., Source]
-    select: Callable[..., Source]
-    drop: Callable[..., Source]
-    with_new_columns: Callable[..., Source]
-    with_units: Callable[..., Source]
-    get_data: Callable[..., Any]
-    evaluate: Callable[..., Any]
-    rows: Callable[..., Iterator[Mapping[str, Any]]]
-
-
-__DATASET_OPS = SourceOps(
-    filter=dsops.filter,
-    bound=dsops.bound,
-    sort_by=dsops.sort_by,
-    take=dsops.take,
-    take_range=dsops.take_range,
-    take_rows=dsops.take_rows,
-    select=dsops.select,
-    drop=dsops.drop,
-    with_new_columns=dsops.with_new_columns,
-    with_units=dsops.with_units,
-    get_data=dsops.get_data,
-    evaluate=dsops.evaluate,
-    rows=dsops.rows,
-)
-
-__LIGHTCONE_OPS = SourceOps(
-    filter=lcops.filter,
-    bound=lcops.bound,
-    sort_by=lcops.sort_by,
-    take=lcops.take,
-    take_range=lcops.take_range,
-    take_rows=lcops.take_rows,
-    select=lcops.select,
-    drop=lcops.drop,
-    with_new_columns=lcops.with_new_columns,
-    with_units=lcops.with_units,
-    get_data=lcops.get_data,
-    evaluate=lcops.evaluate,
-    rows=lcops.rows,
-)
-
-
-def source_ops(source: Source) -> SourceOps:
+def __source_op(source: Source, name: str) -> Callable[..., Any]:
+    """
+    The operation ``name`` for a dataset or lightcone source. The dataset and
+    lightcone operation modules share operation names and signatures.
+    """
     if isinstance(source, DatasetState):
-        return __DATASET_OPS
-    return __LIGHTCONE_OPS
+        return getattr(dsops, name)
+    return getattr(lcops, name)
 
 
 def require_lightcone(state: StructureState, method: str) -> LightconeState:
@@ -127,19 +79,19 @@ def filter(
     if not masks:
         return state
     if not on_galaxies or state.dtype == "galaxy_properties":
-        new_source = source_ops(state.source).filter(state.source, *masks, mode=mode)
+        new_source = __source_op(state.source, "filter")(
+            state.source, *masks, mode=mode
+        )
         return __with_source_rows(state, new_source)
     if "galaxy_properties" not in state.linked:
         raise ValueError("Dataset galaxy_properties not found in collection.")
 
     galaxies = state.children["galaxy_properties"]
     assert not isinstance(galaxies, StructureState)
-    galaxy_ops = source_ops(galaxies)
-    matching = galaxy_ops.select(
-        galaxy_ops.filter(galaxies, *masks, mode=mode), "fof_halo_tag"
-    )
-    tags = galaxy_ops.get_data(matching, "astropy", True)
-    new_source = source_ops(state.source).filter(
+    filtered = __source_op(galaxies, "filter")(galaxies, *masks, mode=mode)
+    matching = __source_op(galaxies, "select")(filtered, "fof_halo_tag")
+    tags = __source_op(galaxies, "get_data")(matching, "astropy", True)
+    new_source = __source_op(state.source, "filter")(
         state.source, col("fof_halo_tag").isin(tags)
     )
     return __with_source_rows(state, new_source)
@@ -148,29 +100,29 @@ def filter(
 def bound(
     state: StructureState, region: Region, select_by: str | None = None
 ) -> StructureState:
-    new_source = source_ops(state.source).bound(state.source, region, select_by)
+    new_source = __source_op(state.source, "bound")(state.source, region, select_by)
     return __with_source_rows(state, new_source)
 
 
 def sort_by(state: StructureState, column: str, invert: bool = False) -> StructureState:
-    new_source = source_ops(state.source).sort_by(state.source, column, invert)
+    new_source = __source_op(state.source, "sort_by")(state.source, column, invert)
     return __with_source_rows(state, new_source)
 
 
 def take(state: StructureState, n: int, at: str, mode: str) -> StructureState:
-    new_source = source_ops(state.source).take(state.source, n, at, mode)
+    new_source = __source_op(state.source, "take")(state.source, n, at, mode)
     return __with_source_rows(state, new_source)
 
 
 def take_range(
     state: StructureState, start: int, end: int, mode: str
 ) -> StructureState:
-    new_source = source_ops(state.source).take_range(state.source, start, end, mode)
+    new_source = __source_op(state.source, "take_range")(state.source, start, end, mode)
     return __with_source_rows(state, new_source)
 
 
 def take_rows(state: StructureState, rows: DataIndex) -> StructureState:
-    new_source = source_ops(state.source).take_rows(state.source, rows)
+    new_source = __source_op(state.source, "take_rows")(state.source, rows)
     return __with_source_rows(state, new_source)
 
 
@@ -234,7 +186,7 @@ def select(
             )
 
         if dataset == state.dtype:
-            new_source = source_ops(state.source).select(
+            new_source = __source_op(state.source, "select")(
                 state.source, arg, mode=mode, **kwargs
             )
             continue
@@ -249,7 +201,7 @@ def select(
                 )
             new_linked[dataset] = select(child, mode=mode, **arg)
         else:
-            new_linked[dataset] = source_ops(child).select(
+            new_linked[dataset] = __source_op(child, "select")(
                 child, arg, mode=mode, **kwargs
             )
 
@@ -278,7 +230,7 @@ def drop(
     new_linked: dict[str, StructureChild] = {}
     for dataset, columns in columns_to_drop.items():
         if dataset == state.dtype:
-            new_source = source_ops(state.source).drop(state.source, columns)
+            new_source = __source_op(state.source, "drop")(state.source, columns)
             continue
         elif dataset not in state.linked:
             raise ValueError(f"Dataset {dataset} not found in collection.")
@@ -291,7 +243,7 @@ def drop(
                 )
             new_linked[dataset] = drop(child, **columns)
         else:
-            new_linked[dataset] = source_ops(child).drop(child, columns)
+            new_linked[dataset] = __source_op(child, "drop")(child, columns)
 
     return replace(state, source=new_source, linked={**state.linked, **new_linked})
 
@@ -330,7 +282,7 @@ def with_new_columns(
         )
 
     if dataset == state.dtype:
-        new_source = source_ops(state.source).with_new_columns(
+        new_source = __source_op(state.source, "with_new_columns")(
             state.source, descriptions, allow_overwrite, mode=mode, **new_columns
         )
         return replace(state, source=new_source)
@@ -443,7 +395,7 @@ def iter_objects(
         collected.setdefault(dataset, {})[name] = []
 
     try:
-        rows = source_ops(state.source).rows(state.source)
+        rows = __source_op(state.source, "rows")(state.source)
         for i, row in enumerate(rows):
             output: dict[str, StructureChild | dict[str, Any]] = {}
             for name, (values, is_chunked) in slots.items():
@@ -544,7 +496,7 @@ def evaluate(
         resolved = __resolved(state)
         child = view(resolved, dataset)
         assert not isinstance(child, StructureState)
-        result = source_ops(child).evaluate(
+        result = __source_op(child, "evaluate")(
             child,
             func,
             insert=insert,
@@ -596,7 +548,7 @@ def evaluate_on_dataset(
     **evaluate_kwargs: Any,
 ) -> StructureState | dict[str, Any] | None:
     if dataset is None or dataset == state.dtype:
-        result = source_ops(state.source).evaluate(
+        result = __source_op(state.source, "evaluate")(
             state.source,
             func,
             vectorize=vectorize,
@@ -620,7 +572,7 @@ def evaluate_on_dataset(
             raise ValueError(
                 f"Recieved {dataset} as the dataset argument but {path[0]} is a dataset, not a collection!"
             )
-        result = source_ops(child).evaluate(
+        result = __source_op(child, "evaluate")(
             child,
             func,
             vectorize=vectorize,
@@ -755,7 +707,7 @@ def __with_source_units(
 ) -> Source:
     column_conversions = dict(conversions)
     unit_conversions = column_conversions.pop("conversions", {})
-    return source_ops(source).with_units(
+    return __source_op(source, "with_units")(
         source, convention, unit_conversions, **column_conversions
     )
 
@@ -774,7 +726,7 @@ def __resolved(state: StructureState) -> StructureState:
 def __take_range(child: StructureChild, start: int, end: int) -> StructureChild:
     if isinstance(child, StructureState):
         return take_range(child, start, end, "local")
-    return source_ops(child).take_range(child, start, end, "local")
+    return __source_op(child, "take_range")(child, start, end, "local")
 
 
 def __cache_collected(

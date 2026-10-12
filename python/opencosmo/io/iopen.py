@@ -357,7 +357,7 @@ def open_files(
     if len(children) == 1 and match_set is None:
         return next(iter(children.values()))
 
-    return occ.SimulationCollection(children, match_set=match_set)
+    return occ.SimulationCollection.from_datasets(children, match_set=match_set)
 
 
 def _resolve_match_set(

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset.dataset import OpenCosmoData
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.mapping.mapping import DatasetMatchSet
@@ -37,11 +38,38 @@ class SimulationCollection:
     all of them.
     """
 
-    def __init__(
-        self,
+    def __init__(self, state: simst.SimulationState):
+        self.__state = state
+
+    @classmethod
+    def from_datasets(
+        cls,
         datasets: Mapping[str, Dataset | lc.Lightcone | Collection],
         match_set: DatasetMatchSet | None = None,
-    ):
+    ) -> SimulationCollection:
+        """
+        Create a simulation collection from datasets, lightcones, or structure
+        collections drawn from different simulations.
+
+        Parameters
+        ----------
+        datasets: Mapping[str, Dataset | Lightcone | StructureCollection]
+            The members of the collection, keyed by simulation name.
+
+        match_set: DatasetMatchSet, optional
+            Row matching between the datasets. Only supported when every member
+            is a :py:class:`Dataset <opencosmo.Dataset>`.
+
+        Returns
+        -------
+        collection: opencosmo.SimulationCollection
+
+        Raises
+        ------
+        ValueError
+            If a member is not a dataset, lightcone, or structure collection, or
+            a match set is given for members that are not all datasets.
+        """
         members: dict[str, SimulationChild] = {}
         for name, value in datasets.items():
             if not isinstance(value, (Dataset, lc.Lightcone, sc.StructureCollection)):
@@ -50,13 +78,7 @@ class SimulationCollection:
                     "and structure collections"
                 )
             members[name] = value._state
-        self.__state = simst.from_parts(members, match_set)
-
-    @classmethod
-    def _from_state(cls, state: simst.SimulationState) -> SimulationCollection:
-        collection = cls.__new__(cls)
-        collection.__state = state
-        return collection
+        return cls(simst.from_parts(members, match_set))
 
     @property
     def _state(self) -> simst.SimulationState:
@@ -66,7 +88,7 @@ class SimulationCollection:
     def __with_state(self, state: simst.SimulationState) -> SimulationCollection:
         if state is self.__state:
             return self
-        return SimulationCollection._from_state(state)
+        return SimulationCollection(state)
 
     @staticmethod
     def __wrap(child: SimulationChild) -> UserChild:
@@ -416,6 +438,34 @@ class SimulationCollection:
 
         """
         return self.__with_state(simops.take_range(self.__state, start, end, mode))
+
+    def take_rows(self, rows: np.ndarray | DataIndex) -> SimulationCollection:
+        """
+        Take the rows specified by :code:`rows` from all datasets or collections
+        in this collection. :code:`rows` should be an array of integers, and is
+        applied to every member.
+
+        If this collection has been matched with :py:meth:`SimulationCollection.match <opencosmo.SimulationCollection.match>`,
+        the rows are taken only from the dataset matched against, with all matching rows retained
+        in the remaining datasets.
+
+        Parameters
+        ----------
+        rows: np.ndarray[int]
+            The rows to take
+
+        Returns
+        -------
+        SimulationCollection
+            The new simulation collection with only the specified rows.
+
+        Raises
+        ------
+        ValueError
+            If any of the indices is less than 0 or greater than the length of a
+            dataset.
+        """
+        return self.__with_state(simops.take_rows(self.__state, rows))
 
     def with_new_columns(
         self,

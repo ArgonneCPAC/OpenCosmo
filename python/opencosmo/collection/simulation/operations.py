@@ -9,7 +9,7 @@ matching only reads raw row indices.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
@@ -36,80 +36,22 @@ if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
-    Selector = Callable[["ChildOps"], Callable[..., Any]]
 
-
-@dataclass(frozen=True)
-class ChildOps:
-    """The operations a simulation collection maps over its members."""
-
-    filter: Callable[..., SimulationChild]
-    bound: Callable[..., SimulationChild]
-    sort_by: Callable[..., SimulationChild]
-    take: Callable[..., SimulationChild]
-    take_range: Callable[..., SimulationChild]
-    select: Callable[..., SimulationChild]
-    drop: Callable[..., SimulationChild]
-    with_new_columns: Callable[..., SimulationChild]
-    with_units: Callable[..., SimulationChild]
-    evaluate: Callable[..., Any]
-    get_data: Callable[..., Any] | None
-
-
-__DATASET_OPS = ChildOps(
-    filter=dsops.filter,
-    bound=dsops.bound,
-    sort_by=dsops.sort_by,
-    take=dsops.take,
-    take_range=dsops.take_range,
-    select=dsops.select,
-    drop=dsops.drop,
-    with_new_columns=dsops.with_new_columns,
-    with_units=dsops.with_units,
-    evaluate=dsops.evaluate,
-    get_data=dsops.get_data,
-)
-
-__LIGHTCONE_OPS = ChildOps(
-    filter=lcops.filter,
-    bound=lcops.bound,
-    sort_by=lcops.sort_by,
-    take=lcops.take,
-    take_range=lcops.take_range,
-    select=lcops.select,
-    drop=lcops.drop,
-    with_new_columns=lcops.with_new_columns,
-    with_units=lcops.with_units,
-    evaluate=lcops.evaluate,
-    get_data=lcops.get_data,
-)
-
-__STRUCTURE_OPS = ChildOps(
-    filter=scops.filter,
-    bound=scops.bound,
-    sort_by=scops.sort_by,
-    take=scops.take,
-    take_range=scops.take_range,
-    select=scops.select,
-    drop=scops.drop,
-    with_new_columns=scops.with_new_columns,
-    with_units=scops.with_units,
-    evaluate=scops.evaluate,
-    get_data=None,
-)
-
-
-def __child_ops(child: SimulationChild) -> ChildOps:
+def __child_op(child: SimulationChild, name: str) -> Callable[..., Any]:
+    """
+    The operation ``name`` for ``child``. The dataset, lightcone, and structure
+    operation modules share operation names and signatures.
+    """
     if isinstance(child, DatasetState):
-        return __DATASET_OPS
+        return getattr(dsops, name)
     if isinstance(child, LightconeState):
-        return __LIGHTCONE_OPS
-    return __STRUCTURE_OPS
+        return getattr(lcops, name)
+    return getattr(scops, name)
 
 
-def map_children(
+def __map_children(
     state: SimulationState,
-    op: Selector,
+    op: str,
     *args: Any,
     datasets: str | Iterable[str] | None = None,
     **kwargs: Any,
@@ -132,7 +74,7 @@ def map_children(
         if name not in requested:
             continue
         child_kwargs = {key: value[name] for key, value in mapped_kwargs.items()}
-        output[name] = op(__child_ops(child))(
+        output[name] = __child_op(child, op)(
             child, *args, **regular_kwargs, **child_kwargs
         )
     return output
@@ -147,35 +89,31 @@ def filter(
     datasets: str | Iterable[str] | None = None,
     **kwargs: Any,
 ) -> SimulationState:
-    return __row_operation(
-        state, "filter", lambda ops: ops.filter, datasets, *masks, **kwargs
-    )
+    return __row_operation(state, "filter", datasets, *masks, **kwargs)
 
 
 def bound(
     state: SimulationState, region: Region, select_by: str | None = None
 ) -> SimulationState:
-    return __row_operation(
-        state, "bound", lambda ops: ops.bound, None, region, select_by
-    )
+    return __row_operation(state, "bound", None, region, select_by)
 
 
 def sort_by(state: SimulationState, column: str, invert: bool) -> SimulationState:
-    return __row_operation(
-        state, "sort_by", lambda ops: ops.sort_by, None, column, invert
-    )
+    return __row_operation(state, "sort_by", None, column, invert)
 
 
 def take(state: SimulationState, n: int, at: str, mode: str) -> SimulationState:
-    return __row_operation(state, "take", lambda ops: ops.take, None, n, at, mode)
+    return __row_operation(state, "take", None, n, at, mode)
 
 
 def take_range(
     state: SimulationState, start: int, end: int, mode: str
 ) -> SimulationState:
-    return __row_operation(
-        state, "take_range", lambda ops: ops.take_range, None, start, end, mode
-    )
+    return __row_operation(state, "take_range", None, start, end, mode)
+
+
+def take_rows(state: SimulationState, rows: DataIndex) -> SimulationState:
+    return __row_operation(state, "take_rows", None, rows)
 
 
 # Column operations
@@ -186,7 +124,7 @@ def select(
 ) -> SimulationState:
     datasets = __multi_dataset_members(state)
     if datasets is None:
-        return __map(state, lambda ops: ops.select, *args, **kwargs)
+        return __map(state, "select", *args, **kwargs)
     return replace(state, members=do_multi_dataset_selections(datasets, args, kwargs))
 
 
@@ -195,13 +133,13 @@ def drop(
 ) -> SimulationState:
     datasets = __multi_dataset_members(state)
     if datasets is None:
-        return __map(state, lambda ops: ops.drop, *args, **kwargs)
+        return __map(state, "drop", *args, **kwargs)
 
     output = do_multi_dataset_drops(datasets, args)
     for name, columns in kwargs.items():
         if name not in output:
             raise ValueError(f"Dataset {name} not found in collection.")
-        output[name] = __child_ops(output[name]).drop(output[name], columns)
+        output[name] = __child_op(output[name], "drop")(output[name], columns)
     return replace(state, members=output)
 
 
@@ -213,9 +151,10 @@ def with_new_columns(
     allow_overwrite: bool = False,
     **new_columns: ConstructedColumn | np.ndarray,
 ) -> SimulationState:
+    # New columns may be arrays sized to the realigned rows.
     return __map(
-        state,
-        lambda ops: ops.with_new_columns,
+        __resolved(state),
+        "with_new_columns",
         *args,
         datasets=datasets,
         descriptions=descriptions,
@@ -232,7 +171,7 @@ def with_units(
 ) -> SimulationState:
     return __map(
         state,
-        lambda ops: ops.with_units,
+        "with_units",
         convention,
         conversions=conversions,
         **columns,
@@ -258,9 +197,9 @@ def evaluate(
     keyed by member name.
     """
     state = __resolved(state)
-    results = map_children(
+    results = __map_children(
         state,
-        lambda ops: ops.evaluate,
+        "evaluate",
         func,
         datasets=datasets,
         vectorize=vectorize,
@@ -277,16 +216,14 @@ def evaluate(
 def get_data(
     state: SimulationState, format: str, unpack: bool, wrap_single: bool
 ) -> dict[str, Any]:
-    if any(__child_ops(child).get_data is None for child in state.members.values()):
+    if __multi_dataset_members(state) is None:
         raise TypeError(
             "get_data is only supported when this collection contains datasets!"
         )
-    output = {}
-    for name, child in __resolved(state).members.items():
-        child_get_data = __child_ops(child).get_data
-        assert child_get_data is not None
-        output[name] = child_get_data(child, format, unpack, wrap_single)
-    return output
+    return {
+        name: __child_op(child, "get_data")(child, format, unpack, wrap_single)
+        for name, child in __resolved(state).members.items()
+    }
 
 
 # Matching and writing
@@ -341,8 +278,7 @@ def make_schema(state: SimulationState, path: str) -> Schema:
 
 def __row_operation(
     state: SimulationState,
-    method: str,
-    op: Selector,
+    op: str,
     datasets: str | Iterable[str] | None,
     *args: Any,
     **kwargs: Any,
@@ -358,18 +294,18 @@ def __row_operation(
         datasets = [datasets]
     if datasets is not None and tuple(datasets) != (source,):
         raise ValueError(
-            f"When working with a matched collection, {method} can only be called on the active source. Got datasets = {datasets}"
+            f"When working with a matched collection, {op} can only be called on the active source. Got datasets = {datasets}"
         )
-    new_source = op(__child_ops(state.members[source]))(
+    new_source = __child_op(state.members[source], op)(
         state.members[source], *args, **kwargs
     )
     return replace(state, members={**state.members, source: new_source}, aligned=False)
 
 
 def __map(
-    state: SimulationState, op: Selector, *args: Any, **kwargs: Any
+    state: SimulationState, op: str, *args: Any, **kwargs: Any
 ) -> SimulationState:
-    output = map_children(state, op, *args, **kwargs)
+    output = __map_children(state, op, *args, **kwargs)
     return replace(state, members={**state.members, **output})
 
 
