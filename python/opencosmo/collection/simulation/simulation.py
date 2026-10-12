@@ -7,15 +7,14 @@ from uuid import UUID
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.simulation import matching
+from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
 from opencosmo.collection.simulation.io import (
     resort_simulation_collection,
 )
 from opencosmo.collection.structure import structure as sc
 from opencosmo.collection.structure.state import StructureState
-from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import Dataset
-from opencosmo.dataset import operations as dsops
 from opencosmo.dataset import state as st
 from opencosmo.dataset.state import DatasetState
 from opencosmo.io.schema import FileEntry, make_schema
@@ -89,12 +88,6 @@ class SimulationCollection:
         if isinstance(child, StructureState):
             return sc.StructureCollection(child)
         return lc.Lightcone(child)
-
-    @staticmethod
-    def __unwrap(value: object) -> object:
-        if isinstance(value, (Dataset, lc.Lightcone, sc.StructureCollection)):
-            return value._state
-        return value
 
     def __getattr__(self, key: str):
         if key == "_SimulationCollection__state":
@@ -180,97 +173,6 @@ class SimulationCollection:
             children=children,
         )
         return resort_simulation_collection(schema)
-
-    def __map(
-        self,
-        method,
-        *args,
-        construct=True,
-        datasets: Optional[str | Iterable[str]] = None,
-        **kwargs,
-    ):
-        """
-        This type of collection will only ever be constructed if all the underlying
-        datasets have the same data type.
-        """
-        state = self.__state
-        if isinstance(datasets, str):
-            datasets = [datasets]
-        if state.match_source is not None and method in (
-            "take",
-            "take_range",
-            "take_rows",
-            "filter",
-            "bound",
-            "sort_by",
-        ):
-            # datasets=None means "all datasets", which for a matched collection
-            # resolves to the active source. Any explicit request must name that
-            # source and nothing else.
-            if datasets is not None and tuple(datasets) != (state.match_source,):
-                raise ValueError(
-                    f"When working with a matched collection, {method} can only be called on the active source. Got datasets = {datasets}"
-                )
-
-            method_impl = getattr(dsops, method)
-            new_source = method_impl(state.members[state.match_source], *args, **kwargs)
-            return self.__with_state(
-                replace(
-                    state,
-                    members={**state.members, state.match_source: new_source},
-                    aligned=False,
-                )
-            )
-
-        requested_datasets = set(self.keys() if datasets is None else datasets)
-        if not requested_datasets.issubset(self.keys()):
-            raise ValueError(
-                f"Unknown datasets {requested_datasets.difference(self.keys())}"
-            )
-
-        regular_kwargs = {}
-        mapped_kwargs = {}
-        for name, value in kwargs.items():
-            if isinstance(value, dict) and set(value.keys()) == requested_datasets:
-                mapped_kwargs[name] = value
-            else:
-                regular_kwargs[name] = value
-
-        output = {}
-        for name in (key for key in self.keys() if key in requested_datasets):
-            output[name] = self.__dispatch_dataset_operation(
-                state.members[name],
-                method,
-                *args,
-                dataset_mapped_kwargs={
-                    key: kw[name] for key, kw in mapped_kwargs.items()
-                },
-                regular_kwargs=regular_kwargs,
-            )
-        if construct:
-            return self.__with_state(
-                replace(state, members={**state.members, **output})
-            )
-        return output
-
-    def __dispatch_dataset_operation(
-        self,
-        target: SimulationChild,
-        method: str,
-        *args,
-        dataset_mapped_kwargs: dict[str, object],
-        regular_kwargs: dict[str, object],
-    ):
-        """Private dispatcher for operations on DatasetState vs nested Collections."""
-        if isinstance(target, DatasetState):
-            # Route DatasetState operations through the shared state operation layer.
-            fn = getattr(dsops, method)
-            return fn(target, *args, **regular_kwargs, **dataset_mapped_kwargs)
-        # Higher-level collections already implement the operation.
-        result = getattr(self.__wrap(target), method)(
-            *args, **regular_kwargs, **dataset_mapped_kwargs
-        )
-        return self.__unwrap(result)
 
     @property
     def dtype(self) -> dict[str, str]:
@@ -444,7 +346,7 @@ class SimulationCollection:
             The portion of each dataset inside the selected region
 
         """
-        return self.__map("bound", region, select_by)
+        return self.__with_state(simops.bound(self.__state, region, select_by))
 
     def filter(self, *masks: ColumnMask, **kwargs) -> SimulationCollection:
         """
@@ -469,7 +371,7 @@ class SimulationCollection:
             A new collection with the same datasets, but only the
             particles that pass the filter.
         """
-        return self.__map("filter", *masks, **kwargs)
+        return self.__with_state(simops.filter(self.__state, *masks, **kwargs))
 
     def select(self, *args, **kwargs) -> SimulationCollection:
         """
@@ -501,13 +403,7 @@ class SimulationCollection:
             A new collection with only the specified columns
 
         """
-        state = self.__state
-        if not all(isinstance(child, DatasetState) for child in state.members.values()):
-            return self.__map("select", *args, **kwargs)
-
-        datasets = cast("dict[str, DatasetState]", state.members)
-        output = do_multi_dataset_selections(datasets, args, kwargs)
-        return self.__with_state(replace(state, members=output))
+        return self.__with_state(simops.select(self.__state, *args, **kwargs))
 
     def drop(self, *args, **kwargs) -> SimulationCollection:
         """
@@ -534,17 +430,7 @@ class SimulationCollection:
             Explicit dataset-keyed drop selections.
 
         """
-        state = self.__state
-        if not all(isinstance(child, DatasetState) for child in state.members.values()):
-            return self.__map("drop", *args, **kwargs)
-
-        datasets = cast("dict[str, DatasetState]", state.members)
-        output = do_multi_dataset_drops(datasets, args)
-        for dataset_name, columns in kwargs.items():
-            if dataset_name not in self:
-                raise ValueError(f"Dataset {dataset_name} not found in collection.")
-            output[dataset_name] = dsops.drop(output[dataset_name], columns)
-        return self.__with_state(replace(state, members=output))
+        return self.__with_state(simops.drop(self.__state, *args, **kwargs))
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
@@ -569,7 +455,7 @@ class SimulationCollection:
             The method to use to take rows. Must be one of "start", "end", "random".
 
         """
-        return self.__map("take", n, at, mode=mode)
+        return self.__with_state(simops.take(self.__state, n, at, mode))
 
     def take_range(
         self, start: int, end: int, mode: Literal["local", "global"] = "local"
@@ -596,7 +482,7 @@ class SimulationCollection:
             The new simulation collection with only the specified rows.
 
         """
-        return self.__map("take_range", start, end, mode=mode)
+        return self.__with_state(simops.take_range(self.__state, start, end, mode))
 
     def with_new_columns(
         self,
@@ -633,13 +519,15 @@ class SimulationCollection:
         ** columns : opencosmo.Column | np.ndarray | units.Quantity
             The new columns
         """
-        return self.__map(
-            "with_new_columns",
-            *args,
-            descriptions=descriptions,
-            datasets=datasets,
-            allow_overwrite=allow_overwrite,
-            **new_columns,
+        return self.__with_state(
+            simops.with_new_columns(
+                self.__state,
+                *args,
+                datasets=datasets,
+                descriptions=descriptions,
+                allow_overwrite=allow_overwrite,
+                **new_columns,
+            )
         )
 
     def evaluate(
@@ -687,19 +575,24 @@ class SimulationCollection:
         results: SimulationCollection | dict[str, np.ndarray] | dict[str, astropy.units.Quantity]
             The results of the computation, or a new simulation collection with the results inserted.
         """
-        results = self.__resolved().__map(
-            "evaluate",
+        state = self.__resolved()._state
+        results = simops.map_children(
+            state,
+            lambda ops: ops.evaluate,
             func,
+            datasets=datasets,
             vectorize=vectorize,
             insert=insert,
             format=format,
             allow_overwrite=allow_overwrite,
-            construct=insert,
-            datasets=datasets,
             **evaluate_kwargs,
         )
         if next(iter(results.values())) is None:
             return
+        if insert:
+            return self.__with_state(
+                replace(state, members={**state.members, **results})
+            )
         return results
 
     def sort_by(self, column: str, invert: bool = False):
@@ -723,7 +616,7 @@ class SimulationCollection:
             A new SimulationCollection with the datasets ordered by the given column.
 
         """
-        return self.__map("sort_by", column=column, invert=invert)
+        return self.__with_state(simops.sort_by(self.__state, column, invert))
 
     def with_units(
         self,
@@ -757,4 +650,6 @@ class SimulationCollection:
 
 
         """
-        return self.__map("with_units", convention, conversions=conversions, **columns)
+        return self.__with_state(
+            simops.with_units(self.__state, convention, conversions, **columns)
+        )

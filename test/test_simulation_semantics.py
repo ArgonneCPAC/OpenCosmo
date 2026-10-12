@@ -158,3 +158,16 @@ def test_lightcone_children(lightcone_children):
 def test_context_manager_with_structure_children(structure_collection):
     with structure_collection as collection:
         assert len(collection) == 2
+
+
+def test_lightcone_children_column_operations(lightcone_children):
+    collection = _collection(lightcone_children)
+
+    selected = collection.select("fof_halo_mass", "fof_halo_tag")
+    dropped = selected.drop("fof_halo_tag")
+
+    for name in collection.keys():
+        assert isinstance(selected[name], oc.Lightcone)
+        assert set(selected[name].columns) == {"fof_halo_mass", "fof_halo_tag"}
+        assert dropped[name].columns == ["fof_halo_mass"]
+        assert len(dropped[name]) == len(lightcone_children[name])
