@@ -5,17 +5,10 @@ from typing import TYPE_CHECKING
 import healpy as hp
 import numpy as np
 
-from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.lightcone.state import header_z_range
 from opencosmo.spatial.index import get_partitions_with_data
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from astropy.table import Table
-
     from opencosmo.collection.lightcone.state import LightconeState
-    from opencosmo.dataset import dataset as ds
 
 
 def get_required_columns(columns: set[str], dtype: str) -> set[str]:
@@ -46,54 +39,6 @@ def get_required_columns(columns: set[str], dtype: str) -> set[str]:
         required.update({"theta", "phi"})
 
     return required
-
-
-def get_redshift_range(datasets: Sequence[ds.Dataset | lc.Lightcone]):
-    redshift_ranges = list(map(get_single_redshift_range, datasets))
-    min_z = min(rr[0] for rr in redshift_ranges)
-    max_z = max(rr[1] for rr in redshift_ranges)
-
-    return (min_z, max_z)
-
-
-def get_single_redshift_range(dataset: ds.Dataset | lc.Lightcone):
-    if isinstance(dataset, lc.Lightcone):
-        return dataset.z_range
-    return header_z_range(dataset.header)
-
-
-def sort_table(table: Table, column: str, invert: bool):
-    column_data = table[column]
-    if invert:
-        column_data = -column_data
-    indices = np.argsort(column_data)
-    for name in table.columns:
-        table[name] = table[name][indices]
-    return table
-
-
-def take_from_sorted(
-    lightcone: lc.Lightcone, sort_by: str, invert: bool, n: int, at: str | int
-):
-    column = np.concatenate(
-        [ds.select(sort_by).get_data("numpy") for ds in lightcone.values()]
-    )
-    if invert:
-        column = -column
-    sort_index = np.argsort(column)
-    if at == "start":
-        sort_index = sort_index[:n]
-    elif at == "end":
-        sort_index = sort_index[-n:]
-    elif isinstance(at, int):
-        if at + n > len(sort_index) or at < 0:
-            raise ValueError(
-                "Requested a range that is outside the size of this dataset!"
-            )
-        sort_index = sort_index[at : at + n]
-
-    sorted_indices = np.sort(sort_index)
-    return sorted_indices
 
 
 def determine_max_level(state: LightconeState) -> int | None:

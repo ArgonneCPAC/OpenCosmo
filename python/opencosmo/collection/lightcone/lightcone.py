@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,18 +12,14 @@ import numpy as np
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
-from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.healpix_map import HealpixMap
-from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.dataset import Dataset
 from opencosmo.deprecated import deprecated
 from opencosmo.io import iopen, specs
 from opencosmo.io.index_spec import index_spec_for
-from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import (
     HookPoint,
     LightconeOpenCtx,
@@ -524,60 +519,7 @@ class Lightcone(dict):
     def make_schema(
         self, path: str, _min_size=100_000, no_stack: bool = False
     ) -> Schema:
-        from opencosmo.mpi import get_all_keys
-
-        datasets = lcio.order_by_redshift_range(self)
-        for key in datasets:
-            if isinstance(datasets[key], Lightcone):
-                datasets[key] = dict(datasets[key])
-        output_datasets = lcio.combine_adjacent_datasets(
-            datasets, min_dataset_size=_min_size, no_stack=no_stack
-        )
-        children = {}
-
-        # Use get_all_keys to iterate over the union of steps across all ranks
-        # This ensures every rank calls stack_lightcone_datasets_in_schema the same
-        # number of times in the same order, preventing MPI deadlock
-        all_steps = get_all_keys(output_datasets, get_comm_world())
-
-        for step in all_steps:
-            datasets = output_datasets.get(step, {})
-            if len(datasets) == 0:
-                # This rank has no data for this step, but every rank must still
-                # enter the collectives inside stack_lightcone_datasets_in_schema
-                # (get_all_keys / get_stacked_lightcone_order / sync_headers) in
-                # lockstep, or cross-rank collectives mispair across steps.
-                stack_lightcone_datasets_in_schema(
-                    datasets, "/".join([path, str(step)]), None, no_stack
-                )
-                continue
-
-            all_datasets = list(chain(*tuple(lst for lst in datasets.values())))
-            header_zrange = lcutils.get_redshift_range(all_datasets)
-            my_zrange = self.z_range
-            zrange = (
-                max(header_zrange[0], my_zrange[0]),
-                min(header_zrange[1], my_zrange[1]),
-            )
-
-            child_schemas = stack_lightcone_datasets_in_schema(
-                datasets, "/".join([path, str(step)]), zrange, no_stack
-            )
-            child_schemas = {
-                f"{step}_{name}": schema for name, schema in child_schemas.items()
-            }
-            children.update(child_schemas)
-
-        comm = get_comm_world()
-        rank = 0 if comm is None else comm.Get_rank()
-        if self.__state.maps is not None:
-            healpix_schema = self.__state.maps.make_schema(
-                "/".join([path, "healpix_maps"])
-            )
-            if rank == 0:
-                children["healpix_maps"] = healpix_schema
-        name = path.split("/")[-1]
-        return make_schema(name, FileEntry.LIGHTCONE, children=children)
+        return lcops.make_schema(self.__state, path, _min_size, no_stack)
 
     def bound(self, region: Region, select_by: str | None = None):
         """

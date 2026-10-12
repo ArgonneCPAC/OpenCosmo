@@ -9,10 +9,12 @@ import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
 
+from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.scope import partition_columns
+from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
 from opencosmo.column import col
 from opencosmo.column.column import (
     Column,
@@ -40,6 +42,9 @@ from opencosmo.dataset.take import (
     get_rows_take_index,
 )
 from opencosmo.index import empty, get_range, into_array, rebuild_by_ranges
+from opencosmo.io.schema import FileEntry
+from opencosmo.io.schema import make_schema as make_collection_schema
+from opencosmo.mpi import get_all_keys, get_comm_world
 from opencosmo.plugins.contexts import (
     HookPoint,
     LightconeInstantiateCtx,
@@ -63,6 +68,7 @@ if TYPE_CHECKING:
     )
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
     Leaves = tuple[tuple[LeafKey, DatasetState], ...]
@@ -507,6 +513,56 @@ def take_rows_unsorted(state: LightconeState, rows: DataIndex) -> LightconeState
         for (key, leaf), index in zip(state.leaves, projected)
     )
     return __with_leaves(state, __prune_empty(leaves, keep_all_empty=False))
+
+
+def make_schema(
+    state: LightconeState, path: str, min_size: int, no_stack: bool
+) -> Schema:
+    output_datasets = lcio.combine_adjacent_datasets(
+        lcio.order_by_redshift_range(state.leaves),
+        min_dataset_size=min_size,
+        no_stack=no_stack,
+    )
+    children = {}
+
+    # Use get_all_keys to iterate over the union of steps across all ranks
+    # This ensures every rank calls stack_lightcone_datasets_in_schema the same
+    # number of times in the same order, preventing MPI deadlock
+    all_steps = get_all_keys(output_datasets, get_comm_world())
+
+    for step in all_steps:
+        datasets = output_datasets.get(step, {})
+        if len(datasets) == 0:
+            # This rank has no data for this step, but every rank must still
+            # enter the collectives inside stack_lightcone_datasets_in_schema
+            # (get_all_keys / get_stacked_lightcone_order / sync_headers) in
+            # lockstep, or cross-rank collectives mispair across steps.
+            stack_lightcone_datasets_in_schema(
+                datasets, "/".join([path, str(step)]), None, no_stack
+            )
+            continue
+
+        header_zrange = lcst.redshift_range(chain.from_iterable(datasets.values()))
+        zrange = (
+            max(header_zrange[0], state.z_range[0]),
+            min(header_zrange[1], state.z_range[1]),
+        )
+
+        child_schemas = stack_lightcone_datasets_in_schema(
+            datasets, "/".join([path, str(step)]), zrange, no_stack
+        )
+        children.update(
+            {f"{step}_{name}": schema for name, schema in child_schemas.items()}
+        )
+
+    comm = get_comm_world()
+    rank = 0 if comm is None else comm.Get_rank()
+    if state.maps is not None:
+        healpix_schema = state.maps.make_schema("/".join([path, "healpix_maps"]))
+        if rank == 0:
+            children["healpix_maps"] = healpix_schema
+    name = path.split("/")[-1]
+    return make_collection_schema(name, FileEntry.LIGHTCONE, children=children)
 
 
 def __scalar_evaluator(

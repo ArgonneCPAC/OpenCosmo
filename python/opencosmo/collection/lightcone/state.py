@@ -87,11 +87,7 @@ def from_leaves(
         raise ValueError("Not all lightcone datasets have the same columns!")
 
     if z_range is None:
-        leaf_ranges = [header_z_range(leaf.header) for _, leaf in leaves]
-        z_range = (
-            min(zr[0] for zr in leaf_ranges),
-            max(zr[1] for zr in leaf_ranges),
-        )
+        z_range = redshift_range(leaf for _, leaf in leaves)
     header = leaves[0][1].header.with_parameter("lightcone/z_range", z_range)
 
     return LightconeState(
@@ -113,6 +109,12 @@ def header_z_range(header: OpenCosmoHeader) -> tuple[float, float]:
     assert step is not None
     step_zs = header.simulation["step_zs"]
     return (step_zs[step], step_zs[step - 1])
+
+
+def redshift_range(datasets: Iterable[DatasetState]) -> tuple[float, float]:
+    """The redshift range covered by several lightcone datasets together."""
+    ranges = [header_z_range(dataset.header) for dataset in datasets]
+    return (min(zr[0] for zr in ranges), max(zr[1] for zr in ranges))
 
 
 def public_keys(state: LightconeState) -> list[int | str]:
