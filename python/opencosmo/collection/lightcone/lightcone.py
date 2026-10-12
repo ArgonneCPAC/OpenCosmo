@@ -7,13 +7,11 @@ from typing import (
 )
 from warnings import warn
 
-import numpy as np
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
-from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.dataset import Dataset
 from opencosmo.dataset import state as st
 from opencosmo.deprecated import deprecated
@@ -30,6 +28,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     import astropy.units as u  # type: ignore
+    import numpy as np
     import numpy.typing as npt
     from astropy.io import fits
 
@@ -281,12 +280,7 @@ class Lightcone:
             the maximum resolution of the spatial index, or if the lightcone
             does not have a spatial index.
         """
-
-        level = np.log2(nside)
-        if not level.is_integer() or level < 0:
-            raise ValueError("nside must be a positive power of two!")
-
-        return lcutils.get_pixels(self.__state, int(level))
+        return lcops.get_pixels(self.__state, nside)
 
     def get_data(
         self,
