@@ -15,17 +15,24 @@ from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.dataset import Dataset
+from opencosmo.dataset import state as st
 from opencosmo.deprecated import deprecated
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable, Mapping
+    from collections.abc import (
+        Callable,
+        Generator,
+        Iterable,
+        Iterator,
+        KeysView,
+        Mapping,
+    )
     from uuid import UUID
 
     import astropy.units as u  # type: ignore
     import numpy.typing as npt
     from astropy.io import fits
 
-    from opencosmo.collection.lightcone.healpix_map import HealpixMap
     from opencosmo.collection.lightcone.scope import LightconeScope
     from opencosmo.column.column import (
         ColumnMask,
@@ -39,7 +46,7 @@ if TYPE_CHECKING:
     from opencosmo.spatial import Region
 
 
-class Lightcone(dict):
+class Lightcone:
     """
     A lightcone contains two or more datasets that are part of a lightcone. Typically
     each dataset will cover a specific redshift range. The Lightcone object
@@ -54,24 +61,8 @@ class Lightcone(dict):
     seperately from one another.
     """
 
-    def __init__(
-        self,
-        datasets: Mapping[Any, Dataset | Lightcone],
-        maps: HealpixMap | None = None,
-        z_range: tuple[float, float] | None = None,
-        hidden: set[str] | frozenset[str] | None = None,
-        sort_key: tuple[str, bool] | None = None,
-        scope: LightconeScope | None = None,
-    ):
-        state = lcst.from_leaves(
-            Lightcone.__flatten(datasets),
-            maps,
-            z_range,
-            frozenset(hidden or ()),
-            sort_key,
-            scope,
-        )
-        self.__adopt(state)
+    def __init__(self, state: lcst.LightconeState):
+        self.__state = state
 
     @staticmethod
     def __flatten(
@@ -85,20 +76,26 @@ class Lightcone(dict):
                 leaves.append(((key,), child._state))
         return leaves
 
-    def __adopt(self, state: lcst.LightconeState):
-        self.__state = state
-        for key in lcst.public_keys(state):
-            child = lcst.view(state, key)
-            if isinstance(child, lcst.LightconeState):
-                self[key] = Lightcone._from_state(child)
-            else:
-                self[key] = Dataset(child)
+    def __getitem__(self, key: int | str) -> Dataset | Lightcone:
+        child = lcst.view(self.__state, key)
+        if isinstance(child, lcst.LightconeState):
+            return Lightcone(child)
+        return Dataset(child)
 
-    @classmethod
-    def _from_state(cls, state: lcst.LightconeState) -> Lightcone:
-        lightcone = cls.__new__(cls)
-        lightcone.__adopt(state)
-        return lightcone
+    def __iter__(self) -> Iterator[int | str]:
+        return iter(lcst.public_keys(self.__state))
+
+    def __contains__(self, key: object) -> bool:
+        return key in lcst.public_keys(self.__state)
+
+    def keys(self) -> KeysView[int | str]:
+        return dict.fromkeys(lcst.public_keys(self.__state)).keys()
+
+    def values(self) -> list[Dataset | Lightcone]:
+        return [self[key] for key in self]
+
+    def items(self) -> list[tuple[int | str, Dataset | Lightcone]]:
+        return [(key, self[key]) for key in self]
 
     @property
     def _state(self) -> lcst.LightconeState:
@@ -136,11 +133,8 @@ class Lightcone(dict):
         return self
 
     def __exit__(self, *exc_details):
-        for dataset in self.values():
-            try:
-                dataset.close()
-            except ValueError:
-                continue
+        for _, leaf in self.__state.leaves:
+            st.exit_state(leaf, *exc_details)
 
     def __getattr__(self, key: str):
         try:
@@ -373,9 +367,7 @@ class Lightcone(dict):
         is_empty_ref: bool = False,
         **kwargs,
     ):
-        return cls._from_state(
-            lcops.open_state(targets, index_kind, is_empty_ref, **kwargs)
-        )
+        return cls(lcops.open_state(targets, index_kind, is_empty_ref, **kwargs))
 
     @classmethod
     def from_datasets(
@@ -385,7 +377,7 @@ class Lightcone(dict):
         scope: LightconeScope | None = None,
         **open_kwargs,
     ):
-        return cls._from_state(
+        return cls(
             lcops.from_dataset_states(
                 Lightcone.__flatten(datasets),
                 z_range=z_range,
@@ -463,9 +455,7 @@ class Lightcone(dict):
         :py:meth:`Lightcone.z_range <opencosmo.collection.Lightcone.z_range>`,
         so you should always use it rather than filteringo n the column directly.
         """
-        return Lightcone._from_state(
-            lcops.with_redshift_range(self.__state, z_low, z_high)
-        )
+        return Lightcone(lcops.with_redshift_range(self.__state, z_low, z_high))
 
     def make_schema(
         self, path: str, _min_size=100_000, no_stack: bool = False
@@ -498,7 +488,7 @@ class Lightcone(dict):
         AttributeError:
             If the dataset does not contain a spatial index
         """
-        return Lightcone._from_state(lcops.bound(self.__state, region, select_by))
+        return Lightcone(lcops.bound(self.__state, region, select_by))
 
     def cone_search(self, center: tuple | SkyCoord, radius: float | u.Quantity):
         """
@@ -593,7 +583,7 @@ class Lightcone(dict):
             If ``nside`` is not a positive power of two, or if ``pixels``
             contains values that are out of range for the given ``nside``.
         """
-        return Lightcone._from_state(lcops.pixel_search(self.__state, pixels, nside))
+        return Lightcone(lcops.pixel_search(self.__state, pixels, nside))
 
     def evaluate(
         self,
@@ -673,7 +663,7 @@ class Lightcone(dict):
             **evaluate_kwargs,
         )
         if isinstance(result, lcst.LightconeState):
-            return Lightcone._from_state(result)
+            return Lightcone(result)
         return result
 
     def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Lightcone:
@@ -704,9 +694,7 @@ class Lightcone(dict):
             not in the dataset, or the  would return zero rows.
 
         """
-        return Lightcone._from_state(
-            lcops.filter(self.__state, *masks, mode=mode, **kwargs)
-        )
+        return Lightcone(lcops.filter(self.__state, *masks, mode=mode, **kwargs))
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
@@ -778,7 +766,7 @@ class Lightcone(dict):
         ValueError
             If any of the required columns are not in the dataset.
         """
-        return Lightcone._from_state(
+        return Lightcone(
             lcops.select(self.__state, *columns, mode=mode, **derived_columns)
         )
 
@@ -801,7 +789,7 @@ class Lightcone(dict):
         ValueError
             If any of the given columns are not in the dataset.
         """
-        return Lightcone._from_state(lcops.drop(self.__state, *columns))
+        return Lightcone(lcops.drop(self.__state, *columns))
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
@@ -842,7 +830,7 @@ class Lightcone(dict):
             or if 'at' is invalid.
 
         """
-        return Lightcone._from_state(lcops.take(self.__state, n, at, mode))
+        return Lightcone(lcops.take(self.__state, n, at, mode))
 
     def take_range(
         self, start: int, end: int, mode: Literal["local", "global"] = "local"
@@ -883,7 +871,7 @@ class Lightcone(dict):
             or if end is greater than start.
 
         """
-        return Lightcone._from_state(lcops.take_range(self.__state, start, end, mode))
+        return Lightcone(lcops.take_range(self.__state, start, end, mode))
 
     def take_rows(self, rows: DataIndex):
         """
@@ -906,7 +894,7 @@ class Lightcone(dict):
             lightcone.
 
         """
-        return Lightcone._from_state(lcops.take_rows(self.__state, rows))
+        return Lightcone(lcops.take_rows(self.__state, rows))
 
     def with_new_columns(
         self,
@@ -944,7 +932,7 @@ class Lightcone(dict):
             This dataset with the columns added
 
         """
-        return Lightcone._from_state(
+        return Lightcone(
             lcops.with_new_columns(
                 self.__state, descriptions, allow_overwrite, mode=mode, **columns
             )
@@ -984,7 +972,7 @@ class Lightcone(dict):
 
         """
 
-        return Lightcone._from_state(lcops.sort_by(self.__state, column, invert))
+        return Lightcone(lcops.sort_by(self.__state, column, invert))
 
     def with_units(
         self,
@@ -1043,6 +1031,6 @@ class Lightcone(dict):
         lightcone : Lightcone
             The new lightcone with the requested unit convention and/or conversions.
         """
-        return Lightcone._from_state(
+        return Lightcone(
             lcops.with_units(self.__state, convention, conversions, **columns)
         )
