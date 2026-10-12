@@ -560,6 +560,56 @@ def test_non_index_operation_preserves_active_match_source(
     _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
 
 
+@pytest.mark.parametrize(
+    ("transform", "check"),
+    (
+        pytest.param(
+            lambda collection: collection.select("fof_halo_tag", "fof_halo_mass"),
+            lambda dataset: set(dataset.columns) == {"fof_halo_tag", "fof_halo_mass"},
+            id="column-selection",
+        ),
+        pytest.param(
+            lambda collection: collection.drop("fof_halo_mass"),
+            lambda dataset: "fof_halo_mass" not in dataset.columns,
+            id="column-drop",
+        ),
+        pytest.param(
+            lambda collection: collection.with_units("scalefree"),
+            lambda dataset: "littleh" in str(dataset.units["fof_halo_mass"]),
+            id="unit-conversion",
+        ),
+    ),
+)
+def test_column_operation_on_pending_targets(transform, check, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    pending = original.match(REFERENCE).take_range(7, 31)
+    expected_source = pending[REFERENCE]
+
+    result = transform(pending)
+
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+    assert {len(dataset) for dataset in result.values()} == {24}
+    assert all(check(dataset) for dataset in result.values())
+
+
+@pytest.mark.xfail(
+    reason="with_new_columns maps over targets before realignment", strict=True
+)
+def test_matched_with_new_columns_arrays_on_pending_targets(mapped_paths, test_data):
+    pending = (
+        _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+        .match(REFERENCE)
+        .take_range(7, 31)
+    )
+    values = {name: np.arange(24) for name in pending.keys()}
+
+    result = pending.with_new_columns(row_number=values)
+
+    for name, dataset in result.items():
+        np.testing.assert_array_equal(_column(dataset, "row_number"), values[name])
+
+
 @pytest.mark.parametrize("datasets", (REFERENCE, [REFERENCE], (REFERENCE,)))
 def test_matched_filter_accepts_active_source_dataset_forms(
     datasets, mapped_paths, test_data
