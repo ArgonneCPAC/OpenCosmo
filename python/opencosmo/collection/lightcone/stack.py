@@ -8,7 +8,7 @@ import numpy as np
 
 from opencosmo.dataset import state as st
 from opencosmo.io.schema import FileEntry, add_metadata, make_schema
-from opencosmo.mpi import get_all_keys, get_comm_world
+from opencosmo.mpi import get_all_entries, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
@@ -175,10 +175,8 @@ def stack_lightcone_datasets_in_schema(
         return {dataset_name: schema}
 
     schema_children = {}
-    ds_groups = get_all_keys(datasets, get_comm_world())
-    for ds_group in ds_groups:
+    for ds_group, ds_list in get_all_entries(datasets, get_comm_world(), lambda _: []):
         schema_name = ds_group if len(datasets) > 1 else name
-        ds_list = datasets.get(ds_group, [])
         ds_list = [dataset for dataset in ds_list if len(dataset) > 0]
         if len(ds_list) == 0:
             if no_stack:

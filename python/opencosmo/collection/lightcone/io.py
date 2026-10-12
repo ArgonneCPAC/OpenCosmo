@@ -4,7 +4,7 @@ from collections import OrderedDict, defaultdict
 from typing import TYPE_CHECKING
 
 from opencosmo.collection.lightcone.state import redshift_range
-from opencosmo.mpi import get_all_keys, get_comm_world, get_mpi
+from opencosmo.mpi import get_all_entries, get_comm_world, get_mpi
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -42,21 +42,20 @@ def combine_adjacent_datasets_mpi(
     MIN_DATASET_SIZE = 100_000
     comm = get_comm_world()
     MPI = get_mpi()
-    all_dataset_steps = get_all_keys(ordered_datasets, comm)
     assert comm is not None and MPI is not None
     rs = 0
     output_datasets: dict[int | str, list[dict[str, DatasetState]]] = OrderedDict()
-    for step in all_dataset_steps:
+    for step, step_datasets in get_all_entries(ordered_datasets, comm):
         if rs == 0:
             current_key = step
             output_datasets[current_key] = []
 
-        if step not in ordered_datasets:
+        if step_datasets is None:
             rs += comm.allreduce(0, MPI.SUM)
         else:
-            length = sum(len(ds) for ds in ordered_datasets[step].values())
+            length = sum(len(ds) for ds in step_datasets.values())
             rs += comm.allreduce(length)
-            output_datasets[current_key].append(ordered_datasets[step])
+            output_datasets[current_key].append(step_datasets)
 
         if rs > MIN_DATASET_SIZE or no_stack:
             rs = 0

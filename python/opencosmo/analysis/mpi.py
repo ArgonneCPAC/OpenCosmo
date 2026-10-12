@@ -12,7 +12,6 @@ from opencosmo.mpi import (
     MPI,
     gather_data,
     get_all_entries,
-    get_all_keys,
     get_comm_world,
     parallel_assert,
     reduce_data,
@@ -195,10 +194,10 @@ def __reduce_multi_dataset_result(
     :py:func:`gather` for the same collection.
     """
     output = {}
-    for name in get_all_keys(result, comm):
-        assert name in result
+    for name, dataset_result in get_all_entries(result, comm):
+        assert dataset_result is not None
         output[name] = __reduce_single_dataset_result(
-            result[name], len(dataset[name]), op, all, comm
+            dataset_result, len(dataset[name]), op, all, comm
         )
     return output
 
@@ -211,7 +210,6 @@ def __reduce_single_dataset_result(
     comm: MPI.Comm,
 ) -> Any:
     results_to_combine = __verify_results(result, comm)
-    keys = get_all_keys(results_to_combine, comm)
     output: dict[str, Any] = {}
 
     match op:
@@ -227,10 +225,9 @@ def __reduce_single_dataset_result(
         case EvalOperation.PROD:
             combine_operation = MPI.PROD
 
-    for key in keys:
-        output[key] = reduce_data(
-            results_to_combine[key], comm, all=all, op=combine_operation
-        )
+    for key, value in get_all_entries(results_to_combine, comm):
+        assert value is not None
+        output[key] = reduce_data(value, comm, all=all, op=combine_operation)
 
     if not isinstance(result, dict):
         return next(iter(output.values()))
@@ -387,9 +384,9 @@ def __concatenate_multi_dataset_rank_data(
     data: dict[str, dict[str, np.ndarray]], all: bool, format, comm: MPI.Comm
 ):
     new_data = {}
-    for name in get_all_keys(data, comm):
-        assert name in data
-        new_data[name] = __concatenate_rank_data(data[name], all, format, comm)
+    for name, dataset_data in get_all_entries(data, comm):
+        assert dataset_data is not None
+        new_data[name] = __concatenate_rank_data(dataset_data, all, format, comm)
     return new_data
 
 
@@ -417,18 +414,18 @@ def __verify_results(
     else:
         result_to_check = result
 
-    keys = get_all_keys(result_to_check, comm)
-    for key in keys:
+    for key, value in get_all_entries(result_to_check, comm):
         has_key = comm.allgather(key in result_to_check)
         if not all(has_key):
             raise ValueError("Not all processes got the same output!")
-        is_arr = comm.allgather(isinstance(result_to_check[key], np.ndarray))
+        is_arr = comm.allgather(isinstance(value, np.ndarray))
         if not all(is_arr):
             raise ValueError(
                 "Reduce expects the returned results to be a numpy array or dictionary of numpy arrays"
             )
+        assert value is not None
 
-        lengths = set(comm.allgather(len(result_to_check[key])))
+        lengths = set(comm.allgather(len(value)))
         if len(lengths) > 1:
             raise ValueError(
                 "To reduce a result, outputs from all processes must be the same length!"

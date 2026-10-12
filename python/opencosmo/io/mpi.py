@@ -11,7 +11,13 @@ from h5py import h5fd, h5p, h5s
 from opencosmo.io.schema import FileEntry, Schema, make_schema
 from opencosmo.io.verify import schema_data_length, verify_structure
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
-from opencosmo.mpi import MPI, get_all_keys, get_comm_world, get_subcom, sum_scatter
+from opencosmo.mpi import (
+    MPI,
+    get_all_entries,
+    get_comm_world,
+    get_subcom,
+    sum_scatter,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -182,10 +188,8 @@ def update_and_verify_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
     new_attributes = sync_attributes(schema.attributes, schema.name, comm)
     schema = schema._replace(attributes=new_attributes)
 
-    all_child_names = get_all_keys(schema.children if schema is not None else {}, comm)
-
-    for child_name in all_child_names:
-        has_child = comm.allgather(child_name in schema.children)
+    for child_name, child in get_all_entries(schema.children, comm):
+        has_child = comm.allgather(child is not None)
         if all(has_child):
             new_comm = comm
             new_group = None
@@ -195,11 +199,8 @@ def update_and_verify_schemas(schema: Schema, comm: MPI.Comm) -> Schema:
             new_group = group.Incl(ranks_to_include)
             new_comm = comm.Create(new_group)
             group.Free()
-        if child_name in schema.children:
-            new_schema = update_and_verify_schemas(
-                schema.children[child_name], new_comm
-            )
-            schema.children[child_name] = new_schema
+        if child is not None:
+            schema.children[child_name] = update_and_verify_schemas(child, new_comm)
         # Free only the sub-communicator/group we created; never the parent comm.
         if new_group is not None:
             if new_comm != MPI.COMM_NULL:
@@ -220,13 +221,11 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
     3. Are the column attributes consistent
 
     """
-    all_column_names = get_all_keys(columns, comm)
-    for colname in all_column_names:
-        if colname not in columns:
+    for colname, column in get_all_entries(columns, comm):
+        if column is None:
             # Simply ignore a rank that doesn't have this column
             colmeta = comm.allgather(None)
         else:
-            column = columns[colname]
             data_to_send = (
                 column.combine_strategy,
                 column.shape,
@@ -278,11 +277,10 @@ def __write_parallel(
     __write_serial.
     """
     __write_columns(schema, group, offsets, comm)
-    all_child_names = get_all_keys(schema.children, comm)
-    for cn in all_child_names:
-        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
-        new_group = group[cn]
-        __write_parallel(child_schema, new_group, offsets, comm)
+    for cn, child_schema in get_all_entries(
+        schema.children, comm, lambda cn: make_schema(cn, FileEntry.EMPTY)
+    ):
+        __write_parallel(child_schema, group[cn], offsets, comm)
 
 
 def __write_serial(schema: Schema, file_path: Path, offsets: dict, comm: MPI.Comm):
@@ -304,10 +302,7 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
     ranks.
 
     """
-    colnames = get_all_keys(schema.columns, comm)
-    for cn in colnames:
-        colwriter = schema.columns.get(cn)
-
+    for cn, colwriter in get_all_entries(schema.columns, comm):
         participating = comm.allgather(colwriter is not None)
         if all(participating):
             new_comm = comm
@@ -345,11 +340,10 @@ def __replace_writers_with_updates(schema: Schema, comm: MPI.Comm):
                     new_comm.Free()
                 new_group.Free()
 
-    child_names = get_all_keys(schema.children, comm)
-    for cn in child_names:
-        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
-        new_child_schema = __replace_writers_with_updates(child_schema, comm)
-        schema.children[cn] = new_child_schema
+    for cn, child_schema in get_all_entries(
+        schema.children, comm, lambda cn: make_schema(cn, FileEntry.EMPTY)
+    ):
+        schema.children[cn] = __replace_writers_with_updates(child_schema, comm)
 
     return schema
 
@@ -359,17 +353,15 @@ def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
     Get the rank-wise offset for every column.
     """
     output = {}
-    all_column_names = get_all_keys(schema.columns, comm)
-    for colname in all_column_names:
-        writer = schema.columns.get(colname)
+    for colname, writer in get_all_entries(schema.columns, comm):
         offset = get_column_offset(writer, comm)
         key = "/".join([name, colname])
         output[key] = offset
 
-    all_child_names = get_all_keys(schema.children, comm)
-    for cn in all_child_names:
+    for cn, child_schema in get_all_entries(
+        schema.children, comm, lambda cn: make_schema(cn, FileEntry.EMPTY)
+    ):
         key = "/".join([name, cn])
-        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
         child_offsets = __get_all_offsets(child_schema, comm, key)
         output.update(child_offsets)
     return output
@@ -381,22 +373,15 @@ def __allocate(
     """
     Allocate the file.
     """
-    all_column_names = get_all_keys(schema.columns, comm)
-    for column_name in all_column_names:
-        column_writer = schema.columns.get(column_name)
+    for column_name, column_writer in get_all_entries(schema.columns, comm):
         __allocate_column(column_name, column_writer, group, comm, compress)
 
     __write_metadata(schema, group, comm)
 
-    all_child_names = get_all_keys(schema.children, comm)
-    for cn in all_child_names:
-        if group is not None:
-            new_group = group.require_group(cn)
-        else:
-            new_group = None
-
-        child_schema = schema.children.get(cn, make_schema(cn, FileEntry.EMPTY))
-
+    for cn, child_schema in get_all_entries(
+        schema.children, comm, lambda cn: make_schema(cn, FileEntry.EMPTY)
+    ):
+        new_group = group.require_group(cn) if group is not None else None
         __allocate(child_schema, new_group, comm, compress)
 
 
@@ -493,9 +478,7 @@ def __write_columns(
     offsets: dict,
     comm: MPI.Comm | None,
 ):
-    all_column_names = get_all_keys(schema.columns, comm)
-    for cn in all_column_names:
-        writer = schema.columns.get(cn)
+    for cn, writer in get_all_entries(schema.columns, comm):
         ds = group[cn]
         offset = offsets[ds.name]
         assert ds is not None

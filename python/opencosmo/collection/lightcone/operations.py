@@ -47,7 +47,7 @@ from opencosmo.io import iopen, specs
 from opencosmo.io.index_spec import index_spec_for
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
-from opencosmo.mpi import get_all_keys, get_comm_world
+from opencosmo.mpi import get_all_entries, get_comm_world
 from opencosmo.plugins.contexts import (
     HookPoint,
     LightconeInstantiateCtx,
@@ -593,17 +593,16 @@ def make_schema(
     )
     children = {}
 
-    # Use get_all_keys to iterate over the union of steps across all ranks
-    # This ensures every rank calls stack_lightcone_datasets_in_schema the same
-    # number of times in the same order, preventing MPI deadlock
-    all_steps = get_all_keys(output_datasets, get_comm_world())
-
-    for step in all_steps:
-        datasets = output_datasets.get(step, {})
+    # Iterate over the union of steps across all ranks. This ensures every rank
+    # calls stack_lightcone_datasets_in_schema the same number of times in the
+    # same order, preventing MPI deadlock
+    for step, datasets in get_all_entries(
+        output_datasets, get_comm_world(), lambda _: {}
+    ):
         if len(datasets) == 0:
             # This rank has no data for this step, but every rank must still
             # enter the collectives inside stack_lightcone_datasets_in_schema
-            # (get_all_keys / get_stacked_lightcone_order / sync_headers) in
+            # (get_all_entries / get_stacked_lightcone_order / sync_headers) in
             # lockstep, or cross-rank collectives mispair across steps.
             stack_lightcone_datasets_in_schema(
                 datasets, "/".join([path, str(step)]), None, no_stack

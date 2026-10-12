@@ -15,7 +15,7 @@ from opencosmo.io.schema import (
 from opencosmo.io.writer import ColumnWriter
 from opencosmo.mpi import (
     gather_index,
-    get_all_keys,
+    get_all_entries,
     get_subcom,
     redistribute_data,
     scatter_index,
@@ -143,12 +143,10 @@ def redistribute_simulation_collection_data(
     """
     new_children = {}
     output_lookups = {}
-    for child_name in get_all_keys(schema.children, comm):
+    for child_name, child in get_all_entries(schema.children, comm):
         if child_name == "map":
             continue
-        rank_has_child = child_name in schema.children
-        all_has_child = comm.allgather(rank_has_child)
-        child = schema.children.get(child_name)
+        all_has_child = comm.allgather(child is not None)
         local_raw_ids = None if child is None else get_dataset_schema_index(child)
         __collective_error(
             f"Dataset '{child_name}' has no output raw row index"
@@ -178,7 +176,7 @@ def redistribute_simulation_collection_data(
                 lookup.raw_ids, active_ranks[lookup.writer_ranks]
             )
         finally:
-            if rank_has_child:
+            if child is not None:
                 subcom.Free()
             subgroup.Free()
             comm.Barrier()
@@ -337,7 +335,7 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
 
     local_primary = local_map.children.get("primary") if local_map is not None else None
     primary_children = {}
-    for target_uuid in get_all_keys(
+    for target_uuid, local_slot in get_all_entries(
         local_primary.children if local_primary is not None else {}, comm
     ):
         target_name = uuid_to_name.get(target_uuid)
@@ -349,11 +347,6 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
         )
         assert target_name is not None
         target_lookup = lookups_by_name[target_name]
-        local_slot = (
-            local_primary.children.get(target_uuid)
-            if local_primary is not None
-            else None
-        )
         reference_child = schema.children.get(reference_name)
         source_raw_ids = (
             into_array(get_dataset_schema_index(reference_child))
@@ -396,7 +389,7 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
         local_map.children.get("auxiliary") if local_map is not None else None
     )
     auxiliary_children = {}
-    for pair_name in get_all_keys(
+    for pair_name, local_slot in get_all_entries(
         local_auxiliary.children if local_auxiliary is not None else {}, comm
     ):
         try:
@@ -423,11 +416,6 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
         assert source_name is not None
         assert target_name is not None
 
-        local_slot = (
-            local_auxiliary.children.get(pair_name)
-            if local_auxiliary is not None
-            else None
-        )
         message = None
         if local_slot is not None:
             if "source" not in local_slot.columns or "target" not in local_slot.columns:
@@ -528,19 +516,15 @@ def update_dataset_schema_with_redistribute(
     new_columns = {}
     argsort_local = np.argsort(rank_local_index, kind="stable")
     sorted_rank_local_index = rank_local_index[argsort_local]
-    for name in get_all_keys(schema.children["data"].columns, comm):
-        # This should alwyas be the same for all
-        writer = (
-            schema.children["data"]
-            .columns[name]
-            .redistribute(
-                rank_local_index,
-                sorted_rank_local_index,
-                argsort_local,
-                target_rank,
-                comm,
-            )
+    for name, column in get_all_entries(schema.children["data"].columns, comm):
+        # This should always be the same for all ranks
+        assert column is not None
+        new_columns[name] = column.redistribute(
+            rank_local_index,
+            sorted_rank_local_index,
+            argsort_local,
+            target_rank,
+            comm,
         )
-        new_columns[name] = writer
     new_data = schema.children["data"]._replace(columns=new_columns)
     return schema._replace(children=schema.children | {"data": new_data})
