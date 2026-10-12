@@ -63,10 +63,10 @@ and row ``i`` in each dataset describes the same matched halo.
 
 .. code-block:: text
 
-   {'SCIDAC_128_GO': 197006,
-    'SCIDAC_001': 197006,
+   {'SCIDAC_001': 197006,
     'SCIDAC_002': 197006,
-    'SCIDAC_003': 197006}
+    'SCIDAC_003': 197006,
+    'SCIDAC_128_GO': 197006}
 
 Halo tags are catalog-local identifiers, so they generally differ between matched
 rows. The following preview, produced from the test catalogs above, shows that the
@@ -82,11 +82,6 @@ different halo masses:
 
 .. code-block:: text
 
-   SCIDAC_128_GO
-   {'fof_halo_tag': array([27133948, 95228940, 31616069, 14931717, 94357410]),
-    'fof_halo_mass': array([1.1113736e+11, 2.4807445e+11, 2.3735763e+12,
-                             8.3353018e+10, 8.7322206e+10], dtype=float32)}
-
    SCIDAC_001
    {'fof_halo_tag': array([ 55315440, 186787862,  63751292,  30388748, 191331144]),
     'fof_halo_mass': array([1.1026644e+11, 2.0382586e+11, 2.0549656e+12,
@@ -101,6 +96,11 @@ different halo masses:
    {'fof_halo_tag': array([ 54267892, 188886034,  61127822,  28291598, 189239106]),
     'fof_halo_mass': array([1.0191293e+11, 2.0382586e+11, 2.0449414e+12,
                              7.8523073e+10, 7.6852371e+10], dtype=float32)}
+
+   SCIDAC_128_GO
+   {'fof_halo_tag': array([27133948, 95228940, 31616069, 14931717, 94357410]),
+    'fof_halo_mass': array([1.1113736e+11, 2.4807445e+11, 2.3735763e+12,
+                             8.3353018e+10, 8.7322206e+10], dtype=float32)}
 
 Source-Driven Transformations
 -----------------------------
@@ -123,10 +123,10 @@ matched halos elsewhere.
 
 .. code-block:: text
 
-   {'SCIDAC_128_GO': 2,
-    'SCIDAC_001': 2,
+   {'SCIDAC_001': 2,
     'SCIDAC_002': 2,
-    'SCIDAC_003': 2}
+    'SCIDAC_003': 2,
+    'SCIDAC_128_GO': 2}
 
 In this example, the mass threshold is evaluated only against ``SCIDAC_128_GO``.
 The corresponding halos are retained in the other simulations even when their own
@@ -134,8 +134,9 @@ The corresponding halos are retained in the other simulations even when their ow
 applies to :py:meth:`filter <opencosmo.SimulationCollection.filter>`,
 :py:meth:`bound <opencosmo.SimulationCollection.bound>`,
 :py:meth:`sort_by <opencosmo.SimulationCollection.sort_by>`,
-:py:meth:`take <opencosmo.SimulationCollection.take>`, and
-:py:meth:`take_range <opencosmo.SimulationCollection.take_range>`.
+:py:meth:`take <opencosmo.SimulationCollection.take>`,
+:py:meth:`take_range <opencosmo.SimulationCollection.take_range>`, and
+:py:meth:`take_rows <opencosmo.SimulationCollection.take_rows>`.
 
 The source determines the final row order. For example, sorting a matched collection
 by mass sorts the source catalog and reorders every target catalog to preserve

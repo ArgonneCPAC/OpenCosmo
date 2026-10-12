@@ -9,7 +9,7 @@ Datasets behave a lot like dictionaries. You can get the names of the dataset wi
 Types of Collections
 --------------------
 
-OpenCosmo currently implements three collection types. :py:class:`opencosmo.Ligthcone` collections stack datasets in angular coordinates from  different redshift slices into a single dataset-like object. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. A :py:class:`opencosmo.HealpixMap` holds one or more on-sky maps. See below for information of how these collections can be used. 
+OpenCosmo currently implements three collection types. :py:class:`opencosmo.Ligthcone` collections stack datasets in angular coordinates from  different redshift slices into a single dataset-like object. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset`, :py:class:`opencosmo.Lightcone`, or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. A :py:class:`opencosmo.HealpixMap` holds one or more on-sky maps. See below for information of how these collections can be used. 
 
 Collections can be opened just like datasets using :py:func:`opencosmo.open`, and written with :py:func:`opencosmo.write`.
 
@@ -259,4 +259,4 @@ postage-stamp cutouts and may significantly distort very large cutouts.
 Simulation Collections
 ----------------------
 
-SimulationCollections implement an identical API to the :py:class:`opencosmo.Dataset` or :py:class:`opencosmo.StructureCollection` it holds. All operations will automatically be mapped over all datasets held by the collection, which will always be of the same type. See the documentation for those classes for more information 
+SimulationCollections implement an identical API to the :py:class:`opencosmo.Dataset`, :py:class:`opencosmo.Lightcone`, or :py:class:`opencosmo.StructureCollection` they hold. All operations will automatically be mapped over all datasets held by the collection, which will always be of the same type. See the documentation for those classes for more information 
