@@ -11,8 +11,6 @@ from typing import (
     cast,
 )
 
-import numpy as np
-
 import opencosmo as oc
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import operations as scops
@@ -21,6 +19,7 @@ from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
     import astropy.units as u
+    import numpy as np
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.dtypes import HaccSimulationParameters
@@ -28,28 +27,7 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
-
-
-def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
-    if comm is None:
-        return np.arange(len(data))
-    lengths = comm.allgather(len(data))
-    offsets = np.insert(np.cumsum(lengths), 0, 0)
-    offset = offsets[comm.Get_rank()]
-    result = np.arange(offset, offset + len(data))
-    return result
-
-
-def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
-    psum = np.insert(np.cumsum(size), 0, 0)[:-1]
-    if comm is None:
-        return psum
-    lengths = comm.allgather(np.sum(size))
-    offsets = np.insert(np.cumsum(lengths), 0, 0)
-    offset = offsets[comm.Get_rank()]
-    return psum + offset
 
 
 class StructureCollection:

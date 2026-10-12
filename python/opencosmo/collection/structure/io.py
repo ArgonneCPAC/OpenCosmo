@@ -18,13 +18,13 @@ from opencosmo.collection.structure.state import StructureState
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState
 from opencosmo.io.index_spec import index_spec_for
+from opencosmo.io.updaters import do_idx_update, do_start_update
 from opencosmo.mapping.read import read_link_set
 
 if TYPE_CHECKING:
     from uuid import UUID
 
     import h5py
-    from mpi4py import MPI
 
     from opencosmo.collection.structure.state import Source, StructureChild
     from opencosmo.io.discover import LinkLayout
@@ -480,37 +480,6 @@ def __dataset_targets(targets: Mapping[str, StructureChild]) -> dict[str, StepTa
         assert not isinstance(target, LightconeState)
         resolved[name] = target
     return resolved
-
-
-def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
-    # An idx metadata column links each structure to at most one row in a target
-    # dataset, using -1 to mark structures with no linked row (e.g. halos without
-    # a profile). The target dataset is written containing only the linked rows,
-    # in structure order, so the rewritten idx must give each linked structure a
-    # contiguous 0-based index while preserving the -1 sentinels. Under MPI the
-    # target is concatenated across ranks, so each rank offsets its indices by the
-    # number of linked rows on the ranks before it.
-    valid = data >= 0
-    n_valid = int(valid.sum())
-    if comm is None:
-        offset = 0
-    else:
-        counts = comm.allgather(n_valid)
-        offset = int(np.sum(counts[: comm.Get_rank()]))
-
-    result = np.full(len(data), -1, dtype=np.int64)
-    result[valid] = np.arange(offset, offset + n_valid)
-    return result
-
-
-def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
-    psum = np.insert(np.cumsum(size), 0, 0)[:-1]
-    if comm is None:
-        return psum
-    lengths = comm.allgather(np.sum(size))
-    offsets = np.insert(np.cumsum(lengths), 0, 0)
-    offset = offsets[comm.Get_rank()]
-    return psum + offset
 
 
 def rebuild_data_linked(source_schema):

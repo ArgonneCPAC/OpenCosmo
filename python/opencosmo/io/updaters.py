@@ -8,17 +8,6 @@ if TYPE_CHECKING:
     from opencosmo.mpi import MPI
 
 
-def offset_index(data: np.ndarray, offset: int = 0, comm: Optional[MPI.Comm] = None):
-    valid = data >= 0
-    result = np.full(len(data), -1, dtype=np.int64)
-    if comm is not None:
-        offsets = comm.allgather(offset)
-        offset = np.sum(offsets[: comm.Get_rank()])
-
-    result[valid] = data[valid] + offset
-    return result
-
-
 def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
     # An idx metadata column links each structure to at most one row in a target
     # dataset, using -1 to mark structures with no linked row (e.g. halos without
@@ -37,3 +26,13 @@ def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
     result = np.full(len(data), -1, dtype=np.int64)
     result[valid] = np.arange(offset, offset + n_valid)
     return result
+
+
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
+    psum = np.insert(np.cumsum(size), 0, 0)[:-1]
+    if comm is None:
+        return psum
+    lengths = comm.allgather(np.sum(size))
+    offsets = np.insert(np.cumsum(lengths), 0, 0)
+    offset = offsets[comm.Get_rank()]
+    return psum + offset
