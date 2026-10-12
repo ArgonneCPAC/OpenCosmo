@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from astropy.table import Table
     from mpi4py import MPI
 
-    from opencosmo import Dataset, Lightcone
+    from opencosmo import Dataset
     from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
@@ -62,7 +62,7 @@ class LightconeOpenCtx:
     open_kwargs mirrors DatasetOpenCtx.open_kwargs.
     """
 
-    lightcone: Lightcone
+    state: LightconeState
     open_kwargs: dict[str, Any]
 
 

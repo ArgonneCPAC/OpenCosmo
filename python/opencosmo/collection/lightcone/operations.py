@@ -12,6 +12,7 @@ from astropy.table import vstack  # type: ignore
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
+from opencosmo.collection.lightcone.healpix_map import HealpixMap
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.scope import partition_columns
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
@@ -42,12 +43,15 @@ from opencosmo.dataset.take import (
     get_rows_take_index,
 )
 from opencosmo.index import empty, get_range, into_array, rebuild_by_ranges
+from opencosmo.io import iopen, specs
+from opencosmo.io.index_spec import index_spec_for
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
 from opencosmo.mpi import get_all_keys, get_comm_world
 from opencosmo.plugins.contexts import (
     HookPoint,
     LightconeInstantiateCtx,
+    LightconeOpenCtx,
     PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
@@ -59,7 +63,7 @@ if TYPE_CHECKING:
     import astropy.units as u
     import numpy.typing as npt
 
-    from opencosmo.collection.lightcone.healpix_map import HealpixMap
+    from opencosmo.collection.lightcone.scope import LightconeScope
     from opencosmo.collection.lightcone.state import LeafKey, LightconeState
     from opencosmo.column.column import (
         ColumnMask,
@@ -68,10 +72,74 @@ if TYPE_CHECKING:
     )
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex
+    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
     Leaves = tuple[tuple[LeafKey, DatasetState], ...]
+
+
+def open_state(
+    targets: list[DatasetTarget],
+    index_kind: str = "none",
+    is_empty_ref: bool = False,
+    **open_kwargs: Any,
+) -> LightconeState:
+    """
+    Open lightcone datasets (and any companion healpix maps) from ``targets``.
+    Steps with several datasets get ``(step, name)`` keys.
+    """
+    groups: dict[int, dict[str, DatasetState]] = defaultdict(dict)
+    maps: list[DatasetTarget] = []
+    for i, target in enumerate(targets):
+        if target.header.file.data_type == "healpix_map":
+            maps.append(target)
+            continue
+
+        step = target.header.file.step
+        name = target.name.removeprefix(f"{step}_")
+        dataset = iopen.open_dataset(
+            target,
+            index_spec_for(index_kind, is_empty_ref, is_source=True),
+            open_kwargs=open_kwargs,
+        )
+        groups[step if step is not None else i][name] = dataset._state
+
+    leaves = [
+        ((step,), leaf) if len(group) == 1 else ((step, name), leaf)
+        for step, group in groups.items()
+        for name, leaf in group.items()
+    ]
+
+    healpix_maps = None
+    if maps:
+        # A map opened alongside a catalog is replicated, not partitioned: a
+        # cutout around an object near a partition edge needs map pixels that
+        # this rank's catalog rows do not cover.
+        healpix_maps = specs.HealpixMapSpec().build_from_targets(
+            maps,
+            index_kind=index_kind,
+            is_empty_ref=is_empty_ref,
+            open_kwargs=open_kwargs,
+            index=index_spec_for(
+                index_kind, is_empty_ref, is_source=True, is_replicated=True
+            ),
+        )
+    assert healpix_maps is None or isinstance(healpix_maps, HealpixMap)
+
+    return from_dataset_states(leaves, maps=healpix_maps, **open_kwargs)
+
+
+def from_dataset_states(
+    leaves: Iterable[tuple[LeafKey, DatasetState]],
+    maps: HealpixMap | None = None,
+    z_range: tuple[float, float] | None = None,
+    scope: LightconeScope | None = None,
+    **open_kwargs: Any,
+) -> LightconeState:
+    """Build a lightcone from ``leaves`` and run the lightcone open hooks."""
+    state = lcst.from_leaves(leaves, maps, z_range, scope=scope)
+    return fold(HookPoint.LightconeOpen, LightconeOpenCtx(state, open_kwargs)).state
 
 
 def with_units(
@@ -303,8 +371,8 @@ def drop(state: LightconeState, *columns: str | Iterable[str]) -> LightconeState
 
 def with_new_columns(
     state: LightconeState,
-    descriptions: str | dict[str, str],
-    allow_overwrite: bool,
+    descriptions: str | dict[str, str] = {},
+    allow_overwrite: bool = False,
     mode: str = "global",
     **columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> LightconeState:
@@ -362,12 +430,12 @@ def with_new_columns(
 def evaluate(
     state: LightconeState,
     func: Callable,
-    vectorize: bool,
-    insert: bool,
-    format: str,
-    batch_size: int,
-    allow_overwrite: bool,
-    combine_mode: Literal["concatenate", "sum", "prod", "avg"],
+    vectorize: bool = False,
+    insert: bool = True,
+    format: str = "astropy",
+    batch_size: int = -1,
+    allow_overwrite: bool = False,
+    combine_mode: Literal["concatenate", "sum", "prod", "avg"] = "concatenate",
     **evaluate_kwargs: Any,
 ) -> LightconeState | dict[str, Any] | None:
     if combine_mode not in ("concatenate", "sum", "prod", "avg"):

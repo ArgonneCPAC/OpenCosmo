@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -15,16 +14,8 @@ import opencosmo as oc
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
-from opencosmo.collection.lightcone.healpix_map import HealpixMap
 from opencosmo.dataset import Dataset
 from opencosmo.deprecated import deprecated
-from opencosmo.io import iopen, specs
-from opencosmo.io.index_spec import index_spec_for
-from opencosmo.plugins.contexts import (
-    HookPoint,
-    LightconeOpenCtx,
-)
-from opencosmo.plugins.hook import fold
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
@@ -34,6 +25,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from astropy.io import fits
 
+    from opencosmo.collection.lightcone.healpix_map import HealpixMap
     from opencosmo.collection.lightcone.scope import LightconeScope
     from opencosmo.column.column import (
         ColumnMask,
@@ -71,15 +63,8 @@ class Lightcone(dict):
         sort_key: tuple[str, bool] | None = None,
         scope: LightconeScope | None = None,
     ):
-        leaves: list[tuple[lcst.LeafKey, DatasetState]] = []
-        for key, child in datasets.items():
-            if isinstance(child, Lightcone):
-                leaves.extend(((key, *k), leaf) for k, leaf in child._state.leaves)
-            else:
-                leaves.append(((key,), child._state))
-
         state = lcst.from_leaves(
-            leaves,
+            Lightcone.__flatten(datasets),
             maps,
             z_range,
             frozenset(hidden or ()),
@@ -87,6 +72,18 @@ class Lightcone(dict):
             scope,
         )
         self.__adopt(state)
+
+    @staticmethod
+    def __flatten(
+        datasets: Mapping[Any, Dataset | Lightcone],
+    ) -> list[tuple[lcst.LeafKey, DatasetState]]:
+        leaves: list[tuple[lcst.LeafKey, DatasetState]] = []
+        for key, child in datasets.items():
+            if isinstance(child, Lightcone):
+                leaves.extend(((key, *k), leaf) for k, leaf in child._state.leaves)
+            else:
+                leaves.append(((key,), child._state))
+        return leaves
 
     def __adopt(self, state: lcst.LightconeState):
         self.__state = state
@@ -376,72 +373,26 @@ class Lightcone(dict):
         is_empty_ref: bool = False,
         **kwargs,
     ):
-        datasets: dict[int, dict[str, Dataset]] = defaultdict(dict)
-        maps: list[DatasetTarget] = []
-
-        open_kwargs = dict(kwargs)
-        for i, ds_target in enumerate(targets):
-            if ds_target.header.file.data_type == "healpix_map":
-                maps.append(ds_target)
-                continue
-
-            group_name = ds_target.name
-            step_prefix = f"{ds_target.header.file.step}_"
-            group_name = group_name.removeprefix(step_prefix)
-
-            ds = iopen.open_dataset(
-                ds_target,
-                index_spec_for(index_kind, is_empty_ref, is_source=True),
-                open_kwargs=open_kwargs,
-            )
-            step = ds_target.header.file.step
-            if step is None:
-                step = i
-            datasets[step][group_name] = ds
-
-        output: dict[int, Dataset | Lightcone] = {}
-        for key, ds_group in datasets.items():
-            if len(ds_group) == 1:
-                output[key] = next(iter(ds_group.values()))
-            else:
-                output[key] = Lightcone(ds_group)
-
-        if not all(type(ds) is oc.Dataset for ds in output.values()) and not all(
-            type(ds) is Lightcone for ds in output.values()
-        ):
-            raise ValueError()
-
-        healpix_maps = None
-        if maps:
-            # A map opened alongside a catalog is replicated, not partitioned: a
-            # cutout around an object near a partition edge needs map pixels that
-            # this rank's catalog rows do not cover.
-            healpix_maps = specs.HealpixMapSpec().build_from_targets(
-                maps,
-                index_kind=index_kind,
-                is_empty_ref=is_empty_ref,
-                open_kwargs=open_kwargs,
-                index=index_spec_for(
-                    index_kind, is_empty_ref, is_source=True, is_replicated=True
-                ),
-            )
-        assert healpix_maps is None or isinstance(healpix_maps, HealpixMap)
-
-        result = cls(output, healpix_maps)
-        return fold(HookPoint.LightconeOpen, LightconeOpenCtx(result, kwargs)).lightcone
+        return cls._from_state(
+            lcops.open_state(targets, index_kind, is_empty_ref, **kwargs)
+        )
 
     @classmethod
     def from_datasets(
         cls,
-        datasets: Mapping[int, oc.Dataset],
+        datasets: Mapping[int, oc.Dataset | Lightcone],
         z_range: tuple[float, float] | None = None,
-        scope: Any | None = None,
+        scope: LightconeScope | None = None,
         **open_kwargs,
     ):
-        result = cls(datasets, None, z_range, scope=scope)
-        return fold(
-            HookPoint.LightconeOpen, LightconeOpenCtx(result, open_kwargs)
-        ).lightcone
+        return cls._from_state(
+            lcops.from_dataset_states(
+                Lightcone.__flatten(datasets),
+                z_range=z_range,
+                scope=scope,
+                **open_kwargs,
+            )
+        )
 
     def cutouts(
         self, size: float | u.Quantity, npix: int = 64
