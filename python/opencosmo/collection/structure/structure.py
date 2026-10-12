@@ -20,7 +20,7 @@ import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.structure import evaluate
+from opencosmo.collection.structure import evaluate, links
 from opencosmo.collection.structure import io as sio
 from opencosmo.collection.structure.io import rebuild_data_linked
 from opencosmo.column.column import DerivedScalarValue
@@ -28,7 +28,7 @@ from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_sel
 from opencosmo.dataset.formats import verify_format
 from opencosmo.io.schema import FileEntry, make_schema
 
-from .handler import LinkHandler, link_slot_values
+from .handler import LinkHandler
 
 if TYPE_CHECKING:
     import astropy.units as u
@@ -1589,7 +1589,9 @@ class StructureCollection:
 
         datasets = self.__get_datasets()
         link_values = {
-            name: link_slot_values(self.__handler.match_sets, self.__source, name)
+            name: links.slot_values(
+                self.__handler.match_sets, self.__source._state, name
+            )
             for name in data_types
             if name in self.__handler.names
         }

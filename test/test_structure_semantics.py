@@ -200,11 +200,6 @@ def test_lightcone_objects_align_with_links(lightcone_halo_paths):
     assert n_checked == len(collection)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Lightcone rows() and linked children are in physical order, but "
-    "slot values are permuted into sorted order",
-)
 @pytest.mark.parametrize("invert", [False, True])
 def test_sorted_lightcone_objects_align_with_links(lightcone_halo_paths, invert):
     collection = (

@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
-from opencosmo.collection.structure.handler import link_slot_values
 
 import opencosmo as oc
+from opencosmo.collection.structure import links
 
 
 def _link_slot(collection, link_name):
@@ -13,7 +13,7 @@ def _link_slot(collection, link_name):
     """
     handler = collection._StructureCollection__handler
     source = collection._StructureCollection__source
-    values, _ = link_slot_values(handler.match_sets, source, link_name)
+    values, _ = links.slot_values(handler.match_sets, source._state, link_name)
     return values
 
 

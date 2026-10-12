@@ -10,12 +10,9 @@ import numpy as np
 from opencosmo import dataset as d
 from opencosmo import io
 from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo.collection.structure import links
 from opencosmo.collection.structure import structure as sc
-from opencosmo.collection.structure.handler import (
-    LINK_ALIASES,
-    LinkHandler,
-    link_slot_values,
-)
+from opencosmo.collection.structure.handler import LINK_ALIASES, LinkHandler
 from opencosmo.io.index_spec import index_spec_for
 from opencosmo.mapping.read import read_link_set
 
@@ -181,7 +178,7 @@ def remove_empty(
 
     mask = np.ones(len(dataset), dtype=bool)
     for name in sorted(names):
-        values, is_chunked = link_slot_values(match_sets, dataset, name)
+        values, is_chunked = links.slot_values(match_sets, dataset._state, name)
         mask &= values != 0 if is_chunked else values != -1
 
     if not mask.all():
