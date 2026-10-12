@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import TYPE_CHECKING, Any, Generator, Optional
+from typing import TYPE_CHECKING, Any, Callable, Generator, Optional, overload
 
 import numpy as np
 
@@ -331,8 +331,30 @@ def get_all_keys[T: SupportsRichComparison](
     return sorted(all_data_names)
 
 
-def get_all_entries[T: (SupportsRichComparison), U](
-    data: dict[T, U], comm: Optional[MPI.Comm]
+@overload
+def get_all_entries[T: SupportsRichComparison, U](
+    data: dict[T, U], comm: Optional[MPI.Comm], default: None = None
+) -> Generator[tuple[T, U | None]]: ...
+
+
+@overload
+def get_all_entries[T: SupportsRichComparison, U](
+    data: dict[T, U], comm: Optional[MPI.Comm], default: Callable[[T], U]
+) -> Generator[tuple[T, U]]: ...
+
+
+def get_all_entries[T: SupportsRichComparison, U](
+    data: dict[T, U],
+    comm: Optional[MPI.Comm],
+    default: Callable[[T], U] | None = None,
 ) -> Generator[tuple[T, U | None]]:
+    """
+    Yield (key, value) pairs for every key present on any rank, in the same
+    sorted order on all ranks. Keys missing on this rank yield ``default(key)``
+    when a default is given, and ``None`` otherwise.
+    """
     for key in get_all_keys(data, comm):
-        yield key, data.get(key)
+        if key in data:
+            yield key, data[key]
+        else:
+            yield key, None if default is None else default(key)

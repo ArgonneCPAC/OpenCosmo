@@ -108,7 +108,9 @@ def __step_targets(
     resolved: dict[str, d.Dataset | sc.StructureCollection] = {}
     for name, target in __with_galaxies_alias(targets).items():
         if isinstance(target, lc.Lightcone):
-            resolved[name] = target[step]
+            step_target = target[step]
+            assert isinstance(step_target, d.Dataset)
+            resolved[name] = step_target
         elif isinstance(target, sc.StructureCollection):
             source = target[str(target.header.file.data_type)]
             if isinstance(source, lc.Lightcone):

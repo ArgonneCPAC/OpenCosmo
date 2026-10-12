@@ -5,8 +5,9 @@ import pytest
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from opencosmo.collection.lightcone.healpix_map import HealpixMap
-from opencosmo.collection.lightcone.lightcone import Lightcone
 from opencosmo.collection.lightcone.reproject import make_hdulist
+
+import opencosmo as oc
 
 
 def test_make_hdulist_packs_reprojected_data():
@@ -85,20 +86,22 @@ def test_map_cutouts_reject_nonangular_quantity_size():
         next(healpix_map.cutouts(centers, 1 * u.m))
 
 
-def test_lightcone_cutouts_require_companion_map():
-    lightcone = Lightcone.__new__(Lightcone)
-    lightcone._Lightcone__maps = None
+def test_lightcone_cutouts_require_companion_map(test_data):
+    lightcone = oc.open(
+        test_data.lightcone.step(600).halo_properties,
+        test_data.lightcone.step(601).halo_properties,
+    )
 
     with pytest.raises(ValueError, match="No map was opened with this lightcone"):
         next(lightcone.cutouts(size=1.0))
 
 
-def test_lightcone_cutouts_require_coordinate_columns():
-    lightcone = Lightcone.__new__(Lightcone)
-    lightcone._Lightcone__maps = HealpixMap.__new__(HealpixMap)
-    lightcone[0] = type("DatasetColumns", (), {"columns": ["ra"]})()
-    lightcone._Lightcone__hidden = set()
-    lightcone._Lightcone__scope = type("EmptyScope", (), {"names": lambda self: []})()
+def test_lightcone_cutouts_require_coordinate_columns(test_data):
+    lightcone = oc.open(
+        test_data.lightcone.step(600).halo_properties,
+        test_data.lightcone.step(601).halo_properties,
+        test_data.healpix_map,
+    ).drop("dec")
 
     with pytest.raises(ValueError, match="require ra and dec columns; missing: dec"):
         next(lightcone.cutouts(size=1.0))

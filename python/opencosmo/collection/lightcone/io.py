@@ -1,46 +1,61 @@
 from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
+from typing import TYPE_CHECKING
 
-from opencosmo.collection.lightcone import utils as lcutils
-from opencosmo.dataset import dataset as ocds
-from opencosmo.mpi import get_all_keys, get_comm_world, get_mpi
+from opencosmo.collection.lightcone.state import redshift_range
+from opencosmo.mpi import get_all_entries, get_comm_world, get_mpi
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from opencosmo.collection.lightcone.state import LeafKey
+    from opencosmo.dataset.state import DatasetState
+
+    StepDatasets = dict[int | str, dict[str, DatasetState]]
 
 
-def order_by_redshift_range(datasets: dict[str, ocds.Dataset]):
-    redshift_ranges = {
-        key: lcutils.get_single_redshift_range(ds) for key, ds in datasets.items()
-    }
-    sorted_ranges = sorted(redshift_ranges.items(), key=lambda item: item[1][0])
-    output = OrderedDict()
-    for name, _ in sorted_ranges:
-        output[name] = datasets[name]
-    return output
+def order_by_redshift_range(
+    leaves: Iterable[tuple[LeafKey, DatasetState]],
+) -> StepDatasets:
+    """
+    Group leaves by step, ordered by the lower edge of each step's redshift
+    range. Within a step, leaves are named by their subtype, or "data" if the
+    lightcone has one dataset per step.
+    """
+    steps: StepDatasets = defaultdict(dict)
+    for key, leaf in leaves:
+        steps[key[0]][str(key[1]) if len(key) > 1 else "data"] = leaf
+    return OrderedDict(
+        sorted(
+            steps.items(),
+            key=lambda item: redshift_range(item[1].values())[0],
+        )
+    )
 
 
 def combine_adjacent_datasets_mpi(
-    ordered_datasets: dict[str, dict[str, ocds.Dataset]],
+    ordered_datasets: StepDatasets,
     min_dataset_size: int,
     no_stack: bool,
 ):
     MIN_DATASET_SIZE = 100_000
     comm = get_comm_world()
     MPI = get_mpi()
-    all_dataset_steps = get_all_keys(ordered_datasets, comm)
     assert comm is not None and MPI is not None
     rs = 0
-    output_datasets: dict[str, list[dict[str, ocds.Dataset]]] = OrderedDict()
-    for step in all_dataset_steps:
+    output_datasets: dict[int | str, list[dict[str, DatasetState]]] = OrderedDict()
+    for step, step_datasets in get_all_entries(ordered_datasets, comm):
         if rs == 0:
             current_key = step
             output_datasets[current_key] = []
 
-        if step not in ordered_datasets:
+        if step_datasets is None:
             rs += comm.allreduce(0, MPI.SUM)
         else:
-            length = sum(len(ds) for ds in ordered_datasets[step].values())
+            length = sum(len(ds) for ds in step_datasets.values())
             rs += comm.allreduce(length)
-            output_datasets[current_key].append(ordered_datasets[step])
+            output_datasets[current_key].append(step_datasets)
 
         if rs > MIN_DATASET_SIZE or no_stack:
             rs = 0
@@ -57,30 +72,23 @@ def combine_adjacent_datasets_mpi(
 
 
 def combine_adjacent_datasets(
-    ordered_datasets: dict[str, ocds.Dataset] | dict[str, dict[str, ocds.Dataset]],
+    ordered_datasets: StepDatasets,
     min_dataset_size: int,
     no_stack: bool,
 ):
-    is_single = isinstance(next(iter(ordered_datasets.values())), ocds.Dataset)
-    datasets: dict[str, dict[str, ocds.Dataset]]
-    if is_single:
-        assert all(isinstance(ds, ocds.Dataset) for ds in ordered_datasets.values())
-        datasets = {key: {"data": ds} for key, ds in ordered_datasets.items()}  # type: ignore
-    else:
-        assert all(isinstance(ds, dict) for ds in ordered_datasets.values())
-        datasets = ordered_datasets  # type: ignore
-
     if get_comm_world() is not None:
-        return combine_adjacent_datasets_mpi(datasets, min_dataset_size, no_stack)
+        return combine_adjacent_datasets_mpi(
+            ordered_datasets, min_dataset_size, no_stack
+        )
 
     running_sum = 0
 
     current_key = next(iter(ordered_datasets.keys()))
-    output_datasets: dict[str, list[dict[str, ocds.Dataset]]] = OrderedDict(
+    output_datasets: dict[int | str, list[dict[str, DatasetState]]] = OrderedDict(
         {current_key: []}
     )
 
-    for key, step_datasets in datasets.items():
+    for key, step_datasets in ordered_datasets.items():
         if not no_stack and running_sum < min_dataset_size:
             running_sum += sum(len(ds) for ds in step_datasets.values())
             output_datasets[current_key].append(step_datasets)

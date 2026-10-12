@@ -10,7 +10,8 @@ if TYPE_CHECKING:
     from astropy.table import Table
     from mpi4py import MPI
 
-    from opencosmo import Dataset, Lightcone
+    from opencosmo import Dataset
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex, IndexArray
@@ -61,7 +62,7 @@ class LightconeOpenCtx:
     open_kwargs mirrors DatasetOpenCtx.open_kwargs.
     """
 
-    lightcone: Lightcone
+    state: LightconeState
     open_kwargs: dict[str, Any]
 
 
@@ -69,10 +70,10 @@ class LightconeOpenCtx:
 class LightconeInstantiateCtx:
     """Fired each time get_data() is called on a Lightcone.
 
-    Plugins may re-order or re-index sub-datasets before they are stacked.
+    Plugins may re-order or re-index leaf datasets before they are stacked.
     """
 
-    lightcone: Lightcone
+    state: LightconeState
 
 
 @dataclass(frozen=True)
@@ -99,7 +100,7 @@ class PostSortCtx:
     dataclasses.replace(ctx, data=new_data).
     """
 
-    state: DatasetState | Lightcone
+    state: DatasetState | LightconeState
     data: Table | dict[str, np.ndarray]
     index: IndexArray
 

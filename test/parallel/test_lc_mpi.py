@@ -547,8 +547,9 @@ def test_write_diffsky_some_missing_no_stack(
     comm = MPI.COMM_WORLD
     ds = oc.open(core_path_475, core_path_487, synth_cores=True)
     if comm.Get_rank() == 0:
-        ds.pop(475)
-        assert len(ds.keys()) == 1
+        first_step = next(iter(ds.keys()))
+        ds = ds.take_rows(np.arange(len(ds[first_step])))
+        assert list(ds.keys()) == [first_step]
 
     # columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
     # columns_to_check = np.insert(columns_to_check, 0, "gal_id")
@@ -669,8 +670,9 @@ def test_write_some_missing_no_stack(
     comm = MPI.COMM_WORLD
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     if comm.Get_rank() == 0:
-        ds.pop(601)
-        assert len(ds.keys()) == 1
+        first_step = next(iter(ds.keys()))
+        ds = ds.take_rows(np.arange(len(ds[first_step])))
+        assert list(ds.keys()) == [first_step]
 
     original_halo_tags = ds.select("fof_halo_tag").get_data()
 

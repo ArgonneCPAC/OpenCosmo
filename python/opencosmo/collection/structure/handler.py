@@ -97,6 +97,7 @@ def link_slot_values(
     values: list[np.ndarray] = []
     chunked: Optional[bool] = None
     for _, step_source in source.items():
+        assert isinstance(step_source, ocds.Dataset)
         step_values, step_chunked = _slot_values(
             step_source, match_sets[step_source.uuid], name, step_source.index
         )
@@ -106,7 +107,7 @@ def link_slot_values(
         values.append(step_values)
 
     output = np.concatenate(values)
-    sort_key = source._Lightcone__sort_key
+    sort_key = source._state.sort_key
     if sort_key is not None:
         order = np.argsort(source.select(sort_key[0]).get_data("numpy"))
         if sort_key[1]:
@@ -259,6 +260,7 @@ def resort_datasets_per_step(
 ) -> dict[str, oc.Lightcone | oc.StructureCollection]:
     per_step_index: dict[str, dict[Any, Optional[DataIndex]]] = defaultdict(dict)
     for step, step_source in source.items():
+        assert isinstance(step_source, ocds.Dataset)
         match_set = match_sets[step_source.uuid]
         sort_index = compute_sort_index(step_source)
         for name in datasets:
@@ -297,6 +299,7 @@ class LinkHandler:
 
         children = dict(source_schema.children)
         for step, step_source in source.items():
+            assert isinstance(step_source, ocds.Dataset)
             child_names = [name for name in children if name.startswith(f"{step}_")]
             if len(child_names) != 1:
                 raise RuntimeError(
