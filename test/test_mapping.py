@@ -8,7 +8,7 @@ from uuid import uuid4
 import h5py
 import numpy as np
 import opencosmo.collection.simulation.io as simulation_io
-import opencosmo.collection.simulation.simulation as simulation_module
+import opencosmo.collection.simulation.matching as matching
 import opencosmo.mapping.write as mapping_write
 import pytest
 from opencosmo.io.schema import FileEntry, make_schema
@@ -455,14 +455,14 @@ def test_mapped_collection_context_manager_exits_cleanly(mapped_paths, test_data
 
 def test_matched_targets_are_rebuilt_at_most_once(mapped_paths, test_data, monkeypatch):
     calls = 0
-    prepare = simulation_module.prepare_matched_datasets
+    align = matching.align
 
-    def counting_prepare(*args, **kwargs):
+    def counting_align(*args, **kwargs):
         nonlocal calls
         calls += 1
-        return prepare(*args, **kwargs)
+        return align(*args, **kwargs)
 
-    monkeypatch.setattr(simulation_module, "prepare_matched_datasets", counting_prepare)
+    monkeypatch.setattr(matching, "align", counting_align)
     matched = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping).match(
         REFERENCE
     )

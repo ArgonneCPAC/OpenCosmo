@@ -141,9 +141,6 @@ def test_operations_do_not_change_original(multi_path):
     assert all("doubled" not in value.columns for value in collection.values())
 
 
-@pytest.mark.xfail(
-    reason="SimulationCollection rejects lightcone children", strict=True
-)
 def test_lightcone_children(lightcone_children):
     collection = _collection(lightcone_children)
 
@@ -158,9 +155,6 @@ def test_lightcone_children(lightcone_children):
         assert np.all(data[name]["fof_halo_mass"] > threshold)
 
 
-@pytest.mark.xfail(
-    reason="__exit__ calls close(), which StructureCollection lacks", strict=True
-)
 def test_context_manager_with_structure_children(structure_collection):
     with structure_collection as collection:
         assert len(collection) == 2

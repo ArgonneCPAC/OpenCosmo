@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 from opencosmo.collection.simulation import matching
 from opencosmo.dataset.state import DatasetState
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.mapping.mapping import DatasetMatchSet
 
-    SimulationChild = DatasetState | LightconeState | StructureState
+    SimulationChild: TypeAlias = DatasetState | LightconeState | StructureState
 
 
 @dataclass(frozen=True)

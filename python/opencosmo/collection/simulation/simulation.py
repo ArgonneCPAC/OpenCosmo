@@ -1,31 +1,33 @@
 from __future__ import annotations
 
-from copy import copy
-from typing import TYPE_CHECKING, Callable, Iterable, Literal, Mapping, Optional, cast
+from dataclasses import replace
+from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional, cast
 from uuid import UUID
 
-import numpy as np
-
-from opencosmo.collection import structure as sc
+from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo.collection.lightcone.state import LightconeState
+from opencosmo.collection.simulation import matching
+from opencosmo.collection.simulation import state as simst
 from opencosmo.collection.simulation.io import (
     resort_simulation_collection,
 )
+from opencosmo.collection.structure import structure as sc
+from opencosmo.collection.structure.state import StructureState
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import Dataset
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset import state as st
 from opencosmo.dataset.state import DatasetState
-from opencosmo.index import into_array
-from opencosmo.index.mpi import is_in_global_index
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.mapping.mapping import get_mapping
-from opencosmo.mpi import get_comm_world, has_mpi
-from opencosmo.utils import normalize_kwarg_name
 
 if TYPE_CHECKING:
+    from collections.abc import KeysView, Mapping
+
     import astropy.units as u
+    import numpy as np
 
     from opencosmo.collection.protocols import Collection
+    from opencosmo.collection.simulation.state import SimulationChild
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.dataset.dataset import OpenCosmoData
     from opencosmo.header import OpenCosmoHeader
@@ -34,99 +36,7 @@ if TYPE_CHECKING:
     from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region
 
-
-def prepare_matched_datasets(
-    match_set: DatasetMatchSet,
-    datasets: Mapping[str, DatasetState],
-    source: str,
-):
-    # Guard: active sort keys would cause dataset/state.py to re-sort the
-    # carefully ordered rows produced below, silently misaligning everything.
-    for name, ds in datasets.items():
-        if ds.sort_key is not None and name != source:
-            raise ValueError(
-                f"Dataset '{name}' has an active sort key. Call match() before sort_by()."
-            )
-
-    reference_dataset = datasets[source]
-    rows_to_keep = np.ones(len(reference_dataset), dtype=bool)
-    index = reference_dataset.raw_index
-
-    mappings = {}
-    for name, dataset in datasets.items():
-        if name == source:
-            continue
-        mapping = get_mapping(match_set, source, name, index)
-        if mapping is None:
-            raise ValueError(f"Unable to find mapping for dataset {dataset}")
-        if not isinstance(mapping, np.ndarray):
-            raise ValueError("Dataset matching does not support chunked mappings")
-        rows_to_keep = rows_to_keep & (mapping >= 0)
-        mappings[name] = mapping
-
-    if has_mpi():
-        return prepare_matched_datasets_mpi(datasets, mappings, rows_to_keep, source)
-
-    # The np.isin pass below is a required precondition for the unchecked
-    # searchsorted in the final loop: it guarantees every value in `wanted`
-    # is present in `target_index`, making the lookup safe without bounds checks.
-
-    for name, mapping in mappings.items():
-        mappings_to_keep = mapping[rows_to_keep]
-        mappings_in_index = np.isin(
-            mappings_to_keep, into_array(datasets[name].raw_index)
-        )
-        rows_to_keep[rows_to_keep] &= mappings_in_index
-
-    # Must be taken only after the refinement above, so the source and every
-    # target end up with the same number of rows.
-    new_datasets = {
-        source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
-    }
-    for name, mapping in mappings.items():
-        target_index = into_array(datasets[name].raw_index)
-        wanted = mapping[rows_to_keep]
-        order = np.argsort(target_index, kind="stable")
-        rows_to_take = order[np.searchsorted(target_index, wanted, sorter=order)]
-        new_datasets[name] = dsops.take_rows(datasets[name], rows_to_take)
-
-    return new_datasets
-
-
-def prepare_matched_datasets_mpi(
-    datasets: Mapping[str, DatasetState],
-    mappings: dict[str, np.ndarray],
-    rows_to_keep: np.ndarray,
-    source: str,
-):
-    """
-    Match under MPI, where a rank pulls the GLOBAL target rows that its local
-    source rows map to. Target rows therefore need not live on this rank, so the
-    serial rank-local membership test does not apply.
-
-    A row is still only matchable if it is present somewhere in the current
-    global state. Rows dropped by an earlier match are gone from every rank and
-    must not reappear, so membership is tested against the union of every rank's
-    index rather than the local index alone.
-    """
-
-    comm = get_comm_world()
-    assert comm is not None
-
-    for name, mapping in mappings.items():
-        rows_to_keep[rows_to_keep] &= is_in_global_index(
-            mapping[rows_to_keep],
-            into_array(datasets[name].raw_index),
-            comm,
-        )
-
-    new_datasets = {
-        source: dsops.take_rows(datasets[source], np.where(rows_to_keep)[0])
-    }
-    for name, mapping in mappings.items():
-        dataset = datasets[name]
-        new_datasets[name] = st.redistribute(dataset, mapping[rows_to_keep])
-    return new_datasets
+    UserChild = Dataset | lc.Lightcone | sc.StructureCollection
 
 
 class SimulationCollection:
@@ -139,137 +49,101 @@ class SimulationCollection:
 
     def __init__(
         self,
-        datasets: Mapping[str, Dataset | DatasetState | Collection],
+        datasets: Mapping[str, Dataset | lc.Lightcone | Collection],
         match_set: DatasetMatchSet | None = None,
-        match_source: str | None = None,
-        rebuilt: dict[str, bool] | None = None,
     ):
-        def normalize(
-            value: Dataset | DatasetState | Collection,
-        ) -> DatasetState | sc.StructureCollection:
-            if isinstance(value, Dataset):
-                return value._state
-            elif isinstance(value, (DatasetState, sc.StructureCollection)):
-                return value
-            raise ValueError(
-                "Simulation collection only accepts datasets and structure collections"
-            )
+        members: dict[str, SimulationChild] = {}
+        for name, value in datasets.items():
+            if not isinstance(value, (Dataset, lc.Lightcone, sc.StructureCollection)):
+                raise ValueError(
+                    "Simulation collection only accepts datasets, lightcones, "
+                    "and structure collections"
+                )
+            members[name] = value._state
+        self.__state = simst.from_parts(members, match_set)
 
-        if match_set is not None and not all(
-            isinstance(v, (Dataset, DatasetState)) for v in datasets.values()
-        ):
-            raise ValueError(
-                "Dataset matching is only supported for simple datasets (no collections)"
-            )
+    @classmethod
+    def _from_state(cls, state: simst.SimulationState) -> SimulationCollection:
+        collection = cls.__new__(cls)
+        collection.__state = state
+        return collection
 
-        self.__datasets = {
-            normalize_kwarg_name(k): normalize(v) for k, v in dict(datasets).items()
-        }
-        self.__match_set = match_set
-        self.__match_source = match_source
-        self.__rebuilt = rebuilt
+    @property
+    def _state(self) -> simst.SimulationState:
+        """Return the internal state for collection and I/O implementations."""
+        return self.__state
+
+    def __with_state(self, state: simst.SimulationState) -> SimulationCollection:
+        if state is self.__state:
+            return self
+        return SimulationCollection._from_state(state)
+
+    def __resolved(self) -> SimulationCollection:
+        state = self.__state
+        return self.__with_state(replace(state, members=state.children, aligned=True))
+
+    @staticmethod
+    def __wrap(child: SimulationChild) -> UserChild:
+        if isinstance(child, DatasetState):
+            return Dataset(child)
+        if isinstance(child, StructureState):
+            return sc.StructureCollection(child)
+        return lc.Lightcone(child)
+
+    @staticmethod
+    def __unwrap(value: object) -> object:
+        if isinstance(value, (Dataset, lc.Lightcone, sc.StructureCollection)):
+            return value._state
+        return value
 
     def __getattr__(self, key: str):
-        output = {}
+        if key == "_SimulationCollection__state":
+            raise AttributeError(key)
         try:
-            for name, ds in self.__datasets.items():
-                output[name] = getattr(ds.header, key)
+            return {
+                name: getattr(header, key)
+                for name, header in self.__state.header.items()
+            }
         except AttributeError:
             return object.__getattribute__(self, key)
-        return output
 
     def __dir__(self) -> list[str]:
         keys: set[str] = set()
-        for ds in self.__datasets.values():
-            keys.update(ds.header.parameters.keys())
+        for header in self.__state.header.values():
+            keys.update(header.parameters.keys())
         return list(keys) + list(super().__dir__())
 
-    def keys(self):
-        return self.__datasets.keys()
+    def keys(self) -> KeysView[str]:
+        return dict.fromkeys(simst.public_keys(self.__state)).keys()
 
     def values(self):
-        self.__rebuild_all()
-
-        values = []
-        for v in self.__datasets.values():
-            if isinstance(v, DatasetState):
-                values.append(Dataset(v))
-            else:
-                values.append(v)
-        return values
+        return [self.__wrap(child) for child in self.__state.children.values()]
 
     def items(self):
-        self.__rebuild_all()
-        out = {}
-        for k, v in self.__datasets.items():
-            if isinstance(v, DatasetState):
-                out[k] = Dataset(v)
-            else:
-                out[k] = v
-        return out.items()
+        return {
+            name: self.__wrap(child) for name, child in self.__state.children.items()
+        }.items()
 
     def __len__(self):
-        return len(self.__datasets)
+        return len(self.__state)
 
     def __iter__(self):
         return iter(self.keys())
 
-    def __getitem__(self, key):
-        if (
-            self.__match_source is not None
-            and key != self.__match_source
-            and not self.__rebuilt[key]
-        ):
-            datasets = {
-                self.__match_source: self.__datasets[self.__match_source],
-                key: self.__datasets[key],
-            }
-
-            new_datasets = prepare_matched_datasets(
-                self.__match_set, datasets, self.__match_source
-            )
-            self.__datasets |= new_datasets
-            self.__rebuilt[key] = True
-        value = self.__datasets[key]
-        if isinstance(value, DatasetState):
-            return Dataset(value)
-        return value
-
-    def __rebuild_all(self):
-        if self.__match_source is None:
-            return
-
-        datasets = {
-            key: ds
-            for key, ds in self.__datasets.items()
-            if key != self.__match_source and not self.__rebuilt[key]
-        }
-        if not datasets:
-            return
-        self.__datasets |= prepare_matched_datasets(
-            self.__match_set,
-            datasets | {self.__match_source: self.__datasets[self.__match_source]},
-            self.__match_source,
-        )
-        self.__rebuilt = {key: True for key in self.__datasets.keys()}
+    def __getitem__(self, key: str):
+        return self.__wrap(simst.view(self.__state, key))
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exc_details):
-        for dataset in self.values():
-            try:
-                dataset.close()
-            except ValueError:
-                continue
+        for child in self.values():
+            child.__exit__(*exc_details)
 
     def __repr__(self):
-        n_collections = sum(
-            1
-            for v in self.values()
-            if isinstance(v, (SimulationCollection, sc.StructureCollection))
-        )
-        n_datasets = sum(1 for v in self.values() if isinstance(v, Dataset))
+        members = self.__state.members.values()
+        n_collections = sum(1 for v in members if isinstance(v, StructureState))
+        n_datasets = len(members) - n_collections
         return (
             f"SimulationCollection({n_collections} collections, {n_datasets} datasets)"
         )
@@ -279,35 +153,26 @@ class SimulationCollection:
         raise NotImplementedError()
 
     def make_schema(self, path: str) -> Schema:
+        state = self.__state
         children = {}
-
         new_uuids: dict[str, UUID] = {}
         indices = {}
-        self.__rebuild_all()
 
-        for name, dataset in self.__datasets.items():
-            if isinstance(dataset, DatasetState):
-                children[name] = st.make_schema(dataset, "/".join([path, name]))
-
-                new_uuids[name] = UUID(
-                    cast("str", children[name].children["data"].attributes["main_uuid"])
-                )
-                indices[name] = dataset.raw_index
+        for name, child in state.children.items():
+            child_path = "/".join([path, name])
+            if not isinstance(child, DatasetState):
+                children[name] = self.__wrap(child).make_schema(path=child_path)
                 continue
-
-            children[name] = dataset.make_schema(path="/".join([path, name]))
-            if isinstance(dataset, sc.StructureCollection):
-                continue
+            children[name] = st.make_schema(child, child_path)
             new_uuids[name] = UUID(
-                children[name].children["data"].attributes["main_uuid"]
+                cast("str", children[name].children["data"].attributes["main_uuid"])
             )
-            indices[name] = dataset.index
+            indices[name] = child.raw_index
 
-        if self.__match_set is not None and len(self) > 1:
-            match_set_schema = self.__match_set.make_schema(
-                new_uuids, indices, self.__match_source
+        if state.match_set is not None and len(self) > 1:
+            children["map"] = state.match_set.make_schema(
+                new_uuids, indices, state.match_source
             )
-            children["map"] = match_set_schema
 
         schema = make_schema(
             "/",
@@ -328,9 +193,10 @@ class SimulationCollection:
         This type of collection will only ever be constructed if all the underlying
         datasets have the same data type.
         """
+        state = self.__state
         if isinstance(datasets, str):
             datasets = [datasets]
-        if self.__match_source is not None and method in (
+        if state.match_source is not None and method in (
             "take",
             "take_range",
             "take_rows",
@@ -341,52 +207,39 @@ class SimulationCollection:
             # datasets=None means "all datasets", which for a matched collection
             # resolves to the active source. Any explicit request must name that
             # source and nothing else.
-            if datasets is not None and (
-                not isinstance(datasets, Iterable)
-                or tuple(datasets) != (self.__match_source,)
-            ):
+            if datasets is not None and tuple(datasets) != (state.match_source,):
                 raise ValueError(
                     f"When working with a matched collection, {method} can only be called on the active source. Got datasets = {datasets}"
                 )
 
             method_impl = getattr(dsops, method)
-            new_source = method_impl(
-                self.__datasets[self.__match_source], *args, **kwargs
-            )
-            new_datasets = self.__datasets | {self.__match_source: new_source}
-            return SimulationCollection(
-                new_datasets,
-                self.__match_set,
-                self.__match_source,
-                {
-                    ds_name: False
-                    for ds_name in self.__datasets.keys()
-                    if ds_name != self.__match_source
-                },
+            new_source = method_impl(state.members[state.match_source], *args, **kwargs)
+            return self.__with_state(
+                replace(
+                    state,
+                    members={**state.members, state.match_source: new_source},
+                    aligned=False,
+                )
             )
 
-        regular_kwargs = {}
-        mapped_kwargs = {}
-        if isinstance(datasets, str):
-            datasets = [datasets]
-        elif datasets is None:
-            datasets = self.keys()
-        requested_datasets = set(datasets)
+        requested_datasets = set(self.keys() if datasets is None else datasets)
         if not requested_datasets.issubset(self.keys()):
             raise ValueError(
                 f"Unknown datasets {requested_datasets.difference(self.keys())}"
             )
 
+        regular_kwargs = {}
+        mapped_kwargs = {}
         for name, value in kwargs.items():
             if isinstance(value, dict) and set(value.keys()) == requested_datasets:
                 mapped_kwargs[name] = value
             else:
                 regular_kwargs[name] = value
 
-        output = dict(self.__datasets) if construct else {}
-        for name in requested_datasets:
+        output = {}
+        for name in (key for key in self.keys() if key in requested_datasets):
             output[name] = self.__dispatch_dataset_operation(
-                name,
+                state.members[name],
                 method,
                 *args,
                 dataset_mapped_kwargs={
@@ -395,45 +248,37 @@ class SimulationCollection:
                 regular_kwargs=regular_kwargs,
             )
         if construct:
-            return SimulationCollection(
-                output,
-                self.__match_set,
-                self.__match_source,
-                copy(self.__rebuilt) if self.__rebuilt is not None else None,
+            return self.__with_state(
+                replace(state, members={**state.members, **output})
             )
         return output
 
     def __dispatch_dataset_operation(
         self,
-        dataset_name: str,
+        target: SimulationChild,
         method: str,
         *args,
         dataset_mapped_kwargs: dict[str, object],
         regular_kwargs: dict[str, object],
-    ) -> DatasetState | sc.StructureCollection:
+    ):
         """Private dispatcher for operations on DatasetState vs nested Collections."""
-        target = self.__datasets[dataset_name]
         if isinstance(target, DatasetState):
             # Route DatasetState operations through the shared state operation layer.
             fn = getattr(dsops, method)
             return fn(target, *args, **regular_kwargs, **dataset_mapped_kwargs)
         # Higher-level collections already implement the operation.
-        assert isinstance(target, sc.StructureCollection)
-        return getattr(target, method)(*args, **regular_kwargs, **dataset_mapped_kwargs)
+        result = getattr(self.__wrap(target), method)(
+            *args, **regular_kwargs, **dataset_mapped_kwargs
+        )
+        return self.__unwrap(result)
 
     @property
     def dtype(self) -> dict[str, str]:
-        out: dict[str, str] = {}
-        for key, v in self.__datasets.items():
-            if isinstance(v, DatasetState):
-                out[key] = str(v.header.file.data_type)
-            else:
-                out[key] = v.dtype
-        return out
+        return self.__state.dtype
 
     @property
     def header(self) -> dict[str, OpenCosmoHeader]:
-        return {k: v.header for k, v in self.__datasets.items()}
+        return self.__state.header
 
     def get_data(
         self, format: str = "astropy", wrap_single: bool = False, unpack: bool = True
@@ -461,7 +306,10 @@ class SimulationCollection:
             collection.
 
         """
-        if not all(isinstance(ds, DatasetState) for ds in self.__datasets.values()):
+        if not all(
+            isinstance(child, (DatasetState, LightconeState))
+            for child in self.__state.members.values()
+        ):
             raise TypeError(
                 "get_data is only supported when this collection contains datasets!"
             )
@@ -510,7 +358,8 @@ class SimulationCollection:
         ValueError: If the data does not contain a matching index
         """
 
-        if self.__match_set is None:
+        state = self.__state
+        if state.match_set is None:
             raise ValueError(
                 "This SimulationCollection does not contain matching information!"
             )
@@ -518,19 +367,12 @@ class SimulationCollection:
             raise ValueError(
                 f"This SimulationCollection does not have a simulation named {dataset}"
             )
-        assert all(isinstance(ds, DatasetState) for ds in self.__datasets.values())
 
-        new_datasets = prepare_matched_datasets(
-            self.__match_set,
-            cast("dict[str, DatasetState]", self.__datasets),
-            dataset,
-        )
-
-        return SimulationCollection(
-            new_datasets,
-            self.__match_set,
-            dataset,
-            {name: True for name in self.__datasets.keys()},
+        aligned = matching.align(state.match_set, dataset, state.members)
+        # The active source is listed first.
+        members = {dataset: aligned[dataset]} | aligned
+        return self.__with_state(
+            simst.SimulationState(members, state.match_set, dataset)
         )
 
     def clear_match(self):
@@ -574,8 +416,10 @@ class SimulationCollection:
             The collection with the matching cleared.
         """
 
-        self.__rebuild_all()
-        return SimulationCollection(self.__datasets, self.__match_set)
+        state = self.__state
+        return self.__with_state(
+            replace(state, members=state.children, match_source=None, aligned=True)
+        )
 
     def bound(
         self, region: Region, select_by: Optional[str] = None
@@ -657,14 +501,13 @@ class SimulationCollection:
             A new collection with only the specified columns
 
         """
-        if not all(isinstance(dataset, Dataset) for dataset in self.values()):
+        state = self.__state
+        if not all(isinstance(child, DatasetState) for child in state.members.values()):
             return self.__map("select", *args, **kwargs)
 
-        datasets = cast("dict[str, Dataset]", self.__datasets)
+        datasets = cast("dict[str, DatasetState]", state.members)
         output = do_multi_dataset_selections(datasets, args, kwargs)
-        return SimulationCollection(
-            output, self.__match_set, self.__match_source, copy(self.__rebuilt)
-        )
+        return self.__with_state(replace(state, members=output))
 
     def drop(self, *args, **kwargs) -> SimulationCollection:
         """
@@ -691,20 +534,17 @@ class SimulationCollection:
             Explicit dataset-keyed drop selections.
 
         """
-        if not all(
-            isinstance(dataset, DatasetState) for dataset in self.__datasets.values()
-        ):
+        state = self.__state
+        if not all(isinstance(child, DatasetState) for child in state.members.values()):
             return self.__map("drop", *args, **kwargs)
 
-        datasets = cast("dict[str, DatasetState]", self.__datasets)
+        datasets = cast("dict[str, DatasetState]", state.members)
         output = do_multi_dataset_drops(datasets, args)
         for dataset_name, columns in kwargs.items():
             if dataset_name not in self:
                 raise ValueError(f"Dataset {dataset_name} not found in collection.")
             output[dataset_name] = dsops.drop(output[dataset_name], columns)
-        return SimulationCollection(
-            output, self.__match_set, self.__match_source, copy(self.__rebuilt)
-        )
+        return self.__with_state(replace(state, members=output))
 
     def take(
         self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
@@ -847,11 +687,7 @@ class SimulationCollection:
         results: SimulationCollection | dict[str, np.ndarray] | dict[str, astropy.units.Quantity]
             The results of the computation, or a new simulation collection with the results inserted.
         """
-        if self.__match_source is not None:
-            assert self.__match_set is not None
-            self.__rebuild_all()
-
-        results = self.__map(
+        results = self.__resolved().__map(
             "evaluate",
             func,
             vectorize=vectorize,
