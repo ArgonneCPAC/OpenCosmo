@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -86,12 +86,16 @@ def from_parts(
 ) -> StructureState:
     """
     Build a structure state. A nested galaxy collection is keyed as
-    ``galaxies``. With ``resolve``, freshly opened children are aligned with
+    ``galaxies``, in both ``linked`` and the match set link aliases. With ``resolve``, freshly opened children are aligned with
     ``source``; otherwise they must already be.
     """
     linked = dict(linked)
     if isinstance(linked.get("galaxy_properties"), StructureState):
         linked["galaxies"] = linked.pop("galaxy_properties")
+        match_sets = {
+            uuid: __rename_alias(match_set, "galaxy_properties", "galaxies")
+            for uuid, match_set in match_sets.items()
+        }
 
     if linked:
         missing = [
@@ -133,3 +137,12 @@ def view(state: StructureState, key: str) -> StructureChild:
     if key not in children:
         raise KeyError(f"Dataset {key} not found in collection.")
     return children[key]
+
+
+def __rename_alias(match_set: DatasetMatchSet, old: str, new: str) -> DatasetMatchSet:
+    if old not in match_set.aliases:
+        return match_set
+    aliases = {
+        new if name == old else name: uuid for name, uuid in match_set.aliases.items()
+    }
+    return replace(match_set, aliases=aliases)

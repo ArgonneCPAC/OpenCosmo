@@ -1,19 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Mapping, Optional
-
-from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.lightcone.state import LightconeState
-from opencosmo.collection.structure import links
-from opencosmo.collection.structure import structure as sc
-from opencosmo.dataset import dataset as ocds
-from opencosmo.dataset.state import DatasetState
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from uuid import UUID
 
     import opencosmo as oc
-    from opencosmo.io.schema import Schema
     from opencosmo.mapping.mapping import DatasetMatchSet
 
     Child = oc.Dataset | oc.Lightcone | oc.StructureCollection
@@ -67,46 +59,3 @@ class LinkHandler:
     def derived_from(self) -> Optional[oc.Dataset | oc.Lightcone]:
         """The source the linked datasets are currently aligned with, if not the source."""
         return self.__derived_from
-
-    def make_schema(
-        self, source: oc.Dataset | oc.Lightcone, source_schema: Schema
-    ) -> Schema:
-        """Add source-row-aligned link datasets to a structure source schema."""
-        return links.link_schema(self.match_sets, source._state, source_schema)
-
-    @property
-    def names(self) -> tuple[str, ...]:
-        """Collection-facing link names, sorted for determinism."""
-        return links.link_names(self.match_sets)
-
-    def make_derived(self, source: oc.Dataset | oc.Lightcone) -> LinkHandler:
-        """Record the source from which deferred linked rebuilding begins."""
-        derived_from = self.__derived_from
-        if self.__derived_from is None:
-            derived_from = source
-        return LinkHandler(self.match_sets, derived_from)
-
-    def resort(
-        self,
-        source: oc.Dataset | oc.Lightcone,
-        datasets: Mapping[str, Child],
-    ) -> dict[str, Child]:
-        """Restore linked datasets to their source's original file order."""
-        targets = LinkHandler.__unwrap(datasets)
-        return LinkHandler.__wrap(links.resort(self.match_sets, source._state, targets))
-
-    @staticmethod
-    def __unwrap(datasets: Mapping[str, Child]) -> dict[str, links.LinkTarget]:
-        return {name: dataset._state for name, dataset in datasets.items()}
-
-    @staticmethod
-    def __wrap(targets: Mapping[str, links.LinkTarget]) -> dict[str, Child]:
-        wrapped: dict[str, Child] = {}
-        for name, target in targets.items():
-            if isinstance(target, DatasetState):
-                wrapped[name] = ocds.Dataset(target)
-            elif isinstance(target, LightconeState):
-                wrapped[name] = lc.Lightcone(target)
-            else:
-                wrapped[name] = sc.StructureCollection._from_state(target)
-        return wrapped

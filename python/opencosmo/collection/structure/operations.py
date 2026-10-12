@@ -19,6 +19,7 @@ import numpy as np
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.structure import evaluate as sevaluate
+from opencosmo.collection.structure import io as sio
 from opencosmo.collection.structure import links
 from opencosmo.collection.structure.state import StructureState, public_keys, view
 from opencosmo.column import col
@@ -27,6 +28,9 @@ from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_sel
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import to_numpy_dict, verify_format
 from opencosmo.dataset.state import DatasetState
+from opencosmo.dataset.state import make_schema as make_dataset_schema
+from opencosmo.io.schema import FileEntry
+from opencosmo.io.schema import make_schema as make_collection_schema
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
@@ -38,6 +42,8 @@ if TYPE_CHECKING:
     from opencosmo.collection.structure.state import Source, StructureChild
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.index import DataIndex
+    from opencosmo.io.iopen import DatasetTarget
+    from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
     Leaves = Mapping[tuple[str, ...], DatasetState | LightconeState]
@@ -665,6 +671,56 @@ def evaluate_on_dataset(
     return replace(state, linked={**state.linked, path[0]: nested_result})
 
 
+# Opening and writing
+
+
+def open_state(
+    targets: list[DatasetTarget],
+    ignore_empty: bool = True,
+    index_kind: str = "none",
+    is_empty_ref: bool = False,
+) -> StructureState:
+    return sio.build_structure_collection(
+        targets, ignore_empty, index_kind=index_kind, is_empty_ref=is_empty_ref
+    )
+
+
+def make_schema(state: StructureState, path: str) -> Schema:
+    """
+    Schema for writing a structure collection. Linked children are restored to
+    the source's file order, and the source carries the link columns.
+    """
+    no_stack = isinstance(state.source, LightconeState)
+    children: dict[str, Schema] = {}
+
+    # Every rank builds the source schema, even when empty, to stay in lockstep
+    # with the collectives inside it.
+    source_schema = __child_schema(
+        state.source, "/".join([path, state.dtype]), no_stack
+    )
+    if len(state.source) > 0:
+        source_schema = links.link_schema(state.match_sets, state.source, source_schema)
+        children[state.dtype] = sio.rebuild_data_linked(source_schema)
+
+    resorted = links.resort(state.match_sets, state.source, state.children)
+    for name in sorted(resorted):
+        child = resorted[name]
+        write_name = "galaxy_properties" if name == "galaxies" else name
+        child_schema = __child_schema(child, "/".join([path, write_name]), no_stack)
+        if not isinstance(child, StructureState):
+            children[write_name] = child_schema
+            continue
+        for grandchild_name, grandchild in child_schema.children.items():
+            if "properties" in grandchild_name:
+                children[grandchild_name] = grandchild
+            else:
+                children[f"{write_name}_{grandchild_name}"] = grandchild
+
+    return make_collection_schema(
+        path.split("/")[-1], FileEntry.STRUCTURE_COLLECTION, children=children
+    )
+
+
 def leaf_datasets(
     state: StructureState, path: tuple[str, ...] = ()
 ) -> dict[tuple[str, ...], DatasetState | LightconeState]:
@@ -747,3 +803,15 @@ def __cache_collected(
                 values = values.reshape((len(child), -1))
             by_uuid.setdefault(child.column_map[name], {})[name] = values
         child.cache.add_data(by_uuid, {})
+
+
+# Lightcones are written in stacks of at least this many rows, as Lightcone does.
+__MIN_LIGHTCONE_DATASET_SIZE = 100_000
+
+
+def __child_schema(child: StructureChild, path: str, no_stack: bool) -> Schema:
+    if isinstance(child, DatasetState):
+        return make_dataset_schema(child, path)
+    if isinstance(child, LightconeState):
+        return lcops.make_schema(child, path, __MIN_LIGHTCONE_DATASET_SIZE, no_stack)
+    return make_schema(child, path)

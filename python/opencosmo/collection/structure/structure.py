@@ -17,18 +17,14 @@ import numpy as np
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.structure import io as sio
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure import state as scst
-from opencosmo.collection.structure.io import rebuild_data_linked
 from opencosmo.dataset.state import DatasetState
-from opencosmo.io.schema import FileEntry, make_schema
-
-from .handler import LinkHandler
 
 if TYPE_CHECKING:
     import astropy.units as u
 
+    from opencosmo.collection.structure.handler import LinkHandler
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
@@ -127,53 +123,17 @@ class StructureCollection:
             return StructureCollection._from_state(child)
         return lc.Lightcone(child)
 
-    # Transitional views of the state in the shape of the old attributes. They
-    # go away as the operations move onto StructureState.
-
-    @property
-    def __source(self) -> oc.Dataset:
-        # Typed as the old attribute was; lightcone sources are Lightcones.
-        return cast("oc.Dataset", StructureCollection.__wrap(self.__state.source))
-
-    @property
-    def __handler(self) -> LinkHandler:
-        linked_source = self.__state.linked_source
-        derived_from: oc.Dataset | oc.Lightcone | None = None
-        if linked_source is not None:
-            wrapped = StructureCollection.__wrap(linked_source)
-            assert not isinstance(wrapped, StructureCollection)
-            derived_from = wrapped
-        return LinkHandler(dict(self.__state.match_sets), derived_from)
-
-    def __get_datasets(self) -> dict[str, oc.Dataset | StructureCollection]:
-        """
-        The linked datasets, rebuilt to match the current source.
-        """
-        return StructureCollection.__views(self.__state.children)
-
-    @staticmethod
-    def __views(
-        children: Mapping[str, scst.StructureChild],
-    ) -> dict[str, oc.Dataset | StructureCollection]:
-        # Typed as the old attributes were; lightcone children are Lightcones.
-        return cast(
-            "dict[str, oc.Dataset | StructureCollection]",
-            {
-                name: StructureCollection.__wrap(child)
-                for name, child in children.items()
-            },
-        )
-
     def __repr__(self):
-        structure_type = self.__source.header.file.data_type.split("_")[0] + "s"
-        is_lightcone = isinstance(self.__source, lc.Lightcone)
+        source = StructureCollection.__wrap(self.__state.source)
+        structure_type = self.__state.dtype.split("_")[0] + "s"
+        is_lightcone = isinstance(source, lc.Lightcone)
         keys = list(self.keys())
         if len(keys) == 2:
             dtype_str = " and ".join(keys)
         else:
             dtype_str = ", ".join(keys[:-1]) + ", and " + keys[-1]
         header = f"Collection of {structure_type} {'on a lightcone ' if is_lightcone else ' '}with {dtype_str}\n"
-        source_repr = self.__source.__repr__().split("\n", maxsplit=1)[1]
+        source_repr = source.__repr__().split("\n", maxsplit=1)[1]
 
         return header + source_repr
 
@@ -200,11 +160,13 @@ class StructureCollection:
         is_empty_ref: bool = False,
         **kwargs,
     ) -> StructureCollection:
-        return sio.build_structure_collection(
-            targets,
-            ignore_empty,
-            index_kind=index_kind,
-            is_empty_ref=is_empty_ref,
+        return cls._from_state(
+            scops.open_state(
+                targets,
+                ignore_empty,
+                index_kind=index_kind,
+                is_empty_ref=is_empty_ref,
+            )
         )
 
     @property
@@ -245,7 +207,7 @@ class StructureCollection:
         -------
         parameters: opencosmo.dtypes.HaccSimulationParameters
         """
-        return self.__source.simulation
+        return self.__state.header.parameters["simulation"]
 
     def keys(self) -> list[str]:
         """
@@ -1153,37 +1115,4 @@ class StructureCollection:
             raise AttributeError("This collection does not contain galaxies!")
 
     def make_schema(self, path: str, **kwargs) -> Schema:
-        children = {}
-        source_name = self.__source.dtype
-        datasets = self.__handler.resort(self.__source, self.__get_datasets())
-        schema_kwargs: dict[str, Any] = (
-            {"no_stack": True} if isinstance(self.__source, lc.Lightcone) else {}
-        )
-
-        source_schema = self.__source.make_schema(
-            **schema_kwargs, path="/".join([path, source_name])
-        )
-        if len(self.__source) > 0:
-            children[source_name] = source_schema = self.__handler.make_schema(
-                self.__source, source_schema
-            )
-            children[source_name] = rebuild_data_linked(source_schema)
-
-        for name, dataset in datasets.items():
-            if name == "galaxies":
-                name = "galaxy_properties"
-            ds_schema = dataset.make_schema(
-                **schema_kwargs, path="/".join([path, name])
-            )
-            if not isinstance(dataset, StructureCollection):
-                children[name] = ds_schema
-                continue
-            for grandchild_name, grandchild in ds_schema.children.items():
-                if "properties" in grandchild_name:
-                    children[grandchild_name] = grandchild
-                else:
-                    children[f"{name}_{grandchild_name}"] = grandchild
-
-        if name is None:
-            name = ""
-        return make_schema(name, FileEntry.STRUCTURE_COLLECTION, children=children)
+        return scops.make_schema(self.__state, path)
