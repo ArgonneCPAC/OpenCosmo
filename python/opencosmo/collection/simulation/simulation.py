@@ -1,22 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional, cast
-from uuid import UUID
+from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional
 
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.simulation import matching
 from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
-from opencosmo.collection.simulation.io import (
-    resort_simulation_collection,
-)
 from opencosmo.collection.structure import structure as sc
 from opencosmo.collection.structure.state import StructureState
 from opencosmo.dataset import Dataset
-from opencosmo.dataset import state as st
 from opencosmo.dataset.state import DatasetState
-from opencosmo.io.schema import FileEntry, make_schema
 
 if TYPE_CHECKING:
     from collections.abc import KeysView, Mapping
@@ -141,33 +133,7 @@ class SimulationCollection:
         raise NotImplementedError()
 
     def make_schema(self, path: str) -> Schema:
-        state = self.__state
-        children = {}
-        new_uuids: dict[str, UUID] = {}
-        indices = {}
-
-        for name, child in state.children.items():
-            child_path = "/".join([path, name])
-            if not isinstance(child, DatasetState):
-                children[name] = self.__wrap(child).make_schema(path=child_path)
-                continue
-            children[name] = st.make_schema(child, child_path)
-            new_uuids[name] = UUID(
-                cast("str", children[name].children["data"].attributes["main_uuid"])
-            )
-            indices[name] = child.raw_index
-
-        if state.match_set is not None and len(self) > 1:
-            children["map"] = state.match_set.make_schema(
-                new_uuids, indices, state.match_source
-            )
-
-        schema = make_schema(
-            "/",
-            FileEntry.SIMULATION_COLLECTION,
-            children=children,
-        )
-        return resort_simulation_collection(schema)
+        return simops.make_schema(self.__state, path)
 
     @property
     def dtype(self) -> dict[str, str]:
@@ -245,22 +211,7 @@ class SimulationCollection:
         ValueError: If the data does not contain a matching index
         """
 
-        state = self.__state
-        if state.match_set is None:
-            raise ValueError(
-                "This SimulationCollection does not contain matching information!"
-            )
-        elif dataset not in self.keys():
-            raise ValueError(
-                f"This SimulationCollection does not have a simulation named {dataset}"
-            )
-
-        aligned = matching.align(state.match_set, dataset, state.members)
-        # The active source is listed first.
-        members = {dataset: aligned[dataset]} | aligned
-        return self.__with_state(
-            simst.SimulationState(members, state.match_set, dataset)
-        )
+        return self.__with_state(simops.match(self.__state, dataset))
 
     def clear_match(self):
         """
@@ -303,10 +254,7 @@ class SimulationCollection:
             The collection with the matching cleared.
         """
 
-        state = self.__state
-        return self.__with_state(
-            replace(state, members=state.children, match_source=None, aligned=True)
-        )
+        return self.__with_state(simops.clear_match(self.__state))
 
     def bound(
         self, region: Region, select_by: Optional[str] = None

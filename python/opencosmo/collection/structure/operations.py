@@ -688,9 +688,7 @@ def make_schema(state: StructureState, path: str) -> Schema:
 
     # Every rank builds the source schema, even when empty, to stay in lockstep
     # with the collectives inside it.
-    source_schema = __child_schema(
-        state.source, "/".join([path, state.dtype]), no_stack
-    )
+    source_schema = child_schema(state.source, "/".join([path, state.dtype]), no_stack)
     if len(state.source) > 0:
         source_schema = links.link_schema(state.match_sets, state.source, source_schema)
         children[state.dtype] = sio.rebuild_data_linked(source_schema)
@@ -699,11 +697,11 @@ def make_schema(state: StructureState, path: str) -> Schema:
     for name in sorted(resorted):
         child = resorted[name]
         write_name = "galaxy_properties" if name == "galaxies" else name
-        child_schema = __child_schema(child, "/".join([path, write_name]), no_stack)
+        schema = child_schema(child, "/".join([path, write_name]), no_stack)
         if not isinstance(child, StructureState):
-            children[write_name] = child_schema
+            children[write_name] = schema
             continue
-        for grandchild_name, grandchild in child_schema.children.items():
+        for grandchild_name, grandchild in schema.children.items():
             if "properties" in grandchild_name:
                 children[grandchild_name] = grandchild
             else:
@@ -802,7 +800,7 @@ def __cache_collected(
 __MIN_LIGHTCONE_DATASET_SIZE = 100_000
 
 
-def __child_schema(child: StructureChild, path: str, no_stack: bool) -> Schema:
+def child_schema(child: StructureChild, path: str, no_stack: bool) -> Schema:
     if isinstance(child, DatasetState):
         return make_dataset_schema(child, path)
     if isinstance(child, LightconeState):

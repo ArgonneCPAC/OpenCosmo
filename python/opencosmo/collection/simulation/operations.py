@@ -10,14 +10,19 @@ matching only reads raw row indices.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID
 
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone.state import LightconeState
+from opencosmo.collection.simulation import matching
+from opencosmo.collection.simulation.io import resort_simulation_collection
 from opencosmo.collection.structure import operations as scops
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState
+from opencosmo.io.schema import FileEntry
+from opencosmo.io.schema import make_schema as make_collection_schema
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -27,6 +32,8 @@ if TYPE_CHECKING:
 
     from opencosmo.collection.simulation.state import SimulationChild, SimulationState
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
     Selector = Callable[["ChildOps"], Callable[..., Any]]
@@ -280,6 +287,56 @@ def get_data(
         assert child_get_data is not None
         output[name] = child_get_data(child, format, unpack, wrap_single)
     return output
+
+
+# Matching and writing
+
+
+def match(state: SimulationState, source: str) -> SimulationState:
+    """
+    Match every member to ``source``. Pending members are matched as they are,
+    without realigning them to the previous source first.
+    """
+    if state.match_set is None:
+        raise ValueError(
+            "This SimulationCollection does not contain matching information!"
+        )
+    if source not in state.members:
+        raise ValueError(
+            f"This SimulationCollection does not have a simulation named {source}"
+        )
+    members = matching.align(state.match_set, source, state.members)
+    return replace(state, members=members, match_source=source, aligned=True)
+
+
+def clear_match(state: SimulationState) -> SimulationState:
+    return replace(__resolved(state), match_source=None)
+
+
+def make_schema(state: SimulationState, path: str) -> Schema:
+    state = __resolved(state)
+    children: dict[str, Schema] = {}
+    new_uuids: dict[str, UUID] = {}
+    indices: dict[str, DataIndex] = {}
+
+    for name, child in state.members.items():
+        children[name] = scops.child_schema(child, "/".join([path, name]), False)
+        if not isinstance(child, DatasetState):
+            continue
+        new_uuids[name] = UUID(
+            cast("str", children[name].children["data"].attributes["main_uuid"])
+        )
+        indices[name] = child.raw_index
+
+    if state.match_set is not None and len(state) > 1:
+        children["map"] = state.match_set.make_schema(
+            new_uuids, indices, state.match_source
+        )
+
+    schema = make_collection_schema(
+        "/", FileEntry.SIMULATION_COLLECTION, children=children
+    )
+    return resort_simulation_collection(schema)
 
 
 def __row_operation(

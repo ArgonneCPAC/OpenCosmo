@@ -708,6 +708,33 @@ def test_match_requires_known_source(mapped_paths, test_data):
         collection.match("unknown")
 
 
+@pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
+def test_match_preserves_key_order(source, mapped_paths, test_data):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    keys = list(collection.keys())
+
+    matched = collection.match(source)
+
+    assert list(matched.keys()) == keys
+    assert [name for name, _ in matched.items()] == keys
+    assert list(matched.take_range(7, 31).clear_match().keys()) == keys
+
+
+def test_match_on_pending_targets_uses_them_unaligned(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    first = original.match(REFERENCE)
+    pending = first.take_range(7, 31)
+    before = {
+        name: pending[REFERENCE] if name == REFERENCE else first[name]
+        for name in first.keys()
+    }
+
+    rematched = pending.match(SIMULATION_A)
+
+    _assert_matches_mapping(before, rematched, SIMULATION_A, pairwise)
+
+
 def test_mapping_write(mapped_paths, test_data, tmp_path):
     collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
     collection = collection.filter(oc.col("fof_halo_mass") > 1e14)
