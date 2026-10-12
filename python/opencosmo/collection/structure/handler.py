@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Mapping, Optional
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.structure import links
+from opencosmo.collection.structure import structure as sc
 from opencosmo.dataset import dataset as ocds
 from opencosmo.dataset.state import DatasetState
 
@@ -136,5 +137,6 @@ class LinkHandler:
             elif isinstance(target, LightconeState):
                 wrapped[name] = lc.Lightcone(target)
             else:
+                assert isinstance(target, sc.StructureCollection)
                 wrapped[name] = target
         return wrapped
