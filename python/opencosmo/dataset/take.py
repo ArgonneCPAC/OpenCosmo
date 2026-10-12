@@ -46,13 +46,11 @@ def apply_sort_index(
 
 
 def _get_sort_column(ds: DatasetState | LightconeState, sort_col: str):
-    from opencosmo.collection.lightcone.lightcone import Lightcone
+    from opencosmo.collection.lightcone import operations as lcops
     from opencosmo.collection.lightcone.state import LightconeState
 
     if isinstance(ds, LightconeState):
-        # Lightcone-level select/get_data are not yet available on states.
-        lightcone = Lightcone._from_state(ds)
-        return lightcone.select(sort_col).get_data("numpy", ignore_sort=True)
+        return lcops.get_data(lcops.select(ds, sort_col), "numpy", ignore_sort=True)
     else:
         return dsops.get_data(dsops.select(ds, sort_col), "numpy", ignore_sort=True)
 

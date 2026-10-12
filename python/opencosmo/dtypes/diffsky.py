@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 
 import opencosmo.dataset.state as st
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
+from opencosmo.dataset import operations as dsops
 from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
 from opencosmo.mpi import get_mpi
@@ -139,23 +140,28 @@ def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
 
 @hook(
     HookPoint.LightconeInstantiate,
-    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.lightcone),
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.state),
 )
 def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCtx:
-    cs = 0
-    output = {}
-
     def _offset_top_host_idx(top_host_idx, offset):
         top_host_idx[top_host_idx >= 0] += offset
         return {"top_host_idx": top_host_idx}
 
-    for key, ds in ctx.lightcone.items():
-        output[key] = ds.evaluate(
-            _offset_top_host_idx, allow_overwrite=True, vectorize=True, offset=cs
+    offsets = np.cumsum([0] + [len(leaf) for _, leaf in ctx.state.leaves[:-1]])
+    leaves = tuple(
+        (
+            key,
+            dsops.evaluate(
+                leaf,
+                _offset_top_host_idx,
+                vectorize=True,
+                allow_overwrite=True,
+                offset=offset,
+            ),
         )
-        cs += len(ds)
-
-    return dataclasses.replace(ctx, lightcone=output)  # type: ignore[arg-type]
+        for (key, leaf), offset in zip(ctx.state.leaves, offsets)
+    )
+    return dataclasses.replace(ctx, state=dataclasses.replace(ctx.state, leaves=leaves))
 
 
 # Registers an IndexUpdate hook dynamically so that keep_top_host_idx only

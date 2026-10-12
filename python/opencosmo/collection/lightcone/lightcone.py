@@ -11,7 +11,6 @@ from warnings import warn
 
 import numpy as np
 from astropy.coordinates import SkyCoord
-from astropy.table import vstack  # type: ignore
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import io as lcio
@@ -19,18 +18,8 @@ from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
 from opencosmo.collection.lightcone.healpix_map import HealpixMap
-from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema
-from opencosmo.column.column import (
-    mask_contains_scalar,
-    resolve_mask_scalars,
-)
-from opencosmo.column.reducer import default_reducer
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.formats import (
-    convert_data,
-    verify_format,
-)
 from opencosmo.deprecated import deprecated
 from opencosmo.io import iopen, specs
 from opencosmo.io.index_spec import index_spec_for
@@ -38,9 +27,7 @@ from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import (
     HookPoint,
-    LightconeInstantiateCtx,
     LightconeOpenCtx,
-    PostSortCtx,
 )
 from opencosmo.plugins.hook import fold
 
@@ -56,7 +43,6 @@ if TYPE_CHECKING:
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
-        DerivedScalarValue,
     )
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
@@ -361,50 +347,13 @@ class Lightcone(dict):
                 "The `output` argument of the `get_data` function has been renamed to `format`. Passing the `output` argument will cause a failure in a future version"
             )
             format = kwargs["output"]
-        verify_format(format)
-        lightcone = fold(
-            HookPoint.LightconeInstantiate, LightconeInstantiateCtx(self)
-        ).lightcone
-
-        data = [
-            ds.get_data(unpack=False, wrap_single=True) for ds in lightcone.values()
-        ]
-        data_with_length = [d for d in data if len(d) > 0]
-        if len(data_with_length) == 0:
-            vstacked = data[0]
-        else:
-            vstacked = vstack(data_with_length, join_type="exact")
-
-        vstacked, scope_scalars = evaluate_scope(
-            self.__state.scope, vstacked, unpack=unpack
+        return lcops.get_data(
+            self.__state,
+            format,
+            unpack,
+            wrap_single,
+            ignore_sort=kwargs.get("ignore_sort", False),
         )
-        if scope_scalars is not None:
-            return convert_data(scope_scalars, format, wrap_single=wrap_single)
-
-        if self.__state.sort_key is not None and not kwargs.get("ignore_sort", False):
-            order = vstacked.argsort(
-                self.__state.sort_key[0], reverse=self.__state.sort_key[1]
-            )
-            vstacked = vstacked[order]
-            vstacked = fold(
-                HookPoint.PostSort, PostSortCtx(self, vstacked, np.argsort(order))
-            ).data
-
-        to_remove = self.__state.hidden.intersection(vstacked.colnames)
-        vstacked.remove_columns(to_remove)
-        if len(vstacked) == 1 and unpack:
-            output_data = {
-                key: value[0] if len(value) == 1 else value
-                for key, value in vstacked.items()
-            }
-            return convert_data(output_data, format, wrap_single=wrap_single)
-
-        if format != "astropy":
-            return convert_data(dict(vstacked), format, wrap_single=wrap_single)
-        elif len(vstacked.columns) == 1 and not wrap_single:
-            return next(iter(dict(vstacked).values()))
-
-        return vstacked
 
     @property
     @deprecated(
@@ -551,10 +500,11 @@ class Lightcone(dict):
                 f"Lightcone cutouts require ra and dec columns; missing: {missing}"
             )
 
-        centers = SkyCoord(**self.select("ra", "dec").get_data())
+        coordinates = lcops.get_data(lcops.select(self.__state, "ra", "dec"))
+        centers = SkyCoord(**coordinates)
         cutouts = self.__state.maps.cutouts(centers, size, npix=npix)
 
-        for entry, cutout in zip(self.rows(), cutouts):
+        for entry, cutout in zip(lcops.rows(self.__state), cutouts):
             yield entry, cutout
 
     def with_redshift_range(self, z_low: float, z_high: float):
@@ -861,42 +811,9 @@ class Lightcone(dict):
             not in the dataset, or the  would return zero rows.
 
         """
-        new_masks = [
-            resolve_mask_scalars(mask, self.__scalar_evaluator(mode))
-            if mask_contains_scalar(mask)
-            else mask
-            for mask in masks
-        ]
         return Lightcone._from_state(
-            lcops.filter(self.__state, *new_masks, mode=mode, **kwargs)
+            lcops.filter(self.__state, *masks, mode=mode, **kwargs)
         )
-
-    def __scalar_evaluator(self, mode: str) -> Callable[[DerivedScalarValue], Any]:
-        """
-        Build a function that evaluates a single DerivedScalarValue against the
-        current lightcone state. Used for eager resolution in filter masks.
-        """
-        reducer = default_reducer(mode)
-
-        def evaluate(scalar: DerivedScalarValue) -> Any:
-            scalar = scalar.with_reducer(reducer) if scalar.reducer is None else scalar
-            required = scalar._traverse_names()
-            if not required:
-                return scalar.evaluate({})
-            # `required` is the set of raw child names this scalar reads, so
-            # self.select(*required) routes through the positional (child)
-            # path — partition_columns treats no derived_columns as
-            # all-child-scoped — and never re-enters the scope evaluator.
-            # If a future caller passes a scope-name in `required`, that
-            # would recurse through evaluate_scope; bypass via take_rows or
-            # a private _get_raw if that becomes possible.
-            table = self.select(*required).get_data(
-                "astropy", unpack=False, wrap_single=True
-            )
-            data = {name: table[name] for name in required}
-            return scalar.evaluate(data)
-
-        return evaluate
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
@@ -909,7 +826,7 @@ class Lightcone(dict):
         row : dict
             A dictionary of values for each row in the dataset with units.
         """
-        yield from chain.from_iterable(v.rows() for v in self.values())
+        yield from lcops.rows(self.__state)
 
     def select(
         self,

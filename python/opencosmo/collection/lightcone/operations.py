@@ -2,16 +2,25 @@ from __future__ import annotations
 
 import dataclasses
 from collections import defaultdict
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
 import healpy as hp
 import numpy as np
+from astropy.table import vstack  # type: ignore
 
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
+from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.scope import partition_columns
 from opencosmo.column import col
-from opencosmo.column.column import Column, DerivedScalarValue, EvaluatedColumn
+from opencosmo.column.column import (
+    Column,
+    DerivedScalarValue,
+    EvaluatedColumn,
+    mask_contains_scalar,
+    resolve_mask_scalars,
+)
 from opencosmo.column.reducer import default_reducer
 from opencosmo.column.select import build_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
@@ -19,8 +28,10 @@ from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import (
     average_chunks,
     concat_chunks,
+    convert_data,
     product_chunks,
     sum_chunks,
+    verify_format,
 )
 from opencosmo.dataset.take import (
     get_end_take_index,
@@ -29,10 +40,16 @@ from opencosmo.dataset.take import (
     get_rows_take_index,
 )
 from opencosmo.index import empty, get_range, into_array, rebuild_by_ranges
+from opencosmo.plugins.contexts import (
+    HookPoint,
+    LightconeInstantiateCtx,
+    PostSortCtx,
+)
+from opencosmo.plugins.hook import fold
 from opencosmo.spatial.index import project_on_index
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Generator, Iterable
 
     import astropy.units as u
     import numpy.typing as npt
@@ -69,7 +86,65 @@ def filter(
 ) -> LightconeState:
     if not masks:
         return state
+    evaluator = __scalar_evaluator(state, mode)
+    masks = tuple(
+        resolve_mask_scalars(mask, evaluator) if mask_contains_scalar(mask) else mask
+        for mask in masks
+    )
     return __map_leaves(state, lambda leaf: dsops.filter(leaf, *masks, mode=mode))
+
+
+def get_data(
+    state: LightconeState,
+    format: str = "astropy",
+    unpack: bool = True,
+    wrap_single: bool = False,
+    ignore_sort: bool = False,
+):
+    verify_format(format)
+    instantiated = fold(
+        HookPoint.LightconeInstantiate, LightconeInstantiateCtx(state)
+    ).state
+
+    data = [
+        dsops.get_data(leaf, "astropy", unpack=False, wrap_single=True)
+        for _, leaf in instantiated.leaves
+    ]
+    data_with_length = [d for d in data if len(d) > 0]
+    if len(data_with_length) == 0:
+        vstacked = data[0]
+    else:
+        vstacked = vstack(data_with_length, join_type="exact")
+
+    vstacked, scope_scalars = evaluate_scope(state.scope, vstacked, unpack=unpack)
+    if scope_scalars is not None:
+        return convert_data(scope_scalars, format, wrap_single=wrap_single)
+
+    if state.sort_key is not None and not ignore_sort:
+        order = vstacked.argsort(state.sort_key[0], reverse=state.sort_key[1])
+        vstacked = vstacked[order]
+        vstacked = fold(
+            HookPoint.PostSort, PostSortCtx(state, vstacked, np.argsort(order))
+        ).data
+
+    vstacked.remove_columns(state.hidden.intersection(vstacked.colnames))
+    if len(vstacked) == 1 and unpack:
+        output_data = {
+            key: value[0] if len(value) == 1 else value
+            for key, value in vstacked.items()
+        }
+        return convert_data(output_data, format, wrap_single=wrap_single)
+
+    if format != "astropy":
+        return convert_data(dict(vstacked), format, wrap_single=wrap_single)
+    elif len(vstacked.columns) == 1 and not wrap_single:
+        return next(iter(dict(vstacked).values()))
+
+    return vstacked
+
+
+def rows(state: LightconeState) -> Generator[dict[str, float | u.Quantity]]:
+    yield from chain.from_iterable(dsops.rows(leaf) for _, leaf in state.leaves)
 
 
 def bound(
@@ -432,6 +507,35 @@ def take_rows_unsorted(state: LightconeState, rows: DataIndex) -> LightconeState
         for (key, leaf), index in zip(state.leaves, projected)
     )
     return __with_leaves(state, __prune_empty(leaves, keep_all_empty=False))
+
+
+def __scalar_evaluator(
+    state: LightconeState, mode: str
+) -> Callable[[DerivedScalarValue], Any]:
+    """
+    Build a function that evaluates a single DerivedScalarValue against
+    ``state``. Used for eager resolution in filter masks.
+    """
+    reducer = default_reducer(mode)
+
+    def evaluate(scalar: DerivedScalarValue) -> Any:
+        scalar = scalar.with_reducer(reducer) if scalar.reducer is None else scalar
+        required = scalar._traverse_names()
+        if not required:
+            return scalar.evaluate({})
+        # `required` is the set of raw child names this scalar reads, so
+        # select(state, *required) routes through the positional (child)
+        # path — partition_columns treats no derived_columns as
+        # all-child-scoped — and never re-enters the scope evaluator.
+        # If a future caller passes a scope-name in `required`, that
+        # would recurse through evaluate_scope; bypass via take_rows or
+        # a private raw read if that becomes possible.
+        table = get_data(
+            select(state, *required), "astropy", unpack=False, wrap_single=True
+        )
+        return scalar.evaluate({name: table[name] for name in required})
+
+    return evaluate
 
 
 def __map_leaves(
