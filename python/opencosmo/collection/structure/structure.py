@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from functools import wraps
 from inspect import signature
 from typing import (
@@ -22,10 +23,12 @@ import opencosmo as oc
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import evaluate, links
 from opencosmo.collection.structure import io as sio
+from opencosmo.collection.structure import state as scst
 from opencosmo.collection.structure.io import rebuild_data_linked
 from opencosmo.column.column import DerivedScalarValue
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset.formats import verify_format
+from opencosmo.dataset.state import DatasetState
 from opencosmo.io.schema import FileEntry, make_schema
 
 from .handler import LinkHandler
@@ -109,8 +112,8 @@ class StructureCollection:
 
     def __init__(
         self,
-        source: oc.Dataset,
-        datasets: Mapping[str, oc.Dataset | StructureCollection],
+        source: oc.Dataset | oc.Lightcone,
+        datasets: Mapping[str, oc.Dataset | oc.Lightcone | StructureCollection],
         hide_source: bool = False,
         link_handler: Optional[LinkHandler] = None,
         derived_columns: Optional[set[str]] = None,
@@ -121,40 +124,92 @@ class StructureCollection:
         """
         Initialize a linked collection with the provided datasets and links.
         """
-
-        self.__source = source
-        self.__datasets = dict(datasets)
-        self.__hide_source = hide_source
-        if isinstance(self.__datasets.get("galaxy_properties"), StructureCollection):
-            self.__datasets["galaxies"] = self.__datasets.pop("galaxy_properties")
-
         if link_handler is None:
             raise ValueError("Structure collections require a link handler")
-        self.__handler = link_handler
-        if resolve_links:
-            self.__datasets = cast(
-                "dict[str, oc.Dataset | StructureCollection]",
-                self.__handler.prep_datasets(
-                    self.__source,
-                    cast("dict[str, oc.Dataset | lc.Lightcone]", self.__datasets),
-                ),
-            )
 
-        if derived_columns is None:
-            derived_columns = set()
-        self.__derived_columns = derived_columns
-
-    def __get_datasets(self):
-        """
-        Methods should never access __datasets directly. Instead,
-        get them through this method, which ensures all the rebuilding is
-        done when necessary.
-        """
-        self.__datasets = self.__handler.rebuild_datasets(
-            self.__source, self.__datasets
+        state = scst.from_parts(
+            source._state,
+            {name: dataset._state for name, dataset in datasets.items()},
+            link_handler.match_sets,
+            resolve=resolve_links,
+            hide_source=hide_source,
+            derived_columns=frozenset(derived_columns or ()),
         )
-        self.__handler = LinkHandler(self.__handler.match_sets, None)
-        return self.__datasets
+        if link_handler.derived_from is not None:
+            state = replace(state, linked_source=link_handler.derived_from._state)
+        self.__state = state
+
+    @classmethod
+    def _from_state(cls, state: scst.StructureState) -> StructureCollection:
+        collection = cls.__new__(cls)
+        collection.__state = state
+        return collection
+
+    @property
+    def _state(self) -> scst.StructureState:
+        """Return the internal state for collection and I/O implementations."""
+        return self.__state
+
+    @staticmethod
+    def __wrap(
+        child: scst.StructureChild,
+    ) -> oc.Dataset | oc.Lightcone | StructureCollection:
+        if isinstance(child, DatasetState):
+            return oc.Dataset(child)
+        if isinstance(child, scst.StructureState):
+            return StructureCollection._from_state(child)
+        return lc.Lightcone(child)
+
+    # Transitional views of the state in the shape of the old attributes. They
+    # go away as the operations move onto StructureState.
+
+    @property
+    def __source(self) -> oc.Dataset:
+        # Typed as the old attribute was; lightcone sources are Lightcones.
+        return cast("oc.Dataset", StructureCollection.__wrap(self.__state.source))
+
+    @property
+    def __datasets(self) -> dict[str, oc.Dataset | StructureCollection]:
+        return StructureCollection.__views(self.__state.linked)
+
+    @property
+    def __handler(self) -> LinkHandler:
+        linked_source = self.__state.linked_source
+        derived_from: oc.Dataset | oc.Lightcone | None = None
+        if linked_source is not None:
+            wrapped = StructureCollection.__wrap(linked_source)
+            assert not isinstance(wrapped, StructureCollection)
+            derived_from = wrapped
+        return LinkHandler(dict(self.__state.match_sets), derived_from)
+
+    @property
+    def __hide_source(self) -> bool:
+        return self.__state.hide_source
+
+    @property
+    def __derived_columns(self) -> set[str]:
+        return set(self.__state.derived_columns)
+
+    def __get_datasets(self) -> dict[str, oc.Dataset | StructureCollection]:
+        """
+        Methods should never access __datasets directly. Instead, get them
+        through this method, which returns the linked datasets rebuilt to match
+        the current source.
+        """
+        return StructureCollection.__views(self.__state.children)
+
+    @staticmethod
+    def __views(
+        children: Mapping[str, scst.StructureChild],
+    ) -> dict[str, oc.Dataset | StructureCollection]:
+        # Typed as the old attributes were; lightcone children are Lightcones.
+        return cast(
+            "dict[str, oc.Dataset | StructureCollection]",
+            {
+                name: StructureCollection.__wrap(child)
+                for name, child in children.items()
+            },
+        )
 
     def __leaf_datasets(
         self, path: tuple[str, ...] = ()
@@ -205,14 +260,16 @@ class StructureCollection:
         return header + source_repr
 
     def __len__(self):
-        return len(self.__source)
+        return len(self.__state)
 
     def __dir__(self):
-        return list(self.source.header.parameters.keys()) + super().__dir__()
+        return list(self.__state.header.parameters.keys()) + super().__dir__()
 
     def __getattr__(self, key: str):
+        if key == "_StructureCollection__state":
+            raise AttributeError(key)
         try:
-            return self.__source.header.parameters[key]
+            return self.__state.header.parameters[key]
         except KeyError:
             return object.__getattribute__(self, key)
 
@@ -234,12 +291,12 @@ class StructureCollection:
 
     @property
     def dtype(self):
-        structure_type = self.__source.header.file.dt
+        structure_type = self.__state.header.file.dt
         return structure_type
 
     @property
     def header(self) -> OpenCosmoHeader:
-        return self.__source.header
+        return self.__state.header
 
     @property
     def properties(self) -> list[str]:
@@ -247,7 +304,7 @@ class StructureCollection:
         The high-level properties that are available as part of the
         halo_properties or galaxy_properties dataset.
         """
-        return self.__source.columns
+        return self.__state.properties
 
     @property
     def sorted_by(self) -> Optional[str]:
@@ -258,7 +315,7 @@ class StructureCollection:
         -------
         column : Optional[str]
         """
-        return self.__source.sorted_by
+        return self.__state.sorted_by
 
     @property
     def simulation(self) -> HaccSimulationParameters | None:
@@ -276,10 +333,7 @@ class StructureCollection:
         """
         Return the names of the datasets in this collection.
         """
-        keys = list(self.__datasets.keys())
-        if not self.__hide_source:
-            keys.append(self.__source.dtype)
-        return keys
+        return scst.public_keys(self.__state)
 
     def values(self) -> list[oc.Dataset | StructureCollection]:
         """
@@ -299,12 +353,10 @@ class StructureCollection:
         """
         Return the linked dataset with the given key.
         """
-        if key == self.__source.header.file.data_type:
-            return self.__source
-        datasets = self.__get_datasets()
-        if key not in datasets.keys():
-            raise KeyError(f"Dataset {key} not found in collection.")
-        return datasets[key]
+        return cast(
+            "oc.Dataset | StructureCollection",
+            StructureCollection.__wrap(scst.view(self.__state, key)),
+        )
 
     def __enter__(self):
         return self
@@ -318,7 +370,7 @@ class StructureCollection:
 
     @property
     def region(self):
-        return self.__source.region
+        return self.__state.region
 
     def bound(
         self, region: Region, select_by: Optional[str] = None
@@ -658,6 +710,7 @@ class StructureCollection:
             )
             if not insert:
                 return result
+            assert isinstance(result, (oc.Dataset, StructureCollection))
             return StructureCollection(
                 self.__source,
                 self.__get_datasets() | {dataset: result},
@@ -1039,7 +1092,7 @@ class StructureCollection:
             return self.__rebuild_hierarchy(selected)
 
         new_source = self.__source
-        new_datasets = {}
+        new_datasets: dict[str, oc.Dataset | StructureCollection] = {}
 
         for dataset, columns in select_kwargs.items():
             if isinstance(columns, dict) and (
@@ -1077,7 +1130,7 @@ class StructureCollection:
 
         return StructureCollection(
             new_source,
-            self.__datasets | new_datasets,
+            {**self.__datasets, **new_datasets},
             self.__hide_source,
             self.__handler.make_derived(self.__source),
             self.__derived_columns,
@@ -1637,9 +1690,11 @@ class StructureCollection:
 
                 yield output
 
-            new_datasets = self.__get_datasets()
+            state = self.__state
+            new_linked = dict(state.children)
+            derived_columns = state.derived_columns
             for ds_name, collected_data in columns_to_collect.items():
-                ds_length = len(new_datasets[ds_name])
+                ds_length = len(new_linked[ds_name])
                 ds_data = {
                     name: np.concatenate(cd)
                     for name, cd in collected_data.items()
@@ -1651,21 +1706,26 @@ class StructureCollection:
                 }
                 if not ds_data:
                     continue
-                self.__derived_columns = self.__derived_columns.difference(
+                derived_columns = derived_columns.difference(
                     f"{ds_name}.{name}" for name in ds_data.keys()
                 )
+                dataset = StructureCollection.__wrap(new_linked[ds_name])
+                assert not isinstance(dataset, StructureCollection)
                 descriptions = {
-                    name: new_datasets[ds_name].descriptions[name]
-                    for name in ds_data.keys()
+                    name: dataset.descriptions[name] for name in ds_data.keys()
                 }
 
-                new_dataset = (
-                    new_datasets[ds_name]
-                    .drop(ds_data.keys())
-                    .with_new_columns(descriptions=descriptions, **ds_data)
+                new_dataset = dataset.drop(ds_data.keys()).with_new_columns(
+                    descriptions=descriptions,  # type: ignore[arg-type]
+                    **ds_data,  # type: ignore[arg-type]
                 )
-                new_datasets[ds_name] = new_dataset
-            self.__datasets = new_datasets
+                new_linked[ds_name] = new_dataset._state
+            self.__state = replace(
+                state,
+                linked=new_linked,
+                linked_source=None,
+                derived_columns=derived_columns,
+            )
         except GeneratorExit:
             pass
         except BaseException:

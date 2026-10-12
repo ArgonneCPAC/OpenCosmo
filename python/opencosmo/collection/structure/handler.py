@@ -63,6 +63,11 @@ class LinkHandler:
         self.__derived_from = derived_from
         self.match_sets = match_sets
 
+    @property
+    def derived_from(self) -> Optional[oc.Dataset | oc.Lightcone]:
+        """The source the linked datasets are currently aligned with, if not the source."""
+        return self.__derived_from
+
     def make_schema(
         self, source: oc.Dataset | oc.Lightcone, source_schema: Schema
     ) -> Schema:
@@ -74,41 +79,12 @@ class LinkHandler:
         """Collection-facing link names, sorted for determinism."""
         return links.link_names(self.match_sets)
 
-    def prep_datasets(
-        self,
-        source: oc.Dataset | oc.Lightcone,
-        datasets: Mapping[str, Child],
-    ) -> dict[str, Child]:
-        """Prepare linked datasets when their source is first opened."""
-        targets = LinkHandler.__unwrap(datasets)
-        return LinkHandler.__wrap(
-            links.resolve(self.match_sets, source._state, targets)
-        )
-
     def make_derived(self, source: oc.Dataset | oc.Lightcone) -> LinkHandler:
         """Record the source from which deferred linked rebuilding begins."""
         derived_from = self.__derived_from
         if self.__derived_from is None:
             derived_from = source
         return LinkHandler(self.match_sets, derived_from)
-
-    def rebuild_datasets(
-        self,
-        new_source: oc.Dataset | oc.Lightcone,
-        datasets: Mapping[str, Child],
-    ) -> Mapping[str, Child]:
-        """Rebuild linked datasets only after a derived source has changed rows."""
-        if self.__derived_from is None:
-            return datasets
-        targets = LinkHandler.__unwrap(datasets)
-        return LinkHandler.__wrap(
-            links.rebuild(
-                self.match_sets,
-                self.__derived_from._state,
-                new_source._state,
-                targets,
-            )
-        )
 
     def resort(
         self,
@@ -121,12 +97,7 @@ class LinkHandler:
 
     @staticmethod
     def __unwrap(datasets: Mapping[str, Child]) -> dict[str, links.LinkTarget]:
-        return {
-            name: dataset._state
-            if isinstance(dataset, (ocds.Dataset, lc.Lightcone))
-            else dataset
-            for name, dataset in datasets.items()
-        }
+        return {name: dataset._state for name, dataset in datasets.items()}
 
     @staticmethod
     def __wrap(targets: Mapping[str, links.LinkTarget]) -> dict[str, Child]:
@@ -137,6 +108,5 @@ class LinkHandler:
             elif isinstance(target, LightconeState):
                 wrapped[name] = lc.Lightcone(target)
             else:
-                assert isinstance(target, sc.StructureCollection)
-                wrapped[name] = target
+                wrapped[name] = sc.StructureCollection._from_state(target)
         return wrapped

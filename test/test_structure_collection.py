@@ -11,9 +11,8 @@ def _link_slot(collection, link_name):
     Reads straight off the collection's match sets -- the same primitive the
     library itself uses to decide which structures are empty.
     """
-    handler = collection._StructureCollection__handler
-    source = collection._StructureCollection__source
-    values, _ = links.slot_values(handler.match_sets, source._state, link_name)
+    state = collection._state
+    values, _ = links.slot_values(state.match_sets, state.source, link_name)
     return values
 
 

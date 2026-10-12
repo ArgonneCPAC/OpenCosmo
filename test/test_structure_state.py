@@ -14,16 +14,7 @@ from opencosmo.dataset import operations as dsops
 
 
 def _state(collection):
-    """Build a StructureState from a facade's (already aligned) internals."""
-    source = collection._StructureCollection__source._state
-    linked = {
-        name: _state(child)
-        if isinstance(child, oc.StructureCollection)
-        else child._state
-        for name, child in collection._StructureCollection__datasets.items()
-    }
-    match_sets = collection._StructureCollection__handler.match_sets
-    return scst.from_parts(source, linked, match_sets, resolve=False)
+    return collection._state
 
 
 def _tags(state):

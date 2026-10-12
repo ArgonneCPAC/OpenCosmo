@@ -72,8 +72,7 @@ class StructureState:
 
 
 if TYPE_CHECKING:
-    # Includes StructureCollection facades until the facade holds a StructureState.
-    StructureChild = links.LinkTarget
+    StructureChild = DatasetState | LightconeState | StructureState
 
 
 def from_parts(

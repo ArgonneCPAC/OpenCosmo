@@ -13,12 +13,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.structure import state as scst
-from opencosmo.collection.structure import structure as sc
-from opencosmo.dataset import dataset as ocds
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState
 from opencosmo.index import coalesce_chunks, empty, into_array, offset
@@ -42,11 +39,7 @@ if TYPE_CHECKING:
     from opencosmo.mapping.mapping import DatasetMatchSet
 
     Source = DatasetState | LightconeState
-    # Nested collections may still be facades until StructureCollection holds
-    # a StructureState.
-    LinkTarget = (
-        DatasetState | LightconeState | scst.StructureState | sc.StructureCollection
-    )
+    LinkTarget = DatasetState | LightconeState | scst.StructureState
     PerLeaf = dict[LeafKey, DataIndex]
 
 
@@ -168,10 +161,6 @@ def take_per_leaf(target: LinkTarget, per_leaf: PerLeaf) -> LinkTarget:
         if linked_source is None:
             linked_source = target.source
         return replace(target, source=new_source, linked_source=linked_source)
-    if isinstance(target, sc.StructureCollection):
-        nested_source = target[str(target.header.file.data_type)]
-        assert isinstance(nested_source, (ocds.Dataset, lc.Lightcone))
-        return target.take_rows(stacked_index(nested_source._state, per_leaf))
 
     target_leaves = dict(target.leaves)
     missing = per_leaf.keys() - target_leaves.keys()
