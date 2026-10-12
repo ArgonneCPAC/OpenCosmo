@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional, cast
 from uuid import UUID
 
 from opencosmo.collection.lightcone import lightcone as lc
-from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.simulation import matching
 from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
@@ -76,10 +75,6 @@ class SimulationCollection:
         if state is self.__state:
             return self
         return SimulationCollection._from_state(state)
-
-    def __resolved(self) -> SimulationCollection:
-        state = self.__state
-        return self.__with_state(replace(state, members=state.children, aligned=True))
 
     @staticmethod
     def __wrap(child: SimulationChild) -> UserChild:
@@ -208,17 +203,7 @@ class SimulationCollection:
             collection.
 
         """
-        if not all(
-            isinstance(child, (DatasetState, LightconeState))
-            for child in self.__state.members.values()
-        ):
-            raise TypeError(
-                "get_data is only supported when this collection contains datasets!"
-            )
-        return {
-            name: ds.get_data(format=format, wrap_single=wrap_single, unpack=unpack)
-            for name, ds in self.items()
-        }
+        return simops.get_data(self.__state, format, unpack, wrap_single)
 
     def match(self, dataset: str) -> SimulationCollection:
         """
@@ -575,25 +560,21 @@ class SimulationCollection:
         results: SimulationCollection | dict[str, np.ndarray] | dict[str, astropy.units.Quantity]
             The results of the computation, or a new simulation collection with the results inserted.
         """
-        state = self.__resolved()._state
-        results = simops.map_children(
-            state,
-            lambda ops: ops.evaluate,
+        result = simops.evaluate(
+            self.__state,
             func,
-            datasets=datasets,
-            vectorize=vectorize,
-            insert=insert,
-            format=format,
-            allow_overwrite=allow_overwrite,
+            datasets,
+            format,
+            vectorize,
+            insert,
+            allow_overwrite,
             **evaluate_kwargs,
         )
-        if next(iter(results.values())) is None:
-            return
-        if insert:
-            return self.__with_state(
-                replace(state, members={**state.members, **results})
-            )
-        return results
+        if isinstance(result, simst.SimulationState):
+            return self.__with_state(result)
+        if next(iter(result.values())) is None:
+            return None
+        return result
 
     def sort_by(self, column: str, invert: bool = False):
         """

@@ -46,6 +46,7 @@ class ChildOps:
     with_new_columns: Callable[..., SimulationChild]
     with_units: Callable[..., SimulationChild]
     evaluate: Callable[..., Any]
+    get_data: Callable[..., Any] | None
 
 
 __DATASET_OPS = ChildOps(
@@ -59,6 +60,7 @@ __DATASET_OPS = ChildOps(
     with_new_columns=dsops.with_new_columns,
     with_units=dsops.with_units,
     evaluate=dsops.evaluate,
+    get_data=dsops.get_data,
 )
 
 __LIGHTCONE_OPS = ChildOps(
@@ -72,6 +74,7 @@ __LIGHTCONE_OPS = ChildOps(
     with_new_columns=lcops.with_new_columns,
     with_units=lcops.with_units,
     evaluate=lcops.evaluate,
+    get_data=lcops.get_data,
 )
 
 __STRUCTURE_OPS = ChildOps(
@@ -85,6 +88,7 @@ __STRUCTURE_OPS = ChildOps(
     with_new_columns=scops.with_new_columns,
     with_units=scops.with_units,
     evaluate=scops.evaluate,
+    get_data=None,
 )
 
 
@@ -228,6 +232,56 @@ def with_units(
     )
 
 
+# Evaluation and data access
+
+
+def evaluate(
+    state: SimulationState,
+    func: Callable,
+    datasets: str | Iterable[str] | None,
+    format: str,
+    vectorize: bool,
+    insert: bool,
+    allow_overwrite: bool,
+    **evaluate_kwargs: Any,
+) -> SimulationState | dict[str, Any]:
+    """
+    Evaluate ``func`` on the requested members after realignment. With
+    ``insert`` the results replace those members; otherwise they are returned
+    keyed by member name.
+    """
+    state = __resolved(state)
+    results = map_children(
+        state,
+        lambda ops: ops.evaluate,
+        func,
+        datasets=datasets,
+        vectorize=vectorize,
+        insert=insert,
+        format=format,
+        allow_overwrite=allow_overwrite,
+        **evaluate_kwargs,
+    )
+    if insert:
+        return replace(state, members={**state.members, **results})
+    return results
+
+
+def get_data(
+    state: SimulationState, format: str, unpack: bool, wrap_single: bool
+) -> dict[str, Any]:
+    if any(__child_ops(child).get_data is None for child in state.members.values()):
+        raise TypeError(
+            "get_data is only supported when this collection contains datasets!"
+        )
+    output = {}
+    for name, child in __resolved(state).members.items():
+        child_get_data = __child_ops(child).get_data
+        assert child_get_data is not None
+        output[name] = child_get_data(child, format, unpack, wrap_single)
+    return output
+
+
 def __row_operation(
     state: SimulationState,
     method: str,
@@ -260,6 +314,10 @@ def __map(
 ) -> SimulationState:
     output = map_children(state, op, *args, **kwargs)
     return replace(state, members={**state.members, **output})
+
+
+def __resolved(state: SimulationState) -> SimulationState:
+    return replace(state, members=state.children, aligned=True)
 
 
 def __requested(
