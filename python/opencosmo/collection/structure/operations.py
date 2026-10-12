@@ -10,21 +10,27 @@ operations that need row-aligned children start from the resolved children.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from inspect import signature
 from typing import TYPE_CHECKING, Any
+from warnings import warn
 
 import numpy as np
 
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone.state import LightconeState
-from opencosmo.collection.structure.state import StructureState, public_keys
+from opencosmo.collection.structure import evaluate as sevaluate
+from opencosmo.collection.structure import links
+from opencosmo.collection.structure.state import StructureState, public_keys, view
 from opencosmo.column import col
 from opencosmo.column.column import DerivedScalarValue
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
+from opencosmo.dataset.formats import to_numpy_dict, verify_format
 from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
+    from uuid import UUID
 
     import astropy.units as u
     import numpy.typing as npt
@@ -52,6 +58,8 @@ class SourceOps:
     with_new_columns: Callable[..., Source]
     with_units: Callable[..., Source]
     get_data: Callable[..., Any]
+    evaluate: Callable[..., Any]
+    rows: Callable[..., Iterator[Mapping[str, Any]]]
 
 
 __DATASET_OPS = SourceOps(
@@ -66,6 +74,8 @@ __DATASET_OPS = SourceOps(
     with_new_columns=dsops.with_new_columns,
     with_units=dsops.with_units,
     get_data=dsops.get_data,
+    evaluate=dsops.evaluate,
+    rows=dsops.rows,
 )
 
 __LIGHTCONE_OPS = SourceOps(
@@ -80,6 +90,8 @@ __LIGHTCONE_OPS = SourceOps(
     with_new_columns=lcops.with_new_columns,
     with_units=lcops.with_units,
     get_data=lcops.get_data,
+    evaluate=lcops.evaluate,
+    rows=lcops.rows,
 )
 
 
@@ -398,6 +410,261 @@ def with_datasets(
     )
 
 
+# Iteration and evaluation
+
+
+def iter_objects(
+    state: StructureState, data_types: Iterable[str] | None = None
+) -> Generator[dict[str, StructureChild | dict[str, Any]]]:
+    """
+    Yield one structure at a time: its source row as a dict and the slice of
+    each requested linked child that belongs to it. After a complete
+    iteration, derived columns collected along the way are written into the
+    linked datasets' caches so they are not recomputed.
+    """
+    data_types = list(state.linked if data_types is None else data_types)
+    if not all(name in state.linked for name in data_types):
+        raise ValueError("Some data types are not linked in the collection.")
+    if len(state) == 0:
+        warn("Tried to iterate over a collection with no structures in it!")
+        return
+
+    children = state.children
+    link_names = set(links.link_names(state.match_sets))
+    slots = {
+        name: links.slot_values(state.match_sets, state.source, name)
+        for name in data_types
+        if name in link_names
+    }
+    starts = dict.fromkeys(slots, 0)
+    collected: dict[str, dict[str, list[np.ndarray]]] = {}
+    for column in sorted(state.derived_columns):
+        dataset, name = column.split(".", maxsplit=1)
+        collected.setdefault(dataset, {})[name] = []
+
+    try:
+        rows = source_ops(state.source).rows(state.source)
+        for i, row in enumerate(rows):
+            output: dict[str, StructureChild | dict[str, Any]] = {}
+            for name, (values, is_chunked) in slots.items():
+                length = int(values[i]) if is_chunked else int(values[i] >= 0)
+                if length == 0:
+                    continue
+                start = starts[name]
+                output[name] = __take_range(children[name], start, start + length)
+                starts[name] += length
+
+            if not state.hide_source:
+                output[state.dtype] = dict(row)
+            if not output:
+                continue
+
+            for dataset, columns in collected.items():
+                piece = output.get(dataset)
+                if piece is None:
+                    continue
+                assert isinstance(piece, DatasetState)
+                names = set(piece.columns).intersection(columns)
+                if not names:
+                    continue
+                data = dsops.get_data(
+                    dsops.select(piece, names),
+                    "astropy",
+                    unpack=False,
+                    wrap_single=True,
+                )
+                for name in data.colnames:
+                    columns[name].append(data[name])
+
+            yield output
+
+        __cache_collected(children, collected)
+    except GeneratorExit:
+        return
+
+
+def evaluate(
+    state: StructureState,
+    func: Callable,
+    dataset: str | None = None,
+    format: str = "astropy",
+    insert: bool = True,
+    allow_overwrite: bool = False,
+    **evaluate_kwargs: Any,
+) -> StructureState | dict[str, Any] | None:
+    # Three cases:
+    # 1. Evaluate on several datasets and insert into the source.
+    # 2. Evaluate on a single dataset and insert into that dataset (lazy).
+    # 3. Evaluate on several datasets and insert into one of them.
+    # Cases 1 and 3 are eager, as is everything when insert=False.
+    if dataset is not None and dataset == state.dtype:
+        return evaluate_on_dataset(
+            state,
+            func,
+            dataset=dataset,
+            format=format,
+            insert=insert,
+            allow_overwrite=allow_overwrite,
+            **evaluate_kwargs,
+        )
+
+    verify_format(format)
+
+    if dataset is not None and dataset.startswith("galaxies"):
+        dataset_path = dataset.split(".")
+        sub_dataset = dataset_path[1] if len(dataset_path) == 2 else None
+        resolved = __resolved(state)
+        nested = view(resolved, dataset_path[0])
+        assert isinstance(nested, StructureState)
+        result = evaluate(
+            nested,
+            func,
+            sub_dataset,
+            format,
+            insert,
+            allow_overwrite=allow_overwrite,
+            **evaluate_kwargs,
+        )
+        if not insert:
+            return result
+        assert isinstance(result, StructureState)
+        # Known inconsistency: a nested path is stored under the dotted key.
+        return replace(resolved, linked={**resolved.linked, dataset: result})
+
+    keys = public_keys(state)
+    required_datasets = set(signature(func).parameters).intersection(keys)
+    if not required_datasets and dataset is None:
+        raise ValueError(
+            "If your function does not take dataset names as arguments, you must specify which dataset you want to evaluate on!"
+        )
+
+    if dataset is not None and not required_datasets:
+        # Case 2
+        if dataset not in keys:
+            raise ValueError(f"Unknown dataset {dataset}")
+        resolved = __resolved(state)
+        child = view(resolved, dataset)
+        assert not isinstance(child, StructureState)
+        result = source_ops(child).evaluate(
+            child,
+            func,
+            insert=insert,
+            format=format,
+            allow_overwrite=allow_overwrite,
+            strategy="chunked",
+            **evaluate_kwargs,
+        )
+        if not insert:
+            return result
+        assert isinstance(child, DatasetState) and isinstance(result, DatasetState)
+        new_derived = set(result.columns).difference(child.columns)
+        return replace(
+            resolved,
+            linked={**resolved.linked, dataset: result},
+            derived_columns=state.derived_columns.union(
+                f"{dataset}.{name}" for name in new_derived
+            ),
+        )
+
+    # Cases 1 and 3
+    output = sevaluate.visit_structure_eagerly(
+        func,
+        state,
+        dataset=dataset,
+        format=format,
+        evaluate_kwargs=evaluate_kwargs,
+        insert=insert,
+    )
+    if not insert or output is None:
+        return output
+    return with_new_columns(
+        state,
+        dataset if dataset is not None else state.dtype,
+        allow_overwrite=allow_overwrite,
+        **to_numpy_dict(output),  # type: ignore[arg-type]
+    )
+
+
+def evaluate_on_dataset(
+    state: StructureState,
+    func: Callable,
+    dataset: str | None = None,
+    vectorize: bool = False,
+    format: str = "astropy",
+    insert: bool = True,
+    batch_size: int = -1,
+    allow_overwrite: bool = False,
+    **evaluate_kwargs: Any,
+) -> StructureState | dict[str, Any] | None:
+    if dataset is None or dataset == state.dtype:
+        result = source_ops(state.source).evaluate(
+            state.source,
+            func,
+            vectorize=vectorize,
+            insert=insert,
+            format=format,
+            batch_size=batch_size,
+            allow_overwrite=allow_overwrite,
+            **evaluate_kwargs,
+        )
+        if not insert:
+            return result
+        return replace(state, source=result)
+
+    path = dataset.split(".")
+    if path[0] not in state.linked:
+        raise ValueError(f"Unknown dataset {dataset}")
+    child = state.linked[path[0]]
+
+    if not isinstance(child, StructureState):
+        if len(path) > 1:
+            raise ValueError(
+                f"Recieved {dataset} as the dataset argument but {path[0]} is a dataset, not a collection!"
+            )
+        result = source_ops(child).evaluate(
+            child,
+            func,
+            vectorize=vectorize,
+            insert=insert,
+            format=format,
+            batch_size=batch_size,
+            allow_overwrite=allow_overwrite,
+            **evaluate_kwargs,
+        )
+        if not insert:
+            return result
+        new_derived = set()
+        if isinstance(child, DatasetState):
+            new_derived = set(result.columns).difference(child.columns)
+        return replace(
+            state,
+            linked={**state.linked, dataset: result},
+            derived_columns=state.derived_columns.union(
+                f"{dataset}.{name}" for name in new_derived
+            ),
+        )
+
+    if len(path) == 1:
+        nested_result = evaluate(
+            child, func, None, format, insert, allow_overwrite=allow_overwrite
+        )
+    else:
+        nested_result = evaluate_on_dataset(
+            child,
+            func,
+            ".".join(path[1:]),
+            vectorize,
+            format,
+            insert,
+            batch_size=batch_size,
+            allow_overwrite=allow_overwrite,
+        )
+    if not insert:
+        return nested_result
+    assert isinstance(nested_result, StructureState)
+    return replace(state, linked={**state.linked, path[0]: nested_result})
+
+
 def leaf_datasets(
     state: StructureState, path: tuple[str, ...] = ()
 ) -> dict[tuple[str, ...], DatasetState | LightconeState]:
@@ -455,3 +722,28 @@ def __with_source_rows(state: StructureState, new_source: Source) -> StructureSt
 
 def __resolved(state: StructureState) -> StructureState:
     return replace(state, linked=state.children, linked_source=None)
+
+
+def __take_range(child: StructureChild, start: int, end: int) -> StructureChild:
+    if isinstance(child, StructureState):
+        return take_range(child, start, end, "local")
+    return source_ops(child).take_range(child, start, end, "local")
+
+
+def __cache_collected(
+    children: Mapping[str, StructureChild],
+    collected: Mapping[str, Mapping[str, list[np.ndarray]]],
+) -> None:
+    """Store per-structure derived values in the linked datasets' caches."""
+    for dataset, columns in collected.items():
+        child = children[dataset]
+        assert isinstance(child, DatasetState)
+        by_uuid: dict[UUID, dict[str, np.ndarray]] = {}
+        for name, pieces in columns.items():
+            if not pieces:
+                continue
+            values = np.concatenate(pieces)
+            if len(values) > len(child):
+                values = values.reshape((len(child), -1))
+            by_uuid.setdefault(child.column_map[name], {})[name] = values
+        child.cache.add_data(by_uuid, {})
