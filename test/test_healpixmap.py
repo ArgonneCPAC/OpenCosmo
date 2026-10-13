@@ -360,7 +360,7 @@ def test_healpix_collection_take_healpix(healpix_map_path):
     ds = ds.take_range(500, 1000)
     data = ds.get_data("healpix")
     for value in data.values():
-        assert np.all(np.where(value.mask)[0] == np.arange(500, 1000))
+        assert np.array_equal(np.where(~value.mask)[0], np.arange(500, 1000))
 
 
 def test_healpix_collection_select_healsparse(healpix_map_path):

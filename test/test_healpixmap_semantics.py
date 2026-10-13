@@ -265,6 +265,26 @@ def test_get_data_several_columns(small_map):
         assert np.array_equal(healpix[name][pixels], values)
 
 
+def test_get_data_healpix_masks_uncovered_pixels(small_map):
+    pixels, raw = small_map.get_data("raw")
+    healpix = small_map.get_data("healpix")
+    npix = hp.nside2npix(small_map.nside)
+
+    for name, values in raw.items():
+        masked = healpix[name]
+        assert np.array_equal(np.nonzero(~masked.mask)[0], pixels)
+        assert masked.count() == len(pixels)
+        assert np.array_equal(masked.compressed(), values)
+        assert np.all(masked.data[masked.mask] == hp.UNSEEN)
+        assert np.array_equal(masked.filled(), masked.data)
+        assert np.all(hp.ma(masked.filled()).mask == masked.mask)
+        assert len(masked) == npix
+
+    # Each column has its own mask.
+    healpix["tsz"].mask[0] = not healpix["tsz"].mask[0]
+    assert healpix["ksz"].mask[0] != healpix["tsz"].mask[0]
+
+
 def test_get_data_full_sky_healpix_is_unmasked(full_map):
     healpix = full_map.select("tsz").get_data("healpix")
     assert not isinstance(healpix, np.ma.MaskedArray)

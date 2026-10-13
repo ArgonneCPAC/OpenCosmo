@@ -8,39 +8,33 @@ from typing import (
 )
 from warnings import warn
 
-import astropy.units as u  # type: ignore
 import healpy as hp
 import healsparse as hsp
 import numpy as np
 
 import opencosmo as oc
+from opencosmo.collection.healpix_map import operations as mapops
 from opencosmo.collection.healpix_map.cutout import (
     get_included_pixels,
     validate_cutout_size,
 )
 from opencosmo.collection.healpix_map.reproject import make_hdulist
 from opencosmo.collection.healpix_map.state import HealpixMapState
-from opencosmo.column.column import Column
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset import state as st
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial import make_skybox
-from opencosmo.spatial.index import query_healpix_partitions
-from opencosmo.spatial.region import (
-    ConeRegion,
-    FullSkyRegion,
-    SkyboxRegion,
-)
+from opencosmo.spatial.region import FullSkyRegion
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable
 
+    import astropy.units as u
     from astropy.coordinates import SkyCoord
     from astropy.io import fits
 
-    from opencosmo.column.column import ColumnMask, ConstructedColumn
-    from opencosmo.dataset.state import DatasetState
+    from opencosmo.column.column import Column, ColumnMask, ConstructedColumn
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
@@ -94,18 +88,6 @@ class HealpixMap:
     def _state(self) -> HealpixMapState:
         """Return the internal state for collection and I/O implementations."""
         return self.__state
-
-    def __derive(self, dataset: DatasetState) -> HealpixMap:
-        return HealpixMap(replace(self.__state, dataset=dataset))
-
-    def __take_raw_rows(self, rows: np.ndarray) -> HealpixMap:
-        """
-        Take rows by their position in raw (pixel) order, ignoring any sort.
-        ``rows`` is assumed to be sorted.
-        """
-        dataset = self.__state.dataset
-        taken = st.take_rows(replace(dataset, sort_key=None), rows)
-        return self.__derive(replace(taken, sort_key=dataset.sort_key))
 
     def __getattr__(self, key: str):
         try:
@@ -285,7 +267,8 @@ class HealpixMap:
         You can get the data in two formats, "healsparse" (the default) and "healpix".
         "healsparse" format will return the data as a healsparse sparse map.
         "healpix" will return the data as a dictionary of numpy arrays. If the map does not
-        cover the full sky, this wll be a masked numpy array. For map data,
+        cover the full sky, these will be masked numpy arrays in which the pixels
+        outside the map's coverage are masked and hold ``healpy.UNSEEN``. For map data,
         due to format requirements, no units will be attached to the data itself,
         although these will match the units from the data attributes.
 
@@ -331,14 +314,16 @@ class HealpixMap:
         npix = hp.nside2npix(state.nside)
         storage = {}
         for name, values in data.items():
-            storage[name] = np.zeros(npix, dtype=np.float32)
+            storage[name] = np.full(npix, hp.UNSEEN, dtype=np.float32)
             storage[name][pixels] = values
 
         if len(pixels) != npix:
-            mask = np.zeros(npix, dtype=bool)
-            mask[pixels] = True
+            covered = np.zeros(npix, dtype=bool)
+            covered[pixels] = True
+            # Each column gets its own mask, so unmasking one leaves the rest.
             storage = {
-                name: np.ma.masked_array(arr, mask) for name, arr in storage.items()
+                name: np.ma.MaskedArray(arr, mask=~covered, fill_value=hp.UNSEEN)
+                for name, arr in storage.items()
             }
         if len(storage) == 1:
             return next(iter(storage.values()))
@@ -458,27 +443,7 @@ class HealpixMap:
             If the query region does not overlap with the coverage of this map
             in
         """
-        if isinstance(region, SkyboxRegion):
-            level = int(np.log2(self.nside))
-            pixels = np.union1d(*query_healpix_partitions(region, level)[level])
-
-        elif isinstance(region, ConeRegion):
-            vec = hp.ang2vec(
-                region.center.ra.value, region.center.dec.value, lonlat=True
-            )
-            pixels = hp.query_disc(
-                self.nside,
-                vec,
-                region.radius.to(u.radian).value,
-                inclusive=inclusive,
-                nest=self.ordering == "NESTED",
-            )
-
-        else:
-            raise TypeError("Didn't recieve a 2d region!")
-
-        rows = np.nonzero(np.isin(self.__state.pixels, pixels))[0]
-        return self.__take_raw_rows(rows)
+        return HealpixMap(mapops.bound(self.__state, region, inclusive))
 
     def cutouts(
         self,
@@ -545,7 +510,9 @@ class HealpixMap:
         if len(rows) == 0:
             data = {name: np.empty(0, dtype=np.float64) for name in self.columns}
         else:
-            pixels, data = self.__take_raw_rows(rows).get_data("raw")
+            pixels, data = HealpixMap(
+                mapops.take_rows_unsorted(self.__state, rows)
+            ).get_data("raw")
 
         for center in centers:
             region_pixels = make_skybox(center, angular_size).get_healpix_intersections(
@@ -681,17 +648,12 @@ class HealpixMap:
         dataset : HealpixMap
             The new lightcone dataset with the evaluated column(s)
         """
-        result = dsops.evaluate(
-            self.__state.dataset,
-            func,
-            vectorize=vectorize,
-            insert=insert,
-            format=format,
-            **evaluate_kwargs,
+        result = mapops.evaluate(
+            self.__state, func, format, vectorize, insert, **evaluate_kwargs
         )
-        if not insert:
-            return result
-        return self.__derive(result)
+        if isinstance(result, HealpixMapState):
+            return HealpixMap(result)
+        return result
 
     def filter(self, *masks: ColumnMask, **kwargs) -> HealpixMap:
         """
@@ -715,9 +677,7 @@ class HealpixMap:
             not in the dataset, or the  would return zero rows.
 
         """
-        if not masks:
-            return self
-        return self.__derive(dsops.filter(self.__state.dataset, *masks, mode="global"))
+        return HealpixMap(mapops.filter(self.__state, *masks))
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
@@ -730,7 +690,7 @@ class HealpixMap:
         row : dict
             A dictionary of values for each row in the dataset with units.
         """
-        yield from dsops.rows(self.__state.dataset)
+        yield from mapops.rows(self.__state)
 
     def select(
         self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
@@ -756,11 +716,7 @@ class HealpixMap:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        return self.__derive(
-            dsops.select(
-                self.__state.dataset, *columns, mode="global", **derived_columns
-            )
-        )
+        return HealpixMap(mapops.select(self.__state, *columns, **derived_columns))
 
     def drop(self, columns: str | Iterable[str]) -> HealpixMap:
         """
@@ -781,17 +737,7 @@ class HealpixMap:
         ValueError
             If any of the given columns are not in the dataset.
         """
-        if isinstance(columns, str):
-            columns = [columns]
-
-        dropped_columns = set(columns)
-        current_columns = set(self.columns)
-        if missing := dropped_columns.difference(current_columns):
-            raise ValueError(
-                f"Tried to drop columns that are not in this dataset: {missing}"
-            )
-        kept_columns = current_columns - dropped_columns
-        return self.select(kept_columns)
+        return HealpixMap(mapops.drop(self.__state, columns))
 
     def take(self, n: int, at: str = "random") -> HealpixMap:
         """
@@ -820,22 +766,10 @@ class HealpixMap:
             or if 'at' is invalid.
 
         """
-        if n > len(self):
-            raise ValueError(
-                "Number of rows to take must be less than number of rows in dataset"
-            )
-        if at not in ("start", "end", "random"):
-            raise ValueError(
-                f'"at" should be one of ("start", "end", "random", got {at}'
-            )
-        return self.__derive(dsops.take(self.__state.dataset, n, at, "local"))
+        return HealpixMap(mapops.take(self.__state, n, at))
 
     def take_range(self, start: int, end: int):
-        if start < 0 or end > len(self):
-            raise ValueError("Got row indices that are out of range!")
-        return self.__derive(
-            dsops.take_range(self.__state.dataset, start, end, "local")
-        )
+        return HealpixMap(mapops.take_range(self.__state, start, end))
 
     def take_rows(self, rows: np.ndarray):
         """
@@ -859,12 +793,7 @@ class HealpixMap:
             map.
 
         """
-        rows = np.sort(rows)
-        if rows[-1] >= len(self) or rows[0] < 0:
-            raise ValueError(
-                "Rows must be between 0 and the length of this dataset - 1"
-            )
-        return self.__derive(dsops.take_rows(self.__state.dataset, rows))
+        return HealpixMap(mapops.take_rows(self.__state, rows))
 
     def with_new_columns(
         self,
@@ -893,16 +822,8 @@ class HealpixMap:
             This dataset with the columns added
 
         """
-        for name, column in columns.items():
-            if not isinstance(column, Column) and len(column) != len(self):
-                raise ValueError(
-                    f"New column {name} has length {len(column)} but this dataset "
-                    f"has length {len(self)}"
-                )
-        return self.__derive(
-            dsops.with_new_columns(
-                self.__state.dataset, descriptions, False, mode="global", **columns
-            )
+        return HealpixMap(
+            mapops.with_new_columns(self.__state, descriptions, **columns)
         )
 
     def sort_by(self, column: str, invert: bool = False):
@@ -931,9 +852,7 @@ class HealpixMap:
 
 
         """
-        if column not in self.columns:
-            raise ValueError(f"Column {column} does not exist in this dataset!")
-        return self.__derive(dsops.sort_by(self.__state.dataset, column, invert))
+        return HealpixMap(mapops.sort_by(self.__state, column, invert))
 
     def with_units(
         self,
