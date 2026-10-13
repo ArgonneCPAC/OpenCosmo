@@ -38,7 +38,7 @@ def test_state_uuid_matches_discovery_and_survives_transformations(input_path):
     discovered_uuid = discover_file(input_path).groups[0].uuid
 
     assert state.uuid == discovered_uuid
-    assert state.uuid == dsops.filter(state, oc.col("sod_halo_mass") > 0, {}).uuid
+    assert state.uuid == dsops.filter(state, oc.col("sod_halo_mass") > 0).uuid
     assert state.uuid == dsops.select(state, "fof_halo_mass").uuid
     assert state.uuid == dsops.take(state, 10, "start", "global").uuid
 

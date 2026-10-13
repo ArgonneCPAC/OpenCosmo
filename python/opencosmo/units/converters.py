@@ -172,18 +172,19 @@ def comoving_to_physical(
 def get_scale_factor(dataset: "DatasetState", cosmology, redshift):
     from opencosmo.dataset import operations as dsops
 
-    columns = set(dataset.columns)
+    baseline = dsops.with_units(dataset, dataset.unit_handler.base_convention.value, {})
+    columns = set(baseline.columns)
     for column in KNOWN_SCALEFACTOR_COLUMNS:
         if column in columns:
             col = dsops.get_data(
-                dsops.select(dataset, column), "numpy", wrap_single=True
+                dsops.select(baseline, column), "numpy", wrap_single=True
             )[column]
             return col
 
     for column in KNOWN_REDSHIFT_COLUMNS:
         if column in columns:
             col = dsops.get_data(
-                dsops.select(dataset, column), "numpy", wrap_single=True
+                dsops.select(baseline, column), "numpy", wrap_single=True
             )[column]
             return 1 / (1 + col)
 
