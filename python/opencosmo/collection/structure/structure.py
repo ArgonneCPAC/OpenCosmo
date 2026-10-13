@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
@@ -83,24 +82,6 @@ class StructureCollection:
             return self.__state.header.parameters[key]
         except KeyError:
             return object.__getattribute__(self, key)
-
-    @classmethod
-    def open(
-        cls,
-        targets: list[DatasetTarget],
-        ignore_empty=True,
-        index_kind: str = "none",
-        is_empty_ref: bool = False,
-        **kwargs,
-    ) -> StructureCollection:
-        return cls(
-            scops.open_state(
-                targets,
-                ignore_empty,
-                index_kind=index_kind,
-                is_empty_ref=is_empty_ref,
-            )
-        )
 
     @property
     def dtype(self):

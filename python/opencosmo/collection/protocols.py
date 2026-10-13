@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Iterable, Protocol, Self, Union
 if TYPE_CHECKING:
     from opencosmo.column.column import ColumnMask
     from opencosmo.dataset import Dataset
-    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
 
 
@@ -19,19 +18,9 @@ class Collection(Protocol):
     must include  __getitem__, keys, values and __items__, which allows
     a collection to behave like a read-only dictionary.
 
-
-    Note that the "open" and "read" methods are used in the case an entire collection
-    is located within a single file. Multi-file collections are handled
-    in the collection.io module. Most complexity is hidden from the user
-    who simply calls "oc.read" and "oc.open" to get a collection. The io
-    module also does sanity checking to ensure files are structurally valid,
-    so we do not have to do it here.
+    Collections are opened with :py:func:`opencosmo.open`, which builds the
+    backend state and wraps it in the matching collection.
     """
-
-    @classmethod
-    def open(
-        cls, targets: list[DatasetTarget], **kwargs
-    ) -> Union["Collection", Dataset]: ...
 
     def make_schema(self, path: str) -> Schema: ...
     @property

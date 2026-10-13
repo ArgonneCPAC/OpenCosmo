@@ -8,8 +8,8 @@ import healpy as hp
 import numpy as np
 
 import opencosmo as oc
-from opencosmo import collection as occ
 from opencosmo.collection.healpix_map import state as mapst
+from opencosmo.collection.healpix_map.state import HealpixMapState
 from opencosmo.dataset import state as st
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import plan
@@ -35,12 +35,13 @@ if TYPE_CHECKING:
 
     import h5py
 
-    from opencosmo.collection.healpix_map.state import HealpixMapState
+    from opencosmo.collection.simulation.state import SimulationChild, SimulationState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.discover import FileLayout, GroupLayout, LinkLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.io import MpiMode
+    from opencosmo.io.specs import SpecState
     from opencosmo.mapping.mapping import DatasetMatchSet
 
 """
@@ -167,14 +168,14 @@ def open_files(
     paths: list[Path],
     open_kwargs: dict[str, Any],
     mpi_mode: MpiMode | None = None,
-) -> oc.Dataset | oc.collection.Collection:
+) -> SpecState | SimulationState:
     """
     Main back-end entry point for opening files.
 
     Pipeline: discover metadata for every file (one collective allgather), group the
     discovered layouts by governing header scope, then for each scope match a spec,
-    verify it, distribute files across ranks, and build this rank's object. A single
-    scope returns its object directly; multiple scopes wrap in a SimulationCollection.
+    verify it, distribute files across ranks, and build this rank's state. A single
+    scope returns its state directly; multiple scopes combine into a SimulationState.
     Every rank computes identical scopes/specs/assignments from identical, path-sorted
     layouts, so the only collective in the whole path is the discovery allgather.
     """
@@ -259,7 +260,7 @@ def open_files(
     if not scopes:
         raise ValueError("No valid datasets found!")
 
-    children: dict[str, oc.Dataset | oc.collection.Collection] = {}
+    children: dict[str, SpecState] = {}
     # UUIDs of every dataset this rank actually opened. Only the identities are
     # needed (map endpoint resolution is pure set membership), so nothing here
     # requires the Dataset objects themselves.
@@ -354,11 +355,21 @@ def open_files(
     # A mapping resolves to nothing usable whenever fewer than two of its endpoints
     # were opened — the "ignore unresolvable endpoints" rule applied consistently.
     # The result is then exactly what it would have been without the mapping file,
-    # including the bare single-child object.
+    # including the bare single-child state.
     if len(children) == 1 and match_set is None:
         return next(iter(children.values()))
 
-    return occ.SimulationCollection.from_datasets(children, match_set=match_set)
+    from opencosmo.collection.simulation import state as simst
+
+    members: dict[str, SimulationChild] = {}
+    for name, child in children.items():
+        if isinstance(child, HealpixMapState):
+            raise ValueError(
+                "Simulation collection only accepts datasets, lightcones, "
+                "and structure collections"
+            )
+        members[name] = child
+    return simst.from_parts(members, match_set=match_set)
 
 
 def _resolve_match_set(

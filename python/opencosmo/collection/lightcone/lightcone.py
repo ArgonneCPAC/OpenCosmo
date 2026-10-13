@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
-    Any,
     Literal,
 )
 from warnings import warn
@@ -25,7 +24,6 @@ if TYPE_CHECKING:
         Iterable,
         Iterator,
         KeysView,
-        Mapping,
     )
     from uuid import UUID
 
@@ -34,16 +32,13 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from astropy.io import fits
 
-    from opencosmo.collection.lightcone.scope import LightconeScope
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
     )
     from opencosmo.dataset import Dataset
-    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
 
@@ -65,18 +60,6 @@ class Lightcone:
 
     def __init__(self, state: lcst.LightconeState):
         self.__state = state
-
-    @staticmethod
-    def __flatten(
-        datasets: Mapping[Any, Dataset | Lightcone],
-    ) -> list[tuple[lcst.LeafKey, DatasetState]]:
-        leaves: list[tuple[lcst.LeafKey, DatasetState]] = []
-        for key, child in datasets.items():
-            if isinstance(child, Lightcone):
-                leaves.extend(((key, *k), leaf) for k, leaf in child._state.leaves)
-            else:
-                leaves.append(((key,), child._state))
-        return leaves
 
     def __getitem__(self, key: int | str) -> Dataset | Lightcone:
         return facade.wrap(lcst.view(self.__state, key))
@@ -354,33 +337,6 @@ class Lightcone:
 
         """
         return self.get_data("astropy")
-
-    @classmethod
-    def open(
-        cls,
-        targets: list[DatasetTarget],
-        index_kind: str = "none",
-        is_empty_ref: bool = False,
-        **kwargs,
-    ):
-        return cls(lcops.open_state(targets, index_kind, is_empty_ref, **kwargs))
-
-    @classmethod
-    def from_datasets(
-        cls,
-        datasets: Mapping[int, oc.Dataset | Lightcone],
-        z_range: tuple[float, float] | None = None,
-        scope: LightconeScope | None = None,
-        **open_kwargs,
-    ):
-        return cls(
-            lcops.from_dataset_states(
-                Lightcone.__flatten(datasets),
-                z_range=z_range,
-                scope=scope,
-                **open_kwargs,
-            )
-        )
 
     def cutouts(
         self, size: float | u.Quantity, npix: int = 64

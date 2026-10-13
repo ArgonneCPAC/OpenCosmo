@@ -3,31 +3,27 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional
 
 from opencosmo import facade
-from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
-from opencosmo.collection.structure import structure as sc
 from opencosmo.collection.structure.state import StructureState
-from opencosmo.dataset import Dataset
 
 if TYPE_CHECKING:
-    from collections.abc import KeysView, Mapping
+    from collections.abc import KeysView
 
     import astropy.units as u
     import numpy as np
 
-    from opencosmo.collection.protocols import Collection
-    from opencosmo.collection.simulation.state import SimulationChild
+    from opencosmo.collection.lightcone.lightcone import Lightcone
+    from opencosmo.collection.structure.structure import StructureCollection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dataset import Dataset
     from opencosmo.dataset.dataset import OpenCosmoData
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region
 
-    UserChild = Dataset | lc.Lightcone | sc.StructureCollection
+    UserChild = Dataset | Lightcone | StructureCollection
 
 
 class SimulationCollection:
@@ -40,45 +36,6 @@ class SimulationCollection:
 
     def __init__(self, state: simst.SimulationState):
         self.__state = state
-
-    @classmethod
-    def from_datasets(
-        cls,
-        datasets: Mapping[str, Dataset | lc.Lightcone | Collection],
-        match_set: DatasetMatchSet | None = None,
-    ) -> SimulationCollection:
-        """
-        Create a simulation collection from datasets, lightcones, or structure
-        collections drawn from different simulations.
-
-        Parameters
-        ----------
-        datasets: Mapping[str, Dataset | Lightcone | StructureCollection]
-            The members of the collection, keyed by simulation name.
-
-        match_set: DatasetMatchSet, optional
-            Row matching between the datasets. Only supported when every member
-            is a :py:class:`Dataset <opencosmo.Dataset>`.
-
-        Returns
-        -------
-        collection: opencosmo.SimulationCollection
-
-        Raises
-        ------
-        ValueError
-            If a member is not a dataset, lightcone, or structure collection, or
-            a match set is given for members that are not all datasets.
-        """
-        members: dict[str, SimulationChild] = {}
-        for name, value in datasets.items():
-            if not isinstance(value, (Dataset, lc.Lightcone, sc.StructureCollection)):
-                raise ValueError(
-                    "Simulation collection only accepts datasets, lightcones, "
-                    "and structure collections"
-                )
-            members[name] = value._state
-        return cls(simst.from_parts(members, match_set))
 
     @property
     def _state(self) -> simst.SimulationState:
@@ -141,10 +98,6 @@ class SimulationCollection:
         return (
             f"SimulationCollection({n_collections} collections, {n_datasets} datasets)"
         )
-
-    @classmethod
-    def open(cls, targets: list[DatasetTarget], **kwargs) -> Collection | Dataset:
-        raise NotImplementedError()
 
     def make_schema(self, path: str) -> Schema:
         return simops.make_schema(self.__state, path)

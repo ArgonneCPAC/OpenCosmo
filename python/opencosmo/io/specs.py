@@ -14,18 +14,27 @@ from opencosmo.io.discover import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import TypeAlias
 
-    import opencosmo as oc
+    from opencosmo.collection.healpix_map.state import HealpixMapState
+    from opencosmo.collection.lightcone.state import LightconeState
+    from opencosmo.collection.structure.state import StructureState
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.io.discover import GroupLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
+
+    SpecState: TypeAlias = (
+        DatasetState | LightconeState | StructureState | HealpixMapState
+    )
 
 """
 Spec registry for opening OpenCosmo files.
 
 Each file/collection *type* is described by one self-contained FileSpec that knows
 only how to recognise itself (``matches``), sanity-check itself (``verify``) and turn
-rehydrated targets into an object (``build_from_targets``). Opening a file is CORE
+rehydrated targets into a backend state (``build_from_targets``). Specs never build
+user-facing objects; ``opencosmo.open`` wraps the final state once. Opening a file is CORE
 logic, not an extension point, so this registry deliberately does NOT use the plugin
 hook system (opencosmo.plugins) — it is a plain module-level ordered tuple, and
 dispatch is a plain ``match_spec(layouts)`` that returns the first spec whose
@@ -40,7 +49,7 @@ Composition across simulations is not a spec either. A file (or file set) with m
 than one governing header scope — one ``/header`` per simulation, e.g.
 ``/scidac1/header``, ``/scidac2/header`` — is a SimulationCollection of per-scope
 children. ``group_by_scope`` splits the layouts by scope; the caller builds each
-scope through the ordinary single-scope path and wraps the results. Every spec
+scope through the ordinary single-scope path and combines the resulting states. Every spec
 therefore only ever sees a single-scope layout.
 
 For plain Datasets and HealpixMaps, _build_single_dataset turns the DatasetState
@@ -198,7 +207,7 @@ def _build_single_dataset(
     targets: list[DatasetTarget],
     open_kwargs: dict[str, Any],
     index: IndexSpec | None = None,
-) -> oc.Dataset | oc.collection.Collection:
+) -> SpecState:
     """Build one dataset from a single-target file list.
 
     Shared by DatasetSpec and HealpixMapSpec. open_dataset returns a DatasetState;
@@ -209,17 +218,16 @@ def _build_single_dataset(
     the spatial spec.
 
     ``index`` overrides that default. A caller that knows the dataset must be whole
-    on every rank — ``Lightcone.open`` building a companion healpix map — passes an
+    on every rank — ``lcops.open_state`` building a companion healpix map — passes an
     explicit spec rather than relying on the standalone default.
     """
-    from opencosmo import facade
     from opencosmo.io.index_spec import spatial
     from opencosmo.io.iopen import _open_healpix_map, open_dataset
 
     state = open_dataset(targets[0], index or spatial, open_kwargs=open_kwargs)
     if state.header.file.data_type == "healpix_map":
-        return facade.wrap(_open_healpix_map(state))
-    return facade.wrap(state)
+        return _open_healpix_map(state)
+    return state
 
 
 def _verify_columns_consistent_per_dataset(layouts: tuple[FileLayout, ...]) -> None:
@@ -300,7 +308,7 @@ class FileSpec(Protocol):
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
-    ) -> oc.Dataset | oc.collection.Collection: ...
+    ) -> SpecState: ...
 
 
 class StructureCollectionSpec:
@@ -350,11 +358,11 @@ class StructureCollectionSpec:
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
-    ) -> oc.Dataset | oc.collection.Collection:
-        from opencosmo import collection as occ
+    ) -> SpecState:
+        from opencosmo.collection.structure import operations as scops
 
-        return occ.StructureCollection.open(
-            targets, index_kind=index_kind, is_empty_ref=is_empty_ref, **open_kwargs
+        return scops.open_state(
+            targets, index_kind=index_kind, is_empty_ref=is_empty_ref
         )
 
 
@@ -382,7 +390,7 @@ class HealpixMapSpec:
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
         index: IndexSpec | None = None,
-    ) -> oc.Dataset | oc.collection.Collection:
+    ) -> SpecState:
         return _build_single_dataset(targets, open_kwargs, index)
 
 
@@ -415,16 +423,16 @@ class LightconeSpec:
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
-    ) -> oc.Dataset | oc.collection.Collection:
-        from opencosmo import collection as occ
+    ) -> SpecState:
+        from opencosmo.collection.lightcone import operations as lcops
 
-        return occ.Lightcone.open(
+        return lcops.open_state(
             targets, index_kind=index_kind, is_empty_ref=is_empty_ref, **open_kwargs
         )
 
 
 class DatasetSpec:
-    """A single non-lightcone, non-healpix group -> plain Dataset."""
+    """A single non-lightcone, non-healpix group -> plain DatasetState."""
 
     name = "dataset"
 
@@ -445,7 +453,7 @@ class DatasetSpec:
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
-    ) -> oc.Dataset | oc.collection.Collection:
+    ) -> SpecState:
         return _build_single_dataset(targets, open_kwargs)
 
 

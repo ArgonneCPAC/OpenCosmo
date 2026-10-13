@@ -15,7 +15,8 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     import opencosmo as oc
-    from opencosmo import collection
+    from opencosmo.collection.simulation.state import SimulationState
+    from opencosmo.io.specs import SpecState
 
     from .protocols import Writeable
 
@@ -66,7 +67,13 @@ class MpiMode(Enum):
 
 def open(
     *files: str | Path, mpi_mode: str = "spatial", **open_kwargs: bool
-) -> oc.Dataset | collection.Collection:
+) -> (
+    oc.Dataset
+    | oc.Lightcone
+    | oc.StructureCollection
+    | oc.SimulationCollection
+    | oc.HealpixMap
+):
     """
     Open a dataset or data collection from one or more opencosmo files.
 
@@ -135,7 +142,16 @@ def open(
         is used with a non-lightcone dataset.
 
     """
-    # Normalize and validate mpi_mode
+    # Deferred: opencosmo.io is imported while the facades are still initializing.
+    from opencosmo import facade
+
+    return facade.wrap(open_state(*files, mpi_mode=mpi_mode, **open_kwargs))
+
+
+def open_state(
+    *files: str | Path, mpi_mode: str = "spatial", **open_kwargs: bool
+) -> SpecState | SimulationState:
+    """Open files as a backend state. See :py:func:`open` for the arguments."""
     try:
         mode = MpiMode(mpi_mode)
     except ValueError:
@@ -151,8 +167,6 @@ def open(
     file_list.sort()
     paths = [Path(fp).expanduser().resolve() for fp in file_list]
     return open_files(paths, open_kwargs, mpi_mode=mode)
-
-    # For now the only way to open multiple files is with a StructureCollection
 
 
 def write(

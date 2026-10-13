@@ -8,8 +8,10 @@ collections that must survive the move to a SimulationState.
 import numpy as np
 import pytest
 from opencosmo.header import OpenCosmoHeader
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
+from opencosmo.collection.simulation import state as simst
 
 
 @pytest.fixture
@@ -20,7 +22,7 @@ def multi_path(test_data):
 @pytest.fixture
 def structure_collection(test_data):
     children = {
-        f"scidac_{i:03d}": oc.open(*test_data.snapshot.scidac(i).all) for i in (0, 1)
+        f"scidac_{i:03d}": open_state(*test_data.snapshot.scidac(i).all) for i in (0, 1)
     }
     return _collection(children)
 
@@ -28,13 +30,13 @@ def structure_collection(test_data):
 @pytest.fixture
 def lightcone_children(test_data):
     return {
-        f"step_{step}": oc.open(test_data.lightcone.step(step).halo_properties)
+        f"step_{step}": open_state(test_data.lightcone.step(step).halo_properties)
         for step in (600, 601)
     }
 
 
 def _collection(children):
-    return oc.SimulationCollection.from_datasets(children)
+    return oc.SimulationCollection(simst.from_parts(children))
 
 
 def test_dataset_children_mapping(multi_path):
@@ -192,9 +194,3 @@ def test_take_rows_out_of_range_raises(multi_path):
     too_far = max(len(child) for child in collection.values())
     with pytest.raises(ValueError, match="Row indices must be between"):
         collection.take_rows(np.array([0, too_far], dtype=np.int64))
-
-
-def test_from_datasets_rejects_unsupported_members(multi_path):
-    dataset = next(iter(oc.open(multi_path).values()))
-    with pytest.raises(ValueError, match="only accepts datasets"):
-        oc.SimulationCollection.from_datasets({"a": dataset, "b": object()})
