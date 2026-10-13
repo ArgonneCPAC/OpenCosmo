@@ -1,9 +1,9 @@
 sphinx_rtd_theme>=3.0.2
 autodoc_pydantic>=2.2.0
 mpi4py>=4.0
-numpy==2.3.5
+numpy==2.5.3
 yt>=4.3
-pyxsim==4.4.3
+pyxsim==4.5.0
 pyarrow[parquet]>=25.0.1
 
 
