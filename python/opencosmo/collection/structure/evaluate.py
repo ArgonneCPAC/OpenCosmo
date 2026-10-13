@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from inspect import Parameter, signature
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 from astropy.units import Quantity  # type: ignore
 
@@ -15,14 +15,14 @@ from opencosmo.dataset.formats import concat_chunks, stack_rows
 from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 
 def verify_evaluate_on_collection(
     function: Callable,
     state: StructureState,
     evaluate_kwargs: dict[str, Any],
-    dataset: Optional[str],
+    dataset: str | None,
 ):
     # Case 1/3
     function_signature = signature(function)
@@ -59,10 +59,12 @@ def visit_structure_eagerly(
     function: Callable,
     state: StructureState,
     format: str = "astropy",
-    dataset: Optional[str] = None,
-    evaluate_kwargs: dict[str, Any] = {},
+    dataset: str | None = None,
+    evaluate_kwargs: dict[str, Any] | None = None,
     insert: bool = True,
 ):
+    if evaluate_kwargs is None:
+        evaluate_kwargs = {}
     spec, kwargs = verify_evaluate_on_collection(
         function, state, evaluate_kwargs, dataset
     )
@@ -122,11 +124,10 @@ def evaluate_into_dataset(
         if not isinstance(output, dict):
             output = {function.__name__: output}
 
-        if i == 0:
-            if any(len(v) != expected_length for v in output.values()):
-                raise ValueError(
-                    "If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
-                )
+        if i == 0 and any(len(v) != expected_length for v in output.values()):
+            raise ValueError(
+                "If you pass a `dataset` argument, your function should output an array with the same length as that dataset"
+            )
         for name, output_arr in output.items():
             per_column.setdefault(name, []).append(output_arr)
 
@@ -156,7 +157,7 @@ def __make_input(structure: Mapping[str, Any], format: str = "astropy"):
 
 
 def __prepare_state(
-    spec: dict[str, Optional[list[str]]], state: StructureState
+    spec: dict[str, list[str] | None], state: StructureState
 ) -> StructureState:
     state = scops.with_datasets(state, list(spec.keys()))
     selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}

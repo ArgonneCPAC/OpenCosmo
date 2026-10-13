@@ -383,11 +383,13 @@ def drop(state: LightconeState, *columns: str | Iterable[str]) -> LightconeState
 
 def with_new_columns(
     state: LightconeState,
-    descriptions: str | dict[str, str] = {},
+    descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     mode: str = "global",
     **columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> LightconeState:
+    if descriptions is None:
+        descriptions = {}
     if any(isinstance(col, DerivedScalarValue) for col in columns.values()):
         raise ValueError(
             "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
@@ -403,7 +405,7 @@ def with_new_columns(
         if isinstance(column, (Column, EvaluatedColumn)):
             derived[name] = column
         elif not isinstance(column, np.ndarray):
-            raise ValueError(f"Invalid column type: {type(columns)}")
+            raise TypeError(f"Invalid column type: {type(column)}")
         elif len(column) != len(state):
             raise ValueError(
                 f"New column {name} has length {len(column)} but this dataset "
@@ -637,9 +639,7 @@ def make_schema(
     comm = get_comm_world()
     rank = 0 if comm is None else comm.Get_rank()
     if state.maps is not None:
-        healpix_schema = mapops.make_schema(
-            state.maps, "/".join([path, "healpix_maps"])
-        )
+        healpix_schema = mapops.make_schema(state.maps, f"{path}/healpix_maps")
         if rank == 0:
             children["healpix_maps"] = healpix_schema
     name = path.split("/")[-1]

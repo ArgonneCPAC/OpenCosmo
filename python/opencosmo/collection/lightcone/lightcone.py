@@ -440,8 +440,7 @@ class Lightcone:
         centers = SkyCoord(**coordinates)
         cutouts = mapops.cutouts(self.__state.maps, centers, size, npix=npix)
 
-        for entry, cutout in zip(lcops.rows(self.__state), cutouts):
-            yield entry, cutout
+        yield from zip(lcops.rows(self.__state), cutouts)
 
     def with_redshift_range(self, z_low: float, z_high: float):
         """
@@ -896,7 +895,7 @@ class Lightcone:
 
     def with_new_columns(
         self,
-        descriptions: str | dict[str, str] = {},
+        descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
         mode: str = "global",
         **columns: ConstructedColumn | np.ndarray | u.Quantity,
@@ -930,6 +929,8 @@ class Lightcone:
             This dataset with the columns added
 
         """
+        if descriptions is None:
+            descriptions = {}
         return Lightcone(
             lcops.with_new_columns(
                 self.__state, descriptions, allow_overwrite, mode=mode, **columns
@@ -975,7 +976,7 @@ class Lightcone:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] = {},
+        conversions: dict[u.Unit, u.Unit] | None = None,
         **columns: u.Unit,
     ) -> Lightcone:
         r"""
@@ -1029,6 +1030,8 @@ class Lightcone:
         lightcone : Lightcone
             The new lightcone with the requested unit convention and/or conversions.
         """
+        if conversions is None:
+            conversions = {}
         return Lightcone(
             lcops.with_units(self.__state, convention, conversions, **columns)
         )

@@ -1,4 +1,6 @@
-from typing import Any, Callable, ClassVar
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import astropy.units as u
 import numpy as np
@@ -6,8 +8,11 @@ from pydantic import BaseModel, ConfigDict, model_serializer
 
 from .units import register_units
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def to_numpy(parameters: "SuperMockParams") -> dict[str, Any]:
+
+def to_numpy(parameters: SuperMockParams) -> dict[str, Any]:
     output = {}
     for name, value in parameters.dict().items():
         if isinstance(value, list):

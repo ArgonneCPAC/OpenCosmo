@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import h5py
@@ -125,4 +125,4 @@ class PartitionCtx:
     index_group: h5py.Group
     data_group: h5py.Group
     spatial_index: SpatialIndex | None = None
-    min_level: Optional[int] = None
+    min_level: int | None = None

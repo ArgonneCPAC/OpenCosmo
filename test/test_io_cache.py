@@ -165,9 +165,10 @@ def test_none_free_discover_all_on_cache_failures(
 
 
 def test_layout_version_bump_invalidates(tmp_path: Path, test_data) -> None:
-    import opencosmo.io.cache as cache
     from opencosmo.io.cache import get_cached_layouts
     from opencosmo.io.discover import discover_all
+
+    from opencosmo.io import cache
 
     src = test_data.snapshot.primary.halo_properties
     path = tmp_path / src.name
@@ -259,9 +260,10 @@ def test_cache_hit_does_not_write(tmp_path: Path, test_data) -> None:
 def test_disable_cache_escape_hatch(
     tmp_path: Path, test_data, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import opencosmo.io.cache as cache
     from opencosmo.io.cache import cache_layouts, get_cached_layouts
     from opencosmo.io.discover import FileLayout
+
+    from opencosmo.io import cache
 
     src = test_data.snapshot.primary.halo_properties
     path = tmp_path / src.name
@@ -283,7 +285,7 @@ def test_connections_are_closed(
     # observe close behavior.
     close_calls: list[int] = []
 
-    import opencosmo.io.cache as cache
+    from opencosmo.io import cache
 
     original_sqlite_connection = cache._sqlite_connection
 
@@ -319,7 +321,7 @@ def test_connections_are_closed(
 
 
 def test_populate_directory_cache_writes_shared_cache(
-    test_data, tmp_path: "Path"
+    test_data, tmp_path: Path
 ) -> None:
     """populate_directory_cache indexes a directory into <dir>/.opencosmo."""
     from opencosmo.io.cache import populate_directory_cache
@@ -337,7 +339,7 @@ def test_populate_directory_cache_writes_shared_cache(
 
 
 def test_populate_directory_cache_skips_and_reports_bad_files(
-    test_data, tmp_path: "Path"
+    test_data, tmp_path: Path
 ) -> None:
     """Files that fail discovery are reported, not cached."""
     from opencosmo.io.cache import populate_directory_cache
@@ -353,7 +355,7 @@ def test_populate_directory_cache_skips_and_reports_bad_files(
     assert bad.resolve() in result.failed
 
 
-def test_populate_directory_cache_rejects_non_directory(tmp_path: "Path") -> None:
+def test_populate_directory_cache_rejects_non_directory(tmp_path: Path) -> None:
     from opencosmo.io.cache import populate_directory_cache
 
     missing = tmp_path / "nope"
@@ -362,7 +364,7 @@ def test_populate_directory_cache_rejects_non_directory(tmp_path: "Path") -> Non
 
 
 def test_shared_cache_is_readable_from_readonly_directory(
-    test_data, tmp_path: "Path"
+    test_data, tmp_path: Path
 ) -> None:
     """
     A populated shared cache must be usable once the data dir is read-only.
@@ -395,7 +397,7 @@ def test_shared_cache_is_readable_from_readonly_directory(
         assert get_directory_read_cache_dir(data_dir.resolve()) == cache_dir
 
         # The warm read must not touch HDF5 at all.
-        def _fail(p: "Path"):
+        def _fail(p: Path):
             raise AssertionError(f"walked {p}")
 
         original_discover = discover_module.discover_file
@@ -420,7 +422,7 @@ def _discover_readonly_without_walking(data_dir: Path, path: Path) -> tuple:
     for p in original_modes:
         os.chmod(p, 0o555)
 
-    def _fail(p: "Path"):
+    def _fail(p: Path):
         raise AssertionError(f"walked {p}")
 
     original_discover = discover_module.discover_file
@@ -433,7 +435,7 @@ def _discover_readonly_without_walking(data_dir: Path, path: Path) -> tuple:
             os.chmod(p, mode)
 
 
-def test_relative_cache_survives_a_move(test_data, tmp_path: "Path") -> None:
+def test_relative_cache_survives_a_move(test_data, tmp_path: Path) -> None:
     """A relative cache still hits after the data dir is mounted elsewhere."""
     from opencosmo.io.cache import populate_directory_cache
 

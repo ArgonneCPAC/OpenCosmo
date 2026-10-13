@@ -22,12 +22,11 @@ def update_simulation_parameter(
 ):
     # make a copy of the original data
     path = tmp_path / f"{name}.hdf5"
-    with h5py.File(base_cosmology_path, "r") as f:
-        with h5py.File(path, "w") as file:
-            f.copy(f["header"], file, "header")
-            # update the attributes
-            for key, value in parameters.items():
-                file["header"]["simulation"]["parameters"].attrs[key] = value
+    with h5py.File(base_cosmology_path, "r") as f, h5py.File(path, "w") as file:
+        f.copy(f["header"], file, "header")
+        # update the attributes
+        for key, value in parameters.items():
+            file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
 
 

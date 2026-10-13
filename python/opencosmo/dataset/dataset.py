@@ -2,13 +2,7 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Mapping,
-    Optional,
-    TypeAlias,
     cast,
 )
 from warnings import warn
@@ -22,6 +16,7 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.deprecated import deprecated
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Iterable, Mapping
     from uuid import UUID
 
     from opencosmo.column.column import (
@@ -36,7 +31,7 @@ if TYPE_CHECKING:
     from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
-OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
+type OpenCosmoData = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
 
 
 class Dataset:
@@ -125,7 +120,7 @@ class Dataset:
         return self.__state.columns
 
     @property
-    def descriptions(self) -> dict[str, Optional[str]]:
+    def descriptions(self) -> dict[str, str | None]:
         """
         Return the descriptions (if any) of the columns in this dataset as a dictonary.
         Columns without a description will be included in the dictionary with a value
@@ -140,7 +135,7 @@ class Dataset:
         return self.__state.descriptions
 
     @property
-    def units(self) -> dict[str, Optional[u.Unit]]:
+    def units(self) -> dict[str, u.Unit | None]:
         """
         Return the current units of all columns in the dataset. Columns without units will
         return None.
@@ -169,7 +164,7 @@ class Dataset:
         return self.__state.region
 
     @property
-    def sorted_by(self) -> Optional[str]:
+    def sorted_by(self) -> str | None:
         """
         The column this dataset is sorted by. If not sorted, returns None.
 
@@ -259,7 +254,7 @@ class Dataset:
             format = kwargs["output"]
         return dsops.get_data(self.__state, format, unpack, wrap_single, **kwargs)
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
+    def bound(self, region: Region, select_by: str | None = None):
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -641,7 +636,7 @@ class Dataset:
             new_state,
         )
 
-    def sort_by(self, column: Optional[str], invert: bool = False) -> Dataset:
+    def sort_by(self, column: str | None, invert: bool = False) -> Dataset:
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -787,7 +782,7 @@ class Dataset:
 
     def with_new_columns(
         self,
-        descriptions: str | dict[str, str] = {},
+        descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
         mode: str = "global",
         **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
@@ -846,6 +841,8 @@ class Dataset:
             This dataset with the columns added
 
         """
+        if descriptions is None:
+            descriptions = {}
         new_state = dsops.with_new_columns(
             self.__state, descriptions, allow_overwrite, mode=mode, **new_columns
         )
@@ -868,8 +865,8 @@ class Dataset:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
-        conversions: dict[u.Unit, u.Unit] = {},
+        convention: str | None = None,
+        conversions: dict[u.Unit, u.Unit] | None = None,
         **columns: u.Unit,
     ) -> Dataset:
         r"""
@@ -931,6 +928,8 @@ class Dataset:
 
         """
 
+        if conversions is None:
+            conversions = {}
         new_state = dsops.with_units(
             self.__state,
             convention,

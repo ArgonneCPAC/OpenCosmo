@@ -1416,7 +1416,7 @@ def test_redshift_mpi_select_and_filter_work(
 
     # filter() must produce the same global count as the spatial open.
     filtered = lc.filter(oc.col("fof_halo_mass") > 1e13)
-    local_kept = int(len(filtered))
+    local_kept = len(filtered)
     total_kept = comm.allreduce(local_kept)
     parallel_assert(
         total_kept == expected_kept,

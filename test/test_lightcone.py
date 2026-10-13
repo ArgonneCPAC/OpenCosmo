@@ -375,9 +375,7 @@ def test_lc_collection_mapped_kwargs(
         offset, vectorize=True, insert=True, format="numpy", mapped_kwarg=mapped_kwargs
     )
     for name, ds in result.items():
-        assert np.all(
-            result[name].select("offset").get_data("numpy") == mapped_kwargs[name]
-        )
+        assert np.all(ds.select("offset").get_data("numpy") == mapped_kwargs[name])
 
 
 def test_lc_collection_evaluate_noinsert(

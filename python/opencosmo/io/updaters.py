@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from opencosmo.mpi import MPI
 
 
-def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
+def do_idx_update(data: np.ndarray, comm: MPI.Comm | None = None):
     # An idx metadata column links each structure to at most one row in a target
     # dataset, using -1 to mark structures with no linked row (e.g. halos without
     # a profile). The target dataset is written containing only the linked rows,
@@ -28,7 +28,7 @@ def do_idx_update(data: np.ndarray, comm: Optional[MPI.Comm] = None):
     return result
 
 
-def do_start_update(data: np.ndarray, size: np.ndarray, comm: Optional[MPI.Comm]):
+def do_start_update(data: np.ndarray, size: np.ndarray, comm: MPI.Comm | None):
     psum = np.insert(np.cumsum(size), 0, 0)[:-1]
     if comm is None:
         return psum

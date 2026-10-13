@@ -4,7 +4,7 @@ import sys
 from functools import cache
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import rustworkx as rx
 
@@ -36,7 +36,11 @@ def is_uv_env():
     return False
 
 
-def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool = False):
+def install_spec(
+    name: str, versions: dict[str, str | None] | None = None, dev: bool = False
+):
+    if versions is None:
+        versions = {}
     spec = get_specs()[name]
     logger.info(f"Installing analysis package {name}")
     requirements = spec.requirements
@@ -48,12 +52,12 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
     nodes = dependency_graph.add_nodes_from(names)
     node_map = {name: node for name, node in zip(names, nodes)}
 
-    for name, i in node_map.items():
-        depends_on = [node_map[don] for don in raw_graph[name]]
-        dependency_graph.add_edges_from_no_data((don, i) for don in depends_on)
+    for requirement, node_index in node_map.items():
+        depends_on = [node_map[don] for don in raw_graph[requirement]]
+        dependency_graph.add_edges_from_no_data((don, node_index) for don in depends_on)
 
     transaction = {}
-    method: Optional[str] = None
+    method: str | None = None
     dev_transaction: dict[str, str | None] = {}
 
     for requirement, data in requirements.items():
@@ -83,7 +87,7 @@ def install_spec(name: str, versions: dict[str, Optional[str]] = {}, dev: bool =
     execute_transaction("pip-git", dev_transaction, requirements, dev)
 
 
-def resolve_method(version: Optional[str], method: Optional[str]):
+def resolve_method(version: str | None, method: str | None):
     if version is None or "+g" not in version:
         if method in (None, "conda-forge") and is_conda_env():
             return "conda-forge"
@@ -96,8 +100,8 @@ def resolve_method(version: Optional[str], method: Optional[str]):
 
 
 def execute_transaction(
-    method: Optional[str],
-    transaction: dict[str, Optional[str]],
+    method: str | None,
+    transaction: dict[str, str | None],
     requirements: dict[str, DependencySpec],
     dev: bool = False,
 ):

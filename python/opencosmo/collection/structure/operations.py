@@ -61,7 +61,7 @@ def __source_op(source: Source, name: str) -> Callable[..., Any]:
 
 def require_lightcone(state: StructureState, method: str) -> LightconeState:
     if not isinstance(state.source, LightconeState):
-        raise AttributeError(
+        raise AttributeError(  # noqa: TRY004
             f"{method} is only available on lightcone structure collections."
         )
     return state.source
@@ -196,7 +196,7 @@ def select(
         child = state.linked[dataset]
         if isinstance(child, StructureState):
             if not isinstance(arg, dict):
-                raise ValueError(
+                raise TypeError(
                     "When working with nested structure collections, the argument should be a dictionary!"
                 )
             new_linked[dataset] = select(child, mode=mode, **arg)
@@ -238,7 +238,7 @@ def drop(
         child = state.linked[dataset]
         if isinstance(child, StructureState):
             if not isinstance(columns, dict):
-                raise ValueError(
+                raise TypeError(
                     "When working with nested structure collections, the argument should be a dictionary!"
                 )
             new_linked[dataset] = drop(child, **columns)
@@ -251,11 +251,13 @@ def drop(
 def with_new_columns(
     state: StructureState,
     dataset: str,
-    descriptions: str | dict[str, str] = {},
+    descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     mode: str = "global",
     **new_columns: ConstructedColumn | np.ndarray,
 ) -> StructureState:
+    if descriptions is None:
+        descriptions = {}
     if any(isinstance(c, DerivedScalarValue) for c in new_columns.values()):
         raise ValueError(
             f"Scalar values cannot be retrieved from a StructureCollection directly. Use `collection[{dataset}].select(scalar_expression)`"
@@ -292,7 +294,7 @@ def with_new_columns(
     resolved = __resolved(state)
     child = resolved.linked[dataset]
     if not isinstance(child, DatasetState):
-        raise ValueError(f"{dataset} is not a dataset!")
+        raise TypeError(f"{dataset} is not a dataset!")
 
     new_child = dsops.with_new_columns(
         child, descriptions, allow_overwrite, mode=mode, **new_columns
@@ -313,9 +315,11 @@ def with_new_columns(
 def with_units(
     state: StructureState,
     convention: str | None = None,
-    conversions: dict[u.Unit, u.Unit] = {},
+    conversions: dict[u.Unit, u.Unit] | None = None,
     **dataset_conversions: dict,
 ) -> StructureState:
+    if conversions is None:
+        conversions = {}
     keys = public_keys(state)
     if conversions:
         dataset_conversions = dict(dataset_conversions)
@@ -640,7 +644,7 @@ def make_schema(state: StructureState, path: str) -> Schema:
 
     # Every rank builds the source schema, even when empty, to stay in lockstep
     # with the collectives inside it.
-    source_schema = child_schema(state.source, "/".join([path, state.dtype]), no_stack)
+    source_schema = child_schema(state.source, f"{path}/{state.dtype}", no_stack)
     if len(state.source) > 0:
         source_schema = links.link_schema(state.match_sets, state.source, source_schema)
         children[state.dtype] = sio.rebuild_data_linked(source_schema)
@@ -649,7 +653,7 @@ def make_schema(state: StructureState, path: str) -> Schema:
     for name in sorted(resorted):
         child = resorted[name]
         write_name = "galaxy_properties" if name == "galaxies" else name
-        schema = child_schema(child, "/".join([path, write_name]), no_stack)
+        schema = child_schema(child, f"{path}/{write_name}", no_stack)
         if not isinstance(child, StructureState):
             children[write_name] = schema
             continue

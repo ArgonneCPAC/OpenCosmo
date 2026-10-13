@@ -321,12 +321,14 @@ def exit_state(state: DatasetState, *exec_details):
 def get_data(
     state: DatasetState,
     ignore_sort: bool = False,
-    unit_kwargs: dict = {},
+    unit_kwargs: dict | None = None,
 ) -> dict:
     """
     Use a State to get the associated data. Most of the logic can be found in the
     instantiate_dataset method.
     """
+    if unit_kwargs is None:
+        unit_kwargs = {}
     state = fold(HookPoint.DatasetInstantiate, DatasetInstantiateCtx(state)).state
     data = instantiate_dataset(
         list(state.producers.values()),
@@ -355,11 +357,13 @@ def get_data(
 
 def iter_rows(
     state: DatasetState,
-    unit_kwargs: dict = {},
+    unit_kwargs: dict | None = None,
 ) -> Generator:
     """
     Iterate over the rows of a given DatasetState
     """
+    if unit_kwargs is None:
+        unit_kwargs = {}
     derived_to_collect = (
         set(state.columns)
         .difference(state.cache.columns)
@@ -373,7 +377,7 @@ def iter_rows(
         (i, min(i + 1000, total_length)) for i in range(0, total_length, 1000)
     ]
     if not chunk_ranges:
-        raise StopIteration
+        return
 
     try:
         for start, end in chunk_ranges:
@@ -436,13 +440,15 @@ def make_schema(state: DatasetState, path: str) -> Schema:
 
 def with_new_columns(
     state: DatasetState,
-    descriptions: dict[str, str] = {},
+    descriptions: dict[str, str] | None = None,
     allow_overwrite: bool = False,
     **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> DatasetState:
     """
     Add columns to a given state
     """
+    if descriptions is None:
+        descriptions = {}
     new_producers_list, new_column_map, new_unit_handler = add_columns(
         list(state.producers.values()),
         state.unit_handler,
@@ -483,7 +489,7 @@ def select(state: DatasetState, columns: set[str], drop: bool = False) -> Datase
     elif (
         len(columns) == 1
         and state.sort_key is not None
-        and missing == set([state.sort_key[0]])
+        and missing == {state.sort_key[0]}
     ):
         selections = columns
         missing = set()

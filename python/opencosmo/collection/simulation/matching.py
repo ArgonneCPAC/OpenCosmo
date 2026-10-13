@@ -35,7 +35,7 @@ def align(
     datasets: dict[str, DatasetState] = {}
     for name, member in members.items():
         if not isinstance(member, DatasetState):
-            raise RuntimeError(f"Matched simulation member {name} is not a dataset")
+            raise TypeError(f"Matched simulation member {name} is not a dataset")
         datasets[name] = member
 
     aligned = __match_rows(match_set, datasets, source)
@@ -65,7 +65,7 @@ def __match_rows(
         if mapping is None:
             raise ValueError(f"Unable to find mapping for dataset {dataset}")
         if not isinstance(mapping, np.ndarray):
-            raise ValueError("Dataset matching does not support chunked mappings")
+            raise TypeError("Dataset matching does not support chunked mappings")
         rows_to_keep = rows_to_keep & (mapping >= 0)
         mappings[name] = mapping
 

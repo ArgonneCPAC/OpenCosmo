@@ -44,7 +44,7 @@ def __lookup_positions(
 def __lower_primary_writer(
     writer: ColumnWriter, target_positions: tuple[np.ndarray, np.ndarray]
 ) -> ColumnWriter:
-    sorted_ids, positions = target_positions
+    _sorted_ids, _positions = target_positions
     raw_targets = np.asarray(writer.data, dtype=np.int64)
 
     output_targets = np.full(len(raw_targets), -1, dtype=np.int64)

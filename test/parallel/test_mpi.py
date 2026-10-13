@@ -91,12 +91,11 @@ def update_simulation_parameter(
 ):
     # make a copy of the original data
     path = tmp_path / f"{name}.hdf5"
-    with h5py.File(base_cosmology_path, "r") as f:
-        with h5py.File(path, "w") as file:
-            f.copy(f["header"], file, "header")
-            # update the attributes
-            for key, value in parameters.items():
-                file["header"]["simulation"]["parameters"].attrs[key] = value
+    with h5py.File(base_cosmology_path, "r") as f, h5py.File(path, "w") as file:
+        f.copy(f["header"], file, "header")
+        # update the attributes
+        for key, value in parameters.items():
+            file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
 
 
@@ -313,7 +312,7 @@ def test_link_read(all_paths):
     collection = oc.open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
     length = len(collection["halo_properties"])
-    length = 8 if length > 8 else length
+    length = min(length, 8)
     collection = collection.take(8, "random")
     for i, halo in enumerate(collection.objects()):
         halo_properties = halo.pop("halo_properties")
@@ -391,7 +390,7 @@ def test_link_write(all_paths, per_test_dir):
     collection = oc.open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
     length = len(collection["halo_properties"])
-    length = 8 if length > 8 else length
+    length = min(length, 8)
     comm = mpi4py.MPI.COMM_WORLD
     output_path = per_test_dir / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)
@@ -447,7 +446,7 @@ def test_chain_link(all_paths, galaxy_paths, per_test_dir):
     collection = oc.open(*all_paths, *galaxy_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(10)
     length = len(collection["halo_properties"])
-    length = 8 if length > 8 else length
+    length = min(length, 8)
     comm = mpi4py.MPI.COMM_WORLD
     output_path = per_test_dir / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)

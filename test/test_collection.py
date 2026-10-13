@@ -43,7 +43,6 @@ def per_test_dir(
         # Close out storage pressure immediately after each test
         if IN_GITHUB_ACTIONS:
             shutil.rmtree(path, ignore_errors=True)
-        pass
 
 
 @pytest.fixture

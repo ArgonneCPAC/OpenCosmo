@@ -126,9 +126,11 @@ def drop(state: HealpixMapState, columns: str | Iterable[str]) -> HealpixMapStat
 
 def with_new_columns(
     state: HealpixMapState,
-    descriptions: str | dict[str, str] = {},
+    descriptions: str | dict[str, str] | None = None,
     **columns: Column | np.ndarray | u.Quantity,
 ) -> HealpixMapState:
+    if descriptions is None:
+        descriptions = {}
     for name, column in columns.items():
         if not isinstance(column, Column) and len(column) != len(state):
             raise ValueError(
@@ -230,7 +232,7 @@ def with_resolution(state: HealpixMapState, nside: int) -> HealpixMapState:
 def make_schema(state: HealpixMapState, path: str) -> Schema:
     # Rows are written in raw order to match the pixels in the header region.
     dataset = st.select(replace(state.dataset, sort_key=None), set(state.columns))
-    ds_schema = st.make_schema(dataset, "/".join([path, "data"]))
+    ds_schema = st.make_schema(dataset, f"{path}/data")
     schema = make_map_schema(
         "/",
         FileEntry.HEALPIX_MAP,

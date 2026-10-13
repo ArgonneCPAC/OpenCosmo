@@ -155,7 +155,7 @@ def sort_by(state: DatasetState, column: str | None, invert: bool) -> DatasetSta
 
 def with_new_columns(
     state: DatasetState,
-    descriptions: str | dict[str, str] = {},
+    descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     mode: str = "global",
     **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
@@ -163,6 +163,8 @@ def with_new_columns(
     from opencosmo.column.column import Column, DerivedScalarValue
     from opencosmo.column.reducer import default_reducer
 
+    if descriptions is None:
+        descriptions = {}
     if any(isinstance(col, DerivedScalarValue) for col in new_columns.values()):
         raise ValueError(
             "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
@@ -173,7 +175,7 @@ def with_new_columns(
         for k, v in new_columns.items()
     }
     if isinstance(descriptions, str):
-        descriptions = {key: descriptions for key in new_columns.keys()}
+        descriptions = {key: descriptions for key in new_columns}
     return st.with_new_columns(state, descriptions, allow_overwrite, **new_columns)
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import cache, partial
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 from astropy.cosmology import units as cu
@@ -114,7 +114,7 @@ def get_unit_without_h(unit: u.Unit) -> u.Unit:
 
 
 @cache
-def get_unit_distance_power(unit: u.Unit) -> Optional[float]:
+def get_unit_distance_power(unit: u.Unit) -> float | None:
     decomposed = unit.decompose()
     try:
         index = decomposed.bases.index(u.m)
@@ -170,7 +170,7 @@ def comoving_to_physical(
     return value
 
 
-def get_scale_factor(dataset: "DatasetState", cosmology, redshift):
+def get_scale_factor(dataset: DatasetState, cosmology, redshift):
     columns = set(dataset.columns)
     for column in KNOWN_SCALEFACTOR_COLUMNS:
         if column in columns:
@@ -206,5 +206,5 @@ def physical_to_scalefree(
 
 def raise_convert_error(*args, from_: UnitConvention, to_: UnitConvention, **kwargs):
     raise ValueError(
-        f"Units in convention {str(from_)} cannot be converted to units in convention {str(to_)}"
+        f"Units in convention {from_!s} cannot be converted to units in convention {to_!s}"
     )

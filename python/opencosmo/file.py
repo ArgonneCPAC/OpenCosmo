@@ -1,7 +1,8 @@
+from collections.abc import Callable
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Concatenate, TypeVar
+from typing import Any, Concatenate, TypeVar
 
 import h5py
 
@@ -74,7 +75,7 @@ def broadcast_read(func: H5Reader) -> H5Reader:
         if comm is None or comm.Get_rank() == 0:
             try:
                 output = func(file, *args, **kwargs)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 output = e
         if comm is not None:
             # Broadcasting the error ensures other ranks
@@ -88,7 +89,7 @@ def broadcast_read(func: H5Reader) -> H5Reader:
 
 
 def get_data_structure(group: h5py.Group) -> dict[str, Any]:
-    units = {name: group[name].attrs.get("unit", "") for name in group.keys()}
+    units = {name: group[name].attrs.get("unit", "") for name in group}
     return units
 
 

@@ -24,8 +24,10 @@ def build_dataset_from_data(
     data: GroupedColumnData[np.ndarray],
     header: OpenCosmoHeader,
     spatial_index_data: RawSpatialIndexData | None,
-    descriptions: GroupedColumnData[str] = {},
+    descriptions: GroupedColumnData[str] | None = None,
 ) -> Dataset:
+    if descriptions is None:
+        descriptions = {}
     data_keys = set(data.keys())
     if data_keys != {"data"}:
         raise ValueError("Data must have exactly one `data` group")

@@ -8,7 +8,6 @@ from uuid import uuid4
 import h5py
 import numpy as np
 import opencosmo.collection.simulation.io as simulation_io
-import opencosmo.collection.simulation.matching as matching
 import opencosmo.mapping.write as mapping_write
 import pytest
 from opencosmo.io.schema import FileEntry, make_schema
@@ -17,6 +16,7 @@ from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_s
 from opencosmo.utils import normalize_kwarg_name
 
 import opencosmo as oc
+from opencosmo.collection.simulation import matching
 from opencosmo.index import into_array
 
 if TYPE_CHECKING:

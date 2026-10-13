@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, Mapping, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 from opencosmo.io.schema import FileEntry, make_schema
@@ -10,6 +10,8 @@ from opencosmo.io.writer import ColumnWriter
 from opencosmo.index import get_data, get_length, into_array, take
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
     from astropy.units import UnitBase
     from opencosmo.io.schema import Schema
 
@@ -35,7 +37,7 @@ class InMemoryHandler:
         return self.__derive(index)
 
     def take(
-        self, other: DataIndex, sorted: Optional[np.ndarray] = None
+        self, other: DataIndex, sorted: np.ndarray | None = None
     ) -> InMemoryHandler:
         if sorted is None:
             return self.__derive(take(self._index, other))

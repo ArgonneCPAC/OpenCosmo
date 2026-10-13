@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Optional, Self
+from typing import TYPE_CHECKING, Self
 
 from opencosmo.io.schema import FileEntry, make_schema
 
 from opencosmo.index import empty
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     import numpy as np
 
     from opencosmo.index import DataIndex
@@ -16,7 +18,7 @@ class EmptyHandler:
     def get_data(self, *args):
         return {}
 
-    def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None) -> Self:
+    def take(self, other: DataIndex, sorted: np.ndarray | None = None) -> Self:
         return self
 
     def with_index(self, index):

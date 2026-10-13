@@ -1,5 +1,3 @@
-""" """
-
 from __future__ import annotations
 
 import re
@@ -39,7 +37,7 @@ def get_column_selection(
     select_from = set(select_from)
     select_by = set(select_by)
 
-    wildcards = set(n for n in select_by if "*" in n)
+    wildcards = {n for n in select_by if "*" in n}
     complete = select_by - wildcards
 
     complete_matches = complete.intersection(select_from)
@@ -145,13 +143,13 @@ def build_multi_dataset_selections(
     missing = set()
     for arg in flat_args:
         if not isinstance(arg, str):
-            raise ValueError("Column selection arguments must be strings!")
+            raise TypeError("Column selection arguments must be strings!")
         if "*" in arg:
             wildcards.append(arg)
             continue
-        datasets_with_column = set(
+        datasets_with_column = {
             ds_name for ds_name, cols in columns_by_ds.items() if arg in cols
-        )
+        }
         if not datasets_with_column:
             missing.add(arg)
             continue
@@ -169,11 +167,11 @@ def build_multi_dataset_selections(
     for kwarg_name, kwarg_value in select_kwargs.items():
         if isinstance(kwarg_value, np.ndarray):
             col_length = len(kwarg_value)
-            datasets_with_required_length = set(
+            datasets_with_required_length = {
                 ds_name
                 for ds_name, length in ds_lengths.items()
                 if length == col_length
-            )
+            }
             if not datasets_with_required_length:
                 missing_lengths.add(kwarg_name)
                 continue
@@ -188,11 +186,11 @@ def build_multi_dataset_selections(
                 f"Received unknown column type {kwarg_name} = {type(kwarg_value)}"
             )
         column_requires = kwarg_value.requires_names
-        datasets_with_required_columns = set(
+        datasets_with_required_columns = {
             ds_name
             for ds_name, ds_columns in columns_by_ds.items()
             if column_requires.issubset(ds_columns)
-        )
+        }
         if not datasets_with_required_columns:
             missing.add(kwarg_name)
         for ds_name in datasets_with_required_columns:
@@ -210,7 +208,7 @@ def build_multi_dataset_selections(
 
 
 def __evaluate_wildcards(select_from: set[str], wildcards: Iterable[str]):
-    wildcards = list(map(lambda w: w.replace("*", ".*"), wildcards))
+    wildcards = [w.replace("*", ".*") for w in wildcards]
     regex = re.compile("|".join(wildcards))
     matches = set(filter(lambda n: re.fullmatch(regex, n), select_from))
     return matches

@@ -618,7 +618,7 @@ class HealpixMap:
 
     def with_new_columns(
         self,
-        descriptions: str | dict[str, str] = {},
+        descriptions: str | dict[str, str] | None = None,
         **columns: Column | np.ndarray | u.Quantity,
     ):
         """
@@ -643,6 +643,8 @@ class HealpixMap:
             This dataset with the columns added
 
         """
+        if descriptions is None:
+            descriptions = {}
         return HealpixMap(
             mapops.with_new_columns(self.__state, descriptions, **columns)
         )
@@ -678,7 +680,7 @@ class HealpixMap:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] = {},
+        conversions: dict[u.Unit, u.Unit] | None = None,
         **columns: u.Unit,
     ) -> Self:
         r"""

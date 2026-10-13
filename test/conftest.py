@@ -169,7 +169,7 @@ def _redirect_user_cache_dir(
     Without this, every test that opens a file writes to the developer's real
     user cache and leaks state between runs.
     """
-    import opencosmo.io.cache as cache
+    from opencosmo.io import cache
 
     temp_cache_dir = tmp_path_factory.mktemp("opencosmo-user-cache") / "opencosmo"
     temp_cache_dir.mkdir(parents=True, exist_ok=True)

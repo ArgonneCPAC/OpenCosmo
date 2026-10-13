@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime  # noqa
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
@@ -42,7 +42,7 @@ class DiffskyVersionInfo(BaseModel):
     diffmah: str
     diffsky: str
     diffstar: str
-    diffstarpop: Optional[str] = None
+    diffstarpop: str | None = None
     dsps: str
     jax: str
     numpy: str
@@ -51,9 +51,9 @@ class DiffskyVersionInfo(BaseModel):
 class DiffskyCatalogInfo(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "catalog_info"
-    README: Optional[str] = None
+    README: str | None = None
     mock_version_name: str
-    zphot_table: Optional[tuple[float, ...]] = None
+    zphot_table: tuple[float, ...] | None = None
 
     @field_serializer("zphot_table")
     def serialize_zphot_table(self, value):
@@ -192,10 +192,10 @@ def _remap_top_host_idx_after_sort(ctx: PostSortCtx) -> PostSortCtx:
     HookPoint.Partition,
     when=lambda ctx: (
         ctx.header.file.data_type == "synthetic_galaxies"
-        and "top_host_idx" in ctx.data_group.keys()
+        and "top_host_idx" in ctx.data_group
     ),
 )
-def _partition_by_top_host_groups(ctx: PartitionCtx) -> Optional[TreePartition]:
+def _partition_by_top_host_groups(ctx: PartitionCtx) -> TreePartition | None:
     top_host_idx = ctx.data_group["top_host_idx"][:]
     n_rows = len(top_host_idx)
     n_ranks = ctx.comm.Get_size()

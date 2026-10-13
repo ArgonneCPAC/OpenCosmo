@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.simulation import operations as simops
@@ -11,7 +11,7 @@ from opencosmo.dataset import Dataset
 from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
-    from collections.abc import KeysView, Mapping
+    from collections.abc import Callable, Iterable, KeysView, Mapping
 
     import astropy.units as u
     import numpy as np
@@ -66,14 +66,14 @@ class SimulationCollection:
 
         Raises
         ------
-        ValueError
+        TypeError
             If a member is not a dataset, lightcone, or structure collection, or
             a match set is given for members that are not all datasets.
         """
         members: dict[str, SimulationChild] = {}
         for name, value in datasets.items():
             if not isinstance(value, (Dataset, lc.Lightcone, sc.StructureCollection)):
-                raise ValueError(
+                raise TypeError(
                     "Simulation collection only accepts datasets, lightcones, "
                     "and structure collections"
                 )
@@ -279,7 +279,7 @@ class SimulationCollection:
         return self.__with_state(simops.clear_match(self.__state))
 
     def bound(
-        self, region: Region, select_by: Optional[str] = None
+        self, region: Region, select_by: str | None = None
     ) -> SimulationCollection:
         """
         Restrict the datasets to some region. Note that the SimulationCollection does
@@ -470,8 +470,8 @@ class SimulationCollection:
     def with_new_columns(
         self,
         *args,
-        datasets: Optional[str | Iterable[str]] = None,
-        descriptions: str | dict[str, str] = {},
+        datasets: str | Iterable[str] | None = None,
+        descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
         **new_columns: ConstructedColumn | np.ndarray,
     ):
@@ -502,6 +502,8 @@ class SimulationCollection:
         ** columns : opencosmo.Column | np.ndarray | units.Quantity
             The new columns
         """
+        if descriptions is None:
+            descriptions = {}
         return self.__with_state(
             simops.with_new_columns(
                 self.__state,
@@ -516,7 +518,7 @@ class SimulationCollection:
     def evaluate(
         self,
         func: Callable,
-        datasets: Optional[str | Iterable[str]] = None,
+        datasets: str | Iterable[str] | None = None,
         format: str = "astropy",
         vectorize: bool = False,
         insert: bool = False,
@@ -599,8 +601,8 @@ class SimulationCollection:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
-        conversions: dict[u.Unit, u.Unit] = {},
+        convention: str | None = None,
+        conversions: dict[u.Unit, u.Unit] | None = None,
         **columns: u.Unit,
     ) -> SimulationCollection:
         """
@@ -629,6 +631,8 @@ class SimulationCollection:
 
 
         """
+        if conversions is None:
+            conversions = {}
         return self.__with_state(
             simops.with_units(self.__state, convention, conversions, **columns)
         )

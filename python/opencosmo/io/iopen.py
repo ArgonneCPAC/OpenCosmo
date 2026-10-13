@@ -424,8 +424,10 @@ def open_dataset(
     target: DatasetTarget,
     index: IndexSpec,
     *,
-    open_kwargs: dict[str, Any] = {},
+    open_kwargs: dict[str, Any] | None = None,
 ) -> oc.Dataset:
+    if open_kwargs is None:
+        open_kwargs = {}
     header = target.header
 
     assert header is not None

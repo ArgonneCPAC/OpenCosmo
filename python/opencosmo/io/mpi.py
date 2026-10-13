@@ -234,16 +234,16 @@ def verify_columns(columns: dict[str, ColumnWriter], comm: MPI.Comm):
             )
             colmeta = comm.allgather(data_to_send)
 
-        combine_strategies = set([cm[0] for cm in colmeta if cm is not None])
+        combine_strategies = {cm[0] for cm in colmeta if cm is not None}
         if len(combine_strategies) > 1:
             raise ValueError("Combine strategy must be the same accross ranks!")
 
-        shapes = set([cm[1][1:] for cm in colmeta if cm is not None])
+        shapes = {cm[1][1:] for cm in colmeta if cm is not None}
         if len(shapes) > 1:
             raise ValueError(
                 f"Column {colname} did not have consistent shapes across ranks!"
             )
-        dtype_kinds = set([cm[2].kind for cm in colmeta if cm is not None])
+        dtype_kinds = {cm[2].kind for cm in colmeta if cm is not None}
         if len(dtype_kinds) > 1:
             # We allow type promotion, though there are very few cases where
             # It would be necessary.
@@ -355,13 +355,13 @@ def __get_all_offsets(schema: Schema, comm: MPI.Comm, name: str):
     output = {}
     for colname, writer in get_all_entries(schema.columns, comm):
         offset = get_column_offset(writer, comm)
-        key = "/".join([name, colname])
+        key = f"{name}/{colname}"
         output[key] = offset
 
     for cn, child_schema in get_all_entries(
         schema.children, comm, lambda cn: make_schema(cn, FileEntry.EMPTY)
     ):
-        key = "/".join([name, cn])
+        key = f"{name}/{cn}"
         child_offsets = __get_all_offsets(child_schema, comm, key)
         output.update(child_offsets)
     return output

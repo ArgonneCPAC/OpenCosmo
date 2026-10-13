@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from functools import partial
 from itertools import chain
-from typing import TYPE_CHECKING, Iterable, Mapping, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -22,6 +22,7 @@ from opencosmo.io.updaters import do_idx_update, do_start_update
 from opencosmo.mapping.read import read_link_set
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
     from uuid import UUID
 
     import h5py
@@ -139,7 +140,7 @@ def __build_lightcone_match_sets(
 def remove_empty(
     source: Source,
     match_sets: Mapping[UUID, DatasetMatchSet],
-    opened_datasets: Optional[Iterable[str]] = None,
+    opened_datasets: Iterable[str] | None = None,
 ) -> Source:
     """
     Drop structures that are empty in the linked datasets that were actually
@@ -174,15 +175,17 @@ def remove_empty(
 
 def validate_linked_groups(groups: dict[str, h5py.Group]):
     if "halo_properties" in groups:
-        if "data_linked" not in groups["halo_properties"].keys():
+        if "data_linked" not in groups["halo_properties"]:
             raise ValueError(
                 "File appears to be a structure collection, but does not have links!"
             )
-    elif "galaxy_properties" in groups:
-        if "data_linked" not in groups["galaxy_properties"].keys():
-            raise ValueError(
-                "File appears to be a structure collection, but does not have links!"
-            )
+    elif (
+        "galaxy_properties" in groups
+        and "data_linked" not in groups["galaxy_properties"]
+    ):
+        raise ValueError(
+            "File appears to be a structure collection, but does not have links!"
+        )
     if len(groups) == 1:
         raise ValueError("Structure collections must have more than one dataset")
 
@@ -239,7 +242,7 @@ def build_structure_collection(
             link_sources["halo_properties"].append(target)
         elif data_type == "galaxy_properties":
             link_sources["galaxy_properties"].append(target)
-        elif data_type.startswith("halo") or data_type.startswith("galaxy"):
+        elif data_type.startswith(("halo", "galaxy")):
             source_type = (
                 "halo_properties"
                 if data_type.startswith("halo")
@@ -304,7 +307,7 @@ def build_lightcone_structure_collection(
     for source_type, source_list in link_sources.items():
         if not all(t.header.file.is_lightcone for t in source_list):
             raise ValueError("All sources must be lightcone datasets!")
-        redshift_steps = set(t.header.file.step for t in source_list)
+        redshift_steps = {t.header.file.step for t in source_list}
         if found_redshift_steps and found_redshift_steps != redshift_steps:
             raise ValueError(
                 "All source types must have the same set of redshift steps!"
@@ -315,7 +318,7 @@ def build_lightcone_structure_collection(
         ):
             raise ValueError("All dataset must be lightcone datasets!")
         for targets in link_targets[source_type].values():
-            target_redshift_steps = set(t.header.file.step for t in targets)
+            target_redshift_steps = {t.header.file.step for t in targets}
             if target_redshift_steps != redshift_steps:
                 raise ValueError(
                     "All datasets must have the same set of redshift steps!"
@@ -405,8 +408,8 @@ def build_lightcone_structure_collection(
 
 
 def __build_structure_collection(
-    halo_properties_target: Optional[io.iopen.DatasetTarget],
-    galaxy_properties_target: Optional[io.iopen.DatasetTarget],
+    halo_properties_target: io.iopen.DatasetTarget | None,
+    galaxy_properties_target: io.iopen.DatasetTarget | None,
     link_targets: dict[str, dict[str, StructureChild]],
     ignore_empty: bool,
     index_kind: str = "none",

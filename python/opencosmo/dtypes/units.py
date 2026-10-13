@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Type
+from typing import TYPE_CHECKING, Any
 
 from astropy.units.typing import UnitLike
 from pydantic import BaseModel
@@ -13,14 +13,14 @@ if TYPE_CHECKING:
 
 ModelUnitAnnotation = tuple[UnitConvention, dict[str, UnitLike], bool]
 
-__KNOWN_UNITFUL_MODELS__: dict[Type[BaseModel], ModelUnitAnnotation] = {}
+__KNOWN_UNITFUL_MODELS__: dict[type[BaseModel], ModelUnitAnnotation] = {}
 
 
 # Constraint: Unit covention for all fields in a given model must be the same
 
 
 def register_units(
-    model: Type[BaseModel],
+    model: type[BaseModel],
     field_name: str,
     unit: UnitLike,
     convention: UnitConvention = UnitConvention.SCALEFREE,
@@ -44,7 +44,7 @@ def register_units(
 
 
 def __get_unit_transformations(
-    model_type: Type, cosmology, convention: UnitConvention = UnitConvention.SCALEFREE
+    model_type: type, cosmology, convention: UnitConvention = UnitConvention.SCALEFREE
 ) -> dict:
     if (us := __KNOWN_UNITFUL_MODELS__.get(model_type)) is None:
         return {}
@@ -57,11 +57,13 @@ def __get_unit_transformations(
 
 def apply_units(
     model: BaseModel | dict,
-    model_type: Type,
+    model_type: type,
     cosmology: Cosmology,
     convention: UnitConvention = UnitConvention.SCALEFREE,
-    unit_kwargs: dict[str, Any] = {},
+    unit_kwargs: dict[str, Any] | None = None,
 ):
+    if unit_kwargs is None:
+        unit_kwargs = {}
     applicators = __get_unit_transformations(model_type, cosmology, convention)
     if isinstance(model, dict):
         parameters = model

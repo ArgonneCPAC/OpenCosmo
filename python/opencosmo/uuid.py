@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid5
 
 import numpy as np
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     import h5py
 
 NAMESPACE = UUID("02af60eb-68cc-43f2-817b-eb0967ebfde4")

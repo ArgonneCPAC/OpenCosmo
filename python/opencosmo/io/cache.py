@@ -9,11 +9,13 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator
+from typing import TYPE_CHECKING
 
 import click
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
     from opencosmo.io.discover import FileLayout
 
 from opencosmo.uuid import get_string_uuid
@@ -202,7 +204,7 @@ def cache_layouts(layouts: list[FileLayout]) -> None:
 
     layouts_by_path = {layout.path: layout for layout in layouts}
     files_by_cache_dir: defaultdict[Path, list[Path]] = defaultdict(list)
-    for path in layouts_by_path.keys():
+    for path in layouts_by_path:
         cache_dir = get_directory_write_cache_dir(path.parent)
         files_by_cache_dir[cache_dir].append(path)
 
