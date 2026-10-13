@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from functools import cached_property, reduce
-from itertools import chain
+from dataclasses import replace
 from typing import (
     TYPE_CHECKING,
-    Any,
     Literal,
     Self,
 )
@@ -14,8 +12,6 @@ import astropy.units as u  # type: ignore
 import healpy as hp
 import healsparse as hsp
 import numpy as np
-from astropy.table import Column as AstroColumn  # type: ignore
-from astropy.table import vstack
 
 import opencosmo as oc
 from opencosmo.collection.healpix_map.cutout import (
@@ -23,10 +19,10 @@ from opencosmo.collection.healpix_map.cutout import (
     validate_cutout_size,
 )
 from opencosmo.collection.healpix_map.reproject import make_hdulist
+from opencosmo.collection.healpix_map.state import HealpixMapState
 from opencosmo.column.column import Column
-from opencosmo.dataset import Dataset
-from opencosmo.dataset.state import state_from_evaluated_data
-from opencosmo.index import from_size, into_array
+from opencosmo.dataset import operations as dsops
+from opencosmo.dataset import state as st
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
 from opencosmo.spatial import make_skybox
@@ -34,7 +30,6 @@ from opencosmo.spatial.index import query_healpix_partitions
 from opencosmo.spatial.region import (
     ConeRegion,
     FullSkyRegion,
-    HealpixRegion,
     SkyboxRegion,
 )
 
@@ -45,19 +40,19 @@ if TYPE_CHECKING:
     from astropy.io import fits
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial import Region
 
 
 def make_healsparse_maps(
-    table,
+    pixels: np.ndarray,
+    data: dict[str, np.ndarray],
     nside: int,
     nside_lr: int,
-) -> dict[str, hsp.HealSparseMap]:
+) -> hsp.HealSparseMap | dict[str, hsp.HealSparseMap]:
     sentinel = np.float32(hp.UNSEEN)
-    pixels = table["pixel"].value
 
     # Build coverage map once, shared across all columns.
     cov_map = hsp.HealSparseCoverage.make_empty(nside_lr, nside)
@@ -68,94 +63,49 @@ def make_healsparse_maps(
     sparse_map_size = (len(unique_cov_pix) + 1) * cov_map.nfine_per_cov
 
     result = {}
-    for name, col in table.items():
-        if name != "pixel":
-            sparse_map = np.full(sparse_map_size, sentinel, dtype=np.float32)
-            sparse_map[sparse_indices] = col.value.astype(np.float32)
-            result[name] = hsp.HealSparseMap(
-                cov_map=cov_map,
-                sparse_map=sparse_map,
-                nside_sparse=nside,
-                sentinel=sentinel,
-            )
+    for name, values in data.items():
+        sparse_map = np.full(sparse_map_size, sentinel, dtype=np.float32)
+        sparse_map[sparse_indices] = values.astype(np.float32)
+        result[name] = hsp.HealSparseMap(
+            cov_map=cov_map,
+            sparse_map=sparse_map,
+            nside_sparse=nside,
+            sentinel=sentinel,
+        )
     if len(result) == 1:
         return next(iter(result.values()))
     return result
 
 
-def take_from_sorted(
-    healpix_map: HealpixMap, sort_by: str, invert: bool, n: int, at: str | int
-):
-    column = np.concatenate(
-        [ds.select(sort_by).get_data("numpy") for ds in healpix_map.values()]
-    )
-    if invert:
-        column = -column
-    sort_index = np.argsort(column)
-    if at == "start":
-        sort_index = sort_index[:n]
-    elif at == "end":
-        sort_index = sort_index[-n:]
-    elif isinstance(at, int):
-        if at + n > len(sort_index) or at < 0:
-            raise ValueError(
-                "Requested a range that is outside the size of this dataset!"
-            )
-        sort_index = sort_index[at : at + n]
-
-    sorted_indices = np.sort(sort_index)
-    return sorted_indices
-
-
-class HealpixMap(dict):
+class HealpixMap:
     """
-    A HealpixMap contains one or more datasets of map format. Each dataset will
-    typically contain a different type of data over a specified integrated
-    redshift range. The HealpixMap object provides an API identical to the standard
+    A HealpixMap contains a map-format dataset, typically integrated over a
+    specified redshift range. Each column is one layer of the map. The
+    HealpixMap object provides an API identical to the standard
     Dataset API, however the data that is provided is returned in healpix or healsparse
     format, which are different than other opencosmo datasets. This also contains some
     convenience functions for standard operations.
     """
 
-    def __init__(
-        self,
-        datasets: dict[str, Dataset],
-        nside: int,
-        nside_lr: int,
-        ordering: str,
-        full_sky: bool,
-        z_range: tuple[float, float],
-        region: HealpixRegion,
-        hidden: set[str] | None = None,
-        ordered_by: tuple[str, bool] | None = None,
-    ):
-        if len(datasets) > 1:
-            raise NotImplementedError(
-                "Healpix map is not currently implemented correctly for multiple layers"
-            )
+    def __init__(self, state: HealpixMapState):
+        self.__state = state
 
-        assert isinstance(region, HealpixRegion)
-        self.update(datasets)
-        self.__nside = nside
-        self.__nside_lr = nside_lr
-        self.__full_sky = full_sky
-        self.__z_range = z_range
-        self.__ordering = ordering
+    @property
+    def _state(self) -> HealpixMapState:
+        """Return the internal state for collection and I/O implementations."""
+        return self.__state
 
-        columns: set[str] = reduce(
-            lambda left, right: left.union(set(right.columns)), self.values(), set()
-        )
-        if len(columns) != len(next(iter(self.values())).columns):
-            raise ValueError("Not all map datasets have the same columns!")
+    def __derive(self, dataset: DatasetState) -> HealpixMap:
+        return HealpixMap(replace(self.__state, dataset=dataset))
 
-        header = next(iter(self.values())).header
-        self.__header = header
-        if hidden is None:
-            hidden = set()
-
-        self.__hidden = hidden
-        self.__ordered_by = ordered_by
-        self.__region = region
+    def __take_raw_rows(self, rows: np.ndarray) -> HealpixMap:
+        """
+        Take rows by their position in raw (pixel) order, ignoring any sort.
+        ``rows`` is assumed to be sorted.
+        """
+        dataset = self.__state.dataset
+        taken = st.take_rows(replace(dataset, sort_key=None), rows)
+        return self.__derive(replace(taken, sort_key=dataset.sort_key))
 
     def __getattr__(self, key: str):
         try:
@@ -175,14 +125,14 @@ class HealpixMap(dict):
         -------
         dtype: int
         """
-        return self.__nside
+        return self.__state.nside
 
     @property
     def pixels(self):
         """
         The healpix pixels that are included in this map
         """
-        return self.__region.pixels
+        return self.__state.pixels
 
     @property
     def nside_lr(self):
@@ -193,7 +143,7 @@ class HealpixMap(dict):
         -------
         dtype: int
         """
-        return self.__header.healpix_map["nside_lr"]
+        return self.__state.nside_lr
 
     @property
     def ordering(self):
@@ -206,7 +156,7 @@ class HealpixMap(dict):
         -------
         dtype: str
         """
-        return self.__header.healpix_map["ordering"]
+        return self.__state.ordering
 
     @property
     def full_sky(self):
@@ -218,7 +168,7 @@ class HealpixMap(dict):
         -------
         dtype: bool
         """
-        return self.__full_sky
+        return self.__state.full_sky
 
     def __repr__(self):
         """
@@ -238,22 +188,18 @@ class HealpixMap(dict):
 
         # remove the first line
         table_repr = table_repr[table_repr.find("\n") + 1 :]
-        head = f"OpenCosmo Healpix Map Dataset (length={length})"
+        head = f"OpenCosmo Healpix Map Dataset (length={length})\n"
         cosmo_repr = f"Cosmology: {self.cosmology.__repr__()}" + "\n"
         return head + cosmo_repr + table_head + table_repr
 
     def __len__(self):
-        return sum(len(ds) for ds in self.values())
+        return len(self.__state)
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exc_details):
-        for dataset in self.values():
-            try:
-                dataset.close()
-            except ValueError:
-                continue
+        return st.exit_state(self.__state.dataset, *exc_details)
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -269,7 +215,7 @@ class HealpixMap(dict):
         header: opencosmo.header.OpenCosmoHeader
 
         """
-        return self.__header
+        return self.__state.header
 
     @property
     def columns(self) -> list[str]:
@@ -281,11 +227,9 @@ class HealpixMap(dict):
         -------
         columns: list[str]
         """
-        cols = next(iter(self.values())).columns
-        cols = list(filter(lambda col: col not in self.__hidden, cols))
-        return cols
+        return self.__state.columns
 
-    @cached_property
+    @property
     def descriptions(self) -> dict[str, str | None]:
         """
         Return the descriptions (if any) of the columns in this map as a dictonary.
@@ -298,11 +242,7 @@ class HealpixMap(dict):
         descriptions : dict[str, str | None]
             The column descriptions
         """
-        descriptions = next(iter(self.values())).descriptions
-        descriptions = dict(
-            filter(lambda kv: kv[0] not in self.__hidden, descriptions.items())
-        )
-        return descriptions
+        return self.__state.descriptions
 
     @property
     def region(self) -> Region:
@@ -316,7 +256,7 @@ class HealpixMap(dict):
         region: opencosmo.spatial.Region
 
         """
-        return self.__region
+        return self.__state.region
 
     @property
     def z_range(self):
@@ -327,8 +267,7 @@ class HealpixMap(dict):
         -------
         z_range: tuple[float, float]
         """
-
-        return self.__header.healpix_map["z_range"]
+        return self.__state.z_range
 
     def get_data(
         self,
@@ -373,53 +312,37 @@ class HealpixMap(dict):
         if nside_out is not None:
             return self.with_resolution(nside_out).get_data(format)
 
-        data = [ds.get_data(unpack=False) for ds in self.values()]
-        pixels = self.pixels
-        table = vstack(data, join_type="exact")
+        state = self.__state
+        # Pixels follow raw-row order, so the data must ignore any sort.
+        data = dsops.get_data(
+            state.dataset, "numpy", wrap_single=True, ignore_sort=True
+        )
+        pixels = state.pixels
+        if np.any(np.diff(pixels) < 0):
+            order = np.argsort(pixels)
+            pixels = pixels[order]
+            data = {name: values[order] for name, values in data.items()}
 
-        colnames = table.colnames
-        if len(colnames) == 1:
-            table.rename_column(colnames[0], self.columns[0])
-
-        table["pixel"] = pixels
-        table.sort("pixel", reverse=False)
-
-        if len(table.colnames) == 1:
-            table = next(table.itercols())
-
-        if format == "healpix":
-            npix = hp.nside2npix(self.nside)
-            if isinstance(table, (u.Quantity, AstroColumn)):
-                vals = np.zeros(npix, dtype=np.float32)
-                vals[pixels] = table.value
-                storage = {"vals": vals}
-
-            else:
-                table.remove_columns(self.__hidden)
-                storage = {
-                    name: np.zeros(npix, dtype=np.float32)
-                    for name in table.columns
-                    if name != "pixel"
-                }
-                for name, arr in storage.items():
-                    arr[pixels] = table[name].value
-
-            if len(pixels) != hp.nside2npix(self.nside):
-                mask = np.zeros(hp.nside2npix(self.nside), dtype=bool)
-                mask[pixels] = True
-                storage = {
-                    name: np.ma.masked_array(arr, mask) for name, arr in storage.items()
-                }
-            if len(storage) == 1:
-                return next(iter(storage.values()))
-            return storage
-
+        if format == "raw":
+            return (pixels, data)
         elif format == "healsparse":
-            return make_healsparse_maps(table, self.nside, self.nside_lr)
-        elif format == "raw":
-            output = {name: np.array(c) for name, c in dict(table).items()}
-            pixel = output.pop("pixel")
-            return (pixel, output)
+            return make_healsparse_maps(pixels, data, state.nside, state.nside_lr)
+
+        npix = hp.nside2npix(state.nside)
+        storage = {}
+        for name, values in data.items():
+            storage[name] = np.zeros(npix, dtype=np.float32)
+            storage[name][pixels] = values
+
+        if len(pixels) != npix:
+            mask = np.zeros(npix, dtype=bool)
+            mask[pixels] = True
+            storage = {
+                name: np.ma.masked_array(arr, mask) for name, arr in storage.items()
+            }
+        if len(storage) == 1:
+            return next(iter(storage.values()))
+        return storage
 
     @property
     def data(self):
@@ -445,157 +368,65 @@ class HealpixMap(dict):
         resolution.
 
         """
-        nside_out = nside
-        if nside_out == self.nside:
+        state = self.__state
+        if nside == state.nside:
             return self
-        elif nside_out > self.nside:
+        elif nside > state.nside:
             raise ValueError(
                 "You cannot change the resolution of a map to be higher than its original resolution!"
             )
+        if not hp.isnsideok(nside):
+            raise ValueError(f"New nside {nside} is invalid.")
 
-        pixels = self.pixels
-        data = [ds.get_data(unpack=False) for ds in self.values()]
-        table = vstack(data, join_type="exact")
-        if len(table.colnames) == 1:
-            table.rename_column(table.colnames[0], self.columns[0])
-
-        table["pixel"] = pixels
-
-        table.sort("pixel", reverse=False)
-
-        if nside_out >= self.__nside:
-            raise ValueError(
-                f"New nside {nside_out} is greater than or equal to input value: {self.__nside}."
-            )
-        if not hp.isnsideok(nside_out):
-            raise ValueError(f"New nside {nside_out} is invalid.")
-
-        nside_ratio = self.__nside // nside_out
-        pixel_lores = table["pixel"].value // (nside_ratio * nside_ratio)
+        pixels, data = self.get_data("raw")
+        nside_ratio = state.nside // nside
+        pixel_lores = pixels // (nside_ratio * nside_ratio)
 
         new_pixels, boundaries = np.unique(pixel_lores, return_index=True)
-        counts = np.add.reduceat(np.ones_like(table["pixel"].value), boundaries).astype(
-            float
-        )
+        counts = np.add.reduceat(np.ones_like(pixels), boundaries).astype(float)
 
         new_data = {
-            name: (np.add.reduceat(table[name].value, boundaries) / counts).astype(
-                np.float32
-            )
-            for name in self.columns
+            name: (np.add.reduceat(values, boundaries) / counts).astype(np.float32)
+            for name, values in data.items()
         }
-
-        new_header = self.header.with_parameters({"map_params/nside": nside_out})
-
-        out_npix = hp.nside2npix(nside_out)
-
-        new_dataset = Dataset(
-            state_from_evaluated_data(
-                new_data,
-                new_header,
-                {
-                    key: desc
-                    for key, desc in self.descriptions.items()
-                    if desc is not None
-                },
-            )
+        new_dataset = st.state_from_evaluated_data(
+            new_data,
+            state.header.with_parameters({"map_params/nside": nside}),
+            {key: desc for key, desc in state.descriptions.items() if desc is not None},
         )
+        sort_key = state.dataset.sort_key
+        if sort_key is not None and sort_key[0] in new_data:
+            new_dataset = replace(new_dataset, sort_key=sort_key)
 
-        is_full_sky = self.full_sky and get_comm_world() is None
-
-        if len(new_pixels) != out_npix:
-            region = HealpixRegion(new_pixels, nside_out)
-        else:
-            region = HealpixRegion(from_size(out_npix), nside_out)
-
-        return HealpixMap(
-            {"data": new_dataset},
-            nside_out,
-            self.nside_lr,
-            self.ordering,
-            is_full_sky,
-            self.z_range,
-            region,
-            self.__hidden,
-            self.__ordered_by,
-        )
-
-    @classmethod
-    def open(cls, targets: list[DatasetTarget], **kwargs):
-        raise NotImplementedError()
-
-    def __map(
-        self,
-        method,
-        *args,
-        hidden: set[str] | None = None,
-        mapped_arguments: dict[str, dict[str, Any]] = {},
-        construct: bool = True,
-        **kwargs,
-    ):
-        """
-        This type of collection will only ever be constructed if all the underlying
-        datasets have the same data type, so it is always safe to map operations
-        across all of them.
-        """
-        output = {}
-        hidden = hidden if hidden is not None else self.__hidden
-        for ds_name, dataset in self.items():
-            dataset_mapped_arguments = {
-                arg_name: args[ds_name] for arg_name, args in mapped_arguments.items()
-            }
-            output[ds_name] = getattr(dataset, method)(
-                *args, **kwargs, **dataset_mapped_arguments
-            )
-
-        if construct:
-            return HealpixMap(
-                output,
-                self.nside,
-                self.nside_lr,
-                self.ordering,
-                self.full_sky,
-                self.z_range,
-                self.__region,
-                self.__hidden,
-                self.__ordered_by,
-            )
-        return output
+        raw_pixels = None if len(new_pixels) == hp.nside2npix(nside) else new_pixels
+        return HealpixMap(HealpixMapState(new_dataset, raw_pixels))
 
     def make_schema(self, path: str) -> Schema:
-        children = {}
-        for name, dataset in self.items():
-            ds_schema = dataset.make_schema("/".join([path, name]))
-            children[name] = ds_schema
-        if len(children) == 1:
-            schema = next(iter(children.values()))
-            schema = make_schema(
-                "/",
-                FileEntry.HEALPIX_MAP,
-                ds_schema.children,
-                ds_schema.columns,
-                ds_schema.attributes,
-            )
-
-        else:
-            schema = make_schema("/", FileEntry.HEALPIX_MAP, children=children)
+        state = self.__state
+        # Rows are written in raw order to match the pixels in the header region.
+        dataset = st.select(replace(state.dataset, sort_key=None), set(state.columns))
+        ds_schema = st.make_schema(dataset, "/".join([path, "data"]))
+        schema = make_schema(
+            "/",
+            FileEntry.HEALPIX_MAP,
+            ds_schema.children,
+            ds_schema.columns,
+            ds_schema.attributes,
+        )
 
         comm_world = get_comm_world()
-        is_full_sky = comm_world is None and self.full_sky
-        is_full_sky |= comm_world is not None and comm_world.allreduce(
-            len(self.pixels)
-        ) == hp.nside2npix(self.nside)
+        n_pixels = (
+            len(state) if comm_world is None else comm_world.allreduce(len(state))
+        )
 
-        if not is_full_sky:
-            new_header = self.header.with_region(self.region).with_parameter(
+        if n_pixels != hp.nside2npix(state.nside):
+            new_header = state.header.with_region(state.region).with_parameter(
                 "map_params/full_sky", False
             )
         else:
-            new_header = self.header.with_region(FullSkyRegion())
+            new_header = state.header.with_region(FullSkyRegion())
 
-        header_schema = new_header.dump()
-        schema.children["header"] = header_schema
-
+        schema.children["header"] = new_header.dump()
         return schema
 
     def bound(self, region: Region, inclusive: bool = False):
@@ -640,33 +471,14 @@ class HealpixMap(dict):
                 vec,
                 region.radius.to(u.radian).value,
                 inclusive=inclusive,
-                nest=self.__ordering == "NESTED",
+                nest=self.ordering == "NESTED",
             )
 
         else:
             raise TypeError("Didn't recieve a 2d region!")
 
-        new_datasets = {}
-        current_pixels = self.pixels
-
-        for name, dataset in self.items():
-            rows_to_take = np.where(
-                np.isin(current_pixels, pixels, assume_unique=True)
-            )[0]
-            new_datasets[name] = dataset.take_rows(rows_to_take)
-            assert len(new_datasets[name]) == len(rows_to_take)
-
-        return HealpixMap(
-            new_datasets,
-            self.nside,
-            self.nside_lr,
-            self.ordering,
-            False,
-            self.z_range,
-            HealpixRegion(current_pixels[rows_to_take], self.nside),
-            self.__hidden,
-            self.__ordered_by,
-        )
+        rows = np.nonzero(np.isin(self.__state.pixels, pixels))[0]
+        return self.__take_raw_rows(rows)
 
     def cutouts(
         self,
@@ -733,7 +545,7 @@ class HealpixMap(dict):
         if len(rows) == 0:
             data = {name: np.empty(0, dtype=np.float64) for name in self.columns}
         else:
-            pixels, data = self.__take_rows(rows).get_data("raw")
+            pixels, data = self.__take_raw_rows(rows).get_data("raw")
 
         for center in centers:
             region_pixels = make_skybox(center, angular_size).get_healpix_intersections(
@@ -869,29 +681,17 @@ class HealpixMap(dict):
         dataset : HealpixMap
             The new lightcone dataset with the evaluated column(s)
         """
-
-        result = self.__map(
-            "evaluate",
-            func=func,
-            format=format,
+        result = dsops.evaluate(
+            self.__state.dataset,
+            func,
             vectorize=vectorize,
             insert=insert,
-            mapped_arguments={},
-            construct=insert,
+            format=format,
             **evaluate_kwargs,
         )
-        if next(iter(result.values())) is None:
-            return
-
-        if insert:
-            assert isinstance(result, HealpixMap)
+        if not insert:
             return result
-
-        keys = next(iter(result.values())).keys()
-        output = {}
-        for key in keys:
-            output[key] = np.concatenate([r[key] for r in result.values()])
-        return output
+        return self.__derive(result)
 
     def filter(self, *masks: ColumnMask, **kwargs) -> HealpixMap:
         """
@@ -915,31 +715,9 @@ class HealpixMap(dict):
             not in the dataset, or the  would return zero rows.
 
         """
-        # This one in particular will need to change if and when we deal with multiple maps at once
-        # For the moment we have to assume there is only one dataset to get this right
-        ds = next(iter(self.values()))
-        init_index = ds.index
-        ds = ds.filter(*masks)
-
-        init_index_arr = into_array(init_index)
-        final_index_arr = into_array(ds.index)
-
-        is_saved = np.where(
-            np.isin(init_index_arr, final_index_arr, assume_unique=True)
-        )
-        new_pixels = self.pixels[is_saved]
-        output = {next(iter(self.keys())): ds}
-        return HealpixMap(
-            output,
-            self.nside,
-            self.nside_lr,
-            self.ordering,
-            False,
-            self.z_range,
-            HealpixRegion(new_pixels, self.nside),
-            self.__hidden,
-            self.__ordered_by,
-        )
+        if not masks:
+            return self
+        return self.__derive(dsops.filter(self.__state.dataset, *masks, mode="global"))
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
@@ -952,11 +730,11 @@ class HealpixMap(dict):
         row : dict
             A dictionary of values for each row in the dataset with units.
         """
-        yield from chain.from_iterable(v.rows() for v in self.values())
+        yield from dsops.rows(self.__state.dataset)
 
     def select(
         self, *columns: str | Iterable[str], **derived_columns: ConstructedColumn
-    ) -> Self:
+    ) -> HealpixMap:
         """
         Create a new map from a subset of columns in this map. This function
         behaves the same as :py:meth:`Dataset.select <opencosmo.Dataset.select>`.
@@ -978,28 +756,13 @@ class HealpixMap(dict):
         ValueError
             If any of the given columns are not in the dataset.
         """
-        all_columns: set[str] = set()
-        for col_group in columns:
-            if isinstance(col_group, str):
-                col_group = {col_group}
-            all_columns.update(col_group)
-
-        hidden = self.__hidden | set()
-
-        if self.__ordered_by is not None and self.__ordered_by[0] not in all_columns:
-            all_columns.add(self.__ordered_by[0])
-            hidden.add(self.__ordered_by[0])
-
-        return self.__map(
-            "select",
-            all_columns,
-            hidden=hidden,
-            mapped_arguments={},
-            construct=True,
-            **derived_columns,
+        return self.__derive(
+            dsops.select(
+                self.__state.dataset, *columns, mode="global", **derived_columns
+            )
         )
 
-    def drop(self, columns: str | Iterable[str]) -> Self:
+    def drop(self, columns: str | Iterable[str]) -> HealpixMap:
         """
         Produce a new dataset by dropping columns from this map.
 
@@ -1061,58 +824,17 @@ class HealpixMap(dict):
             raise ValueError(
                 "Number of rows to take must be less than number of rows in dataset"
             )
-        if at == "random":
-            indices = np.random.choice(len(self), n, replace=False)
-            indices = np.sort(indices)
-            return self.__take_rows(indices)
-
-        elif self.__ordered_by is not None:
-            index = take_from_sorted(self, *self.__ordered_by, n=n, at=at)
-            return self.__take_rows(index)
-        elif at == "start":
-            return self.take_range(0, n)
-        elif at == "end":
-            return self.take_range(len(self) - n, len(self))
-        else:
+        if at not in ("start", "end", "random"):
             raise ValueError(
                 f'"at" should be one of ("start", "end", "random", got {at}'
             )
+        return self.__derive(dsops.take(self.__state.dataset, n, at, "local"))
 
     def take_range(self, start: int, end: int):
         if start < 0 or end > len(self):
             raise ValueError("Got row indices that are out of range!")
-
-        if self.__ordered_by is not None:
-            indices = take_from_sorted(self, *self.__ordered_by, end - start, at=start)
-            return self.__take_rows(indices)
-
-        ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
-        starts = np.insert(ends, 0, 0)[:-1]
-        clipped_starts = np.clip(starts, a_min=start, a_max=None)
-        clipped_ends = np.clip(ends, a_min=None, a_max=end)
-
-        output = {}
-        for i, (name, dataset) in enumerate(self.items()):
-            if starts[i] == clipped_starts[i] and ends[i] == clipped_ends[i]:
-                output[name] = dataset
-            elif clipped_starts[i] >= clipped_ends[i]:
-                continue
-            else:
-                output[name] = dataset.take_range(
-                    clipped_starts[i] - starts[i], clipped_ends[i] - starts[i]
-                )
-
-        pixels = self.pixels[start:end]
-        return HealpixMap(
-            output,
-            self.nside,
-            self.nside_lr,
-            self.ordering,
-            False,
-            self.z_range,
-            HealpixRegion(pixels, self.nside),
-            self.__hidden,
-            self.__ordered_by,
+        return self.__derive(
+            dsops.take_range(self.__state.dataset, start, end, "local")
         )
 
     def take_rows(self, rows: np.ndarray):
@@ -1142,46 +864,7 @@ class HealpixMap(dict):
             raise ValueError(
                 "Rows must be between 0 and the length of this dataset - 1"
             )
-        if self.__ordered_by is not None:
-            data = np.concatenate(
-                [
-                    ds.select(self.__ordered_by[0]).get_data("numpy")
-                    for ds in self.values()
-                ]
-            )
-            if self.__ordered_by[1]:
-                data = -data
-            sort_index = np.argsort(data)
-            rows = sort_index[rows]
-            rows.sort()
-
-        return self.__take_rows(rows)
-
-    def __take_rows(self, rows: np.ndarray):
-        """
-        Takes rows from this map while ignoring sort. "rows" is assumed to be sorted.
-        For internal use only.
-        """
-        ds_ends = np.cumsum(np.fromiter((len(ds) for ds in self.values()), dtype=int))
-        partitions = np.searchsorted(rows, ds_ends)
-        splits = np.split(rows, partitions)
-        output = {**self}
-        rs = 0
-        for split, (name, dataset) in zip(splits, self.items()):
-            if len(split) > 0:
-                output[name] = dataset.take_rows(split - rs)
-            rs += len(dataset)
-        return HealpixMap(
-            output,
-            self.nside,
-            self.nside_lr,
-            self.ordering,
-            False,
-            self.z_range,
-            HealpixRegion(self.pixels[rows], self.nside),
-            self.__hidden,
-            self.__ordered_by,
-        )
+        return self.__derive(dsops.take_rows(self.__state.dataset, rows))
 
     def with_new_columns(
         self,
@@ -1210,39 +893,16 @@ class HealpixMap(dict):
             This dataset with the columns added
 
         """
-
-        derived = {}
-        raw = {}
         for name, column in columns.items():
-            if isinstance(column, Column):
-                derived[name] = column
-            elif len(column) != len(self):
+            if not isinstance(column, Column) and len(column) != len(self):
                 raise ValueError(
                     f"New column {name} has length {len(column)} but this dataset "
                     f"has length {len(self)}"
                 )
-            else:
-                raw[name] = column
-
-        split_points = np.cumsum([len(ds) for ds in self.values()])
-        split_points = np.insert(0, 0, split_points)[:-1]
-        raw_split = {name: np.split(arr, split_points) for name, arr in raw.items()}
-        new_datasets = {}
-        for i, (ds_name, ds) in enumerate(self.items()):
-            raw_columns = {name: arrs[i] for name, arrs in raw_split.items()}
-            columns_input = raw_columns | derived
-            new_dataset = ds.with_new_columns(descriptions, **columns_input)
-            new_datasets[ds_name] = new_dataset
-        return HealpixMap(
-            new_datasets,
-            self.nside,
-            self.nside_lr,
-            self.ordering,
-            self.full_sky,
-            self.z_range,
-            self.__region,
-            self.__hidden,
-            self.__ordered_by,
+        return self.__derive(
+            dsops.with_new_columns(
+                self.__state.dataset, descriptions, False, mode="global", **columns
+            )
         )
 
     def sort_by(self, column: str, invert: bool = False):
@@ -1271,20 +931,9 @@ class HealpixMap(dict):
 
 
         """
-
         if column not in self.columns:
             raise ValueError(f"Column {column} does not exist in this dataset!")
-        return HealpixMap(
-            dict(self),
-            self.nside,
-            self.nside_lr,
-            self.ordering,
-            self.full_sky,
-            self.z_range,
-            self.__region,
-            self.__hidden,
-            (column, invert),
-        )
+        return self.__derive(dsops.sort_by(self.__state.dataset, column, invert))
 
     def with_units(
         self,

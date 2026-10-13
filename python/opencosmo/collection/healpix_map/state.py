@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING
 
 import healpy as hp
 
-from opencosmo.handler.empty import EmptyHandler
-from opencosmo.index import into_array
+from opencosmo.index import get_length, into_array
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 
@@ -32,7 +31,10 @@ class HealpixMapState:
     raw_pixels: np.ndarray | None = None
 
     def __post_init__(self):
-        if isinstance(self.dataset.raw_data_handler, EmptyHandler):
+        # Pixels are derived from the handler index, so it must cover every row.
+        # An EmptyHandler keeps its rows in the cache and fails this check.
+        index = self.dataset.raw_data_handler.index
+        if get_length(index) != len(self.dataset):
             raise RuntimeError(
                 "A healpix map must be backed by a handler that tracks its rows"
             )

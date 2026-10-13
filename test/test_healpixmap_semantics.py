@@ -228,10 +228,6 @@ def test_sorted_select_keeps_sort(small_map):
     assert np.array_equal(smallest.get_data("raw")[0], expected_pixels)
 
 
-@pytest.mark.xfail(
-    reason="The hidden sort column is dropped by __map and leaks into columns",
-    strict=True,
-)
 def test_sorted_select_hides_sort_column(small_map):
     selected = small_map.sort_by("tsz").select("ksz")
     assert selected.columns == ["ksz"]
@@ -311,7 +307,6 @@ def test_evaluate_none_insert_raises(small_map):
         small_map.evaluate(nothing, vectorize=True, insert=True)
 
 
-@pytest.mark.xfail(reason="evaluate concatenates per-dataset None results", strict=True)
 def test_evaluate_none_noinsert(small_map):
     def nothing(tsz):
         return None
@@ -364,11 +359,6 @@ def test_repr(small_map):
         lambda m: m.sort_by("tsz").select("ksz"),
     ],
     ids=["bound", "take_range", "with_resolution", "sorted_select"],
-)
-@pytest.mark.xfail(
-    reason="HealpixRegionModel stores pixels as a frozenset, so a reopened partial "
-    "map's pixels come back in hash order and no longer match the data rows",
-    strict=True,
 )
 def test_write_round_trip(small_map, operation, tmp_path):
     original = operation(small_map)

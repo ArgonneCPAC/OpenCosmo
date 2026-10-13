@@ -163,11 +163,6 @@ def test_healpix_downgrade_write(healpix_map_path, per_test_dir):
         )
 
 
-@pytest.mark.xfail(
-    reason="full_sky comes from the header, so every rank of a partitioned "
-    "full-sky map reports full coverage",
-    strict=True,
-)
 @pytest.mark.parallel(nprocs=4)
 def test_partitioned_map_is_not_full_sky(healpix_map_path):
     ds = oc.open(healpix_map_path)

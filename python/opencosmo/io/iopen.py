@@ -9,9 +9,9 @@ import numpy as np
 
 import opencosmo as oc
 from opencosmo import collection as occ
+from opencosmo.collection.healpix_map import state as mapst
 from opencosmo.dataset import state as st
 from opencosmo.header import OpenCosmoHeader
-from opencosmo.index import into_array
 from opencosmo.io import plan
 from opencosmo.io.discover import discover_all, has_maps, is_particle_group
 from opencosmo.io.specs import group_by_scope, match_spec
@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.io import MpiMode
     from opencosmo.mapping.mapping import DatasetMatchSet
-    from opencosmo.spatial.region import Region
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -483,33 +482,7 @@ def open_dataset(
 
 
 def _open_healpix_map(dataset: oc.Dataset):
-    header = dataset.header
-    sim_region: Region = FullSkyRegion()
-    if header.file.region is not None:
-        sim_region = from_model(header.file.region)
-
-    if isinstance(sim_region, HealpixRegion):
-        # No spatial index is stored for maps, so the region is narrowed to the rows
-        # this rank actually read. Deriving it from the index covers both the
-        # partitioned and replicated cases without a collective: a replicated map
-        # holds every row and so keeps its full pixel set.
-        sim_region = HealpixRegion(
-            sim_region.pixels[into_array(dataset.index)],
-            nside=header.healpix_map["nside"],
-        )
-    elif isinstance(sim_region, FullSkyRegion) or header.healpix_map["full_sky"]:
-        sim_region = HealpixRegion(dataset.index, nside=header.healpix_map["nside"])
-
-    assert isinstance(sim_region, HealpixRegion)
-    return occ.HealpixMap(
-        {"data": dataset},
-        header.healpix_map["nside"],
-        header.healpix_map["nside_lr"],
-        header.healpix_map["ordering"],
-        header.healpix_map["full_sky"],
-        header.healpix_map["z_range"],
-        region=sim_region,
-    )
+    return occ.HealpixMap(mapst.from_dataset(dataset._state))
 
 
 def _expand_lightcone_region(region, spatial_index):

@@ -18,13 +18,13 @@ def full_map(test_data):
 
 @pytest.fixture
 def full_state(full_map):
-    return mapst.from_dataset(next(iter(full_map.values()))._state)
+    return full_map._state
 
 
 @pytest.fixture
 def small_state(full_map):
     small_map = full_map.bound(oc.make_cone((45 * u.deg, -45 * u.deg), 2 * u.deg))
-    return mapst.from_dataset(next(iter(small_map.values()))._state)
+    return small_map._state
 
 
 @pytest.fixture
@@ -144,14 +144,14 @@ def test_worked_example_downgrade_then_filter(memory_state):
 def test_downgraded_map_state(full_map):
     small_map = full_map.bound(oc.make_cone((45 * u.deg, -45 * u.deg), 2 * u.deg))
     downgraded = small_map.with_resolution(small_map.nside // 2)
-    dataset = next(iter(downgraded.values()))._state
+    dataset = downgraded._state.dataset
     state = mapst.HealpixMapState(dataset, downgraded.pixels)
 
     assert state.nside == downgraded.nside
     assert np.array_equal(state.pixels, downgraded.pixels)
 
     filtered = downgraded.filter(oc.col("tsz") < 0)
-    filtered_state = _with_dataset(state, next(iter(filtered.values()))._state)
+    filtered_state = _with_dataset(state, filtered._state.dataset)
     assert np.array_equal(filtered_state.pixels, filtered.pixels)
 
 
