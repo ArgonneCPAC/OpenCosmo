@@ -34,8 +34,6 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.8.2"
 
       - name: Bump version files
         run: uvx bump-my-version bump --new-version ${{ inputs.version }}
@@ -140,8 +138,6 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.8.2"
 
       - name: Publish to PyPI
         run: uv publish --token ${{ secrets.PYPI_TOKEN }}
