@@ -9,6 +9,7 @@ import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
 
+from opencosmo.collection.healpix_map import operations as mapops
 from opencosmo.collection.healpix_map.healpix_map import HealpixMap
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import state as lcst
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     import astropy.units as u
     import numpy.typing as npt
 
+    from opencosmo.collection.healpix_map.state import HealpixMapState
     from opencosmo.collection.lightcone.scope import LightconeScope
     from opencosmo.collection.lightcone.state import LeafKey, LightconeState
     from opencosmo.column.column import (
@@ -111,12 +113,12 @@ def open_state(
         for name, leaf in group.items()
     ]
 
-    healpix_maps = None
+    healpix_map = None
     if maps:
         # A map opened alongside a catalog is replicated, not partitioned: a
         # cutout around an object near a partition edge needs map pixels that
         # this rank's catalog rows do not cover.
-        healpix_maps = specs.HealpixMapSpec().build_from_targets(
+        opened = specs.HealpixMapSpec().build_from_targets(
             maps,
             index_kind=index_kind,
             is_empty_ref=is_empty_ref,
@@ -125,14 +127,15 @@ def open_state(
                 index_kind, is_empty_ref, is_source=True, is_replicated=True
             ),
         )
-    assert healpix_maps is None or isinstance(healpix_maps, HealpixMap)
+        assert isinstance(opened, HealpixMap)
+        healpix_map = opened._state
 
-    return from_dataset_states(leaves, maps=healpix_maps, **open_kwargs)
+    return from_dataset_states(leaves, maps=healpix_map, **open_kwargs)
 
 
 def from_dataset_states(
     leaves: Iterable[tuple[LeafKey, DatasetState]],
-    maps: HealpixMap | None = None,
+    maps: HealpixMapState | None = None,
     z_range: tuple[float, float] | None = None,
     scope: LightconeScope | None = None,
     **open_kwargs: Any,
@@ -224,11 +227,11 @@ def rows(state: LightconeState) -> Generator[dict[str, float | u.Quantity]]:
 def bound(
     state: LightconeState, region: Region, select_by: str | None
 ) -> LightconeState:
-    new_maps = None if state.maps is None else state.maps.bound(region)
+    new_maps = None if state.maps is None else mapops.bound(state.maps, region)
     return __map_leaves(
         state,
         lambda leaf: dsops.bound(leaf, region, select_by),
-        maps=new_maps or state.maps,
+        maps=new_maps,
     )
 
 
@@ -307,7 +310,9 @@ def select(
         )
         lightcone_columns = selection_args["lightcone"]
         lightcone_derived_columns = selection_kwargs["lightcone"]
-        new_maps = state.maps.select(*selection_args["map"], **selection_kwargs["map"])
+        new_maps = mapops.select(
+            state.maps, *selection_args["map"], **selection_kwargs["map"]
+        )
     else:
         lightcone_columns = columns
         lightcone_derived_columns = derived_columns
@@ -354,7 +359,7 @@ def select(
     selected = __map_leaves(
         state,
         lambda leaf: dsops.select(leaf, leaf_columns, mode=mode, **plan.child_scoped),
-        maps=new_maps or state.maps,
+        maps=new_maps,
     )
     return dataclasses.replace(
         selected,
@@ -632,7 +637,9 @@ def make_schema(
     comm = get_comm_world()
     rank = 0 if comm is None else comm.Get_rank()
     if state.maps is not None:
-        healpix_schema = state.maps.make_schema("/".join([path, "healpix_maps"]))
+        healpix_schema = mapops.make_schema(
+            state.maps, "/".join([path, "healpix_maps"])
+        )
         if rank == 0:
             children["healpix_maps"] = healpix_schema
     name = path.split("/")[-1]
@@ -671,7 +678,7 @@ def __scalar_evaluator(
 def __map_leaves(
     state: LightconeState,
     fn: Callable[[DatasetState], DatasetState],
-    maps: HealpixMap | None = None,
+    maps: HealpixMapState | None = None,
 ) -> LightconeState:
     leaves = tuple((key, fn(leaf)) for key, leaf in state.leaves)
     return __with_leaves(state, __prune_empty(leaves), maps=maps)
@@ -680,7 +687,7 @@ def __map_leaves(
 def __with_leaves(
     state: LightconeState,
     leaves: Leaves,
-    maps: HealpixMap | None = None,
+    maps: HealpixMapState | None = None,
     z_range: tuple[float, float] | None = None,
 ) -> LightconeState:
     """Rebuild ``state`` around new leaves; ``None`` arguments keep current values."""

@@ -104,3 +104,16 @@ def test_view_drops_lightcone_level_settings(nested_leaves):
 def test_view_missing_key(plain_leaves):
     with pytest.raises(KeyError):
         lcst.view(lcst.from_leaves(plain_leaves), 9999)
+
+
+def test_state_holds_map_state(test_data):
+    from opencosmo.collection.healpix_map.state import HealpixMapState
+
+    lc = oc.open(
+        test_data.lightcone.step(600).halo_properties,
+        test_data.lightcone.step(601).halo_properties,
+        test_data.healpix_map,
+    )
+    assert isinstance(lc._state.maps, HealpixMapState)
+    assert isinstance(lc.map, oc.HealpixMap)
+    assert lc.map._state is lc._state.maps
