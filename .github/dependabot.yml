@@ -1,11 +1,12 @@
 version: 2
 updates:
-  # opencosmo is a library: widen pyproject ranges rather than raising floors.
+  # The default "auto" strategy widens pyproject ranges for libraries (detected
+  # by matching the PyPI summary to the pyproject description). The config
+  # schema does not accept "widen" for uv explicitly.
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
-    versioning-strategy: widen
     cooldown:
       default-days: 7
       semver-major-days: 30
