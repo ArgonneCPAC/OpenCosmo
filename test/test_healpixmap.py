@@ -6,10 +6,11 @@ import pytest
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from healsparse import HealSparseMap
+from opencosmo.collection.healpix_map import operations as mapops
+from opencosmo.handler.memory import InMemoryHandler
 from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
-from opencosmo.collection.lightcone import healpix_map as healpix_map_module
 
 
 @pytest.fixture
@@ -50,7 +51,7 @@ def test_partial_sky_cutout_uses_map_row_positions(healpix_map_path, monkeypatch
         healpix_map.nside
     )
     monkeypatch.setattr(
-        healpix_map_module,
+        mapops,
         "get_included_pixels",
         lambda centers, angular_size, nside: cutout_pixels,
     )
@@ -150,9 +151,9 @@ def test_healpix_downgrade(healpix_map_path):
 
 def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
     """
-    Downgrading data produces an entirely new dataset, which exists as an
-    in-memory hdf5 file. We want to ensure this data is not also sent
-    to the cache.
+    Downgrading data produces an entirely new dataset, backed by in-memory
+    arrays with one row per output pixel. We want to ensure this data is not
+    also sent to the cache.
     """
 
     ds = oc.open(healpix_map_path)
@@ -160,17 +161,17 @@ def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
     output = ds.with_resolution(128)
 
     # First dataset backed by actual file, data should be cached
-    dataset = next(iter(ds.values()))
-    cache = dataset._Dataset__state.cache
-    assert len(cache.columns) > 1
+    dataset = ds._state.dataset
+    assert len(dataset.cache.columns) > 1
 
     # New dataset entirely in-memory, so no cache
     output.get_data()
-    downgraded_dataset = next(iter(output.values()))
-    cache = downgraded_dataset._Dataset__state.cache
-    handler = downgraded_dataset._Dataset__state.raw_data_handler
-    assert len(cache.columns) == len(dataset.columns)
-    assert len(handler) == 0
+    downgraded_dataset = output._state.dataset
+    cache = downgraded_dataset.cache
+    handler = downgraded_dataset.raw_data_handler
+    assert isinstance(handler, InMemoryHandler)
+    assert len(cache.columns) == 0
+    assert len(handler) == len(output.pixels)
 
 
 def test_healpix_index_chain_failure(healpix_map_path):
@@ -359,7 +360,7 @@ def test_healpix_collection_take_healpix(healpix_map_path):
     ds = ds.take_range(500, 1000)
     data = ds.get_data("healpix")
     for value in data.values():
-        assert np.all(np.where(value.mask)[0] == np.arange(500, 1000))
+        assert np.array_equal(np.where(~value.mask)[0], np.arange(500, 1000))
 
 
 def test_healpix_collection_select_healsparse(healpix_map_path):

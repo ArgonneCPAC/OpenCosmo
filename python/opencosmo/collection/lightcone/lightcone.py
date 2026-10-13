@@ -10,6 +10,8 @@ from warnings import warn
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
+from opencosmo.collection.healpix_map import operations as mapops
+from opencosmo.collection.healpix_map.healpix_map import HealpixMap
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.dataset import Dataset
@@ -191,8 +193,10 @@ class Lightcone:
         return self.__state.maps.columns
 
     @property
-    def map(self):
-        return self.__state.maps
+    def map(self) -> HealpixMap | None:
+        if self.__state.maps is None:
+            return None
+        return HealpixMap(self.__state.maps)
 
     # Internal identity used by link/mapping resolution.
     @property
@@ -434,7 +438,7 @@ class Lightcone:
 
         coordinates = lcops.get_data(lcops.select(self.__state, "ra", "dec"))
         centers = SkyCoord(**coordinates)
-        cutouts = self.__state.maps.cutouts(centers, size, npix=npix)
+        cutouts = mapops.cutouts(self.__state.maps, centers, size, npix=npix)
 
         for entry, cutout in zip(lcops.rows(self.__state), cutouts):
             yield entry, cutout

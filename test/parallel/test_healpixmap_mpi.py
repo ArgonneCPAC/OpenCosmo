@@ -161,3 +161,18 @@ def test_healpix_downgrade_write(healpix_map_path, per_test_dir):
                 atol=1.0e-13,
             )
         )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_partitioned_map_is_not_full_sky(healpix_map_path):
+    ds = oc.open(healpix_map_path)
+    assert len(ds.pixels) < hp.nside2npix(ds.nside)
+    assert not ds.full_sky
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_partitioned_take_keeps_pixels_aligned(healpix_map_path):
+    ds = oc.open(healpix_map_path).take_range(100, 600)
+    pixels, data = ds.get_data("raw")
+    parallel_assert(np.array_equal(np.sort(ds.pixels), pixels))
+    parallel_assert(len(pixels) == 500)

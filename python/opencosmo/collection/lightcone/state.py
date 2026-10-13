@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     import astropy.units as u
 
-    from opencosmo.collection.lightcone.healpix_map import HealpixMap
+    from opencosmo.collection.healpix_map.state import HealpixMapState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.spatial.protocols import Region
@@ -30,7 +30,7 @@ class LightconeState:
 
     leaves: tuple[tuple[LeafKey, DatasetState], ...]
     header: OpenCosmoHeader
-    maps: HealpixMap | None = None
+    maps: HealpixMapState | None = None
     hidden: frozenset[str] = frozenset()
     sort_key: tuple[str, bool] | None = None
     scope: LightconeScope = field(default_factory=LightconeScope)
@@ -72,7 +72,7 @@ class LightconeState:
 
 def from_leaves(
     leaves: Iterable[tuple[LeafKey, DatasetState]],
-    maps: HealpixMap | None = None,
+    maps: HealpixMapState | None = None,
     z_range: tuple[float, float] | None = None,
     hidden: frozenset[str] = frozenset(),
     sort_key: tuple[str, bool] | None = None,

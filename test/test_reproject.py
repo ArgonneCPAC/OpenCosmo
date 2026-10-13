@@ -4,8 +4,7 @@ import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from opencosmo.collection.lightcone.healpix_map import HealpixMap
-from opencosmo.collection.lightcone.reproject import make_hdulist
+from opencosmo.collection.healpix_map.reproject import make_hdulist
 
 import opencosmo as oc
 
@@ -33,9 +32,13 @@ def test_make_hdulist_replaces_healpix_unseen_values_with_nan():
     assert np.isnan(cutout[1].data).all()
 
 
+@pytest.fixture
+def healpix_map(test_data):
+    return oc.open(test_data.healpix_map)
+
+
 @pytest.mark.parametrize("npix", [0, -1])
-def test_map_cutouts_reject_nonpositive_npix(npix):
-    healpix_map = HealpixMap.__new__(HealpixMap)
+def test_map_cutouts_reject_nonpositive_npix(healpix_map, npix):
     centers = SkyCoord([], [], unit="deg")
 
     with pytest.raises(ValueError, match="npix must be positive"):
@@ -43,8 +46,7 @@ def test_map_cutouts_reject_nonpositive_npix(npix):
 
 
 @pytest.mark.parametrize("npix", [1.5, True, None])
-def test_map_cutouts_reject_noninteger_npix(npix):
-    healpix_map = HealpixMap.__new__(HealpixMap)
+def test_map_cutouts_reject_noninteger_npix(healpix_map, npix):
     centers = SkyCoord([], [], unit="deg")
 
     with pytest.raises(TypeError, match="npix must be an integer"):
@@ -52,8 +54,7 @@ def test_map_cutouts_reject_noninteger_npix(npix):
 
 
 @pytest.mark.parametrize("size", [0, -1, np.nan, np.inf])
-def test_map_cutouts_reject_invalid_size(size):
-    healpix_map = HealpixMap.__new__(HealpixMap)
+def test_map_cutouts_reject_invalid_size(healpix_map, size):
     centers = SkyCoord([], [], unit="deg")
 
     with pytest.raises(ValueError, match="positive finite value"):
@@ -61,8 +62,7 @@ def test_map_cutouts_reject_invalid_size(size):
 
 
 @pytest.mark.parametrize("size", ["1", True, None, [1]])
-def test_map_cutouts_require_numeric_or_quantity_size(size):
-    healpix_map = HealpixMap.__new__(HealpixMap)
+def test_map_cutouts_require_numeric_or_quantity_size(healpix_map, size):
     centers = SkyCoord([], [], unit="deg")
 
     with pytest.raises(TypeError, match="numeric value or angular quantity"):
@@ -70,16 +70,14 @@ def test_map_cutouts_require_numeric_or_quantity_size(size):
 
 
 @pytest.mark.parametrize("size", [[1, 2] * u.deg, np.array([1, 2]) * u.deg])
-def test_map_cutouts_require_scalar_size(size):
-    healpix_map = HealpixMap.__new__(HealpixMap)
+def test_map_cutouts_require_scalar_size(healpix_map, size):
     centers = SkyCoord([], [], unit="deg")
 
     with pytest.raises(TypeError, match="Cutout size must be a scalar"):
         next(healpix_map.cutouts(centers, size))
 
 
-def test_map_cutouts_reject_nonangular_quantity_size():
-    healpix_map = HealpixMap.__new__(HealpixMap)
+def test_map_cutouts_reject_nonangular_quantity_size(healpix_map):
     centers = SkyCoord([], [], unit="deg")
 
     with pytest.raises(ValueError, match="Cutout size must have angular units"):

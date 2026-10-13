@@ -32,7 +32,10 @@ def from_model(model: BaseModel):
         case BoxRegionModel():
             return make_box(model.p1, model.p2)
         case HealpixRegionModel():
-            return HealpixRegion(np.array(list(model.pixels)), model.nside)
+            # The model stores a frozenset; data rows follow sorted pixel order.
+            return HealpixRegion(
+                np.sort(np.fromiter(model.pixels, dtype=np.int64)), model.nside
+            )
         case SkyboxRegionModel():
             return make_skybox(model.p1, model.p2)
         case _:
