@@ -100,12 +100,11 @@ def open_state(
 
         step = target.header.file.step
         name = target.name.removeprefix(f"{step}_")
-        dataset = iopen.open_dataset(
+        groups[step if step is not None else i][name] = iopen.open_dataset(
             target,
             index_spec_for(index_kind, is_empty_ref, is_source=True),
             open_kwargs=open_kwargs,
         )
-        groups[step if step is not None else i][name] = dataset._state
 
     leaves = [
         ((step,), leaf) if len(group) == 1 else ((step, name), leaf)

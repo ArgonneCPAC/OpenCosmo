@@ -43,9 +43,8 @@ children. ``group_by_scope`` splits the layouts by scope; the caller builds each
 scope through the ordinary single-scope path and wraps the results. Every spec
 therefore only ever sees a single-scope layout.
 
-For plain Datasets and HealpixMaps, _build_single_dataset wraps the result of
-open_dataset (which returns a raw Dataset) into a HealpixMap if needed after
-open_dataset returns.
+For plain Datasets and HealpixMaps, _build_single_dataset turns the DatasetState
+returned by open_dataset into a HealpixMapState if needed.
 """
 
 
@@ -202,10 +201,10 @@ def _build_single_dataset(
 ) -> oc.Dataset | oc.collection.Collection:
     """Build one dataset from a single-target file list.
 
-    Shared by DatasetSpec and HealpixMapSpec. open_dataset returns a raw Dataset;
-    a healpix_map header is then wrapped into a HealpixMap here (DatasetSpec only
-    ever matches plain non-lightcone, non-healpix groups, so its build passes the
-    Dataset straight through). The single-dataset open defaults to spatially
+    Shared by DatasetSpec and HealpixMapSpec. open_dataset returns a DatasetState;
+    a healpix_map header is then turned into a HealpixMapState here (DatasetSpec
+    only ever matches plain non-lightcone, non-healpix groups, so its build passes
+    the dataset state straight through). The single-dataset open defaults to spatially
     partitioned — serial opens (comm is None) fall through to no restriction inside
     the spatial spec.
 
@@ -213,13 +212,14 @@ def _build_single_dataset(
     on every rank — ``Lightcone.open`` building a companion healpix map — passes an
     explicit spec rather than relying on the standalone default.
     """
+    from opencosmo import facade
     from opencosmo.io.index_spec import spatial
     from opencosmo.io.iopen import _open_healpix_map, open_dataset
 
-    ds = open_dataset(targets[0], index or spatial, open_kwargs=open_kwargs)
-    if ds.header.file.data_type == "healpix_map":
-        return _open_healpix_map(ds)
-    return ds
+    state = open_dataset(targets[0], index or spatial, open_kwargs=open_kwargs)
+    if state.header.file.data_type == "healpix_map":
+        return facade.wrap(_open_healpix_map(state))
+    return facade.wrap(state)
 
 
 def _verify_columns_consistent_per_dataset(layouts: tuple[FileLayout, ...]) -> None:
@@ -361,9 +361,8 @@ class StructureCollectionSpec:
 class HealpixMapSpec:
     """A single healpix_map group. Shares the single-dataset build with DatasetSpec.
 
-    _build_single_dataset wraps a healpix_map header to a HealpixMap after
-    open_dataset returns a raw Dataset; this is a distinct spec purely for the
-    match signal and documentation.
+    _build_single_dataset turns a healpix_map DatasetState into a HealpixMapState;
+    this is a distinct spec purely for the match signal and documentation.
     """
 
     name = "healpix_map"

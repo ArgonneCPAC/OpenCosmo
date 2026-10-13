@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
     import h5py
 
+    from opencosmo.collection.healpix_map.state import HealpixMapState
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.discover import FileLayout, GroupLayout, LinkLayout
     from opencosmo.io.index_spec import IndexSpec
@@ -425,7 +427,7 @@ def open_dataset(
     index: IndexSpec,
     *,
     open_kwargs: dict[str, Any] = {},
-) -> oc.Dataset:
+) -> DatasetState:
     header = target.header
 
     assert header is not None
@@ -474,15 +476,11 @@ def open_dataset(
         region=sim_region,
     )
 
-    dataset = oc.Dataset(
-        state,
-    )
-    dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
-    return dataset
+    return fold(HookPoint.DatasetOpen, DatasetOpenCtx(state, open_kwargs)).state
 
 
-def _open_healpix_map(dataset: oc.Dataset):
-    return occ.HealpixMap(mapst.from_dataset(dataset._state))
+def _open_healpix_map(state: DatasetState) -> HealpixMapState:
+    return mapst.from_dataset(state)
 
 
 def _expand_lightcone_region(region, spatial_index):

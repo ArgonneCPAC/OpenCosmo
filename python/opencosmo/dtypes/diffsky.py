@@ -120,7 +120,7 @@ def _is_synthetic_galaxies_with_top_host_idx(obj) -> bool:
 
 @hook(
     HookPoint.DatasetOpen,
-    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.dataset),
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.state),
 )
 def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
     top_host_idx = EvaluatedColumn(
@@ -132,10 +132,10 @@ def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
         strategy=EvaluateStrategy.VECTORIZE,
         no_cache=True,
     )
-    new_dataset = ctx.dataset.with_new_columns(
-        updated_host_idx=top_host_idx, allow_overwrite=True
+    new_state = dsops.with_new_columns(
+        ctx.state, allow_overwrite=True, updated_host_idx=top_host_idx
     )
-    return dataclasses.replace(ctx, dataset=new_dataset)
+    return dataclasses.replace(ctx, state=new_state)
 
 
 @hook(
