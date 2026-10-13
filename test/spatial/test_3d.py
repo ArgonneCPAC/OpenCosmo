@@ -1,6 +1,7 @@
 import random
 
 import numpy as np
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
 from opencosmo.dataset import operations as dsops
@@ -62,7 +63,11 @@ def test_box_query_state_operation(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     region = oc.make_box((30, 30, 30), (60, 60, 60))
 
-    state = dsops.bound(ds._state, region, None)
+    state = dsops.bound(
+        dsops.with_units(open_state(halo_properties_path), "scalefree", {}),
+        region,
+        None,
+    )
 
     expected = ds.bound(region).select("fof_halo_tag").get_data()
     actual = dsops.get_data(dsops.select(state, "fof_halo_tag"), "numpy")

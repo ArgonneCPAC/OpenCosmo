@@ -6,10 +6,12 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from opencosmo.io.io import open_state
 from opencosmo.utils import normalize_kwarg_name
 
 import opencosmo as oc
 from opencosmo.collection.simulation import matching
+from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
 from opencosmo.dataset import operations as dsops
 
@@ -19,7 +21,7 @@ REFERENCE = normalize_kwarg_name("SCIDAC_128_GO")
 @pytest.fixture
 def mapped(test_data):
     snapshot = test_data.snapshot
-    return oc.open(
+    return open_state(
         snapshot.mapping_reference,
         *(snapshot.scidac(i).halo_properties for i in range(3)),
         snapshot.halo_mapping,
@@ -28,15 +30,12 @@ def mapped(test_data):
 
 @pytest.fixture
 def match_set(mapped):
-    return mapped._state.match_set
+    return mapped.match_set
 
 
 @pytest.fixture
-def matched_state(mapped, match_set):
-    members = {
-        name: dataset._state for name, dataset in mapped.match(REFERENCE).items()
-    }
-    return simst.SimulationState(members, match_set, REFERENCE)
+def matched_state(mapped):
+    return simops.match(mapped, REFERENCE)
 
 
 @pytest.fixture
@@ -73,14 +72,36 @@ def test_replace_does_not_carry_children(pending_state):
 
 
 def test_pending_children_match_facade(mapped, pending_state):
-    expected = mapped.match(REFERENCE).take_range(7, 31)
+    expected = oc.SimulationCollection(mapped).match(REFERENCE).take_range(7, 31)
 
     children = pending_state.children
 
     assert list(children) == list(pending_state.members)
     assert {len(child) for child in children.values()} == {24}
     for name, child in children.items():
-        np.testing.assert_array_equal(_tags(child), _tags(expected[name]._state))
+        np.testing.assert_array_equal(
+            _tags(child),
+            expected[name].select("fof_halo_tag").get_data("numpy"),
+        )
+
+
+@pytest.mark.parametrize("op", ("evaluate", "with_new_columns"))
+def test_selected_ops_leave_unselected_members_identical(test_data, op):
+    state = open_state(test_data.snapshot.multi_simulation)
+    selected, *unselected = simst.public_keys(state)
+
+    if op == "evaluate":
+
+        def fof_px(fof_halo_mass, fof_halo_com_vx):
+            return fof_halo_mass * fof_halo_com_vx
+
+        result = simops.evaluate(state, fof_px, selected, "numpy", True, True, False)
+    else:
+        data = np.random.randint(0, 100, len(state.members[selected]))
+        result = simops.with_new_columns(state, datasets=selected, random_data=data)
+
+    assert result.members[selected] is not state.members[selected]
+    assert all(result.members[name] is state.members[name] for name in unselected)
 
 
 def test_align_preserves_member_order(match_set, matched_state):
@@ -90,14 +111,14 @@ def test_align_preserves_member_order(match_set, matched_state):
 
 
 def test_align_rejects_collection_members(match_set, matched_state, test_data):
-    structure = oc.open(*test_data.snapshot.scidac(0).all)._state
+    structure = open_state(*test_data.snapshot.scidac(0).all)
     members = matched_state.members | {"structure": structure}
     with pytest.raises(RuntimeError, match="is not a dataset"):
         matching.align(match_set, REFERENCE, members)
 
 
 def test_from_parts_normalizes_names(mapped):
-    dataset = next(iter(mapped.values()))._state
+    dataset = next(iter(mapped.members.values()))
     state = simst.from_parts({"sim.one": dataset})
     assert simst.public_keys(state) == ["sim_one"]
     assert state.match_source is None
@@ -105,7 +126,7 @@ def test_from_parts_normalizes_names(mapped):
 
 
 def test_from_parts_rejects_matching_collections(match_set, test_data):
-    structure = oc.open(*test_data.snapshot.scidac(0).all)._state
+    structure = open_state(*test_data.snapshot.scidac(0).all)
     with pytest.raises(ValueError, match="only supported for simple datasets"):
         simst.from_parts({"structure": structure}, match_set)
 

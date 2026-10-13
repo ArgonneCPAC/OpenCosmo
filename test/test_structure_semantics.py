@@ -7,8 +7,11 @@ behavior that must survive the move to a StructureState.
 
 import numpy as np
 import pytest
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
+from opencosmo.collection.structure import operations as scops
+from opencosmo.collection.structure import state as scst
 
 
 @pytest.fixture
@@ -230,31 +233,34 @@ def test_evaluate_nested_path_replaces_nested_collection(halo_paths, galaxy_path
     assert "doubled_x" in result["galaxies"]["star_particles"].columns
 
 
-def _assert_cached_after_objects(collection, dataset_name, column):
-    for _ in collection.objects():
+def _assert_cached_after_objects(state, dataset_name, column):
+    for _ in scops.iter_objects(state):
         pass
-    state = collection[dataset_name]._state
-    uuid = state.column_map[column]
-    cached = state.cache.get_data({(uuid, column)})
+    dataset = scst.view(state, dataset_name)
+    uuid = dataset.column_map[column]
+    cached = dataset.cache.get_data({(uuid, column)})
     assert cached.get(uuid, {}).get(column) is not None
 
 
 def test_derived_columns_survive_with_units(halo_paths):
-    collection = oc.open(*halo_paths).with_new_columns(
-        "dm_particles", gpe=oc.col("mass") * oc.col("phi")
+    state = scops.with_new_columns(
+        open_state(*halo_paths), "dm_particles", gpe=oc.col("mass") * oc.col("phi")
     )
-    collection = (
-        collection.with_units("physical").filter(oc.col("fof_halo_mass") > 1e14).take(5)
-    )
-    _assert_cached_after_objects(collection, "dm_particles", "gpe")
+    state = scops.with_units(state, "physical")
+    state = scops.filter(state, oc.col("fof_halo_mass") > 1e14)
+    state = scops.take(state, 5, "random", "local")
+    _assert_cached_after_objects(state, "dm_particles", "gpe")
 
 
 def test_derived_columns_survive_nested_with_new_columns(halo_paths, galaxy_paths):
-    collection = oc.open(*halo_paths, *galaxy_paths).with_new_columns(
-        "dm_particles", gpe=oc.col("mass") * oc.col("phi")
+    state = scops.with_new_columns(
+        open_state(*halo_paths, *galaxy_paths),
+        "dm_particles",
+        gpe=oc.col("mass") * oc.col("phi"),
     )
-    collection = collection.with_new_columns(
-        "galaxies.galaxy_properties", double_mass=2 * oc.col("gal_mass_star")
+    state = scops.with_new_columns(
+        state, "galaxies.galaxy_properties", double_mass=2 * oc.col("gal_mass_star")
     )
-    collection = collection.filter(oc.col("fof_halo_mass") > 1e14).take(5)
-    _assert_cached_after_objects(collection, "dm_particles", "gpe")
+    state = scops.filter(state, oc.col("fof_halo_mass") > 1e14)
+    state = scops.take(state, 5, "random", "local")
+    _assert_cached_after_objects(state, "dm_particles", "gpe")

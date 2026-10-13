@@ -27,6 +27,7 @@ from opencosmo.io.discover import (
     is_particle_group,
     is_properties_group,
 )
+from opencosmo.io.io import open_state
 from opencosmo.units.get import parse_unit_string
 from opencosmo.uuid import get_column_uuid
 
@@ -682,16 +683,16 @@ class TestLayoutEquivalenceWithH5py:
         path = test_data.snapshot.primary.halo_properties
         resolved_path = path.resolve()
 
-        ds = oc.open(path)
+        state = open_state(path)
 
-        # Reaching into Dataset internals: there is no public accessor for
+        # Reaching into UnitHandler internals: there is no public accessor for
         # the per-column UnitApplicator or the raw base unit.
-        applicators = ds._state.unit_handler._UnitHandler__applicators
-        column_map = ds._state.column_map
+        applicators = state.unit_handler._UnitHandler__applicators
+        column_map = state.column_map
 
         with h5py.File(resolved_path, "r") as f:
             data_grp = f["data"]
-            for name in ds.columns:
+            for name in state.columns:
                 col = data_grp[name]
 
                 expected_unit = parse_unit_string(col.attrs.get("unit"))
@@ -703,7 +704,7 @@ class TestLayoutEquivalenceWithH5py:
                     assert actual_unit == expected_unit, f"unit mismatch for {name}"
 
                 expected_description = col.attrs.get("description")
-                assert ds.descriptions[name] == expected_description, (
+                assert state.descriptions[name] == expected_description, (
                     f"description mismatch for {name}"
                 )
 

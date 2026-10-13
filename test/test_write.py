@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 from opencosmo.header import read_header, write_header
 from opencosmo.io.discover import discover_file
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
 from opencosmo import col, write
@@ -81,7 +82,7 @@ def test_write_evaluate_to_dataset_resets_conversions_and_preserves_base(
     reopened = oc.open(output_path)
 
     assert evaluated.get_data().unit == u.km
-    assert reopened._state.unit_handler.blanket_conversions == {}
+    assert open_state(output_path).unit_handler.blanket_conversions == {}
     assert reopened.get_data().unit == u.Mpc
 
     expected_base = source.with_units("scalefree").get_data()["fof_halo_center_x"]

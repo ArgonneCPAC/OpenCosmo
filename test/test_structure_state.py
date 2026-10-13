@@ -6,15 +6,12 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
 from opencosmo.collection.structure import links
 from opencosmo.collection.structure import state as scst
 from opencosmo.dataset import operations as dsops
-
-
-def _state(collection):
-    return collection._state
 
 
 def _tags(state):
@@ -37,7 +34,7 @@ def galaxy_paths(test_data):
 
 @pytest.fixture
 def halo_state(halo_paths):
-    return _state(oc.open(*halo_paths))
+    return open_state(*halo_paths)
 
 
 @pytest.fixture
@@ -100,8 +97,8 @@ def test_read_only_properties(halo_paths, halo_state):
 
 
 def test_public_keys_match_facade(halo_paths, galaxy_paths):
-    for collection in (oc.open(*halo_paths), oc.open(*halo_paths, *galaxy_paths)):
-        assert scst.public_keys(_state(collection)) == collection.keys()
+    for paths in (halo_paths, [*halo_paths, *galaxy_paths]):
+        assert scst.public_keys(open_state(*paths)) == oc.open(*paths).keys()
 
 
 def test_public_keys_hide_source(halo_state):
@@ -121,7 +118,7 @@ def test_view(derived_state):
 
 
 def test_from_parts_renames_nested_galaxies(halo_paths, galaxy_paths):
-    state = _state(oc.open(*halo_paths, *galaxy_paths))
+    state = open_state(*halo_paths, *galaxy_paths)
     linked = dict(state.linked)
     linked["galaxy_properties"] = linked.pop("galaxies")
     rebuilt = scst.from_parts(state.source, linked, state.match_sets, resolve=False)
@@ -130,7 +127,7 @@ def test_from_parts_renames_nested_galaxies(halo_paths, galaxy_paths):
 
 
 def test_from_parts_keeps_galaxy_properties_dataset(halo_paths, galaxy_paths):
-    state = _state(oc.open(halo_paths[0], galaxy_paths[0]))
+    state = open_state(halo_paths[0], galaxy_paths[0])
     assert list(state.linked) == ["galaxy_properties"]
 
 

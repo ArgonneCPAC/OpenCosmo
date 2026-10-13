@@ -1,5 +1,6 @@
 import pytest
 from opencosmo.dataset.state import DatasetState
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import state as lcst
@@ -7,23 +8,17 @@ from opencosmo.collection.lightcone import state as lcst
 
 @pytest.fixture
 def plain_leaves(test_data):
-    lc = oc.open(
+    return open_state(
         test_data.lightcone.step(601).halo_properties,
         test_data.lightcone.step(600).halo_properties,
-    )
-    return tuple(((step,), ds._state) for step, ds in lc.items())
+    ).leaves
 
 
 @pytest.fixture
 def nested_leaves(test_data):
-    lc = oc.open(
+    return open_state(
         test_data.diffsky.core(475), test_data.diffsky.core(487), synth_cores=True
-    )
-    return tuple(
-        ((step, subtype), ds._state)
-        for step, inner in lc.items()
-        for subtype, ds in inner.items()
-    )
+    ).leaves
 
 
 def test_from_leaves_rejects_empty():
@@ -109,11 +104,10 @@ def test_view_missing_key(plain_leaves):
 def test_state_holds_map_state(test_data):
     from opencosmo.collection.healpix_map.state import HealpixMapState
 
-    lc = oc.open(
+    state = open_state(
         test_data.lightcone.step(600).halo_properties,
         test_data.lightcone.step(601).halo_properties,
         test_data.healpix_map,
     )
-    assert isinstance(lc._state.maps, HealpixMapState)
-    assert isinstance(lc.map, oc.HealpixMap)
-    assert lc.map._state is lc._state.maps
+    assert isinstance(state.maps, HealpixMapState)
+    assert isinstance(oc.Lightcone(state).map, oc.HealpixMap)
