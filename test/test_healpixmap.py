@@ -7,6 +7,7 @@ from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from healsparse import HealSparseMap
 from opencosmo.collection.healpix_map import healpix_map as healpix_map_module
+from opencosmo.handler.memory import InMemoryHandler
 from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
@@ -150,9 +151,9 @@ def test_healpix_downgrade(healpix_map_path):
 
 def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
     """
-    Downgrading data produces an entirely new dataset, which exists as an
-    in-memory hdf5 file. We want to ensure this data is not also sent
-    to the cache.
+    Downgrading data produces an entirely new dataset, backed by in-memory
+    arrays with one row per output pixel. We want to ensure this data is not
+    also sent to the cache.
     """
 
     ds = oc.open(healpix_map_path)
@@ -169,8 +170,9 @@ def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
     downgraded_dataset = next(iter(output.values()))
     cache = downgraded_dataset._Dataset__state.cache
     handler = downgraded_dataset._Dataset__state.raw_data_handler
-    assert len(cache.columns) == len(dataset.columns)
-    assert len(handler) == 0
+    assert isinstance(handler, InMemoryHandler)
+    assert len(cache.columns) == 0
+    assert len(handler) == len(output.pixels)
 
 
 def test_healpix_index_chain_failure(healpix_map_path):

@@ -198,10 +198,6 @@ def test_with_resolution_then_take(small_map):
     _assert_aligned(downgraded.take_rows(np.array([0, 7, 30])), downgraded)
 
 
-@pytest.mark.xfail(
-    reason="filter diffs raw indices, which are empty for an in-memory dataset",
-    strict=True,
-)
 def test_with_resolution_then_filter(small_map):
     downgraded = small_map.with_resolution(small_map.nside // 2)
     _assert_aligned(downgraded.filter(oc.col("tsz") < 0), downgraded)

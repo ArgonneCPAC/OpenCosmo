@@ -258,9 +258,12 @@ def state_in_memory(
 def state_from_evaluated_data(
     data_columns: dict[str, np.ndarray | u.Quantity],
     header: OpenCosmoHeader,
+    descriptions: dict[str, str] | None = None,
 ) -> DatasetState:
     """Build a dataset from evaluated values in the file's unit convention."""
-    descriptions = {name: "None" for name in data_columns}
+    descriptions = {
+        name: (descriptions or {}).get(name, "None") for name in data_columns
+    }
     all_known_uuids: set[UUID] = set()
     raw_producers = []
     for name in data_columns:

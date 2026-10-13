@@ -24,7 +24,8 @@ from opencosmo.collection.healpix_map.cutout import (
 )
 from opencosmo.collection.healpix_map.reproject import make_hdulist
 from opencosmo.column.column import Column
-from opencosmo.dataset.build import build_dataset_from_data
+from opencosmo.dataset import Dataset
+from opencosmo.dataset.state import state_from_evaluated_data
 from opencosmo.index import from_size, into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.mpi import get_comm_world
@@ -44,8 +45,6 @@ if TYPE_CHECKING:
     from astropy.io import fits
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
-    from opencosmo.dataset import Dataset
-    from opencosmo.dataset.build import GroupedColumnData
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
@@ -479,27 +478,27 @@ class HealpixMap(dict):
             float
         )
 
-        new_data: GroupedColumnData = {"data": {}}
-        for name in self.columns:
-            new_data["data"][name] = (
-                np.add.reduceat(table[name].value, boundaries) / counts
-            ).astype(np.float32)
+        new_data = {
+            name: (np.add.reduceat(table[name].value, boundaries) / counts).astype(
+                np.float32
+            )
+            for name in self.columns
+        }
 
         new_header = self.header.with_parameters({"map_params/nside": nside_out})
 
         out_npix = hp.nside2npix(nside_out)
 
-        new_dataset = build_dataset_from_data(
-            new_data,
-            new_header,
-            None,
-            descriptions={
-                "data": {
+        new_dataset = Dataset(
+            state_from_evaluated_data(
+                new_data,
+                new_header,
+                {
                     key: desc
                     for key, desc in self.descriptions.items()
                     if desc is not None
-                }
-            },
+                },
+            )
         )
 
         is_full_sky = self.full_sky and get_comm_world() is None
