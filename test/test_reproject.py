@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from opencosmo.collection.lightcone.healpix_map import HealpixMap
-from opencosmo.collection.lightcone.reproject import make_hdulist
+from opencosmo.collection.healpix_map.healpix_map import HealpixMap
+from opencosmo.collection.healpix_map.reproject import make_hdulist
 
 import opencosmo as oc
 

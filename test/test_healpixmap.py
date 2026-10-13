@@ -6,10 +6,10 @@ import pytest
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from healsparse import HealSparseMap
+from opencosmo.collection.healpix_map import healpix_map as healpix_map_module
 from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
-from opencosmo.collection.lightcone import healpix_map as healpix_map_module
 
 
 @pytest.fixture

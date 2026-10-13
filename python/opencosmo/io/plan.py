@@ -10,7 +10,6 @@ from typing import (
     runtime_checkable,
 )
 
-from opencosmo.collection.lightcone.distribute import partition_contiguous
 from opencosmo.io.discover import (
     group_data_type,
     has_linked_targets,
@@ -221,6 +220,10 @@ def _distribute_redshift(
     for step in ordered_steps:
         step_file_indices.append(sorted(fm.file_index for fm in file_info[step]))
         step_weights.append(sum(fm.weight for fm in file_info[step]))
+
+    # Imported here: the lightcone package imports io, so a module-level import
+    # makes package import order matter.
+    from opencosmo.collection.lightcone.distribute import partition_contiguous
 
     # Split the ordered steps into nranks CONTIGUOUS chunks of roughly-equal weight.
     step_groups = partition_contiguous(step_weights, nranks)

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     import astropy.units as u
 
-    from opencosmo.collection.lightcone.healpix_map import HealpixMap
+    from opencosmo.collection.healpix_map.healpix_map import HealpixMap
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.spatial.protocols import Region

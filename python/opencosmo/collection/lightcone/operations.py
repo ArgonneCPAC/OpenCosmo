@@ -9,10 +9,10 @@ import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
 
+from opencosmo.collection.healpix_map.healpix_map import HealpixMap
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
-from opencosmo.collection.lightcone.healpix_map import HealpixMap
 from opencosmo.collection.lightcone.instantiate import evaluate_scope
 from opencosmo.collection.lightcone.scope import partition_columns
 from opencosmo.collection.lightcone.stack import stack_lightcone_datasets_in_schema

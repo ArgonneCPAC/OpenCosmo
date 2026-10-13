@@ -18,11 +18,11 @@ from astropy.table import Column as AstroColumn  # type: ignore
 from astropy.table import vstack
 
 import opencosmo as oc
-from opencosmo.collection.lightcone.cutout import (
+from opencosmo.collection.healpix_map.cutout import (
     get_included_pixels,
     validate_cutout_size,
 )
-from opencosmo.collection.lightcone.reproject import make_hdulist
+from opencosmo.collection.healpix_map.reproject import make_hdulist
 from opencosmo.column.column import Column
 from opencosmo.dataset.build import build_dataset_from_data
 from opencosmo.index import from_size, into_array

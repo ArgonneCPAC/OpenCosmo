@@ -1,4 +1,5 @@
-from .lightcone import HealpixMap, Lightcone
+from .healpix_map import HealpixMap
+from .lightcone import Lightcone
 from .protocols import Collection
 from .simulation import SimulationCollection
 from .structure import StructureCollection
