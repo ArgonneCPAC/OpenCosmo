@@ -1,0 +1,43 @@
+name: cache test data
+# Caches are scoped to the ref that saved them. Saving from main makes the
+# cache readable by every PR targeting main, including those without access
+# to the AWS secrets (dependabot, forks). The schedule keeps the cache from
+# being evicted after 7 days without access.
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 6 * * 1,4"
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  get-test-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check if cache exists
+        id: check-cache
+        uses: actions/cache@v5
+        with:
+          path: test_data.tar.gz
+          key: test-data
+          lookup-only: true
+          enableCrossOsArchive: true
+      - name: Setup AWS CLI
+        if: steps.check-cache.outputs.cache-hit != 'true'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.TEST_DATA_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.TEST_DATA_SECRET_KEY }}
+          aws-region: us-west-2
+      - name: Download test data
+        if: steps.check-cache.outputs.cache-hit != 'true'
+        run: aws s3 cp s3://${{ secrets.TEST_DATA_BUCKET }}/test_data.tar.gz test_data.tar.gz
+      - name: Cache test data
+        if: steps.check-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: test_data.tar.gz
+          key: test-data
+          enableCrossOsArchive: true

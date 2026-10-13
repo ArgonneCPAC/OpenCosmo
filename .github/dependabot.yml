@@ -1,0 +1,45 @@
+version: 2
+updates:
+  # The default "auto" strategy widens pyproject ranges for libraries (detected
+  # by matching the PyPI summary to the pyproject description). The config
+  # schema does not accept "widen" for uv explicitly.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      # rust-numpy tracks pyo3's version; they must be bumped together.
+      pyo3:
+        patterns: [pyo3*, numpy]
+      rust-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly

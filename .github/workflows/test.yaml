@@ -11,36 +11,9 @@ env:
 
 jobs:
   get-test-data:
-    runs-on: ubuntu-latest
-    steps:
-      - name: check if cache exists
-        id: check-cache
-        uses: actions/cache@v5
-        with:
-          path: test_data.tar.gz
-          key: test-data
-          lookup-only: true
-          restore-keys: |
-            test-data
-      - name: Setup AWS CLI
-        if: steps.check-cache.outputs.cache-hit != 'true'
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.TEST_DATA_ACCESS_KEY }}
-          aws-secret-access-key: ${{ secrets.TEST_DATA_SECRET_KEY }}
-          aws-region: us-west-2
-      - name: Download test data 
-        if: steps.check-cache.outputs.cache-hit != 'true'
-        run: aws s3 cp s3://${{ secrets.TEST_DATA_BUCKET }}/test_data.tar.gz test_data.tar.gz
-      - name: Cache test data
-        if: steps.check-cache.outputs.cache-hit != 'true'
-        id: cache-test-data
-        uses: actions/cache@v5
-        with:
-          path: test_data.tar.gz
-          key: test-data
-          enableCrossOsArchive: true
-          
+    uses: ./.github/workflows/test-data.yaml
+    secrets: inherit
+
   run-tests:
     name: Run tests
     runs-on: ${{ matrix.os }}
@@ -67,9 +40,7 @@ jobs:
           mkdir -p test_data
           tar -xzf test_data.tar.gz -C test_data
       - name: install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
-        with:
-          version: "0.8.2"
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884      
       - name: install python
         uses: actions/setup-python@v7
         with:
@@ -111,11 +82,9 @@ jobs:
           mkdir -p test_data
           tar -xzf test_data.tar.gz -C test_data
       - name: install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
-        with:
-          version: "0.8.2"
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884      
       - name: install python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
