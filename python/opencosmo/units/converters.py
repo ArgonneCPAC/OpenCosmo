@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Optional
 import astropy.units as u
 from astropy.cosmology import units as cu
 
-import opencosmo.dataset.state as st
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
@@ -171,15 +170,21 @@ def comoving_to_physical(
 
 
 def get_scale_factor(dataset: "DatasetState", cosmology, redshift):
+    from opencosmo.dataset import operations as dsops
+
     columns = set(dataset.columns)
     for column in KNOWN_SCALEFACTOR_COLUMNS:
         if column in columns:
-            col = st.get_data(st.select(dataset, {column}))[column]
+            col = dsops.get_data(
+                dsops.select(dataset, column), "numpy", wrap_single=True
+            )[column]
             return col
 
     for column in KNOWN_REDSHIFT_COLUMNS:
         if column in columns:
-            col = st.get_data(st.select(dataset, {column}))[column]
+            col = dsops.get_data(
+                dsops.select(dataset, column), "numpy", wrap_single=True
+            )[column]
             return 1 / (1 + col)
 
     return cosmology.scale_factor(redshift)

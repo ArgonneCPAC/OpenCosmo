@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
 
-import opencosmo.dataset.state as st
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.dataset import operations as dsops
 from opencosmo.index import into_array
@@ -93,7 +92,9 @@ def rebuild_top_host_idx(top_host_idx, index):
 
 def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
     index_array = into_array(new_index)
-    top_host_idx = st.get_data(st.select(dataset, {"top_host_idx"}))["top_host_idx"]
+    top_host_idx = dsops.get_data(
+        dsops.select(dataset, "top_host_idx"), "numpy", wrap_single=True
+    )["top_host_idx"]
     unique_in_sample = np.unique(top_host_idx[index_array])
 
     missing_hosts = np.setdiff1d(unique_in_sample, index_array)

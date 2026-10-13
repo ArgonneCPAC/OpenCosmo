@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from opencosmo.dataset import operations as dsops
-from opencosmo.dataset import state as st
 from opencosmo.dataset.state import DatasetState
 from opencosmo.index import into_array
 from opencosmo.index.mpi import is_in_global_index
@@ -130,5 +129,5 @@ def __match_rows_mpi(
     }
     for name, mapping in mappings.items():
         dataset = datasets[name]
-        new_datasets[name] = st.redistribute(dataset, mapping[rows_to_keep])
+        new_datasets[name] = dsops.redistribute(dataset, mapping[rows_to_keep])
     return new_datasets

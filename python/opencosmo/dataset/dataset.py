@@ -812,7 +812,7 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        return st.make_schema(self.__state, path)
+        return dsops.make_schema(self.__state, path)
 
     def with_units(
         self,

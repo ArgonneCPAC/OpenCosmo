@@ -33,7 +33,7 @@ def test_from_leaves_rejects_mixed_key_depth(plain_leaves):
 
 
 def test_from_leaves_rejects_mismatched_columns(plain_leaves):
-    from opencosmo.dataset.state import select
+    from opencosmo.dataset.operations import select
 
     (key, leaf), *rest = plain_leaves
     narrowed = select(leaf, {"fof_halo_mass"})
