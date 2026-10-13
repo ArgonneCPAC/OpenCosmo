@@ -21,8 +21,6 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.deprecated import deprecated
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from opencosmo.column.column import (
         ColumnMask,
         ConstructedColumn,
@@ -32,7 +30,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
-    from opencosmo.spatial.protocols import Region, SpatialIndex
+    from opencosmo.spatial.protocols import Region
 
 
 OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
@@ -172,15 +170,6 @@ class Dataset:
         column: Optional[str]
         """
         return self.__state.sort_key[0] if self.__state.sort_key is not None else None
-
-    @property
-    def spatial_index(self) -> SpatialIndex | None:
-        return self.__state.spatial_index
-
-    # Internal identity used by link/mapping resolution.
-    @property
-    def uuid(self) -> UUID:
-        return self.__state.uuid
 
     @property
     @deprecated(

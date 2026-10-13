@@ -32,15 +32,15 @@ def test_descriptions(input_path):
     assert isinstance(ds.descriptions, dict)
 
 
-def test_dataset_uuid_matches_discovery_and_survives_transformations(input_path):
-    """Test that dataset identity is preserved from opening through transforms."""
-    dataset = oc.open(input_path)
+def test_state_uuid_matches_discovery_and_survives_transformations(input_path):
+    """Test that dataset-state identity is preserved through transformations."""
+    state = open_state(input_path)
     discovered_uuid = discover_file(input_path).groups[0].uuid
 
-    assert dataset.uuid == discovered_uuid
-    assert dataset.uuid == dataset.filter(oc.col("sod_halo_mass") > 0).uuid
-    assert dataset.uuid == dataset.select("fof_halo_mass").uuid
-    assert dataset.uuid == dataset.take(10).uuid
+    assert state.uuid == discovered_uuid
+    assert state.uuid == dsops.filter(state, oc.col("sod_halo_mass") > 0, {}).uuid
+    assert state.uuid == dsops.select(state, "fof_halo_mass").uuid
+    assert state.uuid == dsops.take(state, 10, "start", "global").uuid
 
 
 def test_filter_oom(input_path, max_mass):

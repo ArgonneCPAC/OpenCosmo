@@ -158,13 +158,13 @@ def test_write_tree(halo_properties_path, tmp_path):
     ds = ds.bound(reg1)
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
 
-    ds = oc.open(tmp_path / "bound_dataset.hdf5").with_units("scalefree")
-    assert ds.spatial_index is not None
-    tree_data = ds.spatial_index.spatial_index_data
+    state = open_state(tmp_path / "bound_dataset.hdf5")
+    assert state.spatial_index is not None
+    tree_data = state.spatial_index.spatial_index_data
     for i in range(3):
         starts = tree_data[f"level_{i}/start"][:]
         sizes = tree_data[f"level_{i}/size"][:]
-        assert np.sum(sizes) == len(ds)
+        assert np.sum(sizes) == len(state)
         assert np.all(np.insert(np.cumsum(sizes), 0, 0)[:-1] == starts)
 
 
