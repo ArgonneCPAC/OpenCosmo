@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
-from opencosmo.mpi import get_comm_world
 from pytest_mpi import parallel_assert
 
 import opencosmo as oc
+from opencosmo.mpi import get_comm_world
 
 
 @pytest.fixture

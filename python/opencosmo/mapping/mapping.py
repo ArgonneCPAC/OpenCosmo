@@ -6,10 +6,10 @@ from uuid import UUID
 
 import h5py
 import numpy as np
-from opencosmo.io.schema import FileEntry, Schema
-from opencosmo.io.writer import ColumnWriter
 
 from opencosmo.index import coalesce_chunks, get_data, into_array
+from opencosmo.io.schema import FileEntry, Schema
+from opencosmo.io.writer import ColumnWriter
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex, SimpleIndex
@@ -436,7 +436,7 @@ def get_primary_mapping(
     map_to_source = match_set.primary_maps[source]
     map_to_target = match_set.primary_maps[target]
     if isinstance(map_to_source, ChunkedSlot) or isinstance(map_to_target, ChunkedSlot):
-        raise TypeError("Chunked mappings support reference-to-target routing only")
+        raise ValueError("Chunked mappings support reference-to-target routing only")  # noqa: TRY004
 
     ref_rows = __get_inverse_mapping(
         map_to_source, index, match_set.reference_source, source
@@ -486,7 +486,7 @@ def __get_inverse_mapping(
         filtering.
     """
     if isinstance(mapping, ChunkedSlot):
-        raise TypeError("Chunked mappings support reference-to-target routing only")
+        raise ValueError("Chunked mappings support reference-to-target routing only")  # noqa: TRY004
 
     # Inversion is inherently non-lazy: we must read the entire forward map to
     # know which reference row points at a given source row.  This is bounded
@@ -536,7 +536,7 @@ def get_slot_sizes(
     """Return the signed sizes in a chunked primary slot."""
     slot = match_set.primary_maps[target]
     if not isinstance(slot, ChunkedSlot):
-        raise TypeError("Simple mappings do not have a size column")
+        raise ValueError("Simple mappings do not have a size column")  # noqa: TRY004
     return get_data(slot.size, index).astype(np.int64)
 
 

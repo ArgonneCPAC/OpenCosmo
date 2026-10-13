@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Self
 
-from opencosmo.io.schema import FileEntry, make_schema
-
 from opencosmo.index import empty
+from opencosmo.io.schema import FileEntry, make_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

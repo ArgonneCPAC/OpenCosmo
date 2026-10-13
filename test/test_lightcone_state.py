@@ -1,8 +1,8 @@
 import pytest
-from opencosmo.dataset.state import DatasetState
 
 import opencosmo as oc
 from opencosmo.collection.lightcone import state as lcst
+from opencosmo.dataset.state import DatasetState
 
 
 @pytest.fixture

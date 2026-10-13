@@ -1,4 +1,5 @@
 import pytest
+
 from opencosmo.cosmology import read_cosmology
 
 

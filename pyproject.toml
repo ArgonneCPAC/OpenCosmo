@@ -94,6 +94,9 @@ log_cli_level = "INFO"
 [lint.pycodestyle]
 max-doc-length = 90
 
+[tool.ruff]
+src = ["python", "test"]
+
 [tool.ruff.lint]
 future-annotations = true
 preview = false

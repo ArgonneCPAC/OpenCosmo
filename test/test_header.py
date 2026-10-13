@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 from astropy.cosmology import FlatLambdaCDM
 from astropy.cosmology import units as cu
-from opencosmo.header import read_header, write_header
-from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
+from opencosmo.header import read_header, write_header
+from opencosmo.spatial.region import HealpixRegion
 
 if TYPE_CHECKING:
     from pathlib import Path

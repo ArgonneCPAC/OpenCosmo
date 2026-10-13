@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from opencosmo.collection.healpix_map.reproject import make_hdulist
 
 import opencosmo as oc
+from opencosmo.collection.healpix_map.reproject import make_hdulist
 
 
 def test_make_hdulist_packs_reprojected_data():

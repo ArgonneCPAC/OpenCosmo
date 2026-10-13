@@ -11,12 +11,12 @@ import mpi4py
 import numpy as np
 import pytest
 from mpi4py import MPI
-from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo.analysis import gather, reduce
 from opencosmo.collection.simulation import SimulationCollection
+from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -1006,7 +1006,7 @@ def test_reduce_simulation_collection(simulation_collection):
     # A SimulationCollection reduces each simulation independently, keyed by name.
     assert set(result.keys()) == set(simulation_collection.keys())
 
-    for name in simulation_collection.keys():
+    for name in simulation_collection:
         mass = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
         expected = halo_mass_function(mass, bins, box_size)
         parallel_assert(np.allclose(result[name]["halo_mass_function"], expected))
@@ -1086,6 +1086,6 @@ def test_gather_simulation_collection(simulation_collection):
     # A SimulationCollection gathers each simulation independently, keyed by name.
     assert set(result.keys()) == set(simulation_collection.keys())
 
-    for name in simulation_collection.keys():
+    for name in simulation_collection:
         expected = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
         parallel_assert(np.array_equal(result[name], expected))

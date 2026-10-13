@@ -178,7 +178,7 @@ def test_lc_collection_select_numpy(
     ds = ds.select(to_select)
     data = ds.get_data("numpy")
     assert isinstance(data, dict)
-    assert all(ts in data.keys() for ts in to_select)
+    assert all(ts in data for ts in to_select)
     assert all(isinstance(col, np.ndarray) for col in data.values())
 
 
@@ -359,7 +359,7 @@ def test_lc_collection_mapped_kwargs(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
-    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds.keys()}
+    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds}
 
     def offset(
         fof_halo_com_x,

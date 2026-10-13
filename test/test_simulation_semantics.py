@@ -7,9 +7,9 @@ collections that must survive the move to a SimulationState.
 
 import numpy as np
 import pytest
-from opencosmo.header import OpenCosmoHeader
 
 import opencosmo as oc
+from opencosmo.header import OpenCosmoHeader
 
 
 @pytest.fixture
@@ -166,7 +166,7 @@ def test_lightcone_children_column_operations(lightcone_children):
     selected = collection.select("fof_halo_mass", "fof_halo_tag")
     dropped = selected.drop("fof_halo_tag")
 
-    for name in collection.keys():
+    for name in collection:
         assert isinstance(selected[name], oc.Lightcone)
         assert set(selected[name].columns) == {"fof_halo_mass", "fof_halo_tag"}
         assert dropped[name].columns == ["fof_halo_mass"]
@@ -196,5 +196,5 @@ def test_take_rows_out_of_range_raises(multi_path):
 
 def test_from_datasets_rejects_unsupported_members(multi_path):
     dataset = next(iter(oc.open(multi_path).values()))
-    with pytest.raises(ValueError, match="only accepts datasets"):
+    with pytest.raises(TypeError, match="only accepts datasets"):
         oc.SimulationCollection.from_datasets({"a": dataset, "b": object()})

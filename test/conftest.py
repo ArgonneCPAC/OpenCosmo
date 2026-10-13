@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -161,8 +163,8 @@ def test_data() -> TestDataPaths:
 
 @pytest.fixture(scope="session", autouse=True)
 def _redirect_user_cache_dir(
-    tmp_path_factory: "pytest.TempPathFactory",
-) -> "Iterator[None]":
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[None]:
     """
     Point the discovery layout cache at a temp dir for the whole session.
 

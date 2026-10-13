@@ -4,18 +4,18 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import ColumnWriter
 
 from opencosmo.index import get_data, get_length, into_array, take
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import ColumnWriter
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from astropy.units import UnitBase
-    from opencosmo.io.schema import Schema
 
     from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
 
 
 @dataclass(frozen=True)

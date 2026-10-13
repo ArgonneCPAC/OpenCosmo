@@ -1,9 +1,9 @@
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
-from opencosmo.spatial.relations import contains_2d, intersects_2d
 
 import opencosmo as oc
+from opencosmo.spatial.relations import contains_2d, intersects_2d
 
 # ---------------------------------------------------------------------------
 # Cone search (bound with ConeRegion)
@@ -316,9 +316,9 @@ def test_box_search_collection(haloproperties_600_path, haloproperties_601_path)
 
 def test_combine_cones():
     from healpy import ang2vec, query_disc
-    from opencosmo.spatial.region import combine
 
     from opencosmo.spatial import make_cone
+    from opencosmo.spatial.region import combine
 
     DEFAULT_NSIDE = 2**8
 
@@ -348,9 +348,9 @@ def test_combine_cones():
 
 def test_healpix_combine_promotion():
     from healpy import nside2npix
-    from opencosmo.spatial.region import combine
 
     from opencosmo.spatial import HealpixRegion
+    from opencosmo.spatial.region import combine
 
     rng = np.random.default_rng()
     MAX_LEVEL = 10
@@ -374,9 +374,9 @@ def test_healpix_combine_promotion():
 
 def test_combine_cones_and_healpix():
     from healpy import ang2vec, nside2npix, query_disc
-    from opencosmo.spatial.region import HealpixRegion, combine
 
     from opencosmo.spatial import make_cone
+    from opencosmo.spatial.region import HealpixRegion, combine
 
     MAX_LEVEL = 10
 

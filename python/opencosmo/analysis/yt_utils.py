@@ -128,7 +128,7 @@ def create_yt_dataset(
         cosmo = particle_dataset.cosmology
         ptype_short = ptype.split("_")[0]
 
-        for field in particle_data:
+        for field in particle_data.colnames:
             yt_field_name = special_fields.get(field, field)
             yt_particle_data = astropy_to_yt(particle_data[field])
 

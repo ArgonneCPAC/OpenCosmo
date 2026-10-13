@@ -4,10 +4,6 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
-from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import (
-    ColumnWriter,
-)
 
 from opencosmo.index import (
     SimpleIndex,
@@ -16,14 +12,18 @@ from opencosmo.index import (
     into_array,
     take,
 )
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import (
+    ColumnWriter,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     import h5py
-    from opencosmo.io.schema import Schema
 
     from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
 
 
 class Hdf5Handler:

@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 
 import pytest
+from pytest_mpi.parallel_assert import parallel_assert
+
 from opencosmo.io.discover import discover_all, discover_file, encode_file_layout_blob
 from opencosmo.mpi import get_comm_world
-from pytest_mpi.parallel_assert import parallel_assert
 
 
 def _layout_signature(layout) -> tuple:

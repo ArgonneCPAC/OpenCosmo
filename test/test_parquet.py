@@ -88,5 +88,5 @@ def test_dump_structure(halo_structure_paths, tmp_path):
 
     for data_type, table in data.items():
         oc_data = dataset[data_type].get_data("numpy")
-        for column_name in oc_data.keys():
+        for column_name in oc_data:
             assert np.all(oc_data[column_name] == table[column_name])

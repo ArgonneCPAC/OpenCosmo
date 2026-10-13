@@ -35,7 +35,7 @@ def align(
     datasets: dict[str, DatasetState] = {}
     for name, member in members.items():
         if not isinstance(member, DatasetState):
-            raise TypeError(f"Matched simulation member {name} is not a dataset")
+            raise RuntimeError(f"Matched simulation member {name} is not a dataset")  # noqa: TRY004
         datasets[name] = member
 
     aligned = __match_rows(match_set, datasets, source)

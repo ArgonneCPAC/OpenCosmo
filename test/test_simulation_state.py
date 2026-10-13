@@ -6,12 +6,12 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from opencosmo.utils import normalize_kwarg_name
 
 import opencosmo as oc
 from opencosmo.collection.simulation import matching
 from opencosmo.collection.simulation import state as simst
 from opencosmo.dataset import operations as dsops
+from opencosmo.utils import normalize_kwarg_name
 
 REFERENCE = normalize_kwarg_name("SCIDAC_128_GO")
 

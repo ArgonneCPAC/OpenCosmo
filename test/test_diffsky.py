@@ -6,10 +6,10 @@ import h5py
 import healpy as hp
 import numpy as np
 import pytest
-from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
 from opencosmo.column import add_mag_cols
+from opencosmo.spatial.region import HealpixRegion
 
 
 @pytest.fixture
@@ -134,7 +134,7 @@ def test_derive_from_redshift(core_path_475, core_path_487):
 
 def test_evaluate_with_mapped_kwargs(core_path_475, core_path_487):
     ds = oc.open(core_path_475, core_path_487, synth_cores=True)
-    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds.keys()}
+    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds}
 
     def offset(
         redshift_true,

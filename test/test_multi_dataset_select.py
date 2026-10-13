@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
+import opencosmo as oc
 from opencosmo.column.select import (
     MissingColumnError,
     build_multi_dataset_selections,
 )
-
-import opencosmo as oc
 
 
 @pytest.fixture

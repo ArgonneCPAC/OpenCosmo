@@ -260,11 +260,11 @@ def test_column_conversion(input_path):
 def test_all_unit_conversion(input_path):
     ds = oc.open(input_path)
     data = ds.take(2, at="start").get_data()
-    mpc_columns = set(
+    mpc_columns = {
         name
         for name, col in data.items()
         if isinstance(col, u.Quantity) and col.unit == u.Mpc
-    )
+    }
     ds = (
         ds.with_units(conversions={u.Mpc: u.lyr})
         .select(mpc_columns)
@@ -281,11 +281,11 @@ def test_all_unit_conversion(input_path):
 def test_multiple_all_unit_conversion(input_path):
     ds = oc.open(input_path)
     data = ds.take(2, at="start").get_data()
-    mpc_columns = set(
+    mpc_columns = {
         name
         for name, col in data.items()
         if isinstance(col, u.Quantity) and col.unit == u.Mpc
-    )
+    }
     ds = (
         ds.with_units(conversions={u.Mpc: u.lyr})
         .select(mpc_columns)
@@ -302,11 +302,11 @@ def test_multiple_all_unit_conversion(input_path):
 def test_clear_units(input_path):
     ds = oc.open(input_path)
     data = ds.take(2, at="start").get_data()
-    mpc_columns = set(
+    mpc_columns = {
         name
         for name, col in data.items()
         if isinstance(col, u.Quantity) and col.unit == u.Mpc
-    )
+    }
     ds = (
         ds.with_units(conversions={u.Mpc: u.lyr})
         .select(mpc_columns)
@@ -331,11 +331,11 @@ def test_clear_units(input_path):
 def test_all_unit_conversion_with_column(input_path):
     ds = oc.open(input_path)
     data = ds.take(2, at="start").get_data()
-    mpc_columns = set(
+    mpc_columns = {
         name
         for name, col in data.items()
         if isinstance(col, u.Quantity) and col.unit == u.Mpc
-    )
+    }
     overwrite_col = mpc_columns.pop()
     column_conversion = {overwrite_col: u.km}
     mpc_columns.add(overwrite_col)

@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import numpy as np
+
 from opencosmo.column.cache import ColumnCache
 
 

@@ -165,10 +165,9 @@ def test_none_free_discover_all_on_cache_failures(
 
 
 def test_layout_version_bump_invalidates(tmp_path: Path, test_data) -> None:
+    from opencosmo.io import cache
     from opencosmo.io.cache import get_cached_layouts
     from opencosmo.io.discover import discover_all
-
-    from opencosmo.io import cache
 
     src = test_data.snapshot.primary.halo_properties
     path = tmp_path / src.name
@@ -260,10 +259,9 @@ def test_cache_hit_does_not_write(tmp_path: Path, test_data) -> None:
 def test_disable_cache_escape_hatch(
     tmp_path: Path, test_data, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from opencosmo.io import cache
     from opencosmo.io.cache import cache_layouts, get_cached_layouts
     from opencosmo.io.discover import FileLayout
-
-    from opencosmo.io import cache
 
     src = test_data.snapshot.primary.halo_properties
     path = tmp_path / src.name

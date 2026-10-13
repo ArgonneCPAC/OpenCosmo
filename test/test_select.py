@@ -2,9 +2,9 @@ import h5py
 import numpy as np
 import pytest
 from astropy.cosmology import units as cu
-from opencosmo.column.select import MissingColumnError
 
 import opencosmo as oc
+from opencosmo.column.select import MissingColumnError
 
 
 @pytest.fixture

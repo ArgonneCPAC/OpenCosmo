@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from opencosmo.io.schema import FileEntry, get_dataset_schema_index
-from opencosmo.io.writer import ColumnWriter
 
 from opencosmo.index import into_array
+from opencosmo.io.schema import FileEntry, get_dataset_schema_index
+from opencosmo.io.writer import ColumnWriter
 
 if TYPE_CHECKING:
     from opencosmo.io.schema import Schema

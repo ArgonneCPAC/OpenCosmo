@@ -8,6 +8,7 @@ redshift range) is exercised in test/parallel/test_lc_mpi.py.
 import itertools
 
 import pytest
+
 from opencosmo.collection.lightcone.distribute import partition_contiguous
 
 

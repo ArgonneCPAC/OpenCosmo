@@ -14,6 +14,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+
+import opencosmo as oc
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.spatial.relations import (
     contains_2d,
@@ -21,8 +23,6 @@ from opencosmo.spatial.relations import (
     intersects_2d,
     intersects_3d,
 )
-
-import opencosmo as oc
 
 # ---------------------------------------------------------------------------
 # BoxRegion — contains_3d

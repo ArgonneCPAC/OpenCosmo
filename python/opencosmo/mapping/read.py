@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+
 from opencosmo.io.discover import LinkSlotKind
 from opencosmo.mapping.mapping import ChunkedSlot, DatasetMatchSet
 
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     import h5py
+
     from opencosmo.io.discover import LinkLayout, MapLayout
     from opencosmo.mapping.mapping import MapSlot, SimpleH5pyIndex
 

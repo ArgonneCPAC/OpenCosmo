@@ -225,7 +225,7 @@ def _iter_ancestors(group_path: str) -> Iterator[str]:
 def _verify_map_array(array: h5py.Dataset | None, where: str) -> int:
     """Validate a direct, simple mapping array without reading its values."""
     if not isinstance(array, h5py.Dataset):
-        raise TypeError(f"{where}: expected a dataset")
+        raise ValueError(f"{where}: expected a dataset")  # noqa: TRY004
     if array.ndim != 1:
         raise ValueError(f"{where}: mapping arrays must be one-dimensional")
     if not np.issubdtype(array.dtype, np.integer):
@@ -253,7 +253,7 @@ def _verify_slot(slot_group: h5py.Group, where: str) -> int:
 
     array = slot_group["index"]
     if not isinstance(array, h5py.Dataset):
-        raise TypeError(f"{where}: index is not a dataset")
+        raise ValueError(f"{where}: index is not a dataset")  # noqa: TRY004
     if array.ndim != 1:
         raise ValueError(f"{where}: mapping arrays must be one-dimensional")
     if not np.issubdtype(array.dtype, np.integer):
@@ -286,7 +286,7 @@ def _read_link_layout(
         if not prefix:
             raise ValueError(f"{where}: link dataset prefix must not be empty")
         if not isinstance(item, h5py.Dataset):
-            raise TypeError(f"{where}: expected a dataset")
+            raise ValueError(f"{where}: expected a dataset")  # noqa: TRY004
         slot_datasets.setdefault(prefix, {})[suffix] = name
 
     slots: list[LinkSlot] = []
@@ -385,7 +385,7 @@ def _read_map_layout(
             if target is None:
                 raise ValueError(f"{where}: group name is not a UUID")
             if not isinstance(slot, h5py.Group):
-                raise TypeError(f"{where}: expected a group")
+                raise ValueError(f"{where}: expected a group")  # noqa: TRY004
             if target in known_primaries:
                 raise ValueError(
                     f"{where}: duplicate primary mapping for UUID {target}"
@@ -410,7 +410,7 @@ def _read_map_layout(
             if uuid_a is None or uuid_b is None:
                 raise ValueError(f"{where}: endpoint names are not UUIDs")
             if not isinstance(pair, h5py.Group):
-                raise TypeError(f"{where}: expected a group")
+                raise ValueError(f"{where}: expected a group")  # noqa: TRY004
             if uuid_a not in known_primaries or uuid_b not in known_primaries:
                 raise ValueError(
                     "Found auxiliary matching groups without corresponding primaries!"

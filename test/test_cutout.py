@@ -3,6 +3,7 @@ import healpy as hp
 import numpy as np
 import pytest
 from astropy.coordinates import SkyCoord
+
 from opencosmo.collection.healpix_map.cutout import get_included_pixels
 
 

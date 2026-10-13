@@ -2,13 +2,13 @@ import astropy.units as u
 import healpy as hp
 import numpy as np
 import pytest
+
+import opencosmo as oc
 from opencosmo.collection.healpix_map import state as mapst
+from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import state_from_evaluated_data, state_in_memory
 from opencosmo.handler.memory import InMemoryHandler
 from opencosmo.spatial.region import HealpixRegion
-
-import opencosmo as oc
-from opencosmo.dataset import operations as dsops
 
 
 @pytest.fixture
