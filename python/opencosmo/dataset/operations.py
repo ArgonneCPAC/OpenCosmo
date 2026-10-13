@@ -207,6 +207,52 @@ def evaluate(
     )
 
 
+def evaluate_to_dataset(
+    state: DatasetState,
+    func: Callable,
+    vectorize: bool = False,
+    format: str = "astropy",
+    batch_size: int = -1,
+    allow_overwrite: bool = False,
+    **evaluate_kwargs,
+) -> DatasetState:
+    baseline_state = with_units(state, state.unit_handler.base_convention.value, {})
+    result: dict[str, np.ndarray | u.Quantity] = evaluate(
+        baseline_state,
+        func,
+        vectorize,
+        False,
+        format,
+        batch_size,
+        allow_overwrite,
+        **evaluate_kwargs,
+    )
+
+    output_length: int | None = None
+    for name, output in result.items():
+        if not isinstance(output, (np.ndarray, u.Quantity)):
+            raise TypeError(
+                f"Evaluate output {name!r} must be a NumPy array or Astropy quantity, "
+                f"not {type(output).__name__}"
+            )
+        if output.ndim == 0:
+            raise TypeError(
+                f"Evaluate output {name!r} must be a NumPy array or Astropy quantity "
+                "with a length"
+            )
+        if output_length is None:
+            output_length = len(output)
+        elif len(output) != output_length:
+            raise ValueError("Evaluate output columns must have equal lengths")
+
+    evaluated = st.state_from_evaluated_data(result, baseline_state.header)
+    return with_units(
+        evaluated,
+        state.unit_handler.current_convention.value,
+        state.unit_handler.blanket_conversions,
+    )
+
+
 def take_range(
     state: DatasetState,
     start: int,

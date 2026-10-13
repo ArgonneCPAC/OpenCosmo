@@ -12,10 +12,10 @@ from typing import (
 )
 
 import opencosmo as oc
+from opencosmo import facade
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure import state as scst
-from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
     import astropy.units as u
@@ -56,18 +56,8 @@ class StructureCollection:
             return self
         return StructureCollection(state)
 
-    @staticmethod
-    def __wrap(
-        child: scst.StructureChild,
-    ) -> oc.Dataset | oc.Lightcone | StructureCollection:
-        if isinstance(child, DatasetState):
-            return oc.Dataset(child)
-        if isinstance(child, scst.StructureState):
-            return StructureCollection(child)
-        return lc.Lightcone(child)
-
     def __repr__(self):
-        source = StructureCollection.__wrap(self.__state.source)
+        source = facade.wrap(self.__state.source)
         structure_type = self.__state.dtype.split("_")[0] + "s"
         is_lightcone = isinstance(source, lc.Lightcone)
         keys = list(self.keys())
@@ -178,7 +168,7 @@ class StructureCollection:
         """
         return cast(
             "oc.Dataset | StructureCollection",
-            StructureCollection.__wrap(scst.view(self.__state, key)),
+            facade.wrap(scst.view(self.__state, key)),
         )
 
     def __enter__(self):
@@ -1023,9 +1013,7 @@ class StructureCollection:
         """
         for structure in scops.iter_objects(self.__state, data_types):
             yield {
-                name: value
-                if isinstance(value, dict)
-                else StructureCollection.__wrap(value)
+                name: value if isinstance(value, dict) else facade.wrap(value)
                 for name, value in structure.items()
             }
 

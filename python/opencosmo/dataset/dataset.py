@@ -9,7 +9,6 @@ from typing import (
     Mapping,
     Optional,
     TypeAlias,
-    cast,
 )
 from warnings import warn
 
@@ -450,52 +449,17 @@ class Dataset:
         ValueError
             If the output columns do not all have equal lengths.
         """
-        from opencosmo.dataset.build import build_dataset_from_evaluated_data
-
-        baseline_state = dsops.with_units(
-            self.__state,
-            self.__state.unit_handler.base_convention.value,
-            {},
-        )
-
-        result = cast(
-            "dict[str, np.ndarray | u.Quantity]",
-            dsops.evaluate(
-                baseline_state,
+        return Dataset(
+            dsops.evaluate_to_dataset(
+                self.__state,
                 func,
                 vectorize,
-                False,
                 format,
                 batch_size,
                 allow_overwrite,
                 **evaluate_kwargs,
-            ),
+            )
         )
-
-        output_length: int | None = None
-        for name, output in result.items():
-            if not isinstance(output, (np.ndarray, u.Quantity)):
-                raise TypeError(
-                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity, "
-                    f"not {type(output).__name__}"
-                )
-            if output.ndim == 0:
-                raise TypeError(
-                    f"Evaluate output {name!r} must be a NumPy array or Astropy quantity "
-                    "with a length"
-                )
-            if output_length is None:
-                output_length = len(output)
-            elif len(output) != output_length:
-                raise ValueError("Evaluate output columns must have equal lengths")
-
-        evaluated = build_dataset_from_evaluated_data(result, baseline_state.header)
-        output_state = dsops.with_units(
-            evaluated._state,
-            self.__state.unit_handler.current_convention.value,
-            self.__state.unit_handler.blanket_conversions,
-        )
-        return Dataset(output_state)
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """

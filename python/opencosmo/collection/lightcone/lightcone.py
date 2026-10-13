@@ -10,11 +10,11 @@ from warnings import warn
 from astropy.coordinates import SkyCoord
 
 import opencosmo as oc
+from opencosmo import facade
 from opencosmo.collection.healpix_map import operations as mapops
 from opencosmo.collection.healpix_map.healpix_map import HealpixMap
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone import state as lcst
-from opencosmo.dataset import Dataset
 from opencosmo.dataset import state as st
 from opencosmo.deprecated import deprecated
 
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         ColumnMask,
         ConstructedColumn,
     )
+    from opencosmo.dataset import Dataset
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -78,10 +79,7 @@ class Lightcone:
         return leaves
 
     def __getitem__(self, key: int | str) -> Dataset | Lightcone:
-        child = lcst.view(self.__state, key)
-        if isinstance(child, lcst.LightconeState):
-            return Lightcone(child)
-        return Dataset(child)
+        return facade.wrap(lcst.view(self.__state, key))
 
     def __iter__(self) -> Iterator[int | str]:
         return iter(lcst.public_keys(self.__state))

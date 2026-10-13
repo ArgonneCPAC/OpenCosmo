@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional
 
+from opencosmo import facade
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
 from opencosmo.collection.structure import structure as sc
 from opencosmo.collection.structure.state import StructureState
 from opencosmo.dataset import Dataset
-from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
     from collections.abc import KeysView, Mapping
@@ -90,14 +90,6 @@ class SimulationCollection:
             return self
         return SimulationCollection(state)
 
-    @staticmethod
-    def __wrap(child: SimulationChild) -> UserChild:
-        if isinstance(child, DatasetState):
-            return Dataset(child)
-        if isinstance(child, StructureState):
-            return sc.StructureCollection(child)
-        return lc.Lightcone(child)
-
     def __getattr__(self, key: str):
         if key == "_SimulationCollection__state":
             raise AttributeError(key)
@@ -119,11 +111,11 @@ class SimulationCollection:
         return dict.fromkeys(simst.public_keys(self.__state)).keys()
 
     def values(self):
-        return [self.__wrap(child) for child in self.__state.children.values()]
+        return [facade.wrap(child) for child in self.__state.children.values()]
 
     def items(self):
         return {
-            name: self.__wrap(child) for name, child in self.__state.children.items()
+            name: facade.wrap(child) for name, child in self.__state.children.items()
         }.items()
 
     def __len__(self):
@@ -133,7 +125,7 @@ class SimulationCollection:
         return iter(self.keys())
 
     def __getitem__(self, key: str):
-        return self.__wrap(simst.view(self.__state, key))
+        return facade.wrap(simst.view(self.__state, key))
 
     def __enter__(self):
         return self
