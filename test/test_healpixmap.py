@@ -6,7 +6,7 @@ import pytest
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from healsparse import HealSparseMap
-from opencosmo.collection.healpix_map import healpix_map as healpix_map_module
+from opencosmo.collection.healpix_map import operations as mapops
 from opencosmo.handler.memory import InMemoryHandler
 from opencosmo.spatial.region import HealpixRegion
 
@@ -51,7 +51,7 @@ def test_partial_sky_cutout_uses_map_row_positions(healpix_map_path, monkeypatch
         healpix_map.nside
     )
     monkeypatch.setattr(
-        healpix_map_module,
+        mapops,
         "get_included_pixels",
         lambda centers, angular_size, nside: cutout_pixels,
     )

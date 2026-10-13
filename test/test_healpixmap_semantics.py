@@ -187,7 +187,7 @@ def test_with_resolution_partial(small_map):
 
 
 def test_with_resolution_rejects_higher_nside(small_map):
-    assert small_map.with_resolution(small_map.nside) is small_map
+    assert small_map.with_resolution(small_map.nside)._state is small_map._state
     with pytest.raises(ValueError):
         small_map.with_resolution(small_map.nside * 2)
 
