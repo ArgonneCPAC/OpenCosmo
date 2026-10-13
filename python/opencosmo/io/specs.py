@@ -362,7 +362,10 @@ class StructureCollectionSpec:
         from opencosmo.collection.structure import operations as scops
 
         return scops.open_state(
-            targets, index_kind=index_kind, is_empty_ref=is_empty_ref
+            targets,
+            index_kind=index_kind,
+            is_empty_ref=is_empty_ref,
+            **open_kwargs,
         )
 
 
