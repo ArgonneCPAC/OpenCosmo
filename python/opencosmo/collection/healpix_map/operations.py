@@ -73,7 +73,7 @@ def take_rows_unsorted(state: HealpixMapState, rows: np.ndarray) -> HealpixMapSt
     ``rows`` is assumed to be sorted.
     """
     dataset = state.dataset
-    taken = st.take_rows(replace(dataset, sort_key=None), rows)
+    taken = dsops.take_rows(replace(dataset, sort_key=None), rows)
     return __with_dataset(state, replace(taken, sort_key=dataset.sort_key))
 
 
@@ -229,8 +229,8 @@ def with_resolution(state: HealpixMapState, nside: int) -> HealpixMapState:
 
 def make_schema(state: HealpixMapState, path: str) -> Schema:
     # Rows are written in raw order to match the pixels in the header region.
-    dataset = st.select(replace(state.dataset, sort_key=None), set(state.columns))
-    ds_schema = st.make_schema(dataset, "/".join([path, "data"]))
+    dataset = dsops.select(replace(state.dataset, sort_key=None), set(state.columns))
+    ds_schema = dsops.make_schema(dataset, "/".join([path, "data"]))
     schema = make_map_schema(
         "/",
         FileEntry.HEALPIX_MAP,

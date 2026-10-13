@@ -2,32 +2,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional
 
-from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo import facade
 from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
-from opencosmo.collection.structure import structure as sc
 from opencosmo.collection.structure.state import StructureState
-from opencosmo.dataset import Dataset
-from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
-    from collections.abc import KeysView, Mapping
+    from collections.abc import KeysView
 
     import astropy.units as u
     import numpy as np
 
-    from opencosmo.collection.protocols import Collection
-    from opencosmo.collection.simulation.state import SimulationChild
+    from opencosmo.collection.lightcone.lightcone import Lightcone
+    from opencosmo.collection.structure.structure import StructureCollection
     from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.dataset import Dataset
     from opencosmo.dataset.dataset import OpenCosmoData
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
-    from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region
 
-    UserChild = Dataset | lc.Lightcone | sc.StructureCollection
+    UserChild = Dataset | Lightcone | StructureCollection
 
 
 class SimulationCollection:
@@ -41,62 +37,10 @@ class SimulationCollection:
     def __init__(self, state: simst.SimulationState):
         self.__state = state
 
-    @classmethod
-    def from_datasets(
-        cls,
-        datasets: Mapping[str, Dataset | lc.Lightcone | Collection],
-        match_set: DatasetMatchSet | None = None,
-    ) -> SimulationCollection:
-        """
-        Create a simulation collection from datasets, lightcones, or structure
-        collections drawn from different simulations.
-
-        Parameters
-        ----------
-        datasets: Mapping[str, Dataset | Lightcone | StructureCollection]
-            The members of the collection, keyed by simulation name.
-
-        match_set: DatasetMatchSet, optional
-            Row matching between the datasets. Only supported when every member
-            is a :py:class:`Dataset <opencosmo.Dataset>`.
-
-        Returns
-        -------
-        collection: opencosmo.SimulationCollection
-
-        Raises
-        ------
-        ValueError
-            If a member is not a dataset, lightcone, or structure collection, or
-            a match set is given for members that are not all datasets.
-        """
-        members: dict[str, SimulationChild] = {}
-        for name, value in datasets.items():
-            if not isinstance(value, (Dataset, lc.Lightcone, sc.StructureCollection)):
-                raise ValueError(
-                    "Simulation collection only accepts datasets, lightcones, "
-                    "and structure collections"
-                )
-            members[name] = value._state
-        return cls(simst.from_parts(members, match_set))
-
-    @property
-    def _state(self) -> simst.SimulationState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
-
     def __with_state(self, state: simst.SimulationState) -> SimulationCollection:
         if state is self.__state:
             return self
         return SimulationCollection(state)
-
-    @staticmethod
-    def __wrap(child: SimulationChild) -> UserChild:
-        if isinstance(child, DatasetState):
-            return Dataset(child)
-        if isinstance(child, StructureState):
-            return sc.StructureCollection(child)
-        return lc.Lightcone(child)
 
     def __getattr__(self, key: str):
         if key == "_SimulationCollection__state":
@@ -119,11 +63,11 @@ class SimulationCollection:
         return dict.fromkeys(simst.public_keys(self.__state)).keys()
 
     def values(self):
-        return [self.__wrap(child) for child in self.__state.children.values()]
+        return [facade.wrap(child) for child in self.__state.children.values()]
 
     def items(self):
         return {
-            name: self.__wrap(child) for name, child in self.__state.children.items()
+            name: facade.wrap(child) for name, child in self.__state.children.items()
         }.items()
 
     def __len__(self):
@@ -133,7 +77,7 @@ class SimulationCollection:
         return iter(self.keys())
 
     def __getitem__(self, key: str):
-        return self.__wrap(simst.view(self.__state, key))
+        return facade.wrap(simst.view(self.__state, key))
 
     def __enter__(self):
         return self
@@ -149,10 +93,6 @@ class SimulationCollection:
         return (
             f"SimulationCollection({n_collections} collections, {n_datasets} datasets)"
         )
-
-    @classmethod
-    def open(cls, targets: list[DatasetTarget], **kwargs) -> Collection | Dataset:
-        raise NotImplementedError()
 
     def make_schema(self, path: str) -> Schema:
         return simops.make_schema(self.__state, path)

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
 
-import opencosmo.dataset.state as st
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.dataset import operations as dsops
 from opencosmo.index import into_array
@@ -93,7 +92,9 @@ def rebuild_top_host_idx(top_host_idx, index):
 
 def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
     index_array = into_array(new_index)
-    top_host_idx = st.get_data(st.select(dataset, {"top_host_idx"}))["top_host_idx"]
+    top_host_idx = dsops.get_data(
+        dsops.select(dataset, "top_host_idx"), "numpy", wrap_single=True
+    )["top_host_idx"]
     unique_in_sample = np.unique(top_host_idx[index_array])
 
     missing_hosts = np.setdiff1d(unique_in_sample, index_array)
@@ -120,7 +121,7 @@ def _is_synthetic_galaxies_with_top_host_idx(obj) -> bool:
 
 @hook(
     HookPoint.DatasetOpen,
-    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.dataset),
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.state),
 )
 def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
     top_host_idx = EvaluatedColumn(
@@ -132,10 +133,10 @@ def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
         strategy=EvaluateStrategy.VECTORIZE,
         no_cache=True,
     )
-    new_dataset = ctx.dataset.with_new_columns(
-        updated_host_idx=top_host_idx, allow_overwrite=True
+    new_state = dsops.with_new_columns(
+        ctx.state, allow_overwrite=True, updated_host_idx=top_host_idx
     )
-    return dataclasses.replace(ctx, dataset=new_dataset)
+    return dataclasses.replace(ctx, state=new_state)
 
 
 @hook(

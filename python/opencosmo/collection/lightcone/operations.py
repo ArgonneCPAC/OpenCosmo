@@ -10,7 +10,7 @@ import numpy as np
 from astropy.table import vstack  # type: ignore
 
 from opencosmo.collection.healpix_map import operations as mapops
-from opencosmo.collection.healpix_map.healpix_map import HealpixMap
+from opencosmo.collection.healpix_map.state import HealpixMapState
 from opencosmo.collection.lightcone import io as lcio
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.lightcone import utils as lcutils
@@ -64,7 +64,6 @@ if TYPE_CHECKING:
     import astropy.units as u
     import numpy.typing as npt
 
-    from opencosmo.collection.healpix_map.state import HealpixMapState
     from opencosmo.collection.lightcone.scope import LightconeScope
     from opencosmo.collection.lightcone.state import LeafKey, LightconeState
     from opencosmo.column.column import (
@@ -100,12 +99,11 @@ def open_state(
 
         step = target.header.file.step
         name = target.name.removeprefix(f"{step}_")
-        dataset = iopen.open_dataset(
+        groups[step if step is not None else i][name] = iopen.open_dataset(
             target,
             index_spec_for(index_kind, is_empty_ref, is_source=True),
             open_kwargs=open_kwargs,
         )
-        groups[step if step is not None else i][name] = dataset._state
 
     leaves = [
         ((step,), leaf) if len(group) == 1 else ((step, name), leaf)
@@ -127,8 +125,8 @@ def open_state(
                 index_kind, is_empty_ref, is_source=True, is_replicated=True
             ),
         )
-        assert isinstance(opened, HealpixMap)
-        healpix_map = opened._state
+        assert isinstance(opened, HealpixMapState)
+        healpix_map = opened
 
     return from_dataset_states(leaves, maps=healpix_map, **open_kwargs)
 

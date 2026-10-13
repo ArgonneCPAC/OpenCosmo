@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Iterable, Optional
 import healpy as hp
 import numpy as np
 
-from opencosmo.dataset import state as st
+from opencosmo.dataset import operations as dsops
 from opencosmo.io.schema import FileEntry, add_metadata, make_schema
 from opencosmo.mpi import get_all_entries, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
@@ -169,7 +169,7 @@ def stack_lightcone_datasets_in_schema(
         dataset_list = next(iter(datasets.values()))
         dataset_name = next(iter(datasets.keys()))
 
-        schema = st.make_schema(dataset_list[0], path)
+        schema = dsops.make_schema(dataset_list[0], path)
         header = sync_headers(dataset_list, redshift_range)
         schema.children["header"] = header
         return {dataset_name: schema}
@@ -184,7 +184,7 @@ def stack_lightcone_datasets_in_schema(
             get_stacked_lightcone_order([], -1)
             sync_headers(ds_list, None)
             continue
-        schemas = [st.make_schema(dataset, path) for dataset in ds_list]
+        schemas = [dsops.make_schema(dataset, path) for dataset in ds_list]
         index_names = list(schemas[0].children["index"].children.keys())
         index_names.sort()
         max_level = int(index_names[-1][-1])

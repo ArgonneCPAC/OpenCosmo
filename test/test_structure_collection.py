@@ -1,17 +1,17 @@
 import numpy as np
 import pytest
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
 from opencosmo.collection.structure import links
 
 
-def _link_slot(collection, link_name):
+def _link_slot(state, link_name):
     """Per-source-row link slot values (idx with -1, or chunk sizes).
 
-    Reads straight off the collection's match sets -- the same primitive the
+    Reads straight off the state's match sets -- the same primitive the
     library itself uses to decide which structures are empty.
     """
-    state = collection._state
     values, _ = links.slot_values(state.match_sets, state.source, link_name)
     return values
 
@@ -243,7 +243,7 @@ def test_lightcone_ignore_empty(lightcone_files):
         for p in lightcone_files[component]
     ]
 
-    kept_all = oc.open(*paths, ignore_empty=False)
+    kept_all = open_state(*paths, ignore_empty=False)
     kept_nonempty = oc.open(*paths)
 
     # Compute the expected kept set: halos with both a profile and a galaxy,
@@ -274,7 +274,7 @@ def test_lightcone_ignore_empty_only_considers_opened(lightcone_files):
     ]
     collection = oc.open(*paths)
 
-    kept_all = oc.open(*paths, ignore_empty=False)
+    kept_all = open_state(*paths, ignore_empty=False)
     expected = int((_link_slot(kept_all, "halo_profiles") != -1).sum())
 
     assert len(collection) == expected

@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from astropy.table import Table
     from mpi4py import MPI
 
-    from opencosmo import Dataset
     from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
@@ -35,13 +34,13 @@ class HookPoint(StrEnum):
 
 @dataclass(frozen=True)
 class DatasetOpenCtx:
-    """Fired once per dataset after it is opened from disk.
+    """Fired once per DatasetState after it is opened from disk.
 
     open_kwargs holds any keyword arguments the user passed to opencosmo.open().
-    Plugins can inspect them to conditionally modify the dataset.
+    Plugins can inspect them to conditionally modify the state.
     """
 
-    dataset: Dataset
+    state: DatasetState
     open_kwargs: dict[str, Any]
 
 

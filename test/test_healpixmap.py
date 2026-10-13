@@ -8,6 +8,7 @@ from astropy.io import fits
 from healsparse import HealSparseMap
 from opencosmo.collection.healpix_map import operations as mapops
 from opencosmo.handler.memory import InMemoryHandler
+from opencosmo.io.io import open_state
 from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
@@ -156,17 +157,16 @@ def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
     also sent to the cache.
     """
 
-    ds = oc.open(healpix_map_path)
-    ds.get_data()
-    output = ds.with_resolution(128)
+    state = open_state(healpix_map_path)
+    mapops.get_data(state, "healsparse")
+    output = mapops.with_resolution(state, 128)
 
     # First dataset backed by actual file, data should be cached
-    dataset = ds._state.dataset
-    assert len(dataset.cache.columns) > 1
+    assert len(state.dataset.cache.columns) > 1
 
     # New dataset entirely in-memory, so no cache
-    output.get_data()
-    downgraded_dataset = output._state.dataset
+    mapops.get_data(output, "healsparse")
+    downgraded_dataset = output.dataset
     cache = downgraded_dataset.cache
     handler = downgraded_dataset.raw_data_handler
     assert isinstance(handler, InMemoryHandler)

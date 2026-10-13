@@ -20,10 +20,10 @@ from opencosmo.io.discover import (
 if TYPE_CHECKING:
     from uuid import UUID
 
-    import opencosmo as oc
     from opencosmo.io.discover import FileLayout
     from opencosmo.io.io import MpiMode
     from opencosmo.io.iopen import DatasetTarget
+    from opencosmo.io.specs import SpecState
 
 
 @dataclass(frozen=True)
@@ -262,10 +262,10 @@ class SpecBuilder(Protocol):
     """
     Contract for file spec builders (T3 concrete specs implement this).
 
-    Each FileSpec subclass knows how to build a Dataset or Collection from
-    a list of DatasetTargets. The spec is responsible for routing to the appropriate
-    builder (open_dataset, Lightcone.open, StructureCollection.open) with
-    the correct set of targets for that collection type.
+    Each FileSpec knows how to build a backend state from a list of
+    DatasetTargets. The spec is responsible for routing to the appropriate
+    builder (open_dataset, lcops.open_state, scops.open_state) with the correct
+    set of targets for that collection type.
     """
 
     def build_from_targets(
@@ -275,7 +275,7 @@ class SpecBuilder(Protocol):
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
-    ) -> oc.Dataset | oc.collection.Collection: ...
+    ) -> SpecState: ...
 
 
 def build_from_assignment(
@@ -283,7 +283,7 @@ def build_from_assignment(
     layouts: tuple[FileLayout, ...],
     matched_spec: SpecBuilder,
     open_kwargs: dict[str, Any],
-) -> tuple[oc.Dataset | oc.collection.Collection | None, frozenset[UUID]]:
+) -> tuple[SpecState | None, frozenset[UUID]]:
     """
     Reopen only this rank's files and pair each discovered group with its handle.
 
@@ -308,8 +308,8 @@ def build_from_assignment(
 
     Returns
     -------
-    tuple[oc.Dataset | oc.collection.Collection | None, frozenset[UUID]]
-        A 2-tuple of: the built collection or dataset (or None if this scope
+    tuple[SpecState | None, frozenset[UUID]]
+        A 2-tuple of: the built state (or None if this scope
         was entirely filtered out by load/if conditions), and the frozenset of
         UUIDs of the datasets this rank actually opened *as map endpoints*.
 

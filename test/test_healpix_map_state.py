@@ -2,9 +2,11 @@ import astropy.units as u
 import healpy as hp
 import numpy as np
 import pytest
+from opencosmo.collection.healpix_map import operations as mapops
 from opencosmo.collection.healpix_map import state as mapst
 from opencosmo.dataset.state import state_from_evaluated_data, state_in_memory
 from opencosmo.handler.memory import InMemoryHandler
+from opencosmo.io.io import open_state
 from opencosmo.spatial.region import HealpixRegion
 
 import opencosmo as oc
@@ -17,14 +19,15 @@ def full_map(test_data):
 
 
 @pytest.fixture
-def full_state(full_map):
-    return full_map._state
+def full_state(test_data):
+    return open_state(test_data.healpix_map)
 
 
 @pytest.fixture
-def small_state(full_map):
-    small_map = full_map.bound(oc.make_cone((45 * u.deg, -45 * u.deg), 2 * u.deg))
-    return small_map._state
+def small_state(full_state):
+    return mapops.bound(
+        full_state, oc.make_cone((45 * u.deg, -45 * u.deg), 2 * u.deg), False
+    )
 
 
 @pytest.fixture
@@ -141,17 +144,19 @@ def test_worked_example_downgrade_then_filter(memory_state):
     assert np.array_equal(refiltered.pixels, [10])
 
 
-def test_downgraded_map_state(full_map):
-    small_map = full_map.bound(oc.make_cone((45 * u.deg, -45 * u.deg), 2 * u.deg))
-    downgraded = small_map.with_resolution(small_map.nside // 2)
-    dataset = downgraded._state.dataset
-    state = mapst.HealpixMapState(dataset, downgraded.pixels)
+def test_with_resolution_at_same_nside_is_identity(small_state):
+    assert mapops.with_resolution(small_state, small_state.nside) is small_state
+
+
+def test_downgraded_map_state(small_state):
+    downgraded = mapops.with_resolution(small_state, small_state.nside // 2)
+    state = mapst.HealpixMapState(downgraded.dataset, downgraded.pixels)
 
     assert state.nside == downgraded.nside
     assert np.array_equal(state.pixels, downgraded.pixels)
 
-    filtered = downgraded.filter(oc.col("tsz") < 0)
-    filtered_state = _with_dataset(state, filtered._state.dataset)
+    filtered = mapops.filter(downgraded, oc.col("tsz") < 0)
+    filtered_state = _with_dataset(state, filtered.dataset)
     assert np.array_equal(filtered_state.pixels, filtered.pixels)
 
 

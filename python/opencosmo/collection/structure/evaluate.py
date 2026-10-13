@@ -5,10 +5,9 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from astropy.units import Quantity  # type: ignore
 
-from opencosmo.collection.lightcone import lightcone as lc
+from opencosmo import facade
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.structure import operations as scops
-from opencosmo.collection.structure import structure as sc
 from opencosmo.collection.structure.state import StructureState, public_keys
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import concat_chunks, stack_rows
@@ -144,10 +143,8 @@ def __make_input(structure: Mapping[str, Any], format: str = "astropy"):
             values[name] = dsops.get_data(
                 element, format, unpack=False, wrap_single=True
             )
-        elif isinstance(element, StructureState):
-            values[name] = sc.StructureCollection(element)
-        elif isinstance(element, LightconeState):
-            values[name] = lc.Lightcone(element)
+        elif isinstance(element, (StructureState, LightconeState)):
+            values[name] = facade.wrap(element)
         elif isinstance(element, Quantity) and format != "astropy":
             values[name] = element.value
         else:

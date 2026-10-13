@@ -4,8 +4,10 @@ import astropy.units as u
 import numpy as np
 import pytest
 from opencosmo.io.discover import discover_file
+from opencosmo.io.io import open_state
 
 import opencosmo as oc
+from opencosmo.dataset import operations as dsops
 
 
 @pytest.fixture
@@ -30,15 +32,15 @@ def test_descriptions(input_path):
     assert isinstance(ds.descriptions, dict)
 
 
-def test_dataset_uuid_matches_discovery_and_survives_transformations(input_path):
-    """Test that dataset identity is preserved from opening through transforms."""
-    dataset = oc.open(input_path)
+def test_state_uuid_matches_discovery_and_survives_transformations(input_path):
+    """Test that dataset-state identity is preserved through transformations."""
+    state = open_state(input_path)
     discovered_uuid = discover_file(input_path).groups[0].uuid
 
-    assert dataset.uuid == discovered_uuid
-    assert dataset.uuid == dataset.filter(oc.col("sod_halo_mass") > 0).uuid
-    assert dataset.uuid == dataset.select("fof_halo_mass").uuid
-    assert dataset.uuid == dataset.take(10).uuid
+    assert state.uuid == discovered_uuid
+    assert state.uuid == dsops.filter(state, oc.col("sod_halo_mass") > 0).uuid
+    assert state.uuid == dsops.select(state, "fof_halo_mass").uuid
+    assert state.uuid == dsops.take(state, 10, "start", "global").uuid
 
 
 def test_filter_oom(input_path, max_mass):
@@ -446,8 +448,7 @@ def test_evaluate_to_dataset_allows_different_length(input_path):
 
 def test_evaluate_to_dataset_uses_baseline_units_and_does_not_cache(input_path):
     original = oc.open(input_path).take(5, at="start")
-    base_convention = original._state.unit_handler.base_convention.value
-    baseline = original.with_units(base_convention)
+    baseline = original.with_units(original.header.file.unit_convention)
     source = original.with_units("physical", conversions={u.Mpc: u.km})
     seen_units = []
 
@@ -463,18 +464,10 @@ def test_evaluate_to_dataset_uses_baseline_units_and_does_not_cache(input_path):
     data = result.get_data()
 
     assert seen_units == [expected.unit]
-    assert result._state.unit_handler.current_convention.value == "physical"
     expected_output = original.with_units("physical").get_data()["fof_halo_center_x"]
     assert data["position"].unit == u.km
     np.testing.assert_allclose(data["position"].value, expected_output.to_value(u.km))
     np.testing.assert_array_equal(data["row"], np.arange(5))
-    assert result._state.cache.columns == set()
-
-    result.get_data()
-    converted = result.with_units("physical", position=u.m)
-    converted.get_data()
-    assert result._state.cache.columns == set()
-    assert converted._state.cache.columns == set()
 
     source_data = source.get_data()["fof_halo_center_x"]
     assert source_data.unit == u.km
@@ -493,11 +486,44 @@ def test_evaluate_to_dataset_converts_conventions_without_caching(input_path):
 
     assert actual.unit == expected.unit
     np.testing.assert_allclose(actual.value, expected.value)
-    assert result._state.cache.columns == set()
-    assert physical._state.cache.columns == set()
 
     taken = physical.take(2, at="start").get_data()
     np.testing.assert_allclose(taken.value, expected[:2].value)
+
+
+def _copy_position(fof_halo_center_x):
+    return {"position": fof_halo_center_x}
+
+
+def test_evaluate_to_dataset_state_restores_units_without_caching(input_path):
+    source = dsops.take(open_state(input_path), 5, "start", "local")
+    source = dsops.with_units(source, "physical", {u.Mpc: u.km})
+
+    result = dsops.evaluate_to_dataset(source, _copy_position, vectorize=True)
+
+    assert result.unit_handler.current_convention.value == "physical"
+    assert (
+        result.unit_handler.blanket_conversions
+        == source.unit_handler.blanket_conversions
+    )
+    assert result.cache.columns == set()
+
+    dsops.get_data(result, "astropy")
+    converted = dsops.with_units(result, "physical", {}, position=u.m)
+    dsops.get_data(converted, "astropy")
+    assert result.cache.columns == set()
+    assert converted.cache.columns == set()
+
+
+def test_evaluate_to_dataset_state_converts_conventions_without_caching(input_path):
+    source = dsops.take(open_state(input_path), 5, "start", "local")
+
+    result = dsops.evaluate_to_dataset(source, _copy_position, vectorize=True)
+    physical = dsops.with_units(result, "physical", {})
+    dsops.get_data(physical, "astropy")
+
+    assert result.cache.columns == set()
+    assert physical.cache.columns == set()
 
 
 def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):

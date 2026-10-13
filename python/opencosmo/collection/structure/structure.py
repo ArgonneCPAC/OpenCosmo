@@ -12,10 +12,10 @@ from typing import (
 )
 
 import opencosmo as oc
+from opencosmo import facade
 from opencosmo.collection.lightcone import lightcone as lc
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure import state as scst
-from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
     import astropy.units as u
@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
 
@@ -46,28 +45,13 @@ class StructureCollection:
     def __init__(self, state: scst.StructureState):
         self.__state = state
 
-    @property
-    def _state(self) -> scst.StructureState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
-
     def __with_state(self, state: scst.StructureState) -> StructureCollection:
         if state is self.__state:
             return self
         return StructureCollection(state)
 
-    @staticmethod
-    def __wrap(
-        child: scst.StructureChild,
-    ) -> oc.Dataset | oc.Lightcone | StructureCollection:
-        if isinstance(child, DatasetState):
-            return oc.Dataset(child)
-        if isinstance(child, scst.StructureState):
-            return StructureCollection(child)
-        return lc.Lightcone(child)
-
     def __repr__(self):
-        source = StructureCollection.__wrap(self.__state.source)
+        source = facade.wrap(self.__state.source)
         structure_type = self.__state.dtype.split("_")[0] + "s"
         is_lightcone = isinstance(source, lc.Lightcone)
         keys = list(self.keys())
@@ -93,24 +77,6 @@ class StructureCollection:
             return self.__state.header.parameters[key]
         except KeyError:
             return object.__getattribute__(self, key)
-
-    @classmethod
-    def open(
-        cls,
-        targets: list[DatasetTarget],
-        ignore_empty=True,
-        index_kind: str = "none",
-        is_empty_ref: bool = False,
-        **kwargs,
-    ) -> StructureCollection:
-        return cls(
-            scops.open_state(
-                targets,
-                ignore_empty,
-                index_kind=index_kind,
-                is_empty_ref=is_empty_ref,
-            )
-        )
 
     @property
     def dtype(self):
@@ -178,7 +144,7 @@ class StructureCollection:
         """
         return cast(
             "oc.Dataset | StructureCollection",
-            StructureCollection.__wrap(scst.view(self.__state, key)),
+            facade.wrap(scst.view(self.__state, key)),
         )
 
     def __enter__(self):
@@ -1023,9 +989,7 @@ class StructureCollection:
         """
         for structure in scops.iter_objects(self.__state, data_types):
             yield {
-                name: value
-                if isinstance(value, dict)
-                else StructureCollection.__wrap(value)
+                name: value if isinstance(value, dict) else facade.wrap(value)
                 for name, value in structure.items()
             }
 

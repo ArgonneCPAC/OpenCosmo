@@ -209,7 +209,7 @@ def __open_state(
     target: DatasetTarget, index_kind: str, is_empty_ref: bool, *, is_source: bool
 ) -> DatasetState:
     spec = index_spec_for(index_kind, is_empty_ref, is_source=is_source)
-    return io.iopen.open_dataset(target, spec)._state
+    return io.iopen.open_dataset(target, spec)
 
 
 def __lightcone_of(datasets: Iterable[DatasetState]) -> LightconeState:

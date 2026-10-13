@@ -11,12 +11,14 @@ import mpi4py
 import numpy as np
 import pytest
 from mpi4py import MPI
+from opencosmo.io.io import open_state
 from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
 from pytest_mpi.parallel_assert import parallel_assert
 
 import opencosmo as oc
 from opencosmo.analysis import gather, reduce
 from opencosmo.collection.simulation import SimulationCollection
+from opencosmo.collection.simulation import state as simst
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -710,11 +712,13 @@ def test_simcollection_structure_write(
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = per_test_dir / "output.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
-    sc0 = oc.open(*scidac_000_paths)
-    sc1 = oc.open(*scidac_001_paths)
-
-    collection = oc.SimulationCollection.from_datasets(
-        {"scidac_000": sc0, "scidac_001": sc1}
+    collection = SimulationCollection(
+        simst.from_parts(
+            {
+                "scidac_000": open_state(*scidac_000_paths),
+                "scidac_001": open_state(*scidac_001_paths),
+            }
+        )
     )
 
     oc.write(temporary_path, collection)
@@ -828,13 +832,21 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = per_test_dir / "collection.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
-    data = oc.open(multi_path)
+    state = open_state(multi_path)
+    data = SimulationCollection(state)
 
     halo_tags = {}
     if comm.Get_rank() == 0:
         key_to_drop = next(iter(data.keys()))
-        new_data = {name: ds for name, ds in data.items() if name != key_to_drop}
-        data = SimulationCollection.from_datasets(new_data)
+        data = SimulationCollection(
+            simst.from_parts(
+                {
+                    name: member
+                    for name, member in state.members.items()
+                    if name != key_to_drop
+                }
+            )
+        )
 
     for name, sim in data.items():
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
@@ -969,11 +981,13 @@ def test_reduce_average(input_path, profile_path, stacked_profile_path):
 
 @pytest.fixture
 def simulation_collection(test_data):
-    return oc.SimulationCollection.from_datasets(
-        {
-            "scidac_000": oc.open(test_data.snapshot.scidac(0).halo_properties),
-            "scidac_001": oc.open(test_data.snapshot.scidac(1).halo_properties),
-        }
+    return SimulationCollection(
+        simst.from_parts(
+            {
+                "scidac_000": open_state(test_data.snapshot.scidac(0).halo_properties),
+                "scidac_001": open_state(test_data.snapshot.scidac(1).halo_properties),
+            }
+        )
     )
 
 

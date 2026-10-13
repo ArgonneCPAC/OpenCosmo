@@ -28,7 +28,6 @@ from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_sel
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import to_numpy_dict, verify_format
 from opencosmo.dataset.state import DatasetState
-from opencosmo.dataset.state import make_schema as make_dataset_schema
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
 
@@ -754,7 +753,7 @@ __MIN_LIGHTCONE_DATASET_SIZE = 100_000
 
 def child_schema(child: StructureChild, path: str, no_stack: bool) -> Schema:
     if isinstance(child, DatasetState):
-        return make_dataset_schema(child, path)
+        return dsops.make_schema(child, path)
     if isinstance(child, LightconeState):
         return lcops.make_schema(child, path, __MIN_LIGHTCONE_DATASET_SIZE, no_stack)
     return make_schema(child, path)
