@@ -79,11 +79,6 @@ class Lightcone:
     def items(self) -> list[tuple[int | str, Dataset | Lightcone]]:
         return [(key, self[key]) for key in self]
 
-    @property
-    def _state(self) -> lcst.LightconeState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
-
     def __repr__(self):
         """
         A basic string representation of the dataset

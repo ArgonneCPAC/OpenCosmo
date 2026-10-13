@@ -37,11 +37,6 @@ class SimulationCollection:
     def __init__(self, state: simst.SimulationState):
         self.__state = state
 
-    @property
-    def _state(self) -> simst.SimulationState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
-
     def __with_state(self, state: simst.SimulationState) -> SimulationCollection:
         if state is self.__state:
             return self

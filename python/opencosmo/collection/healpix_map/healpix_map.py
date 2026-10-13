@@ -39,11 +39,6 @@ class HealpixMap:
     def __init__(self, state: HealpixMapState):
         self.__state = state
 
-    @property
-    def _state(self) -> HealpixMapState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
-
     def __getattr__(self, key: str):
         try:
             return self.header.parameters[key]

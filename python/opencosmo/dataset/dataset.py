@@ -75,11 +75,6 @@ class Dataset:
     def __dir__(self):
         return list(self.header.parameters.keys()) + super().__dir__()
 
-    @property
-    def _state(self) -> st.DatasetState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
-
     def __enter__(self):
         # Need to write tests
         return self

@@ -45,11 +45,6 @@ class StructureCollection:
     def __init__(self, state: scst.StructureState):
         self.__state = state
 
-    @property
-    def _state(self) -> scst.StructureState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
-
     def __with_state(self, state: scst.StructureState) -> StructureCollection:
         if state is self.__state:
             return self
