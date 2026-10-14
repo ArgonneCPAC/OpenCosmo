@@ -1,0 +1,1 @@
+Fix a bug that could cause memory overflows when performing sparse reads on wide columns.
