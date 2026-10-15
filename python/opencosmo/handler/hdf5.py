@@ -3,12 +3,8 @@ from __future__ import annotations
 from functools import cached_property
 from typing import TYPE_CHECKING, Iterable, Optional
 
+import h5py
 import numpy as np
-from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import (
-    ColumnWriter,
-)
-
 from opencosmo.index import (
     SimpleIndex,
     get_data,
@@ -16,12 +12,14 @@ from opencosmo.index import (
     into_array,
     take,
 )
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import (
+    ColumnWriter,
+)
 
 if TYPE_CHECKING:
-    import h5py
-    from opencosmo.io.schema import Schema
-
     from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
 
 
 class Hdf5Handler:
@@ -54,7 +52,7 @@ class Hdf5Handler:
     def __handle(self, name: str) -> h5py.Dataset:
         handle = self.__columns.get(name)
         if handle is None:
-            handle = self.__data_group[name]
+            handle = _open_column(self.__data_group, name)
             self.__columns[name] = handle
             # Modified in-place so downstream handlers share.
         return handle
@@ -142,3 +140,24 @@ class Hdf5Handler:
         if start < 0 or end > len(indices):
             raise ValueError("Indices out of range")
         return indices[start:end]
+
+
+def _open_column(data_group: h5py.Group, name: str) -> h5py.Dataset:
+    """
+    Open a column with a chunk cache that holds at least one of its chunks.
+    Successive small reads, such as iterating over structures, then decompress
+    each chunk once instead of once per read.
+    """
+    column = data_group[name]
+    if column.chunks is None:
+        return column
+    chunk_bytes = column.dtype.itemsize * int(np.prod(column.chunks))
+    n_slots, n_bytes, w0 = column.id.get_access_plist().get_chunk_cache()
+    if chunk_bytes <= n_bytes:
+        return column
+    # HDF5 applies cache settings only when a dataset is first opened, so the
+    # probing handle must be released before reopening.
+    del column
+    access = h5py.h5p.create(h5py.h5p.DATASET_ACCESS)
+    access.set_chunk_cache(n_slots, chunk_bytes, w0)
+    return h5py.Dataset(h5py.h5d.open(data_group.id, name.encode(), access))

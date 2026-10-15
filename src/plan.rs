@@ -13,12 +13,14 @@ pub(crate) mod plan {
         Bound<'py, PyArray1<i64>>,
         Bound<'py, PyArray1<i64>>,
         Bound<'py, PyArray1<i64>>,
+        Bound<'py, PyArray1<i64>>,
     );
 
-    /// Windows of consecutive storage chunks. Window `w` holds rows
-    /// `[row_lo[w], row_hi[w])` and covers index positions `[pos_lo[w], pos_hi[w])`
-    /// (elements of a simple index, segments of a chunked index). Its first selected
-    /// row lands at `out_lo[w]` in the output.
+    /// Windows of consecutive storage chunks. Window `w` spans rows
+    /// `[row_lo[w], row_hi[w])`, from its first selected row to just past its last,
+    /// and covers index positions `[pos_lo[w], pos_hi[w])` (elements of a simple
+    /// index, segments of a chunked index). Its selected rows land at
+    /// `[out_lo[w], out_hi[w])` in the output.
     #[derive(Default)]
     struct Windows {
         row_lo: Vec<i64>,
@@ -26,24 +28,28 @@ pub(crate) mod plan {
         pos_lo: Vec<i64>,
         pos_hi: Vec<i64>,
         out_lo: Vec<i64>,
+        out_hi: Vec<i64>,
     }
 
-    /// The window currently being filled, in chunk ids.
+    /// The window currently being filled. Chunk ids bound its growth; rows record
+    /// the span it selects.
     struct Open {
         chunk_lo: i64,
         chunk_last: i64,
+        row_lo: i64,
+        row_hi: i64,
         pos_lo: i64,
         out_lo: i64,
     }
 
     impl Windows {
-        fn close(&mut self, open: &Open, pos_hi: i64, chunk_rows: i64, n_rows: i64) {
-            self.row_lo.push(open.chunk_lo * chunk_rows);
-            self.row_hi
-                .push(((open.chunk_last + 1) * chunk_rows).min(n_rows));
+        fn close(&mut self, open: &Open, pos_hi: i64, out_hi: i64) {
+            self.row_lo.push(open.row_lo);
+            self.row_hi.push(open.row_hi);
             self.pos_lo.push(open.pos_lo);
             self.pos_hi.push(pos_hi);
             self.out_lo.push(open.out_lo);
+            self.out_hi.push(out_hi);
         }
 
         fn into_py<'py>(self, py: Python<'py>) -> PyWindows<'py> {
@@ -53,6 +59,7 @@ pub(crate) mod plan {
                 Array1::from_vec(self.pos_lo).into_pyarray(py),
                 Array1::from_vec(self.pos_hi).into_pyarray(py),
                 Array1::from_vec(self.out_lo).into_pyarray(py),
+                Array1::from_vec(self.out_hi).into_pyarray(py),
             )
         }
     }
@@ -117,21 +124,25 @@ pub(crate) mod plan {
             if extends(&open, chunk, max_chunks) {
                 if let Some(w) = open.as_mut() {
                     w.chunk_last = chunk;
+                    w.row_hi = row + 1;
                 }
                 continue;
             }
             if let Some(w) = &open {
-                windows.close(w, pos, chunk_rows, n_rows);
+                windows.close(w, pos, pos);
             }
             open = Some(Open {
                 chunk_lo: chunk,
                 chunk_last: chunk,
+                row_lo: row,
+                row_hi: row + 1,
                 pos_lo: pos,
                 out_lo: pos,
             });
         }
         if let Some(w) = &open {
-            windows.close(w, index.len() as i64, chunk_rows, n_rows);
+            let end = index.len() as i64;
+            windows.close(w, end, end);
         }
         Ok(Some(windows))
     }
@@ -197,32 +208,34 @@ pub(crate) mod plan {
             let mut row = start;
             while row < end {
                 let chunk = row / chunk_rows;
+                let out_row = out + row - start;
                 if !extends(&open, chunk, max_chunks) {
-                    if let Some(w) = &open {
-                        windows.close(w, pos, chunk_rows, n_rows);
+                    if let Some(w) = open.take() {
+                        windows.close(&w, pos, out_row);
                     }
-                    open = Some(Open {
-                        chunk_lo: chunk,
-                        chunk_last: chunk,
-                        pos_lo: pos,
-                        out_lo: out + row - start,
-                    });
                 }
-                let Some(w) = open.as_mut() else {
-                    unreachable!("a window is always open here")
-                };
+                let w = open.get_or_insert(Open {
+                    chunk_lo: chunk,
+                    chunk_last: chunk,
+                    row_lo: row,
+                    row_hi: row,
+                    pos_lo: pos,
+                    out_lo: out_row,
+                });
                 w.chunk_last = last_chunk.min(w.chunk_lo + max_chunks - 1);
                 row = end.min((w.chunk_last + 1) * chunk_rows);
+                w.row_hi = row;
                 if row < end {
                     // The window is full and the segment continues into the next one.
-                    windows.close(w, pos + 1, chunk_rows, n_rows);
-                    open = None;
+                    if let Some(w) = open.take() {
+                        windows.close(&w, pos + 1, out + row - start);
+                    }
                 }
             }
             out += size;
         }
         if let Some(w) = &open {
-            windows.close(w, starts.len() as i64, chunk_rows, n_rows);
+            windows.close(w, starts.len() as i64, out);
         }
         Ok(Some(windows))
     }

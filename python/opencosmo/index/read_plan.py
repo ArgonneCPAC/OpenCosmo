@@ -2,8 +2,9 @@
 Planning for chunk-aware reads.
 
 Compressed HDF5 data can only be decompressed a whole chunk at a time. A read is
-planned as windows of consecutive storage chunks, so each chunk is fetched and
-decompressed exactly once and scratch memory stays within a fixed budget. A plan
+planned as windows over consecutive storage chunks, so each chunk is fetched and
+decompressed exactly once per read and scratch memory stays within a fixed
+budget. A plan
 holds a handful of integers per window and refers back into the index, so its
 size does not grow with the index.
 """
@@ -27,11 +28,14 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class ReadWindows:
     """
-    Window ``w`` holds rows ``[row_lo[w], row_hi[w])``, a run of whole storage
-    chunks that are all touched by the index. It covers index positions
+    Window ``w`` spans rows ``[row_lo[w], row_hi[w])``, from its first selected
+    row to just past its last. It lies in a run of consecutive storage chunks that
+    are all touched by the index: ``[row_lo // chunk_rows, ceil(row_hi /
+    chunk_rows))``, at most ``max_chunks`` of them. It covers index positions
     ``[pos_lo[w], pos_hi[w])``: elements of a simple index, or segments of a
     chunked index, the first and last of which may extend past the window. Its
-    first selected row lands at ``out_lo[w]`` in the output.
+    selected rows land at ``[out_lo[w], out_hi[w])`` in the output, so a window
+    whose output span equals its row span selects every row in it.
     """
 
     row_lo: IndexArray
@@ -39,6 +43,7 @@ class ReadWindows:
     pos_lo: IndexArray
     pos_hi: IndexArray
     out_lo: IndexArray
+    out_hi: IndexArray
 
 
 @dataclass(frozen=True)
