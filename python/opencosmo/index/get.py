@@ -6,6 +6,7 @@ import astropy.units as u
 import h5py
 import numpy as np
 
+from .direct import ChunkMap, read_direct
 from .read_plan import plan, scatter
 from .unary import get_length
 
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 
     from opencosmo.index import ChunkedIndex, DataIndex
 
+    from .direct import LastChunks
     from .read_plan import ReadPlan
 
 # Upper bound on the scratch buffer for one HDF5 read, in bytes.
@@ -35,22 +37,31 @@ def get_data(data: h5py.Dataset | np.ndarray, index: DataIndex):
 
 
 def read_columns(
-    columns: Mapping[str, h5py.Dataset], index: DataIndex
+    columns: Mapping[str, h5py.Dataset | ChunkMap],
+    index: DataIndex,
+    last_chunks: LastChunks | None = None,
 ) -> dict[str, np.ndarray]:
     """
-    Read the same rows from several HDF5 columns, in the order given. Columns
-    that share a layout share one read plan.
+    Read the same rows from several columns, in the order given. A column given
+    as a ``ChunkMap`` is read directly from its file (see ``direct``), keeping
+    its last decoded chunk in ``last_chunks``; the rest are read through HDF5.
+    Columns that share a layout share one read plan.
     """
     if get_length(index) == 0:
         return {name: np.array([], column.dtype) for name, column in columns.items()}
+    mapped = {
+        name: column for name, column in columns.items() if isinstance(column, ChunkMap)
+    }
+    output = read_direct(mapped, index, READ_BUDGET, last_chunks) if mapped else {}
     plans: dict[tuple[int, int, int], ReadPlan] = {}
-    output = {}
     for name, column in columns.items():
+        if isinstance(column, ChunkMap):
+            continue
         layout = __layout(column)
         if layout not in plans:
             plans[layout] = plan(index, *layout, READ_BUDGET)
         output[name] = __read_planned(column, plans[layout])
-    return output
+    return {name: output[name] for name in columns}
 
 
 def __layout(data: h5py.Dataset) -> tuple[int, int, int]:

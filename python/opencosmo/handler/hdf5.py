@@ -13,6 +13,7 @@ from opencosmo.index import (
     read_columns,
     take,
 )
+from opencosmo.index.direct import chunk_map
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.writer import (
     ColumnWriter,
@@ -20,6 +21,7 @@ from opencosmo.io.writer import (
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex
+    from opencosmo.index.direct import ChunkMap, LastChunks
     from opencosmo.io.schema import Schema
 
 
@@ -34,6 +36,10 @@ class Hdf5Handler:
 
     ``column_names`` comes from the discovered ``GroupLayout``, which also guarantees
     every column shares ``row_count``.
+
+    Columns stored with Blosc2 are read straight from the file (see
+    ``opencosmo.index.direct``). Their chunk maps and last decoded chunks are kept
+    per data group and shared with derived handlers, like the column handles.
     """
 
     def __init__(
@@ -43,9 +49,13 @@ class Hdf5Handler:
         index: DataIndex,
         load_conditions: Optional[dict[str, bool]] = None,
         descriptions: Optional[dict[str, str | None]] = None,
+        chunk_maps: Optional[dict[str, ChunkMap | None]] = None,
+        last_chunks: Optional[LastChunks] = None,
     ):
         self.__data_group = data_group
         self.__columns = columns
+        self.__chunk_maps = chunk_maps if chunk_maps is not None else {}
+        self.__last_chunks = last_chunks if last_chunks is not None else {}
         self.__index = index
         self.__load_conditions = load_conditions
         self.__descriptions = descriptions
@@ -57,6 +67,11 @@ class Hdf5Handler:
             self.__columns[name] = handle
             # Modified in-place so downstream handlers share.
         return handle
+
+    def __source(self, name: str) -> h5py.Dataset | ChunkMap:
+        if name not in self.__chunk_maps:
+            self.__chunk_maps[name] = chunk_map(self.__handle(name))
+        return self.__chunk_maps[name] or self.__handle(name)
 
     def __len__(self):
         return get_length(self.__index)
@@ -71,6 +86,8 @@ class Hdf5Handler:
             index,
             self.__load_conditions,
             descriptions=self.__descriptions,
+            chunk_maps=self.__chunk_maps,
+            last_chunks=self.__last_chunks,
         )
 
     @property
@@ -136,7 +153,9 @@ class Hdf5Handler:
         """ """
         # Ensure order is preserved
         return read_columns(
-            {name: self.__handle(name) for name in columns}, self.__index
+            {name: self.__source(name) for name in columns},
+            self.__index,
+            self.__last_chunks,
         )
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
