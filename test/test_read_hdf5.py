@@ -3,9 +3,10 @@ import io
 import h5py
 import hdf5plugin
 import numpy as np
+import opencosmo.index.get as get_module
 import pytest
-from opencosmo.handler.hdf5 import _open_column
-from opencosmo.index import get_data, into_array, single_chunk
+from opencosmo.handler.hdf5 import Hdf5Handler, _open_column
+from opencosmo.index import get_data, into_array, read_columns, single_chunk
 
 N_ROWS = 10_000
 CHUNK_ROWS = 256
@@ -56,8 +57,23 @@ def columns_path(tmp_path_factory):
             chunks=(CHUNK_ROWS, 7),
             compression=hdf5plugin.Blosc2(),
         )
+        f.create_dataset(
+            "same_layout",
+            data=rng.integers(0, 1000, N_ROWS).astype(np.int32),
+            chunks=(CHUNK_ROWS,),
+            compression=hdf5plugin.Blosc2(),
+        )
+        f.create_dataset(
+            "half_chunks",
+            data=rng.integers(0, 1000, N_ROWS).astype(np.int64),
+            chunks=(CHUNK_ROWS // 2,),
+            compression=hdf5plugin.Blosc2(),
+        )
         f.create_dataset("contiguous", data=np.arange(N_ROWS, dtype=np.int64))
     return path
+
+
+COLUMNS = ["chunked", "wide", "same_layout", "half_chunks", "contiguous"]
 
 
 def random_chunked(rng, n_segments, mean_size):
@@ -152,3 +168,58 @@ def test_successive_small_reads_reuse_the_cached_chunk(columns_path):
         for start in range(0, CHUNK_ROWS, 8):
             get_data(ds, single_chunk(CHUNK_ROWS + start, 8))
         assert raw.reads <= 2
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_read_columns_matches_single_column_reads(columns_path, seed):
+    with h5py.File(columns_path) as f:
+        columns = {name: f[name] for name in reversed(COLUMNS)}
+        for name, index in indices(seed).items():
+            result = read_columns(columns, index)
+            assert list(result) == list(columns), name
+            for column, values in result.items():
+                np.testing.assert_array_equal(
+                    values, get_data(columns[column], index), f"{name}/{column}"
+                )
+                assert values.dtype == columns[column].dtype
+
+
+def test_read_columns_plans_once_per_layout(columns_path, monkeypatch):
+    original_plan = get_module.plan
+    planned = []
+
+    def counting_plan(index, *layout):
+        planned.append(layout)
+        return original_plan(index, *layout)
+
+    monkeypatch.setattr(get_module, "plan", counting_plan)
+    with h5py.File(columns_path) as f:
+        read_columns(
+            {name: f[name] for name in COLUMNS},
+            random_chunked(np.random.default_rng(3), 50, 10),
+        )
+    # "chunked" and "same_layout" share rows, chunk length and row size.
+    assert len(planned) == len(COLUMNS) - 1
+    assert len(set(planned)) == len(planned)
+
+
+def test_read_columns_of_empty_index(columns_path):
+    with h5py.File(columns_path) as f:
+        result = read_columns(
+            {name: f[name] for name in COLUMNS}, np.array([], dtype=np.int64)
+        )
+        for name, values in result.items():
+            assert len(values) == 0
+            assert values.dtype == f[name].dtype
+
+
+def test_handler_reads_requested_columns_in_order(columns_path):
+    index = random_chunked(np.random.default_rng(4), 100, 10)
+    with h5py.File(columns_path) as f:
+        handler = Hdf5Handler(f, {name: None for name in COLUMNS}, index)
+        requested = ["half_chunks", "chunked", "wide"]
+        result = handler.get_data(requested)
+        assert list(result) == requested
+        rows = into_array(index)
+        for name in requested:
+            np.testing.assert_array_equal(result[name], f[name][:][rows])

@@ -9,7 +9,7 @@ from .build import (
     single_chunk,
     zeros,
 )
-from .get import get_data
+from .get import get_data, read_columns
 from .in_range import n_in_range
 from .mask import into_array, mask
 from .ops import offset, rebuild_by_ranges, reindex_column, sort, trim
@@ -34,6 +34,7 @@ __all__ = [
     "single_chunk",
     "concatenate",
     "get_data",
+    "read_columns",
     "get_length",
     "get_range",
     "into_array",

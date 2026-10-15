@@ -10,6 +10,7 @@ from opencosmo.index import (
     get_data,
     get_length,
     into_array,
+    read_columns,
     take,
 )
 from opencosmo.io.schema import FileEntry, make_schema
@@ -134,7 +135,9 @@ class Hdf5Handler:
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         """ """
         # Ensure order is preserved
-        return {name: get_data(self.__handle(name), self.__index) for name in columns}
+        return read_columns(
+            {name: self.__handle(name) for name in columns}, self.__index
+        )
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
         if start < 0 or end > len(indices):
