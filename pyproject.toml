@@ -58,7 +58,7 @@ test = [
     "yt>=4.4.1",
 ]
 test-mpi = [
-  "mpi-pytest>=2025.4.0,<2026.0.0"
+  "mpi-pytest>=2025.4.0,<2027.0.0"
 ]
 
 [project.scripts]

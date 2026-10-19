@@ -1012,15 +1012,15 @@ wheels = [
 
 [[package]]
 name = "mpi-pytest"
-version = "2025.7"
+version = "2026.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mpi4py" },
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/57/22b148b02e144a82570e242bd09057ee82e99d2c88d2c7fd237ecca6d166/mpi_pytest-2025.7.tar.gz", hash = "sha256:a2aba933db13d0d18ca05af1f2cc7c9eed3519c314d587c4ef4d702e1af8cf60", size = 10847, upload-time = "2025-07-11T14:39:20.578Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/56/bef4ddf702cf7d8131450244b8eb391079d269a4050d4b13da012f9efdf1/mpi_pytest-2026.0.tar.gz", hash = "sha256:f7d0e9077cee8a8ecffaef51c2f2f1a7783a58513714d757779cfd687455cb01", size = 11053, upload-time = "2026-02-10T16:56:05.208Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/62/7a24e862a44652f307450c9d8d9bc69506ad7b7bd0d64884da0413328c22/mpi_pytest-2025.7-py3-none-any.whl", hash = "sha256:e4bfe1f0309f0ec658c2d9b84036b57d85e88223ce7912fc6e4c6e147cb049de", size = 11481, upload-time = "2025-07-11T14:39:19.327Z" },
+    { url = "https://files.pythonhosted.org/packages/67/48/c66c6eb5ca34774bded2237671c3019b86b544697de3660c1f9418779a32/mpi_pytest-2026.0-py3-none-any.whl", hash = "sha256:6949cb59616ce168957303f6bc367f47f289bea18b9cec267464ff8ebf919a83", size = 11699, upload-time = "2026-02-10T16:56:04.257Z" },
 ]
 
 [[package]]
@@ -1286,7 +1286,7 @@ test = [
     { name = "pyxsim", specifier = ">=4.4.3" },
     { name = "yt", specifier = ">=4.4.1" },
 ]
-test-mpi = [{ name = "mpi-pytest", specifier = ">=2025.4.0,<2026.0.0" }]
+test-mpi = [{ name = "mpi-pytest", specifier = ">=2025.4.0,<2027.0.0" }]
 
 [[package]]
 name = "opt-einsum"
