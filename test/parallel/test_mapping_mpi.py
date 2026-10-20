@@ -7,15 +7,14 @@ from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
+import opencosmo as oc
 import opencosmo.collection.simulation.io as simulation_io
 import pytest
 from mpi4py import MPI
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, Schema
 from opencosmo.utils import normalize_kwarg_name
 from pytest_mpi import parallel_assert
-
-import opencosmo as oc
-from opencosmo.index import into_array
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -379,7 +378,7 @@ def _assert_ordered_mapping_equal(
     if sort_by is not None:
         after = after.sort_by(*sort_by).take_range(0, len(after[source]))
     parallel_assert(tuple(before.keys()) == tuple(after.keys()))
-    for name in before.keys():
+    for name in before:
         before_values = np.concatenate(
             MPI.COMM_WORLD.allgather(_column(before[name], identifier))
         )
@@ -649,7 +648,7 @@ def test_matched_dataset_access_rebuilds_targets(accessor, mapped_paths, test_da
     )
 
     if accessor == "getitem":
-        accessed = {name: matched[name] for name in matched.keys()}
+        accessed = {name: matched[name] for name in matched}
     elif accessor == "values":
         accessed = dict(zip(matched.keys(), matched.values(), strict=True))
     else:

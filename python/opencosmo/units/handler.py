@@ -65,11 +65,15 @@ class UnitHandler:
         current_convention: UnitConvention,
         cosmology: Cosmology,
         applicators: dict[str, UnitApplicator],
-        conversions: dict[str, u.Unit] = {},
-        column_conversions: dict[str, u.Unit] = {},
+        conversions: dict[str, u.Unit] | None = None,
+        column_conversions: dict[str, u.Unit] | None = None,
     ):
+        if column_conversions is None:
+            column_conversions = {}
+        if conversions is None:
+            conversions = {}
         if not isinstance(base_convention, UnitConvention):
-            raise ValueError
+            raise TypeError
         self.__base_convention = base_convention
         self.__current_convention = current_convention
         self.__cosmology = cosmology
@@ -115,9 +119,7 @@ class UnitHandler:
 
     @cached_property
     def unitless_columns(self):
-        return set(
-            key for key, app in self.__applicators.items() if app.base_unit is None
-        )
+        return {key for key, app in self.__applicators.items() if app.base_unit is None}
 
     def with_static_columns(self, **columns: u.Unit):
         new_applicators = {}
@@ -192,8 +194,10 @@ class UnitHandler:
     def regularize(
         self,
         data: Mapping[str, float | np.ndarray | u.Quantity],
-        unit_kwargs: dict = {},
+        unit_kwargs: dict | None = None,
     ):
+        if unit_kwargs is None:
+            unit_kwargs = {}
         return {
             name: self.__applicators[name].convert_to_base(
                 val, self.__current_convention, unit_kwargs=unit_kwargs

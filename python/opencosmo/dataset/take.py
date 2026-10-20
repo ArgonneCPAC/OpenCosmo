@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -31,7 +31,7 @@ def get_random_take_index(
 
 
 def apply_sort_index(
-    rows: DataIndex, sort_index: Optional[np.ndarray] = None
+    rows: DataIndex, sort_index: np.ndarray | None = None
 ) -> np.ndarray:
     """Return row positions in ascending physical order.
 
@@ -68,7 +68,7 @@ def _get_sort_index(
 def get_rows_take_index(
     ds: DatasetState | LightconeState,
     rows: DataIndex,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
 ) -> DataIndex:
     """Map user-provided logical (sorted-order) row positions to physical row positions."""
     if sort_key is None:
@@ -79,7 +79,7 @@ def get_rows_take_index(
 
 def get_range_take_index(
     ds: DatasetState | LightconeState,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
     start: int,
     size: int,
     mode: Literal["local", "global"],
@@ -97,7 +97,7 @@ def get_range_take_index(
 def get_end_take_index(
     n: int,
     ds: DatasetState | LightconeState,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
     mode: Literal["local", "global"],
 ):
     ds_length = len(ds)
@@ -120,7 +120,7 @@ def get_end_take_index(
 
 def get_range_take_index_mpi(
     ds: DatasetState | LightconeState,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
     start: int,
     size: int,
 ):

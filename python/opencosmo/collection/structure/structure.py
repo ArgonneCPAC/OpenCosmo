@@ -3,11 +3,7 @@ from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Optional,
     cast,
 )
 
@@ -18,6 +14,8 @@ from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure import state as scst
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Iterable
+
     import astropy.units as u
     import numpy as np
 
@@ -96,7 +94,7 @@ class StructureCollection:
         return self.__state.properties
 
     @property
-    def sorted_by(self) -> Optional[str]:
+    def sorted_by(self) -> str | None:
         """
         The column this collection is currently sorted by, or ``None`` if unsorted.
 
@@ -135,8 +133,10 @@ class StructureCollection:
         Return the names and datasets as key-value pairs.
         """
 
-        for k, v in zip(self.keys(), self.values()):
-            yield k, v
+        yield from zip(self.keys(), self.values())
+
+    def __iter__(self):
+        return iter(self.keys())
 
     def __getitem__(self, key: str) -> oc.Dataset | oc.StructureCollection:
         """
@@ -162,7 +162,7 @@ class StructureCollection:
         return self.__state.region
 
     def bound(
-        self, region: Region, select_by: Optional[str] = None
+        self, region: Region, select_by: str | None = None
     ) -> StructureCollection:
         """
         Restrict this collection to only contain structures in the specified region.
@@ -340,7 +340,7 @@ class StructureCollection:
     def evaluate(
         self,
         func: Callable,
-        dataset: Optional[str] = None,
+        dataset: str | None = None,
         format: str = "astropy",
         insert: bool = True,
         allow_overwrite: bool = False,
@@ -446,7 +446,7 @@ class StructureCollection:
     def evaluate_on_dataset(
         self,
         func: Callable,
-        dataset: Optional[str] = None,
+        dataset: str | None = None,
         vectorize: bool = False,
         format: str = "astropy",
         insert: bool = True,
@@ -723,8 +723,8 @@ class StructureCollection:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
-        conversions: dict[u.Unit, u.Unit] = {},
+        convention: str | None = None,
+        conversions: dict[u.Unit, u.Unit] | None = None,
         **dataset_conversions: dict,
     ):
         """
@@ -787,6 +787,8 @@ class StructureCollection:
         StructureCollection
             A new collection with the unit convention applied.
         """
+        if conversions is None:
+            conversions = {}
         return self.__with_state(
             scops.with_units(
                 self.__state, convention, conversions, **dataset_conversions
@@ -889,7 +891,7 @@ class StructureCollection:
     def with_new_columns(
         self,
         dataset: str,
-        descriptions: str | dict[str, str] = {},
+        descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
         mode: str = "global",
         **new_columns: ConstructedColumn | np.ndarray,
@@ -956,6 +958,8 @@ class StructureCollection:
         ValueError
             If the dataset is not found in this collection
         """
+        if descriptions is None:
+            descriptions = {}
         return self.__with_state(
             scops.with_new_columns(
                 self.__state,
@@ -968,7 +972,7 @@ class StructureCollection:
         )
 
     def objects(
-        self, data_types: Optional[Iterable[str]] = None, ignore_empty=True
+        self, data_types: Iterable[str] | None = None, ignore_empty=True
     ) -> Iterable[dict[str, Any]]:
         """
         Iterate over the objects in this collection as pairs of

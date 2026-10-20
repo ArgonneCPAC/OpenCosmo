@@ -1,11 +1,16 @@
+from __future__ import annotations
+
 import inspect
-from typing import Callable, ClassVar, Type
+from typing import TYPE_CHECKING, ClassVar
 
 from astropy import cosmology
 from pydantic import BaseModel, Field, computed_field
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def make_cosmology(parameters: "CosmologyParameters") -> cosmology.Cosmology:
+
+def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:
     cosmology_type = get_cosmology_type(parameters)
     expected_arguments = inspect.signature(cosmology_type).parameters.keys()
     input_paremeters = {}
@@ -17,7 +22,7 @@ def make_cosmology(parameters: "CosmologyParameters") -> cosmology.Cosmology:
     return cosmology_type(**input_paremeters)
 
 
-def get_cosmology_type(parameters: "CosmologyParameters") -> Type[cosmology.Cosmology]:
+def get_cosmology_type(parameters: CosmologyParameters) -> type[cosmology.Cosmology]:
     is_flat = (parameters.Om0 + parameters.Ode0) == 1.0
     if parameters.w0 == -1 and parameters.wa == 0:
         if is_flat:

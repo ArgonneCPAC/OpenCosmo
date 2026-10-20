@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, Hdf5Source
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from uuid import UUID
 
     from opencosmo.index import SimpleIndex
@@ -36,7 +37,7 @@ class Schema(NamedTuple):
     updater: Callable[[Schema, MPI.Comm | None], Schema] | None = None
 
 
-def dataset_schema_length(schema: Schema) -> Optional[int]:
+def dataset_schema_length(schema: Schema) -> int | None:
     if schema.type != FileEntry.DATASET:
         return None
 
@@ -49,7 +50,7 @@ def get_dataset_schema_index(schema: Schema):
         return None
     data_schema = schema.children["data"]
     index = None
-    for name, column in data_schema.columns.items():
+    for column in data_schema.columns.values():
         column_sources = column.sources
         if len(column_sources) == 1 and isinstance(column_sources[0], Hdf5Source):
             column_index = column_sources[0].index
@@ -85,9 +86,9 @@ def empty_schema(name: str, type_: FileEntry) -> Schema:
 def make_schema(
     name: str,
     type_: FileEntry,
-    children: Optional[dict] = None,
-    columns: Optional[dict] = None,
-    attributes: Optional[dict] = None,
+    children: dict | None = None,
+    columns: dict | None = None,
+    attributes: dict | None = None,
     updater: Callable | None = None,
 ):
     if children is None:
@@ -139,7 +140,7 @@ def combine_with_cached_schema(raw_data_schema, cached_schema):
     elif cached_schema is None or cached_schema.type == FileEntry.EMPTY:
         return raw_data_schema
 
-    for cname, column in cached_schema.columns.items():
+    for cname in cached_schema.columns:
         if cname not in raw_data_schema.columns:
             raw_data_schema.columns[cname] = cached_schema.columns[cname]
 

@@ -38,7 +38,7 @@ def verify_structure(
         case FileEntry.LIGHTCONE:
             verify_lightcone_collection_schema(schema)
         case FileEntry.SIMULATION_COLLECTION:
-            for name, ds_schema in schema.children.items():
+            for ds_schema in schema.children.values():
                 match ds_schema.type:
                     case FileEntry.DATASET:
                         verify_dataset_data(ds_schema)
@@ -192,21 +192,14 @@ def verify_structure_collection_data(schema: Schema):
     for child_name, child_schema in schema.children.items():
         if child_schema.type == FileEntry.LIGHTCONE and child_name == link_holder:
             for grandchild_name, grandchild_schema in child_schema.children.items():
-                has_link = any(
-                    map(
-                        lambda cn: "data_linked" in cn,
-                        grandchild_schema.children.keys(),
-                    )
-                )
+                has_link = any("data_linked" in cn for cn in grandchild_schema.children)
                 if not has_link:
                     raise ValueError(
                         f'Source dataset {child_name}/{grandchild_name} does not have expected "data_linked" group'
                     )
 
         elif child_name == link_holder:
-            has_link = any(
-                map(lambda cn: "data_linked" in cn, child_schema.children.keys())
-            )
+            has_link = any("data_linked" in cn for cn in child_schema.children)
             if not has_link:
                 raise ValueError(
                     f'Source dataset {child_name} does not have expected "data_linked" group'

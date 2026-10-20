@@ -364,7 +364,7 @@ def open_files(
     members: dict[str, SimulationChild] = {}
     for name, child in children.items():
         if isinstance(child, HealpixMapState):
-            raise ValueError(
+            raise TypeError(
                 "Simulation collection only accepts datasets, lightcones, "
                 "and structure collections"
             )
@@ -437,8 +437,10 @@ def open_dataset(
     target: DatasetTarget,
     index: IndexSpec,
     *,
-    open_kwargs: dict[str, Any] = {},
+    open_kwargs: dict[str, Any] | None = None,
 ) -> DatasetState:
+    if open_kwargs is None:
+        open_kwargs = {}
     header = target.header
 
     assert header is not None

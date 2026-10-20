@@ -11,6 +11,7 @@ from uuid import UUID
 
 import h5py
 import numpy as np
+import opencosmo as oc
 import pytest
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.discover import (
@@ -30,8 +31,6 @@ from opencosmo.io.discover import (
 from opencosmo.io.io import open_state
 from opencosmo.units.get import parse_unit_string
 from opencosmo.uuid import get_column_uuid
-
-import opencosmo as oc
 
 if TYPE_CHECKING:
     from conftest import TestDataPaths
@@ -61,14 +60,12 @@ def _read_file_expected_layout(path: Path) -> dict:
     with h5py.File(path, "r") as f:
         # Find data group (handle both "/" and nested cases)
         data_groups = []
-        for key in f.keys():
-            if isinstance(f[key], h5py.Group):
-                if "data" in f[key]:
-                    data_groups.append("/" + key if key != "/" else "/")
+        for key in f:
+            if isinstance(f[key], h5py.Group) and "data" in f[key]:
+                data_groups.append("/" + key if key != "/" else "/")
 
-        if not data_groups:
-            if "data" in f:
-                data_groups = ["/"]
+        if not data_groups and "data" in f:
+            data_groups = ["/"]
 
         result = {}
         for group_key in data_groups:
@@ -78,11 +75,7 @@ def _read_file_expected_layout(path: Path) -> dict:
             if "data" in group:
                 data_grp = group["data"]
                 columns_in_data = sorted(
-                    [
-                        k
-                        for k in data_grp.keys()
-                        if isinstance(data_grp[k], h5py.Dataset)
-                    ]
+                    [k for k in data_grp if isinstance(data_grp[k], h5py.Dataset)]
                 )
                 column_names = tuple(columns_in_data)
                 column_dtypes = tuple(
@@ -107,7 +100,7 @@ def _read_file_expected_layout(path: Path) -> dict:
                 linked_target_names_set = set()
                 if "data_linked" in group:
                     data_linked = group["data_linked"]
-                    for key in data_linked.keys():
+                    for key in data_linked:
                         for suffix in ("_start", "_size", "_idx"):
                             if key.endswith(suffix):
                                 linked_target_names_set.add(key.rsplit(suffix, 1)[0])

@@ -9,12 +9,12 @@ def get_file_versions(spec_name, file):
     spec = specs[spec_name]
     if spec.header_version_key is None:
         raise ValueError("This spec does not support file versions")
-    if "header" not in file.keys():
+    if "header" not in file:
         group = next(iter(file.values()))
     else:
         group = file
 
-    if "header" not in group.keys():
+    if "header" not in group:
         raise NotImplementedError
 
     versions = dict(group["header"][spec.header_version_key].attrs)

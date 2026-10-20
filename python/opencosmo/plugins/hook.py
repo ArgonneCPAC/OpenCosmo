@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 Ctx = TypeVar("Ctx")
 R = TypeVar("R")
@@ -44,7 +45,7 @@ def hook(name: str, *, when: Predicate = lambda _: True):
     return decorator
 
 
-def fold(name: str, ctx: Ctx) -> Ctx:
+def fold[Ctx](name: str, ctx: Ctx) -> Ctx:
     """Apply all registered hooks for *name* in order, threading ctx through.
 
     Each matching hook receives the output of the previous one. Non-matching

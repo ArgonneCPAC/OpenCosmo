@@ -5,7 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
@@ -170,7 +170,7 @@ class FileLayout:
     groups: tuple[GroupLayout, ...]
     """Sorted tuple of GroupLayout objects found in this file."""
 
-    error: Optional[str] = None
+    error: str | None = None
     """Error message if discovery failed, None if successful."""
 
     maps: tuple[MapLayout, ...] = ()
@@ -225,7 +225,7 @@ def _iter_ancestors(group_path: str) -> Iterator[str]:
 def _verify_map_array(array: h5py.Dataset | None, where: str) -> int:
     """Validate a direct, simple mapping array without reading its values."""
     if not isinstance(array, h5py.Dataset):
-        raise ValueError(f"{where}: expected a dataset")
+        raise TypeError(f"{where}: expected a dataset")
     if array.ndim != 1:
         raise ValueError(f"{where}: mapping arrays must be one-dimensional")
     if not np.issubdtype(array.dtype, np.integer):
@@ -253,7 +253,7 @@ def _verify_slot(slot_group: h5py.Group, where: str) -> int:
 
     array = slot_group["index"]
     if not isinstance(array, h5py.Dataset):
-        raise ValueError(f"{where}: index is not a dataset")
+        raise TypeError(f"{where}: index is not a dataset")
     if array.ndim != 1:
         raise ValueError(f"{where}: mapping arrays must be one-dimensional")
     if not np.issubdtype(array.dtype, np.integer):
@@ -286,7 +286,7 @@ def _read_link_layout(
         if not prefix:
             raise ValueError(f"{where}: link dataset prefix must not be empty")
         if not isinstance(item, h5py.Dataset):
-            raise ValueError(f"{where}: expected a dataset")
+            raise TypeError(f"{where}: expected a dataset")
         slot_datasets.setdefault(prefix, {})[suffix] = name
 
     slots: list[LinkSlot] = []
@@ -385,7 +385,7 @@ def _read_map_layout(
             if target is None:
                 raise ValueError(f"{where}: group name is not a UUID")
             if not isinstance(slot, h5py.Group):
-                raise ValueError(f"{where}: expected a group")
+                raise TypeError(f"{where}: expected a group")
             if target in known_primaries:
                 raise ValueError(
                     f"{where}: duplicate primary mapping for UUID {target}"
@@ -410,7 +410,7 @@ def _read_map_layout(
             if uuid_a is None or uuid_b is None:
                 raise ValueError(f"{where}: endpoint names are not UUIDs")
             if not isinstance(pair, h5py.Group):
-                raise ValueError(f"{where}: expected a group")
+                raise TypeError(f"{where}: expected a group")
             if uuid_a not in known_primaries or uuid_b not in known_primaries:
                 raise ValueError(
                     "Found auxiliary matching groups without corresponding primaries!"
@@ -469,9 +469,9 @@ def discover_file(path: Path) -> FileLayout:
             file_map = _make_group_map(f)
 
             # Find all header and data groups.
-            header_groups = sorted([k for k in file_map.keys() if k.endswith("header")])
-            data_groups = sorted([k for k in file_map.keys() if k.endswith("/data")])
-            map_groups = sorted([k for k in file_map.keys() if k.endswith("/map")])
+            header_groups = sorted([k for k in file_map if k.endswith("header")])
+            data_groups = sorted([k for k in file_map if k.endswith("/data")])
+            map_groups = sorted([k for k in file_map if k.endswith("/map")])
 
             # Maps are parsed first: a mapping file has no header and no data, so
             # its validity cannot be decided until we know whether it carries maps.
@@ -558,7 +558,7 @@ def discover_file(path: Path) -> FileLayout:
                 columns_in_data = sorted(
                     [
                         k.split(data_prefix, 1)[1]
-                        for k in file_map.keys()
+                        for k in file_map
                         if k.startswith(data_prefix)
                         and isinstance(file_map[k], h5py.Dataset)
                         and not k.endswith("/index")
@@ -653,13 +653,13 @@ def discover_file(path: Path) -> FileLayout:
             sorted_groups = tuple(sorted(group_layouts, key=lambda g: g.path))
             return FileLayout(path=path, groups=sorted_groups, maps=maps)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — discovery failures are recorded on the layout, not raised
         return FileLayout(path=path, groups=(), error=str(e))
 
 
 def discover_all(
     paths: list[Path],
-    comm: Optional["MPI.Comm"] = None,
+    comm: MPI.Comm | None = None,
 ) -> tuple[FileLayout, ...]:
     """
     Discover metadata from all files, distributing the walk across MPI ranks.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Iterable, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 from opencosmo import facade
 from opencosmo.collection.simulation import operations as simops
@@ -8,7 +8,7 @@ from opencosmo.collection.simulation import state as simst
 from opencosmo.collection.structure.state import StructureState
 
 if TYPE_CHECKING:
-    from collections.abc import KeysView
+    from collections.abc import Callable, Iterable, KeysView
 
     import astropy.units as u
     import numpy as np
@@ -219,7 +219,7 @@ class SimulationCollection:
         return self.__with_state(simops.clear_match(self.__state))
 
     def bound(
-        self, region: Region, select_by: Optional[str] = None
+        self, region: Region, select_by: str | None = None
     ) -> SimulationCollection:
         """
         Restrict the datasets to some region. Note that the SimulationCollection does
@@ -410,8 +410,8 @@ class SimulationCollection:
     def with_new_columns(
         self,
         *args,
-        datasets: Optional[str | Iterable[str]] = None,
-        descriptions: str | dict[str, str] = {},
+        datasets: str | Iterable[str] | None = None,
+        descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
         **new_columns: ConstructedColumn | np.ndarray,
     ):
@@ -442,6 +442,8 @@ class SimulationCollection:
         ** columns : opencosmo.Column | np.ndarray | units.Quantity
             The new columns
         """
+        if descriptions is None:
+            descriptions = {}
         return self.__with_state(
             simops.with_new_columns(
                 self.__state,
@@ -456,7 +458,7 @@ class SimulationCollection:
     def evaluate(
         self,
         func: Callable,
-        datasets: Optional[str | Iterable[str]] = None,
+        datasets: str | Iterable[str] | None = None,
         format: str = "astropy",
         vectorize: bool = False,
         insert: bool = False,
@@ -539,8 +541,8 @@ class SimulationCollection:
 
     def with_units(
         self,
-        convention: Optional[str] = None,
-        conversions: dict[u.Unit, u.Unit] = {},
+        convention: str | None = None,
+        conversions: dict[u.Unit, u.Unit] | None = None,
         **columns: u.Unit,
     ) -> SimulationCollection:
         """
@@ -569,6 +571,8 @@ class SimulationCollection:
 
 
         """
+        if conversions is None:
+            conversions = {}
         return self.__with_state(
             simops.with_units(self.__state, convention, conversions, **columns)
         )

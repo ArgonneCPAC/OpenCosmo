@@ -9,10 +9,9 @@ import astropy.units as u
 import healpy as hp
 import healsparse as hsp
 import numpy as np
+import opencosmo as oc
 import pytest
 from opencosmo.spatial.region import HealpixRegion
-
-import opencosmo as oc
 
 CENTER = (45 * u.deg, -45 * u.deg)
 

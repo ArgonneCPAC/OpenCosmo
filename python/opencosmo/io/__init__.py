@@ -7,7 +7,7 @@ def missing_package_import_error(name, required):
     raise ValueError(f"Function {name} requires package {required}")
 
 
-__all__ = ["write", "open", "write_parquet"]  # noqa: F822
+__all__ = ["open", "write", "write_parquet"]
 
 
 def __getattr__(name):

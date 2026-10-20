@@ -3,14 +3,13 @@ Focused tests for state-based structure link arithmetic.
 """
 
 import numpy as np
-import pytest
-from opencosmo.facade import wrap
-from opencosmo.io.io import open_state
-
 import opencosmo as oc
+import pytest
 from opencosmo.collection.lightcone import state as lcst
 from opencosmo.collection.structure import links
 from opencosmo.collection.structure import state as scst
+from opencosmo.facade import wrap
+from opencosmo.io.io import open_state
 
 
 @pytest.fixture

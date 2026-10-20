@@ -1,12 +1,11 @@
 import jax.numpy as jnp
 import numpy as np
+import opencosmo as oc
 import pandas as pd
 import polars as pl
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
-
-import opencosmo as oc
 
 
 @pytest.fixture
@@ -317,7 +316,7 @@ def test_lightcone_evaluate_insert(lc_paths, format):
     ds = ds.evaluate(
         _vectorized_func(format), vectorize=True, insert=True, format=format
     )
-    for name in ds.keys():
+    for name in ds:
         data = ds[name].select("fof_px").get_data("numpy")
         original = (
             ds[name].select(["fof_halo_mass", "fof_halo_com_vx"]).get_data("numpy")

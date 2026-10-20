@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from warnings import warn
 
 from opencosmo.index.build import single_chunk
@@ -22,8 +22,8 @@ def partition(
     index_group: h5py.Group,
     data_group: h5py.Group,
     spatial_index: SpatialIndex | None,
-    min_level: Optional[int] = None,
-) -> Optional[TreePartition]:
+    min_level: int | None = None,
+) -> TreePartition | None:
     """
     When opening with MPI, each rank recieves an equally-sized chunk of the
     spatial index. In principle this means the number of objects are similar

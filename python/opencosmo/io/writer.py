@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol, Self
+from typing import TYPE_CHECKING, Any, Protocol, Self
 
 import numpy as np
 
@@ -10,6 +10,8 @@ from opencosmo.index import get_data, get_length, take
 from opencosmo.mpi import redistribute_data
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import h5py
     from numpy.typing import DTypeLike
 
@@ -39,8 +41,10 @@ class ColumnWriter:
         self,
         column_sources: list[ColumnSource],
         combine_strategy: ColumnCombineStrategy,
-        attrs: dict[str, Any] = {},
+        attrs: dict[str, Any] | None = None,
     ):
+        if attrs is None:
+            attrs = {}
         if combine_strategy == ColumnCombineStrategy.EXACT and len(column_sources) != 1:
             raise ValueError(
                 "Columns with a combine strategy of EXACT can only have one source"
@@ -48,11 +52,11 @@ class ColumnWriter:
         self.__sources = column_sources
         self.__combine_strategy = combine_strategy
         self.__attrs = attrs
-        dtypes = set(map(lambda source: source.dtype, self.__sources))
+        dtypes = {source.dtype for source in self.__sources}
         if len(dtypes) > 1:
             raise ValueError("A single column can not have multiple data types!")
         self.__dtype = dtypes.pop()
-        self.__transformation: Optional[Callable] = None
+        self.__transformation: Callable | None = None
 
     def update_attrs(self, new_attrs: dict[str, Any]):
         self.__attrs |= new_attrs
@@ -62,8 +66,10 @@ class ColumnWriter:
         cls,
         data: np.ndarray,
         strategy: ColumnCombineStrategy = ColumnCombineStrategy.CONCAT,
-        attrs: dict[str, Any] = {},
+        attrs: dict[str, Any] | None = None,
     ):
+        if attrs is None:
+            attrs = {}
         source = NumpySource(data)
         return ColumnWriter([source], strategy, attrs)
 
@@ -73,8 +79,10 @@ class ColumnWriter:
         dataset: h5py.Dataset,
         index: DataIndex,
         strategy: ColumnCombineStrategy = ColumnCombineStrategy.CONCAT,
-        attrs: dict[str, Any] = {},
+        attrs: dict[str, Any] | None = None,
     ):
+        if attrs is None:
+            attrs = {}
         source = Hdf5Source(dataset, index)
         return ColumnWriter([source], strategy, attrs)
 
@@ -112,7 +120,7 @@ class ColumnWriter:
         return ColumnWriter(new_sources, self.combine_strategy, self.__attrs)
 
     def set_transformation(
-        self, transformation: Callable[[np.ndarray, Optional[MPI.Comm]], np.ndarray]
+        self, transformation: Callable[[np.ndarray, MPI.Comm | None], np.ndarray]
     ):
         if self.__transformation is not None:
             raise ValueError(
@@ -156,7 +164,7 @@ class ColumnWriter:
     def sources(self) -> list[ColumnSource]:
         return self.__sources
 
-    def get_data(self, comm: Optional[MPI.Comm] = None) -> np.ndarray:
+    def get_data(self, comm: MPI.Comm | None = None) -> np.ndarray:
         match self.combine_strategy:
             case ColumnCombineStrategy.CONCAT | ColumnCombineStrategy.EXACT:
                 data = np.concatenate([source.data for source in self.__sources])

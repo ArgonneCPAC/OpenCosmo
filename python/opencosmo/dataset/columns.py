@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import copy
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 import numpy as np
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     ColumnMap = dict[str, UUID]
 
 
-def resort(columns: dict[str, np.ndarray], sorted_index: Optional[np.ndarray]):
+def resort(columns: dict[str, np.ndarray], sorted_index: np.ndarray | None):
     if sorted_index is None or not columns:
         return columns
     reverse_sort = np.argsort(sorted_index)
@@ -140,7 +140,7 @@ def add_columns(
         new_derived_columns,
         new_in_memory_columns,
         new_in_memory_descriptions,
-        new_column_names,
+        _new_column_names,
         new_static_units,
     ) = __categorize_columns(
         new_columns, name_to_uuid, all_known_uuids, descriptions, ds_length

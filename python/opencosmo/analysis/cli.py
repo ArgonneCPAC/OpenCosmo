@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import click
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 @click.argument("spec_name", required=True)
 @click.option("--file", type=click.Path(exists=True), required=False)
 @click.option("--dev", is_flag=True)
-def install(spec_name: str, file: Optional[Path] = None, dev: bool = False):
+def install(spec_name: str, file: Path | None = None, dev: bool = False):
     if file is not None:
         versions = get_file_versions(spec_name, file)
     else:

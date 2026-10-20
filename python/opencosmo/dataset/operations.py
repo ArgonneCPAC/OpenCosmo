@@ -182,7 +182,7 @@ def sort_by(state: DatasetState, column: str | None, invert: bool) -> DatasetSta
 
 def with_new_columns(
     state: DatasetState,
-    descriptions: str | dict[str, str] = {},
+    descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     mode: str = "global",
     **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
@@ -190,6 +190,8 @@ def with_new_columns(
     from opencosmo.column.column import Column, DerivedScalarValue
     from opencosmo.column.reducer import default_reducer
 
+    if descriptions is None:
+        descriptions = {}
     if any(isinstance(col, DerivedScalarValue) for col in new_columns.values()):
         raise ValueError(
             "Scalar values cannot be added to an existing dataset, but can be retrieved with Dataset.select()"
@@ -200,7 +202,7 @@ def with_new_columns(
         for k, v in new_columns.items()
     }
     if isinstance(descriptions, str):
-        descriptions = {key: descriptions for key in new_columns.keys()}
+        descriptions = {key: descriptions for key in new_columns}
     return __with_new_columns(state, descriptions, allow_overwrite, **new_columns)
 
 
@@ -464,8 +466,10 @@ def __sort_data(
 def __get_data(
     state: DatasetState,
     ignore_sort: bool = False,
-    unit_kwargs: dict = {},
+    unit_kwargs: dict | None = None,
 ) -> dict:
+    if unit_kwargs is None:
+        unit_kwargs = {}
     state = fold(HookPoint.DatasetInstantiate, DatasetInstantiateCtx(state)).state
     data = instantiate_dataset(
         list(state.producers.values()),
@@ -490,7 +494,9 @@ def __get_data(
     return {name: data[name] for name in new_order}
 
 
-def __iter_rows(state: DatasetState, unit_kwargs: dict = {}):
+def __iter_rows(state: DatasetState, unit_kwargs: dict | None = None):
+    if unit_kwargs is None:
+        unit_kwargs = {}
     derived_to_collect = (
         set(state.columns)
         .difference(state.cache.columns)
@@ -501,7 +507,7 @@ def __iter_rows(state: DatasetState, unit_kwargs: dict = {}):
     }
     chunk_ranges = [(i, min(i + 1000, len(state))) for i in range(0, len(state), 1000)]
     if not chunk_ranges:
-        raise StopIteration
+        return
 
     try:
         for start, end in chunk_ranges:
@@ -556,10 +562,12 @@ def make_schema(state: DatasetState, path: str) -> Schema:
 
 def __with_new_columns(
     state: DatasetState,
-    descriptions: dict[str, str] = {},
+    descriptions: dict[str, str] | None = None,
     allow_overwrite: bool = False,
     **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> DatasetState:
+    if descriptions is None:
+        descriptions = {}
     new_producers, column_map, unit_handler = add_columns(
         list(state.producers.values()),
         state.unit_handler,

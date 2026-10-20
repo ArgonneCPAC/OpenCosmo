@@ -1,8 +1,8 @@
-# ruff: noqa: TC001 TC003
+# ruff: noqa: TC003
 from datetime import date
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Literal, Optional
+from typing import ClassVar, Literal
 
 import astropy.cosmology.units as cu  # type: ignore
 import astropy.units as u  # type: ignore
@@ -33,7 +33,7 @@ class HaccSimulationParameters(BaseModel):
     box_size: float = Field(ge=0, description="Size of the simulation box (Mpc/h)")
     z_ini: float = Field(ge=0.01, description="Initial redshift of the simulation")
     z_end: float = Field(ge=0.0, description="Final redshift of the simulation")
-    n_gravity: Optional[int] = Field(
+    n_gravity: int | None = Field(
         ge=2,
         default=None,
         description="Number of gravity-only particles (per dimension). "
@@ -41,7 +41,7 @@ class HaccSimulationParameters(BaseModel):
     )
     n_steps: int = Field(ge=1, description="Number of time steps")
     pm_grid: int = Field(ge=2, description="Number of grid points (per dimension)")
-    offset_gravity_ini: Optional[float] = Field(
+    offset_gravity_ini: float | None = Field(
         description="Lagrangian offset for gravity-only particles", default=None
     )
 
@@ -120,9 +120,9 @@ class CosmoToolsParameters(BaseModel):
     sod_concentration_pmin: int
     sodbighaloparticles_pmin: int
     profiles_nbins: int
-    galaxy_dbscan_neighbors: Optional[int] = None
-    galaxy_aperture_radius: Optional[int] = None
-    galaxy_pmin: Optional[int] = None
+    galaxy_dbscan_neighbors: int | None = None
+    galaxy_aperture_radius: int | None = None
+    galaxy_pmin: int | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -139,24 +139,24 @@ class CosmoToolsParameters(BaseModel):
 class ReformatParameters(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "reformat"
-    cosmotools_lc_path: Optional[Path] = None
+    cosmotools_lc_path: Path | None = None
     cosmotools_path: Path
     indat_path: Path
     is_hydro: bool
-    lightcone_analysis_path_pattern: Optional[str] = None
+    lightcone_analysis_path_pattern: str | None = None
     machine: str
-    mass_threshold_sodbighaloparticles: Optional[float] = None
-    mass_threshold_sodpropertybins: Optional[float] = None
+    mass_threshold_sodbighaloparticles: float | None = None
+    mass_threshold_sodpropertybins: float | None = None
     max_level: int = 0
-    max_level_lc: Optional[frozenset[tuple[int, int]]] = None
-    npart_threshold_galaxyproperties: Optional[int] = None
-    output_lc_path_pattern: Optional[str] = None
+    max_level_lc: frozenset[tuple[int, int]] | None = None
+    npart_threshold_galaxyproperties: int | None = None
+    output_lc_path_pattern: str | None = None
     rearrange_output_path_pattern: str
-    rearrange_output_lc_path_pattern: Optional[str] = None
+    rearrange_output_lc_path_pattern: str | None = None
     simulation_date: date
     simulation_name: str
-    snapshot_analysis_path_pattern: Optional[str] = None
-    temporary_path: Optional[Path] = None
+    snapshot_analysis_path_pattern: str | None = None
+    temporary_path: Path | None = None
 
     @field_serializer(
         "cosmotools_lc_path",
@@ -216,10 +216,10 @@ class HaccSimulationInfo(BaseModel):
 class MapParams(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "healpix_map"
-    z_range: Optional[tuple[float, float]] = None
+    z_range: tuple[float, float] | None = None
     nside: int
     nside_lr: int
-    map_type: Optional[str] = None
+    map_type: str | None = None
     ordering: Literal["NESTED"]
     full_sky: bool
 

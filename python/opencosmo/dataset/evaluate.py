@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from inspect import Parameter, signature
-from typing import TYPE_CHECKING, Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from astropy.units import Quantity
@@ -13,6 +13,8 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import concat_chunks, fetch_as_dict
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
     from opencosmo.dataset.state import DatasetState
 
 """

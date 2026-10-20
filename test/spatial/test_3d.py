@@ -1,10 +1,9 @@
 import random
 
 import numpy as np
-from opencosmo.io.io import open_state
-
 import opencosmo as oc
 from opencosmo.dataset import operations as dsops
+from opencosmo.io.io import open_state
 from opencosmo.spatial import check
 
 

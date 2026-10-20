@@ -76,7 +76,7 @@ def make_box(p1: Point3d, p2: Point3d):
     if any(w == 0 for w in width):
         raise ValueError("At least one dimension of this box has zero length!")
 
-    if isinstance(width, float) or isinstance(width, int):
+    if isinstance(width, (float, int)):
         width = (width, width, width)
 
     halfwidth = cast("BoxSize", tuple(float(w / 2) for w in width))
@@ -122,7 +122,7 @@ def make_cone(center: Point2d | SkyCoord, radius: float | u.Quantity):
 
 
 def make_skybox(
-    p1: tuple[float, float] | SkyCoord, p2: int | float | tuple[float, float] | SkyCoord
+    p1: tuple[float, float] | SkyCoord, p2: float | tuple[float, float] | SkyCoord
 ):
     """
     Make a box on the plane of the sky defined by two points. These points can be passed
@@ -154,7 +154,6 @@ def make_skybox(
 
 
 def make_skbyox_points_from_center_size(center, size):
-    """ """
     if not isinstance(center, SkyCoord):
         try:
             center = SkyCoord(*center)

@@ -5,15 +5,14 @@ Pure tests for SimulationState and its deferred realignment rule.
 from dataclasses import replace
 
 import numpy as np
-import pytest
-from opencosmo.io.io import open_state
-from opencosmo.utils import normalize_kwarg_name
-
 import opencosmo as oc
+import pytest
 from opencosmo.collection.simulation import matching
 from opencosmo.collection.simulation import operations as simops
 from opencosmo.collection.simulation import state as simst
 from opencosmo.dataset import operations as dsops
+from opencosmo.io.io import open_state
+from opencosmo.utils import normalize_kwarg_name
 
 REFERENCE = normalize_kwarg_name("SCIDAC_128_GO")
 
@@ -113,7 +112,7 @@ def test_align_preserves_member_order(match_set, matched_state):
 def test_align_rejects_collection_members(match_set, matched_state, test_data):
     structure = open_state(*test_data.snapshot.scidac(0).all)
     members = matched_state.members | {"structure": structure}
-    with pytest.raises(RuntimeError, match="is not a dataset"):
+    with pytest.raises(TypeError, match="is not a dataset"):
         matching.align(match_set, REFERENCE, members)
 
 

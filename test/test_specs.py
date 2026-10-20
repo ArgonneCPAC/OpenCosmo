@@ -367,7 +367,7 @@ class TestGroupByScope:
         scopes = group_by_scope(layouts)
         assert list(scopes) == ["scidac1", "scidac2"]
         # Each scope must contain groups from both files (two FileLayouts per scope).
-        for name, sub in scopes.items():
+        for sub in scopes.values():
             assert len(sub) == 2
             assert isinstance(match_spec(sub), StructureCollectionSpec)
 

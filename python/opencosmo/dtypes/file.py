@@ -1,6 +1,6 @@
-# ruff: noqa: TC001 TC003
+# ruff: noqa: TC001
 from enum import Enum
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from pydantic import (
     BaseModel,
@@ -15,7 +15,7 @@ from opencosmo.spatial import models as sm
 from opencosmo.units import UnitConvention
 
 
-def empty_string_to_none(value: str) -> Optional[str]:
+def empty_string_to_none(value: str) -> str | None:
     if type(value) is str and value == "":
         return None
     return value
@@ -41,11 +41,11 @@ class FileParameters(BaseModel):
     origin: str = "HACC"
     data_type: DatasetType
     is_lightcone: bool
-    redshift: Optional[float] = None
-    step: Optional[int] = None
-    region: Optional[sm.RegionModel] = None
+    redshift: float | None = None
+    step: int | None = None
+    region: sm.RegionModel | None = None
     unit_convention: UnitConvention = UnitConvention.SCALEFREE
-    require_header_groups: Optional[tuple[str, ...]] = None
+    require_header_groups: tuple[str, ...] | None = None
 
     @model_validator(mode="before")
     @classmethod

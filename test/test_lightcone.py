@@ -1,13 +1,12 @@
 import astropy.units as u
 import healpy as hp
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.cosmology import units as cu
 from astropy.io import fits
 from astropy.wcs import WCS
 from numpy import random
-
-import opencosmo as oc
 from opencosmo.analysis import reduce
 
 
@@ -178,7 +177,7 @@ def test_lc_collection_select_numpy(
     ds = ds.select(to_select)
     data = ds.get_data("numpy")
     assert isinstance(data, dict)
-    assert all(ts in data.keys() for ts in to_select)
+    assert all(ts in data for ts in to_select)
     assert all(isinstance(col, np.ndarray) for col in data.values())
 
 
@@ -359,7 +358,7 @@ def test_lc_collection_mapped_kwargs(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
-    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds.keys()}
+    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds}
 
     def offset(
         fof_halo_com_x,
@@ -375,9 +374,7 @@ def test_lc_collection_mapped_kwargs(
         offset, vectorize=True, insert=True, format="numpy", mapped_kwarg=mapped_kwargs
     )
     for name, ds in result.items():
-        assert np.all(
-            result[name].select("offset").get_data("numpy") == mapped_kwargs[name]
-        )
+        assert np.all(ds.select("offset").get_data("numpy") == mapped_kwargs[name])
 
 
 def test_lc_collection_evaluate_noinsert(

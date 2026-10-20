@@ -1,8 +1,7 @@
 import astropy.units as u
 import numpy as np
-import pytest
-
 import opencosmo as oc
+import pytest
 
 
 @pytest.fixture

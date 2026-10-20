@@ -6,12 +6,11 @@ behavior that must survive the move to a StructureState.
 """
 
 import numpy as np
-import pytest
-from opencosmo.io.io import open_state
-
 import opencosmo as oc
+import pytest
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure import state as scst
+from opencosmo.io.io import open_state
 
 
 @pytest.fixture
@@ -176,15 +175,15 @@ def test_child_select_between_row_ops(halo_paths):
 @pytest.mark.parametrize("which", ["halos", "galaxies"])
 def test_lightcone_only_methods_fail_on_snapshots(halo_paths, galaxy_paths, which):
     collection = oc.open(*(halo_paths if which == "halos" else galaxy_paths))
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         collection.get_pixels()
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         collection.cone_search((0, 0), 1)
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         collection.box_search((0, 0), (1, 1))
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         collection.pixel_search(np.array([0]))
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         collection.with_redshift_range(0.0, 1.0)
 
 

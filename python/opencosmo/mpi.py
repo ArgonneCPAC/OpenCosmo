@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import TYPE_CHECKING, Any, Callable, Generator, Optional, overload
+from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
 
 from opencosmo.index import coalesce_chunks, into_array, sort
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
+
     from _typeshed import SupportsRichComparison
 
 try:
@@ -21,7 +23,7 @@ def has_mpi() -> bool:
 
 
 @cache
-def get_comm_world() -> Optional["MPI.Comm"]:
+def get_comm_world() -> MPI.Comm | None:
     if MPI is None or MPI.COMM_WORLD.Get_size() == 1:
         return None
     return MPI.COMM_WORLD.Dup()
@@ -115,7 +117,7 @@ def gather_index(
             return None
 
         if sorted:
-            start, sizes = sort((starts, sizes))
+            _start, sizes = sort((starts, sizes))
 
         return coalesce_chunks(starts, sizes)
 
@@ -315,7 +317,7 @@ def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: MPI.Comm)
 
 
 def get_all_keys[T: SupportsRichComparison](
-    data: dict[T, Any], comm: Optional[MPI.Comm]
+    data: dict[T, Any], comm: MPI.Comm | None
 ) -> list[T]:
     """
     Return all keys in the dictionary across all ranks, sorted
@@ -325,7 +327,7 @@ def get_all_keys[T: SupportsRichComparison](
     """
     data_names: set[T] = set(data.keys())
     if comm is None:
-        return sorted(list(data_names))
+        return sorted(data_names)
 
     all_data_names: set[T] = data_names.union(*comm.allgather(data_names))
     return sorted(all_data_names)
@@ -333,19 +335,19 @@ def get_all_keys[T: SupportsRichComparison](
 
 @overload
 def get_all_entries[T: SupportsRichComparison, U](
-    data: dict[T, U], comm: Optional[MPI.Comm], default: None = None
+    data: dict[T, U], comm: MPI.Comm | None, default: None = None
 ) -> Generator[tuple[T, U | None]]: ...
 
 
 @overload
 def get_all_entries[T: SupportsRichComparison, U](
-    data: dict[T, U], comm: Optional[MPI.Comm], default: Callable[[T], U]
+    data: dict[T, U], comm: MPI.Comm | None, default: Callable[[T], U]
 ) -> Generator[tuple[T, U]]: ...
 
 
 def get_all_entries[T: SupportsRichComparison, U](
     data: dict[T, U],
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     default: Callable[[T], U] | None = None,
 ) -> Generator[tuple[T, U | None]]:
     """
