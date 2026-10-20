@@ -422,7 +422,7 @@ def halo_projection_array(
     yt_datasets_provided = yt_ds is not None
 
     if yt_datasets_provided:
-        yt_ds_2d = np.atleast_2d(yt_ds)  # type: ignore
+        yt_ds_2d = np.atleast_2d(np.asarray(yt_ds, dtype=object))
     else:
         yt_ds_2d = np.full(fig_shape, None)
 
@@ -431,7 +431,7 @@ def halo_projection_array(
         weight_field_ = np.full(fig_shape, None)
     else:
         weight_field_ = np.reshape(
-            [weight_field for _ in range(np.prod(fig_shape))],
+            [weight_field for _ in range(halo_ids_2d.size)],
             (fig_shape[0], fig_shape[1], 2),
         )
 
@@ -439,7 +439,7 @@ def halo_projection_array(
         zlim_ = np.full(fig_shape, None)
     else:
         zlim_ = np.reshape(
-            [zlim for _ in range(np.prod(fig_shape))], (fig_shape[0], fig_shape[1], 2)
+            [zlim for _ in range(halo_ids_2d.size)], (fig_shape[0], fig_shape[1], 2)
         )
 
     if isinstance(projection_axis, (str, int)):
@@ -447,7 +447,7 @@ def halo_projection_array(
 
     elif isinstance(projection_axis, (list, tuple, np.ndarray)):
         projection_axis_ = np.reshape(
-            [projection_axis for _ in range(np.prod(fig_shape))],
+            [projection_axis for _ in range(halo_ids_2d.size)],
             (fig_shape[0], fig_shape[1], 3),
         )
 
@@ -460,14 +460,14 @@ def halo_projection_array(
         north_vector_ = np.full(fig_shape, None)
     else:
         north_vector_ = np.reshape(
-            [north_vector for _ in range(np.prod(fig_shape))],
+            [north_vector for _ in range(halo_ids_2d.size)],
             (fig_shape[0], fig_shape[1], 3),
         )
 
     default_params = {
         "fields": (
             np.reshape(
-                [field for _ in range(np.prod(fig_shape))],
+                [field for _ in range(halo_ids_2d.size)],
                 (fig_shape[0], fig_shape[1], 2),
             )
         ),
@@ -733,7 +733,6 @@ def _enforce_orthogonality(v1, v2):
 
 
 def _get_rotation_vectors(rotations, frames, normal0=(0, 0, 1), north0=(0, 1, 0)):
-
     normal0 = _sanitize_input_vector(normal0)
     north0 = _sanitize_input_vector(north0)
 
