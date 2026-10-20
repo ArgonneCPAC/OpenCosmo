@@ -135,6 +135,9 @@ class StructureCollection:
 
         yield from zip(self.keys(), self.values())
 
+    def __iter__(self):
+        return iter(self.keys())
+
     def __getitem__(self, key: str) -> oc.Dataset | oc.StructureCollection:
         """
         Return the linked dataset with the given key.

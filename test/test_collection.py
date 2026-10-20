@@ -92,15 +92,15 @@ def test_open_structures(halo_paths, galaxy_paths):
 
 def test_call_lightcone_fails(halo_paths, galaxy_paths):
     ds = oc.open(*halo_paths, *galaxy_paths)
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         ds.get_pixels()
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         ds.cone_search(None, None)
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         ds.box_search(None, None)
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         ds.pixel_search(None)
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         ds.with_redshift_range(0.0, 1.0)
 
 
