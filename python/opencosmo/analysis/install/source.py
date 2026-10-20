@@ -3,13 +3,13 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .specs import DependencySpec
 
 
-def install_conda_forge(packages: dict[str, Optional[str]]):
+def install_conda_forge(packages: dict[str, str | None]):
     conda_executable = shutil.which("conda")
 
     prefix = sys.prefix
@@ -25,7 +25,7 @@ def install_conda_forge(packages: dict[str, Optional[str]]):
     run_install_command(command)
 
 
-def install_pip(packages: dict[str, Optional[str]], dev: bool = False):
+def install_pip(packages: dict[str, str | None], dev: bool = False):
     if dev:
         command = "uv pip install"
     else:
@@ -49,4 +49,4 @@ def install_github(name: str, version: str, dep_spec: dict[str, DependencySpec])
 
 def run_install_command(command: str):
     print(command)
-    _ = subprocess.run(command.split(" "))
+    _ = subprocess.run(command.split(" "), check=False)

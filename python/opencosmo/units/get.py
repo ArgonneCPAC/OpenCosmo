@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 import astropy.cosmology.units as cu
 import astropy.units as u
 from astropy.constants import m_p
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import h5py
     import numpy as np
     from astropy.cosmology import Cosmology
@@ -47,7 +49,7 @@ class UnitApplicator:
         base_convention: UnitConvention,
         converters: dict[UnitConvention, Callable],
         invserse_converters: dict[UnitConvention, Callable],
-        prefactor: Optional[float] = None,
+        prefactor: float | None = None,
     ):
         self.__units = units
         self.__base_convention = base_convention
@@ -71,7 +73,7 @@ class UnitApplicator:
     @classmethod
     def from_unit(
         cls,
-        base_unit: Optional[u.Unit],
+        base_unit: u.Unit | None,
         base_convention: UnitConvention,
         cosmology: Cosmology,
         is_comoving: bool = True,
@@ -106,9 +108,11 @@ class UnitApplicator:
         self,
         value: ArrayLike,
         convention: UnitConvention,
-        convert_to: Optional[u.Unit] = None,
-        unit_kwargs: dict[str, Any] = {},
+        convert_to: u.Unit | None = None,
+        unit_kwargs: dict[str, Any] | None = None,
     ) -> ArrayLike | u.Quantity:
+        if unit_kwargs is None:
+            unit_kwargs = {}
         if not self.__units or convention == UnitConvention.UNITLESS:
             return value
         if hasattr(value, "unit"):
@@ -136,8 +140,10 @@ class UnitApplicator:
         self,
         value: np.ndarray | float,
         convention: UnitConvention,
-        unit_kwargs: dict[str, Any] = {},
+        unit_kwargs: dict[str, Any] | None = None,
     ):
+        if unit_kwargs is None:
+            unit_kwargs = {}
         if not self.__units:
             return value
 
@@ -178,7 +184,7 @@ def get_unit_applicators_dict(
 
 
 @cache
-def parse_unit_string(unit_string: str | None) -> Optional[u.Unit]:
+def parse_unit_string(unit_string: str | None) -> u.Unit | None:
     """
     Parse a unit string captured from an HDF5 column's "unit" attribute.
 
@@ -195,5 +201,5 @@ def parse_unit_string(unit_string: str | None) -> Optional[u.Unit]:
         return None
 
 
-def get_raw_units(column: h5py.Dataset) -> Optional[u.Unit]:
+def get_raw_units(column: h5py.Dataset) -> u.Unit | None:
     return parse_unit_string(column.attrs.get("unit"))

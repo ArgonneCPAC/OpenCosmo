@@ -130,7 +130,7 @@ def get_region(spatial_index: SpatialIndex, region: Region | None) -> Region:
     if region is not None:
         return region
     if not isinstance(spatial_index, HealpixIndex):
-        raise RuntimeError("A snapshot spatial index requires an explicit region")
+        raise RuntimeError("A snapshot spatial index requires an explicit region")  # noqa: TRY004 — missing-precondition error, not a type error
     pixels = get_partitions_with_data(spatial_index, spatial_index.level)
     return HealpixRegion(pixels, nside=2**spatial_index.level)
 
@@ -138,7 +138,7 @@ def get_region(spatial_index: SpatialIndex, region: Region | None) -> Region:
 def partition_index(
     n_partitions: int, counts: h5py.Group, min_level: int
 ) -> tuple[list[np.ndarray], int]:
-    levels = [int(key.split("_")[1]) for key in counts.keys()]
+    levels = [int(key.split("_")[1]) for key in counts]
     highest_level = max(levels)
     split_level = -1
     full_region_indices = np.empty(0, dtype=np.int64)

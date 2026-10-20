@@ -5,13 +5,12 @@ Pure tests for StructureState and its deferred rebuilding rule.
 from dataclasses import replace
 
 import numpy as np
-import pytest
-from opencosmo.io.io import open_state
-
 import opencosmo as oc
+import pytest
 from opencosmo.collection.structure import links
 from opencosmo.collection.structure import state as scst
 from opencosmo.dataset import operations as dsops
+from opencosmo.io.io import open_state
 
 
 def _tags(state):

@@ -6,9 +6,8 @@ handling) that must survive the move to a flat LightconeState.
 """
 
 import numpy as np
-import pytest
-
 import opencosmo as oc
+import pytest
 
 
 @pytest.fixture

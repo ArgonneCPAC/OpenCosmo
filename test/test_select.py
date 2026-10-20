@@ -1,10 +1,9 @@
 import h5py
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.cosmology import units as cu
 from opencosmo.column.select import MissingColumnError
-
-import opencosmo as oc
 
 
 @pytest.fixture

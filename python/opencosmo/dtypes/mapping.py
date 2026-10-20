@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, PositiveInt  # noqa: TC002
+from pydantic import BaseModel, ConfigDict, PositiveInt
 
 from opencosmo.dtypes.parameters import read_header_attributes
 

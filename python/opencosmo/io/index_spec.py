@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from opencosmo.index.build import empty, from_range
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mpi4py import MPI
 
     from opencosmo.header import OpenCosmoHeader
@@ -18,7 +20,7 @@ class ResolvedIndex(NamedTuple):
     'no restriction — read the whole dataset on this rank') plus the possibly
     partition-updated spatial region to thread back into dataset state."""
 
-    index: Optional[DataIndex]  # type: ignore[assignment]  # shadows tuple.index
+    index: DataIndex | None  # type: ignore[assignment]  # shadows tuple.index
     region: Any  # a spatial Region; opaque here, threaded through unchanged by full/empty_ref
 
 
@@ -28,7 +30,7 @@ if TYPE_CHECKING:
     # state, so each spec is just a function of this shape, not a class.
     IndexSpec = Callable[
         [
-            Optional[MPI.Comm],
+            MPI.Comm | None,
             OpenCosmoHeader,
             DatasetTarget,
             SpatialIndex | None,
@@ -40,7 +42,7 @@ if TYPE_CHECKING:
 
 
 def spatial(
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     header: OpenCosmoHeader,
     target: DatasetTarget,
     spatial_index: SpatialIndex | None,
@@ -88,7 +90,7 @@ def spatial(
 
 
 def full(
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     header: OpenCosmoHeader,
     target: DatasetTarget,
     spatial_index: SpatialIndex | None,
@@ -101,7 +103,7 @@ def full(
 
 
 def empty_ref(
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     header: OpenCosmoHeader,
     target: DatasetTarget,
     spatial_index: SpatialIndex | None,

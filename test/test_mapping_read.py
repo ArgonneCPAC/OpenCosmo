@@ -6,6 +6,7 @@ from uuid import UUID
 import h5py
 import numpy as np
 import pytest
+from opencosmo.index import coalesce_chunks
 from opencosmo.io.discover import (
     LinkSlotKind,
     _read_link_layout,
@@ -25,15 +26,12 @@ from opencosmo.mapping.mapping import (
 )
 from opencosmo.mapping.read import read_link_set, read_match_set
 
-from opencosmo.index import coalesce_chunks
-
 if TYPE_CHECKING:
     from pathlib import Path
 
     from conftest import TestDataPaths
-    from opencosmo.io.discover import LinkLayout, MapLayout
-
     from opencosmo.index import DataIndex
+    from opencosmo.io.discover import LinkLayout, MapLayout
 
 # Fixed UUIDs used across tests.
 _REF = UUID("00000000-0000-0000-0000-000000000001")
@@ -466,14 +464,16 @@ class TestAuxiliaryRequiresPrimaries:
 
     def test_missing_primary_is_rejected(self, tmp_path: Path) -> None:
         path = tmp_path / "map.hdf5"
-        with h5py.File(path, "w") as f:
-            with pytest.raises(ValueError, match="without corresponding primaries"):
-                _make_map_group(
-                    f,
-                    reference=_REF,
-                    primary_targets={_A: [0, 1, 2]},
-                    aux_pairs={(_A, _B): ([0, 1], [2, 0])},
-                )
+        with (
+            h5py.File(path, "w") as f,
+            pytest.raises(ValueError, match="without corresponding primaries"),
+        ):
+            _make_map_group(
+                f,
+                reference=_REF,
+                primary_targets={_A: [0, 1, 2]},
+                aux_pairs={(_A, _B): ([0, 1], [2, 0])},
+            )
 
 
 class TestMapArrayValidation:
@@ -540,14 +540,16 @@ class TestMapArrayValidation:
 
     def test_auxiliary_sides_require_equal_lengths(self, tmp_path: Path) -> None:
         path = tmp_path / "map.hdf5"
-        with h5py.File(path, "w") as f:
-            with pytest.raises(ValueError, match="source and target.*same length"):
-                _make_map_group(
-                    f,
-                    reference=_REF,
-                    primary_targets={_A: [0, 1], _B: [1, 0]},
-                    aux_pairs={(_A, _B): ([0, 1], [1])},
-                )
+        with (
+            h5py.File(path, "w") as f,
+            pytest.raises(ValueError, match="source and target.*same length"),
+        ):
+            _make_map_group(
+                f,
+                reference=_REF,
+                primary_targets={_A: [0, 1], _B: [1, 0]},
+                aux_pairs={(_A, _B): ([0, 1], [1])},
+            )
 
     @pytest.mark.parametrize(
         ("side", "data", "message"),
@@ -588,7 +590,7 @@ class TestMapArrayValidation:
             del pair[side]
             _write_simple_slot(pair, side, [0, 1])
 
-            with pytest.raises(ValueError, match="expected a dataset"):
+            with pytest.raises(TypeError, match="expected a dataset"):
                 _read_map_layout("/map", map_group)
 
     @pytest.mark.parametrize(

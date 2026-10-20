@@ -6,12 +6,11 @@ behavior that must survive the move to a StructureState.
 """
 
 import numpy as np
-import pytest
-from opencosmo.io.io import open_state
-
 import opencosmo as oc
+import pytest
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure import state as scst
+from opencosmo.io.io import open_state
 
 
 @pytest.fixture

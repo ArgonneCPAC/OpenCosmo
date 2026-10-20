@@ -1,5 +1,4 @@
 import numpy as np
-
 from opencosmo.index import coalesce_chunks
 
 

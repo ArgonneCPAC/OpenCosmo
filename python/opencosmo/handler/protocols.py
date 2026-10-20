@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Optional, Protocol, Self
+from typing import TYPE_CHECKING, Protocol, Self
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from uuid import UUID
 
     import numpy as np
+    from opencosmo.index import DataIndex, SimpleIndex
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
 
-    from opencosmo.index import DataIndex, SimpleIndex
-
 
 class DataHandler(Protocol):
-    def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
-        """ """
+    def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]: ...
 
-    def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None) -> Self: ...
+    def take(self, other: DataIndex, sorted: np.ndarray | None = None) -> Self: ...
 
     def make_schema(
         self,
@@ -30,7 +29,7 @@ class DataHandler(Protocol):
     @property
     def columns(self) -> Iterable[str]: ...
     @property
-    def load_conditions(self) -> Optional[dict]: ...
+    def load_conditions(self) -> dict | None: ...
 
     @property
     def index(self) -> DataIndex: ...

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import numpy as np
+import opencosmo as oc
 import pytest
+from opencosmo.collection.simulation import state as simst
 from opencosmo.column.select import (
     MissingColumnError,
     build_multi_dataset_selections,
 )
 from opencosmo.io.io import open_state
-
-import opencosmo as oc
-from opencosmo.collection.simulation import state as simst
 
 
 @pytest.fixture

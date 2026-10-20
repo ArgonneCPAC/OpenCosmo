@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import astropy.units as u  # type: ignore
 import numpy as np
 
 from opencosmo.mpi import get_comm_world, get_mpi
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class Reducer(Protocol):

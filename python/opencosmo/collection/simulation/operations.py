@@ -147,11 +147,13 @@ def with_new_columns(
     state: SimulationState,
     *args: Any,
     datasets: str | Iterable[str] | None = None,
-    descriptions: str | dict[str, str] = {},
+    descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     **new_columns: ConstructedColumn | np.ndarray,
 ) -> SimulationState:
     # New columns may be arrays sized to the realigned rows.
+    if descriptions is None:
+        descriptions = {}
     return __map(
         __resolved(state),
         "with_new_columns",
@@ -257,7 +259,7 @@ def make_schema(state: SimulationState, path: str) -> Schema:
     indices: dict[str, DataIndex] = {}
 
     for name, child in state.members.items():
-        children[name] = scops.child_schema(child, "/".join([path, name]), False)
+        children[name] = scops.child_schema(child, f"{path}/{name}", False)
         if not isinstance(child, DatasetState):
             continue
         new_uuids[name] = UUID(

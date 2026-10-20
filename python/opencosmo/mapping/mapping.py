@@ -6,10 +6,9 @@ from uuid import UUID
 
 import h5py
 import numpy as np
+from opencosmo.index import coalesce_chunks, get_data, into_array
 from opencosmo.io.schema import FileEntry, Schema
 from opencosmo.io.writer import ColumnWriter
-
-from opencosmo.index import coalesce_chunks, get_data, into_array
 
 if TYPE_CHECKING:
     from opencosmo.index import DataIndex, SimpleIndex
@@ -66,7 +65,7 @@ class DatasetMatchSet:
     aliases: dict[str, UUID] = field(default_factory=dict)
 
     @property
-    def endpoints(self) -> "frozenset[UUID]":
+    def endpoints(self) -> frozenset[UUID]:
         """Every UUID that survived the availability filter and is actually routable.
 
         Contrast with ``MapLayout.endpoints``, which lists every UUID the map file
@@ -347,7 +346,7 @@ def get_mapping(
     target_uuid = match_set.aliases.get(str(target), target)
 
     if not isinstance(source_uuid, UUID) or not isinstance(target_uuid, UUID):
-        raise ValueError("Mapping names must be UUIDs or registered aliases")
+        raise TypeError("Mapping names must be UUIDs or registered aliases")
 
     try:
         mapping = get_primary_mapping(match_set, source_uuid, target_uuid, index)
@@ -436,7 +435,7 @@ def get_primary_mapping(
     map_to_source = match_set.primary_maps[source]
     map_to_target = match_set.primary_maps[target]
     if isinstance(map_to_source, ChunkedSlot) or isinstance(map_to_target, ChunkedSlot):
-        raise ValueError("Chunked mappings support reference-to-target routing only")
+        raise ValueError("Chunked mappings support reference-to-target routing only")  # noqa: TRY004 — unsupported mapping variant, not a type error
 
     ref_rows = __get_inverse_mapping(
         map_to_source, index, match_set.reference_source, source
@@ -451,9 +450,9 @@ def get_primary_mapping(
 
 def __get_inverse_mapping(
     mapping: MapSlot,
-    index: "DataIndex",
-    reference_name: "str | UUID",
-    source_name: "str | UUID",
+    index: DataIndex,
+    reference_name: str | UUID,
+    source_name: str | UUID,
 ) -> np.ndarray:
     """Invert a reference→source primary map for the given source rows.
 
@@ -486,7 +485,7 @@ def __get_inverse_mapping(
         filtering.
     """
     if isinstance(mapping, ChunkedSlot):
-        raise ValueError("Chunked mappings support reference-to-target routing only")
+        raise ValueError("Chunked mappings support reference-to-target routing only")  # noqa: TRY004 — unsupported mapping variant, not a type error
 
     # Inversion is inherently non-lazy: we must read the entire forward map to
     # know which reference row points at a given source row.  This is bounded
@@ -536,7 +535,7 @@ def get_slot_sizes(
     """Return the signed sizes in a chunked primary slot."""
     slot = match_set.primary_maps[target]
     if not isinstance(slot, ChunkedSlot):
-        raise ValueError("Simple mappings do not have a size column")
+        raise ValueError("Simple mappings do not have a size column")  # noqa: TRY004 — capability limit, not a type error
     return get_data(slot.size, index).astype(np.int64)
 
 

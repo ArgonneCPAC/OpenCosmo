@@ -1,12 +1,11 @@
 import astropy.units as u
 import numpy as np
+import opencosmo as oc
 import pytest
+from opencosmo import col, write
 from opencosmo.header import read_header, write_header
 from opencosmo.io.discover import discover_file
 from opencosmo.io.io import open_state
-
-import opencosmo as oc
-from opencosmo import col, write
 
 
 @pytest.fixture

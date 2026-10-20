@@ -1,4 +1,5 @@
 from typing import Any
+
 import opencosmo as oc
 
 default_params: dict[str, dict[str, Any]] = {

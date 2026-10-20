@@ -6,9 +6,8 @@ from .structure import StructureCollection
 
 __all__ = [
     "Collection",
+    "HealpixMap",
+    "Lightcone",
     "SimulationCollection",
     "StructureCollection",
-    "SimulationCollection",
-    "Lightcone",
-    "HealpixMap",
 ]

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
     from opencosmo.dataset.state import DatasetState
 
 

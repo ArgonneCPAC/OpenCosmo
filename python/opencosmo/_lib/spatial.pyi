@@ -1,6 +1,5 @@
 import numpy as np
 import numpy.typing as npt
-
 from opencosmo.index import IndexArray
 
 def get_closest_distance_3d(

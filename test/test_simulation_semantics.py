@@ -6,12 +6,11 @@ collections that must survive the move to a SimulationState.
 """
 
 import numpy as np
+import opencosmo as oc
 import pytest
+from opencosmo.collection.simulation import state as simst
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io.io import open_state
-
-import opencosmo as oc
-from opencosmo.collection.simulation import state as simst
 
 
 @pytest.fixture
@@ -168,7 +167,7 @@ def test_lightcone_children_column_operations(lightcone_children):
     selected = collection.select("fof_halo_mass", "fof_halo_tag")
     dropped = selected.drop("fof_halo_tag")
 
-    for name in collection.keys():
+    for name in collection:
         assert isinstance(selected[name], oc.Lightcone)
         assert set(selected[name].columns) == {"fof_halo_mass", "fof_halo_tag"}
         assert dropped[name].columns == ["fof_halo_mass"]

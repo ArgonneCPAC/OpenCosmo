@@ -7,17 +7,16 @@ from uuid import uuid4
 
 import h5py
 import numpy as np
+import opencosmo as oc
 import opencosmo.collection.simulation.io as simulation_io
-import opencosmo.collection.simulation.matching as matching
 import opencosmo.mapping.write as mapping_write
 import pytest
+from opencosmo.collection.simulation import matching
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.verify import verify_structure
 from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 from opencosmo.utils import normalize_kwarg_name
-
-import opencosmo as oc
-from opencosmo.index import into_array
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -208,7 +207,7 @@ def _assert_ordered_mapping_equal(
     if sort_by is not None:
         after = after.sort_by(*sort_by).take_range(0, len(after[source]))
     assert tuple(before.keys()) == tuple(after.keys())
-    for name in before.keys():
+    for name in before:
         np.testing.assert_array_equal(
             _column(after[name], identifier),
             _column(before[name], identifier),
@@ -505,7 +504,7 @@ def test_matched_dataset_access_rebuilds_targets(accessor, mapped_paths, test_da
     )
 
     if accessor == "getitem":
-        accessed = {name: matched[name] for name in matched.keys()}
+        accessed = {name: matched[name] for name in matched}
     elif accessor == "values":
         accessed = dict(zip(matched.keys(), matched.values(), strict=True))
     else:
@@ -613,7 +612,7 @@ def test_matched_with_new_columns_arrays_on_pending_targets(mapped_paths, test_d
         .match(REFERENCE)
         .take_range(7, 31)
     )
-    values = {name: np.arange(24) for name in pending.keys()}
+    values = {name: np.arange(24) for name in pending}
 
     result = pending.with_new_columns(row_number=values)
 
@@ -737,8 +736,7 @@ def test_match_on_pending_targets_uses_them_unaligned(mapped_paths, test_data):
     first = original.match(REFERENCE)
     pending = first.take_range(7, 31)
     before = {
-        name: pending[REFERENCE] if name == REFERENCE else first[name]
-        for name in first.keys()
+        name: pending[REFERENCE] if name == REFERENCE else first[name] for name in first
     }
 
     rematched = pending.match(SIMULATION_A)

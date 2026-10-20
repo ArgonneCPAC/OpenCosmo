@@ -9,9 +9,8 @@ from shutil import copy
 import astropy.units as u
 import h5py
 import numpy as np
-import pytest
-
 import opencosmo as oc
+import pytest
 from opencosmo import StructureCollection
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
@@ -43,7 +42,6 @@ def per_test_dir(
         # Close out storage pressure immediately after each test
         if IN_GITHUB_ACTIONS:
             shutil.rmtree(path, ignore_errors=True)
-        pass
 
 
 @pytest.fixture
@@ -117,7 +115,7 @@ def test_multi_filter(multi_path):
 def test_link_particles_only(halo_paths):
     collection = oc.open(halo_paths[0], halo_paths[1])
     assert isinstance(collection, oc.StructureCollection)
-    for key in collection.keys():
+    for key in collection:
         assert "particles" in key or key == "halo_properties"
 
 
@@ -689,7 +687,7 @@ def test_data_linking(halo_paths):
     for halo in collection.halos():
         halo_properties = halo.pop("halo_properties")
         halo_tags = set()
-        for name, particle_species in halo.items():
+        for particle_species in halo.values():
             if len(particle_species) == 0:
                 continue
             try:
@@ -700,9 +698,7 @@ def test_data_linking(halo_paths):
                 assert species_halo_tags.pop() == halo_properties["fof_halo_tag"]
                 n_particles += 1
             except TypeError:
-                species_halo_tags = set(
-                    [particle_species.select("fof_halo_tag").get_data()]
-                )
+                species_halo_tags = {particle_species.select("fof_halo_tag").get_data()}
                 halo_tags.update(species_halo_tags)
                 assert species_halo_tags.pop() == halo_properties["fof_halo_tag"]
                 n_particles += 1
@@ -1027,7 +1023,7 @@ def test_link_write(halo_paths, per_test_dir):
         assert len(halo_tags) == 1
         assert halo_tags.pop() == properties["fof_halo_tag"]
 
-    for key in original_output.keys():
+    for key in original_output:
         assert set(original_output[key]) == set(read_output[key])
 
 
@@ -1135,7 +1131,7 @@ def test_simulation_collection_evaluate_map_kwarg(multi_path):
     random_data = {
         key: np.random.randint(0, 10, len(ds)) for key, ds in collection.items()
     }
-    random_val = {key: np.random.randint(1, 100, 1) for key in collection.keys()}
+    random_val = {key: np.random.randint(1, 100, 1) for key in collection}
 
     output = collection.evaluate(
         fof_px,
@@ -1257,7 +1253,7 @@ def test_simulation_collection_bound(multi_path):
     region = oc.make_box(p1, p2)
     collection = collection.bound(region)
 
-    for name, properties in collection.items():
+    for properties in collection.values():
         data = properties.get_data()
         for i, dim in enumerate(["x", "y", "z"]):
             val = data[f"fof_halo_center_{dim}"].value

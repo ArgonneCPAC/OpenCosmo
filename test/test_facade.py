@@ -1,3 +1,4 @@
+import opencosmo as oc
 import pytest
 from opencosmo.collection.healpix_map.state import HealpixMapState
 from opencosmo.collection.lightcone.state import LightconeState
@@ -6,8 +7,6 @@ from opencosmo.collection.structure.state import StructureState
 from opencosmo.dataset.state import DatasetState
 from opencosmo.facade import wrap
 from opencosmo.io.io import open_state
-
-import opencosmo as oc
 
 CASES = {
     "dataset": (

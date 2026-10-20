@@ -1,9 +1,8 @@
 import numpy as np
-import pytest
-from opencosmo.io.io import open_state
-
 import opencosmo as oc
+import pytest
 from opencosmo.collection.structure import links
+from opencosmo.io.io import open_state
 
 
 def _link_slot(state, link_name):
@@ -150,7 +149,7 @@ def verify_structure_links(structure):
 
 def verify_collection_links(collection, n=10):
     """Verify links across a structure collection of halos or galaxies."""
-    if "halo_properties" in collection.keys():
+    if "halo_properties" in collection:
         subset = collection.filter(oc.col("sod_halo_mass") > 1e13).take(n)
         n_checked = 0
         for structure in subset.halos():
@@ -184,7 +183,7 @@ def reduce_for_write(collection, components):
     links are exercised -- a mass filter would keep only massive halos, which
     all have profiles, and would hide bugs in how sparse links are written.
     """
-    if "halo_properties" not in collection.keys():
+    if "halo_properties" not in collection:
         # Galaxy-only collection: no sparse profile links to preserve, so a
         # plain subset keeps the write small.
         return collection.take(1000)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING
 
 import healpy as hp
 import numpy as np
@@ -12,12 +12,14 @@ from opencosmo.mpi import get_all_entries, get_comm_world
 from opencosmo.spatial.check import find_coordinates_2d
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from opencosmo.dataset.state import DatasetState
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
 
 
-def update_order(data: np.ndarray, comm: Optional[MPI.Comm], order: np.ndarray):
+def update_order(data: np.ndarray, comm: MPI.Comm | None, order: np.ndarray):
     if comm is not None:
         return update_global_order_mpi(data, comm, order)
 
@@ -48,7 +50,7 @@ def _global_inverse_order_mpi(order: np.ndarray, comm) -> np.ndarray:
 
 def update_top_host_idx(
     data: np.ndarray,
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     order: np.ndarray,
     slice_sizes: list[int],
 ):
@@ -99,7 +101,9 @@ def update_global_order_mpi(data, comm, order):
     return np.concat(all_data)[global_order]
 
 
-def sync_metadata(dataset_schemas: list[Schema], skip: list[str] = []):
+def sync_metadata(dataset_schemas: list[Schema], skip: list[str] | None = None):
+    if skip is None:
+        skip = []
     metadata = [schema.attributes for schema in dataset_schemas]
     identity = {"uuid", "main_uuid"}
     to_compare = []
@@ -108,10 +112,10 @@ def sync_metadata(dataset_schemas: list[Schema], skip: list[str] = []):
     if not all(am == to_compare[0] for am in to_compare[1:]):
         raise ValueError("Datasets don't have the same metadata!")
 
-    child_names = set(frozenset(schema.children.keys()) for schema in dataset_schemas)
+    child_names = {frozenset(schema.children.keys()) for schema in dataset_schemas}
     if len(child_names) > 1:
         raise ValueError("Datasets don't have the same metadata!")
-    for child in list(child_names)[0]:
+    for child in next(iter(child_names)):
         if child in skip:
             continue
         schemas = [sc.children[child] for sc in dataset_schemas]
@@ -160,7 +164,7 @@ def sync_headers(datasets: list[DatasetState], redshift_range):
 def stack_lightcone_datasets_in_schema(
     datasets: dict[str, list[DatasetState]],
     path: str,
-    redshift_range: Optional[tuple[float, float]],
+    redshift_range: tuple[float, float] | None,
     no_stack: bool = False,
 ):
     name = path.split("/")[-1]
@@ -239,7 +243,7 @@ def stack_lightcone_datasets_in_schema(
 def stack_index_groups(schemas: list[Schema]):
     base_schema = schemas[0]
     new_children = {}
-    for index_level in base_schema.children.keys():
+    for index_level in base_schema.children:
         all_level_schemas = [schema.children[index_level] for schema in schemas]
         new_children[index_level] = stack_data_groups(all_level_schemas)
     return make_schema("index", FileEntry.COLUMNS, new_children)

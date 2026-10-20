@@ -363,7 +363,7 @@ def gather(
     if any(cols is None for cols in all_columns):
         raise ValueError("columns must be a string, an iterable of strings, or 'all'")
 
-    column_sets = set([frozenset(cols) for cols in all_columns])
+    column_sets = {frozenset(cols) for cols in all_columns}
     if len(column_sets) > 1:
         raise ValueError("Not all ranks recieved the same sets of columns!")
 

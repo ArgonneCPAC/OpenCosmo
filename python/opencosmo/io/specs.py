@@ -14,7 +14,6 @@ from opencosmo.io.discover import (
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from typing import TypeAlias
 
     from opencosmo.collection.healpix_map.state import HealpixMapState
     from opencosmo.collection.lightcone.state import LightconeState
@@ -24,9 +23,7 @@ if TYPE_CHECKING:
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
 
-    SpecState: TypeAlias = (
-        DatasetState | LightconeState | StructureState | HealpixMapState
-    )
+    type SpecState = DatasetState | LightconeState | StructureState | HealpixMapState
 
 """
 Spec registry for opening OpenCosmo files.

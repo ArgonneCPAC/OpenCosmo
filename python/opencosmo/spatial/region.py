@@ -100,7 +100,7 @@ def regularize_regions(*regions: Region2d) -> list[HealpixRegion]:
     if not healpix_regions:
         target_nside = 2**8
     else:
-        region_nsides = set(r.nside for r in healpix_regions)
+        region_nsides = {r.nside for r in healpix_regions}
         target_nside = max(region_nsides)
 
     output_healpix = [r.into_healpix_region(target_nside) for r in regions]
@@ -442,8 +442,10 @@ class BoxRegion:
         unit_handler: UnitHandler,
         columns: Iterable[str],
         from_: UnitConvention,
-        unit_kwargs: dict[str, Any] = {},
+        unit_kwargs: dict[str, Any] | None = None,
     ):
+        if unit_kwargs is None:
+            unit_kwargs = {}
         center = {col: dim for col, dim in zip(columns, self.__center)}
         halfwidth = {col: dim for col, dim in zip(columns, self.__halfwidths)}
 
