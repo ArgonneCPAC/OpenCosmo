@@ -189,9 +189,9 @@ class Dataset:
 
     def get_data(
         self,
-        format="astropy",
-        unpack=True,
-        wrap_single=False,
+        format: str = "astropy",
+        unpack: bool = True,
+        wrap_single: bool = False,
         **kwargs,
     ) -> OpenCosmoData:
         """
@@ -272,9 +272,9 @@ class Dataset:
     def evaluate(
         self,
         func: Callable,
-        vectorize=False,
-        insert=True,
-        format="astropy",
+        vectorize: bool = False,
+        insert: bool = True,
+        format: str = "astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
         **evaluate_kwargs,
@@ -380,8 +380,8 @@ class Dataset:
     def evaluate_to_dataset(
         self,
         func: Callable,
-        vectorize=False,
-        format="astropy",
+        vectorize: bool = False,
+        format: str = "astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
         **evaluate_kwargs,
@@ -441,7 +441,9 @@ class Dataset:
             )
         )
 
-    def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
+    def filter(
+        self, *masks: ColumnMask, mode: Literal["local", "global"] = "global"
+    ) -> Dataset:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
@@ -505,7 +507,7 @@ class Dataset:
     def select(
         self,
         *columns: str | Iterable[str],
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **derived_columns: ConstructedColumn | DerivedScalarValue,
     ) -> Dataset:
         """
@@ -733,7 +735,7 @@ class Dataset:
         self,
         descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """

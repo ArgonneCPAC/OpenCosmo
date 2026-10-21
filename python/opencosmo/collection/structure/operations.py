@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from inspect import signature
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from warnings import warn
 
 import numpy as np
@@ -73,7 +73,7 @@ def filter(
     state: StructureState,
     *masks: ColumnMask,
     on_galaxies: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ) -> StructureState:
     if not masks:
         return state
@@ -108,13 +108,15 @@ def sort_by(state: StructureState, column: str, invert: bool = False) -> Structu
     return __with_source_rows(state, new_source)
 
 
-def take(state: StructureState, n: int, at: str, mode: str) -> StructureState:
+def take(
+    state: StructureState, n: int, at: str, mode: Literal["local", "global"]
+) -> StructureState:
     new_source = __source_op(state.source, "take")(state.source, n, at, mode)
     return __with_source_rows(state, new_source)
 
 
 def take_range(
-    state: StructureState, start: int, end: int, mode: str
+    state: StructureState, start: int, end: int, mode: Literal["local", "global"]
 ) -> StructureState:
     new_source = __source_op(state.source, "take_range")(state.source, start, end, mode)
     return __with_source_rows(state, new_source)
@@ -149,7 +151,7 @@ def get_pixels(state: StructureState, nside: int) -> np.ndarray:
 def select(
     state: StructureState,
     *select_args: str | Iterable[str],
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **select_kwargs: Any,
 ) -> StructureState:
     if not select_kwargs and not select_args:
@@ -252,7 +254,7 @@ def with_new_columns(
     dataset: str,
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **new_columns: ConstructedColumn | np.ndarray,
 ) -> StructureState:
     if descriptions is None:

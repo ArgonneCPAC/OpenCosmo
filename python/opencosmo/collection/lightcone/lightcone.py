@@ -612,7 +612,9 @@ class Lightcone:
             return Lightcone(result)
         return result
 
-    def filter(self, *masks: ColumnMask, mode: str = "global", **kwargs) -> Lightcone:
+    def filter(
+        self, *masks: ColumnMask, mode: Literal["local", "global"] = "global", **kwargs
+    ) -> Lightcone:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
@@ -658,7 +660,7 @@ class Lightcone:
     def select(
         self,
         *columns: str | Iterable[str],
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **derived_columns: ConstructedColumn,
     ) -> Lightcone:
         """
@@ -846,7 +848,7 @@ class Lightcone:
         self,
         descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **columns: ConstructedColumn | np.ndarray | u.Quantity,
     ):
         """

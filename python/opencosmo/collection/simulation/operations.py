@@ -10,7 +10,7 @@ matching only reads raw row indices.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
 from opencosmo.collection.lightcone import operations as lcops
@@ -102,12 +102,14 @@ def sort_by(state: SimulationState, column: str, invert: bool) -> SimulationStat
     return __row_operation(state, "sort_by", None, column, invert)
 
 
-def take(state: SimulationState, n: int, at: str, mode: str) -> SimulationState:
+def take(
+    state: SimulationState, n: int, at: str, mode: Literal["local", "global"]
+) -> SimulationState:
     return __row_operation(state, "take", None, n, at, mode)
 
 
 def take_range(
-    state: SimulationState, start: int, end: int, mode: str
+    state: SimulationState, start: int, end: int, mode: Literal["local", "global"]
 ) -> SimulationState:
     return __row_operation(state, "take_range", None, start, end, mode)
 

@@ -34,6 +34,7 @@ from opencosmo.index import (
     reindex_column,
     single_chunk,
 )
+from opencosmo.instrument import instrument_call
 from opencosmo.mpi import gather_index, get_comm_world
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
@@ -95,8 +96,11 @@ def get_data(
     return convert_data(data, format, wrap_single=wrap_single)
 
 
+@instrument_call
 def filter(
-    state: DatasetState, *masks: ColumnMask | CompoundColumnMask, mode: str = "global"
+    state: DatasetState,
+    *masks: ColumnMask | CompoundColumnMask,
+    mode: Literal["local", "global"] = "global",
 ):
     reducer = default_reducer(mode)
     masks = tuple(m.with_reducer(reducer) for m in masks)
@@ -115,10 +119,11 @@ def filter(
     return new_state
 
 
+@instrument_call
 def select(
     state: DatasetState,
     *columns: str | Iterable[str],
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **derived_columns: ConstructedColumn | DerivedScalarValue,
 ):
     from opencosmo.column.column import Column, DerivedScalarValue
@@ -160,6 +165,7 @@ def select(
     return new_state
 
 
+@instrument_call
 def drop(state: DatasetState, *columns: str | Iterable[str]):
     all_columns: set[str] = set()
     for col_group in columns:
@@ -180,11 +186,12 @@ def sort_by(state: DatasetState, column: str | None, invert: bool) -> DatasetSta
     return dataclasses.replace(state, sort_key=sort_key)
 
 
+@instrument_call
 def with_new_columns(
     state: DatasetState,
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
 ):
     from opencosmo.column.column import Column, DerivedScalarValue
@@ -282,6 +289,7 @@ def evaluate_to_dataset(
     )
 
 
+@instrument_call
 def take_range(
     state: DatasetState,
     start: int,
@@ -297,6 +305,7 @@ def take_range(
     return __take_rows(state, take_index)
 
 
+@instrument_call
 def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
     row_range = get_range(rows)
     if row_range[0] < 0 or row_range[1] > len(state):
@@ -307,6 +316,7 @@ def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
     return __take_rows(state, rows)
 
 
+@instrument_call
 def take(
     state: DatasetState,
     n: int,
@@ -350,6 +360,7 @@ def rows(
         yield output_data
 
 
+@instrument_call
 def bound(state: DatasetState, region, select_by):
     if state.spatial_index is None:
         raise AttributeError(
