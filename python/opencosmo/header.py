@@ -21,6 +21,7 @@ from opencosmo.dtypes import (
 )
 from opencosmo.dtypes.units import apply_units
 from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.instrument import make_log_schema
 from opencosmo.io.schema import FileEntry, add_metadata, empty_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.spatial.builders import from_model
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 
     from pydantic import BaseModel
 
+    from opencosmo.instrument.instrument import LogEntry
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
@@ -159,12 +161,28 @@ class OpenCosmoHeader:
         except KeyError:
             return object.__getattribute__(self, key)
 
-    def with_region(self, region: Region):
+    def with_region(self, region: Region | None):
         if region is not None:
             region_model = region.into_model()
         else:
             region_model = None
         new_file_pars = self.__file_pars.model_copy(update={"region": region_model})
+        new_header = OpenCosmoHeader(
+            new_file_pars,
+            self.__required_origin_parameters,
+            self.__optional_origin_parameters,
+            self.__dtype_parameters,
+        )
+        return new_header
+
+    def append_log(self, log: list[LogEntry] | None):
+        if self.file.log is None and log is None:
+            return self
+
+        current_log = self.file.log or []
+        incoming_log = log or []
+        new_log = current_log + incoming_log
+        new_file_pars = self.__file_pars.model_copy(update={"log": new_log})
         new_header = OpenCosmoHeader(
             new_file_pars,
             self.__required_origin_parameters,
@@ -201,8 +219,15 @@ class OpenCosmoHeader:
         return new_header
 
     def dump(self) -> Schema:
+        log = self.__file_pars.log
+
+        if log is not None:
+            file_pars = self.__file_pars.model_copy(update={"log": None})
+        else:
+            file_pars = self.__file_pars
+
         to_write = chain(
-            [("file", self.__file_pars)],
+            [("file", file_pars)],
             self.__required_origin_parameters.items(),
             self.__optional_origin_parameters.items(),
             self.__dtype_parameters.items(),
@@ -216,6 +241,8 @@ class OpenCosmoHeader:
         file_schema = schema.children["file"]
 
         schema.children["file"] = file_schema._replace(updater=combine_header_regions)
+        if log is not None:
+            schema.children["file"].children["log"] = make_log_schema(log)
 
         return schema
 

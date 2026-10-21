@@ -565,6 +565,7 @@ def make_schema(state: DatasetState, path: str) -> Schema:
         state.spatial_index,
         state.region,
         state.raw_index,
+        state.log,
         derived_data,
         get_string_uuid(path),
         path.split("/")[-1],

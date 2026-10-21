@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from opencosmo.instrument.instrument import LogEntry
 from opencosmo.spatial import models as sm
 from opencosmo.units import UnitConvention
 
@@ -46,6 +47,7 @@ class FileParameters(BaseModel):
     region: sm.RegionModel | None = None
     unit_convention: UnitConvention = UnitConvention.SCALEFREE
     require_header_groups: tuple[str, ...] | None = None
+    log: list[LogEntry] | None = None
 
     @model_validator(mode="before")
     @classmethod
