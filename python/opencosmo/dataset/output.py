@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
+    from opencosmo.instrument.instrument import LogEntry
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region, SpatialIndex
 
@@ -77,6 +78,7 @@ def make_dataset_schema(
     spatial_index: SpatialIndex | None,
     region: Region | None,
     raw_index: DataIndex,
+    log: list[LogEntry] | None,
     derived_data: dict,
     dataset_uuid: UUID,
     name: str | None = None,
@@ -107,6 +109,10 @@ def make_dataset_schema(
     if name is None:
         name = ""
 
+    header_log = header.file.log or []
+    if log is not None:
+        header_log.extend(log)
+
     if spatial_index is not None:
         from opencosmo.spatial.index import apply_index, make_tree_schema
 
@@ -115,6 +121,8 @@ def make_dataset_schema(
         children["index"] = tree_schema
         if region is not None:
             header = header.with_region(region)
+
+    header = header.append_log(log or None)
     header_schema = header.dump()
     children["header"] = header_schema
 
