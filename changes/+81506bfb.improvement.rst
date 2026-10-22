@@ -1,0 +1,1 @@
+`healpy` and `healsparse` now consistently import lazily, improving overall import times.

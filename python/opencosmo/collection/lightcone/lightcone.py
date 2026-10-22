@@ -16,7 +16,6 @@ from typing import (
 )
 from warnings import warn
 
-import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
 
@@ -712,6 +711,8 @@ class Lightcone(dict):
             If ``nside`` is not a positive power of two, or if ``pixels``
             contains values that are out of range for the given ``nside``.
         """
+        import healpy as hp
+
         level = np.log2(nside)
         if not level.is_integer() or level < 0:
             raise ValueError("nside must be a positive power of two!")

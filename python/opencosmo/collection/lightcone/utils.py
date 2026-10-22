@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, Sequence
 
-import healpy as hp
 import numpy as np
 
 from opencosmo.collection.lightcone import lightcone as lc
@@ -129,6 +128,8 @@ def determine_max_level(lightcone: lc.Lightcone) -> Optional[int]:
 def get_pixels(
     lightcone: lc.Lightcone, level: int, is_occupied: Optional[np.ndarray] = None
 ):
+    import healpy as hp
+
     # We know nside is a power of two at this point
     available_level = determine_max_level(lightcone)
     if available_level is None:
