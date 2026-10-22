@@ -3,7 +3,6 @@ from __future__ import annotations
 from numbers import Real
 from typing import TYPE_CHECKING
 
-import healpy as hp
 import numpy as np
 from astropy import units as u
 
@@ -86,6 +85,9 @@ def get_included_pixels(
     padded by two pixels so that partially covered pixels and the bilinear
     interpolation stencil used during reprojection are included.
     """
+
+    import healpy as hp
+
     level = np.log2(nside)
     if not level.is_integer() or level < 0:
         raise ValueError("nside must be a positive power of two!")

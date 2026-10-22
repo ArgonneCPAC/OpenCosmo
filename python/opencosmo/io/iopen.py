@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
-import healpy as hp
 import numpy as np
 
 import opencosmo as oc
@@ -497,6 +496,8 @@ def _open_healpix_map(state: DatasetState) -> HealpixMapState:
 
 
 def _expand_lightcone_region(region, spatial_index):
+    import healpy as hp
+
     region = get_region(spatial_index, region)
 
     pixels = region.pixels

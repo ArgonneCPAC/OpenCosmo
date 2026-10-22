@@ -5,13 +5,6 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from healpy import (  # type: ignore
-    ang2vec,
-    max_pixrad,
-    pix2ang,
-    query_disc,
-    query_strip,
-)
 
 from opencosmo.index import get_length, into_array
 from opencosmo.spatial.models import (
@@ -195,6 +188,8 @@ class ConeRegion:
         return intersects_2d(self, other)
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
+        from healpy import ang2vec, query_disc
+
         vec = ang2vec(self.center.ra.value, self.center.dec.value, lonlat=True)
         radius = self.radius.to(u.rad).value
         return query_disc(nside, vec, radius, inclusive=True, nest=nest)
@@ -249,6 +244,8 @@ class SkyboxRegion:
         return self.__dec_bounds
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
+        from healpy import max_pixrad, pix2ang, query_strip
+
         # A skybox is bounded by lines of constant declination, not the great
         # circles that query_polygon draws between corners. A great circle
         # between two equal-declination corners bows toward the nearer pole, so

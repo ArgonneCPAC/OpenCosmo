@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import healpy as hp
 import numpy as np
 
 from opencosmo.spatial.index import get_partitions_with_data
@@ -56,6 +55,8 @@ def determine_max_level(state: LightconeState) -> int | None:
 
 
 def get_pixels(state: LightconeState, level: int) -> np.ndarray:
+    import healpy as hp
+
     # We know nside is a power of two at this point
     available_level = determine_max_level(state)
     if available_level is None:
