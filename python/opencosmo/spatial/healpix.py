@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import healpy as hp
 import numpy as np
 from astropy.coordinates import SkyCoord
 
@@ -45,6 +44,8 @@ class HealPixIndex:
 
         This is why we can't have nice things
         """
+        import healpy as hp
+
         if not hasattr(region, "get_healpix_intersections"):
             raise ValueError("Didn't recieve a 2D region!")
         nside = 2**level

@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Any, Callable, Generator, Iterable, Optional, 
 from warnings import warn
 
 import astropy.units as u  # type: ignore
-import healpy as hp
-import healsparse as hsp
 import numpy as np
 from astropy.table import Column as AstroColumn  # type: ignore
 from astropy.table import vstack
@@ -21,6 +19,7 @@ from opencosmo.mpi import get_comm_world
 from opencosmo.spatial.region import ConeRegion, FullSkyRegion, HealpixRegion
 
 if TYPE_CHECKING:
+    import healsparse as hsp
     from astropy.coordinates import SkyCoord
 
     from opencosmo.column.column import ColumnMask, ConstructedColumn
@@ -37,6 +36,9 @@ def make_healsparse_maps(
     nside: int,
     nside_lr: int,
 ) -> dict[str, hsp.HealSparseMap]:
+    import healpy as hp
+    import healsparse as hsp
+
     sentinel = np.float32(hp.UNSEEN)
     pixels = table["pixel"].value
 
@@ -334,6 +336,7 @@ class HealpixMap(dict):
         data: HealsparseMap | Column | dict[str, ndarray] | ndarray
             The data in this dataset.
         """
+        import healpy as hp
 
         if "output" in kwargs:
             warn(
@@ -414,6 +417,8 @@ class HealpixMap(dict):
         resolution.
 
         """
+        import healpy as hp
+
         nside_out = nside
         if nside_out == self.nside:
             return self
@@ -533,6 +538,8 @@ class HealpixMap(dict):
         return output
 
     def make_schema(self, path: str) -> Schema:
+        import healpy as hp
+
         children = {}
         for name, dataset in self.items():
             ds_schema = dataset.make_schema("/".join([path, name]))
@@ -597,6 +604,8 @@ class HealpixMap(dict):
             If the query region does not overlap with the coverage of this map
             in
         """
+        import healpy as hp
+
         # The best we can do here is turn
         if not isinstance(region, ConeRegion):
             raise TypeError(
