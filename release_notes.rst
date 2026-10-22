@@ -1,10 +1,10 @@
-opencosmo 1.4.5 (2026-10-07)
+opencosmo 1.4.6 (2026-10-22)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Bugfixes
-^^^^^^^^
+Improvements
+^^^^^^^^^^^^
 
-- Fixed bug that would cause statistics.binned_statistic() to fail for quantities with units (#317)
+- `healpy` and `healsparse` now consistently import lazily, improving overall import times.
 
 
 
