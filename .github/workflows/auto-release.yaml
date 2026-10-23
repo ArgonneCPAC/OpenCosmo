@@ -1,0 +1,76 @@
+name: auto release
+# Merging a PR into `release` that carries a `release:patch`, `release:minor`, or
+# `release:major` label bumps the version and runs the release pipeline.
+#
+# pull_request_target runs in the base-repo context so secrets are available for
+# PRs from forks. No PR code is executed here: the release workflow checks out the
+# `release` branch, which only contains the PR once a maintainer has merged it.
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+      - release
+
+# Serialize releases so two quick merges cannot compute the same version.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: >-
+      github.event.pull_request.merged == true && (
+        contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+        contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+        contains(github.event.pull_request.labels.*.name, 'release:major')
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: release
+          sparse-checkout: .bumpversion.toml
+          sparse-checkout-cone-mode: false
+
+      - name: Compute next version
+        id: next
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, sys, tomllib
+
+          labels = set(json.loads(os.environ["LABELS"]))
+          parts = [p for p in ("major", "minor", "patch") if f"release:{p}" in labels]
+          if len(parts) != 1:
+              sys.exit(f"Expected exactly one release label, found {sorted(labels)}")
+
+          with open(".bumpversion.toml", "rb") as f:
+              current = tomllib.load(f)["tool"]["bumpversion"]["current_version"]
+          match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", current)
+          if match is None:
+              sys.exit(f"release branch is at non-final version {current}")
+
+          major, minor, patch = map(int, match.groups())
+          match parts[0]:
+              case "major":
+                  major, minor, patch = major + 1, 0, 0
+              case "minor":
+                  minor, patch = minor + 1, 0
+              case "patch":
+                  patch += 1
+          version = f"{major}.{minor}.{patch}"
+          print(f"Releasing {current} -> {version}", file=sys.stderr)
+          print(f"version={version}")
+          PY
+
+  release:
+    needs: version
+    uses: ./.github/workflows/release.yaml
+    with:
+      version: ${{ needs.version.outputs.version }}
+    permissions:
+      contents: write
+    secrets: inherit
