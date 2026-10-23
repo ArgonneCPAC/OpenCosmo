@@ -5,7 +5,6 @@ from collections import defaultdict
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
-import healpy as hp
 import numpy as np
 from astropy.table import vstack  # type: ignore
 
@@ -267,6 +266,8 @@ def with_redshift_range(
 def pixel_search(
     state: LightconeState, pixels: npt.NDArray[np.int_], nside: int
 ) -> LightconeState:
+    import healpy as hp
+
     level = np.log2(nside)
     if not level.is_integer() or level < 0:
         raise ValueError("nside must be a positive power of two!")

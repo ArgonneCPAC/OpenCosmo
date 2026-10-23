@@ -4,8 +4,6 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
 import astropy.units as u
-import healpy as hp
-import healsparse as hsp
 import numpy as np
 
 from opencosmo.collection.healpix_map.cutout import (
@@ -27,6 +25,7 @@ from opencosmo.spatial.region import ConeRegion, FullSkyRegion, SkyboxRegion
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable
 
+    import healsparse as hsp
     from astropy.coordinates import SkyCoord
     from astropy.io import fits
 
@@ -86,6 +85,8 @@ def sort_by(state: HealpixMapState, column: str, invert: bool) -> HealpixMapStat
 def bound(
     state: HealpixMapState, region: Region, inclusive: bool = False
 ) -> HealpixMapState:
+    import healpy as hp
+
     if isinstance(region, SkyboxRegion):
         level = int(np.log2(state.nside))
         pixels = np.union1d(*query_healpix_partitions(region, level)[level])
@@ -196,6 +197,8 @@ def get_data(state: HealpixMapState, format: MapFormat, nside_out: int | None = 
 
 
 def with_resolution(state: HealpixMapState, nside: int) -> HealpixMapState:
+    import healpy as hp
+
     if nside == state.nside:
         return state
     elif nside > state.nside:
@@ -230,6 +233,8 @@ def with_resolution(state: HealpixMapState, nside: int) -> HealpixMapState:
 
 
 def make_schema(state: HealpixMapState, path: str) -> Schema:
+    import healpy as hp
+
     # Rows are written in raw order to match the pixels in the header region.
     dataset = dsops.select(replace(state.dataset, sort_key=None), set(state.columns))
     ds_schema = dsops.make_schema(dataset, f"{path}/data")
@@ -307,6 +312,9 @@ def __make_healsparse_maps(
     nside: int,
     nside_lr: int,
 ) -> dict[str, hsp.HealSparseMap]:
+    import healpy as hp
+    import healsparse as hsp
+
     sentinel = np.float32(hp.UNSEEN)
 
     # Build coverage map once, shared across all columns.
@@ -333,6 +341,8 @@ def __make_healsparse_maps(
 def __make_healpix_maps(
     pixels: np.ndarray, data: dict[str, np.ndarray], nside: int
 ) -> dict[str, np.ndarray]:
+    import healpy as hp
+
     npix = hp.nside2npix(nside)
     maps: dict[str, np.ndarray] = {}
     for name, values in data.items():

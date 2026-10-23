@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-import healpy as hp
 import numpy as np
 
 from opencosmo.dataset import operations as dsops
@@ -293,6 +292,8 @@ def get_order_mpi(pixels, comm):
 
 
 def get_stacked_lightcone_order(datasets: Iterable[DatasetState], max_index_depth: int):
+    import healpy as hp
+
     datasets = list(datasets)
     nside = 2**max_index_depth
     coordinates = [find_coordinates_2d(dataset) for dataset in datasets]

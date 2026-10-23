@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import healpy as hp
-
 from opencosmo.index import get_length, into_array
 from opencosmo.spatial.builders import from_model
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
@@ -72,6 +70,8 @@ class HealpixMapState:
 
     @property
     def full_sky(self) -> bool:
+        import healpy as hp
+
         # Rows and pixels are one-to-one, so this avoids materializing pixels.
         return len(self) == hp.nside2npix(self.nside)
 

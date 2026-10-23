@@ -5,13 +5,6 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
-from healpy import (  # type: ignore
-    ang2vec,
-    max_pixrad,
-    pix2ang,
-    query_disc,
-    query_strip,
-)
 
 from opencosmo.index import get_length, into_array
 from opencosmo.spatial.models import (
@@ -195,6 +188,8 @@ class ConeRegion:
         return intersects_2d(self, other)
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
+        from healpy import ang2vec, query_disc  # type: ignore
+
         vec = ang2vec(self.center.ra.value, self.center.dec.value, lonlat=True)
         radius = self.radius.to(u.rad).value
         return query_disc(nside, vec, radius, inclusive=True, nest=nest)
@@ -255,6 +250,8 @@ class SkyboxRegion:
         # query_polygon would omit pixels along the box's lower-declination edge.
         # Instead, select the full declination band with query_strip and then
         # restrict to the RA bounds.
+        from healpy import max_pixrad, pix2ang, query_strip  # type: ignore
+
         dec0, dec1 = self.__dec_bounds
         theta1 = np.radians(90.0 - dec1)
         theta2 = np.radians(90.0 - dec0)

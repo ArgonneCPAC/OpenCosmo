@@ -1,4 +1,3 @@
-import healpy as hp
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -33,6 +32,8 @@ def reproject_to_cartesian(
     width: float,
     resolution: int,
 ) -> dict[str, np.ndarray | WCS]:
+    import healpy as hp
+
     wcs = WCS(naxis=2)
     wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
     wcs.wcs.crval = [center[0], center[1]]

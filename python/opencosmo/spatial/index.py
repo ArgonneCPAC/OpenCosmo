@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, ClassVar
 from uuid import uuid1
 
 import h5py
-import healpy as hp
 import numpy as np
 from astropy.coordinates import SkyCoord
 
@@ -63,6 +62,8 @@ def build_data_index(
 def query_healpix_partitions(
     region: Region, level: int
 ) -> list[tuple[SimpleIndex, SimpleIndex]]:
+    import healpy as hp
+
     assert isinstance(region, Region2d)
     nside = 2**level
     intersects = region.get_healpix_intersections(nside)
