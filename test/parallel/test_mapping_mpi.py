@@ -775,24 +775,32 @@ def test_mapped_collection_context_manager_exits_cleanly(mapped_paths, test_data
 
 
 @pytest.mark.parallel(nprocs=4)
-@pytest.mark.parametrize(
-    ("paths", "message"),
-    (
-        (("primary", "mapping_reference"), "different simulations"),
-        (("primary", "alternate_step"), "KAPPA_2_EGW_0.568_SEED_1.048e6"),
-    ),
-)
-def test_open_without_connecting_mapping_raises(paths, message, test_data):
+def test_open_without_mapping_has_no_match_set(test_data):
     snapshot = test_data.snapshot
-    first = (
-        snapshot.primary.halo_properties
-        if paths[0] == "primary"
-        else getattr(snapshot, paths[0])
-    )
-    second = getattr(snapshot, paths[1])
+    collection = oc.open(snapshot.primary.halo_properties, snapshot.mapping_reference)
 
-    with pytest.raises(ValueError, match=message):
-        oc.open(first, second)
+    parallel_assert(isinstance(collection, oc.SimulationCollection))
+    parallel_assert(len(collection) == 2)
+    with pytest.raises(ValueError, match="does not contain matching"):
+        collection.match(next(iter(collection.keys())))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_same_simulation_different_steps_raises(test_data):
+    snapshot = test_data.snapshot
+    with pytest.raises(ValueError, match="both come from simulation"):
+        oc.open(snapshot.primary.halo_properties, snapshot.alternate_step)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_independent_simulations_without_mapping(test_data):
+    snapshot = test_data.snapshot
+    collection = oc.open(
+        snapshot.scidac(0).halo_properties, snapshot.scidac(1).halo_properties
+    )
+
+    parallel_assert(isinstance(collection, oc.SimulationCollection))
+    parallel_assert(len(collection) == 2)
 
 
 @pytest.mark.parallel(nprocs=4)

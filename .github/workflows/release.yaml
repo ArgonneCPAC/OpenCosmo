@@ -6,6 +6,12 @@ on:
         description: 'Version to release (e.g. 1.2.0, 1.2.0b1, 1.2.0rc1)'
         required: true
         type: string
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.2.0, 1.2.0b1, 1.2.0rc1)'
+        required: true
+        type: string
 
 jobs:
   prepare:
@@ -168,3 +174,26 @@ jobs:
           artifacts: dist/*
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           makeLatest: ${{ needs.prepare.outputs.prerelease == 'false' }}
+
+  # Bring the release back into main. Uses RELEASE_PAT because pull requests
+  # opened with GITHUB_TOKEN do not trigger CI, so auto-merge would never fire.
+  sync-main:
+    needs: [prepare, github-release]
+    if: needs.prepare.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open release -> main PR and enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # An unmerged sync PR from an earlier release already tracks the branch.
+          pr=$(gh pr list --base main --head release --state open --json number -q '.[0].number')
+          if [ -z "$pr" ]; then
+            url=$(gh pr create --base main --head release \
+              --title "Merge release $VERSION into main" \
+              --body "Automated sync of release $VERSION into main. Merges once required checks pass.")
+            pr=${url##*/}
+          fi
+          gh pr merge "$pr" --auto --merge
