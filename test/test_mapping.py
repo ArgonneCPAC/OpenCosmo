@@ -7,17 +7,16 @@ from uuid import uuid4
 
 import h5py
 import numpy as np
+import opencosmo as oc
 import opencosmo.collection.simulation.io as simulation_io
 import opencosmo.collection.simulation.simulation as simulation_module
 import opencosmo.mapping.write as mapping_write
 import pytest
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.verify import verify_structure
 from opencosmo.mapping.mapping import DatasetMatchSet, rebuild_single_with_new_source
 from opencosmo.utils import normalize_kwarg_name
-
-import opencosmo as oc
-from opencosmo.index import into_array
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -587,24 +586,30 @@ def test_matched_filter_rejects_non_source_datasets(mapped_paths, test_data):
         collection.filter(mask, datasets=(REFERENCE, SIMULATION_A))
 
 
-@pytest.mark.parametrize(
-    ("paths", "message"),
-    (
-        (("primary", "mapping_reference"), "different simulations"),
-        (("primary", "alternate_step"), "KAPPA_2_EGW_0.568_SEED_1.048e6"),
-    ),
-)
-def test_open_without_connecting_mapping_raises(paths, message, test_data):
+def test_open_without_mapping_has_no_match_set(test_data):
     snapshot = test_data.snapshot
-    first = (
-        snapshot.primary.halo_properties
-        if paths[0] == "primary"
-        else getattr(snapshot, paths[0])
-    )
-    second = getattr(snapshot, paths[1])
+    collection = oc.open(snapshot.primary.halo_properties, snapshot.mapping_reference)
 
-    with pytest.raises(ValueError, match=message):
-        oc.open(first, second)
+    assert isinstance(collection, oc.SimulationCollection)
+    assert len(collection) == 2
+    with pytest.raises(ValueError, match="does not contain matching"):
+        collection.match(next(iter(collection.keys())))
+
+
+def test_open_same_simulation_different_steps_raises(test_data):
+    snapshot = test_data.snapshot
+    with pytest.raises(ValueError, match="both come from simulation"):
+        oc.open(snapshot.primary.halo_properties, snapshot.alternate_step)
+
+
+def test_open_independent_simulations_without_mapping(test_data):
+    snapshot = test_data.snapshot
+    collection = oc.open(
+        snapshot.scidac(0).halo_properties, snapshot.scidac(1).halo_properties
+    )
+
+    assert isinstance(collection, oc.SimulationCollection)
+    assert len(collection) == 2
 
 
 def test_mapping_file_alone_raises(test_data):
