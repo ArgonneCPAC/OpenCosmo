@@ -22,11 +22,9 @@ jobs:
         uses: mpi4py/setup-mpi@v1
 
       - name: install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.8.2"
+        uses: astral-sh/setup-uv@v7
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: check pyproject.toml

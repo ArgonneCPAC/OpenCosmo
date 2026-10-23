@@ -1,0 +1,1 @@
+Cleared the ruff 0.17 lint backlog across the codebase (import sorting, typing modernization, comprehension and control-flow simplifications) with no behavior change, unblocking the dependency bump that upgrades ruff.

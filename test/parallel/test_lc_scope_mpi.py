@@ -7,10 +7,9 @@ the only way to catch double-counting or cross-rank communication failures.
 """
 
 import numpy as np
+import opencosmo as oc
 import pytest
 from mpi4py import MPI
-
-import opencosmo as oc
 
 
 @pytest.fixture

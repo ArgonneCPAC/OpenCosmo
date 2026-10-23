@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 
@@ -13,6 +13,7 @@ from opencosmo.units.get import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
     import numpy as np
@@ -23,8 +24,8 @@ if TYPE_CHECKING:
 
 def make_unit_handler_from_units(
     columns: dict[str, u.Unit | None],
-    header: "OpenCosmoHeader",
-    target_convention: Optional[UnitConvention] = None,
+    header: OpenCosmoHeader,
+    target_convention: UnitConvention | None = None,
 ):
     applicators = get_unit_applicators_dict(
         columns, header.file.unit_convention, header.cosmology
@@ -44,8 +45,8 @@ def make_unit_handler_from_units(
 
 def make_unit_handler_from_unit_strings(
     unit_strings: dict[str, str | None],
-    header: "OpenCosmoHeader",
-    target_convention: Optional[UnitConvention] = None,
+    header: OpenCosmoHeader,
+    target_convention: UnitConvention | None = None,
 ):
     """
     Cached-metadata counterpart to `make_unit_handler_from_units`. Builds a
@@ -64,11 +65,15 @@ class UnitHandler:
         current_convention: UnitConvention,
         cosmology: Cosmology,
         applicators: dict[str, UnitApplicator],
-        conversions: dict[str, u.Unit] = {},
-        column_conversions: dict[str, u.Unit] = {},
+        conversions: dict[str, u.Unit] | None = None,
+        column_conversions: dict[str, u.Unit] | None = None,
     ):
+        if column_conversions is None:
+            column_conversions = {}
+        if conversions is None:
+            conversions = {}
         if not isinstance(base_convention, UnitConvention):
-            raise ValueError
+            raise TypeError
         self.__base_convention = base_convention
         self.__current_convention = current_convention
         self.__cosmology = cosmology
@@ -83,6 +88,10 @@ class UnitHandler:
     @property
     def base_convention(self):
         return self.__base_convention
+
+    @property
+    def blanket_conversions(self) -> dict[u.Unit, u.Unit]:
+        return {u.Unit(source): target for source, target in self.__conversions.items()}
 
     @property
     def columns_with_conversions(self):
@@ -110,9 +119,7 @@ class UnitHandler:
 
     @cached_property
     def unitless_columns(self):
-        return set(
-            key for key, app in self.__applicators.items() if app.base_unit is None
-        )
+        return {key for key, app in self.__applicators.items() if app.base_unit is None}
 
     def with_static_columns(self, **columns: u.Unit):
         new_applicators = {}
@@ -184,11 +191,13 @@ class UnitHandler:
             new_column_conversions,
         )
 
-    def into_base_convention(
+    def regularize(
         self,
         data: Mapping[str, float | np.ndarray | u.Quantity],
-        unit_kwargs: dict = {},
+        unit_kwargs: dict | None = None,
     ):
+        if unit_kwargs is None:
+            unit_kwargs = {}
         return {
             name: self.__applicators[name].convert_to_base(
                 val, self.__current_convention, unit_kwargs=unit_kwargs

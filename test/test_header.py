@@ -5,13 +5,12 @@ from typing import TYPE_CHECKING
 import astropy.units as u
 import h5py
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.cosmology import FlatLambdaCDM
 from astropy.cosmology import units as cu
 from opencosmo.header import read_header, write_header
 from opencosmo.spatial.region import HealpixRegion
-
-import opencosmo as oc
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,12 +21,11 @@ def update_simulation_parameter(
 ):
     # make a copy of the original data
     path = tmp_path / f"{name}.hdf5"
-    with h5py.File(base_cosmology_path, "r") as f:
-        with h5py.File(path, "w") as file:
-            f.copy(f["header"], file, "header")
-            # update the attributes
-            for key, value in parameters.items():
-                file["header"]["simulation"]["parameters"].attrs[key] = value
+    with h5py.File(base_cosmology_path, "r") as f, h5py.File(path, "w") as file:
+        f.copy(f["header"], file, "header")
+        # update the attributes
+        for key, value in parameters.items():
+            file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
 
 

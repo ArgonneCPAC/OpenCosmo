@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -9,7 +9,7 @@ from opencosmo.index import empty, from_size, into_array, single_chunk
 from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
 if TYPE_CHECKING:
-    from opencosmo.collection.lightcone import Lightcone
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex, IndexArray
 
@@ -31,7 +31,7 @@ def get_random_take_index(
 
 
 def apply_sort_index(
-    rows: DataIndex, sort_index: Optional[np.ndarray] = None
+    rows: DataIndex, sort_index: np.ndarray | None = None
 ) -> np.ndarray:
     """Return row positions in ascending physical order.
 
@@ -45,17 +45,18 @@ def apply_sort_index(
     return np.sort(arr)
 
 
-def _get_sort_column(ds: DatasetState | Lightcone, sort_col: str):
-    from opencosmo.collection.lightcone import Lightcone
+def _get_sort_column(ds: DatasetState | LightconeState, sort_col: str):
+    from opencosmo.collection.lightcone import operations as lcops
+    from opencosmo.collection.lightcone.state import LightconeState
 
-    if isinstance(ds, Lightcone):
-        return ds.select(sort_col).get_data("numpy", ignore_sort=True)
+    if isinstance(ds, LightconeState):
+        return lcops.get_data(lcops.select(ds, sort_col), "numpy", ignore_sort=True)
     else:
         return dsops.get_data(dsops.select(ds, sort_col), "numpy", ignore_sort=True)
 
 
 def _get_sort_index(
-    ds: DatasetState | Lightcone, sort_key: tuple[str, bool, *tuple[bool, ...]]
+    ds: DatasetState | LightconeState, sort_key: tuple[str, bool, *tuple[bool, ...]]
 ) -> np.ndarray:
     values = _get_sort_column(ds, sort_key[0])
     assert isinstance(values, np.ndarray)
@@ -65,9 +66,9 @@ def _get_sort_index(
 
 
 def get_rows_take_index(
-    ds: DatasetState | Lightcone,
+    ds: DatasetState | LightconeState,
     rows: DataIndex,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
 ) -> DataIndex:
     """Map user-provided logical (sorted-order) row positions to physical row positions."""
     if sort_key is None:
@@ -77,8 +78,8 @@ def get_rows_take_index(
 
 
 def get_range_take_index(
-    ds: DatasetState | Lightcone,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    ds: DatasetState | LightconeState,
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
     start: int,
     size: int,
     mode: Literal["local", "global"],
@@ -95,8 +96,8 @@ def get_range_take_index(
 
 def get_end_take_index(
     n: int,
-    ds: DatasetState | Lightcone,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    ds: DatasetState | LightconeState,
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
     mode: Literal["local", "global"],
 ):
     ds_length = len(ds)
@@ -118,8 +119,8 @@ def get_end_take_index(
 
 
 def get_range_take_index_mpi(
-    ds: DatasetState | Lightcone,
-    sort_key: Optional[tuple[str, bool, *tuple[bool, ...]]],
+    ds: DatasetState | LightconeState,
+    sort_key: tuple[str, bool, *tuple[bool, ...]] | None,
     start: int,
     size: int,
 ):
@@ -181,7 +182,7 @@ def get_range_take_index_mpi(
 
 
 def get_global_sort_order(
-    ds: DatasetState | Lightcone, sort_key: tuple[str, bool, *tuple[bool, ...]]
+    ds: DatasetState | LightconeState, sort_key: tuple[str, bool, *tuple[bool, ...]]
 ):
     comm = get_comm_world()
     assert comm is not None

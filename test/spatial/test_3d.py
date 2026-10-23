@@ -1,9 +1,9 @@
 import random
 
 import numpy as np
-
 import opencosmo as oc
 from opencosmo.dataset import operations as dsops
+from opencosmo.io.io import open_state
 from opencosmo.spatial import check
 
 
@@ -62,7 +62,11 @@ def test_box_query_state_operation(halo_properties_path):
     ds = oc.open(halo_properties_path).with_units("scalefree")
     region = oc.make_box((30, 30, 30), (60, 60, 60))
 
-    state = dsops.bound(ds._state, region, None)
+    state = dsops.bound(
+        dsops.with_units(open_state(halo_properties_path), "scalefree", {}),
+        region,
+        None,
+    )
 
     expected = ds.bound(region).select("fof_halo_tag").get_data()
     actual = dsops.get_data(dsops.select(state, "fof_halo_tag"), "numpy")
@@ -153,12 +157,13 @@ def test_write_tree(halo_properties_path, tmp_path):
     ds = ds.bound(reg1)
     oc.write(tmp_path / "bound_dataset.hdf5", ds)
 
-    ds = oc.open(tmp_path / "bound_dataset.hdf5").with_units("scalefree")
-    tree_data = ds._Dataset__state.tree._Tree__columns
+    state = open_state(tmp_path / "bound_dataset.hdf5")
+    assert state.spatial_index is not None
+    tree_data = state.spatial_index.spatial_index_data
     for i in range(3):
         starts = tree_data[f"level_{i}/start"][:]
         sizes = tree_data[f"level_{i}/size"][:]
-        assert np.sum(sizes) == len(ds)
+        assert np.sum(sizes) == len(state)
         assert np.all(np.insert(np.cumsum(sizes), 0, 0)[:-1] == starts)
 
 

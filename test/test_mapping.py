@@ -9,9 +9,9 @@ import h5py
 import numpy as np
 import opencosmo as oc
 import opencosmo.collection.simulation.io as simulation_io
-import opencosmo.collection.simulation.simulation as simulation_module
 import opencosmo.mapping.write as mapping_write
 import pytest
+from opencosmo.collection.simulation import matching
 from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, make_schema
 from opencosmo.io.verify import verify_structure
@@ -207,7 +207,7 @@ def _assert_ordered_mapping_equal(
     if sort_by is not None:
         after = after.sort_by(*sort_by).take_range(0, len(after[source]))
     assert tuple(before.keys()) == tuple(after.keys())
-    for name in before.keys():
+    for name in before:
         np.testing.assert_array_equal(
             _column(after[name], identifier),
             _column(before[name], identifier),
@@ -292,6 +292,20 @@ def test_matched_take_range_is_driven_by_active_source(source, mapped_paths, tes
     result = matched.take_range(7, 31)
 
     _assert_source_driven_result(original, expected_source, result, source, pairwise)
+
+
+@pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
+def test_matched_take_rows_is_driven_by_active_source(source, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(source)
+    rows = np.array([2, 5, 11, 17, 40], dtype=np.int64)
+    expected_source = matched[source].take_rows(rows)
+
+    result = matched.take_rows(rows)
+
+    _assert_source_driven_result(original, expected_source, result, source, pairwise)
+    assert {len(dataset) for dataset in result.values()} == {len(rows)}
 
 
 def test_matched_filter_is_evaluated_only_on_active_source(mapped_paths, test_data):
@@ -454,14 +468,14 @@ def test_mapped_collection_context_manager_exits_cleanly(mapped_paths, test_data
 
 def test_matched_targets_are_rebuilt_at_most_once(mapped_paths, test_data, monkeypatch):
     calls = 0
-    prepare = simulation_module.prepare_matched_datasets
+    align = matching.align
 
-    def counting_prepare(*args, **kwargs):
+    def counting_align(*args, **kwargs):
         nonlocal calls
         calls += 1
-        return prepare(*args, **kwargs)
+        return align(*args, **kwargs)
 
-    monkeypatch.setattr(simulation_module, "prepare_matched_datasets", counting_prepare)
+    monkeypatch.setattr(matching, "align", counting_align)
     matched = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping).match(
         REFERENCE
     )
@@ -490,7 +504,7 @@ def test_matched_dataset_access_rebuilds_targets(accessor, mapped_paths, test_da
     )
 
     if accessor == "getitem":
-        accessed = {name: matched[name] for name in matched.keys()}
+        accessed = {name: matched[name] for name in matched}
     elif accessor == "values":
         accessed = dict(zip(matched.keys(), matched.values(), strict=True))
     else:
@@ -557,6 +571,53 @@ def test_non_index_operation_preserves_active_match_source(
     result = transform(matched).take_range(4, 19)
 
     _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+
+
+@pytest.mark.parametrize(
+    ("transform", "check"),
+    (
+        pytest.param(
+            lambda collection: collection.select("fof_halo_tag", "fof_halo_mass"),
+            lambda dataset: set(dataset.columns) == {"fof_halo_tag", "fof_halo_mass"},
+            id="column-selection",
+        ),
+        pytest.param(
+            lambda collection: collection.drop("fof_halo_mass"),
+            lambda dataset: "fof_halo_mass" not in dataset.columns,
+            id="column-drop",
+        ),
+        pytest.param(
+            lambda collection: collection.with_units("scalefree"),
+            lambda dataset: "littleh" in str(dataset.units["fof_halo_mass"]),
+            id="unit-conversion",
+        ),
+    ),
+)
+def test_column_operation_on_pending_targets(transform, check, mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    pending = original.match(REFERENCE).take_range(7, 31)
+    expected_source = pending[REFERENCE]
+
+    result = transform(pending)
+
+    _assert_source_driven_result(original, expected_source, result, REFERENCE, pairwise)
+    assert {len(dataset) for dataset in result.values()} == {24}
+    assert all(check(dataset) for dataset in result.values())
+
+
+def test_matched_with_new_columns_arrays_on_pending_targets(mapped_paths, test_data):
+    pending = (
+        _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+        .match(REFERENCE)
+        .take_range(7, 31)
+    )
+    values = {name: np.arange(24) for name in pending}
+
+    result = pending.with_new_columns(row_number=values)
+
+    for name, dataset in result.items():
+        np.testing.assert_array_equal(_column(dataset, "row_number"), values[name])
 
 
 @pytest.mark.parametrize("datasets", (REFERENCE, [REFERENCE], (REFERENCE,)))
@@ -661,6 +722,32 @@ def test_match_requires_known_source(mapped_paths, test_data):
 
     with pytest.raises(ValueError, match="does not have a simulation named unknown"):
         collection.match("unknown")
+
+
+@pytest.mark.parametrize("source", MAPPED_SIMULATIONS)
+def test_match_preserves_key_order(source, mapped_paths, test_data):
+    collection = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    keys = list(collection.keys())
+
+    matched = collection.match(source)
+
+    assert list(matched.keys()) == keys
+    assert [name for name, _ in matched.items()] == keys
+    assert list(matched.take_range(7, 31).clear_match().keys()) == keys
+
+
+def test_match_on_pending_targets_uses_them_unaligned(mapped_paths, test_data):
+    original = _open_mapped(mapped_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    first = original.match(REFERENCE)
+    pending = first.take_range(7, 31)
+    before = {
+        name: pending[REFERENCE] if name == REFERENCE else first[name] for name in first
+    }
+
+    rematched = pending.match(SIMULATION_A)
+
+    _assert_matches_mapping(before, rematched, SIMULATION_A, pairwise)
 
 
 def test_mapping_write(mapped_paths, test_data, tmp_path):

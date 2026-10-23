@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 import opencosmo as oc
-from opencosmo import collection as occ
+from opencosmo.collection.healpix_map import state as mapst
+from opencosmo.collection.healpix_map.state import HealpixMapState
 from opencosmo.dataset import state as st
 from opencosmo.header import OpenCosmoHeader
 from opencosmo.io import plan
@@ -17,8 +18,12 @@ from opencosmo.mpi import get_comm_world
 from opencosmo.plugins.contexts import DatasetOpenCtx, HookPoint
 from opencosmo.plugins.hook import fold
 from opencosmo.spatial.builders import from_model
+from opencosmo.spatial.index import (
+    get_partitions_with_data,
+    get_region,
+    open_spatial_index,
+)
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
-from opencosmo.spatial.tree import open_tree
 from opencosmo.units import UnitConvention
 from opencosmo.utils import normalize_kwarg_name
 from opencosmo.uuid import get_column_uuid
@@ -29,12 +34,14 @@ if TYPE_CHECKING:
 
     import h5py
 
+    from opencosmo.collection.simulation.state import SimulationChild, SimulationState
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.io.discover import FileLayout, GroupLayout, LinkLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.io import MpiMode
+    from opencosmo.io.specs import SpecState
     from opencosmo.mapping.mapping import DatasetMatchSet
-    from opencosmo.spatial.region import Region
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -159,15 +166,15 @@ class DatasetTarget:
 def open_files(
     paths: list[Path],
     open_kwargs: dict[str, Any],
-    mpi_mode: "MpiMode | None" = None,
-) -> oc.Dataset | oc.collection.Collection:
+    mpi_mode: MpiMode | None = None,
+) -> SpecState | SimulationState:
     """
     Main back-end entry point for opening files.
 
     Pipeline: discover metadata for every file (one collective allgather), group the
     discovered layouts by governing header scope, then for each scope match a spec,
-    verify it, distribute files across ranks, and build this rank's object. A single
-    scope returns its object directly; multiple scopes wrap in a SimulationCollection.
+    verify it, distribute files across ranks, and build this rank's state. A single
+    scope returns its state directly; multiple scopes combine into a SimulationState.
     Every rank computes identical scopes/specs/assignments from identical, path-sorted
     layouts, so the only collective in the whole path is the discovery allgather.
     """
@@ -252,7 +259,7 @@ def open_files(
     if not scopes:
         raise ValueError("No valid datasets found!")
 
-    children: dict[str, oc.Dataset | oc.collection.Collection] = {}
+    children: dict[str, SpecState] = {}
     # UUIDs of every dataset this rank actually opened. Only the identities are
     # needed (map endpoint resolution is pure set membership), so nothing here
     # requires the Dataset objects themselves.
@@ -349,11 +356,21 @@ def open_files(
     # A mapping resolves to nothing usable whenever fewer than two of its endpoints
     # were opened — the "ignore unresolvable endpoints" rule applied consistently.
     # The result is then exactly what it would have been without the mapping file,
-    # including the bare single-child object.
+    # including the bare single-child state.
     if len(children) == 1 and match_set is None:
         return next(iter(children.values()))
 
-    return occ.SimulationCollection(children, match_set=match_set)
+    from opencosmo.collection.simulation import state as simst
+
+    members: dict[str, SimulationChild] = {}
+    for name, child in children.items():
+        if isinstance(child, HealpixMapState):
+            raise TypeError(
+                "Simulation collection only accepts datasets, lightcones, "
+                "and structure collections"
+            )
+        members[name] = child
+    return simst.from_parts(members, match_set=match_set)
 
 
 def _resolve_match_set(
@@ -419,10 +436,12 @@ def _resolve_match_set(
 
 def open_dataset(
     target: DatasetTarget,
-    index: "IndexSpec",
+    index: IndexSpec,
     *,
-    open_kwargs: dict[str, Any] = {},
-) -> oc.Dataset:
+    open_kwargs: dict[str, Any] | None = None,
+) -> DatasetState:
+    if open_kwargs is None:
+        open_kwargs = {}
     header = target.header
 
     assert header is not None
@@ -443,81 +462,54 @@ def open_dataset(
         p2 = tuple(box_size for _ in range(3))
         sim_region = oc.make_box(p1, p2)
 
-    if (spatial_index := target.spatial_index) is not None:
-        tree = open_tree(
-            spatial_index, box_size, header.file.is_lightcone, region=sim_region
-        )
-    else:
-        tree = None
+    spatial_index_data = target.spatial_index
+    spatial_index = (
+        open_spatial_index(spatial_index_data, box_size, header.file.is_lightcone)
+        if spatial_index_data is not None
+        else None
+    )
+    if spatial_index is not None:
+        sim_region = get_region(spatial_index, sim_region)
 
     comm = get_comm_world()
     data_index, sim_region = index(
-        comm, header, target, tree, target.row_count, sim_region
+        comm,
+        header,
+        target,
+        spatial_index,
+        target.row_count,
+        sim_region,
     )
-    if tree is not None:
-        tree = tree.with_region(sim_region)
 
     state = st.state_from_target(
         target,
         UnitConvention.COMOVING,
-        sim_region,
         open_kwargs,
         data_index,
-        tree=tree,
-    )
-
-    dataset = oc.Dataset(
-        state,
-    )
-    dataset = fold(HookPoint.DatasetOpen, DatasetOpenCtx(dataset, open_kwargs)).dataset
-    return dataset
-
-
-def _open_healpix_map(dataset: oc.Dataset):
-    header = dataset.header
-    sim_region: Region = FullSkyRegion()
-    if header.file.region is not None:
-        sim_region = from_model(header.file.region)
-
-    if (comm := get_comm_world()) is not None and isinstance(
-        sim_region, HealpixRegion
-    ):  # partitioning has to be done manually since we don't store a spatial index
-        pixels = sim_region.pixels
-        splits = np.array(comm.allgather(len(dataset)))
-        splits = np.insert(np.cumsum(splits), 0, 0)
-        rank = comm.Get_rank()
-        sim_region = HealpixRegion(
-            pixels[splits[rank] : splits[rank + 1]],
-            nside=header.healpix_map["nside"],
-        )
-    elif isinstance(sim_region, FullSkyRegion) or header.healpix_map["full_sky"]:
-        sim_region = HealpixRegion(dataset.index, nside=header.healpix_map["nside"])
-
-    assert isinstance(sim_region, HealpixRegion)
-    return occ.HealpixMap(
-        {"data": dataset},
-        header.healpix_map["nside"],
-        header.healpix_map["nside_lr"],
-        header.healpix_map["ordering"],
-        header.healpix_map["full_sky"],
-        header.healpix_map["z_range"],
+        spatial_index=spatial_index,
         region=sim_region,
     )
 
+    return fold(HookPoint.DatasetOpen, DatasetOpenCtx(state, open_kwargs)).state
 
-def _expand_lightcone_region(region, tree):
+
+def _open_healpix_map(state: DatasetState) -> HealpixMapState:
+    return mapst.from_dataset(state)
+
+
+def _expand_lightcone_region(region, spatial_index):
     import healpy as hp
 
-    region = region or tree.get_region()
+    region = get_region(spatial_index, region)
 
     pixels = region.pixels
-    npix_ratio = hp.nside2npix(2**tree.max_level) // hp.nside2npix(region.nside)
+    npix_ratio = hp.nside2npix(2**spatial_index.level) // hp.nside2npix(region.nside)
     pixels = pixels[:, None] * npix_ratio + np.arange(npix_ratio)
     pixels = pixels.flatten()
 
-    full_pixels = tree.get_partitions_with_data(tree.max_level)
+    full_pixels = get_partitions_with_data(spatial_index, spatial_index.level)
     full_pixels = np.intersect1d(pixels, full_pixels)
-    return HealpixRegion(full_pixels, 2**tree.max_level)
+    return HealpixRegion(full_pixels, 2**spatial_index.level)
 
 
 def evaluate_load_conditions(

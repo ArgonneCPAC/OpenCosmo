@@ -6,25 +6,25 @@ Collections within a single file can always be loaded with :py:func:`opencosmo.o
 .. autoclass:: opencosmo.Lightcone
    :members:
    :undoc-members:
-   :exclude-members: close,index,make_schema,with_index,open
+   :exclude-members: close,index,make_schema,with_index
    :member-order: bysource
 
 .. autoclass:: opencosmo.SimulationCollection
    :members:
-   :exclude-members: open,read,close,write
+   :exclude-members: read,close,write
    :undoc-members:
    :member-order: bysource
    
 
 .. autoclass:: opencosmo.StructureCollection
    :members:
-   :exclude-members: open,read,close,write
+   :exclude-members: read,close,write
    :undoc-members:
    :member-order: bysource
 
 .. autoclass:: opencosmo.HealpixMap
    :members:
-   :exclude-members: open,read,close,write
+   :exclude-members: read,close,write
    :undoc-members:
    :member-order: bysource
 

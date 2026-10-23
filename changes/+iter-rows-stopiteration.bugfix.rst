@@ -1,0 +1,1 @@
+Iterating a dataset that produces no chunks now ends cleanly instead of raising ``RuntimeError``. The internal row iterator previously raised ``StopIteration`` inside a generator, which PEP 479 converts into ``RuntimeError``.

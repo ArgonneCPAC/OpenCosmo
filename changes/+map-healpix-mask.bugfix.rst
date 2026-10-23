@@ -1,0 +1,1 @@
+Partial-sky ``HealpixMap.get_data("healpix")`` output now masks the pixels outside the map's coverage, rather than the pixels inside it, and fills them with ``healpy.UNSEEN`` instead of 0. Each column also gets its own mask.

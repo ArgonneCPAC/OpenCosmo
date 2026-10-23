@@ -60,7 +60,7 @@ def concatenate(*indices: DataIndex) -> SimpleIndex:
     return np.concatenate(list(map(into_array, indices)))
 
 
-def from_start_size_group(group: h5py) -> ChunkedIndex:
+def from_start_size_group(group: h5py.Group) -> ChunkedIndex:
     start = group["start"][:].astype(np.int64)
     size = group["size"][:].astype(np.int64)
     return (start, size)

@@ -2,12 +2,15 @@ import astropy.units as u
 import healpy as hp
 import healsparse as hsp
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
 from healsparse import HealSparseMap
-from opencosmo.spatial.healpix import HealpixRegion
-
-import opencosmo as oc
+from opencosmo.collection.healpix_map import operations as mapops
+from opencosmo.handler.memory import InMemoryHandler
+from opencosmo.io.io import open_state
+from opencosmo.spatial.region import HealpixRegion
 
 
 @pytest.fixture
@@ -39,6 +42,63 @@ def test_healpix_index(healpix_map_path):
     seps = seps.to(u.degree)
     assert all(seps < radius)
     assert len(data["tsz"].valid_pixels) == n_raw
+
+
+def test_partial_sky_cutout_uses_map_row_positions(healpix_map_path, monkeypatch):
+    center = SkyCoord(45, -45, unit="deg")
+    healpix_map = oc.open(healpix_map_path).bound(oc.make_cone(center, 2 * u.deg))
+    cutout_pixels = oc.make_skybox(center, 0.25).get_healpix_intersections(
+        healpix_map.nside
+    )
+    monkeypatch.setattr(
+        mapops,
+        "get_included_pixels",
+        lambda centers, angular_size, nside: cutout_pixels,
+    )
+
+    cutout = next(healpix_map.cutouts(SkyCoord([center]), 0.25, npix=8))
+
+    assert isinstance(cutout, fits.HDUList)
+    assert cutout["TSZ"].data.shape == (8, 8)
+    assert np.isfinite(cutout["TSZ"].data).any()
+
+
+def test_partial_sky_cutout_without_coverage_is_nan(healpix_map_path):
+    covered_center = SkyCoord(45, -45, unit="deg")
+    uncovered_center = SkyCoord(225, 45, unit="deg")
+    healpix_map = oc.open(healpix_map_path).bound(
+        oc.make_cone(covered_center, 2 * u.deg)
+    )
+
+    cutout = next(healpix_map.cutouts(SkyCoord([uncovered_center]), 0.25, npix=8))
+
+    assert cutout["TSZ"].data.shape == (8, 8)
+    assert np.isnan(cutout["TSZ"].data).all()
+
+
+def test_map_cutouts_accept_empty_centers(healpix_map_path):
+    healpix_map = oc.open(healpix_map_path)
+    centers = SkyCoord([], [], unit="deg")
+
+    assert list(healpix_map.cutouts(centers, 0.25, npix=8)) == []
+
+
+def test_map_cutouts_mixed_coverage(healpix_map_path):
+    covered_center = SkyCoord(45, -45, unit="deg")
+    uncovered_center = SkyCoord(225, 45, unit="deg")
+    healpix_map = oc.open(healpix_map_path).bound(
+        oc.make_cone(covered_center, 2 * u.deg)
+    )
+
+    cutouts = list(
+        healpix_map.cutouts(
+            SkyCoord([covered_center, uncovered_center]), 5 * u.arcmin, npix=8
+        )
+    )
+
+    assert len(cutouts) == 2
+    assert np.isfinite(cutouts[0]["TSZ"].data).any()
+    assert np.isnan(cutouts[1]["TSZ"].data).all()
 
 
 def test_healpix_downgrade(healpix_map_path):
@@ -91,27 +151,26 @@ def test_healpix_downgrade(healpix_map_path):
 
 def test_healpix_downgrade_doesnt_have_file_handle(healpix_map_path):
     """
-    Downgrading data produces an entirely new dataset, which exists as an
-    in-memory hdf5 file. We want to ensure this data is not also sent
-    to the cache.
+    Downgrading data produces an entirely new dataset, backed by in-memory
+    arrays with one row per output pixel. We want to ensure this data is not
+    also sent to the cache.
     """
 
-    ds = oc.open(healpix_map_path)
-    ds.get_data()
-    output = ds.with_resolution(128)
+    state = open_state(healpix_map_path)
+    mapops.get_data(state, "healsparse")
+    output = mapops.with_resolution(state, 128)
 
     # First dataset backed by actual file, data should be cached
-    dataset = next(iter(ds.values()))
-    cache = dataset._Dataset__state.cache
-    assert len(cache.columns) > 1
+    assert len(state.dataset.cache.columns) > 1
 
     # New dataset entirely in-memory, so no cache
-    output.get_data()
-    downgraded_dataset = next(iter(output.values()))
-    cache = downgraded_dataset._Dataset__state.cache
-    handler = downgraded_dataset._Dataset__state.raw_data_handler
-    assert len(cache.columns) == len(dataset.columns)
-    assert len(handler) == 0
+    mapops.get_data(output, "healsparse")
+    downgraded_dataset = output.dataset
+    cache = downgraded_dataset.cache
+    handler = downgraded_dataset.raw_data_handler
+    assert isinstance(handler, InMemoryHandler)
+    assert len(cache.columns) == 0
+    assert len(handler) == len(output.pixels)
 
 
 def test_healpix_index_chain_failure(healpix_map_path):
@@ -250,7 +309,7 @@ def test_healpix_write_fail(healpix_map_path, tmp_path):
 
 def test_healpix_collection_drop(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    to_drop = set(["tsz"])
+    to_drop = {"tsz"}
 
     ds = ds.drop(to_drop)
 
@@ -289,7 +348,7 @@ def test_open_single_map(healpix_map_path):
 
 def test_healpix_collection_select(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    to_select = set(["tsz", "ksz"])
+    to_select = {"tsz", "ksz"}
     ds = ds.select(to_select)
     columns_found = set(ds.columns)
     assert columns_found == to_select
@@ -300,26 +359,26 @@ def test_healpix_collection_take_healpix(healpix_map_path):
     ds = ds.take_range(500, 1000)
     data = ds.get_data("healpix")
     for value in data.values():
-        assert np.all(np.where(value.mask)[0] == np.arange(500, 1000))
+        assert np.array_equal(np.where(~value.mask)[0], np.arange(500, 1000))
 
 
 def test_healpix_collection_select_healsparse(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    to_select = set(["tsz", "ksz"])
+    to_select = {"tsz", "ksz"}
     ds = ds.select(to_select)
     data = ds.get_data("healsparse")
     assert isinstance(data, dict)
-    assert all(ts in data.keys() for ts in to_select)
+    assert all(ts in data for ts in to_select)
     assert all(isinstance(col, hsp.HealSparseMap) for col in data.values())
 
 
 def test_healpix_collection_select_healpix(healpix_map_path):
     ds = oc.open(healpix_map_path)
-    to_select = set(["tsz", "ksz"])
+    to_select = {"tsz", "ksz"}
     ds = ds.select(to_select)
     data = ds.get_data("healpix")
     assert isinstance(data, dict)
-    assert all(ts in data.keys() for ts in to_select)
+    assert all(ts in data for ts in to_select)
     assert all(isinstance(col, np.ndarray) for col in data.values())
 
 

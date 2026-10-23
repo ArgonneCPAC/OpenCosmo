@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -161,15 +163,15 @@ def test_data() -> TestDataPaths:
 
 @pytest.fixture(scope="session", autouse=True)
 def _redirect_user_cache_dir(
-    tmp_path_factory: "pytest.TempPathFactory",
-) -> "Iterator[None]":
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[None]:
     """
     Point the discovery layout cache at a temp dir for the whole session.
 
     Without this, every test that opens a file writes to the developer's real
     user cache and leaks state between runs.
     """
-    import opencosmo.io.cache as cache
+    from opencosmo.io import cache
 
     temp_cache_dir = tmp_path_factory.mktemp("opencosmo-user-cache") / "opencosmo"
     temp_cache_dir.mkdir(parents=True, exist_ok=True)

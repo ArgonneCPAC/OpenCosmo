@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING
 from uuid import UUID
 from weakref import finalize, ref
 
@@ -21,6 +21,8 @@ from opencosmo.mpi import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     import numpy as np
 
     from opencosmo.index import DataIndex
@@ -32,7 +34,7 @@ CacheKey = tuple[UUID, str]
 
 def finish(
     cached_data: dict[CacheKey, np.ndarray],
-    index: Optional[DataIndex],
+    index: DataIndex | None,
     cache_ref: ref[ColumnCache],
 ):
     cache = cache_ref()
@@ -85,9 +87,9 @@ class ColumnCache:
         cached_data: dict[CacheKey, np.ndarray],
         registered_column_groups: dict[int, set[CacheKey]],
         column_descriptions: dict[str, str],
-        derived_index: Optional[DataIndex],
-        parent: Optional[ref[ColumnCache]],
-        children: Optional[list[ref[ColumnCache]]],
+        derived_index: DataIndex | None,
+        parent: ref[ColumnCache] | None,
+        children: list[ref[ColumnCache]] | None,
     ):
         self.__cached_data = cached_data
         self.__registered_column_groups = registered_column_groups
@@ -115,7 +117,7 @@ class ColumnCache:
 
     @property
     def columns(self) -> set[str]:
-        return {name for (_, name) in self.__cached_data.keys()}
+        return {name for (_, name) in self.__cached_data}
 
     def keys(self) -> set[CacheKey]:
         return set(self.__cached_data.keys())
@@ -241,11 +243,13 @@ class ColumnCache:
     def add_data(
         self,
         data: dict[UUID, dict[str, np.ndarray]],
-        descriptions: dict[str, str] = {},
+        descriptions: dict[str, str] | None = None,
         push_up: bool = True,
     ):
         """Add UUID-keyed column data to the cache."""
 
+        if descriptions is None:
+            descriptions = {}
         if not data:
             return
         check_length(self, data)
@@ -281,7 +285,7 @@ class ColumnCache:
         return ColumnCache(data, {}, descriptions, None, None, [])
 
     def request(
-        self, pairs: set[CacheKey], index: Optional[DataIndex]
+        self, pairs: set[CacheKey], index: DataIndex | None
     ) -> dict[CacheKey, np.ndarray]:
         pairs_in_cache = pairs.intersection(self.__cached_data.keys())
         data = {key: self.__cached_data[key] for key in pairs_in_cache}

@@ -1,8 +1,7 @@
 import astropy.units as u
 import numpy as np
-import pytest
-
 import opencosmo as oc
+import pytest
 from opencosmo.column import norm_cols, offset_3d
 from opencosmo.units import UnitsError
 

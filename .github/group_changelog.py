@@ -6,7 +6,6 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-
 CHANGELOG_PATH = Path("docs/source/changelog.rst")
 MARKER = ".. towncrier release notes start"
 RELEASE_PATTERN = re.compile(

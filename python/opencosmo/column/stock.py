@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from functools import reduce, wraps
-from typing import TYPE_CHECKING, Callable, Iterable
+from typing import TYPE_CHECKING
 
 import astropy.units as u
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
     from .column import Column
 
 from .column import col
@@ -15,10 +17,7 @@ def into_cols(func: Callable):
     @wraps(func)
     def wrapper(*columns: str | Column, **kwargs):
         new_columns = tuple(
-            map(
-                lambda colname: col(colname) if isinstance(colname, str) else colname,
-                columns,
-            )
+            col(colname) if isinstance(colname, str) else colname for colname in columns
         )
         return func(*new_columns, **kwargs)
 
@@ -63,12 +62,8 @@ def offset_3d(
 
     """
     delta_coords = tuple(
-        map(
-            lambda label: (
-                col(f"{coord_name_a}_{label}") - col(f"{coord_name_b}_{label}")
-            ),
-            labels,
-        )
+        (col(f"{coord_name_a}_{label}") - col(f"{coord_name_b}_{label}"))
+        for label in labels
     )
     return norm_cols(*delta_coords)
 
@@ -106,9 +101,9 @@ def add_mag_cols(*magnitudes: Column):
     """
     if len(magnitudes) < 2:
         raise ValueError("Expected at least two magnitudes to add together!")
-    fluxes = map(
-        lambda column: (-0.4 * column).exp10(expected_unit_container=u.MagUnit),
-        magnitudes,
+    fluxes = (
+        (-0.4 * column).exp10(expected_unit_container=u.MagUnit)
+        for column in magnitudes
     )
     total_flux = next(fluxes)
     for flux in fluxes:
@@ -141,6 +136,6 @@ def norm_cols(*columns: Column):
     if len(columns) < 2:
         raise ValueError("Expected at least two magnitudes to add together!")
 
-    squared_columns = map(lambda column: column**2, columns)
+    squared_columns = (column**2 for column in columns)
     sum_squared = reduce(lambda acc, col_sq: acc + col_sq, squared_columns)
     return sum_squared.sqrt()

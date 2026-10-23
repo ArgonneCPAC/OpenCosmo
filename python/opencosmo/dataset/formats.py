@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import reduce
 from importlib import import_module
 from operator import add, mul
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 import astropy.units as u
 import numpy as np
@@ -12,6 +12,8 @@ from astropy.table import Column, QTable
 from opencosmo.dataset import operations as dsops
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from opencosmo.dataset.state import DatasetState
 
 
@@ -268,15 +270,10 @@ def convert_to_numpy(
     data: dict[str, np.ndarray],
     wrap_single: bool = False,
 ) -> dict[str, np.ndarray] | np.ndarray:
-    converted_data = dict(
-        map(
-            lambda kv: (
-                kv[0],
-                kv[1].value if isinstance(kv[1], (u.Quantity, Column)) else kv[1],
-            ),
-            data.items(),
-        )
-    )
+    converted_data = {
+        kv[0]: kv[1].value if isinstance(kv[1], (u.Quantity, Column)) else kv[1]
+        for kv in data.items()
+    }
     if len(converted_data) == 1 and not wrap_single:
         return next(iter(converted_data.values()))
     return converted_data
@@ -299,10 +296,7 @@ def __convert_to_arrow(data: dict[str, np.ndarray], wrap_single: bool = False):
     if isinstance(numpy_data, np.ndarray):
         return pa.array(numpy_data)
 
-    converted_data = map(
-        lambda kv: (kv[0], pa.array(kv[1])),
-        data.items(),
-    )
+    converted_data = ((kv[0], pa.array(kv[1])) for kv in data.items())
     return dict(converted_data)
 
 

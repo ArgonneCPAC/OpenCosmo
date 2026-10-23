@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import operator as op
+from collections.abc import Callable, Iterable
 from copy import copy
 from functools import partial, partialmethod, wraps
 from inspect import currentframe, signature
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Iterable,
-    Optional,
     Protocol,
     Self,
     Union,
@@ -21,7 +19,6 @@ import numpy as np
 from opencosmo.column.evaluate import (
     EvaluateStrategy,
     evaluate_chunks,
-    evaluate_rows,
     evaluate_vectorized,
 )
 from opencosmo.units import UnitsError
@@ -149,10 +146,10 @@ class Column:
     def __init__(
         self,
         lhs: ColumnOrScalar,
-        rhs: Optional[ColumnOrScalar],
+        rhs: ColumnOrScalar | None,
         operation: Callable,
-        description: Optional[str] = None,
-        output_name: Optional[str] = None,
+        description: str | None = None,
+        output_name: str | None = None,
         _dep_map: dict[str, UUID] | None = None,
         _uuid: UUID | None = None,
         no_cache: bool = False,
@@ -259,7 +256,7 @@ class Column:
 
     @property
     def produces(self):
-        return None if self.name is None else set([self.name])
+        return None if self.name is None else {self.name}
 
     @property
     def no_cache(self):
@@ -487,7 +484,7 @@ def _log10(
         vals = left.value
         unit = left.unit
         if isinstance(unit, u.LogUnit):
-            raise ValueError("Cannot take the log of a log unit!")
+            raise ValueError("Cannot take the log of a log unit!")  # noqa: TRY004 — domain error, not a type error
 
     new_vals = np.log10(vals)
     if unit is not None:
@@ -504,7 +501,7 @@ def _exp10(
     unit = None
     if isinstance(left, u.LogUnit):
         if not isinstance(left, expected_unit_container):
-            raise ValueError(
+            raise TypeError(
                 f"Expected a unit of type {expected_unit_container}, found {type(left)}"
             )
         return left.physical_unit
@@ -513,11 +510,11 @@ def _exp10(
         vals = left.value
         unit = left.unit
         if not isinstance(unit, u.LogUnit):
-            raise ValueError(
+            raise TypeError(
                 "Can only raise 10 to a unitful value if the unit is logarithmic"
             )
         if not isinstance(unit, expected_unit_container):
-            raise ValueError(
+            raise TypeError(
                 f"Expected a unit of type {expected_unit_container}, found {type(left)}"
             )
 
@@ -631,8 +628,6 @@ def _arctan2(left: Any, right: Any) -> Any:
 
 
 class ConstructedColumn(Protocol):
-    pass
-
     @property
     def uuid(self) -> UUID | None: ...
 
@@ -649,7 +644,7 @@ class ConstructedColumn(Protocol):
     def produces(self) -> set[str]: ...
 
     @property
-    def description(self) -> Optional[str]: ...
+    def description(self) -> str | None: ...
 
     def bind(
         self,
@@ -752,7 +747,7 @@ class RawColumn:
 
     @property
     def produces(self) -> set[str]:
-        return set([self.__alias or self.__name])
+        return {self.__alias or self.__name}
 
     @property
     def description(self):
@@ -780,8 +775,8 @@ class DerivedScalarValue:
         lhs: ColumnOrScalar | DerivedScalarValue,
         rhs: ColumnOrScalar | DerivedScalarValue | None,
         operation: Callable,
-        description: Optional[str] = None,
-        output_name: Optional[str] = None,
+        description: str | None = None,
+        output_name: str | None = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = True,
         _uuid: UUID | None = None,
@@ -832,7 +827,7 @@ class DerivedScalarValue:
 
     @property
     def produces(self):
-        return None if self.name is None else set([self.name])
+        return None if self.name is None else {self.name}
 
     @property
     def no_cache(self):
@@ -1036,11 +1031,11 @@ class EvaluatedColumn:
         requires: set[str],
         produces: set[str],
         format: str,
-        units: dict[str, Optional[u.Unit]],
+        units: dict[str, u.Unit | None],
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         batch_size: int = -1,
         should_unpack_data: bool = True,
-        description: Optional[str] = None,
+        description: str | None = None,
         _dep_map: dict[str, UUID] | None = None,
         no_cache: bool = False,
         _uuid: UUID | None = None,
@@ -1162,15 +1157,13 @@ class EvaluatedColumn:
 
     def evaluate(self, data: dict[str, np.ndarray], index: DataIndex | None):
         data = {name: data[name] for name in self.__requires}
-        chunk_sizes = index[1] if isinstance(index, tuple) else None
+        chunk_sizes: int | np.ndarray | None = (
+            index[1] if isinstance(index, tuple) else None
+        )
 
         if self.batch_size > 0:
-            length = len(next(iter(data.values())))
             strategy = EvaluateStrategy.CHUNKED
-            chunk_sizes = np.full(
-                np.ceil(length / self.batch_size).astype(int), self.batch_size
-            )
-            chunk_sizes[-1] = (length % self.batch_size) or self.batch_size
+            chunk_sizes = self.batch_size
 
         else:
             strategy = self.__strategy
@@ -1185,10 +1178,21 @@ class EvaluatedColumn:
                     self.__should_unpack_data,
                 )
             case EvaluateStrategy.ROW_WISE:
-                return evaluate_rows(
+                return evaluate_chunks(
                     data,
                     self.__func,
                     self.__kwargs,
+                    1,
+                    self.__format,
+                    self.__should_unpack_data,
+                    stack_chunks=True,
+                )
+            case EvaluateStrategy.CONCATENATE_ROWS:
+                return evaluate_chunks(
+                    data,
+                    self.__func,
+                    self.__kwargs,
+                    1,
                     self.__format,
                     self.__should_unpack_data,
                 )
@@ -1430,10 +1434,9 @@ def _contains_scalar(node: Any) -> bool:
     """
     if isinstance(node, DerivedScalarValue):
         return True
-    if isinstance(node, Column):
-        if _contains_scalar(node.lhs) or _contains_scalar(node.rhs):
-            return True
-    return False
+    return isinstance(node, Column) and (
+        _contains_scalar(node.lhs) or _contains_scalar(node.rhs)
+    )
 
 
 def produces_scalar(node: Any) -> bool:
@@ -1445,9 +1448,7 @@ def produces_scalar(node: Any) -> bool:
     Differs from ``_contains_scalar``: ``col + col.mean()`` *contains* a scalar
     but does not *produce* a scalar — the top is a Column.
     """
-    if isinstance(node, DerivedScalarValue):
-        return True
-    return False
+    return bool(isinstance(node, DerivedScalarValue))
 
 
 def substitute_scalars(

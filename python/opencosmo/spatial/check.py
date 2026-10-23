@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy.coordinates import SkyCoord  # type: ignore
@@ -23,7 +23,7 @@ def check_containment(
     state: DatasetState,
     region: Region,
     parameters: FileParameters,
-    select_by: Optional[str] = None,
+    select_by: str | None = None,
 ):
     dtype = str(parameters.data_type)
     if parameters.is_lightcone:
@@ -36,16 +36,14 @@ def find_coordinates_2d(state: DatasetState):
     from opencosmo.dataset import operations as dsops
 
     columns = set(state.columns)
-    if len(columns.intersection(set(["ra", "dec"]))) == 2:
+    if len(columns.intersection({"ra", "dec"})) == 2:
         selected = dsops.select(state, ["ra", "dec"])
         data = dsops.get_data(selected, "astropy", unpack=False)
         return SkyCoord(data["ra"], data["dec"])
     raise ValueError("Dataset does not contain coordinates")
 
 
-def find_coordinates_3d(
-    state: DatasetState, dtype: str, select_by: Optional[str] = None
-):
+def find_coordinates_3d(state: DatasetState, dtype: str, select_by: str | None = None):
     try:
         allowed_coordinates = ALLOWED_COORDINATES_3D[dtype]
     except KeyError:
@@ -71,7 +69,7 @@ def __check_containment_3d(
     state: DatasetState,
     region: Region,
     dtype: str,
-    select_by: Optional[str] = None,
+    select_by: str | None = None,
 ):
     from opencosmo.dataset import operations as dsops
 
@@ -87,7 +85,7 @@ def __check_containment_2d(
     state: DatasetState,
     region: Region,
     dtype: str,
-    select_by: Optional[str] = None,
+    select_by: str | None = None,
 ):
     coords = find_coordinates_2d(state)
     return region.contains(coords)

@@ -1,6 +1,5 @@
-import pytest
-
 import opencosmo as oc
+import pytest
 from opencosmo.analysis import create_yt_dataset, visualize_halo
 
 

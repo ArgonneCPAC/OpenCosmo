@@ -32,13 +32,13 @@ def verify_structure(
 ):
     match schema.type:
         case FileEntry.DATASET:
-            return verify_dataset_data(schema)
+            return verify_dataset_data(schema, has_index="index" in schema.children)
         case FileEntry.STRUCTURE_COLLECTION:
             return verify_structure_collection_data(schema)
         case FileEntry.LIGHTCONE:
             verify_lightcone_collection_schema(schema)
         case FileEntry.SIMULATION_COLLECTION:
-            for name, ds_schema in schema.children.items():
+            for ds_schema in schema.children.values():
                 match ds_schema.type:
                     case FileEntry.DATASET:
                         verify_dataset_data(ds_schema)
@@ -171,7 +171,8 @@ def verify_lightcone_collection_schema(schema: Schema):
         # Single-dataset lightcone
         return verify_dataset_data(schema)
     for key, child_schema in schema.children.items():
-        verify_dataset_data(child_schema)
+        has_index = key != "healpix_maps"
+        verify_dataset_data(child_schema, has_index=has_index)
 
 
 def verify_structure_collection_data(schema: Schema):
@@ -191,21 +192,14 @@ def verify_structure_collection_data(schema: Schema):
     for child_name, child_schema in schema.children.items():
         if child_schema.type == FileEntry.LIGHTCONE and child_name == link_holder:
             for grandchild_name, grandchild_schema in child_schema.children.items():
-                has_link = any(
-                    map(
-                        lambda cn: "data_linked" in cn,
-                        grandchild_schema.children.keys(),
-                    )
-                )
+                has_link = any("data_linked" in cn for cn in grandchild_schema.children)
                 if not has_link:
                     raise ValueError(
                         f'Source dataset {child_name}/{grandchild_name} does not have expected "data_linked" group'
                     )
 
         elif child_name == link_holder:
-            has_link = any(
-                map(lambda cn: "data_linked" in cn, child_schema.children.keys())
-            )
+            has_link = any("data_linked" in cn for cn in child_schema.children)
             if not has_link:
                 raise ValueError(
                     f'Source dataset {child_name} does not have expected "data_linked" group'

@@ -1,11 +1,12 @@
 import astropy.units as u
 import healpy as hp
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.cosmology import units as cu
+from astropy.io import fits
+from astropy.wcs import WCS
 from numpy import random
-
-import opencosmo as oc
 from opencosmo.analysis import reduce
 
 
@@ -40,6 +41,33 @@ def test_create_theta_phi_coords(haloproperties_600_path, haloproperties_601_pat
 
     assert np.allclose(data["ra"], ra, atol=0.0001, rtol=1e-2)
     assert np.allclose(data["dec"], dec, atol=0.0001, rtol=1e-2)
+
+
+def test_open_lightcone_with_map_and_make_cutouts(
+    haloproperties_600_path, haloproperties_601_path, test_data
+):
+    lightcone = oc.open(
+        haloproperties_600_path,
+        haloproperties_601_path,
+        test_data.healpix_map,
+    )
+
+    assert isinstance(lightcone, oc.Lightcone)
+    assert isinstance(lightcone.map, oc.HealpixMap)
+    assert lightcone.map_columns == ["ksz", "tsz"]
+
+    lightcone = lightcone.take_rows(np.array([0, 1], dtype=np.int64))
+    results = list(lightcone.cutouts(size=5 * u.arcmin, npix=16))
+
+    assert len(results) == len(lightcone) == 2
+    for row, cutout in results:
+        assert isinstance(cutout, fits.HDUList)
+        assert [hdu.name for hdu in cutout] == ["PRIMARY", "KSZ", "TSZ"]
+        assert all(hdu.data.shape == (16, 16) for hdu in cutout[1:])
+        center = WCS(cutout[1].header).wcs.crval
+        assert np.allclose(
+            center, [row["ra"].to_value(u.deg), row["dec"].to_value(u.deg)]
+        )
 
 
 def test_lightcone_physical_units(haloproperties_600_path):
@@ -149,7 +177,7 @@ def test_lc_collection_select_numpy(
     ds = ds.select(to_select)
     data = ds.get_data("numpy")
     assert isinstance(data, dict)
-    assert all(ts in data.keys() for ts in to_select)
+    assert all(ts in data for ts in to_select)
     assert all(isinstance(col, np.ndarray) for col in data.values())
 
 
@@ -330,7 +358,7 @@ def test_lc_collection_mapped_kwargs(
     haloproperties_600_path, haloproperties_601_path, tmp_path
 ):
     ds = oc.open(haloproperties_600_path, haloproperties_601_path).take(200)
-    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds.keys()}
+    mapped_kwargs = {name: np.random.randint(0, 100) for name in ds}
 
     def offset(
         fof_halo_com_x,
@@ -346,9 +374,7 @@ def test_lc_collection_mapped_kwargs(
         offset, vectorize=True, insert=True, format="numpy", mapped_kwarg=mapped_kwargs
     )
     for name, ds in result.items():
-        assert np.all(
-            result[name].select("offset").get_data("numpy") == mapped_kwargs[name]
-        )
+        assert np.all(ds.select("offset").get_data("numpy") == mapped_kwargs[name])
 
 
 def test_lc_collection_evaluate_noinsert(

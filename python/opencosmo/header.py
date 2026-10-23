@@ -6,7 +6,7 @@ from copy import copy
 from functools import cache
 from itertools import chain
 from types import UnionType
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import h5py
 import numpy as np
@@ -112,7 +112,7 @@ class OpenCosmoHeader:
             convention,
         )
 
-    @cache
+    @cache  # noqa: B019 — per-instance Header cache; instances are not long-lived
     def __get_access_table(self):
         all_models = chain(
             {"file": self.__file_pars}.values(),
@@ -400,7 +400,7 @@ class OpenCosmoHeader:
 
 @file_writer
 def write_header(
-    path: Path, header: OpenCosmoHeader, dataset_name: Optional[str] = None
+    path: Path, header: OpenCosmoHeader, dataset_name: str | None = None
 ) -> None:
     """
     Write the header of an OpenCosmo file
@@ -532,7 +532,7 @@ def read_header(
 def read_parameter_groups(
     file: h5py.File | h5py.Group,
     parameter_groups: dict[str, dict[str, type[BaseModel]]],
-    additional_required: Optional[tuple] = None,
+    additional_required: tuple | None = None,
 ):
     """
     An "origin" describes the original source of a given dataset. Currently the only

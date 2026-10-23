@@ -65,7 +65,7 @@ def validate_column_producers(
             continue
         node = dependency_graph[i]
         if not isinstance(node, RawColumn):
-            raise ValueError(
+            raise TypeError(
                 f"Tried to derive columns from unknown columns: {node.produces}"
             )
 

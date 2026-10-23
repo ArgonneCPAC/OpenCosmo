@@ -1,9 +1,7 @@
-""" """
-
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Iterable, Mapping
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -15,7 +13,10 @@ from opencosmo.column.column import (
 from opencosmo.dataset import operations as dsops
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
     from opencosmo import Dataset
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
 
 
@@ -36,7 +37,7 @@ def get_column_selection(
     select_from = set(select_from)
     select_by = set(select_by)
 
-    wildcards = set(n for n in select_by if "*" in n)
+    wildcards = {n for n in select_by if "*" in n}
     complete = select_by - wildcards
 
     complete_matches = complete.intersection(select_from)
@@ -50,11 +51,13 @@ def get_column_selection(
 
 
 def do_multi_dataset_selections(
-    datasets: Mapping[Any, Dataset | DatasetState],
-    select_args: tuple[str | list[str], ...],
+    datasets: Mapping[Any, Dataset | DatasetState | LightconeState],
+    select_args: tuple[str | Iterable[str], ...],
     select_kwargs: dict[str, Any],
     mode: str = "global",
 ):
+    from opencosmo.collection.lightcone import operations as lcops
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
 
     mode = select_kwargs.pop("mode", mode)
@@ -74,6 +77,8 @@ def do_multi_dataset_selections(
         try:
             if isinstance(dataset, DatasetState):
                 new_ds = dsops.select(dataset, *ds_args, **ds_kwargs, mode=mode)
+            elif isinstance(dataset, LightconeState):
+                new_ds = lcops.select(dataset, *ds_args, **ds_kwargs, mode=mode)
             else:
                 new_ds = dataset.select(*ds_args, **ds_kwargs, mode=mode)
         except MissingColumnError:
@@ -85,9 +90,11 @@ def do_multi_dataset_selections(
 
 
 def do_multi_dataset_drops(
-    datasets: Mapping[Any, Dataset | DatasetState],
-    drop_args: tuple[str | list[str], ...],
+    datasets: Mapping[Any, Dataset | DatasetState | LightconeState],
+    drop_args: tuple[str | Iterable[str], ...],
 ):
+    from opencosmo.collection.lightcone import operations as lcops
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
 
     columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
@@ -104,6 +111,8 @@ def do_multi_dataset_drops(
         try:
             if isinstance(dataset, DatasetState):
                 new_ds = dsops.drop(dataset, *ds_args)
+            elif isinstance(dataset, LightconeState):
+                new_ds = lcops.drop(dataset, *ds_args)
             else:
                 new_ds = dataset.drop(*ds_args)
         # Do NOT fail if the only selections are wildcards, just return the raw dataset
@@ -118,7 +127,7 @@ def do_multi_dataset_drops(
 def build_multi_dataset_selections(
     columns_by_ds: dict[Any, set[str]],
     ds_lengths: dict[Any, int],
-    select_args: tuple[str | list[str], ...],
+    select_args: tuple[str | Iterable[str], ...],
     select_kwargs: dict[str, Any],
 ):
     flat_args = []
@@ -130,17 +139,17 @@ def build_multi_dataset_selections(
     assert set(columns_by_ds.keys()) == set(ds_lengths.keys())
 
     wildcards = []
-    output_args: dict[Any, list[str]] = {name: [] for name in columns_by_ds.keys()}
+    output_args: dict[Any, list[str]] = {name: [] for name in columns_by_ds}
     missing = set()
     for arg in flat_args:
         if not isinstance(arg, str):
-            raise ValueError("Column selection arguments must be strings!")
+            raise TypeError("Column selection arguments must be strings!")
         if "*" in arg:
             wildcards.append(arg)
             continue
-        datasets_with_column = set(
+        datasets_with_column = {
             ds_name for ds_name, cols in columns_by_ds.items() if arg in cols
-        )
+        }
         if not datasets_with_column:
             missing.add(arg)
             continue
@@ -152,19 +161,17 @@ def build_multi_dataset_selections(
         )
     for ds_selection in output_args.values():
         ds_selection.extend(wildcards)
-    output_kwargs: dict[Any, dict[str, Any]] = {
-        name: {} for name in columns_by_ds.keys()
-    }
+    output_kwargs: dict[Any, dict[str, Any]] = {name: {} for name in columns_by_ds}
     missing = set()
     missing_lengths = set()
     for kwarg_name, kwarg_value in select_kwargs.items():
         if isinstance(kwarg_value, np.ndarray):
             col_length = len(kwarg_value)
-            datasets_with_required_length = set(
+            datasets_with_required_length = {
                 ds_name
                 for ds_name, length in ds_lengths.items()
                 if length == col_length
-            )
+            }
             if not datasets_with_required_length:
                 missing_lengths.add(kwarg_name)
                 continue
@@ -179,11 +186,11 @@ def build_multi_dataset_selections(
                 f"Received unknown column type {kwarg_name} = {type(kwarg_value)}"
             )
         column_requires = kwarg_value.requires_names
-        datasets_with_required_columns = set(
+        datasets_with_required_columns = {
             ds_name
             for ds_name, ds_columns in columns_by_ds.items()
             if column_requires.issubset(ds_columns)
-        )
+        }
         if not datasets_with_required_columns:
             missing.add(kwarg_name)
         for ds_name in datasets_with_required_columns:
@@ -201,7 +208,7 @@ def build_multi_dataset_selections(
 
 
 def __evaluate_wildcards(select_from: set[str], wildcards: Iterable[str]):
-    wildcards = list(map(lambda w: w.replace("*", ".*"), wildcards))
+    wildcards = [w.replace("*", ".*") for w in wildcards]
     regex = re.compile("|".join(wildcards))
     matches = set(filter(lambda n: re.fullmatch(regex, n), select_from))
     return matches

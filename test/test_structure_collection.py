@@ -1,19 +1,17 @@
 import numpy as np
-import pytest
-from opencosmo.collection.structure.handler import link_slot_values
-
 import opencosmo as oc
+import pytest
+from opencosmo.collection.structure import links
+from opencosmo.io.io import open_state
 
 
-def _link_slot(collection, link_name):
+def _link_slot(state, link_name):
     """Per-source-row link slot values (idx with -1, or chunk sizes).
 
-    Reads straight off the collection's match sets -- the same primitive the
+    Reads straight off the state's match sets -- the same primitive the
     library itself uses to decide which structures are empty.
     """
-    handler = collection._StructureCollection__handler
-    source = collection._StructureCollection__source
-    values, _ = link_slot_values(handler.match_sets, source, link_name)
+    values, _ = links.slot_values(state.match_sets, state.source, link_name)
     return values
 
 
@@ -151,7 +149,7 @@ def verify_structure_links(structure):
 
 def verify_collection_links(collection, n=10):
     """Verify links across a structure collection of halos or galaxies."""
-    if "halo_properties" in collection.keys():
+    if "halo_properties" in collection:
         subset = collection.filter(oc.col("sod_halo_mass") > 1e13).take(n)
         n_checked = 0
         for structure in subset.halos():
@@ -185,7 +183,7 @@ def reduce_for_write(collection, components):
     links are exercised -- a mass filter would keep only massive halos, which
     all have profiles, and would hide bugs in how sparse links are written.
     """
-    if "halo_properties" not in collection.keys():
+    if "halo_properties" not in collection:
         # Galaxy-only collection: no sparse profile links to preserve, so a
         # plain subset keeps the write small.
         return collection.take(1000)
@@ -244,7 +242,7 @@ def test_lightcone_ignore_empty(lightcone_files):
         for p in lightcone_files[component]
     ]
 
-    kept_all = oc.open(*paths, ignore_empty=False)
+    kept_all = open_state(*paths, ignore_empty=False)
     kept_nonempty = oc.open(*paths)
 
     # Compute the expected kept set: halos with both a profile and a galaxy,
@@ -275,7 +273,7 @@ def test_lightcone_ignore_empty_only_considers_opened(lightcone_files):
     ]
     collection = oc.open(*paths)
 
-    kept_all = oc.open(*paths, ignore_empty=False)
+    kept_all = open_state(*paths, ignore_empty=False)
     expected = int((_link_slot(kept_all, "halo_profiles") != -1).sum())
 
     assert len(collection) == expected

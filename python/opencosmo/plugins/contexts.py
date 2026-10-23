@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import h5py
@@ -10,11 +10,11 @@ if TYPE_CHECKING:
     from astropy.table import Table
     from mpi4py import MPI
 
-    from opencosmo import Dataset, Lightcone
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex, IndexArray
-    from opencosmo.spatial.tree import Tree
+    from opencosmo.spatial.protocols import SpatialIndex
 
 
 class HookPoint(StrEnum):
@@ -34,13 +34,13 @@ class HookPoint(StrEnum):
 
 @dataclass(frozen=True)
 class DatasetOpenCtx:
-    """Fired once per dataset after it is opened from disk.
+    """Fired once per DatasetState after it is opened from disk.
 
     open_kwargs holds any keyword arguments the user passed to opencosmo.open().
-    Plugins can inspect them to conditionally modify the dataset.
+    Plugins can inspect them to conditionally modify the state.
     """
 
-    dataset: Dataset
+    state: DatasetState
     open_kwargs: dict[str, Any]
 
 
@@ -61,7 +61,7 @@ class LightconeOpenCtx:
     open_kwargs mirrors DatasetOpenCtx.open_kwargs.
     """
 
-    lightcone: Lightcone
+    state: LightconeState
     open_kwargs: dict[str, Any]
 
 
@@ -69,10 +69,10 @@ class LightconeOpenCtx:
 class LightconeInstantiateCtx:
     """Fired each time get_data() is called on a Lightcone.
 
-    Plugins may re-order or re-index sub-datasets before they are stacked.
+    Plugins may re-order or re-index leaf datasets before they are stacked.
     """
 
-    lightcone: Lightcone
+    state: LightconeState
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,7 @@ class PostSortCtx:
     dataclasses.replace(ctx, data=new_data).
     """
 
-    state: DatasetState | Lightcone
+    state: DatasetState | LightconeState
     data: Table | dict[str, np.ndarray]
     index: IndexArray
 
@@ -123,5 +123,5 @@ class PartitionCtx:
     header: OpenCosmoHeader
     index_group: h5py.Group
     data_group: h5py.Group
-    tree: Optional[Tree] = None
-    min_level: Optional[int] = None
+    spatial_index: SpatialIndex | None = None
+    min_level: int | None = None

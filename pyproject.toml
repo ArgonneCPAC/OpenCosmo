@@ -14,12 +14,12 @@ requires-python = ">=3.12,<3.15"
 
 dependencies = [
   "h5py>=3.12.1,<4.0.0",
-  "astropy>=7.2.0,<8.0.0",
+  "astropy>=7.2.0,<9.0.0",
   "pydantic>=2.10.6,<3.0.0",
-  "hdf5plugin>=5.0.0,!=5.1,<7.0",
+  "hdf5plugin>=5.0.0,!=5.1,<8.0",
   "healpy>=1.19.0,<2.0.0",
   "healsparse>=1.11,<2.0",
-  "numpy>=2.0,<2.5",
+  "numpy>=2.0,<2.6",
   "click (>=8.2.1,<9.0.0)",
   "rustworkx>=0.17.1,<1.0",
 ]
@@ -31,7 +31,7 @@ Documentation = "https://opencosmo.readthedocs.io/en/stable/"
 [dependency-groups]
 dev = [
   "ruff>=0.9.4,<1.0.0",
-  "mypy>=1.15,<2.0.0",
+  "mypy>=1.15,<3.0.0",
   "types-deprecated>=1.2.55.20250304",
   "pre-commit>=4.2.0,<5.0.0",
   "towncrier (>=24.8.0,<25.0.0)",
@@ -39,6 +39,7 @@ dev = [
   "pytest>=9.0.3,<10.0.0",
   "pytest-timeout>=2.4.0",
   "jax>=0.10.1",
+  "maturin>=1.15.0",
 ]
 docs = [
   "sphinx>=9.0.0",
@@ -57,7 +58,7 @@ test = [
     "yt>=4.4.1",
 ]
 test-mpi = [
-  "mpi-pytest>=2025.4.0,<2026.0.0"
+  "mpi-pytest>=2025.4.0,<2027.0.0"
 ]
 
 [project.scripts]

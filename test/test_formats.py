@@ -1,11 +1,10 @@
 import jax.numpy as jnp
 import numpy as np
+import opencosmo as oc
 import pandas as pd
 import polars as pl
 import pyarrow as pa
 import pytest
-
-import opencosmo as oc
 
 
 @pytest.fixture

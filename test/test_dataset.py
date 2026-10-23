@@ -2,10 +2,11 @@ import os
 
 import astropy.units as u
 import numpy as np
-import pytest
-from opencosmo.io.discover import discover_file
-
 import opencosmo as oc
+import pytest
+from opencosmo.dataset import operations as dsops
+from opencosmo.io.discover import discover_file
+from opencosmo.io.io import open_state
 
 
 @pytest.fixture
@@ -30,15 +31,15 @@ def test_descriptions(input_path):
     assert isinstance(ds.descriptions, dict)
 
 
-def test_dataset_uuid_matches_discovery_and_survives_transformations(input_path):
-    """Test that dataset identity is preserved from opening through transforms."""
-    dataset = oc.open(input_path)
+def test_state_uuid_matches_discovery_and_survives_transformations(input_path):
+    """Test that dataset-state identity is preserved through transformations."""
+    state = open_state(input_path)
     discovered_uuid = discover_file(input_path).groups[0].uuid
 
-    assert dataset.uuid == discovered_uuid
-    assert dataset.uuid == dataset.filter(oc.col("sod_halo_mass") > 0).uuid
-    assert dataset.uuid == dataset.select("fof_halo_mass").uuid
-    assert dataset.uuid == dataset.take(10).uuid
+    assert state.uuid == discovered_uuid
+    assert state.uuid == dsops.filter(state, oc.col("sod_halo_mass") > 0).uuid
+    assert state.uuid == dsops.select(state, "fof_halo_mass").uuid
+    assert state.uuid == dsops.take(state, 10, "start", "global").uuid
 
 
 def test_filter_oom(input_path, max_mass):
@@ -132,30 +133,28 @@ def test_sort_by_unknown(input_path):
 
 def test_select_wildcard(input_path):
     ds = oc.open(input_path)
-    fof_columns = set(col for col in ds.columns if col.startswith("fof"))
+    fof_columns = {col for col in ds.columns if col.startswith("fof")}
     ds = ds.select("fof*")
     assert set(ds.columns) == fof_columns
 
 
 def test_select_multiple_wildcard_one_pattern(input_path):
     ds = oc.open(input_path)
-    fof_columns = set(col for col in ds.columns if "com" in col)
+    fof_columns = {col for col in ds.columns if "com" in col}
     ds = ds.select("*com*")
     assert set(ds.columns) == fof_columns
 
 
 def test_select_multiple_wildcard(input_path):
     ds = oc.open(input_path)
-    fof_columns = set(
-        col for col in ds.columns if col.startswith("fof") or col.startswith("sod")
-    )
+    fof_columns = {col for col in ds.columns if col.startswith(("fof", "sod"))}
     ds = ds.select(("fof*", "sod*"))
     assert set(ds.columns) == fof_columns
 
 
 def test_select_wildcard_and_exact(input_path):
     ds = oc.open(input_path)
-    fof_columns = set(col for col in ds.columns if col.startswith("fof"))
+    fof_columns = {col for col in ds.columns if col.startswith("fof")}
     fof_columns.add("sod_halo_com_x")
     ds = ds.select(("fof*", "sod_halo_com_x"))
     assert set(ds.columns) == fof_columns
@@ -163,7 +162,7 @@ def test_select_wildcard_and_exact(input_path):
 
 def test_drop_wildcard_and_exact(input_path):
     ds = oc.open(input_path)
-    fof_columns = set(col for col in ds.columns if col.startswith("fof"))
+    fof_columns = {col for col in ds.columns if col.startswith("fof")}
     fof_columns.add("sod_halo_com_x")
     ds = ds.drop(("fof*", "sod_halo_com_x"))
     assert not set(ds.columns).intersection(fof_columns)
@@ -424,6 +423,153 @@ def test_evaluate_rejects_signature_without_columns_or_data(input_path):
 
     with pytest.raises(ValueError, match="column names|data"):
         ds.evaluate(invalid, vectorize=True, insert=False, format="numpy")
+
+
+def test_evaluate_to_dataset_allows_different_length(input_path):
+    ds = oc.open(input_path).take(50)
+
+    def summarize(fof_halo_mass):
+        return {
+            "mass": fof_halo_mass[:3],
+            "rank": np.arange(3),
+        }
+
+    result = ds.evaluate_to_dataset(summarize, vectorize=True)
+    data = result.get_data()
+
+    assert len(result) == 3
+    assert result.header == ds.header
+    assert data["mass"].unit == ds.units["fof_halo_mass"]
+    np.testing.assert_array_equal(data["rank"], np.arange(3))
+
+
+def test_evaluate_to_dataset_uses_baseline_units_and_does_not_cache(input_path):
+    original = oc.open(input_path).take(5, at="start")
+    baseline = original.with_units(original.header.file.unit_convention)
+    source = original.with_units("physical", conversions={u.Mpc: u.km})
+    seen_units = []
+
+    def copy_position(fof_halo_center_x):
+        seen_units.append(fof_halo_center_x.unit)
+        return {
+            "position": fof_halo_center_x,
+            "row": np.arange(len(fof_halo_center_x)),
+        }
+
+    result = source.evaluate_to_dataset(copy_position, vectorize=True)
+    expected = baseline.get_data()["fof_halo_center_x"]
+    data = result.get_data()
+
+    assert seen_units == [expected.unit]
+    expected_output = original.with_units("physical").get_data()["fof_halo_center_x"]
+    assert data["position"].unit == u.km
+    np.testing.assert_allclose(data["position"].value, expected_output.to_value(u.km))
+    np.testing.assert_array_equal(data["row"], np.arange(5))
+
+    source_data = source.get_data()["fof_halo_center_x"]
+    assert source_data.unit == u.km
+
+
+def test_evaluate_to_dataset_converts_conventions_without_caching(input_path):
+    source = oc.open(input_path).take(5, at="start")
+
+    def copy_position(fof_halo_center_x):
+        return {"position": fof_halo_center_x}
+
+    result = source.evaluate_to_dataset(copy_position, vectorize=True)
+    physical = result.with_units("physical")
+    expected = source.with_units("physical").get_data()["fof_halo_center_x"]
+    actual = physical.get_data()
+
+    assert actual.unit == expected.unit
+    np.testing.assert_allclose(actual.value, expected.value)
+
+    taken = physical.take(2, at="start").get_data()
+    np.testing.assert_allclose(taken.value, expected[:2].value)
+
+
+def _copy_position(fof_halo_center_x):
+    return {"position": fof_halo_center_x}
+
+
+def test_evaluate_to_dataset_state_restores_units_without_caching(input_path):
+    source = dsops.take(open_state(input_path), 5, "start", "local")
+    source = dsops.with_units(source, "physical", {u.Mpc: u.km})
+
+    result = dsops.evaluate_to_dataset(source, _copy_position, vectorize=True)
+
+    assert result.unit_handler.current_convention.value == "physical"
+    assert (
+        result.unit_handler.blanket_conversions
+        == source.unit_handler.blanket_conversions
+    )
+    assert result.cache.columns == set()
+
+    dsops.get_data(result, "astropy")
+    converted = dsops.with_units(result, "physical", {}, position=u.m)
+    dsops.get_data(converted, "astropy")
+    assert result.cache.columns == set()
+    assert converted.cache.columns == set()
+
+
+def test_evaluate_to_dataset_state_converts_conventions_without_caching(input_path):
+    source = dsops.take(open_state(input_path), 5, "start", "local")
+
+    result = dsops.evaluate_to_dataset(source, _copy_position, vectorize=True)
+    physical = dsops.with_units(result, "physical", {})
+    dsops.get_data(physical, "astropy")
+
+    assert result.cache.columns == set()
+    assert physical.cache.columns == set()
+
+
+def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+    row_number = iter(range(4))
+
+    def expand(fof_halo_mass):
+        count = next(row_number) + 1
+        return {
+            "mass": np.repeat(fof_halo_mass, count),
+            "copy": np.arange(count),
+        }
+
+    result = ds.evaluate_to_dataset(expand)
+    data = result.get_data()
+    source_mass = ds.get_data()["fof_halo_mass"]
+
+    assert len(result) == 10
+    np.testing.assert_array_equal(data["mass"], np.repeat(source_mass, [1, 2, 3, 4]))
+    np.testing.assert_array_equal(data["copy"], [0, 0, 1, 0, 1, 2, 0, 1, 2, 3])
+
+
+def test_evaluate_noinsert_requires_2d_output_for_2d_column(input_path):
+    ds = oc.open(input_path).take(4, at="start")
+
+    def profile(fof_halo_mass):
+        return np.full((1, 3), fof_halo_mass.value)
+
+    result = ds.evaluate(profile, insert=False, format="astropy")
+
+    assert result["profile"].shape == (4, 3)
+
+
+@pytest.mark.parametrize(
+    ("output", "error", "message"),
+    [
+        ({"first": np.arange(2), "second": np.arange(3)}, ValueError, "equal lengths"),
+        ({"invalid": [1, 2]}, TypeError, "NumPy array or Astropy quantity"),
+        ({"scalar": np.array(1)}, TypeError, "with a length"),
+    ],
+)
+def test_evaluate_to_dataset_validates_outputs(input_path, output, error, message):
+    ds = oc.open(input_path).take(10)
+
+    def invalid(data):
+        return output
+
+    with pytest.raises(error, match=message):
+        ds.evaluate_to_dataset(invalid, vectorize=True)
 
 
 def test_visit_rows_nfw(input_path):

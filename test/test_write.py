@@ -1,10 +1,11 @@
+import astropy.units as u
 import numpy as np
+import opencosmo as oc
 import pytest
+from opencosmo import col, write
 from opencosmo.header import read_header, write_header
 from opencosmo.io.discover import discover_file
-
-import opencosmo as oc
-from opencosmo import col, write
+from opencosmo.io.io import open_state
 
 
 @pytest.fixture
@@ -40,18 +41,67 @@ def test_write_dataset(halo_properties_path, tmp_path):
     assert all(ds.get_data() == new_ds.get_data())
 
 
+def test_write_evaluate_to_dataset_round_trip(halo_properties_path, tmp_path):
+    source = oc.open(halo_properties_path).take(4, at="start")
+    row_number = iter(range(4))
+
+    def summarize(fof_halo_mass):
+        length = next(row_number) + 1
+        return {
+            "mass": np.repeat(fof_halo_mass, length),
+            "rank": np.arange(length, dtype=np.int64),
+        }
+
+    evaluated = source.evaluate_to_dataset(summarize)
+    output_path = tmp_path / "evaluated.hdf5"
+    write(output_path, evaluated)
+    reopened = oc.open(output_path)
+
+    expected = evaluated.get_data()
+    actual = reopened.get_data()
+    assert reopened.header == source.header
+    assert set(actual.colnames) == {"mass", "rank"}
+    assert actual["mass"].unit == expected["mass"].unit
+    np.testing.assert_array_equal(actual["mass"], expected["mass"])
+    np.testing.assert_array_equal(actual["rank"], expected["rank"])
+
+
+def test_write_evaluate_to_dataset_resets_conversions_and_preserves_base(
+    halo_properties_path, tmp_path
+):
+    source = oc.open(halo_properties_path).take(4, at="start")
+    converted = source.with_units(conversions={u.Mpc: u.km})
+
+    def copy_position(fof_halo_center_x):
+        return {"position": fof_halo_center_x}
+
+    evaluated = converted.evaluate_to_dataset(copy_position, vectorize=True)
+    output_path = tmp_path / "evaluated_converted.hdf5"
+    write(output_path, evaluated)
+    reopened = oc.open(output_path)
+
+    assert evaluated.get_data().unit == u.km
+    assert open_state(output_path).unit_handler.blanket_conversions == {}
+    assert reopened.get_data().unit == u.Mpc
+
+    expected_base = source.with_units("scalefree").get_data()["fof_halo_center_x"]
+    reopened_base = reopened.with_units("scalefree").get_data()
+    assert reopened_base.unit == expected_base.unit
+    np.testing.assert_array_equal(reopened_base, expected_base)
+
+
 def test_write_mints_fresh_persistent_dataset_uuid(halo_properties_path, tmp_path):
     """Test that writing mints a new on-disk dataset identity."""
     source = oc.open(halo_properties_path)
     output_path = tmp_path / "haloproperties.hdf5"
     write(output_path, source)
 
-    reopened = oc.open(output_path)
+    reopened_state = open_state(output_path)
     output_group = discover_file(output_path).groups[0]
 
-    assert reopened.uuid != source.uuid
+    assert reopened_state.uuid != open_state(halo_properties_path).uuid
     assert output_group.has_persistent_uuid
-    assert reopened.uuid == output_group.uuid
+    assert reopened_state.uuid == output_group.uuid
 
 
 def test_overwrite(halo_properties_path, tmp_path):
