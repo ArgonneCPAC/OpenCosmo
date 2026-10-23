@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -21,6 +21,8 @@ from opencosmo.spatial.relations import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from astropy.coordinates import SkyCoord  # type: ignore
     from astropy.cosmology import FLRW
 
@@ -91,7 +93,7 @@ def regularize_regions(*regions: Region2d) -> list[HealpixRegion]:
     if not healpix_regions:
         target_nside = 2**8
     else:
-        region_nsides = set(r.nside for r in healpix_regions)
+        region_nsides = {r.nside for r in healpix_regions}
         target_nside = max(region_nsides)
 
     output_healpix = [r.into_healpix_region(target_nside) for r in regions]
@@ -126,7 +128,7 @@ class ConeRegion:
             f"Cone Region (center: RA={ra:.4f}°, Dec={dec:.4f}°, radius={radius:.4f}°)"
         )
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self) -> ConeRegionModel:
@@ -259,11 +261,8 @@ class SkyboxRegion:
         # pixels straddling the RA edges are treated as intersecting.
         cos_dec = min(np.cos(np.radians(dec0)), np.cos(np.radians(dec1)))
         margin = np.degrees(max_pixrad(nside)) / max(cos_dec, 1e-6)
-        if self.__ra_width >= 360.0:
-            keep = np.ones(strip.shape, dtype=bool)
-        else:
-            offset = (strip_ra - self.__ra_start) % 360.0
-            keep = (offset <= self.__ra_width + margin) | (offset >= 360.0 - margin)
+        offset = (strip_ra - self.__ra_start) % 360.0
+        keep = (offset <= self.__ra_width + margin) | (offset >= 360.0 - margin)
         # query_strip does not return pixels in ascending order; downstream index
         # projection requires the intersection pixels to be sorted.
         return np.sort(strip[keep])
@@ -272,7 +271,7 @@ class SkyboxRegion:
         pixels = self.get_healpix_intersections(nside)
         return HealpixRegion(pixels, nside)
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self) -> SkyboxRegionModel:
@@ -301,7 +300,7 @@ class HealpixRegion:
         )
         return res
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self):
@@ -376,7 +375,7 @@ class FullSkyRegion:
     def __repr__(self):
         return "Full Sky Region"
 
-    def into_base_convention(self, *args, **kwargs):
+    def regularize(self, *args, **kwargs):
         return self
 
     def into_model(self):
@@ -435,23 +434,23 @@ class BoxRegion:
         halfwidth = tuple((b[1] - b[0]) / 2 for b in bounds)
         return BoxRegion(center, halfwidth)
 
-    def into_base_convention(
+    def regularize(
         self,
         unit_handler: UnitHandler,
         columns: Iterable[str],
         from_: UnitConvention,
-        unit_kwargs: dict[str, Any] = {},
+        unit_kwargs: dict[str, Any] | None = None,
     ):
+        if unit_kwargs is None:
+            unit_kwargs = {}
         center = {col: dim for col, dim in zip(columns, self.__center)}
         halfwidth = {col: dim for col, dim in zip(columns, self.__halfwidths)}
 
         new_center = tuple(
-            v.value
-            for v in unit_handler.into_base_convention(center, unit_kwargs).values()
+            v.value for v in unit_handler.regularize(center, unit_kwargs).values()
         )
         new_halfwidth = tuple(
-            v.value
-            for v in unit_handler.into_base_convention(halfwidth, unit_kwargs).values()
+            v.value for v in unit_handler.regularize(halfwidth, unit_kwargs).values()
         )
 
         return BoxRegion(new_center, new_halfwidth)

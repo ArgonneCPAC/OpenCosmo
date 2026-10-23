@@ -33,9 +33,7 @@ jobs:
           ref: ${{ steps.check-version.outputs.ref }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.8.2"
+        uses: astral-sh/setup-uv@v7
 
       - name: Bump version files
         run: uvx bump-my-version bump --new-version ${{ inputs.version }}
@@ -74,7 +72,7 @@ jobs:
           git push origin ${{ inputs.version }}
 
       - name: Upload release notes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-notes
           path: release_notes.rst
@@ -109,7 +107,7 @@ jobs:
           ref: ${{ inputs.version }}
       - name: Set up Python
         if: matrix.os != 'ubuntu-latest'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: |
             3.12
@@ -122,7 +120,7 @@ jobs:
           manylinux: auto
           args: --release --out dist --interpreter 3.12 3.13 3.14
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.target }}
           path: dist/
@@ -132,16 +130,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: wheels-*
           path: dist/
           merge-multiple: true
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.8.2"
+        uses: astral-sh/setup-uv@v7
 
       - name: Publish to PyPI
         run: uv publish --token ${{ secrets.PYPI_TOKEN }}
@@ -153,14 +149,14 @@ jobs:
       contents: write
     steps:
       - name: Download wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: wheels-*
           path: dist/
           merge-multiple: true
 
       - name: Download release notes
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-notes
 

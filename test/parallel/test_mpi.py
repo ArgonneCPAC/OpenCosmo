@@ -9,14 +9,15 @@ import astropy.units as u
 import h5py
 import mpi4py
 import numpy as np
+import opencosmo as oc
 import pytest
 from mpi4py import MPI
-from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
-from pytest_mpi.parallel_assert import parallel_assert
-
-import opencosmo as oc
 from opencosmo.analysis import gather, reduce
 from opencosmo.collection.simulation import SimulationCollection
+from opencosmo.collection.simulation import state as simst
+from opencosmo.io.io import open_state
+from opencosmo.mpi import gather_data, get_comm_world, redistribute_data, scatter_data
+from pytest_mpi.parallel_assert import parallel_assert
 
 logger = getLogger()
 if h5py.get_config().mpi:
@@ -91,12 +92,11 @@ def update_simulation_parameter(
 ):
     # make a copy of the original data
     path = tmp_path / f"{name}.hdf5"
-    with h5py.File(base_cosmology_path, "r") as f:
-        with h5py.File(path, "w") as file:
-            f.copy(f["header"], file, "header")
-            # update the attributes
-            for key, value in parameters.items():
-                file["header"]["simulation"]["parameters"].attrs[key] = value
+    with h5py.File(base_cosmology_path, "r") as f, h5py.File(path, "w") as file:
+        f.copy(f["header"], file, "header")
+        # update the attributes
+        for key, value in parameters.items():
+            file["header"]["simulation"]["parameters"].attrs[key] = value
     return path
 
 
@@ -313,7 +313,7 @@ def test_link_read(all_paths):
     collection = oc.open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13)
     length = len(collection["halo_properties"])
-    length = 8 if length > 8 else length
+    length = min(length, 8)
     collection = collection.take(8, "random")
     for i, halo in enumerate(collection.objects()):
         halo_properties = halo.pop("halo_properties")
@@ -391,7 +391,7 @@ def test_link_write(all_paths, per_test_dir):
     collection = oc.open(*all_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5)
     length = len(collection["halo_properties"])
-    length = 8 if length > 8 else length
+    length = min(length, 8)
     comm = mpi4py.MPI.COMM_WORLD
     output_path = per_test_dir / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)
@@ -447,7 +447,7 @@ def test_chain_link(all_paths, galaxy_paths, per_test_dir):
     collection = oc.open(*all_paths, *galaxy_paths)
     collection = collection.filter(oc.col("sod_halo_mass") > 10**13.5).take(10)
     length = len(collection["halo_properties"])
-    length = 8 if length > 8 else length
+    length = min(length, 8)
     comm = mpi4py.MPI.COMM_WORLD
     output_path = per_test_dir / "random_linked.hdf5"
     output_path = comm.bcast(output_path, root=0)
@@ -637,6 +637,45 @@ def test_evaluate_write(input_path, per_test_dir):
     )
 
 
+@pytest.mark.timeout(20, method="thread")
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_to_dataset_write(input_path, per_test_dir):
+    comm = mpi4py.MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    temporary_path = comm.bcast(per_test_dir / "evaluated.hdf5", root=0)
+    source = oc.open(input_path)
+
+    source = source.take(3, at="start")
+    row_number = iter(range(3))
+
+    def summarize(fof_halo_mass):
+        length = next(row_number) + rank + 1
+        return {
+            "rank": np.full(length, rank, dtype=np.int64),
+            "mass": np.repeat(fof_halo_mass, length),
+        }
+
+    evaluated = source.evaluate_to_dataset(summarize)
+    expected_rank = np.concatenate(
+        comm.allgather(np.atleast_1d(evaluated.get_data("numpy")["rank"]))
+    )
+    expected_mass = np.concatenate(
+        comm.allgather(np.atleast_1d(evaluated.get_data()["mass"].to_value(u.Msun)))
+    )
+
+    oc.write(temporary_path, evaluated)
+    reopened = oc.open(temporary_path)
+    reopened_data = reopened.get_data()
+    actual_rank = np.concatenate(comm.allgather(np.atleast_1d(reopened_data["rank"])))
+    actual_mass = np.concatenate(
+        comm.allgather(np.atleast_1d(reopened_data["mass"].to_value(u.Msun)))
+    )
+
+    parallel_assert(reopened_data["mass"].unit == u.Msun)
+    parallel_assert(np.array_equal(actual_rank, expected_rank))
+    parallel_assert(np.array_equal(actual_mass, expected_mass))
+
+
 @pytest.mark.timeout(60)
 @pytest.mark.parallel(nprocs=4)
 def test_derive_write(input_path, per_test_dir):
@@ -671,10 +710,14 @@ def test_simcollection_structure_write(
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = per_test_dir / "output.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
-    sc0 = oc.open(*scidac_000_paths)
-    sc1 = oc.open(*scidac_001_paths)
-
-    collection = oc.SimulationCollection({"scidac_000": sc0, "scidac_001": sc1})
+    collection = SimulationCollection(
+        simst.from_parts(
+            {
+                "scidac_000": open_state(*scidac_000_paths),
+                "scidac_001": open_state(*scidac_001_paths),
+            }
+        )
+    )
 
     oc.write(temporary_path, collection)
 
@@ -787,13 +830,21 @@ def test_simcollection_write_one_missing(multi_path, per_test_dir):
     comm = mpi4py.MPI.COMM_WORLD
     temporary_path = per_test_dir / "collection.hdf5"
     temporary_path = comm.bcast(temporary_path, root=0)
-    data = oc.open(multi_path)
+    state = open_state(multi_path)
+    data = SimulationCollection(state)
 
     halo_tags = {}
     if comm.Get_rank() == 0:
         key_to_drop = next(iter(data.keys()))
-        new_data = {name: ds for name, ds in data.items() if name != key_to_drop}
-        data = SimulationCollection(new_data)
+        data = SimulationCollection(
+            simst.from_parts(
+                {
+                    name: member
+                    for name, member in state.members.items()
+                    if name != key_to_drop
+                }
+            )
+        )
 
     for name, sim in data.items():
         sim_tags = sim.select("fof_halo_tag").get_data("numpy")
@@ -928,11 +979,13 @@ def test_reduce_average(input_path, profile_path, stacked_profile_path):
 
 @pytest.fixture
 def simulation_collection(test_data):
-    return oc.SimulationCollection(
-        {
-            "scidac_000": oc.open(test_data.snapshot.scidac(0).halo_properties),
-            "scidac_001": oc.open(test_data.snapshot.scidac(1).halo_properties),
-        }
+    return SimulationCollection(
+        simst.from_parts(
+            {
+                "scidac_000": open_state(test_data.snapshot.scidac(0).halo_properties),
+                "scidac_001": open_state(test_data.snapshot.scidac(1).halo_properties),
+            }
+        )
     )
 
 
@@ -966,7 +1019,7 @@ def test_reduce_simulation_collection(simulation_collection):
     # A SimulationCollection reduces each simulation independently, keyed by name.
     assert set(result.keys()) == set(simulation_collection.keys())
 
-    for name in simulation_collection.keys():
+    for name in simulation_collection:
         mass = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
         expected = halo_mass_function(mass, bins, box_size)
         parallel_assert(np.allclose(result[name]["halo_mass_function"], expected))
@@ -1046,6 +1099,6 @@ def test_gather_simulation_collection(simulation_collection):
     # A SimulationCollection gathers each simulation independently, keyed by name.
     assert set(result.keys()) == set(simulation_collection.keys())
 
-    for name in simulation_collection.keys():
+    for name in simulation_collection:
         expected = _gather_column(simulation_collection[name], "fof_halo_mass", comm)
         parallel_assert(np.array_equal(result[name], expected))

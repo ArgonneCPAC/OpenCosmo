@@ -14,13 +14,13 @@ if TYPE_CHECKING:
     from opencosmo.mapping.mapping import MapSlot, SimpleH5pyIndex
 
 
-def read_index_group(group: h5py.Group) -> "SimpleH5pyIndex":
+def read_index_group(group: h5py.Group) -> SimpleH5pyIndex:
     """Resolve a primary map slot into its live simple index dataset."""
     return group["index"]  # type: ignore[return-value]
 
 
 def read_match_set(
-    group: h5py.Group, layout: "MapLayout", available: "set[UUID]"
+    group: h5py.Group, layout: MapLayout, available: set[UUID]
 ) -> DatasetMatchSet | None:
     """
     Resolve a live /map group into a DatasetMatchSet.
@@ -94,7 +94,7 @@ def read_match_set(
                         "must be non-negative"
                     )
                 if len(np.unique(values)) != len(values):
-                    vals, count = np.unique(values, return_counts=True)
+                    _vals, _count = np.unique(values, return_counts=True)
 
                     raise ValueError(
                         f"Malformed auxiliary map '{slot_name}': {side} indices "
@@ -117,7 +117,7 @@ def read_match_set(
 
 def read_link_set(
     source_group: h5py.Group,
-    layout: "LinkLayout",
+    layout: LinkLayout,
     source_uuid: UUID,
     target_uuids: dict[str, UUID],
 ) -> DatasetMatchSet | None:

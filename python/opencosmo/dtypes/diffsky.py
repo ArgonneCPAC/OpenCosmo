@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime  # noqa
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, field_serializer
 
-import opencosmo.dataset.state as st
 from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
+from opencosmo.dataset import operations as dsops
 from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
 from opencosmo.mpi import get_mpi
 from opencosmo.plugins.contexts import HookPoint
 from opencosmo.plugins.hook import hook
-from opencosmo.spatial.tree import TreePartition
+from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
     from astropy.table import Table
@@ -41,7 +41,7 @@ class DiffskyVersionInfo(BaseModel):
     diffmah: str
     diffsky: str
     diffstar: str
-    diffstarpop: Optional[str] = None
+    diffstarpop: str | None = None
     dsps: str
     jax: str
     numpy: str
@@ -50,9 +50,9 @@ class DiffskyVersionInfo(BaseModel):
 class DiffskyCatalogInfo(BaseModel):
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "catalog_info"
-    README: Optional[str] = None
+    README: str | None = None
     mock_version_name: str
-    zphot_table: Optional[tuple[float, ...]] = None
+    zphot_table: tuple[float, ...] | None = None
 
     @field_serializer("zphot_table")
     def serialize_zphot_table(self, value):
@@ -92,7 +92,9 @@ def rebuild_top_host_idx(top_host_idx, index):
 
 def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
     index_array = into_array(new_index)
-    top_host_idx = st.get_data(st.select(dataset, {"top_host_idx"}))["top_host_idx"]
+    top_host_idx = dsops.get_data(
+        dsops.select(dataset, "top_host_idx"), "numpy", wrap_single=True
+    )["top_host_idx"]
     unique_in_sample = np.unique(top_host_idx[index_array])
 
     missing_hosts = np.setdiff1d(unique_in_sample, index_array)
@@ -119,7 +121,7 @@ def _is_synthetic_galaxies_with_top_host_idx(obj) -> bool:
 
 @hook(
     HookPoint.DatasetOpen,
-    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.dataset),
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.state),
 )
 def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
     top_host_idx = EvaluatedColumn(
@@ -131,31 +133,36 @@ def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
         strategy=EvaluateStrategy.VECTORIZE,
         no_cache=True,
     )
-    new_dataset = ctx.dataset.with_new_columns(
-        updated_host_idx=top_host_idx, allow_overwrite=True
+    new_state = dsops.with_new_columns(
+        ctx.state, allow_overwrite=True, updated_host_idx=top_host_idx
     )
-    return dataclasses.replace(ctx, dataset=new_dataset)
+    return dataclasses.replace(ctx, state=new_state)
 
 
 @hook(
     HookPoint.LightconeInstantiate,
-    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.lightcone),
+    when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.state),
 )
 def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCtx:
-    cs = 0
-    output = {}
-
     def _offset_top_host_idx(top_host_idx, offset):
         top_host_idx[top_host_idx >= 0] += offset
         return {"top_host_idx": top_host_idx}
 
-    for key, ds in ctx.lightcone.items():
-        output[key] = ds.evaluate(
-            _offset_top_host_idx, allow_overwrite=True, vectorize=True, offset=cs
+    offsets = np.cumsum([0] + [len(leaf) for _, leaf in ctx.state.leaves[:-1]])
+    leaves = tuple(
+        (
+            key,
+            dsops.evaluate(
+                leaf,
+                _offset_top_host_idx,
+                vectorize=True,
+                allow_overwrite=True,
+                offset=offset,
+            ),
         )
-        cs += len(ds)
-
-    return dataclasses.replace(ctx, lightcone=output)  # type: ignore[arg-type]
+        for (key, leaf), offset in zip(ctx.state.leaves, offsets)
+    )
+    return dataclasses.replace(ctx, state=dataclasses.replace(ctx.state, leaves=leaves))
 
 
 # Registers an IndexUpdate hook dynamically so that keep_top_host_idx only
@@ -186,10 +193,10 @@ def _remap_top_host_idx_after_sort(ctx: PostSortCtx) -> PostSortCtx:
     HookPoint.Partition,
     when=lambda ctx: (
         ctx.header.file.data_type == "synthetic_galaxies"
-        and "top_host_idx" in ctx.data_group.keys()
+        and "top_host_idx" in ctx.data_group
     ),
 )
-def _partition_by_top_host_groups(ctx: PartitionCtx) -> Optional[TreePartition]:
+def _partition_by_top_host_groups(ctx: PartitionCtx) -> TreePartition | None:
     top_host_idx = ctx.data_group["top_host_idx"][:]
     n_rows = len(top_host_idx)
     n_ranks = ctx.comm.Get_size()

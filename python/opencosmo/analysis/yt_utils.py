@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pyxsim  # type: ignore
 import yt  # type: ignore
-import pyxsim # type: ignore
 from astropy.table import Table
 from unyt import unyt_array, unyt_quantity  # type: ignore
 
 if TYPE_CHECKING:
+    from pyxsim.source_models.sources import SourceModel  # type: ignore
     from yt.data_objects.static_output import Dataset as YT_Dataset
-    from pyxsim.source_models.sources import SourceModel # type: ignore
+
     import opencosmo as oc
 
 # ---- define some constants ---- #
@@ -21,13 +22,13 @@ solar_metallicity = 0.012899  # value used internally in HACC
 
 
 def create_yt_dataset(
-    data: Dict[str, oc.Dataset],
+    data: dict[str, oc.Dataset],
     compute_xray_fields: bool = False,
     return_source_model: bool = False,
     pyxsim_source_model: str = "CIESourceModel",
-    source_model_kwargs: Dict[str, Any] = {},
-    make_line_source_fields_kwargs: Dict[str, Any] = {},
-) -> Union[YT_Dataset, Tuple[YT_Dataset, SourceModel]]:
+    source_model_kwargs: dict[str, Any] | None = None,
+    make_line_source_fields_kwargs: dict[str, Any] | None = None,
+) -> YT_Dataset | tuple[YT_Dataset, SourceModel]:
     """
     Converts particle data to a `yt` dataset. Note that `yt`
     is generally developed with AMR codes in mind, but support for
@@ -51,13 +52,13 @@ def create_yt_dataset(
         such as computing additional luminosities in different frequency bands
         or generating synthetic observations.
     pyxsim_source_model : str, optional
-        Which `SourceModel` to use for generating X-ray emission. See `pyxsim's` 
+        Which `SourceModel` to use for generating X-ray emission. See `pyxsim's`
         `documentation <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html#>`_ for options.
-        Some source models have required inputs, which can be set here using the `source_model_kwargs` parameter. 
+        Some source models have required inputs, which can be set here using the `source_model_kwargs` parameter.
         If `CIESourceModel` is chosen, an emission measure field will be computed, and default values will be used for all source model parameters.
         For other source models (e.g. `PowerLawSourceModel` or `LineSourceModel`), additional particle data columns
         will need to be defined before calling this function. Alternatively, one could call `create_yt_dataset()` with
-        `compute_xray_fields=False` and manually define the additional fields and pyxsim source models using the 
+        `compute_xray_fields=False` and manually define the additional fields and pyxsim source models using the
         obtained yt dataset. See pyxsim's `cookbook <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/cookbook/index.html#>`_ for examples.
     source_model_kwargs : dict, optional
         Keyword arguments passed to the source model constructor in `pyxsim`.
@@ -65,8 +66,8 @@ def create_yt_dataset(
         to control the spectral resolution and emission model behavior. Available parameters
         vary between source model types (`docs <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/source_models/index.html#>`_).
     make_line_source_fields_kwargs : dict, optional
-        Dictionary for setting keyword arguments of pyxsim's `make_line_source_fields()` function (`ref <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/api/source_models.html#pyxsim.source_models.sources.SourceModel.make_line_source_fields#>`_). 
-        This is only relevent if ``pyxsim_source_model=="LineSourceModel"``. The `ds` yt dataset parameter will be set internally by `create_yt_dataset()`, 
+        Dictionary for setting keyword arguments of pyxsim's `make_line_source_fields()` function (`ref <https://hea-www.cfa.harvard.edu/~jzuhone/pyxsim/api/source_models.html#pyxsim.source_models.sources.SourceModel.make_line_source_fields#>`_).
+        This is only relevent if ``pyxsim_source_model=="LineSourceModel"``. The `ds` yt dataset parameter will be set internally by `create_yt_dataset()`,
         so `ds` should not be set to be set in this `make_line_source_fields_kwargs`.
 
     Returns
@@ -79,9 +80,11 @@ def create_yt_dataset(
         Returned only if ``return_source_model==True``.
     """
 
-    data_dict: Dict[
-        Union[Tuple[str, str], str], Union[np.ndarray, Tuple[np.ndarray, str]]
-    ] = {}
+    if make_line_source_fields_kwargs is None:
+        make_line_source_fields_kwargs = {}
+    if source_model_kwargs is None:
+        source_model_kwargs = {}
+    data_dict: dict[tuple[str, str] | str, np.ndarray | tuple[np.ndarray, str]] = {}
 
     minx, maxx = np.inf, -np.inf
     miny, maxy = np.inf, -np.inf
@@ -115,17 +118,17 @@ def create_yt_dataset(
 
         return unyt_array.from_astropy(array)
 
-    for ptype in data.keys():
+    for ptype, ptype_data in data.items():
         if "particles" not in ptype:
             continue
 
-        particle_data = data[ptype].get_data()
+        particle_data = ptype_data.get_data()
         assert isinstance(particle_data, Table)
-        redshift = data[ptype].redshift
-        cosmo = data[ptype].cosmology
+        redshift = ptype_data.redshift
+        cosmo = ptype_data.cosmology
         ptype_short = ptype.split("_")[0]
 
-        for field in particle_data.keys():
+        for field in particle_data.colnames:
             yt_field_name = special_fields.get(field, field)
             yt_particle_data = astropy_to_yt(particle_data[field])
 
@@ -248,7 +251,8 @@ def create_yt_dataset(
             # populate yt dataset with xray fields
             if pyxsim_source_model == "LineSourceModel":
                 source.make_line_source_fields(
-                    ds, **make_line_source_fields_kwargs,  
+                    ds,
+                    **make_line_source_fields_kwargs,
                 )
             else:
                 source.make_source_fields(

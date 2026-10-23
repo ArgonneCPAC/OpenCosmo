@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from opencosmo.index.build import empty, from_range
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mpi4py import MPI
 
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
-    from opencosmo.spatial.tree import Tree
+    from opencosmo.spatial.protocols import SpatialIndex
 
 
 class ResolvedIndex(NamedTuple):
@@ -18,7 +20,7 @@ class ResolvedIndex(NamedTuple):
     'no restriction — read the whole dataset on this rank') plus the possibly
     partition-updated spatial region to thread back into dataset state."""
 
-    index: Optional[DataIndex]  # type: ignore[assignment]  # shadows tuple.index
+    index: DataIndex | None  # type: ignore[assignment]  # shadows tuple.index
     region: Any  # a spatial Region; opaque here, threaded through unchanged by full/empty_ref
 
 
@@ -28,10 +30,10 @@ if TYPE_CHECKING:
     # state, so each spec is just a function of this shape, not a class.
     IndexSpec = Callable[
         [
-            Optional[MPI.Comm],
+            MPI.Comm | None,
             OpenCosmoHeader,
             DatasetTarget,
-            Optional[Tree],
+            SpatialIndex | None,
             int,
             object,
         ],
@@ -40,10 +42,10 @@ if TYPE_CHECKING:
 
 
 def spatial(
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     header: OpenCosmoHeader,
     target: DatasetTarget,
-    tree: Optional[Tree],
+    spatial_index: SpatialIndex | None,
     ds_length: int,
     sim_region: object,
 ) -> ResolvedIndex:
@@ -60,14 +62,20 @@ def spatial(
 
     try:
         ds_group = target.group
-        part = partition(comm, header, ds_group["index"], ds_group["data"], tree)
+        part = partition(
+            comm,
+            header,
+            ds_group["index"],
+            ds_group["data"],
+            spatial_index,
+        )
         if part is None:
             index = empty()
         else:
             index = part.idx  # type: ignore[assignment]
             sim_region = part.region if part.region is not None else sim_region
         if header.file.is_lightcone:
-            sim_region = _expand_lightcone_region(sim_region, tree)
+            sim_region = _expand_lightcone_region(sim_region, spatial_index)
         return ResolvedIndex(index, sim_region)
     except KeyError:
         n_ranks = comm.Get_size()
@@ -82,10 +90,10 @@ def spatial(
 
 
 def full(
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     header: OpenCosmoHeader,
     target: DatasetTarget,
-    tree: Optional[Tree],
+    spatial_index: SpatialIndex | None,
     ds_length: int,
     sim_region: object,
 ) -> ResolvedIndex:
@@ -95,10 +103,10 @@ def full(
 
 
 def empty_ref(
-    comm: Optional[MPI.Comm],
+    comm: MPI.Comm | None,
     header: OpenCosmoHeader,
     target: DatasetTarget,
-    tree: Optional[Tree],
+    spatial_index: SpatialIndex | None,
     ds_length: int,
     sim_region: object,
 ) -> ResolvedIndex:
@@ -111,14 +119,24 @@ def index_spec_for(
     is_empty_ref: bool,
     *,
     is_source: bool,
+    is_replicated: bool = False,
 ) -> IndexSpec:
     """Resolve the appropriate index spec for a node's role and distribution mode.
 
     Semantic map (from retire-open-kwargs-indexspec.md):
+    - Replicated nodes → full, regardless of mode or empty-ref status
     - Source in spatial mode → spatial (MPI-partitioned, with region feedback)
     - Linked children, redshift-split nodes → full (whole dataset on this rank)
     - Empty reference ranks → empty_ref (read nothing)
+
+    ``is_replicated`` marks a node that must be whole on every rank. It is checked
+    before ``is_empty_ref`` because the latter is a per-rank flag and would
+    otherwise empty a replicated node on reference ranks. The only current use is
+    a healpix map opened as a companion to a catalog, where cutouts near a
+    partition edge need map pixels this rank's catalog rows do not cover.
     """
+    if is_replicated:
+        return full
     if is_empty_ref:
         return empty_ref
     if index_kind == "spatial" and is_source:

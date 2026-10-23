@@ -12,16 +12,16 @@ from .spatial import make_box, make_cone, make_skybox
 __version__ = "1.4.6"
 
 __all__ = [
-    "write",
-    "col",
-    "open",
     "Dataset",
-    "StructureCollection",
-    "SimulationCollection",
-    "Lightcone",
     "HealpixMap",
+    "Lightcone",
+    "SimulationCollection",
+    "StructureCollection",
+    "__version__",
+    "col",
     "make_box",
     "make_cone",
     "make_skybox",
-    "__version__",
+    "open",
+    "write",
 ]

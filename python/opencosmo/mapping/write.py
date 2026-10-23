@@ -3,10 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry, get_dataset_schema_index
 from opencosmo.io.writer import ColumnWriter
-
-from opencosmo.index import into_array
 
 if TYPE_CHECKING:
     from opencosmo.io.schema import Schema
@@ -44,7 +43,7 @@ def __lookup_positions(
 def __lower_primary_writer(
     writer: ColumnWriter, target_positions: tuple[np.ndarray, np.ndarray]
 ) -> ColumnWriter:
-    sorted_ids, positions = target_positions
+    _sorted_ids, _positions = target_positions
     raw_targets = np.asarray(writer.data, dtype=np.int64)
 
     output_targets = np.full(len(raw_targets), -1, dtype=np.int64)

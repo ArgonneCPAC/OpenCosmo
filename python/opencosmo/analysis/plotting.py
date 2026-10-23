@@ -23,15 +23,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-import opencosmo as oc
-import opencosmo.analysis.statistics as statistics
-from opencosmo.analysis.default_plotting_params import default_params
-
-from opencosmo.mpi import get_comm_world, get_mpi
-
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.colors import LogNorm
+
+import opencosmo as oc
+from opencosmo.analysis import statistics
+from opencosmo.analysis.default_plotting_params import default_params
+from opencosmo.mpi import get_comm_world, get_mpi
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -46,6 +45,7 @@ MPI = get_mpi()
 comm = get_comm_world()
 rank = comm.Get_rank() if comm is not None else 0
 ranks = comm.Get_size() if comm is not None else 1
+
 
 def _set_params(ds: Dataset, column: str) -> dict[str, Any]:
     """
@@ -84,9 +84,10 @@ def _set_params(ds: Dataset, column: str) -> dict[str, Any]:
 
     units = ds.units[column]
     if units is not None:
-        params["plotting"]["unit_label"] = units.to_string('latex_inline').strip("$")
+        params["plotting"]["unit_label"] = units.to_string("latex_inline").strip("$")
 
     return params
+
 
 def _set_plot_kwargs(
     plot_kwargs: dict[str, Any] | None, **defaults: Any
@@ -116,6 +117,7 @@ def _set_plot_kwargs(
 
     return plot_kwargs
 
+
 def _initialize_fig(ax: Axes | None) -> tuple[Figure, Axes]:
     """
     Resolve the figure to draw into, creating one if needed.
@@ -143,7 +145,7 @@ def _initialize_fig(ax: Axes | None) -> tuple[Figure, Axes]:
         fig = cast("Figure", ax.figure)
 
     return fig, ax
-  
+
 
 def hist2d(
     ds: Dataset | StructureCollection,
@@ -191,7 +193,7 @@ def hist2d(
         An existing axis to draw into. If omitted, a new figure is created.
         Pass one of these to build a multi-panel figure.
     all : bool, default = False
-        Whether to draw a matplotlib figure on all ranks when running in parallel, 
+        Whether to draw a matplotlib figure on all ranks when running in parallel,
         or restrict plotting to rank 0. The histogram itself is computed collectively regardless.
         Note that when `all=False`, any manipulation of the matplotlib figure (saving, editing, etc.)
         needs to be done on rank 0. This is irrelevant when not running with MPI.
@@ -215,7 +217,7 @@ def hist2d(
     source = ds[dataset] if isinstance(ds, oc.StructureCollection) else ds
     assert not isinstance(source, oc.StructureCollection)
 
-    fig=None
+    fig = None
 
     x_params = _set_params(source, column_x)
     y_params = _set_params(source, column_y)
@@ -224,7 +226,7 @@ def hist2d(
     if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
         kwargs["bin_spacing"] = (
             x_params["plotting"]["scale"],
-            y_params["plotting"]["scale"]
+            y_params["plotting"]["scale"],
         )
 
     h, x, y = statistics.hist2d(source, column_x, column_y, **kwargs)
@@ -240,8 +242,16 @@ def hist2d(
         xunit = x_params["plotting"]["unit_label"]
         yunit = y_params["plotting"]["unit_label"]
 
-        xlabel = x_params["plotting"]["label"] if xunit is None else x_params["plotting"]["label"] + rf"$\,\,[{xunit}]$"
-        ylabel = y_params["plotting"]["label"] if yunit is None else y_params["plotting"]["label"] + rf"$\,\,[{yunit}]$"
+        xlabel = (
+            x_params["plotting"]["label"]
+            if xunit is None
+            else x_params["plotting"]["label"] + rf"$\,\,[{xunit}]$"
+        )
+        ylabel = (
+            y_params["plotting"]["label"]
+            if yunit is None
+            else y_params["plotting"]["label"] + rf"$\,\,[{yunit}]$"
+        )
 
         ax.set(
             xlabel=xlabel,
@@ -306,7 +316,7 @@ def hist1d(
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
     all : bool, default = False
-        Whether to draw a matplotlib figure on all ranks when running in parallel, 
+        Whether to draw a matplotlib figure on all ranks when running in parallel,
         or restrict plotting to rank 0. The histogram itself is computed collectively regardless.
         Note that when `all=False`, any manipulation of the matplotlib figure (saving, editing, etc.)
         needs to be done on rank 0. This is irrelevant when not running with MPI.
@@ -359,28 +369,32 @@ def hist1d(
     else:
         raise ValueError(f"Invalid value for differential: {differential}")
 
-
     fig = None
     if all or rank == 0:
         fig, ax = _initialize_fig(ax)
 
-        plot_kwargs = _set_plot_kwargs(plot_kwargs, where="mid")        
+        plot_kwargs = _set_plot_kwargs(plot_kwargs, where="mid")
 
-        bin_centers = 0.5*(bin_edges[1:] + bin_edges[:-1])
+        bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
 
         ax.step(bin_centers, counts, **plot_kwargs)
 
         unit = params["plotting"]["unit_label"]
-        xlabel = params["plotting"]["label"] if unit is None else params["plotting"]["label"] + rf"$\,\,[{unit}]$"
+        xlabel = (
+            params["plotting"]["label"]
+            if unit is None
+            else params["plotting"]["label"] + rf"$\,\,[{unit}]$"
+        )
 
         ax.set(
             xlabel=xlabel,
             ylabel=ylabel,
             xscale=params["plotting"]["scale"],
-            yscale=yscale
+            yscale=yscale,
         )
 
     return fig, ax
+
 
 def binned_statistic(
     ds: Dataset | StructureCollection,
@@ -441,7 +455,7 @@ def binned_statistic(
     ax : matplotlib.axes.Axes, optional
         An existing axis to draw into. If omitted, a new figure is created.
     all : bool, default = False
-        Whether to draw a matplotlib figure on all ranks when running in parallel, 
+        Whether to draw a matplotlib figure on all ranks when running in parallel,
         or restrict plotting to rank 0. The histogram itself is computed collectively regardless.
         Note that when `all=False`, any manipulation of the matplotlib figure (saving, editing, etc.)
         needs to be done on rank 0. This is irrelevant when not running with MPI.
@@ -474,30 +488,39 @@ def binned_statistic(
     if isinstance(kwargs.get("bins", 100), int) and "bin_spacing" not in kwargs:
         kwargs["bin_spacing"] = x_params["plotting"]["scale"]
 
-    binned_stat, bin_edges = statistics.binned_statistic(source, column, statistic=statistic, bin_by=bin_by, **kwargs)
+    binned_stat, bin_edges = statistics.binned_statistic(
+        source, column, statistic=statistic, bin_by=bin_by, **kwargs
+    )
 
-    fig=None
+    fig = None
     if all or rank == 0:
-
         plot_kwargs = _set_plot_kwargs(plot_kwargs, linewidth=2)
 
         fig, ax = _initialize_fig(ax)
 
         edges = np.asarray(bin_edges)
-        bin_centers = 0.5*(edges[1:] + edges[:-1])
+        bin_centers = 0.5 * (edges[1:] + edges[:-1])
         ax.plot(bin_centers, binned_stat, **plot_kwargs)
 
         xunit = x_params["plotting"]["unit_label"]
         yunit = y_params["plotting"]["unit_label"]
 
-        xlabel = x_params["plotting"]["label"] if xunit is None else x_params["plotting"]["label"] + rf"$\,\,[{xunit}]$"
-        ylabel = y_params["plotting"]["label"] if yunit is None else y_params["plotting"]["label"] + rf"$\,\,[{yunit}]$"
+        xlabel = (
+            x_params["plotting"]["label"]
+            if xunit is None
+            else x_params["plotting"]["label"] + rf"$\,\,[{xunit}]$"
+        )
+        ylabel = (
+            y_params["plotting"]["label"]
+            if yunit is None
+            else y_params["plotting"]["label"] + rf"$\,\,[{yunit}]$"
+        )
 
         ax.set(
             xlabel=xlabel,
             ylabel=ylabel,
             xscale=x_params["plotting"]["scale"],
-            yscale=y_params["plotting"]["scale"]
+            yscale=y_params["plotting"]["scale"],
         )
 
     return fig, ax

@@ -1,4 +1,4 @@
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -11,7 +11,7 @@ class LightconeParams(BaseModel):
     }
     model_config = ConfigDict(frozen=True)
     ACCESS_PATH: ClassVar[str] = "lightcone"
-    z_range: Optional[tuple[float, float]] = None
+    z_range: tuple[float, float] | None = None
 
     @model_validator(mode="before")
     @classmethod

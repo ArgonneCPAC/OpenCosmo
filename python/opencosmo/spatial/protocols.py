@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Iterable,
-    NamedTuple,
-    Optional,
-    Protocol,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, Union, runtime_checkable
 
 import numpy as np
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
-    from opencosmo.index import DataIndex, SimpleIndex
+    from collections.abc import Iterable
+
+    from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
     from opencosmo.spatial.models import RegionModel
     from opencosmo.spatial.region import BoxRegion, HealpixRegion
+    from opencosmo.spatial.types import SpatialIndexData
     from opencosmo.units import UnitConvention
     from opencosmo.units.get import UnitApplicator
 
@@ -32,43 +27,47 @@ class Region(Protocol):
     support both 2d regions and 3d regions.
     """
 
-    def intersects(self, other: "Region") -> bool: ...
+    def intersects(self, other: Region) -> bool: ...
     def contains(self, other: SpatialObject): ...
-    def into_base_convention(
+    def regularize(
         self,
-        converters: list["UnitApplicator"],
+        converters: list[UnitApplicator],
         columns: Iterable[str],
-        from_: "UnitConvention",
+        from_: UnitConvention,
         unit_kwargs: dict[str, Any],
     ): ...
     def into_model(self) -> RegionModel: ...
 
 
+@runtime_checkable
 class Region2d(Region, Protocol):
-    def bounds(self): ...
     def get_healpix_intersections(self, nside: int): ...
     def into_healpix_region(self, nside: int) -> HealpixRegion: ...
 
 
+@runtime_checkable
 class Region3d(Region, Protocol):
-    def bounding_box(self) -> "BoxRegion": ...
+    def bounding_box(self) -> BoxRegion: ...
 
 
 class TreePartition(NamedTuple):
     idx: DataIndex
-    region: Optional[Region]
-    level: Optional[int]
+    region: Region | None
+    level: int | None
 
 
 class SpatialIndex(Protocol):
     @property
     def subdivision_factor(self) -> int: ...
-    def get_partition_region(self, index: SimpleIndex, level: int) -> Region:
+    @property
+    def level(self) -> int: ...
+    @property
+    def spatial_index_data(self) -> SpatialIndexData: ...
+    def with_level(self, level: int) -> SpatialIndex: ...
+    def get_partition_from_index(self, index: SimpleIndex) -> Region:
         pass
 
-    def query(
-        self, region: Region, max_level: int
-    ) -> dict[int, tuple[SimpleIndex, SimpleIndex]]:
+    def query(self, region: Region) -> tuple[ChunkedIndex, ChunkedIndex]:
         """
         Given a region in space, return a dictionary where each key is a level and each
         value is a tuple of DataIndexes. The first DataIndex corresponds to the regions

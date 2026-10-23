@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Type, Union, get_origin
+from typing import TYPE_CHECKING, Any, Union, get_origin
 
 import h5py
 import numpy as np
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 def read_header_attributes(
     file: h5py.File | h5py.Group,
     header_path: str,
-    parameter_model: Type[BaseModel],
+    parameter_model: type[BaseModel],
     **kwargs,
 ):
     header = file["header"]
@@ -43,9 +43,7 @@ def read_header_attributes(
 def should_dump_to_hdf5_dataset(obj: Any):
     if isinstance(obj, np.ndarray):
         return True
-    if isinstance(obj, list) and isinstance(obj[0], (int, float)):
-        return True
-    return False
+    return bool(isinstance(obj, list) and isinstance(obj[0], (int, float)))
 
 
 def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseModel):
@@ -66,10 +64,8 @@ def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseM
     for par_name, data in array_pars.items():
         group.create_dataset(name=par_name, data=data)
 
-    return None
 
-
-def get_empty_from_optional(type_: Type):
+def get_empty_from_optional(type_: Any):
     origin = get_origin(type_)
     if origin is Union:
         np_equivalent = np.dtype(type_.__args__[0])

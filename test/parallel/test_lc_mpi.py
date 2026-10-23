@@ -1,15 +1,14 @@
 import astropy.units as u
 import h5py
 import numpy as np
+import opencosmo as oc
 import pytest
 from astropy.coordinates import SkyCoord
 from healpy import pix2ang
 from mpi4py import MPI
+from opencosmo.analysis import reduce
 from opencosmo.mpi import get_comm_world
 from pytest_mpi.parallel_assert import parallel_assert
-
-import opencosmo as oc
-from opencosmo.analysis import reduce
 
 
 @pytest.fixture
@@ -547,8 +546,9 @@ def test_write_diffsky_some_missing_no_stack(
     comm = MPI.COMM_WORLD
     ds = oc.open(core_path_475, core_path_487, synth_cores=True)
     if comm.Get_rank() == 0:
-        ds.pop(475)
-        assert len(ds.keys()) == 1
+        first_step = next(iter(ds.keys()))
+        ds = ds.take_rows(np.arange(len(ds[first_step])))
+        assert list(ds.keys()) == [first_step]
 
     # columns_to_check = comm.bcast(np.random.choice(ds.columns, 10, replace=False))
     # columns_to_check = np.insert(columns_to_check, 0, "gal_id")
@@ -669,8 +669,9 @@ def test_write_some_missing_no_stack(
     comm = MPI.COMM_WORLD
     ds = oc.open(haloproperties_601_path, haloproperties_600_path)
     if comm.Get_rank() == 0:
-        ds.pop(601)
-        assert len(ds.keys()) == 1
+        first_step = next(iter(ds.keys()))
+        ds = ds.take_rows(np.arange(len(ds[first_step])))
+        assert list(ds.keys()) == [first_step]
 
     original_halo_tags = ds.select("fof_halo_tag").get_data()
 
@@ -1226,7 +1227,7 @@ def test_redshift_mpi_disjoint_step_distribution(
     lc = oc.open(haloproperties_600_path, haloproperties_601_path, mpi_mode="redshift")
 
     # Steps that actually carry data on this rank.
-    local_data_steps = {step for step in lc.keys() if len(lc[step]) > 0}
+    local_data_steps = {step for step in lc if len(lc[step]) > 0}
     all_data_steps = comm.allgather(local_data_steps)
 
     # Union of data-bearing steps equals the full set.
@@ -1414,7 +1415,7 @@ def test_redshift_mpi_select_and_filter_work(
 
     # filter() must produce the same global count as the spatial open.
     filtered = lc.filter(oc.col("fof_halo_mass") > 1e13)
-    local_kept = int(len(filtered))
+    local_kept = len(filtered)
     total_kept = comm.allreduce(local_kept)
     parallel_assert(
         total_kept == expected_kept,
@@ -1487,7 +1488,7 @@ def test_redshift_mpi_sc_disjoint_step_distribution(halo_sc_files):
     )
 
     # Steps carrying data on this rank.
-    local_data_steps = {step for step in source.keys() if len(source[step]) > 0}
+    local_data_steps = {step for step in source if len(source[step]) > 0}
     all_data_steps = comm.allgather(local_data_steps)
     union = set().union(*all_data_steps)
     total_data_step_count = sum(len(s) for s in all_data_steps)
@@ -1693,7 +1694,7 @@ def test_redshift_mpi_halo_galaxy_sc_surplus_ranks(
     # Full schema on every rank, including the galaxy link whose empty-rank
     # redshift derivation used to crash.
     parallel_assert("fof_halo_mass" in result.properties)
-    parallel_assert("galaxy_properties" in result.keys())
+    parallel_assert("galaxy_properties" in result)
 
     n_ranks_with_data = comm.allreduce(1 if len(result) > 0 else 0)
     parallel_assert(

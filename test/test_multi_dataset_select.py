@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import numpy as np
+import opencosmo as oc
 import pytest
+from opencosmo.collection.simulation import state as simst
 from opencosmo.column.select import (
     MissingColumnError,
     build_multi_dataset_selections,
 )
-
-import opencosmo as oc
+from opencosmo.io.io import open_state
 
 
 @pytest.fixture
@@ -86,10 +87,19 @@ def test_rejects_selections_missing_from_every_dataset(dataset_columns, args, kw
         )
 
 
+def _gravity_hydro(test_data):
+    return oc.SimulationCollection(
+        simst.from_parts(
+            {
+                "gravity": open_state(test_data.snapshot.primary.halo_properties),
+                "hydro": open_state(test_data.snapshot.primary.galaxy_properties),
+            }
+        )
+    )
+
+
 def test_simulation_collection_routes_across_different_column_sets(test_data):
-    gravity = oc.open(test_data.snapshot.primary.halo_properties)
-    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
-    collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
+    collection = _gravity_hydro(test_data)
 
     selected = collection.select(
         "fof_halo_mass",
@@ -100,16 +110,16 @@ def test_simulation_collection_routes_across_different_column_sets(test_data):
     assert set(selected["gravity"].columns) == {"fof_halo_mass"}
     assert set(selected["hydro"].columns) == {"gal_mass_star", "stellar_fraction"}
     hydro_data = selected["hydro"].get_data("numpy")
-    expected = hydro.select(
-        value=oc.col("gal_mass_star") / oc.col("gal_mass")
-    ).get_data("numpy")
+    expected = (
+        collection["hydro"]
+        .select(value=oc.col("gal_mass_star") / oc.col("gal_mass"))
+        .get_data("numpy")
+    )
     assert np.all(hydro_data["stellar_fraction"] == expected)
 
 
 def test_simulation_collection_drop_routes_across_different_column_sets(test_data):
-    gravity = oc.open(test_data.snapshot.primary.halo_properties)
-    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
-    collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
+    collection = _gravity_hydro(test_data)
 
     dropped = collection.drop("fof_halo_mass", "gal_mass_star")
 
@@ -121,29 +131,23 @@ def test_simulation_collection_drop_routes_across_different_column_sets(test_dat
 def test_simulation_collection_drop_wildcard_leaves_unmatched_datasets_unchanged(
     test_data,
 ):
-    gravity = oc.open(test_data.snapshot.primary.halo_properties)
-    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
-    collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
+    collection = _gravity_hydro(test_data)
 
     dropped = collection.drop("gal_mass_*")
 
-    assert dropped["gravity"].columns == gravity.columns
+    assert dropped["gravity"].columns == collection["gravity"].columns
     assert not any(name.startswith("gal_mass_") for name in dropped["hydro"].columns)
 
 
 def test_simulation_collection_drop_rejects_missing_column(test_data):
-    gravity = oc.open(test_data.snapshot.primary.halo_properties)
-    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
-    collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
+    collection = _gravity_hydro(test_data)
 
     with pytest.raises(MissingColumnError):
         collection.drop("not_a_column")
 
 
 def test_simulation_collection_drop_by_dataset_key(test_data):
-    gravity = oc.open(test_data.snapshot.primary.halo_properties)
-    hydro = oc.open(test_data.snapshot.primary.galaxy_properties)
-    collection = oc.SimulationCollection({"gravity": gravity, "hydro": hydro})
+    collection = _gravity_hydro(test_data)
 
     dropped = collection.drop(gravity=["fof_halo_mass"], hydro=["gal_mass_star"])
 

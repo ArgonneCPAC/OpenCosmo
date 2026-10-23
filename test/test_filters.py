@@ -1,9 +1,8 @@
 import astropy.cosmology.units as cu
 import astropy.units as u
 import numpy as np
-import pytest
-
 import opencosmo as oc
+import pytest
 from opencosmo import col
 from opencosmo.column import offset_3d
 

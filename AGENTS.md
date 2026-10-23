@@ -141,7 +141,7 @@ Spatial queries use `Dataset.bound(region)`. Regions are constructed via `make_b
 - `builders.py` — `from_model()` factory; `protocols.py` — `Region` protocol
 - `octree.py` — octree for 3D snapshot data (z-order curve, level-based start/size arrays)
 - `healpix.py` — HEALPix index for 2D lightcone data (nested ordering)
-- `tree.py` — `Tree` wrapper used by `Dataset`
+- `index.py` — spatial index implementations and query/index helper functions
 
 `Tree.query()` separates fully contained chunks from boundary-intersecting chunks. `Dataset.bound()` accepts contained chunks directly and reads coordinates only for exact checks on boundary candidates. Ordinary snapshots and lightcones use octree or nested-HEALPix trees; `HealpixMap` uses explicit map coverage instead of this tree path.
 

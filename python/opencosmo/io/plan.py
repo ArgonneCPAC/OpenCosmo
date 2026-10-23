@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -10,20 +10,20 @@ from typing import (
     runtime_checkable,
 )
 
-from opencosmo.collection.lightcone.distribute import partition_contiguous
 from opencosmo.io.discover import (
     group_data_type,
     has_linked_targets,
+    is_healpix_map_group,
     is_properties_group,
 )
 
 if TYPE_CHECKING:
     from uuid import UUID
 
-    import opencosmo as oc
     from opencosmo.io.discover import FileLayout
     from opencosmo.io.io import MpiMode
     from opencosmo.io.iopen import DatasetTarget
+    from opencosmo.io.specs import SpecState
 
 
 @dataclass(frozen=True)
@@ -75,17 +75,47 @@ def distribute(
     if nranks <= 1:
         return (Assignment(rank=0, file_indices=valid_indices, index_kind="none"),)
 
-    # Try redshift distribution if mode is REDSHIFT and we have > 1 valid file.
-    if mpi_mode is not None and mpi_mode.value == "redshift" and len(valid_indices) > 1:
-        redshift_assignments = _distribute_redshift(layouts, valid_indices, nranks)
-        if redshift_assignments is not None:
-            return redshift_assignments
+    # Try redshift distribution if mode is REDSHIFT and we have > 1 steppable file.
+    if mpi_mode is not None and mpi_mode.value == "redshift":
+        exempt = tuple(i for i in valid_indices if _is_step_exempt(layouts[i]))
+        exempt_set = set(exempt)
+        steppable = tuple(i for i in valid_indices if i not in exempt_set)
+        if len(steppable) > 1:
+            redshift_assignments = _distribute_redshift(layouts, steppable, nranks)
+            if redshift_assignments is not None:
+                # Step-exempt files are replicated: every rank opens them, including
+                # empty reference ranks.
+                return tuple(
+                    replace(
+                        a,
+                        file_indices=tuple(sorted(set(a.file_indices) | exempt_set)),
+                    )
+                    for a in redshift_assignments
+                )
 
     # Spatial (default / fallback): every rank gets every valid file.
     return tuple(
         Assignment(rank=r, file_indices=valid_indices, index_kind="spatial")
         for r in range(nranks)
     )
+
+
+def _is_step_exempt(layout: FileLayout) -> bool:
+    """True if a file carries no redshift step and must not drive step grouping.
+
+    A healpix map has no meaningful step, so letting it into ``_distribute_redshift``
+    puts it in its own step bucket, adds ``healpix_map`` to the data_type set and
+    forces the whole layout down the spatial fallback. Exempt files are instead
+    replicated onto every rank.
+
+    Uses the file's top-level (/) group, matching how ``_distribute_redshift`` reads
+    step, weight and data_type: a hybrid file that also carries catalog rows stays
+    steppable.
+    """
+    if not layout.groups:
+        return False
+    top = next((g for g in layout.groups if g.path == "/"), layout.groups[0])
+    return is_healpix_map_group(top)
 
 
 class FileMeta(NamedTuple):
@@ -191,6 +221,10 @@ def _distribute_redshift(
         step_file_indices.append(sorted(fm.file_index for fm in file_info[step]))
         step_weights.append(sum(fm.weight for fm in file_info[step]))
 
+    # Imported here: the lightcone package imports io, so a module-level import
+    # makes package import order matter.
+    from opencosmo.collection.lightcone.distribute import partition_contiguous
+
     # Split the ordered steps into nranks CONTIGUOUS chunks of roughly-equal weight.
     step_groups = partition_contiguous(step_weights, nranks)
 
@@ -228,10 +262,10 @@ class SpecBuilder(Protocol):
     """
     Contract for file spec builders (T3 concrete specs implement this).
 
-    Each FileSpec subclass knows how to build a Dataset or Collection from
-    a list of DatasetTargets. The spec is responsible for routing to the appropriate
-    builder (open_dataset, Lightcone.open, StructureCollection.open) with
-    the correct set of targets for that collection type.
+    Each FileSpec knows how to build a backend state from a list of
+    DatasetTargets. The spec is responsible for routing to the appropriate
+    builder (open_dataset, lcops.open_state, scops.open_state) with the correct
+    set of targets for that collection type.
     """
 
     def build_from_targets(
@@ -241,7 +275,7 @@ class SpecBuilder(Protocol):
         index_kind: str,
         is_empty_ref: bool,
         open_kwargs: dict[str, Any],
-    ) -> oc.Dataset | oc.collection.Collection: ...
+    ) -> SpecState: ...
 
 
 def build_from_assignment(
@@ -249,7 +283,7 @@ def build_from_assignment(
     layouts: tuple[FileLayout, ...],
     matched_spec: SpecBuilder,
     open_kwargs: dict[str, Any],
-) -> tuple[oc.Dataset | oc.collection.Collection | None, frozenset[UUID]]:
+) -> tuple[SpecState | None, frozenset[UUID]]:
     """
     Reopen only this rank's files and pair each discovered group with its handle.
 
@@ -274,8 +308,8 @@ def build_from_assignment(
 
     Returns
     -------
-    tuple[oc.Dataset | oc.collection.Collection | None, frozenset[UUID]]
-        A 2-tuple of: the built collection or dataset (or None if this scope
+    tuple[SpecState | None, frozenset[UUID]]
+        A 2-tuple of: the built state (or None if this scope
         was entirely filtered out by load/if conditions), and the frozenset of
         UUIDs of the datasets this rank actually opened *as map endpoints*.
 

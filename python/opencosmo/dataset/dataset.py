@@ -2,13 +2,7 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
-    Callable,
-    Generator,
-    Iterable,
     Literal,
-    Mapping,
-    Optional,
-    TypeAlias,
 )
 from warnings import warn
 
@@ -21,7 +15,7 @@ from opencosmo.dataset import operations as dsops
 from opencosmo.deprecated import deprecated
 
 if TYPE_CHECKING:
-    from uuid import UUID
+    from collections.abc import Callable, Generator, Iterable, Mapping
 
     from opencosmo.column.column import (
         ColumnMask,
@@ -33,10 +27,9 @@ if TYPE_CHECKING:
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region
-    from opencosmo.spatial.tree import Tree
 
 
-OpenCosmoData: TypeAlias = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
+type OpenCosmoData = QTable | u.Quantity | dict[str, np.ndarray] | np.ndarray
 
 
 class Dataset:
@@ -75,11 +68,6 @@ class Dataset:
 
     def __dir__(self):
         return list(self.header.parameters.keys()) + super().__dir__()
-
-    @property
-    def _state(self) -> st.DatasetState:
-        """Return the internal state for collection and I/O implementations."""
-        return self.__state
 
     def __enter__(self):
         # Need to write tests
@@ -125,7 +113,7 @@ class Dataset:
         return self.__state.columns
 
     @property
-    def descriptions(self) -> dict[str, Optional[str]]:
+    def descriptions(self) -> dict[str, str | None]:
         """
         Return the descriptions (if any) of the columns in this dataset as a dictonary.
         Columns without a description will be included in the dictionary with a value
@@ -140,7 +128,7 @@ class Dataset:
         return self.__state.descriptions
 
     @property
-    def units(self) -> dict[str, Optional[u.Unit]]:
+    def units(self) -> dict[str, u.Unit | None]:
         """
         Return the current units of all columns in the dataset. Columns without units will
         return None.
@@ -155,7 +143,7 @@ class Dataset:
         return self.__state.units
 
     @property
-    def region(self) -> Region:
+    def region(self) -> Region | None:
         """
         The region this dataset is contained in. If no spatial
         queries have been performed, this will be the entire
@@ -169,7 +157,7 @@ class Dataset:
         return self.__state.region
 
     @property
-    def sorted_by(self) -> Optional[str]:
+    def sorted_by(self) -> str | None:
         """
         The column this dataset is sorted by. If not sorted, returns None.
 
@@ -178,15 +166,6 @@ class Dataset:
         column: Optional[str]
         """
         return self.__state.sort_key[0] if self.__state.sort_key is not None else None
-
-    @property
-    def tree(self) -> Optional[Tree]:
-        return self.__state.tree
-
-    # Internal identity used by link/mapping resolution.
-    @property
-    def uuid(self) -> UUID:
-        return self.__state.uuid
 
     @property
     @deprecated(
@@ -259,7 +238,7 @@ class Dataset:
             format = kwargs["output"]
         return dsops.get_data(self.__state, format, unpack, wrap_single, **kwargs)
 
-    def bound(self, region: Region, select_by: Optional[str] = None):
+    def bound(self, region: Region, select_by: str | None = None):
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -298,7 +277,6 @@ class Dataset:
         format="astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
-        _verify: bool = True,
         **evaluate_kwargs,
     ) -> Dataset | dict[str, np.ndarray]:
         """
@@ -331,6 +309,12 @@ class Dataset:
         If vectorize is set to True, the full columns will be pased to the dataset. Otherwise,
         rows will be passed to the function one at a time. If the function returns None, this method
         will also return None as output.
+
+        During row-wise evaluation, array outputs have different interpretations depending on
+        ``insert``. With ``insert=True``, each returned array is one entry in a potentially
+        multidimensional column, so the per-row arrays are stacked. With ``insert=False``,
+        per-row arrays are concatenated. Return a two-dimensional array with shape
+        ``(1, width)`` from each row when directly returning a two-dimensional result.
 
         Keyword arguments can be used to pass in external values (i.e., values that are not dataset
         columns) to the function.
@@ -387,12 +371,75 @@ class Dataset:
             format,
             batch_size,
             allow_overwrite,
-            _verify,
             **evaluate_kwargs,
         )
         if not insert:
             return result
         return Dataset(result)
+
+    def evaluate_to_dataset(
+        self,
+        func: Callable,
+        vectorize=False,
+        format="astropy",
+        batch_size: int = -1,
+        allow_overwrite: bool = False,
+        **evaluate_kwargs,
+    ) -> Dataset:
+        """Evaluate a function and use its outputs to construct a new dataset.
+
+        Unlike :meth:`evaluate`, this method always evaluates ``func`` immediately
+        and places only its output columns in the returned dataset. Evaluation uses
+        the file's baseline unit convention and ignores explicit conversions on this
+        dataset. The returned dataset restores this dataset's unit convention and
+        blanket unit conversions. Output columns must be NumPy arrays or Astropy
+        quantities with equal lengths. Quantities become convention-aware columns in
+        the returned dataset; NumPy arrays remain unitless. Their length does not need
+        to match this dataset. During row-wise evaluation, arrays from successive input
+        rows are concatenated, so each input row may produce a different number of
+        output rows.
+
+        Parameters
+        ----------
+        func : Callable
+            The function to evaluate on the rows in the dataset.
+        vectorize : bool, default=False
+            Whether to provide full columns instead of individual rows. Ignored
+            when ``batch_size`` is set.
+        format : str, default="astropy"
+            The format in which column data is provided to ``func``.
+        batch_size : int, default=-1
+            If positive, provide data to ``func`` in batches of this size.
+        allow_overwrite : bool, default=False
+            Accepted for compatibility with :meth:`evaluate`; the returned dataset
+            contains no columns from the original dataset to overwrite.
+        **evaluate_kwargs : Any
+            Additional keyword arguments passed to ``func``.
+
+        Returns
+        -------
+        Dataset
+            A new in-memory dataset containing the evaluated output columns and
+            retaining this dataset's header. Spatial information is not retained.
+
+        Raises
+        ------
+        TypeError
+            If an output is not a NumPy array or Astropy quantity.
+        ValueError
+            If the output columns do not all have equal lengths.
+        """
+        return Dataset(
+            dsops.evaluate_to_dataset(
+                self.__state,
+                func,
+                vectorize,
+                format,
+                batch_size,
+                allow_overwrite,
+                **evaluate_kwargs,
+            )
+        )
 
     def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
         """
@@ -538,7 +585,7 @@ class Dataset:
             new_state,
         )
 
-    def sort_by(self, column: Optional[str], invert: bool = False) -> Dataset:
+    def sort_by(self, column: str | None, invert: bool = False) -> Dataset:
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -684,7 +731,7 @@ class Dataset:
 
     def with_new_columns(
         self,
-        descriptions: str | dict[str, str] = {},
+        descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
         mode: str = "global",
         **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
@@ -743,6 +790,8 @@ class Dataset:
             This dataset with the columns added
 
         """
+        if descriptions is None:
+            descriptions = {}
         new_state = dsops.with_new_columns(
             self.__state, descriptions, allow_overwrite, mode=mode, **new_columns
         )
@@ -761,12 +810,12 @@ class Dataset:
             The name of the dataset in the file. The default is "data".
 
         """
-        return st.make_schema(self.__state, path)
+        return dsops.make_schema(self.__state, path)
 
     def with_units(
         self,
-        convention: Optional[str] = None,
-        conversions: dict[u.Unit, u.Unit] = {},
+        convention: str | None = None,
+        conversions: dict[u.Unit, u.Unit] | None = None,
         **columns: u.Unit,
     ) -> Dataset:
         r"""
@@ -828,6 +877,8 @@ class Dataset:
 
         """
 
+        if conversions is None:
+            conversions = {}
         new_state = dsops.with_units(
             self.__state,
             convention,

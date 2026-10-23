@@ -169,7 +169,7 @@ def instantiate_dataset(
         and col.uuid not in cached_uuids
         and col.name in {name for (_, name) in required_pairs}
     ]
-    raw_data = raw_data_handler.get_data(set(col.name for col in raw_columns))
+    raw_data = raw_data_handler.get_data({col.name for col in raw_columns})
     for column in raw_columns:
         if column.alias is None:
             continue

@@ -2,8 +2,8 @@
 Convenience functions for computing various statistics on
 OpenCosmo datasets.
 
-Functions in this module should make use of OpenCosmo's builtin functionality 
-for filtering and reducing data as much as possible, and should be MPI-aware. 
+Functions in this module should make use of OpenCosmo's builtin functionality
+for filtering and reducing data as much as possible, and should be MPI-aware.
 The calling sequence should be the same whether it is run in serial or parallel.
 
 The companion module :py:mod:`opencosmo.analysis.plotting` wraps many of these
@@ -100,7 +100,7 @@ def _get_statistic(
             # global scalar reduction in log space. Will need to
             # convert back to exp10() space after the function call.
 
-            return getattr( col.log10(), statistic.removeprefix("geometric_") )(**kwargs)
+            return getattr(col.log10(), statistic.removeprefix("geometric_"))(**kwargs)
 
         else:
             return getattr(col, statistic)(**kwargs)
@@ -109,6 +109,7 @@ def _get_statistic(
         return statistic(col, **kwargs)
 
     raise TypeError("statistic must be a string or callable")
+
 
 def _compute_bins(
     min: Any, max: Any, n: int, bin_spacing: BinSpacing = "log"
@@ -140,9 +141,9 @@ def _compute_bins(
     """
 
     if isinstance(min, u.Quantity):
-        # note that this function is only called if bin edges are not explicitly 
-        # passed in by the user, in which case the units for min and max 
-        # should be guaranteed to be in the same units. 
+        # note that this function is only called if bin edges are not explicitly
+        # passed in by the user, in which case the units for min and max
+        # should be guaranteed to be in the same units.
         # Convert units of max to those of min again just to be safe.
         unit = min.unit
 
@@ -150,7 +151,6 @@ def _compute_bins(
         max = max.to(unit).value
     else:
         unit = None
-
 
     if bin_spacing == "log":
         bins = np.geomspace(min, max, n)
@@ -163,6 +163,7 @@ def _compute_bins(
         bins = bins * unit
 
     return bins
+
 
 def _filter_bad(ds: Dataset, column: str) -> Dataset:
     """
@@ -304,16 +305,14 @@ def binned_statistic(
     source = _filter_bad(source, column)
 
     if isinstance(bins, int):
-
         d = source.select(
-                bin_min = oc.col(bin_by).min(), 
-                bin_max = oc.col(bin_by).max(),
-                mode = mode,
-            ).get_data()
+            bin_min=oc.col(bin_by).min(),
+            bin_max=oc.col(bin_by).max(),
+            mode=mode,
+        ).get_data()
 
         edges: np.ndarray | Sequence = _compute_bins(
-            d["bin_min"], d["bin_max"], bins+1, 
-            bin_spacing = bin_spacing
+            d["bin_min"], d["bin_max"], bins + 1, bin_spacing=bin_spacing
         )
 
     else:
@@ -322,21 +321,21 @@ def binned_statistic(
     binned_stat: list = []
 
     # call select() upfront before the loop to cache results and speed up subsequent select() calls
-    source.select( 
-            stat = _get_statistic(oc.col(column), statistic, **kwargs),
-            mode = mode,
-        ).get_data()
+    source.select(
+        stat=_get_statistic(oc.col(column), statistic, **kwargs),
+        mode=mode,
+    ).get_data()
 
-    for i in range(len(edges)-1):
-        low, high = edges[i], edges[i+1]
+    for i in range(len(edges) - 1):
+        low, high = edges[i], edges[i + 1]
 
         # get_data() is typed as a union over table/array/dict, but selecting a
         # single scalar reduction always unpacks to a scalar here.
         stat_value: Any = (
             source.filter(oc.col(bin_by) >= low, oc.col(bin_by) < high)
-            .select( 
-                stat = _get_statistic(oc.col(column), statistic, **kwargs),
-                mode = mode,
+            .select(
+                stat=_get_statistic(oc.col(column), statistic, **kwargs),
+                mode=mode,
             )
             .get_data()
         )
@@ -346,7 +345,7 @@ def binned_statistic(
             if hasattr(stat_value, "physical"):
                 stat_value = stat_value.physical
             else:
-                stat_value = 10 ** stat_value
+                stat_value = 10**stat_value
 
         binned_stat.append(stat_value)
 
@@ -354,6 +353,7 @@ def binned_statistic(
             _require_comm().Barrier()
 
     return u.Quantity(binned_stat), edges
+
 
 def hist1d(
     ds: Dataset | StructureCollection,
@@ -398,7 +398,7 @@ def hist1d(
     mode : str, "local" or "global", default = "global"
         How the histogram is computed under MPI. ``"global"`` reduces
         across all ranks, so every rank computes the same bin edges and the
-        same bin counts are summed across all ranks. ``"local"`` computes 
+        same bin counts are summed across all ranks. ``"local"`` computes
         a separate histogram on each rank. Has no effect when not running
         under MPI.
 
@@ -423,16 +423,14 @@ def hist1d(
     source = _filter_bad(source, column)
 
     if isinstance(bins, int):
-
         d = source.select(
-                bin_min = oc.col(column).min(), 
-                bin_max = oc.col(column).max(),
-                mode = mode,
-            ).get_data()
+            bin_min=oc.col(column).min(),
+            bin_max=oc.col(column).max(),
+            mode=mode,
+        ).get_data()
 
         edges: np.ndarray | Sequence = _compute_bins(
-            d["bin_min"], d["bin_max"], bins+1, 
-            bin_spacing = bin_spacing
+            d["bin_min"], d["bin_max"], bins + 1, bin_spacing=bin_spacing
         )
 
     else:
@@ -440,14 +438,13 @@ def hist1d(
 
     values: Any = source.select(column).get_data()
 
-    counts, bin_edges = np.histogram(
-        values, bins=edges
-    )
+    counts, bin_edges = np.histogram(values, bins=edges)
 
     if ranks > 1 and mode == "global":
-        counts = _require_comm().allreduce( counts, op=MPI.SUM )
+        counts = _require_comm().allreduce(counts, op=MPI.SUM)
 
     return counts, bin_edges
+
 
 def hist2d(
     ds: Dataset | StructureCollection,
@@ -501,7 +498,7 @@ def hist2d(
         otherwise.
     mode : str, "local" or "global", default = "global"
         How the 2d histogram is computed under MPI. ``"global"`` reduces across all ranks
-        to create one integrated 2d histogram, while ``"local"`` computes a separate 
+        to create one integrated 2d histogram, while ``"local"`` computes a separate
         2d histogram on each rank.
 
     Returns
@@ -534,16 +531,16 @@ def hist2d(
 
     if isinstance(bins, int):
         d_x = source.select(
-                bin_min = oc.col(column_x).min(), 
-                bin_max = oc.col(column_x).max(),
-                mode = mode,
-            ).get_data()
+            bin_min=oc.col(column_x).min(),
+            bin_max=oc.col(column_x).max(),
+            mode=mode,
+        ).get_data()
 
         d_y = source.select(
-                bin_min = oc.col(column_y).min(), 
-                bin_max = oc.col(column_y).max(),
-                mode = mode,
-            ).get_data()
+            bin_min=oc.col(column_y).min(),
+            bin_max=oc.col(column_y).max(),
+            mode=mode,
+        ).get_data()
 
         if isinstance(bin_spacing, (list, tuple)):
             bin_spacing_x, bin_spacing_y = bin_spacing
@@ -551,16 +548,14 @@ def hist2d(
             bin_spacing_x = bin_spacing
             bin_spacing_y = bin_spacing
         else:
-            raise RuntimeError(f"Invalid input for bin_spacing: {bin_spacing}")
-    
+            raise TypeError(f"Invalid input for bin_spacing: {bin_spacing}")
+
         bins_x = _compute_bins(
-            d_x["bin_min"], d_x["bin_max"], bins+1, 
-            bin_spacing = bin_spacing_x
+            d_x["bin_min"], d_x["bin_max"], bins + 1, bin_spacing=bin_spacing_x
         )
 
         bins_y = _compute_bins(
-            d_y["bin_min"], d_y["bin_max"], bins+1, 
-            bin_spacing = bin_spacing_y
+            d_y["bin_min"], d_y["bin_max"], bins + 1, bin_spacing=bin_spacing_y
         )
 
     else:
@@ -568,9 +563,9 @@ def hist2d(
 
     data = source.select(column_x, column_y).get_data()
 
-    h, x, y = np.histogram2d(data[column_x], data[column_y], bins = [bins_x, bins_y])
+    h, x, y = np.histogram2d(data[column_x], data[column_y], bins=[bins_x, bins_y])
 
     if ranks > 1 and mode == "global":
-        h = _require_comm().allreduce( h, op=MPI.SUM )
+        h = _require_comm().allreduce(h, op=MPI.SUM)
 
     return h, x, y

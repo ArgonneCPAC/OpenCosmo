@@ -1,33 +1,31 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import h5py
 import numpy as np
 
-import opencosmo.dataset.state as state
-from opencosmo.dataset import Dataset
-from opencosmo.spatial.healpix import HealPixIndex
-from opencosmo.spatial.tree import Tree
+from opencosmo.dataset import Dataset, state
+from opencosmo.spatial.index import HealpixIndex, get_region
 from opencosmo.spatial.utils import combine_upwards
 
 if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.spatial import Region
 
 T = TypeVar("T")
 GroupedColumnData = dict[str, dict[str, T]]
-SpatialIndexData = dict[int, tuple[np.ndarray, int]]
+RawSpatialIndexData = dict[int, tuple[np.ndarray, int]]
 
 
 def build_dataset_from_data(
     data: GroupedColumnData[np.ndarray],
     header: OpenCosmoHeader,
-    region: Region,
-    spatial_index_data: Optional[SpatialIndexData],
-    descriptions: GroupedColumnData[str] = {},
+    spatial_index_data: RawSpatialIndexData | None,
+    descriptions: GroupedColumnData[str] | None = None,
 ) -> Dataset:
+    if descriptions is None:
+        descriptions = {}
     data_keys = set(data.keys())
     if data_keys != {"data"}:
         raise ValueError("Data must have exactly one `data` group")
@@ -36,10 +34,16 @@ def build_dataset_from_data(
             "Descriptions should be organized into the same groups as the data!"
         )
 
-    tree = None
+    spatial_index = None
+    spatial_index_columns = None
     if isinstance(spatial_index_data, dict):
         spatial_index_columns = make_spatial_index(spatial_index_data)
-        tree = Tree(HealPixIndex(), spatial_index_columns)
+        spatial_index = HealpixIndex(max(spatial_index_data), spatial_index_columns)
+    region = (
+        get_region(spatial_index, None)
+        if spatial_index is not None and spatial_index_columns is not None
+        else None
+    )
     data_group = data.pop("data")
 
     data_descriptions = descriptions.get("data", {})
@@ -47,15 +51,15 @@ def build_dataset_from_data(
         data_group,
         header,
         header.file.unit_convention,
-        region,
         {},
         data_descriptions,
-        tree=tree,
+        spatial_index=spatial_index,
+        region=region,
     )
     return Dataset(new_state)
 
 
-def make_spatial_index(data: SpatialIndexData):
+def make_spatial_index(data: RawSpatialIndexData):
     """
     allowed input (for now)
 

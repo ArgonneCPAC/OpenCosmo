@@ -1,22 +1,21 @@
 import json
 from functools import cache
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel
 
 
 class DependencySpec(BaseModel):
     prefer_source: str
-    repo: Optional[str] = None
-    depends_on: Optional[list[str]] = []
-    version: Optional[str] = None
+    repo: str | None = None
+    depends_on: list[str] | None = []
+    version: str | None = None
     optional: bool = False
 
 
 class AnalysisSpec(BaseModel):
     name: str
-    header_version_key: Optional[str] = None
+    header_version_key: str | None = None
     requirements: dict[str, DependencySpec]
 
 

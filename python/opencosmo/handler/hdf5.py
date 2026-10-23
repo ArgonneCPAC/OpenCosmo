@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
-from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import (
-    ColumnWriter,
-)
-
 from opencosmo.index import (
     SimpleIndex,
     get_data,
@@ -16,12 +11,17 @@ from opencosmo.index import (
     into_array,
     take,
 )
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import (
+    ColumnWriter,
+)
 
 if TYPE_CHECKING:
-    import h5py
-    from opencosmo.io.schema import Schema
+    from collections.abc import Iterable
 
+    import h5py
     from opencosmo.index import DataIndex
+    from opencosmo.io.schema import Schema
 
 
 class Hdf5Handler:
@@ -42,8 +42,8 @@ class Hdf5Handler:
         data_group: h5py.Group,
         columns: dict[str, h5py.Dataset | None],
         index: DataIndex,
-        load_conditions: Optional[dict[str, bool]] = None,
-        descriptions: Optional[dict[str, str | None]] = None,
+        load_conditions: dict[str, bool] | None = None,
+        descriptions: dict[str, str | None] | None = None,
     ):
         self.__data_group = data_group
         self.__columns = columns
@@ -75,10 +75,10 @@ class Hdf5Handler:
         )
 
     @property
-    def load_conditions(self) -> Optional[dict[str, bool]]:
+    def load_conditions(self) -> dict[str, bool] | None:
         return self.__load_conditions
 
-    def take(self, other: DataIndex, sorted: Optional[np.ndarray] = None):
+    def take(self, other: DataIndex, sorted: np.ndarray | None = None):
         if len(other) == 0:
             return self.__derive(other)
 
@@ -134,7 +134,6 @@ class Hdf5Handler:
         return data_schema
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
-        """ """
         # Ensure order is preserved
         return {name: get_data(self.__handle(name), self.__index) for name in columns}
 
