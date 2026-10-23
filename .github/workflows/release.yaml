@@ -6,12 +6,6 @@ on:
         description: 'Version to release (e.g. 1.2.0, 1.2.0b1, 1.2.0rc1)'
         required: true
         type: string
-  workflow_call:
-    inputs:
-      version:
-        description: 'Version to release (e.g. 1.2.0, 1.2.0b1, 1.2.0rc1)'
-        required: true
-        type: string
 
 jobs:
   prepare:
