@@ -301,7 +301,9 @@ def open_files(
         and all(g.path in ("/", "") for fl in sub for g in fl.groups)
     ]
 
-    if len(root_scope_names) > 1:
+    # Without a mapping file, independent simulations open as an unmapped
+    # SimulationCollection. A supplied mapping must connect every root simulation.
+    if len(root_scope_names) > 1 and map_layouts:
         # The set of UUIDs the mapping file connects (post-availability-filter).
         # See DatasetMatchSet.endpoints for why reference_source is included even
         # when that dataset was not opened.
