@@ -1,5 +1,7 @@
+import h5py
 import numpy as np
 from opencosmo.index import coalesce_chunks
+from opencosmo.index import get as index_get
 
 
 def test_coalesce_merges_adjacent():
@@ -62,3 +64,32 @@ def test_coalesce_output_dtype_is_int64():
     )
     assert starts.dtype == np.int64
     assert sizes.dtype == np.int64
+
+
+def test_get_data_simple_blocked_matches_fancy_index(tmp_path, monkeypatch):
+    rng = np.random.default_rng(0)
+    values = rng.random((1_000, 64))
+    with h5py.File(tmp_path / "wide.hdf5", "w") as f:
+        f.create_dataset("wide", data=values)
+
+    # 64 float64 per row = 512 bytes; force blocks of ~10 rows
+    monkeypatch.setattr(index_get, "SINGLE_READ_THRESHOLD", 5_000)
+    # 20 rows spread over the full range: too dense for the fancy-index path
+    index = np.concatenate([rng.choice(1_000, 18, replace=False), [3, 3]])
+
+    with h5py.File(tmp_path / "wide.hdf5", "r") as f:
+        result = index_get.get_data_simple(f["wide"], index)
+
+    np.testing.assert_array_equal(result, values[index])
+
+
+def test_get_data_simple_fancy_unsorted_with_duplicates(tmp_path):
+    values = np.arange(100_000, dtype=np.float64)
+    with h5py.File(tmp_path / "sparse.hdf5", "w") as f:
+        f.create_dataset("sparse", data=values)
+
+    index = np.array([90_000, 3, 3, 51_200, 0, 99_999], dtype=np.int64)
+    with h5py.File(tmp_path / "sparse.hdf5", "r") as f:
+        result = index_get.get_data_simple(f["sparse"], index)
+
+    np.testing.assert_array_equal(result, values[index])
