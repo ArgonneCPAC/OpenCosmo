@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import rustworkx as rx
 
+from opencosmo._lib import graph as graphlib
 from opencosmo.column.column import RawColumn
 
 if TYPE_CHECKING:
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.units.handler import UnitHandler
+
+DGRAPH_REGISTRY = graphlib.DependencyGraphRegistry.new()
 
 
 def get_all_required_pairs(

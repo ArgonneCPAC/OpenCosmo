@@ -11,5 +11,6 @@ crate-type = ["cdylib"]
 [dependencies]
 kiddo = "6.3.0"
 numpy = "0.29"
+petgraph = "0.8.3"
 pyo3 = "0.29"
 
