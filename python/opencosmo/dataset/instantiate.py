@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from opencosmo.column.column import EvaluatedColumn, RawColumn
-from opencosmo.dataset.graph import build_dependency_graph, get_all_required_pairs
+from opencosmo.dataset.graph import get_all_required_pairs, get_dependency_graph
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -141,7 +141,7 @@ def instantiate_dataset(
                 break
 
     required_pairs = get_all_required_pairs(column_producers, working_columns)
-    dependency_graph = build_dependency_graph(column_producers)
+    dependency_graph = get_dependency_graph(column_producers)
 
     cached_data = cache.get_data(required_pairs)
 

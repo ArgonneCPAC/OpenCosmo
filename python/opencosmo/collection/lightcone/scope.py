@@ -82,7 +82,7 @@ class LightconeScope:
     @property
     def placeholders(self) -> tuple[RawColumn, ...]:
         """
-        Synthetic ``RawColumn`` nodes added so ``build_dependency_graph`` can
+        Synthetic ``RawColumn`` nodes added so ``get_dependency_graph`` can
         resolve scope expressions' UUID-keyed dependencies on raw child
         columns. Not user-visible.
         """

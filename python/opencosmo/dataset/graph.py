@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from opencosmo._lib import graph as graphlib
@@ -14,6 +15,10 @@ if TYPE_CHECKING:
     from opencosmo._lib.graph import DependencyGraph
     from opencosmo.column.column import ConstructedColumn
 
+# Bounded LRU so long sessions that keep deriving new columns do not grow without limit.
+__GRAPH_CACHE_SIZE = 256
+__GRAPH_CACHE: OrderedDict[frozenset[UUID], DependencyGraph] = OrderedDict()
+
 
 def get_all_required_pairs(
     producers: Mapping[UUID, ConstructedColumn],
@@ -23,19 +28,34 @@ def get_all_required_pairs(
     Return the full set of (producer_uuid, column_name) pairs needed to
     produce the requested columns, including all transitive dependencies.
     """
-    required = build_dependency_graph(producers).order(set(columns_to_uuid.values()))
+    required = get_dependency_graph(producers).order(set(columns_to_uuid.values()))
     pairs = {(uuid, name) for name, uuid in columns_to_uuid.items()}
     for uuid in required:
         pairs.update((uuid, name) for name in producers[uuid].produces)
     return pairs
 
 
-def build_dependency_graph(
+def get_dependency_graph(
     producers: Mapping[UUID, ConstructedColumn],
 ) -> DependencyGraph:
-    return graphlib.make_dependency_graph(
+    """
+    Return the dependency graph for a set of producers, reusing a cached graph
+    when one exists for the same producer UUIDs.
+
+    A producer's UUID is derived from the UUIDs it depends on, so the set of
+    producer UUIDs fully determines the graph's edges and is a safe cache key.
+    """
+    key = frozenset(producers)
+    if (graph := __GRAPH_CACHE.get(key)) is not None:
+        __GRAPH_CACHE.move_to_end(key)
+        return graph
+    graph = graphlib.make_dependency_graph(
         {uuid: producer.requires for uuid, producer in producers.items()}
     )
+    __GRAPH_CACHE[key] = graph
+    if len(__GRAPH_CACHE) > __GRAPH_CACHE_SIZE:
+        __GRAPH_CACHE.popitem(last=False)
+    return graph
 
 
 def evaluate_producers(
@@ -56,7 +76,7 @@ def evaluate_producers(
     against the vstacked per-child data.
     """
     outputs: dict[str, Any] = {}
-    for uuid in build_dependency_graph(producers).order():
+    for uuid in get_dependency_graph(producers).order():
         producer = producers[uuid]
         if isinstance(producer, RawColumn):
             continue
@@ -73,7 +93,7 @@ def get_derived_units(
     units: dict[str, u.Unit],
 ) -> dict[str, u.Unit | None]:
     new_units: dict[str, u.Unit | None] = {}
-    for uuid in build_dependency_graph(producers).order():
+    for uuid in get_dependency_graph(producers).order():
         producer = producers[uuid]
         if isinstance(producer, RawColumn):
             continue

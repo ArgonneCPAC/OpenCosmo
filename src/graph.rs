@@ -2,10 +2,10 @@ use pyo3::prelude::*;
 
 #[pymodule]
 pub(crate) mod graph {
-    use petgraph::algo::{is_cyclic_directed, toposort};
+    use petgraph::algo::toposort;
     use petgraph::graph::{DiGraph, NodeIndex};
     use petgraph::Direction;
-    use pyo3::exceptions::{PyRuntimeError, PyValueError};
+    use pyo3::exceptions::PyValueError;
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
 
@@ -15,6 +15,7 @@ pub(crate) mod graph {
     struct DependencyGraph {
         graph: DiGraph<Uuid, ()>,
         uuid_map: HashMap<Uuid, NodeIndex>,
+        topological_order: Vec<Uuid>,
     }
 
     #[pymethods]
@@ -25,12 +26,10 @@ pub(crate) mod graph {
 
         #[pyo3(signature = (required_nodes=None))]
         fn order(&self, required_nodes: Option<HashSet<Uuid>>) -> PyResult<Vec<Uuid>> {
-            if let Some(nodes) = required_nodes {
-                return self.get_all_required(nodes);
+            match required_nodes {
+                Some(nodes) => self.get_all_required(nodes),
+                None => Ok(self.topological_order.clone()),
             }
-            let order = toposort(&self.graph, None)
-                .map_err(|_| PyRuntimeError::new_err("Graph contains a dependency cycle!"))?;
-            Ok(order.into_iter().map(|idx| self.graph[idx]).collect())
         }
 
         fn get_all_required(&self, nodes: HashSet<Uuid>) -> PyResult<Vec<Uuid>> {
@@ -98,10 +97,16 @@ pub(crate) mod graph {
                 graph.add_edge(source, target, ());
             }
         }
-        if is_cyclic_directed(&graph) {
-            return Err(PyValueError::new_err("Graph contains a dependency cycle!"));
-        }
+        let topological_order = toposort(&graph, None)
+            .map_err(|_| PyValueError::new_err("Graph contains a dependency cycle!"))?
+            .into_iter()
+            .map(|idx| graph[idx])
+            .collect();
 
-        Ok(DependencyGraph { graph, uuid_map })
+        Ok(DependencyGraph {
+            graph,
+            uuid_map,
+            topological_order,
+        })
     }
 }
