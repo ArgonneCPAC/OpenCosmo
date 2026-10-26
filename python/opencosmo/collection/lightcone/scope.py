@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from opencosmo.column.column import RawColumn, _contains_scalar
 from opencosmo.uuid import get_raw_column_uuid
@@ -53,7 +52,7 @@ class LightconeScope:
     that depends on a name already in the scope).
     """
 
-    producers: tuple[ConstructedColumn, ...] = ()
+    producers: dict[UUID, ConstructedColumn] = field(default_factory=dict)
     column_map: dict[str, UUID] = None  # type: ignore
     descriptions: dict[str, str | None] = None  # type: ignore
 
@@ -76,7 +75,7 @@ class LightconeScope:
         """
         return tuple(
             p
-            for p in self.producers
+            for p in self.producers.values()
             if any(name in self.column_map for name in (p.produces or ()))
         )
 
@@ -87,7 +86,7 @@ class LightconeScope:
         resolve scope expressions' UUID-keyed dependencies on raw child
         columns. Not user-visible.
         """
-        return tuple(p for p in self.producers if isinstance(p, RawColumn))
+        return tuple(p for p in self.producers.values() if isinstance(p, RawColumn))
 
     def add(
         self,
@@ -124,8 +123,6 @@ class LightconeScope:
         existing_placeholders: dict[str, RawColumn] = {
             p.name: p for p in self.placeholders
         }
-        derived_producers = list(self.derived_producers)
-
         name_to_uuid: dict[str, UUID] = dict(self.column_map)
         for name, placeholder in existing_placeholders.items():
             name_to_uuid[name] = placeholder.uuid
@@ -145,7 +142,7 @@ class LightconeScope:
                 new_placeholders[raw_name] = placeholder
                 name_to_uuid[raw_name] = placeholder.uuid
 
-        new_derived: list[ConstructedColumn] = []
+        new_derived: dict[UUID, ConstructedColumn] = {}
         new_column_map = dict(self.column_map)
         new_descriptions = dict(self.descriptions)
         for name, col in scoped.items():
@@ -154,18 +151,22 @@ class LightconeScope:
                 name_to_uuid,
                 set(name_to_uuid.values()).intersection(new_column_map.values()),
             )
-            new_derived.append(bound)
             assert bound.uuid is not None
+            new_derived[bound.uuid] = bound
             new_column_map[name] = bound.uuid
             new_descriptions[name] = bound.description
 
-        new_producers = (
-            list(existing_placeholders.values())
-            + list(new_placeholders.values())
-            + derived_producers
-            + new_derived
-        )
-        return LightconeScope(tuple(new_producers), new_column_map, new_descriptions)
+        new_producers: dict[UUID, ConstructedColumn] = {
+            p.uuid: p for p in existing_placeholders.values()
+        }
+        new_producers |= {p.uuid: p for p in new_placeholders.values()}
+        new_producers |= {
+            uuid: p
+            for uuid, p in self.producers.items()
+            if any(name in self.column_map for name in (p.produces or ()))
+        }
+        new_producers |= new_derived
+        return LightconeScope(new_producers, new_column_map, new_descriptions)
 
     def select(self, columns: set[str]) -> LightconeScope:
         """
@@ -189,26 +190,18 @@ class LightconeScope:
 
         keep_names = set(selected)
 
-        for producer in self.producers:
-            prod_names = producer.produces or set()
-            for name in prod_names:
-                if name in selected:
-                    break
-            else:
+        for producer in self.producers.values():
+            if selected.isdisjoint(producer.produces or set()):
                 continue
-
             for dep_uuid in producer.requires:
-                for other in self.producers:
-                    if other.uuid == dep_uuid:
-                        other_names = other.produces or set()
-                        if other_names:
-                            keep_names.update(other_names)
+                if (dep := self.producers.get(dep_uuid)) is not None:
+                    keep_names.update(dep.produces or set())
 
-        new_producers = [
-            col
-            for col in self.producers
+        new_producers = {
+            uuid: col
+            for uuid, col in self.producers.items()
             if any(name in keep_names for name in (col.produces or set()))
-        ]
+        }
         new_column_map = {
             name: uuid for name, uuid in self.column_map.items() if name in keep_names
         }
@@ -216,7 +209,7 @@ class LightconeScope:
             name: desc for name, desc in self.descriptions.items() if name in keep_names
         }
 
-        return LightconeScope(tuple(new_producers), new_column_map, new_descriptions)
+        return LightconeScope(new_producers, new_column_map, new_descriptions)
 
     def required_child_columns(self) -> set[str]:
         """

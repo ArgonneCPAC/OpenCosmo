@@ -4,102 +4,104 @@ use pyo3::prelude::*;
 pub(crate) mod graph {
     use petgraph::algo::{is_cyclic_directed, toposort};
     use petgraph::graph::{DiGraph, NodeIndex};
-    use pyo3::exceptions::PyValueError;
-    use std::collections::HashMap;
-    use std::sync::Arc;
+    use petgraph::Direction;
+    use pyo3::exceptions::{PyRuntimeError, PyValueError};
+    use std::collections::{HashMap, HashSet};
+    use uuid::Uuid;
 
     use pyo3::prelude::*;
 
-    #[pyclass]
-    struct DependencyGraphRegistry {
-        pub(crate) reg: HashMap<i64, Arc<DependencyGraph>>,
+    #[pyclass(frozen)]
+    struct DependencyGraph {
+        graph: DiGraph<Uuid, ()>,
+        uuid_map: HashMap<Uuid, NodeIndex>,
     }
 
     #[pymethods]
-    impl DependencyGraphRegistry {
-        #[staticmethod]
-        fn new() -> Self {
-            return DependencyGraphRegistry {
-                reg: HashMap::new(),
-            };
+    impl DependencyGraph {
+        fn num_nodes(&self) -> usize {
+            self.graph.node_count()
         }
 
-        fn add_new_graph(&mut self, id: i64, nodes: HashMap<String, Vec<String>>) -> PyResult<()> {
-            add_graph(self, id, nodes)
+        #[pyo3(signature = (required_nodes=None))]
+        fn order(&self, required_nodes: Option<HashSet<Uuid>>) -> PyResult<Vec<Uuid>> {
+            if let Some(nodes) = required_nodes {
+                return self.get_all_required(nodes);
+            }
+            let order = toposort(&self.graph, None)
+                .map_err(|_| PyRuntimeError::new_err("Graph contains a dependency cycle!"))?;
+            Ok(order.into_iter().map(|idx| self.graph[idx]).collect())
         }
-        fn add_child_graph(&mut self, parent_id: i64, child_id: i64) -> PyResult<()> {
-            add_child(self, parent_id, child_id)
-        }
-        fn get_order(&self, id: i64) -> PyResult<Vec<String>> {
-            let graph = self
-                .reg
-                .get(&id)
-                .ok_or(PyValueError::new_err("Unknown graph id!"))?;
-            let sort = toposort(&graph.graph, None).unwrap(); // Checked at build time
-            Ok(sort
+
+        fn get_all_required(&self, nodes: HashSet<Uuid>) -> PyResult<Vec<Uuid>> {
+            let mut roots = nodes
                 .iter()
-                .map(|idx| graph.uuid_map.get(idx).unwrap().clone())
-                .collect())
+                .map(|node| {
+                    self.uuid_map
+                        .get(node)
+                        .copied()
+                        .ok_or_else(|| PyValueError::new_err("Unknown column uuid"))
+                })
+                .collect::<PyResult<Vec<NodeIndex>>>()?;
+            // Reverse-sorted so roots are popped in ascending index order, keeping output deterministic.
+            roots.sort_unstable_by(|a, b| b.cmp(a));
+
+            // Iterative post-order DFS over incoming edges: a node is emitted only after
+            // all of its dependencies, which yields a topological order.
+            let mut visited: HashSet<NodeIndex> = HashSet::with_capacity(roots.len());
+            let mut order: Vec<NodeIndex> = Vec::new();
+            let mut stack: Vec<(NodeIndex, bool)> = roots.into_iter().map(|r| (r, false)).collect();
+            while let Some((idx, expanded)) = stack.pop() {
+                if expanded {
+                    order.push(idx);
+                    continue;
+                }
+                if !visited.insert(idx) {
+                    continue;
+                }
+                stack.push((idx, true));
+                stack.extend(
+                    self.graph
+                        .neighbors_directed(idx, Direction::Incoming)
+                        .filter(|n| !visited.contains(n))
+                        .map(|n| (n, false)),
+                );
+            }
+
+            Ok(order.into_iter().map(|idx| self.graph[idx]).collect())
         }
     }
 
-    struct DependencyGraph {
-        pub(crate) graph: DiGraph<String, ()>,
-        pub(crate) uuid_map: HashMap<NodeIndex, String>,
-    }
+    /// Build a dependency graph from a mapping of producer UUID to the UUIDs it requires.
+    #[pyfunction]
+    fn make_dependency_graph(nodes: HashMap<Uuid, HashSet<Uuid>>) -> PyResult<DependencyGraph> {
+        // Sorted so node indices, and therefore traversal order, do not depend on hash order.
+        let mut node_ids: Vec<Uuid> = nodes.keys().copied().collect();
+        node_ids.sort_unstable();
 
-    fn make_dependency_graph(nodes: HashMap<String, Vec<String>>) -> PyResult<DependencyGraph> {
-        let mut graph = DiGraph::<String, ()>::new();
-        let mut uuid_map: HashMap<String, NodeIndex<u32>> = HashMap::new();
-        for node_name in nodes.keys() {
-            uuid_map.insert(node_name.clone(), graph.add_node(node_name.clone()));
-        }
-        for (node_name, connections) in nodes.iter() {
-            for con in connections.iter() {
-                if let Some(&con_id) = uuid_map.get(con) {
-                    _ = graph.add_edge(*uuid_map.get(node_name).unwrap(), con_id, ());
-                } else {
+        let mut graph = DiGraph::<Uuid, ()>::with_capacity(node_ids.len(), 0);
+        let uuid_map: HashMap<Uuid, NodeIndex> = node_ids
+            .iter()
+            .map(|&id| (id, graph.add_node(id)))
+            .collect();
+
+        for id in node_ids.iter() {
+            let target = uuid_map[id];
+            let mut deps: Vec<Uuid> = nodes[id].iter().copied().collect();
+            deps.sort_unstable();
+            for dep in deps {
+                let Some(&source) = uuid_map.get(&dep) else {
                     return Err(PyValueError::new_err(
                         "Found an invalid edge in the dependency graph!",
                     ));
-                }
+                };
+                graph.add_edge(source, target, ());
             }
         }
         if is_cyclic_directed(&graph) {
             return Err(PyValueError::new_err("Graph contains a dependency cycle!"));
         }
 
-        Ok(DependencyGraph {
-            graph: graph,
-            uuid_map: uuid_map.into_iter().map(|(k, v)| (v, k)).collect(),
-        })
-    }
-
-    fn add_child(reg: &mut DependencyGraphRegistry, parent_id: i64, child_id: i64) -> PyResult<()> {
-        if let Some(parent_graph) = reg.reg.get(&parent_id) {
-            if reg.reg.contains_key(&child_id) {
-                return Err(PyValueError::new_err(
-                    "Tried to insert a duplicate graph ID!",
-                ));
-            }
-            _ = reg.reg.insert(child_id, parent_graph.clone())
-        } else {
-            return Err(PyValueError::new_err("Unknown parent id!"));
-        }
-        Ok(())
-    }
-
-    fn add_graph(
-        reg: &mut DependencyGraphRegistry,
-        id: i64,
-        nodes: HashMap<String, Vec<String>>,
-    ) -> PyResult<()> {
-        if reg.reg.contains_key(&id) {
-            return Err(PyValueError::new_err("Tried to add a duplicated ID!"));
-        }
-        let graph = make_dependency_graph(nodes)?;
-        reg.reg.insert(id, Arc::new(graph));
-
-        Ok(())
+        Ok(DependencyGraph { graph, uuid_map })
     }
 }

@@ -839,7 +839,7 @@ def test_lc_scope_producer_partition(haloproperties_600_path, haloproperties_601
     scope = derived.scope
     placeholder_ids = {id(p) for p in scope.placeholders}
     derived_ids = {id(p) for p in scope.derived_producers}
-    all_ids = {id(p) for p in scope.producers}
+    all_ids = {id(p) for p in scope.producers.values()}
     assert len(placeholder_ids) >= 1
     assert placeholder_ids.isdisjoint(derived_ids)
     assert placeholder_ids | derived_ids == all_ids

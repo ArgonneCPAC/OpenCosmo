@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import rustworkx as rx
-
 from opencosmo.column.column import EvaluatedColumn, RawColumn
 from opencosmo.dataset.graph import build_dependency_graph, get_all_required_pairs
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
     import numpy as np
 
+    from opencosmo._lib.graph import DependencyGraph
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.index import DataIndex
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 def build_initial_uuid_data(
-    column_producers: list[ConstructedColumn],
+    column_producers: Mapping[UUID, ConstructedColumn],
     raw_data: dict[str, np.ndarray],
     cached_data: dict[UUID, dict[str, np.ndarray]],
 ) -> dict[UUID, dict[str, np.ndarray]]:
@@ -28,7 +28,7 @@ def build_initial_uuid_data(
     Cached data is the starting point; raw data fills in any gaps.
     """
     uuid_data: dict[UUID, dict[str, np.ndarray]] = {**cached_data}
-    for producer in column_producers:
+    for producer in column_producers.values():
         if not isinstance(producer, RawColumn) or producer.uuid in uuid_data:
             continue
         output_name = producer.alias or producer.name
@@ -40,7 +40,8 @@ def build_initial_uuid_data(
 def build_derived_columns(
     columns_to_uuid: dict[str, UUID],
     uuid_data: dict[UUID, dict[str, np.ndarray]],
-    dependency_graph: rx.PyDiGraph,
+    dependency_graph: DependencyGraph,
+    column_producers: Mapping[UUID, ConstructedColumn],
     index: DataIndex,
     cache: DataCache,
 ) -> dict[UUID, dict[str, np.ndarray]]:
@@ -50,39 +51,31 @@ def build_derived_columns(
     dep_map, so column-name shadowing cannot cause a derived column to
     receive data from the wrong producer.
     """
-    uuid_to_node: dict[UUID, int] = {
-        dependency_graph[i].uuid: i for i in range(dependency_graph.num_nodes())
-    }
-
-    required_uuids: set[UUID] = set(columns_to_uuid.values())
-    for producer_uuid in list(required_uuids):
-        if producer_uuid in uuid_to_node:
-            for node_idx in rx.ancestors(dependency_graph, uuid_to_node[producer_uuid]):
-                required_uuids.add(dependency_graph[node_idx].uuid)
-
     new_derived: dict[UUID, dict[str, np.ndarray]] = {}
     to_cache: dict[UUID, dict[str, np.ndarray]] = {}
-    for node_idx in rx.topological_sort(dependency_graph):
-        producer = dependency_graph[node_idx]
-        if isinstance(producer, RawColumn):
-            continue
-        if producer.uuid not in required_uuids or producer.uuid in uuid_data:
+    for uuid in dependency_graph.order(set(columns_to_uuid.values())):
+        producer = column_producers[uuid]
+        if isinstance(producer, RawColumn) or uuid in uuid_data:
             continue
 
         all_data = uuid_data | new_derived
         input_data = {
             name: all_data[dep_uuid][name]
-            for name, dep_uuid in producer.dep_map.items()
+            for name, dep_uuid in (producer.dep_map or {}).items()
         }
+        output: dict[str, np.ndarray]
         if isinstance(producer, EvaluatedColumn):
             output = producer.evaluate_for_storage(input_data, index)
         else:
-            output = producer.evaluate(input_data, index)
-            if not isinstance(output, dict):
-                output = {next(iter(producer.produces)): output}
-        new_derived[producer.uuid] = output
+            result = producer.evaluate(input_data, index)
+            output = (
+                result
+                if isinstance(result, dict)
+                else {next(iter(producer.produces)): result}
+            )
+        new_derived[uuid] = output
         if not producer.no_cache:
-            to_cache[producer.uuid] = output
+            to_cache[uuid] = output
 
     cache.add_data(to_cache, {})
     return new_derived
@@ -131,7 +124,7 @@ def __cache_raw_columns(
 
 
 def instantiate_dataset(
-    column_producers: list[ConstructedColumn],
+    column_producers: Mapping[UUID, ConstructedColumn],
     columns_to_uuid: dict[str, UUID],
     raw_data_handler: DataHandler,
     cache: DataCache,
@@ -142,11 +135,9 @@ def instantiate_dataset(
     # Extend working_columns with the sort column if it isn't already included.
     working_columns = dict(columns_to_uuid)
     if sort_by is not None and sort_by not in working_columns:
-        sort_name = sort_by
-        for producer in column_producers:
-            assert producer.uuid is not None
-            if sort_name in producer.produces:
-                working_columns[sort_name] = producer.uuid
+        for uuid, producer in column_producers.items():
+            if sort_by in producer.produces:
+                working_columns[sort_by] = uuid
                 break
 
     required_pairs = get_all_required_pairs(column_producers, working_columns)
@@ -164,7 +155,7 @@ def instantiate_dataset(
     cached_uuids = set(cached_data.keys())
     raw_columns = [
         col
-        for col in column_producers
+        for col in column_producers.values()
         if isinstance(col, RawColumn)
         and col.uuid not in cached_uuids
         and col.name in {name for (_, name) in required_pairs}
@@ -179,7 +170,12 @@ def instantiate_dataset(
 
     uuid_data = build_initial_uuid_data(column_producers, raw_data, cached_data)
     new_derived = build_derived_columns(
-        working_columns, uuid_data, dependency_graph, raw_data_handler.index, cache
+        working_columns,
+        uuid_data,
+        dependency_graph,
+        column_producers,
+        raw_data_handler.index,
+        cache,
     )
 
     uuid_data |= new_derived
