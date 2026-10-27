@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import sys
 from functools import cache
+from graphlib import TopologicalSorter
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-import rustworkx as rx
 
 from .source import install_conda_forge, install_github, install_pip
 from .specs import get_specs
@@ -45,16 +44,15 @@ def install_spec(
     logger.info(f"Installing analysis package {name}")
     requirements = spec.requirements
 
-    raw_graph = {name: dep.depends_on for name, dep in requirements.items()}
-    names = list(raw_graph.keys())
-
-    dependency_graph = rx.PyDiGraph()
-    nodes = dependency_graph.add_nodes_from(names)
-    node_map = {name: node for name, node in zip(names, nodes)}
-
-    for node_name, i in node_map.items():
-        depends_on = [node_map[don] for don in raw_graph[node_name]]
-        dependency_graph.add_edges_from_no_data((don, i) for don in depends_on)
+    dependency_graph = {
+        req_name: set(dep.depends_on or ()) for req_name, dep in requirements.items()
+    }
+    if unknown := set().union(*dependency_graph.values()).difference(requirements):
+        raise ValueError(
+            f"Analysis package {name} depends on unknown packages: {sorted(unknown)}"
+        )
+    # Materialized up front so a CycleError is raised before anything is installed.
+    install_order = list(TopologicalSorter(dependency_graph).static_order())
 
     transaction = {}
     method: str | None = None
@@ -64,8 +62,7 @@ def install_spec(
         if requirement not in versions and not data.optional:
             versions[requirement] = data.version
 
-    for node in rx.topological_sort(dependency_graph):
-        nodename = dependency_graph[node]
+    for nodename in install_order:
         if nodename not in versions:
             continue
         version = versions.get(nodename)
