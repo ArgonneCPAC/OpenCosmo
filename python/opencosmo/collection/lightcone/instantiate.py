@@ -37,7 +37,7 @@ def evaluate_scope(
         return vstacked, None
 
     produced = evaluate_producers(
-        list(scope.producers),
+        scope.producers,
         {name: vstacked[name] for name in vstacked.colnames},
     )
 

@@ -472,7 +472,7 @@ def __get_data(
         unit_kwargs = {}
     state = fold(HookPoint.DatasetInstantiate, DatasetInstantiateCtx(state)).state
     data = instantiate_dataset(
-        list(state.producers.values()),
+        state.producers,
         state.column_map,
         state.raw_data_handler,
         state.cache,
@@ -568,8 +568,8 @@ def __with_new_columns(
 ) -> DatasetState:
     if descriptions is None:
         descriptions = {}
-    new_producers, column_map, unit_handler = add_columns(
-        list(state.producers.values()),
+    producers, column_map, unit_handler = add_columns(
+        state.producers,
         state.unit_handler,
         state.cache,
         state.column_map,
@@ -580,10 +580,6 @@ def __with_new_columns(
         len(state),
         allow_overwrite=allow_overwrite,
     )
-    producers = {}
-    for producer in new_producers:
-        assert producer.uuid is not None
-        producers[producer.uuid] = producer
     return dataclasses.replace(
         state, producers=producers, column_map=column_map, unit_handler=unit_handler
     )
@@ -680,7 +676,7 @@ def __with_units(
 
 
 def redistribute(state: DatasetState, rows: DataIndex) -> DatasetState:
-    required = get_all_required_pairs(list(state.producers.values()), state.column_map)
+    required = get_all_required_pairs(state.producers, state.column_map)
     cached_columns: defaultdict = defaultdict(list)
     for uuid, name in required:
         producer = state.producers[uuid]

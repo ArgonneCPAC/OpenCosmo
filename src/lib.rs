@@ -6,6 +6,7 @@
 use pyo3::prelude::*;
 
 mod arrays;
+mod graph;
 mod index;
 mod spatial;
 
@@ -17,4 +18,7 @@ mod _lib {
 
     #[pymodule_export]
     use crate::spatial::spatial;
+
+    #[pymodule_export]
+    use crate::graph::graph;
 }

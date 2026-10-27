@@ -116,7 +116,7 @@ uv run towncrier create <issue_number>.<type>  # Types: feature, bugfix, improve
 
 ### Column Module
 
-Column materialization uses UUID-identified producers. `RawColumn` represents disk or in-memory sources, `Column` represents algebraic expressions and masks, `EvaluatedColumn` wraps user functions, and `DerivedScalarValue` represents reductions. `DatasetState.column_map` maps visible names to producer UUIDs, allowing safe column replacement. `dataset/graph.py` builds the `rustworkx` dependency DAG, and `dataset/instantiate.py` fetches and evaluates only requested transitive dependencies.
+Column materialization uses UUID-identified producers. `RawColumn` represents disk or in-memory sources, `Column` represents algebraic expressions and masks, `EvaluatedColumn` wraps user functions, and `DerivedScalarValue` represents reductions. `DatasetState.column_map` maps visible names to producer UUIDs, allowing safe column replacement. `dataset/graph.py` builds the UUID-keyed dependency DAG through the Rust `opencosmo._lib.graph` module (`src/graph.rs`) and caches graphs by the frozenset of producer UUIDs, and `dataset/instantiate.py` fetches and evaluates only requested transitive dependencies.
 
 `ColumnCache` persists values across related immutable states using parent/child caches and derived indices. `LocalReducer` handles in-process reductions. `MpiReducer` uses collective reductions for min/max/sum/mean and gather/broadcast for variance, standard deviation, median, and quantile.
 
@@ -193,6 +193,6 @@ Several concerns are now in dedicated top-level modules under `python/opencosmo/
 - **Pydantic header models** live in `python/opencosmo/dtypes/`. Origin, data type, and lightcone status select the required and optional model groups exposed by `OpenCosmoHeader`.
 - **`from __future__ import annotations`** is used where needed. `TYPE_CHECKING` guards keep annotation-only imports out of runtime paths.
 - **Missing third-party stubs** are configured in `pyproject.toml`; source-level suppressions should remain narrow and local.
-- **`rustworkx`** is used for dependency graphs (e.g., derived column evaluation order).
+- **Dependency graphs**: column producer graphs use the Rust `DependencyGraph` in `src/graph.rs` (petgraph); small name-keyed graphs such as analysis package install order use the standard library `graphlib`.
 - The CLI entrypoint is `opencosmo.analysis.cli:cli` (accessible as `uv run opencosmo`).
 - Version changes must keep `pyproject.toml`, `Cargo.toml`, `opencosmo.__version__`, Sphinx `release`, and `.bumpversion.toml` synchronized.
