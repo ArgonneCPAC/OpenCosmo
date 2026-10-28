@@ -19,7 +19,7 @@ def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:
             input_paremeters[argname] = getattr(parameters, argname)
         except AttributeError:
             continue
-    return cosmology_type(**input_paremeters)
+    return cosmology_type(**input_paremeters, meta={"sigma_8": parameters.sigma_8})
 
 
 def get_cosmology_type(parameters: CosmologyParameters) -> type[cosmology.Cosmology]:

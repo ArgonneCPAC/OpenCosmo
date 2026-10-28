@@ -39,6 +39,8 @@ The `open` function returns a `Dataset` object, which can retrieve the raw data 
 
 The first will return an astropy table of the data, with all associated units already applied. The second will return the astropy cosmology object that represents the cosmology the simulation was run with. 
 
+The astropy cosmology object does not include :math:`\sigma_8` by default, but does accept it as a "meta" parameter. You can access it with :code:`dataset.cosmology.meta["sigma_8"]`
+
 Basic Querying
 --------------
 
