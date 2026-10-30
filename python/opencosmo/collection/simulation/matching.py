@@ -5,10 +5,12 @@ the active source through the match set's raw-row mappings.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import replace
+from typing import TYPE_CHECKING, TypeGuard, overload
 
 import numpy as np
 
+from opencosmo.collection.structure.state import StructureState
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState
 from opencosmo.index import into_array
@@ -23,6 +25,18 @@ if TYPE_CHECKING:
     from opencosmo.mapping.mapping import DatasetMatchSet
 
 
+def is_structures(
+    datasets: Mapping[str, DatasetState | StructureState],
+) -> TypeGuard[dict[str, StructureState]]:
+    return all(isinstance(state, StructureState) for state in datasets.values())
+
+
+def is_datasets(
+    datasets: Mapping[str, DatasetState | StructureState],
+) -> TypeGuard[dict[str, DatasetState]]:
+    return all(isinstance(state, DatasetState) for state in datasets.values())
+
+
 def align(
     match_set: DatasetMatchSet, source: str, members: Mapping[str, SimulationChild]
 ) -> dict[str, SimulationChild]:
@@ -31,32 +45,68 @@ def align(
     every target are kept, and each target is reordered to match them. Members
     keep their order.
     """
-    datasets: dict[str, DatasetState] = {}
+    datasets: dict[str, DatasetState | StructureState] = {}
     for name, member in members.items():
-        if not isinstance(member, DatasetState):
-            raise TypeError(f"Matched simulation member {name} is not a dataset")
+        if not isinstance(member, (DatasetState, StructureState)):
+            raise TypeError("Matching is not available for lightcones")
         datasets[name] = member
 
-    aligned = __match_rows(match_set, datasets, source)
+    if is_structures(datasets) or is_datasets(datasets):
+        aligned = __match_rows(match_set, datasets, source)
+    else:
+        raise TypeError(
+            "Matching requires members to be all datasets or all structure collections"
+        )
     return {name: aligned[name] for name in members}
 
 
+@overload
 def __match_rows(
     match_set: DatasetMatchSet, datasets: Mapping[str, DatasetState], source: str
-) -> dict[str, DatasetState]:
+) -> dict[str, DatasetState]: ...
+
+
+@overload
+def __match_rows(
+    match_set: DatasetMatchSet, datasets: Mapping[str, StructureState], source: str
+) -> dict[str, StructureState]: ...
+
+
+def __match_rows(
+    match_set: DatasetMatchSet,
+    datasets: Mapping[str, DatasetState | StructureState],
+    source: str,
+) -> dict[str, DatasetState] | dict[str, StructureState]:
     # Guard: active sort keys would cause dataset/state.py to re-sort the
     # carefully ordered rows produced below, silently misaligning everything.
-    for name, ds in datasets.items():
-        if ds.sort_key is not None and name != source:
+    for name, state in datasets.items():
+        sort_key = (
+            state.sort_key if isinstance(state, DatasetState) else state.source.sort_key
+        )
+        if sort_key is not None and name != source:
             raise ValueError(
                 f"Dataset '{name}' has an active sort key. Call match() before sort_by()."
             )
 
+    if is_structures(datasets):
+        return __match_structure_rows(match_set, datasets, source)
+    if is_datasets(datasets):
+        return __match_dataset_rows(match_set, datasets, source)
+    raise TypeError(
+        "Matching requires members to be all datasets or all structure collections"
+    )
+
+
+def __match_dataset_rows(
+    match_set: DatasetMatchSet,
+    datasets: Mapping[str, DatasetState],
+    source: str,
+) -> dict[str, DatasetState]:
     reference_dataset = datasets[source]
     rows_to_keep = np.ones(len(reference_dataset), dtype=bool)
     index = reference_dataset.raw_index
 
-    mappings = {}
+    mappings: dict[str, np.ndarray] = {}
     for name, dataset in datasets.items():
         if name == source:
             continue
@@ -95,6 +145,23 @@ def __match_rows(
         new_datasets[name] = dsops.take_rows(datasets[name], rows_to_take)
 
     return new_datasets
+
+
+def __match_structure_rows(
+    match_set: DatasetMatchSet,
+    datasets: Mapping[str, StructureState],
+    source: str,
+) -> dict[str, StructureState]:
+    source_datasets: dict[str, DatasetState] = {}
+    for name, state in datasets.items():
+        if not isinstance(state.source, DatasetState):
+            raise TypeError("Matching is not available for lightcone sources")
+        source_datasets[name] = state.source
+    new_sources = __match_dataset_rows(match_set, source_datasets, source)
+    return {
+        name: replace(state, source=new_sources[name])
+        for name, state in datasets.items()
+    }
 
 
 def __match_rows_mpi(
