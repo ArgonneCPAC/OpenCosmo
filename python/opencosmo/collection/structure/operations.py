@@ -633,26 +633,31 @@ def open_state(
     )
 
 
-def make_schema(state: StructureState, path: str) -> Schema:
+def make_schema(state: StructureState, path: str, canonical: bool = True) -> Schema:
     """
-    Schema for writing a structure collection. Linked children are restored to
-    the source's file order, and the source carries the link columns.
+    Schema for writing a structure collection. The source is written in
+    ascending raw-row order unless ``canonical`` is False, linked children
+    follow the source's output order, and the source carries the link columns.
     """
     no_stack = isinstance(state.source, LightconeState)
     children: dict[str, Schema] = {}
 
     # Every rank builds the source schema, even when empty, to stay in lockstep
     # with the collectives inside it.
-    source_schema = child_schema(state.source, f"{path}/{state.dtype}", no_stack)
+    source_schema = child_schema(
+        state.source, f"{path}/{state.dtype}", no_stack, canonical
+    )
     if len(state.source) > 0:
-        source_schema = links.link_schema(state.match_sets, state.source, source_schema)
+        source_schema = links.link_schema(
+            state.match_sets, state.source, source_schema, canonical
+        )
         children[state.dtype] = sio.rebuild_data_linked(source_schema)
 
-    resorted = links.resort(state.match_sets, state.source, state.children)
+    resorted = links.resort(state.match_sets, state.source, state.children, canonical)
     for name in sorted(resorted):
         child = resorted[name]
         write_name = "galaxy_properties" if name == "galaxies" else name
-        schema = child_schema(child, f"{path}/{write_name}", no_stack)
+        schema = child_schema(child, f"{path}/{write_name}", no_stack, False)
         if not isinstance(child, StructureState):
             children[write_name] = schema
             continue
@@ -755,9 +760,13 @@ def __cache_collected(
 __MIN_LIGHTCONE_DATASET_SIZE = 100_000
 
 
-def child_schema(child: StructureChild, path: str, no_stack: bool) -> Schema:
+def child_schema(
+    child: StructureChild, path: str, no_stack: bool, canonical: bool = True
+) -> Schema:
     if isinstance(child, DatasetState):
-        return dsops.make_schema(child, path)
+        return dsops.make_schema(child, path, canonical)
     if isinstance(child, LightconeState):
-        return lcops.make_schema(child, path, __MIN_LIGHTCONE_DATASET_SIZE, no_stack)
-    return make_schema(child, path)
+        return lcops.make_schema(
+            child, path, __MIN_LIGHTCONE_DATASET_SIZE, no_stack, canonical
+        )
+    return make_schema(child, path, canonical)

@@ -788,7 +788,7 @@ def test_open_without_mapping_has_no_match_set(test_data):
 @pytest.mark.parallel(nprocs=4)
 def test_open_same_simulation_different_steps_raises(test_data):
     snapshot = test_data.snapshot
-    with pytest.raises(ValueError, match="both come from simulation"):
+    with pytest.raises(ValueError, match="multiple datasets from the same simulation"):
         oc.open(snapshot.primary.halo_properties, snapshot.alternate_step)
 
 

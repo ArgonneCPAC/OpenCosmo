@@ -16,8 +16,8 @@ from uuid import UUID
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.simulation import matching
-from opencosmo.collection.simulation.io import resort_simulation_collection
 from opencosmo.collection.structure import operations as scops
+from opencosmo.collection.structure.state import StructureState
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState
@@ -260,22 +260,31 @@ def make_schema(state: SimulationState, path: str) -> Schema:
 
     for name, child in state.members.items():
         children[name] = scops.child_schema(child, f"{path}/{name}", False)
-        if not isinstance(child, DatasetState):
-            continue
-        new_uuids[name] = UUID(
-            cast("str", children[name].children["data"].attributes["main_uuid"])
-        )
-        indices[name] = child.raw_index
+        if isinstance(child, DatasetState):
+            new_uuids[name] = UUID(
+                cast("str", children[name].children["data"].attributes["main_uuid"])
+            )
+            indices[name] = child.raw_index
+        elif isinstance(child, StructureState):
+            new_uuids[name] = UUID(
+                cast(
+                    "str",
+                    children[name]
+                    .children[child.dtype]
+                    .children["data"]
+                    .attributes["main_uuid"],
+                )
+            )
+            indices[name] = child.source.raw_index
 
     if state.match_set is not None and len(state) > 1:
         children["map"] = state.match_set.make_schema(
             new_uuids, indices, state.match_source
         )
 
-    schema = make_collection_schema(
+    return make_collection_schema(
         "/", FileEntry.SIMULATION_COLLECTION, children=children
     )
-    return resort_simulation_collection(schema)
 
 
 def __row_operation(

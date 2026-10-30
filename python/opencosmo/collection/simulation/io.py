@@ -6,12 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from opencosmo.index import into_array
-from opencosmo.io.schema import (
-    FileEntry,
-    Schema,
-    get_dataset_schema_index,
-    reorder_dataset_schema,
-)
+from opencosmo.io.schema import FileEntry, Schema, get_dataset_schema_index
 from opencosmo.io.writer import ColumnWriter
 from opencosmo.mpi import (
     gather_index,
@@ -23,22 +18,6 @@ from opencosmo.mpi import (
 
 if TYPE_CHECKING:
     from opencosmo.mpi import MPI
-
-
-def resort_simulation_collection(schema):
-    """Sort local dataset rows into their canonical raw-index order."""
-    if "map" not in schema.children:
-        return schema
-    new_children = {}
-    for name, child in schema.children.items():
-        if name == "map":
-            continue
-        index = get_dataset_schema_index(child)
-        reorder = np.argsort(into_array(index))
-        new_children[name] = reorder_dataset_schema(child, reorder)
-
-    new_children["map"] = schema.children["map"]
-    return schema._replace(children=new_children)
 
 
 @dataclass(frozen=True)
