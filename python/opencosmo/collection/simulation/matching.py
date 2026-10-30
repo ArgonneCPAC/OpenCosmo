@@ -39,7 +39,9 @@ def is_datasets(
 
 
 def align(
-    match_set: DatasetMatchSet, source: str, members: Mapping[str, SimulationChild]
+    match_set: DatasetMatchSet,
+    source: str,
+    members: Mapping[str, SimulationChild],
 ) -> dict[str, SimulationChild]:
     """
     Realign every member with ``source``. Only rows of ``source`` that map into
@@ -86,12 +88,17 @@ def __match_rows(
             state.sort_key if isinstance(state, DatasetState) else state.source.sort_key
         )
         if sort_key is not None and name != source:
+            sort_key = None
             warn(f"Dataset {name} is sorted. Matching will remove the sort")
         if isinstance(state, DatasetState):
-            new_datasets[name] = replace(state, sort_key=None)
+            new_datasets[name] = replace(state, sort_key=sort_key)
         else:
             new_datasets[name] = replace(
-                state, source=replace(state.source, sort_key=None)
+                state,
+                source=replace(state.source, sort_key=sort_key),
+                linked_source=state.linked_source
+                if state.linked_source is not None
+                else state.source,
             )
 
     if is_structures(new_datasets):

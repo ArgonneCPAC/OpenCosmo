@@ -89,7 +89,12 @@ def __lower_auxiliary_writers(
 def __dataset_positions(schema: Schema) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     positions_by_uuid: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for child_name, child in schema.children.items():
-        if child_name == "map" or child.type != FileEntry.DATASET:
+        if child_name == "map":
+            continue
+        if child.type == FileEntry.STRUCTURE_COLLECTION:
+            positions_by_uuid |= __dataset_positions(child)
+            continue
+        if child.type != FileEntry.DATASET:
             continue
         raw_index = into_array(get_dataset_schema_index(child))
         if raw_index is None:

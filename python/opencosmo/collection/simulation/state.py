@@ -91,6 +91,7 @@ def public_keys(state: SimulationState) -> list[str]:
 
 def view(state: SimulationState, key: str) -> SimulationChild:
     """The value a user sees for ``key``, realigned if a match is pending."""
+    print("view")
     children = state.children
     if key not in children:
         raise KeyError(f"Dataset {key} not found in collection.")

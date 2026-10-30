@@ -268,9 +268,10 @@ def open_files(
     for scope_name in sorted(scopes):
         sub = scopes[scope_name]
         spec = match_spec(sub)
+
         if spec is None:
             raise ValueError(
-                "Failed to open file. This is likely a bug. Please report it on github"
+                "Invalid combination of files. Found multiple datasets from the same simulation which cannot be combined into a collection"
             )
         spec.verify(sub)
         assignments = plan.distribute(sub, mpi_mode, nranks)

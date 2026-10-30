@@ -34,6 +34,7 @@ from opencosmo.index import (
     reindex_column,
     single_chunk,
 )
+from opencosmo.io.schema import reorder_dataset_schema
 from opencosmo.mpi import gather_index, get_comm_world
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
@@ -453,7 +454,7 @@ def __sort_data(
     if sort_by is None:
         return data
     sort_column = data[sort_by[0]]
-    order = np.argsort(sort_column)
+    order = np.argsort(sort_column, kind="Stable")
     if sort_by[1]:
         order = order[::-1]
 
@@ -530,7 +531,22 @@ def __iter_rows(state: DatasetState, unit_kwargs: dict | None = None):
         pass
 
 
-def make_schema(state: DatasetState, path: str) -> Schema:
+def get_canonical_order(state: DatasetState) -> np.ndarray | None:
+    """
+    Permutation taking the handler's rows into ascending raw-row order, or
+    ``None`` when they are already in that order.
+    """
+    index = state.raw_data_handler.index
+    if not isinstance(index, np.ndarray) or np.all(index[:-1] <= index[1:]):
+        return None
+    return np.argsort(index, kind="stable")
+
+
+def make_schema(state: DatasetState, path: str, canonical: bool = True) -> Schema:
+    """
+    Schema for writing this dataset. Rows are written in ascending raw-row order
+    unless ``canonical`` is False, in which case they keep the handler's order.
+    """
     producers = list(state.producers.values())
     derived_names = get_derived_column_names(producers, set(state.column_map))
     if derived_names:
@@ -545,7 +561,7 @@ def make_schema(state: DatasetState, path: str) -> Schema:
     column_map = copy(state.column_map)
     if state.sort_key is not None and state.sort_key[2]:
         column_map.pop(state.sort_key[0])
-    return make_dataset_schema(
+    schema = make_dataset_schema(
         producers,
         state.raw_data_handler,
         state.cache,
@@ -558,6 +574,9 @@ def make_schema(state: DatasetState, path: str) -> Schema:
         get_string_uuid(path),
         path.split("/")[-1],
     )
+    if canonical and (order := get_canonical_order(state)) is not None:
+        schema = reorder_dataset_schema(schema, order)
+    return schema
 
 
 def __with_new_columns(
@@ -628,7 +647,7 @@ def get_sorted_index(state: DatasetState) -> np.ndarray | None:
     column = __get_data(__select(state, {state.sort_key[0]}), ignore_sort=True)[
         state.sort_key[0]
     ]
-    sorted_idx = np.argsort(column)
+    sorted_idx = np.argsort(column, kind="stable")
     return sorted_idx[::-1] if state.sort_key[1] else sorted_idx
 
 

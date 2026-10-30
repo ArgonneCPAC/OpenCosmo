@@ -166,16 +166,17 @@ def group_by_scope(
     if len(parents) == 1 and match_spec(non_errored) is not None:
         return {"/": non_errored}
 
-    # Track which file path first claimed each root-derived simulation-name scope so
-    # we can detect collisions from *different* files.  Nested groups (keyed by
-    # container name) are intentionally excluded: multiple files sharing a container
-    # name is how a multi-file nested collection is expressed.
-    by_scope: dict[str, list[FileLayout]] = {}
+    # Group by simulation name
+    files_by_scope: dict[str, list[FileLayout]] = {}
     for fl in non_errored:
-        scope_names = {_scope_key(g, fl.path) for g in fl.groups}
-        assert len(scope_names) == 1
-        by_scope.setdefault(scope_names.pop(), []).append(fl)
-    return {name: tuple(by_scope[name]) for name in sorted(by_scope)}
+        groups_by_scope = {}
+        for group in fl.groups:
+            groups_by_scope.setdefault(_scope_key(group, fl.path), []).append(group)
+        for scope_name, groups in groups_by_scope.items():
+            subfile = FileLayout(path=fl.path, groups=tuple(groups), error=None)
+            files_by_scope.setdefault(scope_name, []).append(subfile)
+
+    return {name: tuple(files_by_scope[name]) for name in sorted(files_by_scope)}
 
 
 def _build_single_dataset(
@@ -321,14 +322,16 @@ class StructureCollectionSpec:
         counts_by_type = dict(counts_by_type)
         all_is_lightcone = all(group.header.file.is_lightcone for group in groups)
         data_types = set(counts_by_type.keys())
+        is_single = all(
+            count == 1 or key == "halo_particles"
+            for key, count in counts_by_type.items()
+        )
 
         return (
             has_properties_link
             and len(data_types) > 1
             and data_types.issubset(allowed_data_types)
-            and (
-                all(count == 1 for count in counts_by_type.values()) or all_is_lightcone
-            )
+            and (is_single or all_is_lightcone)
         )
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
