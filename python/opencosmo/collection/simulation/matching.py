@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING, TypeGuard, overload
+from warnings import warn
 
 import numpy as np
 
@@ -79,19 +80,24 @@ def __match_rows(
 ) -> dict[str, DatasetState] | dict[str, StructureState]:
     # Guard: active sort keys would cause dataset/state.py to re-sort the
     # carefully ordered rows produced below, silently misaligning everything.
+    new_datasets: dict[str, DatasetState | StructureState] = {}
     for name, state in datasets.items():
         sort_key = (
             state.sort_key if isinstance(state, DatasetState) else state.source.sort_key
         )
         if sort_key is not None and name != source:
-            raise ValueError(
-                f"Dataset '{name}' has an active sort key. Call match() before sort_by()."
+            warn(f"Dataset {name} is sorted. Matching will remove the sort")
+        if isinstance(state, DatasetState):
+            new_datasets[name] = replace(state, sort_key=None)
+        else:
+            new_datasets[name] = replace(
+                state, source=replace(state.source, sort_key=None)
             )
 
-    if is_structures(datasets):
-        return __match_structure_rows(match_set, datasets, source)
-    if is_datasets(datasets):
-        return __match_dataset_rows(match_set, datasets, source)
+    if is_structures(new_datasets):
+        return __match_structure_rows(match_set, new_datasets, source)
+    if is_datasets(new_datasets):
+        return __match_dataset_rows(match_set, new_datasets, source)
     raise TypeError(
         "Matching requires members to be all datasets or all structure collections"
     )
