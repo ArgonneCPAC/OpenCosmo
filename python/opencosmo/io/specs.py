@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from opencosmo.io.discover import (
@@ -169,34 +170,11 @@ def group_by_scope(
     # we can detect collisions from *different* files.  Nested groups (keyed by
     # container name) are intentionally excluded: multiple files sharing a container
     # name is how a multi-file nested collection is expressed.
-    scope_first_path: dict[str, Path] = {}
     by_scope: dict[str, list[FileLayout]] = {}
     for fl in non_errored:
-        scope_groups: dict[str, list[GroupLayout]] = {}
-        scope_is_root: dict[str, bool] = {}
-        for g in fl.groups:
-            top = _top_container(g.path)
-            is_root = top == "/"
-            key = _scope_key(g, fl.path)
-            scope_groups.setdefault(key, []).append(g)
-            scope_is_root[key] = is_root
-        for scope_name, gs in scope_groups.items():
-            # Collision check: two *different* files claiming the same root-derived
-            # simulation-name scope.  Only applies to root groups.
-            if scope_is_root[scope_name]:
-                if (
-                    scope_name in scope_first_path
-                    and scope_first_path[scope_name] != fl.path
-                ):
-                    first = scope_first_path[scope_name]
-                    raise ValueError(
-                        f"{first} and {fl.path} both come from simulation "
-                        f"'{scope_name}'. Datasets from the same simulation must form "
-                        "a structure collection or be opened separately."
-                    )
-                scope_first_path.setdefault(scope_name, fl.path)
-            sub_fl = FileLayout(path=fl.path, groups=tuple(gs), error=None)
-            by_scope.setdefault(scope_name, []).append(sub_fl)
+        scope_names = {_scope_key(g, fl.path) for g in fl.groups}
+        assert len(scope_names) == 1
+        by_scope.setdefault(scope_names.pop(), []).append(fl)
     return {name: tuple(by_scope[name]) for name in sorted(by_scope)}
 
 
@@ -337,11 +315,20 @@ class StructureCollectionSpec:
             "halo_particles",
             "halo_profiles",
         }
-        data_types = {group_data_type(g) for g in groups}
+        counts_by_type: dict[str, int] = defaultdict(lambda: 0)
+        for g in groups:
+            counts_by_type[group_data_type(g)] += 1
+        counts_by_type = dict(counts_by_type)
+        all_is_lightcone = all(group.header.file.is_lightcone for group in groups)
+        data_types = set(counts_by_type.keys())
+
         return (
             has_properties_link
             and len(data_types) > 1
             and data_types.issubset(allowed_data_types)
+            and (
+                all(count == 1 for count in counts_by_type.values()) or all_is_lightcone
+            )
         )
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
