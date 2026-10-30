@@ -28,6 +28,7 @@ from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_sel
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import to_numpy_dict, verify_format
 from opencosmo.dataset.state import DatasetState
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
 
@@ -123,6 +124,23 @@ def take_range(
 def take_rows(state: StructureState, rows: DataIndex) -> StructureState:
     new_source = __source_op(state.source, "take_rows")(state.source, rows)
     return __with_source_rows(state, new_source)
+
+
+def redistribute(state: StructureState, rows: DataIndex) -> StructureState:
+    """MPI: move the source to the global raw ``rows``, bringing its children."""
+    if not isinstance(state.source, DatasetState):
+        raise TypeError("Redistribution is not available for lightcone sources")
+    source = dsops.redistribute(state.source, rows)
+    linked: dict[str, StructureChild] = {}
+    for name in sorted(state.children):
+        child = state.children[name]
+        child_rows = into_array(links.resolve_index(state.match_sets, source, name)[()])
+        if isinstance(child, StructureState):
+            linked[name] = redistribute(child, child_rows)
+        else:
+            assert isinstance(child, DatasetState)
+            linked[name] = dsops.redistribute(child, child_rows)
+    return replace(state, source=source, linked=linked, linked_source=None)
 
 
 def with_redshift_range(
