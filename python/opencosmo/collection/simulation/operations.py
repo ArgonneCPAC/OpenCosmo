@@ -10,22 +10,26 @@ matching only reads raw row indices.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, cast
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.simulation import matching
+from opencosmo.collection.simulation.io import get_writer_rows
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure.state import StructureState
 from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.state import DatasetState
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
+from opencosmo.mpi import get_comm_world
+from opencosmo.uuid import get_string_uuid
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
+    from uuid import UUID
 
     import astropy.units as u
     import numpy as np
@@ -34,6 +38,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
+    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
 
 
@@ -254,30 +259,27 @@ def clear_match(state: SimulationState) -> SimulationState:
 
 def make_schema(state: SimulationState, path: str) -> Schema:
     state = __resolved(state)
+    members = dict(state.members)
+    has_map = state.match_set is not None and len(state) > 1
+    if has_map and (comm := get_comm_world()) is not None:
+        members = {
+            name: __to_writer_ranks(child, comm) for name, child in members.items()
+        }
+
     children: dict[str, Schema] = {}
     new_uuids: dict[str, UUID] = {}
     indices: dict[str, DataIndex] = {}
-
-    for name, child in state.members.items():
+    for name, child in members.items():
         children[name] = scops.child_schema(child, f"{path}/{name}", False)
-        if isinstance(child, DatasetState):
-            new_uuids[name] = UUID(
-                cast("str", children[name].children["data"].attributes["main_uuid"])
-            )
-            indices[name] = child.raw_index
-        elif isinstance(child, StructureState):
-            new_uuids[name] = UUID(
-                cast(
-                    "str",
-                    children[name]
-                    .children[child.dtype]
-                    .children["data"]
-                    .attributes["main_uuid"],
-                )
-            )
+        if isinstance(child, StructureState) and isinstance(child.source, DatasetState):
+            new_uuids[name] = get_string_uuid(f"{path}/{name}/{child.dtype}")
             indices[name] = child.source.raw_index
+        elif isinstance(child, DatasetState):
+            new_uuids[name] = get_string_uuid(f"{path}/{name}")
+            indices[name] = child.raw_index
 
-    if state.match_set is not None and len(state) > 1:
+    if has_map:
+        assert state.match_set is not None
         children["map"] = state.match_set.make_schema(
             new_uuids, indices, state.match_source
         )
@@ -285,6 +287,19 @@ def make_schema(state: SimulationState, path: str) -> Schema:
     return make_collection_schema(
         "/", FileEntry.SIMULATION_COLLECTION, children=children
     )
+
+
+def __to_writer_ranks(child: SimulationChild, comm: MPI.Comm) -> SimulationChild:
+    """Move ``child``'s rows to the ranks that write them."""
+    if isinstance(child, DatasetState):
+        return dsops.redistribute(
+            child, get_writer_rows(into_array(child.raw_index), comm)
+        )
+    if isinstance(child, StructureState) and isinstance(child.source, DatasetState):
+        return scops.redistribute(
+            child, get_writer_rows(into_array(child.source.raw_index), comm)
+        )
+    raise TypeError("Mapped lightcones cannot be written")
 
 
 def __row_operation(
