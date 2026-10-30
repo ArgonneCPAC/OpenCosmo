@@ -165,6 +165,7 @@ def stack_lightcone_datasets_in_schema(
     path: str,
     redshift_range: tuple[float, float] | None,
     no_stack: bool = False,
+    canonical: bool = True,
 ):
     name = path.split("/")[-1]
     n_datasets = sum(len(lst) for lst in datasets.values())
@@ -172,7 +173,7 @@ def stack_lightcone_datasets_in_schema(
         dataset_list = next(iter(datasets.values()))
         dataset_name = next(iter(datasets.keys()))
 
-        schema = dsops.make_schema(dataset_list[0], path)
+        schema = dsops.make_schema(dataset_list[0], path, canonical)
         header = sync_headers(dataset_list, redshift_range)
         schema.children["header"] = header
         return {dataset_name: schema}
@@ -184,10 +185,10 @@ def stack_lightcone_datasets_in_schema(
         if len(ds_list) == 0:
             if no_stack:
                 continue
-            get_stacked_lightcone_order([], -1)
+            get_stacked_lightcone_order([], -1, canonical)
             sync_headers(ds_list, None)
             continue
-        schemas = [dsops.make_schema(dataset, path) for dataset in ds_list]
+        schemas = [dsops.make_schema(dataset, path, canonical) for dataset in ds_list]
         index_names = list(schemas[0].children["index"].children.keys())
         index_names.sort()
         max_level = int(index_names[-1][-1])
@@ -199,7 +200,7 @@ def stack_lightcone_datasets_in_schema(
         new_data_group = stack_data_groups(
             [schema.children["data"] for schema in schemas]
         )
-        order = get_stacked_lightcone_order(ds_list, max_level)
+        order = get_stacked_lightcone_order(ds_list, max_level, canonical)
         updater = partial(update_order, order=order)
         slice_sizes = [len(dataset) for dataset in ds_list]
         top_host_idx_updater = partial(
@@ -291,12 +292,20 @@ def get_order_mpi(pixels, comm):
     return new_order[bounds[rank] : bounds[rank + 1]] - bounds[rank]
 
 
-def get_stacked_lightcone_order(datasets: Iterable[DatasetState], max_index_depth: int):
+def get_stacked_lightcone_order(
+    datasets: Iterable[DatasetState], max_index_depth: int, canonical: bool = True
+):
     import healpy as hp
 
     datasets = list(datasets)
     nside = 2**max_index_depth
-    coordinates = [find_coordinates_2d(dataset) for dataset in datasets]
+    # Coordinates must follow the row order the dataset schemas were written in
+    coordinates = []
+    for dataset in datasets:
+        coords = find_coordinates_2d(dataset)
+        if canonical and (order := dsops.get_canonical_order(dataset)) is not None:
+            coords = coords[order]
+        coordinates.append(coords)
     coordinates = list(filter(lambda coord_list: len(coord_list) > 0, coordinates))
 
     if datasets:

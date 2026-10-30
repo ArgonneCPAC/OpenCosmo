@@ -597,7 +597,11 @@ def take_rows_unsorted(state: LightconeState, rows: DataIndex) -> LightconeState
 
 
 def make_schema(
-    state: LightconeState, path: str, min_size: int, no_stack: bool
+    state: LightconeState,
+    path: str,
+    min_size: int,
+    no_stack: bool,
+    canonical: bool = True,
 ) -> Schema:
     output_datasets = lcio.combine_adjacent_datasets(
         lcio.order_by_redshift_range(state.leaves),
@@ -618,7 +622,7 @@ def make_schema(
             # (get_all_entries / get_stacked_lightcone_order / sync_headers) in
             # lockstep, or cross-rank collectives mispair across steps.
             stack_lightcone_datasets_in_schema(
-                datasets, "/".join([path, str(step)]), None, no_stack
+                datasets, "/".join([path, str(step)]), None, no_stack, canonical
             )
             continue
 
@@ -629,7 +633,7 @@ def make_schema(
         )
 
         child_schemas = stack_lightcone_datasets_in_schema(
-            datasets, "/".join([path, str(step)]), zrange, no_stack
+            datasets, "/".join([path, str(step)]), zrange, no_stack, canonical
         )
         children.update(
             {f"{step}_{name}": schema for name, schema in child_schemas.items()}

@@ -282,6 +282,8 @@ def rebuild_single_with_new_source(
     old_source_uuid = match_set.get_uuid(source)
     assert old_source_uuid is not None
 
+    print(indices.keys())
+    print(source)
     source_index = into_array(indices[source])
     source_sort = np.argsort(source_index)
 

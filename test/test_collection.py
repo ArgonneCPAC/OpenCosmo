@@ -76,7 +76,7 @@ def test_open_structures(halo_paths, galaxy_paths):
     assert isinstance(c2, oc.StructureCollection)
     c3 = oc.open(halo_paths[0], *galaxy_paths)
     assert isinstance(c3, oc.StructureCollection)
-    c3 = oc.open(halo_paths[0], halo_paths[1])
+    c3 = oc.open(halo_paths[0], halo_paths[1])  # failing case
     assert isinstance(c3, oc.StructureCollection)
     c3 = oc.open(halo_paths[0], halo_paths[2])
     assert isinstance(c3, oc.StructureCollection)

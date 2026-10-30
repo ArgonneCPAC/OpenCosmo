@@ -28,6 +28,7 @@ from opencosmo.column.select import do_multi_dataset_drops, do_multi_dataset_sel
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import to_numpy_dict, verify_format
 from opencosmo.dataset.state import DatasetState
+from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
 
@@ -123,6 +124,23 @@ def take_range(
 def take_rows(state: StructureState, rows: DataIndex) -> StructureState:
     new_source = __source_op(state.source, "take_rows")(state.source, rows)
     return __with_source_rows(state, new_source)
+
+
+def redistribute(state: StructureState, rows: DataIndex) -> StructureState:
+    """MPI: move the source to the global raw ``rows``, bringing its children."""
+    if not isinstance(state.source, DatasetState):
+        raise TypeError("Redistribution is not available for lightcone sources")
+    source = dsops.redistribute(state.source, rows)
+    linked: dict[str, StructureChild] = {}
+    for name in sorted(state.children):
+        child = state.children[name]
+        child_rows = into_array(links.resolve_index(state.match_sets, source, name)[()])
+        if isinstance(child, StructureState):
+            linked[name] = redistribute(child, child_rows)
+        else:
+            assert isinstance(child, DatasetState)
+            linked[name] = dsops.redistribute(child, child_rows)
+    return replace(state, source=source, linked=linked, linked_source=None)
 
 
 def with_redshift_range(
@@ -633,26 +651,31 @@ def open_state(
     )
 
 
-def make_schema(state: StructureState, path: str) -> Schema:
+def make_schema(state: StructureState, path: str, canonical: bool = True) -> Schema:
     """
-    Schema for writing a structure collection. Linked children are restored to
-    the source's file order, and the source carries the link columns.
+    Schema for writing a structure collection. The source is written in
+    ascending raw-row order unless ``canonical`` is False, linked children
+    follow the source's output order, and the source carries the link columns.
     """
     no_stack = isinstance(state.source, LightconeState)
     children: dict[str, Schema] = {}
 
     # Every rank builds the source schema, even when empty, to stay in lockstep
     # with the collectives inside it.
-    source_schema = child_schema(state.source, f"{path}/{state.dtype}", no_stack)
+    source_schema = child_schema(
+        state.source, f"{path}/{state.dtype}", no_stack, canonical
+    )
     if len(state.source) > 0:
-        source_schema = links.link_schema(state.match_sets, state.source, source_schema)
+        source_schema = links.link_schema(
+            state.match_sets, state.source, source_schema, canonical
+        )
         children[state.dtype] = sio.rebuild_data_linked(source_schema)
 
-    resorted = links.resort(state.match_sets, state.source, state.children)
+    resorted = links.resort(state.match_sets, state.source, state.children, canonical)
     for name in sorted(resorted):
         child = resorted[name]
         write_name = "galaxy_properties" if name == "galaxies" else name
-        schema = child_schema(child, f"{path}/{write_name}", no_stack)
+        schema = child_schema(child, f"{path}/{write_name}", no_stack, False)
         if not isinstance(child, StructureState):
             children[write_name] = schema
             continue
@@ -755,9 +778,13 @@ def __cache_collected(
 __MIN_LIGHTCONE_DATASET_SIZE = 100_000
 
 
-def child_schema(child: StructureChild, path: str, no_stack: bool) -> Schema:
+def child_schema(
+    child: StructureChild, path: str, no_stack: bool, canonical: bool = True
+) -> Schema:
     if isinstance(child, DatasetState):
-        return dsops.make_schema(child, path)
+        return dsops.make_schema(child, path, canonical)
     if isinstance(child, LightconeState):
-        return lcops.make_schema(child, path, __MIN_LIGHTCONE_DATASET_SIZE, no_stack)
-    return make_schema(child, path)
+        return lcops.make_schema(
+            child, path, __MIN_LIGHTCONE_DATASET_SIZE, no_stack, canonical
+        )
+    return make_schema(child, path, canonical)
