@@ -112,7 +112,7 @@ def test_align_preserves_member_order(match_set, matched_state):
 def test_align_rejects_collection_members(match_set, matched_state, test_data):
     structure = open_state(*test_data.snapshot.scidac(0).all)
     members = matched_state.members | {"structure": structure}
-    with pytest.raises(TypeError, match="is not a dataset"):
+    with pytest.raises(TypeError, match="all datasets or all structure collections"):
         matching.align(match_set, REFERENCE, members)
 
 
@@ -122,12 +122,6 @@ def test_from_parts_normalizes_names(mapped):
     assert simst.public_keys(state) == ["sim_one"]
     assert state.match_source is None
     assert state.aligned
-
-
-def test_from_parts_rejects_matching_collections(match_set, test_data):
-    structure = open_state(*test_data.snapshot.scidac(0).all)
-    with pytest.raises(ValueError, match="only supported for simple datasets"):
-        simst.from_parts({"structure": structure}, match_set)
 
 
 @pytest.mark.parametrize(

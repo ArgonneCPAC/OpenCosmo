@@ -169,7 +169,7 @@ def group_by_scope(
     # Group by simulation name
     files_by_scope: dict[str, list[FileLayout]] = {}
     for fl in non_errored:
-        groups_by_scope = {}
+        groups_by_scope: dict[str, list[GroupLayout]] = {}
         for group in fl.groups:
             groups_by_scope.setdefault(_scope_key(group, fl.path), []).append(group)
         for scope_name, groups in groups_by_scope.items():

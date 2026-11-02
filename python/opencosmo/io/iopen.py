@@ -345,14 +345,23 @@ def open_files(
                 + "."
             )
     if match_set is not None:
-        if any(len(uuids) > 1 for uuids in children_by_uuid.values()):
-            raise ValueError("Mapping is currently only supported for single catalogs")
-        match_set = match_set.with_aliases(
-            {
-                normalize_kwarg_name(name): next(iter(uuids))
-                for name, uuids in children_by_uuid.items()
-            }
-        )
+        aliases = {}
+        for name, uuids in children_by_uuid.items():
+            overlap = uuids.intersection(match_set.endpoints)
+            if len(overlap) == 0:
+                continue
+            elif len(overlap) > 1:
+                raise ValueError(
+                    "When matching a structure collection, only a single dataset can be part of the match set"
+                )
+            aliases[normalize_kwarg_name(name)] = next(iter(overlap))
+
+        if not aliases:
+            raise ValueError(
+                "Recieved a match set but it does not map any of the provided datasets!"
+            )
+
+        match_set = match_set.with_aliases(aliases)
 
     # A mapping resolves to nothing usable whenever fewer than two of its endpoints
     # were opened — the "ignore unresolvable endpoints" rule applied consistently.

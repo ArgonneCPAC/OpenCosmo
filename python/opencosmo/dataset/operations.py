@@ -454,7 +454,7 @@ def __sort_data(
     if sort_by is None:
         return data
     sort_column = data[sort_by[0]]
-    order = np.argsort(sort_column, kind="Stable")
+    order = np.argsort(sort_column, kind="stable")
     if sort_by[1]:
         order = order[::-1]
 

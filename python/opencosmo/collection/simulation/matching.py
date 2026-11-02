@@ -68,13 +68,14 @@ def __match_rows(
     # Guard: active sort keys would cause dataset/state.py to re-sort the
     # carefully ordered rows produced below, silently misaligning everything.
     new_datasets: dict[str, DatasetState | StructureState] = {}
+
     for name, state in datasets.items():
-        sort_key = (
-            state.sort_key if isinstance(state, DatasetState) else state.source.sort_key
-        )
-        if sort_key is not None and name != source:
+        source_state = state if isinstance(state, DatasetState) else state.source
+        assert isinstance(source, DatasetState)
+        if source_state.sort_key is not None and name != source:
             sort_key = None
             warn(f"Dataset {name} is sorted. Matching will remove the sort")
+
         if isinstance(state, DatasetState):
             new_datasets[name] = replace(state, sort_key=sort_key)
         else:

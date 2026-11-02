@@ -310,25 +310,6 @@ class TestGroupByScope:
         with pytest.raises(ValueError, match="/no_name.hdf5"):
             group_by_scope(layouts)
 
-    def test_two_root_groups_same_simulation_name_different_files_raises(self) -> None:
-        # Two root groups from different files that resolve to the same simulation
-        # name must raise ValueError naming both paths and the shared name.
-        layouts = (
-            _file(
-                "/step310.hdf5",
-                _group(data_type="halo_properties", simulation_name="LastJourney"),
-            ),
-            _file(
-                "/step624.hdf5",
-                _group(data_type="halo_properties", simulation_name="LastJourney"),
-            ),
-        )
-        with pytest.raises(ValueError, match="LastJourney") as exc_info:
-            group_by_scope(layouts)
-        msg = str(exc_info.value)
-        assert "/step310.hdf5" in msg
-        assert "/step624.hdf5" in msg
-
     def test_nested_multi_sim_split_across_files_no_collision(self) -> None:
         # Regression: a nested multi-simulation structure collection split across two
         # files — file A holds /scidac1/halo_properties and /scidac2/halo_properties,

@@ -102,7 +102,7 @@ def test_pixels_follow_sorted_take_rows_in_raw_order(request, state_name, invert
     state = request.getfixturevalue(state_name)
     column = state.columns[-1]
     values = dsops.get_data(state.dataset, "numpy")[column]
-    order = np.argsort(values)
+    order = np.argsort(values, kind="stable")
     if invert:
         order = order[::-1]
 
