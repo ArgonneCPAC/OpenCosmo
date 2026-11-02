@@ -71,7 +71,8 @@ def __match_rows(
 
     for name, state in datasets.items():
         source_state = state if isinstance(state, DatasetState) else state.source
-        assert isinstance(source, DatasetState)
+        assert isinstance(source_state, DatasetState)
+        sort_key = source_state.sort_key
         if source_state.sort_key is not None and name != source:
             sort_key = None
             warn(f"Dataset {name} is sorted. Matching will remove the sort")
@@ -81,7 +82,7 @@ def __match_rows(
         else:
             new_datasets[name] = replace(
                 state,
-                source=replace(state.source, sort_key=sort_key),
+                source=replace(source_state, sort_key=sort_key),
                 linked_source=state.linked_source
                 if state.linked_source is not None
                 else state.source,
