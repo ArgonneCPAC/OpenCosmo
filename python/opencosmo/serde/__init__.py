@@ -5,6 +5,14 @@ method signatures by :mod:`opencosmo.serde.codegen` and checked into the
 repository. The expression, mask, and region grammars are written by hand.
 """
 
+from .dispatch import (
+    Message,
+    MessageError,
+    MessageTarget,
+    apply_message,
+    execute_message,
+    parse_message,
+)
 from .expression import (
     Arctan2Expression,
     ArithmeticExpression,
@@ -29,6 +37,7 @@ from .expression import (
     UnaryOperator,
 )
 from .messages.dataset import (
+    DATASET_MESSAGE_TYPES,
     DatasetBoundMessage,
     DatasetDropMessage,
     DatasetFilterMessage,
@@ -58,6 +67,7 @@ from .region import (
 )
 
 __all__ = [
+    "DATASET_MESSAGE_TYPES",
     "Arctan2Expression",
     "ArithmeticExpression",
     "ArithmeticOperator",
@@ -86,7 +96,10 @@ __all__ = [
     "KeywordOnly",
     "Mask",
     "MembershipMask",
+    "Message",
+    "MessageError",
     "MessageParameter",
+    "MessageTarget",
     "NumberLiteral",
     "ParameterRole",
     "QuantileExpression",
@@ -100,5 +113,8 @@ __all__ = [
     "UnaryOperator",
     "VarArgs",
     "VarKwargs",
+    "apply_message",
+    "execute_message",
     "message_signature",
+    "parse_message",
 ]

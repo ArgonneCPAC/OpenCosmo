@@ -22,11 +22,7 @@ from pydantic import TypeAdapter, ValidationError
 
 ADAPTER: TypeAdapter[DatasetMessage] = TypeAdapter(DatasetMessage)
 SNAPSHOT = Path(__file__).parent / "snapshots" / "dataset_messages.schema.json"
-MODELS = {
-    getattr(messages, name).model_fields["kind"].default: getattr(messages, name)
-    for name in messages.__all__
-    if name != "DatasetMessage"
-}
+MODELS = {model.method: model for model in messages.DATASET_MESSAGE_TYPES}
 
 MASS = "fof_halo_mass"
 TAG = "fof_halo_tag"

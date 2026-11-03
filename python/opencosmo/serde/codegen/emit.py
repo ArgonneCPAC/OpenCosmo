@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -346,6 +347,7 @@ def render(spec: MessageSpec) -> str:
         imports |= needed
     names = [class_name(spec, method) for method in spec.methods]
     union = f"{target}Message"
+    types = f"{re.sub(r'(?<!^)(?=[A-Z])', '_', target).upper()}_MESSAGE_TYPES"
     imports |= {Symbol("typing", "Annotated"), Symbol("pydantic", "Field")}
     module = "\n\n\n".join(
         [
@@ -361,7 +363,8 @@ def render(spec: MessageSpec) -> str:
                 f"type {union} = Annotated[\n    {' | '.join(names)},\n"
                 '    Field(discriminator="kind"),\n]'
             ),
-            f"__all__ = {sorted([*names, union])!r}\n",
+            f"{types} = ({', '.join(names)},)",
+            f"__all__ = {sorted([*names, union, types])!r}\n",
         ]
     )
     return __format(module, spec)

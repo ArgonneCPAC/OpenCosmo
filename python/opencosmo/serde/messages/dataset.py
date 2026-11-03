@@ -211,7 +211,22 @@ type DatasetMessage = Annotated[
 ]
 
 
+DATASET_MESSAGE_TYPES = (
+    DatasetFilterMessage,
+    DatasetSelectMessage,
+    DatasetDropMessage,
+    DatasetSortByMessage,
+    DatasetTakeMessage,
+    DatasetTakeRangeMessage,
+    DatasetTakeRowsMessage,
+    DatasetBoundMessage,
+    DatasetWithNewColumnsMessage,
+    DatasetWithUnitsMessage,
+)
+
+
 __all__ = [
+    "DATASET_MESSAGE_TYPES",
     "DatasetBoundMessage",
     "DatasetDropMessage",
     "DatasetFilterMessage",

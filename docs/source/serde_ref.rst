@@ -7,21 +7,29 @@ method. It can be sent over the wire, validated on the other side, and applied t
 a live object.
 
 Every :class:`opencosmo.Dataset` transformation that can be described without
-in-memory data has a message, discriminated by its ``kind``. Validate an incoming
-payload with the ``DatasetMessage`` union and call ``apply`` to perform the
-operation:
+in-memory data has a message, discriminated by its ``kind``.
+
+Execution environments receive a message as decoded JSON and hold the object it
+applies to. :func:`opencosmo.serde.execute_message` validates the payload against
+the messages that object's type supports and applies it:
 
 .. code-block:: python
 
-    from pydantic import TypeAdapter
+    import json
 
-    from opencosmo.serde import DatasetMessage
+    from opencosmo.serde import MessageError, execute_message
 
-    adapter = TypeAdapter(DatasetMessage)
-    message = adapter.validate_json(
-        '{"kind": "take", "n": 10, "at": "start"}'
-    )
-    subset = message.apply(dataset)  # same as dataset.take(10, at="start")
+    payload = json.loads('{"kind": "take", "n": 10, "at": "start"}')
+    result = execute_message(dataset, payload)  # same as dataset.take(10, at="start")
+    if isinstance(result, MessageError):
+        print(result.model_dump_json())
+
+The two steps are also available separately: :func:`opencosmo.serde.parse_message`
+returns a validated message, and :func:`opencosmo.serde.apply_message` applies one.
+When a payload fails validation, the object type has no messages, or a message
+belongs to another type, these functions return a :class:`opencosmo.serde.MessageError`
+instead of raising. Errors raised by the operation itself, such as selecting a column
+that does not exist, propagate as they would from a direct call.
 
 Column expressions and filter masks travel as expression and mask models. These
 contain only a closed set of supported operations and never accept executable code.
