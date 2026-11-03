@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,12 +50,13 @@ class SnapshotPaths:
 
     @property
     def primary(self) -> StructurePaths:
+        root = self.root / "scidac_000"
         return StructurePaths(
-            halo_properties=self.root / "haloproperties.hdf5",
-            halo_particles=self.root / "haloparticles.hdf5",
-            halo_profiles=self.root / "sodproperties.hdf5",
-            galaxy_properties=self.root / "galaxyproperties.hdf5",
-            galaxy_particles=self.root / "galaxyparticles.hdf5",
+            halo_properties=root / "haloproperties.hdf5",
+            halo_particles=root / "haloparticles.hdf5",
+            halo_profiles=root / "haloprofiles.hdf5",
+            galaxy_properties=root / "galaxyproperties.hdf5",
+            galaxy_particles=root / "galaxyparticles.hdf5",
         )
 
     def scidac(self, simulation: int) -> StructurePaths:
@@ -63,6 +64,15 @@ class SnapshotPaths:
         return StructurePaths(
             halo_properties=root / "haloproperties.hdf5",
             galaxy_properties=root / "galaxyproperties.hdf5",
+        )
+
+    def scidac_linked(self, simulation: int) -> StructurePaths:
+        """Properties plus single-row profile links and nested galaxy particles."""
+        root = self.root / f"scidac_{simulation:03d}"
+        return replace(
+            self.scidac(simulation),
+            halo_profiles=root / "haloprofiles.hdf5",
+            galaxy_particles=root / "galaxyparticles.hdf5",
         )
 
     @property
@@ -75,7 +85,7 @@ class SnapshotPaths:
 
     @property
     def alternate_step(self) -> Path:
-        return self.root / "haloproperties_step310.hdf5"
+        return self.root / "scidac_000" / "haloproperties_step310.hdf5"
 
     @property
     def mapping_reference(self) -> Path:

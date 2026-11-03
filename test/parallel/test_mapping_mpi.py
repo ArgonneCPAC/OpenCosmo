@@ -74,14 +74,16 @@ def test_mpi_dataset_output_lookup_assigns_uneven_runs():
 
 
 @pytest.mark.parallel(nprocs=4)
-def test_mpi_dataset_redistribution_validates_indices_collectively(monkeypatch):
+def test_mpi_output_lookups_validate_indices_collectively(monkeypatch):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-    child = Schema("catalog", FileEntry.DATASET, {}, {}, {})
+    data = Schema("data", FileEntry.COLUMNS, {}, {}, {"main_uuid": "catalog"})
+    child = Schema("catalog", FileEntry.DATASET, {"data": data}, {}, {})
+    mapping = Schema("map", FileEntry.METADATA, {}, {}, {"reference": "catalog"})
     schema = Schema(
         "/",
         FileEntry.SIMULATION_COLLECTION,
-        {"catalog": child} if rank < 2 else {},
+        {"catalog": child, "map": mapping} if rank < 2 else {},
         {},
         {},
     )
@@ -92,10 +94,8 @@ def test_mpi_dataset_redistribution_validates_indices_collectively(monkeypatch):
         lambda _: None if rank == 0 else np.asarray([rank], dtype=np.int64),
     )
 
-    with pytest.raises(
-        ValueError, match="Dataset 'catalog' has no output raw row index"
-    ):
-        simulation_io.redistribute_simulation_collection_data(schema, comm)
+    with pytest.raises(ValueError, match="Dataset catalog has no output raw row index"):
+        simulation_io.get_output_lookups(schema, comm)
 
 
 @pytest.mark.parallel(nprocs=4)
@@ -788,7 +788,7 @@ def test_open_without_mapping_has_no_match_set(test_data):
 @pytest.mark.parallel(nprocs=4)
 def test_open_same_simulation_different_steps_raises(test_data):
     snapshot = test_data.snapshot
-    with pytest.raises(ValueError, match="both come from simulation"):
+    with pytest.raises(ValueError, match="come from simulation"):
         oc.open(snapshot.primary.halo_properties, snapshot.alternate_step)
 
 
@@ -970,3 +970,632 @@ def test_active_match_write_preserves_order(
     _assert_ordered_mapping_equal(
         collection, written, REFERENCE, sort_by=sort_after_read
     )
+
+
+STRUCTURE_SIMULATIONS = (SIMULATION_A, SIMULATION_B)
+
+
+@pytest.fixture
+def structure_paths(test_data):
+    return {
+        SIMULATION_A: test_data.snapshot.scidac(0),
+        SIMULATION_B: test_data.snapshot.scidac(1),
+    }
+
+
+def _open_structures(structure_paths, mapping_path, simulations=STRUCTURE_SIMULATIONS):
+    return oc.open(
+        *(path for name in simulations for path in structure_paths[name].all),
+        mapping_path,
+    )
+
+
+def _halos(collection):
+    return {
+        name: structure["halo_properties"] for name, structure in collection.items()
+    }
+
+
+def _gather(values):
+    return np.concatenate(MPI.COMM_WORLD.allgather(values))
+
+
+def _assert_galaxies_follow_halos_mpi(original, matched):
+    """Each rank holds exactly the galaxies of its own halos, in halo order."""
+    for name, structure in matched.items():
+        halo_tags = _column(structure["halo_properties"], "fof_halo_tag")
+        hosts = _column(structure["galaxy_properties"], "fof_halo_tag")
+        first_position = {tag: i for i, tag in reversed(list(enumerate(halo_tags)))}
+        positions = np.asarray([first_position.get(h, -1) for h in hosts.tolist()])
+        parallel_assert(np.all(positions >= 0) and np.all(np.diff(positions) >= 0))
+
+        galaxies = original[name]["galaxy_properties"]
+        expected = _gather(_column(galaxies, "gal_tag"))[
+            np.isin(_gather(_column(galaxies, "fof_halo_tag")), _gather(halo_tags))
+        ]
+        actual = _gather(_column(structure["galaxy_properties"], "gal_tag"))
+        parallel_assert(len(actual) > 0)
+        parallel_assert(np.array_equal(np.sort(actual), np.sort(expected)))
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_open_mapped_structure_collections(structure_paths, test_data):
+    collection = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+
+    parallel_assert(isinstance(collection, oc.SimulationCollection))
+    parallel_assert(list(collection.keys()) == list(STRUCTURE_SIMULATIONS))
+    parallel_assert(
+        all(
+            isinstance(structure, oc.StructureCollection)
+            for structure in collection.values()
+        )
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("source", STRUCTURE_SIMULATIONS)
+def test_structure_match_aligns_rows_for_each_source(
+    source, structure_paths, mapped_paths, test_data
+):
+    collection = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+
+    matched = collection.match(source)
+
+    parallel_assert(
+        all(
+            isinstance(structure, oc.StructureCollection)
+            for structure in matched.values()
+        )
+    )
+    parallel_assert(len({len(structure) for structure in matched.values()}) == 1)
+    # The interesting case: target halos (and their galaxies) that change rank
+    target = next(name for name in STRUCTURE_SIMULATIONS if name != source)
+    moved = np.isin(
+        into_array(_halos(matched)[target].index),
+        into_array(_halos(collection)[target].index),
+        invert=True,
+    )
+    parallel_assert(MPI.COMM_WORLD.allreduce(int(moved.sum())) > 0)
+    _assert_matches_mapping_mpi(
+        _halos(collection), _halos(matched), source, pairwise, mapped_paths
+    )
+    _assert_galaxies_follow_halos_mpi(collection, matched)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize(
+    "filtered_simulations",
+    (None, (SIMULATION_A,), (SIMULATION_B,)),
+    ids=("all", "source-only", "target-only"),
+)
+def test_structure_match_honors_filters(
+    filtered_simulations, structure_paths, mapped_paths, test_data
+):
+    collection = _open_structures(
+        structure_paths, test_data.snapshot.halo_mapping
+    ).filter(oc.col("fof_halo_mass") > 1e13, datasets=filtered_simulations)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+
+    matched = collection.match(SIMULATION_A)
+
+    _assert_matches_mapping_mpi(
+        _halos(collection), _halos(matched), SIMULATION_A, pairwise, mapped_paths
+    )
+    _assert_galaxies_follow_halos_mpi(collection, matched)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_structure_match_chain(structure_paths, test_data):
+    collection = _open_structures(
+        structure_paths, test_data.snapshot.halo_mapping
+    ).filter(oc.col("fof_halo_mass") > 1e13)
+
+    matched = collection.match(SIMULATION_A).match(SIMULATION_B)
+
+    lengths = {len(structure) for structure in matched.values()}
+    parallel_assert(len(lengths) == 1)
+    _assert_galaxies_follow_halos_mpi(collection, matched)
+
+
+STRUCTURE_ROW_OPERATIONS = (
+    pytest.param(lambda c: c.take_range(7, 31), id="range"),
+    pytest.param(
+        lambda c: c.take_rows(np.array([2, 5, 11, 17, 40], dtype=np.int64)), id="rows"
+    ),
+    pytest.param(lambda c: c.take(23, at="start"), id="take-start"),
+    pytest.param(lambda c: c.take(23, at="end"), id="take-end"),
+    pytest.param(lambda c: c.filter(oc.col("fof_halo_mass") > 1e13), id="filter"),
+    pytest.param(lambda c: c.sort_by("fof_halo_mass", invert=True), id="sort"),
+    pytest.param(
+        lambda c: (
+            c.filter(oc.col("fof_halo_mass") > 1e13)
+            .sort_by("fof_halo_mass", invert=True)
+            .take_range(3, 29)
+        ),
+        id="chained",
+    ),
+)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("source", STRUCTURE_SIMULATIONS)
+@pytest.mark.parametrize("operation", STRUCTURE_ROW_OPERATIONS)
+def test_structure_matched_row_operation_is_driven_by_active_source(
+    operation, source, structure_paths, mapped_paths, test_data
+):
+    original = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(source)
+    expected_source = operation(matched[source])["halo_properties"]
+
+    result = operation(matched)
+
+    parallel_assert(
+        {len(structure) for structure in result.values()} == {len(expected_source)}
+    )
+    _assert_source_driven_result(
+        _halos(original), expected_source, _halos(result), source, pairwise
+    )
+    _assert_galaxies_follow_halos_mpi(original, result)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("operation", STRUCTURE_ROW_OPERATIONS)
+def test_structure_clear_match_rebuilds_pending_targets(
+    operation, structure_paths, mapped_paths, test_data
+):
+    original = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    result = operation(original.match(SIMULATION_A))
+    expected_source = result[SIMULATION_A]["halo_properties"]
+
+    cleared = result.clear_match()
+
+    _assert_source_driven_result(
+        _halos(original), expected_source, _halos(cleared), SIMULATION_A, pairwise
+    )
+    _assert_galaxies_follow_halos_mpi(original, cleared)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_structure_match_on_pending_targets_uses_them_unaligned(
+    structure_paths, mapped_paths, test_data
+):
+    original = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    first = original.match(SIMULATION_A)
+    pending = first.take_range(7, 31)
+    before = {
+        SIMULATION_A: pending[SIMULATION_A]["halo_properties"],
+        SIMULATION_B: first[SIMULATION_B]["halo_properties"],
+    }
+
+    rematched = pending.match(SIMULATION_B)
+
+    _assert_matches_mapping_mpi(
+        before, _halos(rematched), SIMULATION_B, pairwise, mapped_paths
+    )
+    _assert_galaxies_follow_halos_mpi(original, rematched)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_structure_match_removes_target_sort(structure_paths, mapped_paths, test_data):
+    original = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    sorted_collection = original.sort_by("fof_halo_mass")
+
+    with pytest.warns(UserWarning, match=f"{SIMULATION_B} is sorted"):
+        matched = sorted_collection.match(SIMULATION_A)
+
+    parallel_assert(matched[SIMULATION_B].sorted_by is None)
+    _assert_matches_mapping_mpi(
+        _halos(sorted_collection), _halos(matched), SIMULATION_A, pairwise, mapped_paths
+    )
+    _assert_galaxies_follow_halos_mpi(original, matched)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_structure_matched_filter_rejects_non_source_datasets(
+    structure_paths, test_data
+):
+    collection = _open_structures(
+        structure_paths, test_data.snapshot.halo_mapping
+    ).match(SIMULATION_A)
+    mask = oc.col("fof_halo_mass") > 1e13
+
+    with pytest.raises(ValueError, match="active source"):
+        collection.filter(mask, datasets=SIMULATION_B)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("source", STRUCTURE_SIMULATIONS)
+def test_structure_match_preserves_key_order(source, structure_paths, test_data):
+    collection = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    keys = list(collection.keys())
+
+    matched = collection.match(source)
+
+    parallel_assert(list(matched.keys()) == keys)
+    parallel_assert(list(matched.take_range(7, 31).clear_match().keys()) == keys)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_structure_match_objects_are_aligned(structure_paths, mapped_paths, test_data):
+    original = _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(SIMULATION_A).take_range(0, 5)
+    expected = _expected_source_driven_ids(
+        _halos(original),
+        matched[SIMULATION_A]["halo_properties"],
+        SIMULATION_A,
+        pairwise,
+    )
+
+    for name, structure in matched.items():
+        tags = []
+        hosts_match = True
+        for obj in structure.objects():
+            tags.append(obj["halo_properties"]["fof_halo_tag"])
+            hosts = _column(obj["galaxy_properties"], "fof_halo_tag")
+            hosts_match &= bool(np.all(hosts == tags[-1]))
+        parallel_assert(hosts_match)
+        parallel_assert(
+            np.array_equal(np.asarray(tags, dtype=expected[name].dtype), expected[name])
+        )
+
+
+def _written_match_pairs(path, source):
+    """Source/target halo tag pairs encoded by a written simulation mapping."""
+    with h5py.File(path) as file:
+        halos = {
+            name: file[f"{name}/halo_properties"] for name in STRUCTURE_SIMULATIONS
+        }
+        tags = {name: group["data/fof_halo_tag"][:] for name, group in halos.items()}
+        uuids = {
+            str(group["data"].attrs["main_uuid"]): name for name, group in halos.items()
+        }
+        reference = uuids[str(file["map"].attrs["reference"])]
+        (target_uuid,) = file["map/primary"].keys()
+        target = uuids[target_uuid]
+        index = file[f"map/primary/{target_uuid}/index"][:]
+    valid = index >= 0
+    pairs = {reference: tags[reference][valid], target: tags[target][index[valid]]}
+    other = target if source == reference else reference
+    return set(zip(pairs[source].tolist(), pairs[other].tolist(), strict=True))
+
+
+def _assert_structure_file_canonical(path, structure_paths):
+    with h5py.File(path) as file:
+        for name in STRUCTURE_SIMULATIONS:
+            halos = file[f"{name}/halo_properties"]
+            tags = halos["data/fof_halo_tag"][:]
+            with h5py.File(structure_paths[name].halo_properties) as original:
+                original_tags = original["data/fof_halo_tag"][:]
+            assert np.array_equal(original_tags[np.isin(original_tags, tags)], tags)
+
+            start = halos["data_linked/galaxyproperties_start"][:]
+            size = halos["data_linked/galaxyproperties_size"][:]
+            assert np.array_equal(start, np.concatenate([[0], np.cumsum(size)[:-1]]))
+            hosts = file[f"{name}/galaxy_properties/data/fof_halo_tag"][:]
+            assert np.array_equal(hosts, np.repeat(tags, size))
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize(
+    "transform",
+    (
+        pytest.param(lambda c: c, id="unmatched"),
+        pytest.param(
+            lambda c: c.filter(oc.col("fof_halo_mass") > 1e13), id="unmatched-filter"
+        ),
+        pytest.param(lambda c: c.match(SIMULATION_A), id="matched"),
+        pytest.param(
+            lambda c: c.match(SIMULATION_A).take_range(7, 31), id="matched-range"
+        ),
+        pytest.param(
+            lambda c: c.match(SIMULATION_B).sort_by("fof_halo_mass"),
+            id="matched-sorted",
+        ),
+    ),
+)
+def test_structure_mapping_write(transform, structure_paths, test_data, per_test_dir):
+    comm = MPI.COMM_WORLD
+    collection = transform(
+        _open_structures(structure_paths, test_data.snapshot.halo_mapping)
+    )
+    path = per_test_dir / "structures.hdf5"
+
+    oc.write(path, collection)
+    comm.Barrier()
+
+    for source in STRUCTURE_SIMULATIONS:
+        matched = _halos(collection.match(source))
+        other = next(name for name in STRUCTURE_SIMULATIONS if name != source)
+        expected = set(
+            zip(
+                _gather(_column(matched[source], "fof_halo_tag")).tolist(),
+                _gather(_column(matched[other], "fof_halo_tag")).tolist(),
+                strict=True,
+            )
+        )
+        written = _written_match_pairs(path, source) if comm.Get_rank() == 0 else None
+        parallel_assert(comm.bcast(written, root=0) == expected)
+
+    error = None
+    if comm.Get_rank() == 0:
+        try:
+            _assert_structure_file_canonical(path, structure_paths)
+        except AssertionError as exc:
+            error = repr(exc)
+    parallel_assert(comm.bcast(error, root=0) is None)
+
+
+# Structures with single-row (``_idx``) profile links and nested galaxies, whose
+# star particles hang off the galaxies rather than the halos.
+
+
+@pytest.fixture
+def linked_structure_paths(test_data):
+    return {
+        SIMULATION_A: test_data.snapshot.scidac_linked(0),
+        SIMULATION_B: test_data.snapshot.scidac_linked(1),
+    }
+
+
+def _follows(parent_keys, child_keys):
+    """Every child row belongs to a parent row, and children are in parent order."""
+    first = {key: i for i, key in reversed(list(enumerate(parent_keys.tolist())))}
+    positions = np.asarray([first.get(key, -1) for key in child_keys.tolist()])
+    return bool(np.all(positions >= 0) and np.all(np.diff(positions) >= 0))
+
+
+def _assert_links_follow_halos_mpi(original, result):
+    """
+    On every rank, profiles are row-aligned with that rank's halos, galaxies
+    follow its halos, and star particles follow its galaxies. Globally each
+    holds exactly the original rows of their surviving parents.
+    """
+    for name, structure in result.items():
+        halo_tags = _column(structure["halo_properties"], "fof_halo_tag")
+        profile_tags = _column(structure["halo_profiles"], "fof_halo_bin_tag")
+        if profile_tags.ndim == 2:
+            profile_tags = profile_tags[:, 0]
+        parallel_assert(np.array_equal(profile_tags, halo_tags))
+
+        galaxies = structure["galaxies"]["galaxy_properties"]
+        gal_tags = _column(galaxies, "gal_tag")
+        parallel_assert(_follows(halo_tags, _column(galaxies, "fof_halo_tag")))
+        original_galaxies = original[name]["galaxies"]["galaxy_properties"]
+        expected_gal_tags = _gather(_column(original_galaxies, "gal_tag"))[
+            np.isin(
+                _gather(_column(original_galaxies, "fof_halo_tag")), _gather(halo_tags)
+            )
+        ]
+        all_gal_tags = _gather(gal_tags)
+        parallel_assert(len(all_gal_tags) > 0)
+        parallel_assert(
+            np.array_equal(np.sort(all_gal_tags), np.sort(expected_gal_tags))
+        )
+
+        particles = structure["galaxies"]["star_particles"]
+        parallel_assert(_follows(gal_tags, _column(particles, "gal_tag")))
+        original_particles = original[name]["galaxies"]["star_particles"]
+        expected_ids = _gather(_column(original_particles, "id"))[
+            np.isin(_gather(_column(original_particles, "gal_tag")), all_gal_tags)
+        ]
+        parallel_assert(len(expected_ids) > 0)
+        parallel_assert(
+            np.array_equal(
+                np.sort(_gather(_column(particles, "id"))), np.sort(expected_ids)
+            )
+        )
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("source", STRUCTURE_SIMULATIONS)
+def test_linked_structure_match_aligns_links(
+    source, linked_structure_paths, mapped_paths, test_data
+):
+    collection = _open_structures(
+        linked_structure_paths, test_data.snapshot.halo_mapping
+    )
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+
+    matched = collection.match(source)
+
+    # Linked rows only get exercised by redistribution when target halos move rank
+    target = next(name for name in STRUCTURE_SIMULATIONS if name != source)
+    moved = np.isin(
+        into_array(_halos(matched)[target].index),
+        into_array(_halos(collection)[target].index),
+        invert=True,
+    )
+    parallel_assert(MPI.COMM_WORLD.allreduce(int(moved.sum())) > 0)
+    _assert_matches_mapping_mpi(
+        _halos(collection), _halos(matched), source, pairwise, mapped_paths
+    )
+    _assert_links_follow_halos_mpi(collection, matched)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("operation", STRUCTURE_ROW_OPERATIONS)
+def test_linked_structure_matched_row_operation(
+    operation, linked_structure_paths, mapped_paths, test_data
+):
+    original = _open_structures(linked_structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(SIMULATION_A)
+    expected_source = operation(matched[SIMULATION_A])["halo_properties"]
+
+    result = operation(matched)
+
+    _assert_source_driven_result(
+        _halos(original), expected_source, _halos(result), SIMULATION_A, pairwise
+    )
+    _assert_links_follow_halos_mpi(original, result)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize(
+    "transform",
+    (
+        pytest.param(lambda c: c.match(SIMULATION_A), id="matched"),
+        pytest.param(
+            lambda c: c.match(SIMULATION_A).take_range(7, 31), id="matched-range"
+        ),
+        pytest.param(
+            lambda c: c.match(SIMULATION_B).sort_by("fof_halo_mass"),
+            id="matched-sorted",
+        ),
+    ),
+)
+def test_linked_structure_mapping_write(
+    transform, linked_structure_paths, test_data, per_test_dir
+):
+    original = _open_structures(linked_structure_paths, test_data.snapshot.halo_mapping)
+    collection = transform(original)
+    path = per_test_dir / "structures.hdf5"
+
+    oc.write(path, collection)
+    MPI.COMM_WORLD.Barrier()
+    written = oc.open(path)
+
+    for source in STRUCTURE_SIMULATIONS:
+        _assert_links_follow_halos_mpi(original, written.match(source))
+
+
+# Three structure collections: every match has two targets, and the targets are
+# related to each other through auxiliary pairs as well as through the source.
+
+
+@pytest.fixture
+def three_structure_paths(test_data):
+    return {
+        SIMULATION_A: test_data.snapshot.scidac(0),
+        SIMULATION_B: test_data.snapshot.scidac(1),
+        SIMULATION_C: test_data.snapshot.scidac(2),
+    }
+
+
+NONTRANSITIVE_MAPPING = pytest.mark.xfail(
+    reason="halo_mapping.hdf5 is not transitive across simulations; see "
+    "https://github.com/ArgonneCPAC/OpenCosmo/issues/368",
+    strict=True,
+)
+
+
+def _open_three_structures(three_structure_paths, test_data):
+    return _open_structures(
+        three_structure_paths, test_data.snapshot.halo_mapping, TARGET_SIMULATIONS
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("source", TARGET_SIMULATIONS)
+def test_three_structure_match_aligns_rows_for_each_source(
+    source, three_structure_paths, mapped_paths, test_data
+):
+    collection = _open_three_structures(three_structure_paths, test_data)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+
+    matched = collection.match(source)
+
+    parallel_assert(sorted(matched.keys()) == sorted(TARGET_SIMULATIONS))
+    parallel_assert(len({len(structure) for structure in matched.values()}) == 1)
+    _assert_matches_mapping_mpi(
+        _halos(collection), _halos(matched), source, pairwise, mapped_paths
+    )
+    _assert_galaxies_follow_halos_mpi(collection, matched)
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("operation", STRUCTURE_ROW_OPERATIONS)
+def test_three_structure_matched_row_operation(
+    operation, three_structure_paths, mapped_paths, test_data
+):
+    original = _open_three_structures(three_structure_paths, test_data)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(SIMULATION_C)
+    expected_source = operation(matched[SIMULATION_C])["halo_properties"]
+
+    result = operation(matched)
+
+    parallel_assert(
+        {len(structure) for structure in result.values()} == {len(expected_source)}
+    )
+    _assert_source_driven_result(
+        _halos(original), expected_source, _halos(result), SIMULATION_C, pairwise
+    )
+    _assert_galaxies_follow_halos_mpi(original, result)
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_three_structure_chained_match(three_structure_paths, mapped_paths, test_data):
+    original = _open_three_structures(three_structure_paths, test_data)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    first = original.match(SIMULATION_A)
+    second = first.filter(oc.col("fof_halo_mass") > 1e13).match(SIMULATION_B)
+    pending = second.take_range(3, 29)
+    before = {
+        SIMULATION_A: second[SIMULATION_A]["halo_properties"],
+        SIMULATION_B: pending[SIMULATION_B]["halo_properties"],
+        SIMULATION_C: second[SIMULATION_C]["halo_properties"],
+    }
+
+    rematched = pending.match(SIMULATION_C)
+
+    parallel_assert(len({len(structure) for structure in rematched.values()}) == 1)
+    _assert_matches_mapping_mpi(
+        before, _halos(rematched), SIMULATION_C, pairwise, mapped_paths
+    )
+    _assert_galaxies_follow_halos_mpi(original, rematched)
+
+
+def _gathered_match_rows(collection, source):
+    """Every rank's matched halo-tag tuples, ordered by member name."""
+    matched = _halos(collection.match(source))
+    columns = [
+        _gather(_column(matched[name], "fof_halo_tag")) for name in sorted(matched)
+    ]
+    return {tuple(row) for row in np.column_stack(columns).tolist()}
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize(
+    "transform",
+    (
+        pytest.param(lambda c: c, id="unmatched", marks=NONTRANSITIVE_MAPPING),
+        pytest.param(
+            lambda c: c.match(SIMULATION_B),
+            id="matched",
+            marks=NONTRANSITIVE_MAPPING,
+        ),
+        pytest.param(
+            lambda c: c.match(SIMULATION_C).take_range(7, 31), id="matched-range"
+        ),
+        pytest.param(
+            lambda c: c.match(SIMULATION_A).sort_by("fof_halo_mass"),
+            id="matched-sorted",
+            marks=NONTRANSITIVE_MAPPING,
+        ),
+    ),
+)
+def test_three_structure_mapping_write(
+    transform, three_structure_paths, test_data, per_test_dir
+):
+    collection = transform(_open_three_structures(three_structure_paths, test_data))
+    path = per_test_dir / "structures.hdf5"
+
+    oc.write(path, collection)
+    MPI.COMM_WORLD.Barrier()
+    written = oc.open(path)
+
+    parallel_assert(sorted(written.keys()) == sorted(TARGET_SIMULATIONS))
+    for source in TARGET_SIMULATIONS:
+        parallel_assert(
+            _gathered_match_rows(written, source)
+            == _gathered_match_rows(collection.clear_match(), source),
+            msg=f"written matches differ for source {source!r}",
+        )
+        _assert_galaxies_follow_halos_mpi(written, written.match(source))

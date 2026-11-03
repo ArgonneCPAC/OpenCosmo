@@ -143,15 +143,21 @@ def rebuild_index(
 
 
 def resort_index(
-    match_sets: Mapping[UUID, DatasetMatchSet], source: Source, name: str
+    match_sets: Mapping[UUID, DatasetMatchSet],
+    source: Source,
+    name: str,
+    canonical: bool = True,
 ) -> PerLeaf:
-    """Per-leaf rows restoring targets to their source's file order."""
+    """Per-leaf rows reordering targets to follow their source's output order."""
     per_leaf: PerLeaf = {}
     for key, leaf in source_leaves(source):
         values, chunked = __leaf_slot_values(match_sets[leaf.uuid], leaf, name)
-        sort_index = __file_order(leaf)
+        sort_index = __output_order(leaf, canonical)
         if not chunked:
-            per_leaf[key] = sort_index[values >= 0]
+            # Targets hold one row per linked source row, in source order
+            valid = values >= 0
+            target_rows = np.cumsum(valid) - 1
+            per_leaf[key] = target_rows[sort_index[valid[sort_index]]]
             continue
         boundaries = np.zeros(len(values) + 1, dtype=np.int64)
         _ = np.cumsum(values, out=boundaries[1:])
@@ -242,22 +248,35 @@ def resort(
     match_sets: Mapping[UUID, DatasetMatchSet],
     source: Source,
     linked: Mapping[str, LinkTarget],
+    canonical: bool = True,
 ) -> dict[str, LinkTarget]:
-    """Restore targets to file order when any source leaf is sorted."""
-    if all(leaf.sort_key is None for _, leaf in source_leaves(source)):
+    """
+    Reorder targets to follow the source's output order when it differs from
+    the source's current order. See ``dsops.make_schema`` for ``canonical``.
+    """
+    if all(
+        leaf.sort_key is None
+        and (not canonical or dsops.get_canonical_order(leaf) is None)
+        for _, leaf in source_leaves(source)
+    ):
         return dict(linked)
     return {
-        name: take_per_leaf(target, resort_index(match_sets, source, name))
+        name: take_per_leaf(target, resort_index(match_sets, source, name, canonical))
         for name, target in linked.items()
     }
 
 
 def link_schema(
-    match_sets: Mapping[UUID, DatasetMatchSet], source: Source, source_schema: Schema
+    match_sets: Mapping[UUID, DatasetMatchSet],
+    source: Source,
+    source_schema: Schema,
+    canonical: bool = True,
 ) -> Schema:
     """Add source-row-aligned link datasets to a structure source schema."""
     if isinstance(source, DatasetState):
-        return __with_data_linked(source_schema, match_sets[source.uuid], source)
+        return __with_data_linked(
+            source_schema, match_sets[source.uuid], source, canonical
+        )
 
     children = dict(source_schema.children)
     for key, leaf in source.leaves:
@@ -269,21 +288,22 @@ def link_schema(
             )
         child_name = child_names[0]
         children[child_name] = __with_data_linked(
-            children[child_name], match_sets[leaf.uuid], leaf
+            children[child_name], match_sets[leaf.uuid], leaf, canonical
         )
     return source_schema._replace(children=children)
 
 
 def __with_data_linked(
-    schema: Schema, match_set: DatasetMatchSet, leaf: DatasetState
+    schema: Schema, match_set: DatasetMatchSet, leaf: DatasetState, canonical: bool
 ) -> Schema:
+    rows = __output_rows(leaf, canonical)
     columns = {}
     for slot in match_set.primary_maps.values():
         datasets = (slot.start, slot.size) if isinstance(slot, ChunkedSlot) else (slot,)
         for dataset in datasets:
             name = dataset.name.rsplit("/", maxsplit=1)[-1]
             columns[name] = ColumnWriter.from_h5_dataset(
-                dataset, leaf.raw_index, attrs=dict(dataset.attrs)
+                dataset, rows, attrs=dict(dataset.attrs)
             )
     data_linked = make_schema(
         "data_linked",
@@ -304,14 +324,21 @@ def __leaf_slot_values(
     return np.asarray(mapping), False
 
 
-def __file_order(leaf: DatasetState) -> np.ndarray:
+def __output_rows(leaf: DatasetState, canonical: bool) -> DataIndex:
+    """Raw rows of ``leaf`` in the order its dataset schema writes them."""
+    rows = leaf.raw_data_handler.index
+    order = dsops.get_canonical_order(leaf) if canonical else None
+    return rows if order is None else into_array(rows)[order]
+
+
+def __output_order(leaf: DatasetState, canonical: bool) -> np.ndarray:
     """
-    Positions in ``leaf``'s current (sorted) order of its rows in file order.
+    Positions in ``leaf``'s current (sorted) order of its rows in output order.
 
     Uses the leaf's raw row numbers rather than slot values: chunked slot sizes
     are not unique per row and cannot recover a permutation.
     """
-    unsorted_rows = into_array(leaf.raw_data_handler.index)
+    unsorted_rows = into_array(__output_rows(leaf, canonical))
     sorted_rows = into_array(leaf.raw_index)
     argsort_sorted_rows = np.argsort(sorted_rows)
     return argsort_sorted_rows[

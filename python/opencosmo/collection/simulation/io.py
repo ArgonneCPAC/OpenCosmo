@@ -6,39 +6,17 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from opencosmo.index import into_array
-from opencosmo.io.schema import (
-    FileEntry,
-    Schema,
-    get_dataset_schema_index,
-    reorder_dataset_schema,
-)
+from opencosmo.io.schema import FileEntry, Schema, get_dataset_schema_index
 from opencosmo.io.writer import ColumnWriter
 from opencosmo.mpi import (
     gather_index,
     get_all_entries,
-    get_subcom,
     redistribute_data,
     scatter_index,
 )
 
 if TYPE_CHECKING:
     from opencosmo.mpi import MPI
-
-
-def resort_simulation_collection(schema):
-    """Sort local dataset rows into their canonical raw-index order."""
-    if "map" not in schema.children:
-        return schema
-    new_children = {}
-    for name, child in schema.children.items():
-        if name == "map":
-            continue
-        index = get_dataset_schema_index(child)
-        reorder = np.argsort(into_array(index))
-        new_children[name] = reorder_dataset_schema(child, reorder)
-
-    new_children["map"] = schema.children["map"]
-    return schema._replace(children=new_children)
 
 
 @dataclass(frozen=True)
@@ -133,54 +111,63 @@ def __get_dataset_output_lookup(
     return lookup, scatter_index(target_ranks, len(raw_ids), comm)
 
 
-def redistribute_simulation_collection_data(
-    schema: Schema, comm: MPI.Comm
-) -> tuple[Schema, dict[str, DatasetOutputLookup]]:
-    """Redistribute dataset rows and retain their global output lookups.
+def get_writer_rows(raw_ids: np.ndarray, comm: MPI.Comm) -> np.ndarray:
+    """This rank's contiguous block of a dataset's canonical output rows."""
+    lookup, _ = __get_dataset_output_lookup(raw_ids, comm)
+    return lookup.raw_ids[lookup.writer_ranks == comm.Get_rank()]
 
-    Map children are intentionally not considered here.  Their raw-coordinate
-    values are lowered in the subsequent MPI mapping phase.
+
+def __dataset_schemas(schema: Schema) -> dict[str, Schema]:
+    """Every dataset in the schema, including structure sources, by UUID."""
+    datasets = {}
+    for name, child in schema.children.items():
+        if child.type == FileEntry.DATASET:
+            datasets[str(child.children["data"].attributes["main_uuid"])] = child
+        elif name != "map":
+            datasets |= __dataset_schemas(child)
+    return datasets
+
+
+def __map_uuids(map_schema: Schema | None) -> set[str]:
+    if map_schema is None:
+        return set()
+    uuids = {str(map_schema.attributes["reference"])}
+    if (primary := map_schema.children.get("primary")) is not None:
+        uuids |= set(primary.children)
+    if (auxiliary := map_schema.children.get("auxiliary")) is not None:
+        uuids |= {uuid for pair in auxiliary.children for uuid in pair.split("__")}
+    return uuids
+
+
+def get_output_lookups(
+    schema: Schema, comm: MPI.Comm
+) -> tuple[dict[str, Schema], dict[str, DatasetOutputLookup]]:
     """
-    new_children = {}
-    output_lookups = {}
-    for child_name, child in get_all_entries(schema.children, comm):
-        if child_name == "map":
-            continue
-        all_has_child = comm.allgather(child is not None)
+    Local schemas and global output lookups, by UUID, of the datasets the map
+    refers to. Rows must already be on their writer ranks (``get_writer_rows``).
+    """
+    uuids = set().union(*comm.allgather(__map_uuids(schema.children.get("map"))))
+    datasets = {
+        uuid: child
+        for uuid, child in __dataset_schemas(schema).items()
+        if uuid in uuids
+    }
+    lookups = {}
+    for uuid, child in get_all_entries(datasets, comm):
         local_raw_ids = None if child is None else get_dataset_schema_index(child)
         __collective_error(
-            f"Dataset '{child_name}' has no output raw row index"
+            f"Dataset {uuid} has no output raw row index"
             if child is not None and local_raw_ids is None
             else None,
             comm,
         )
-
-        subcom, subgroup = get_subcom(all_has_child, comm)
-        try:
-            if child is None:
-                continue
-            assert local_raw_ids is not None
-            lookup, target_ranks = __get_dataset_output_lookup(local_raw_ids, subcom)
-            received_raw_ids = redistribute_data(local_raw_ids, target_ranks, subcom)
-            new_children[child_name] = update_dataset_schema_with_redistribute(
-                child,
-                target_ranks,
-                received_raw_ids,
-                subcom,
-            )
-            # ``lookup`` is planned on the dataset subcommunicator.  Primary map
-            # lowering routes on ``comm``, so translate its ranks back to the
-            # parent communicator explicitly.
-            active_ranks = np.flatnonzero(all_has_child).astype(np.int64)
-            output_lookups[child_name] = DatasetOutputLookup(
-                lookup.raw_ids, active_ranks[lookup.writer_ranks]
-            )
-        finally:
-            if child is not None:
-                subcom.Free()
-            subgroup.Free()
-            comm.Barrier()
-    return schema._replace(children=new_children), output_lookups
+        raw_ids = (
+            np.empty(0, dtype=np.int64)
+            if local_raw_ids is None
+            else into_array(local_raw_ids)
+        )
+        lookups[uuid], _ = __get_dataset_output_lookup(raw_ids, comm)
+    return datasets, lookups
 
 
 def __collective_error(message: str | None, comm: MPI.Comm) -> None:
@@ -274,43 +261,14 @@ def __lower_auxiliary_values(
     return received_source[reorder], received_target[reorder]
 
 
-def __dataset_names_and_lookups(
-    schema: Schema, output_lookups: dict[str, DatasetOutputLookup], comm: MPI.Comm
-) -> tuple[dict[str, str], dict[str, DatasetOutputLookup]]:
-    """Collect UUID-to-name and lookup maps from asymmetric dataset children."""
-    local_uuids = {}
-    for name, child in schema.children.items():
-        if child.type == FileEntry.DATASET:
-            local_uuids[str(child.children["data"].attributes["main_uuid"])] = name
-    uuid_to_name: dict[str, str] = {}
-    for values in comm.allgather(local_uuids):
-        for uuid, name in values.items():
-            existing = uuid_to_name.setdefault(uuid, name)
-            if existing != name:
-                raise ValueError(f"Output dataset UUID {uuid} has multiple names")
-
-    serialized_lookups = {
-        name: (lookup.raw_ids, lookup.writer_ranks)
-        for name, lookup in output_lookups.items()
-    }
-    lookups_by_name: dict[str, DatasetOutputLookup] = {}
-    for values in comm.allgather(serialized_lookups):
-        for name, (raw_ids, ranks) in values.items():
-            lookups_by_name.setdefault(name, DatasetOutputLookup(raw_ids, ranks))
-    return uuid_to_name, lookups_by_name
-
-
 def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
-    """Redistribute dataset rows and lower maps to output coordinates."""
+    """Lower maps to output coordinates. Rows must already be on their writers."""
     rank_has_map = "map" in schema.children
     has_map = comm.allgather(rank_has_map)
     if not any(has_map):
         return schema
 
-    data_schema, output_lookups = redistribute_simulation_collection_data(schema, comm)
-    uuid_to_name, lookups_by_name = __dataset_names_and_lookups(
-        schema, output_lookups, comm
-    )
+    datasets, lookups = get_output_lookups(schema, comm)
 
     local_map = schema.children.get("map")
     map_attributes = next(
@@ -323,36 +281,32 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
     )
     assert map_attributes is not None
     reference_uuid = str(map_attributes["reference"])
-    reference_name = uuid_to_name.get(reference_uuid)
     __collective_error(
         None
-        if reference_name in lookups_by_name
+        if reference_uuid in lookups
         else "Simulation mapping reference dataset is not in the output schema",
         comm,
     )
-    assert reference_name is not None
-    reference_lookup = lookups_by_name[reference_name]
+    reference_lookup = lookups[reference_uuid]
+    reference_child = datasets.get(reference_uuid)
+    source_raw_ids = (
+        into_array(get_dataset_schema_index(reference_child))
+        if reference_child is not None
+        else np.empty(0, dtype=np.int64)
+    )
 
     local_primary = local_map.children.get("primary") if local_map is not None else None
     primary_children = {}
     for target_uuid, local_slot in get_all_entries(
         local_primary.children if local_primary is not None else {}, comm
     ):
-        target_name = uuid_to_name.get(target_uuid)
         __collective_error(
             None
-            if target_name in lookups_by_name
+            if target_uuid in lookups
             else f"Primary mapping target dataset {target_uuid} is not in the output schema",
             comm,
         )
-        assert target_name is not None
-        target_lookup = lookups_by_name[target_name]
-        reference_child = schema.children.get(reference_name)
-        source_raw_ids = (
-            into_array(get_dataset_schema_index(reference_child))
-            if reference_child is not None
-            else np.empty(0, dtype=np.int64)
-        )
+        target_lookup = lookups[target_uuid]
         raw_targets = (
             local_slot.columns["index"].data
             if local_slot is not None
@@ -399,22 +353,18 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
                 f"Auxiliary mapping pair name is invalid: {pair_name}", comm
             )
             raise RuntimeError("unreachable")
-        source_name = uuid_to_name.get(source_uuid)
-        target_name = uuid_to_name.get(target_uuid)
         __collective_error(
             None
-            if source_name in lookups_by_name
+            if source_uuid in lookups
             else f"Auxiliary mapping source dataset {source_uuid} is not in the output schema",
             comm,
         )
         __collective_error(
             None
-            if target_name in lookups_by_name
+            if target_uuid in lookups
             else f"Auxiliary mapping target dataset {target_uuid} is not in the output schema",
             comm,
         )
-        assert source_name is not None
-        assert target_name is not None
 
         message = None
         if local_slot is not None:
@@ -438,27 +388,14 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
             if local_slot is not None
             else np.empty(0, dtype=np.int64)
         )
-        source_child = schema.children.get(source_name)
-        local_source_ids = (
-            None if source_child is None else get_dataset_schema_index(source_child)
-        )
-        __collective_error(
-            f"Dataset '{source_name}' has no output raw row index"
-            if source_child is not None and local_source_ids is None
-            else None,
-            comm,
-        )
-        if local_source_ids is not None:
-            local_source_ids = into_array(local_source_ids)
+        source_child = datasets.get(source_uuid)
+        if source_child is not None:
+            local_source_ids = into_array(get_dataset_schema_index(source_child))
             local_pairs = np.isin(raw_source, local_source_ids)
             raw_source = raw_source[local_pairs]
             raw_target = raw_target[local_pairs]
         source, target = __lower_auxiliary_values(
-            raw_source,
-            raw_target,
-            lookups_by_name[source_name],
-            lookups_by_name[target_name],
-            comm,
+            raw_source, raw_target, lookups[source_uuid], lookups[target_uuid], comm
         )
         if not any(comm.allgather(len(source))):
             continue
@@ -505,26 +442,4 @@ def resort_simulation_collection_mpi(schema: Schema, comm: MPI.Comm):
         {},
         map_attributes,
     )
-    return data_schema._replace(children=data_schema.children | {"map": map_schema})
-
-
-def update_dataset_schema_with_redistribute(
-    schema: Schema, target_rank, rank_local_index, comm
-):
-    if "data" not in schema.children:
-        raise ValueError("Dataset schema has no data child")
-    new_columns = {}
-    argsort_local = np.argsort(rank_local_index, kind="stable")
-    sorted_rank_local_index = rank_local_index[argsort_local]
-    for name, column in get_all_entries(schema.children["data"].columns, comm):
-        # This should always be the same for all ranks
-        assert column is not None
-        new_columns[name] = column.redistribute(
-            rank_local_index,
-            sorted_rank_local_index,
-            argsort_local,
-            target_rank,
-            comm,
-        )
-    new_data = schema.children["data"]._replace(columns=new_columns)
-    return schema._replace(children=schema.children | {"data": new_data})
+    return schema._replace(children=schema.children | {"map": map_schema})

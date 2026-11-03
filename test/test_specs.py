@@ -294,6 +294,41 @@ class TestGroupByScope:
         scopes = group_by_scope(layouts)
         assert list(scopes) == ["alpha", "beta"]
 
+    def test_particle_groups_under_root_header_split_by_name(self) -> None:
+        # Regression: a particle file stores per-species groups (/star_particles)
+        # under the file's root header. Those containers name particle species, not
+        # simulations, so two simulations' particle files must not collapse into one
+        # "star_particles" scope.
+        layouts = tuple(
+            layout
+            for name in ("alpha", "beta")
+            for layout in (
+                _file(
+                    f"/{name}/galaxyproperties.hdf5",
+                    _group(
+                        data_type="galaxy_properties",
+                        linked=("galaxyparticles_star_particles",),
+                        simulation_name=name,
+                    ),
+                ),
+                _file(
+                    f"/{name}/galaxyparticles.hdf5",
+                    _group(
+                        path="/star_particles",
+                        data_type="galaxy_particles",
+                        simulation_name=name,
+                    ),
+                ),
+            )
+        )
+        scopes = group_by_scope(layouts)
+        assert list(scopes) == ["alpha", "beta"]
+        for name, sub in scopes.items():
+            assert sorted(str(fl.path) for fl in sub) == [
+                f"/{name}/galaxyparticles.hdf5",
+                f"/{name}/galaxyproperties.hdf5",
+            ]
+
     def test_root_group_missing_simulation_name_raises(self) -> None:
         # A root group whose header has no simulation_info must raise ValueError
         # naming the offending file path.
@@ -309,25 +344,6 @@ class TestGroupByScope:
         )
         with pytest.raises(ValueError, match="/no_name.hdf5"):
             group_by_scope(layouts)
-
-    def test_two_root_groups_same_simulation_name_different_files_raises(self) -> None:
-        # Two root groups from different files that resolve to the same simulation
-        # name must raise ValueError naming both paths and the shared name.
-        layouts = (
-            _file(
-                "/step310.hdf5",
-                _group(data_type="halo_properties", simulation_name="LastJourney"),
-            ),
-            _file(
-                "/step624.hdf5",
-                _group(data_type="halo_properties", simulation_name="LastJourney"),
-            ),
-        )
-        with pytest.raises(ValueError, match="LastJourney") as exc_info:
-            group_by_scope(layouts)
-        msg = str(exc_info.value)
-        assert "/step310.hdf5" in msg
-        assert "/step624.hdf5" in msg
 
     def test_nested_multi_sim_split_across_files_no_collision(self) -> None:
         # Regression: a nested multi-simulation structure collection split across two

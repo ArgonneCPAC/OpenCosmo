@@ -1,0 +1,1 @@
+:py:meth:`opencosmo.open` can now handles multiple :py:class:`StructureCollections <opencosmo.StructureCollection>` which should be packaged together as a :py:class:`SimulationCollection <opencosmo.SimulationCollection>`

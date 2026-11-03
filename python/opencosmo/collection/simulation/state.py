@@ -4,15 +4,15 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
 
+from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.simulation import matching
-from opencosmo.dataset.state import DatasetState
+from opencosmo.collection.structure.state import StructureState
 from opencosmo.utils import normalize_kwarg_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from opencosmo.collection.lightcone.state import LightconeState
-    from opencosmo.collection.structure.state import StructureState
+    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.mapping.mapping import DatasetMatchSet
 
@@ -72,14 +72,18 @@ def from_parts(
 ) -> SimulationState:
     """
     Build an unmatched simulation state. Member names are normalized, and a
-    match set may only be paired with dataset members.
+    match set may only be paired with dataset members or structure collections
+    with a dataset source.
     """
-    if match_set is not None and not all(
-        isinstance(member, DatasetState) for member in members.values()
-    ):
-        raise ValueError(
-            "Dataset matching is only supported for simple datasets (no collections)"
+    if match_set is not None and any(
+        isinstance(member, LightconeState)
+        or (
+            isinstance(member, StructureState)
+            and isinstance(member.source, LightconeState)
         )
+        for member in members.values()
+    ):
+        raise ValueError("Dataset matching is not supported for lightcones")
     return SimulationState(
         {normalize_kwarg_name(name): member for name, member in members.items()},
         match_set,
