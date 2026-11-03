@@ -1,0 +1,1 @@
+:py:meth:`SimulationCollection.match <opencosmo.SimulationCollection.match>` now supports structure collections.

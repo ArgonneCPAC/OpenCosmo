@@ -763,9 +763,9 @@ def structure_paths(test_data):
     }
 
 
-def _open_structures(structure_paths, mapping_path):
+def _open_structures(structure_paths, mapping_path, simulations=STRUCTURE_SIMULATIONS):
     return oc.open(
-        *(path for name in STRUCTURE_SIMULATIONS for path in structure_paths[name].all),
+        *(path for name in simulations for path in structure_paths[name].all),
         mapping_path,
     )
 
@@ -1114,6 +1114,131 @@ def test_linked_structure_mapping_write(
     )
     for source in STRUCTURE_SIMULATIONS:
         _assert_links_follow_halos(original, written.match(source))
+
+
+# Three structure collections: every match has two targets, and the targets are
+# related to each other through auxiliary pairs as well as through the source.
+
+
+@pytest.fixture
+def three_structure_paths(test_data):
+    return {
+        SIMULATION_A: test_data.snapshot.scidac(0),
+        SIMULATION_B: test_data.snapshot.scidac(1),
+        SIMULATION_C: test_data.snapshot.scidac(2),
+    }
+
+
+NONTRANSITIVE_MAPPING = pytest.mark.xfail(
+    reason="halo_mapping.hdf5 is not transitive across simulations; see "
+    "https://github.com/ArgonneCPAC/OpenCosmo/issues/368",
+    strict=True,
+)
+
+
+def _open_three_structures(three_structure_paths, test_data):
+    return _open_structures(
+        three_structure_paths, test_data.snapshot.halo_mapping, TARGET_SIMULATIONS
+    )
+
+
+def test_open_three_mapped_structure_collections(three_structure_paths, test_data):
+    collection = _open_three_structures(three_structure_paths, test_data)
+
+    assert list(collection.keys()) == sorted(TARGET_SIMULATIONS)
+    assert all(
+        isinstance(structure, oc.StructureCollection)
+        for structure in collection.values()
+    )
+
+
+@pytest.mark.parametrize("source", TARGET_SIMULATIONS)
+def test_three_structure_match_aligns_rows_for_each_source(
+    source, three_structure_paths, mapped_paths, test_data
+):
+    collection = _open_three_structures(three_structure_paths, test_data)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+
+    matched = collection.match(source)
+
+    assert len({len(structure) for structure in matched.values()}) == 1
+    _assert_matches_mapping(_halos(collection), _halos(matched), source, pairwise)
+    _assert_linked_galaxies_follow_halos(collection, matched)
+
+
+@pytest.mark.parametrize("operation", STRUCTURE_ROW_OPERATIONS)
+def test_three_structure_matched_row_operation(
+    operation, three_structure_paths, mapped_paths, test_data
+):
+    original = _open_three_structures(three_structure_paths, test_data)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(SIMULATION_C)
+    expected_source = operation(matched[SIMULATION_C])["halo_properties"]
+
+    result = operation(matched)
+
+    assert {len(structure) for structure in result.values()} == {len(expected_source)}
+    _assert_source_driven_result(
+        _halos(original), expected_source, _halos(result), SIMULATION_C, pairwise
+    )
+    _assert_linked_galaxies_follow_halos(original, result)
+
+
+def test_three_structure_chained_match(three_structure_paths, mapped_paths, test_data):
+    original = _open_three_structures(three_structure_paths, test_data)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    first = original.match(SIMULATION_A)
+    second = first.filter(oc.col("fof_halo_mass") > 1e13).match(SIMULATION_B)
+    pending = second.take_range(3, 29)
+    before = {
+        SIMULATION_A: second[SIMULATION_A]["halo_properties"],
+        SIMULATION_B: pending[SIMULATION_B]["halo_properties"],
+        SIMULATION_C: second[SIMULATION_C]["halo_properties"],
+    }
+
+    rematched = pending.match(SIMULATION_C)
+
+    assert len({len(structure) for structure in rematched.values()}) == 1
+    _assert_matches_mapping(before, _halos(rematched), SIMULATION_C, pairwise)
+    _assert_linked_galaxies_follow_halos(original, rematched)
+
+
+@pytest.mark.parametrize(
+    "transform",
+    (
+        pytest.param(lambda c: c, id="unmatched", marks=NONTRANSITIVE_MAPPING),
+        pytest.param(
+            lambda c: c.match(SIMULATION_B),
+            id="matched",
+            marks=NONTRANSITIVE_MAPPING,
+        ),
+        pytest.param(
+            lambda c: c.match(SIMULATION_C).take_range(7, 31), id="matched-range"
+        ),
+        pytest.param(
+            lambda c: c.match(SIMULATION_A).sort_by("fof_halo_mass"),
+            id="matched-sorted",
+            marks=NONTRANSITIVE_MAPPING,
+        ),
+    ),
+)
+def test_three_structure_mapping_write(
+    transform, three_structure_paths, test_data, tmp_path
+):
+    collection = transform(_open_three_structures(three_structure_paths, test_data))
+    path = tmp_path / "test.hdf5"
+
+    oc.write(path, collection)
+    written = oc.open(path)
+
+    assert list(written.keys()) == sorted(TARGET_SIMULATIONS)
+    _assert_mapping_equal(
+        collection.clear_match(),
+        written,
+        member=lambda structure: structure["halo_properties"],
+    )
+    for source in TARGET_SIMULATIONS:
+        _assert_linked_galaxies_follow_halos(written, written.match(source))
 
 
 def test_match_rejects_mixed_datasets_and_structures(test_data):
