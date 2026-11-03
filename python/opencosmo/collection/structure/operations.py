@@ -663,7 +663,7 @@ def make_schema(state: StructureState, path: str, canonical: bool = True) -> Sch
     # Every rank builds the source schema, even when empty, to stay in lockstep
     # with the collectives inside it.
     source_schema = child_schema(
-        state.source, f"{path}/{state.dtype}", no_stack, canonical
+        state.source, source_path(state, path), no_stack, canonical
     )
     if len(state.source) > 0:
         source_schema = links.link_schema(
@@ -688,6 +688,11 @@ def make_schema(state: StructureState, path: str, canonical: bool = True) -> Sch
     return make_collection_schema(
         path.split("/")[-1], FileEntry.STRUCTURE_COLLECTION, children=children
     )
+
+
+def source_path(state: StructureState, path: str) -> str:
+    """Where ``make_schema`` writes the source of a structure written at ``path``."""
+    return f"{path}/{state.dtype}"
 
 
 def leaf_datasets(

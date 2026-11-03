@@ -25,7 +25,6 @@ from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
 from opencosmo.mpi import get_comm_world
-from opencosmo.uuid import get_string_uuid
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -270,12 +269,13 @@ def make_schema(state: SimulationState, path: str) -> Schema:
     new_uuids: dict[str, UUID] = {}
     indices: dict[str, DataIndex] = {}
     for name, child in members.items():
-        children[name] = scops.child_schema(child, f"{path}/{name}", False)
+        child_path = f"{path}/{name}"
+        children[name] = scops.child_schema(child, child_path, False)
         if isinstance(child, StructureState) and isinstance(child.source, DatasetState):
-            new_uuids[name] = get_string_uuid(f"{path}/{name}/{child.dtype}")
+            new_uuids[name] = dsops.written_uuid(scops.source_path(child, child_path))
             indices[name] = child.source.raw_index
         elif isinstance(child, DatasetState):
-            new_uuids[name] = get_string_uuid(f"{path}/{name}")
+            new_uuids[name] = dsops.written_uuid(child_path)
             indices[name] = child.raw_index
 
     if has_map:

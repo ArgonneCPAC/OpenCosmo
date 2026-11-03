@@ -51,6 +51,7 @@ from opencosmo.uuid import get_string_uuid
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Literal
+    from uuid import UUID
 
     from opencosmo.column.column import (
         ColumnMask,
@@ -571,12 +572,17 @@ def make_schema(state: DatasetState, path: str, canonical: bool = True) -> Schem
         state.region,
         state.raw_index,
         derived_data,
-        get_string_uuid(path),
+        written_uuid(path),
         path.split("/")[-1],
     )
     if canonical and (order := get_canonical_order(state)) is not None:
         schema = reorder_dataset_schema(schema, order)
     return schema
+
+
+def written_uuid(path: str) -> UUID:
+    """The UUID of a dataset written at ``path``."""
+    return get_string_uuid(path)
 
 
 def __with_new_columns(

@@ -997,6 +997,125 @@ def test_structure_mapping_write(transform, structure_paths, test_data, tmp_path
         _assert_linked_galaxies_follow_halos(written, written.match(source))
 
 
+# Structures with single-row (``_idx``) profile links and nested galaxies, whose
+# star particles hang off the galaxies rather than the halos.
+
+
+@pytest.fixture
+def linked_structure_paths(test_data):
+    return {
+        SIMULATION_A: test_data.snapshot.scidac_linked(0),
+        SIMULATION_B: test_data.snapshot.scidac_linked(1),
+    }
+
+
+def _assert_follows(parent_keys, child_keys, name):
+    """Every child row belongs to a parent row, and children are in parent order."""
+    first = {key: i for i, key in reversed(list(enumerate(parent_keys.tolist())))}
+    positions = np.asarray([first.get(key, -1) for key in child_keys.tolist()])
+    assert np.all(positions >= 0), name
+    assert np.all(np.diff(positions) >= 0), name
+
+
+def _assert_links_follow_halos(original, result):
+    """
+    Profiles are row-aligned with halos, galaxies follow halos, and star
+    particles follow galaxies, each holding exactly the original rows of
+    their surviving parents.
+    """
+    for name, structure in result.items():
+        halo_tags = _column(structure["halo_properties"], "fof_halo_tag")
+        profile_tags = _column(structure["halo_profiles"], "fof_halo_bin_tag")
+        np.testing.assert_array_equal(profile_tags[:, 0], halo_tags, err_msg=name)
+
+        galaxies = structure["galaxies"]["galaxy_properties"]
+        gal_tags = _column(galaxies, "gal_tag")
+        _assert_follows(halo_tags, _column(galaxies, "fof_halo_tag"), name)
+        original_galaxies = original[name]["galaxies"]["galaxy_properties"]
+        expected_gal_tags = _column(original_galaxies, "gal_tag")[
+            np.isin(_column(original_galaxies, "fof_halo_tag"), halo_tags)
+        ]
+        assert len(gal_tags) > 0, name
+        np.testing.assert_array_equal(
+            np.sort(gal_tags), np.sort(expected_gal_tags), err_msg=name
+        )
+
+        particles = structure["galaxies"]["star_particles"]
+        _assert_follows(gal_tags, _column(particles, "gal_tag"), name)
+        original_particles = original[name]["galaxies"]["star_particles"]
+        expected_ids = _column(original_particles, "id")[
+            np.isin(_column(original_particles, "gal_tag"), gal_tags)
+        ]
+        assert len(expected_ids) > 0, name
+        np.testing.assert_array_equal(
+            np.sort(_column(particles, "id")), np.sort(expected_ids), err_msg=name
+        )
+
+
+@pytest.mark.parametrize("source", STRUCTURE_SIMULATIONS)
+def test_linked_structure_match_aligns_links(
+    source, linked_structure_paths, mapped_paths, test_data
+):
+    collection = _open_structures(
+        linked_structure_paths, test_data.snapshot.halo_mapping
+    )
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+
+    matched = collection.match(source)
+
+    _assert_matches_mapping(_halos(collection), _halos(matched), source, pairwise)
+    _assert_links_follow_halos(collection, matched)
+
+
+@pytest.mark.parametrize("operation", STRUCTURE_ROW_OPERATIONS)
+def test_linked_structure_matched_row_operation(
+    operation, linked_structure_paths, mapped_paths, test_data
+):
+    original = _open_structures(linked_structure_paths, test_data.snapshot.halo_mapping)
+    pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
+    matched = original.match(SIMULATION_A)
+    expected_source = operation(matched[SIMULATION_A])["halo_properties"]
+
+    result = operation(matched)
+
+    _assert_source_driven_result(
+        _halos(original), expected_source, _halos(result), SIMULATION_A, pairwise
+    )
+    _assert_links_follow_halos(original, result)
+
+
+@pytest.mark.parametrize(
+    "transform",
+    (
+        pytest.param(lambda c: c.match(SIMULATION_A), id="matched"),
+        pytest.param(
+            lambda c: c.match(SIMULATION_A).take_range(7, 31), id="matched-range"
+        ),
+        pytest.param(
+            lambda c: c.match(SIMULATION_B).sort_by("fof_halo_mass"),
+            id="matched-sorted",
+        ),
+    ),
+)
+def test_linked_structure_mapping_write(
+    transform, linked_structure_paths, test_data, tmp_path
+):
+    original = _open_structures(linked_structure_paths, test_data.snapshot.halo_mapping)
+    collection = transform(original)
+    path = tmp_path / "test.hdf5"
+
+    oc.write(path, collection)
+    written = oc.open(path)
+
+    _assert_mapping_equal(
+        collection.clear_match(),
+        written,
+        member=lambda structure: structure["halo_properties"],
+    )
+    for source in STRUCTURE_SIMULATIONS:
+        _assert_links_follow_halos(original, written.match(source))
+
+
 def test_match_rejects_mixed_datasets_and_structures(test_data):
     snapshot = test_data.snapshot
     collection = oc.open(

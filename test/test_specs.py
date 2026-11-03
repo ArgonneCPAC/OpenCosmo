@@ -294,6 +294,41 @@ class TestGroupByScope:
         scopes = group_by_scope(layouts)
         assert list(scopes) == ["alpha", "beta"]
 
+    def test_particle_groups_under_root_header_split_by_name(self) -> None:
+        # Regression: a particle file stores per-species groups (/star_particles)
+        # under the file's root header. Those containers name particle species, not
+        # simulations, so two simulations' particle files must not collapse into one
+        # "star_particles" scope.
+        layouts = tuple(
+            layout
+            for name in ("alpha", "beta")
+            for layout in (
+                _file(
+                    f"/{name}/galaxyproperties.hdf5",
+                    _group(
+                        data_type="galaxy_properties",
+                        linked=("galaxyparticles_star_particles",),
+                        simulation_name=name,
+                    ),
+                ),
+                _file(
+                    f"/{name}/galaxyparticles.hdf5",
+                    _group(
+                        path="/star_particles",
+                        data_type="galaxy_particles",
+                        simulation_name=name,
+                    ),
+                ),
+            )
+        )
+        scopes = group_by_scope(layouts)
+        assert list(scopes) == ["alpha", "beta"]
+        for name, sub in scopes.items():
+            assert sorted(str(fl.path) for fl in sub) == [
+                f"/{name}/galaxyparticles.hdf5",
+                f"/{name}/galaxyproperties.hdf5",
+            ]
+
     def test_root_group_missing_simulation_name_raises(self) -> None:
         # A root group whose header has no simulation_info must raise ValueError
         # naming the offending file path.

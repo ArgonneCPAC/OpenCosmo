@@ -99,17 +99,19 @@ def _top_container(path: str) -> str:
 def _scope_key(g: GroupLayout, file_path: Path) -> str:
     """Bucket key for a group in the multi-scope branch of group_by_scope.
 
-    Nested groups key on their top-level container (``/scidac1/... -> scidac1``).
-    Root groups (``/...``) all share the container ``"/"``, so they key on the
-    simulation name from the header instead — otherwise two independent root
-    datasets from two simulations would collapse into one unmatchable scope.
+    Groups under a container with its own header key on that container
+    (``/scidac1/... -> scidac1``). Groups governed by the file's root header key
+    on the simulation name instead. This covers root datasets and the per-species
+    groups of a particle file (``/star_particles``), which belong to the file's
+    simulation rather than naming a scope of their own. Otherwise independent
+    files from two simulations would collapse into one unmatchable scope.
 
-    Raises ``ValueError`` if the group is at the root and the header carries no
-    ``simulation_info`` block (i.e. no ``header/simulation`` ``name`` attribute on
-    disk), naming ``file_path`` in the message.
+    Raises ``ValueError`` if the group is governed by the root header and that
+    header carries no ``simulation_info`` block (i.e. no ``header/simulation``
+    ``name`` attribute on disk), naming ``file_path`` in the message.
     """
     top = _top_container(g.path)
-    if top != "/":
+    if top != "/" and g.header_path.strip("/") != "header":
         return top
     try:
         return g.header.simulation["name"]

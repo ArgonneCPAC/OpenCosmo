@@ -107,7 +107,7 @@ def test_simulation_info_haloproperties(test_data):
     header = read_header(test_data.snapshot.primary.halo_properties)
     assert (
         header.simulation["name"]
-        == "KAPPA_2_EGW_0.568_SEED_1.048e6_VKIN_7984_EPS_10.130"
+        == "KAPPA_2.222_EGW_0.759_SEED_7.810e5_VKIN_5889_EPS_5.257"
     )
 
 
