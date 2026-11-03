@@ -17,6 +17,8 @@ def ordered_range(start: int, end: int) -> None:
     """Require the end of a half-open range to follow its start."""
     if end < start:
         raise ValueError("end must be greater than or equal to start")
+    if start < 0:
+        raise ValueError("start of range cannot be less than 0")
 
 
 def described_columns(
