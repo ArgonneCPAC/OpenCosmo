@@ -268,10 +268,17 @@ def open_files(
     for scope_name in sorted(scopes):
         sub = scopes[scope_name]
         spec = match_spec(sub)
-
         if spec is None:
+            scope_paths = sorted({str(fl.path) for fl in sub})
+            if len(scope_paths) > 1:
+                raise ValueError(
+                    f"{', '.join(scope_paths)} all come from simulation '{scope_name}' "
+                    "but cannot be combined into a collection. Datasets from the "
+                    "same simulation must form a structure collection or be opened "
+                    "separately."
+                )
             raise ValueError(
-                "Invalid combination of files. Found multiple datasets from the same simulation which cannot be combined into a collection"
+                "Failed to open file. This is likely a bug. Please report it on github"
             )
         spec.verify(sub)
         assignments = plan.distribute(sub, mpi_mode, nranks)
@@ -358,7 +365,7 @@ def open_files(
 
         if not aliases:
             raise ValueError(
-                "Recieved a match set but it does not map any of the provided datasets!"
+                "Received a match set but it does not map any of the provided datasets!"
             )
 
         match_set = match_set.with_aliases(aliases)

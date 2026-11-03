@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING
 
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.simulation import matching
+from opencosmo.collection.structure.state import StructureState
 from opencosmo.utils import normalize_kwarg_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from opencosmo.collection.structure.state import StructureState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.mapping.mapping import DatasetMatchSet
@@ -72,10 +72,16 @@ def from_parts(
 ) -> SimulationState:
     """
     Build an unmatched simulation state. Member names are normalized, and a
-    match set may only be paired with dataset members.
+    match set may only be paired with dataset members or structure collections
+    with a dataset source.
     """
     if match_set is not None and any(
-        isinstance(member, LightconeState) for member in members.values()
+        isinstance(member, LightconeState)
+        or (
+            isinstance(member, StructureState)
+            and isinstance(member.source, LightconeState)
+        )
+        for member in members.values()
     ):
         raise ValueError("Dataset matching is not supported for lightcones")
     return SimulationState(
@@ -91,7 +97,6 @@ def public_keys(state: SimulationState) -> list[str]:
 
 def view(state: SimulationState, key: str) -> SimulationChild:
     """The value a user sees for ``key``, realigned if a match is pending."""
-    print("view")
     children = state.children
     if key not in children:
         raise KeyError(f"Dataset {key} not found in collection.")

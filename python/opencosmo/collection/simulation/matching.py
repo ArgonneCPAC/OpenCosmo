@@ -65,39 +65,36 @@ def __match_rows(
     datasets: Mapping[str, DatasetState | StructureState],
     source: str,
 ) -> dict[str, DatasetState | StructureState]:
-    # Guard: active sort keys would cause dataset/state.py to re-sort the
-    # carefully ordered rows produced below, silently misaligning everything.
-    new_datasets: dict[str, DatasetState | StructureState] = {}
-
+    if not (is_datasets(datasets) or is_structures(datasets)):
+        raise TypeError(
+            "Matching requires members to be all datasets or all structure collections"
+        )
+    sources: dict[str, DatasetState] = {}
     for name, state in datasets.items():
-        source_state = state if isinstance(state, DatasetState) else state.source
-        assert isinstance(source_state, DatasetState)
-        sort_key = source_state.sort_key
-        if source_state.sort_key is not None and name != source:
-            sort_key = None
+        member_source = state if isinstance(state, DatasetState) else state.source
+        if not isinstance(member_source, DatasetState):
+            raise TypeError("Matching is not available for lightcone sources")
+        sources[name] = member_source
+
+    # Active sort keys would cause dataset/state.py to re-sort the carefully
+    # ordered rows produced below, silently misaligning everything.
+    new_datasets: dict[str, DatasetState | StructureState] = {}
+    for name, state in datasets.items():
+        if sources[name].sort_key is not None and name != source:
             warn(f"Dataset {name} is sorted. Matching will remove the sort")
+            sources[name] = replace(sources[name], sort_key=None)
 
         if isinstance(state, DatasetState):
-            new_datasets[name] = replace(state, sort_key=sort_key)
+            new_datasets[name] = sources[name]
         else:
             new_datasets[name] = replace(
                 state,
-                source=replace(source_state, sort_key=sort_key),
+                source=sources[name],
                 linked_source=state.linked_source
                 if state.linked_source is not None
                 else state.source,
             )
 
-    if not (is_datasets(new_datasets) or is_structures(new_datasets)):
-        raise TypeError(
-            "Matching requires members to be all datasets or all structure collections"
-        )
-    sources: dict[str, DatasetState] = {}
-    for name, state in new_datasets.items():
-        member_source = state if isinstance(state, DatasetState) else state.source
-        if not isinstance(member_source, DatasetState):
-            raise TypeError("Matching is not available for lightcone sources")
-        sources[name] = member_source
     source_rows, target_rows = __match_dataset_rows(match_set, sources, source)
 
     # Under MPI target rows are global raw rows, serially they are local positions

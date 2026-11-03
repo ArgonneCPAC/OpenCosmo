@@ -329,11 +329,8 @@ def test_matched_sort_uses_active_source_order(invert, mapped_paths, test_data):
     pairwise = _expected_pairwise_maps(test_data.snapshot.halo_mapping, mapped_paths)
     matched = original.match(REFERENCE)
     expected_source = matched[REFERENCE].sort_by("fof_halo_mass", invert=invert)
-    print("sorted match")
     result = matched.sort_by("fof_halo_mass", invert=invert)
 
-    print("getting_data")
-    print(REFERENCE)
     masses = _column(result[REFERENCE], "fof_halo_mass")
     differences = np.diff(masses)
     assert np.all(differences <= 0 if invert else differences >= 0)
@@ -663,7 +660,7 @@ def test_open_without_mapping_has_no_match_set(test_data):
 
 def test_open_same_simulation_different_steps_raises(test_data):
     snapshot = test_data.snapshot
-    with pytest.raises(ValueError, match="multiple datasets from the same simulation"):
+    with pytest.raises(ValueError, match="come from simulation"):
         oc.open(snapshot.primary.halo_properties, snapshot.alternate_step)
 
 
