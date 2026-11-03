@@ -55,6 +55,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    column_ref
    parameters_ref
    spatial_ref
+   serde_ref
    analysis_ref
 
 .. toctree::

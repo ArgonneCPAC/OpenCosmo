@@ -98,6 +98,12 @@ future-annotations = true
 preview = false
 extend-select = ["TC"]
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+  "pydantic.BaseModel",
+  "opencosmo.serde.expression.ExpressionModel",
+]
+
 [tool.towncrier]
 directory = "changes"
 package = "opencosmo"

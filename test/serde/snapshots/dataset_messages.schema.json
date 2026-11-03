@@ -1,0 +1,1081 @@
+{
+  "$defs": {
+    "Arctan2Expression": {
+      "additionalProperties": false,
+      "description": "A two-argument arctangent expression.",
+      "properties": {
+        "kind": {
+          "const": "arctan2",
+          "default": "arctan2",
+          "title": "Kind",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/Expression"
+        },
+        "right": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "left",
+        "right"
+      ],
+      "title": "Arctan2Expression",
+      "type": "object"
+    },
+    "ArithmeticExpression": {
+      "additionalProperties": false,
+      "description": "A binary arithmetic expression.",
+      "properties": {
+        "kind": {
+          "const": "arithmetic",
+          "default": "arithmetic",
+          "title": "Kind",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/Expression"
+        },
+        "operator": {
+          "$ref": "#/$defs/ArithmeticOperator"
+        },
+        "right": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "operator",
+        "left",
+        "right"
+      ],
+      "title": "ArithmeticExpression",
+      "type": "object"
+    },
+    "ArithmeticOperator": {
+      "description": "Supported binary column arithmetic operations.",
+      "enum": [
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "power"
+      ],
+      "title": "ArithmeticOperator",
+      "type": "string"
+    },
+    "BooleanOperator": {
+      "description": "Supported operations for combining masks.",
+      "enum": [
+        "and",
+        "or"
+      ],
+      "title": "BooleanOperator",
+      "type": "string"
+    },
+    "BoxRegionMessage": {
+      "additionalProperties": false,
+      "description": "A three-dimensional box query.",
+      "properties": {
+        "kind": {
+          "const": "box",
+          "default": "box",
+          "title": "Kind",
+          "type": "string"
+        },
+        "p1": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            },
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            },
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            }
+          ],
+          "title": "P1",
+          "type": "array"
+        },
+        "p2": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            },
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            },
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            }
+          ],
+          "title": "P2",
+          "type": "array"
+        }
+      },
+      "required": [
+        "p1",
+        "p2"
+      ],
+      "title": "BoxRegionMessage",
+      "type": "object"
+    },
+    "ColumnReference": {
+      "additionalProperties": false,
+      "description": "A reference to a visible column by name.",
+      "properties": {
+        "kind": {
+          "const": "column",
+          "default": "column",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ColumnReference",
+      "type": "object"
+    },
+    "ComparisonMask": {
+      "additionalProperties": false,
+      "description": "A comparison between two expressions.",
+      "properties": {
+        "kind": {
+          "const": "comparison",
+          "default": "comparison",
+          "title": "Kind",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/Expression"
+        },
+        "operator": {
+          "$ref": "#/$defs/ComparisonOperator"
+        },
+        "right": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "operator",
+        "left",
+        "right"
+      ],
+      "title": "ComparisonMask",
+      "type": "object"
+    },
+    "ComparisonOperator": {
+      "description": "Supported column comparison operations.",
+      "enum": [
+        "equal",
+        "not_equal",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal"
+      ],
+      "title": "ComparisonOperator",
+      "type": "string"
+    },
+    "CompoundMask": {
+      "additionalProperties": false,
+      "description": "A boolean combination of two masks.",
+      "properties": {
+        "kind": {
+          "const": "compound",
+          "default": "compound",
+          "title": "Kind",
+          "type": "string"
+        },
+        "left": {
+          "$ref": "#/$defs/Mask"
+        },
+        "operator": {
+          "$ref": "#/$defs/BooleanOperator"
+        },
+        "right": {
+          "$ref": "#/$defs/Mask"
+        }
+      },
+      "required": [
+        "operator",
+        "left",
+        "right"
+      ],
+      "title": "CompoundMask",
+      "type": "object"
+    },
+    "ConeRegionMessage": {
+      "additionalProperties": false,
+      "description": "A circular sky query in degrees.",
+      "properties": {
+        "center": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            },
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            }
+          ],
+          "title": "Center",
+          "type": "array"
+        },
+        "kind": {
+          "const": "cone",
+          "default": "cone",
+          "title": "Kind",
+          "type": "string"
+        },
+        "radius": {
+          "$ref": "#/$defs/FiniteNumber",
+          "gt": 0
+        }
+      },
+      "required": [
+        "center",
+        "radius"
+      ],
+      "title": "ConeRegionMessage",
+      "type": "object"
+    },
+    "DatasetBoundMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.bound`.",
+      "properties": {
+        "kind": {
+          "const": "bound",
+          "default": "bound",
+          "title": "Kind",
+          "type": "string"
+        },
+        "region": {
+          "$ref": "#/$defs/RegionMessage"
+        },
+        "select_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Select By"
+        }
+      },
+      "required": [
+        "region"
+      ],
+      "title": "DatasetBoundMessage",
+      "type": "object"
+    },
+    "DatasetDropMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.drop`.",
+      "properties": {
+        "columns": {
+          "default": [],
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "kind": {
+          "const": "drop",
+          "default": "drop",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "DatasetDropMessage",
+      "type": "object"
+    },
+    "DatasetFilterMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.filter`.",
+      "properties": {
+        "kind": {
+          "const": "filter",
+          "default": "filter",
+          "title": "Kind",
+          "type": "string"
+        },
+        "masks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Mask"
+          },
+          "title": "Masks",
+          "type": "array"
+        },
+        "mode": {
+          "default": "global",
+          "enum": [
+            "local",
+            "global"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "DatasetFilterMessage",
+      "type": "object"
+    },
+    "DatasetSelectMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.select`.",
+      "properties": {
+        "columns": {
+          "default": [],
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "derived_columns": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Expression"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/Keyword"
+          },
+          "title": "Derived Columns",
+          "type": "object"
+        },
+        "kind": {
+          "const": "select",
+          "default": "select",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "default": "global",
+          "enum": [
+            "local",
+            "global"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "DatasetSelectMessage",
+      "type": "object"
+    },
+    "DatasetSortByMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.sort_by`.",
+      "properties": {
+        "column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Column"
+        },
+        "invert": {
+          "default": false,
+          "title": "Invert",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "sort_by",
+          "default": "sort_by",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "column"
+      ],
+      "title": "DatasetSortByMessage",
+      "type": "object"
+    },
+    "DatasetTakeMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.take`.",
+      "properties": {
+        "at": {
+          "default": "random",
+          "enum": [
+            "start",
+            "end",
+            "random"
+          ],
+          "title": "At",
+          "type": "string"
+        },
+        "kind": {
+          "const": "take",
+          "default": "take",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "default": "local",
+          "enum": [
+            "local",
+            "global"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "n": {
+          "minimum": 0,
+          "title": "N",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "n"
+      ],
+      "title": "DatasetTakeMessage",
+      "type": "object"
+    },
+    "DatasetTakeRangeMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.take_range`.",
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "take_range",
+          "default": "take_range",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "default": "local",
+          "enum": [
+            "local",
+            "global"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "DatasetTakeRangeMessage",
+      "type": "object"
+    },
+    "DatasetTakeRowsMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.take_rows`.",
+      "properties": {
+        "kind": {
+          "const": "take_rows",
+          "default": "take_rows",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rows": {
+          "$ref": "#/$defs/RowIndices"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "title": "DatasetTakeRowsMessage",
+      "type": "object"
+    },
+    "DatasetWithNewColumnsMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.with_new_columns`.",
+      "properties": {
+        "allow_overwrite": {
+          "default": false,
+          "title": "Allow Overwrite",
+          "type": "boolean"
+        },
+        "descriptions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Descriptions"
+        },
+        "kind": {
+          "const": "with_new_columns",
+          "default": "with_new_columns",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "default": "global",
+          "enum": [
+            "local",
+            "global"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "new_columns": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Expression"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/Keyword"
+          },
+          "title": "New Columns",
+          "type": "object"
+        }
+      },
+      "title": "DatasetWithNewColumnsMessage",
+      "type": "object"
+    },
+    "DatasetWithUnitsMessage": {
+      "additionalProperties": false,
+      "description": "A call to :meth:`opencosmo.Dataset.with_units`.",
+      "properties": {
+        "columns": {
+          "additionalProperties": {
+            "$ref": "#/$defs/UnitString"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/Keyword"
+          },
+          "title": "Columns",
+          "type": "object"
+        },
+        "convention": {
+          "anyOf": [
+            {
+              "enum": [
+                "scalefree",
+                "comoving",
+                "physical",
+                "unitless"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Convention"
+        },
+        "conversions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/UnitString"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/UnitString"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversions"
+        },
+        "kind": {
+          "const": "with_units",
+          "default": "with_units",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "DatasetWithUnitsMessage",
+      "type": "object"
+    },
+    "Expression": {
+      "discriminator": {
+        "mapping": {
+          "arctan2": "#/$defs/Arctan2Expression",
+          "arithmetic": "#/$defs/ArithmeticExpression",
+          "column": "#/$defs/ColumnReference",
+          "number": "#/$defs/NumberLiteral",
+          "quantile": "#/$defs/QuantileExpression",
+          "quantity": "#/$defs/QuantityLiteral",
+          "reduction": "#/$defs/ReductionExpression",
+          "unary": "#/$defs/UnaryExpression"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ColumnReference"
+        },
+        {
+          "$ref": "#/$defs/NumberLiteral"
+        },
+        {
+          "$ref": "#/$defs/QuantityLiteral"
+        },
+        {
+          "$ref": "#/$defs/ArithmeticExpression"
+        },
+        {
+          "$ref": "#/$defs/UnaryExpression"
+        },
+        {
+          "$ref": "#/$defs/Arctan2Expression"
+        },
+        {
+          "$ref": "#/$defs/ReductionExpression"
+        },
+        {
+          "$ref": "#/$defs/QuantileExpression"
+        }
+      ]
+    },
+    "FiniteNumber": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "HealpixRegionMessage": {
+      "additionalProperties": false,
+      "description": "A HEALPix query containing explicit nested pixel identifiers.",
+      "properties": {
+        "kind": {
+          "const": "healpix",
+          "default": "healpix",
+          "title": "Kind",
+          "type": "string"
+        },
+        "nside": {
+          "$ref": "#/$defs/PositiveInt"
+        },
+        "pixels": {
+          "items": {
+            "$ref": "#/$defs/NonNegativeInt"
+          },
+          "title": "Pixels",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "pixels",
+        "nside"
+      ],
+      "title": "HealpixRegionMessage",
+      "type": "object"
+    },
+    "Keyword": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "Mask": {
+      "discriminator": {
+        "mapping": {
+          "comparison": "#/$defs/ComparisonMask",
+          "compound": "#/$defs/CompoundMask",
+          "membership": "#/$defs/MembershipMask"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ComparisonMask"
+        },
+        {
+          "$ref": "#/$defs/MembershipMask"
+        },
+        {
+          "$ref": "#/$defs/CompoundMask"
+        }
+      ]
+    },
+    "MembershipMask": {
+      "additionalProperties": false,
+      "description": "A test for membership in a collection of scalar literals.",
+      "properties": {
+        "kind": {
+          "const": "membership",
+          "default": "membership",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operand": {
+          "$ref": "#/$defs/Expression"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/ScalarLiteral"
+          },
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operand",
+        "values"
+      ],
+      "title": "MembershipMask",
+      "type": "object"
+    },
+    "NonNegativeInt": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "NumberLiteral": {
+      "additionalProperties": false,
+      "description": "A finite, unitless scalar value.",
+      "properties": {
+        "kind": {
+          "const": "number",
+          "default": "number",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/FiniteNumber"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "NumberLiteral",
+      "type": "object"
+    },
+    "PositiveInt": {
+      "exclusiveMinimum": 0,
+      "type": "integer"
+    },
+    "QuantileExpression": {
+      "additionalProperties": false,
+      "description": "A quantile reduction of an expression.",
+      "properties": {
+        "kind": {
+          "const": "quantile",
+          "default": "quantile",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operand": {
+          "$ref": "#/$defs/Expression"
+        },
+        "quantile": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Quantile",
+          "type": "number"
+        }
+      },
+      "required": [
+        "operand",
+        "quantile"
+      ],
+      "title": "QuantileExpression",
+      "type": "object"
+    },
+    "QuantityLiteral": {
+      "additionalProperties": false,
+      "description": "A finite scalar value with an Astropy unit.",
+      "properties": {
+        "kind": {
+          "const": "quantity",
+          "default": "quantity",
+          "title": "Kind",
+          "type": "string"
+        },
+        "unit": {
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/FiniteNumber"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "title": "QuantityLiteral",
+      "type": "object"
+    },
+    "ReductionExpression": {
+      "additionalProperties": false,
+      "description": "A scalar reduction of an expression.",
+      "properties": {
+        "kind": {
+          "const": "reduction",
+          "default": "reduction",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operand": {
+          "$ref": "#/$defs/Expression"
+        },
+        "operator": {
+          "$ref": "#/$defs/ReductionOperator"
+        }
+      },
+      "required": [
+        "operator",
+        "operand"
+      ],
+      "title": "ReductionExpression",
+      "type": "object"
+    },
+    "ReductionOperator": {
+      "description": "Supported scalar column reductions without additional arguments.",
+      "enum": [
+        "mean",
+        "std",
+        "var",
+        "min",
+        "max",
+        "median",
+        "sum"
+      ],
+      "title": "ReductionOperator",
+      "type": "string"
+    },
+    "RegionMessage": {
+      "discriminator": {
+        "mapping": {
+          "box": "#/$defs/BoxRegionMessage",
+          "cone": "#/$defs/ConeRegionMessage",
+          "healpix": "#/$defs/HealpixRegionMessage",
+          "skybox": "#/$defs/SkyboxRegionMessage"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BoxRegionMessage"
+        },
+        {
+          "$ref": "#/$defs/ConeRegionMessage"
+        },
+        {
+          "$ref": "#/$defs/SkyboxRegionMessage"
+        },
+        {
+          "$ref": "#/$defs/HealpixRegionMessage"
+        }
+      ]
+    },
+    "RowIndices": {
+      "items": {
+        "$ref": "#/$defs/NonNegativeInt"
+      },
+      "type": "array"
+    },
+    "ScalarLiteral": {
+      "discriminator": {
+        "mapping": {
+          "number": "#/$defs/NumberLiteral",
+          "quantity": "#/$defs/QuantityLiteral"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/NumberLiteral"
+        },
+        {
+          "$ref": "#/$defs/QuantityLiteral"
+        }
+      ]
+    },
+    "SkyboxRegionMessage": {
+      "additionalProperties": false,
+      "description": "A rectangular sky query in degrees.",
+      "properties": {
+        "kind": {
+          "const": "skybox",
+          "default": "skybox",
+          "title": "Kind",
+          "type": "string"
+        },
+        "p1": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            },
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            }
+          ],
+          "title": "P1",
+          "type": "array"
+        },
+        "p2": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            },
+            {
+              "$ref": "#/$defs/FiniteNumber"
+            }
+          ],
+          "title": "P2",
+          "type": "array"
+        }
+      },
+      "required": [
+        "p1",
+        "p2"
+      ],
+      "title": "SkyboxRegionMessage",
+      "type": "object"
+    },
+    "UnaryExpression": {
+      "additionalProperties": false,
+      "description": "A unary mathematical expression.",
+      "properties": {
+        "kind": {
+          "const": "unary",
+          "default": "unary",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operand": {
+          "$ref": "#/$defs/Expression"
+        },
+        "operator": {
+          "$ref": "#/$defs/UnaryOperator"
+        }
+      },
+      "required": [
+        "operator",
+        "operand"
+      ],
+      "title": "UnaryExpression",
+      "type": "object"
+    },
+    "UnaryOperator": {
+      "description": "Supported unary column operations.",
+      "enum": [
+        "log10",
+        "exp10",
+        "sqrt",
+        "arcsin",
+        "arccos"
+      ],
+      "title": "UnaryOperator",
+      "type": "string"
+    },
+    "UnitString": {
+      "type": "string"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "bound": "#/$defs/DatasetBoundMessage",
+      "drop": "#/$defs/DatasetDropMessage",
+      "filter": "#/$defs/DatasetFilterMessage",
+      "select": "#/$defs/DatasetSelectMessage",
+      "sort_by": "#/$defs/DatasetSortByMessage",
+      "take": "#/$defs/DatasetTakeMessage",
+      "take_range": "#/$defs/DatasetTakeRangeMessage",
+      "take_rows": "#/$defs/DatasetTakeRowsMessage",
+      "with_new_columns": "#/$defs/DatasetWithNewColumnsMessage",
+      "with_units": "#/$defs/DatasetWithUnitsMessage"
+    },
+    "propertyName": "kind"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/DatasetFilterMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetSelectMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetDropMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetSortByMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetTakeMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetTakeRangeMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetTakeRowsMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetBoundMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetWithNewColumnsMessage"
+    },
+    {
+      "$ref": "#/$defs/DatasetWithUnitsMessage"
+    }
+  ]
+}
