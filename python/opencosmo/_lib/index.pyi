@@ -27,3 +27,6 @@ def project_chunked_on_simple(
     chunk_starts: IndexArray,
     chunk_sizes: IndexArray,
 ) -> IndexArray: ...
+def get_chunked_read_order(
+    start: IndexArray, size: IndexArray, hdf5_chunk_size: int
+) -> tuple[IndexArray, IndexArray, IndexArray]: ...

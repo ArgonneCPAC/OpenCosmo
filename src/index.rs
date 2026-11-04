@@ -37,7 +37,7 @@ pub(crate) mod index {
         get_simple_range(index_arr.as_array())
     }
     fn get_simple_range(index: ArrayView1<'_, i64>) -> PyResult<(i64, i64)> {
-        if index.len() == 0 {
+        if index.is_empty() {
             return Ok((0, 0));
         }
         let mut index_range = (index[0], index[0]);
@@ -65,7 +65,7 @@ pub(crate) mod index {
         start: ArrayView1<'_, i64>,
         size: ArrayView1<'_, i64>,
     ) -> PyResult<(i64, i64)> {
-        if start.len() == 0 {
+        if start.is_empty() {
             return Ok((0, 0));
         }
         let mut index_range = (start[0], start[0] + size[0]);
@@ -107,7 +107,7 @@ pub(crate) mod index {
         range_size: ArrayView1<'_, i64>,
     ) -> Array1<i64> {
         let mut output = Array1::<i64>::zeros(range_start.len());
-        if start.len() == 0 {
+        if start.is_empty() {
             return output;
         }
         let end = &start + &size;
@@ -233,7 +233,7 @@ pub(crate) mod index {
         take_start: ArrayView1<'_, i64>,
         take_size: ArrayView1<'_, i64>,
     ) -> Result<(Array1<i64>, Array1<i64>), PyErr> {
-        if take_start.len() == 0 {
+        if take_start.is_empty() {
             return Ok((Array1::<i64>::zeros(0), Array1::<i64>::zeros(0)));
         }
         let mut output_start: Vec<i64> = Vec::new();
@@ -348,7 +348,7 @@ pub(crate) mod index {
         let mut outputs: Vec<(Vec<i64>, Vec<i64>)> =
             (0..n_datasets).map(|_| (Vec::new(), Vec::new())).collect();
 
-        if starts.len() == 0 || n_datasets == 0 {
+        if starts.is_empty() || n_datasets == 0 {
             return outputs
                 .into_iter()
                 .map(|(st, si)| (Array1::from_vec(st), Array1::from_vec(si)))
@@ -458,7 +458,7 @@ pub(crate) mod index {
         let n_ranges = range_starts.len();
         let mut outputs: Vec<Vec<i64>> = (0..n_ranges).map(|_| Vec::new()).collect();
 
-        if n_ranges == 0 || index.len() == 0 {
+        if n_ranges == 0 || index.is_empty() {
             return outputs.into_iter().map(Array1::from_vec).collect();
         }
 
@@ -481,5 +481,71 @@ pub(crate) mod index {
         }
 
         outputs.into_iter().map(Array1::from_vec).collect()
+    }
+    #[pyfunction(name = "get_chunked_read_order")]
+    fn get_chunked_read_order_py<'py>(
+        py: Python<'py>,
+        start: &Bound<'_, PyAny>,
+        size: &Bound<'_, PyAny>,
+        hdf5_chunk_size: usize,
+    ) -> PyResult<(
+        Bound<'py, PyArray1<i64>>,
+        Bound<'py, PyArray1<i64>>,
+        Bound<'py, PyArray1<i64>>,
+    )> {
+        let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
+        let (new_start, new_size, new_slice_starts) =
+            get_chunked_read_order(start_arr.as_array(), size_arr.as_array(), hdf5_chunk_size);
+        Ok((
+            new_start.into_pyarray(py),
+            new_size.into_pyarray(py),
+            new_slice_starts.into_pyarray(py),
+        ))
+    }
+
+    fn get_chunked_read_order(
+        starts: ArrayView1<'_, i64>,
+        sizes: ArrayView1<'_, i64>,
+        hdf5_chunk_size: usize,
+    ) -> (Array1<i64>, Array1<i64>, Array1<i64>) {
+        let n = starts.len();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|&i| starts[i]);
+
+        let gap = hdf5_chunk_size as i64;
+        let mut run_starts: Vec<i64> = Vec::new();
+        let mut run_sizes: Vec<i64> = Vec::new();
+        let mut offsets = Array1::<i64>::zeros(n);
+        let mut run_start: i64 = 0;
+        let mut run_end: i64 = 0;
+        // Start of the current run within the read buffer
+        let mut buffer_pos: i64 = 0;
+
+        for (k, &i) in order.iter().enumerate() {
+            let (start, end) = (starts[i], starts[i] + sizes[i]);
+            if k == 0 || start - run_end >= gap {
+                if k > 0 {
+                    run_sizes.push(run_end - run_start);
+                    buffer_pos += run_end - run_start;
+                }
+                run_starts.push(start);
+                run_start = start;
+                run_end = end;
+            } else {
+                // Compare against the run end, not the previous chunk, so nested
+                // chunks never shrink the run
+                run_end = run_end.max(end);
+            }
+            // Offsets are reported in the caller's chunk order
+            offsets[i] = buffer_pos + (start - run_start);
+        }
+        if n > 0 {
+            run_sizes.push(run_end - run_start);
+        }
+        (
+            Array1::from_vec(run_starts),
+            Array1::from_vec(run_sizes),
+            offsets,
+        )
     }
 }

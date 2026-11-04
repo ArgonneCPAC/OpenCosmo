@@ -6,6 +6,9 @@ import astropy.units as u
 import h5py
 import numpy as np
 
+from opencosmo._lib import index as idxlib
+
+from .mask import into_array
 from .unary import get_length
 
 if TYPE_CHECKING:
@@ -43,9 +46,15 @@ def get_data_simple(data: h5py.Dataset | np.ndarray, index: SimpleIndex):
 
 def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
     """
-    We assume that starts are ordered, and chunks are non-overlapping
+    We do not assume that starts are ordered or non-overlapping
 
     """
+    if len(index[0]) == 1:
+        if get_length(index) == len(data):
+            return data[:]
+        start = index[0][0]
+        size = index[1][0]
+        return data[start : start + size]
 
     starts = index[0]
     sizes = index[1]
@@ -54,21 +63,28 @@ def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
     if isinstance(data, u.Quantity):
         unit = data.unit
 
-    shape = (np.sum(sizes),) + data.shape[1:]
+    new_start, new_size, new_output_start = idxlib.get_chunked_read_order(
+        starts, sizes, 512
+    )
+    shape = (np.sum(new_size),) + data.shape[1:]
     storage = np.zeros(shape, dtype=data.dtype)
-    running_index = 0
+    rs = 0
 
-    for i, (start, size) in enumerate(zip(starts, sizes)):
+    for (
+        start,
+        size,
+    ) in zip(new_start, new_size):
         source_slice = np.s_[start : start + size]
-        dest_slice = np.s_[running_index : running_index + size]
-        data[source_slice]
+        dest_slice = np.s_[rs : rs + size]
 
         if isinstance(data, h5py.Dataset):
             data.read_direct(storage, source_slice, dest_slice)
         else:
             storage[dest_slice] = data[source_slice]
+        rs += size  # type: ignore
 
-        running_index += int(size)
+    output_permutation = into_array((new_output_start, sizes))
+    storage = storage[output_permutation]
 
     if unit is not None:
         storage *= unit
