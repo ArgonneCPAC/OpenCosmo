@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import opencosmo.index.get as get_module
 import pytest
+from opencosmo._lib import index as idxlib
 from opencosmo.index import get_data, into_array
 
 if TYPE_CHECKING:
@@ -54,7 +55,7 @@ def row_bytes(dataset: h5py.Dataset) -> int:
 
 
 def set_limit_rows(monkeypatch, dataset: h5py.Dataset, rows: int) -> None:
-    monkeypatch.setattr(get_module, "MAX_SINGLE_READ", rows * row_bytes(dataset))
+    monkeypatch.setattr(get_module, "MAX_READ_BUFFER", rows * row_bytes(dataset))
 
 
 SIMPLE_INDICES = {
@@ -102,7 +103,7 @@ def test_chunked_read_respects_limit(columns, name, index, monkeypatch, read_siz
 
     np.testing.assert_array_equal(result, expected)
     assert len(read_sizes) > 1
-    # A single requested chunk larger than the limit is read on its own
+    # A requested chunk larger than the limit is read on its own
     assert max(read_sizes) <= max(300, int(index[1].max()))
 
 
@@ -122,9 +123,113 @@ def test_simple_read_below_limit_is_one_span(columns, name, monkeypatch, read_si
 def test_limit_smaller_than_one_row(columns, name, monkeypatch, read_sizes):
     dataset = columns[name]
     index = np.array([7_000, 3, 3, 512, 9_999], dtype=np.int64)
-    monkeypatch.setattr(get_module, "MAX_SINGLE_READ", row_bytes(dataset) - 1)
+    monkeypatch.setattr(get_module, "MAX_READ_BUFFER", row_bytes(dataset) - 1)
 
     result = get_data(dataset, index)
 
     np.testing.assert_array_equal(result, dataset[:][index])
     assert set(read_sizes) == {1}
+
+
+def test_large_contiguous_chunk_reads_in_place(columns, monkeypatch, read_sizes):
+    dataset = columns["wide"]
+    index = (
+        np.array([200, 900], dtype=np.int64),
+        np.array([700, 5_000], dtype=np.int64),
+    )
+    set_limit_rows(monkeypatch, dataset, 300)
+    allocations: list[tuple[int, ...]] = []
+    original_empty = np.empty
+
+    def recording_empty(shape, *args, **kwargs):
+        allocations.append(tuple(np.atleast_1d(shape)))
+        return original_empty(shape, *args, **kwargs)
+
+    monkeypatch.setattr(get_module.np, "empty", recording_empty)
+    result = get_data(dataset, index)
+
+    np.testing.assert_array_equal(result, dataset[:][into_array(index)])
+    # Oversized ranges are never split, and only the output is allocated
+    assert read_sizes == [700, 5_000]
+    assert allocations == [(5_700, 3)]
+
+
+def test_oversized_range_does_not_size_buffer(columns, monkeypatch):
+    dataset = columns["wide"]
+    index = (
+        np.array([20, 5_000, 0, 8_000], dtype=np.int64),
+        np.array([5, 3_000, 10, 10], dtype=np.int64),
+    )
+    set_limit_rows(monkeypatch, dataset, 100)
+    allocations: list[tuple[int, ...]] = []
+    original_empty = np.empty
+
+    def recording_empty(shape, *args, **kwargs):
+        allocations.append(tuple(np.atleast_1d(shape)))
+        return original_empty(shape, *args, **kwargs)
+
+    monkeypatch.setattr(get_module.np, "empty", recording_empty)
+    result = get_data(dataset, index)
+
+    np.testing.assert_array_equal(result, dataset[:][into_array(index)])
+    # Output, then one buffer sized by the small runs alone
+    assert allocations[0] == (3_025, 3)
+    assert all(shape[0] <= 100 for shape in allocations[1:])
+
+
+def execute_plan(source: np.ndarray, plan, length: int) -> tuple[np.ndarray, list]:
+    run_starts, run_sizes, run_segments, seg_out, seg_local, seg_sizes = plan
+    output = np.full(length, -1, dtype=source.dtype)
+    served = []
+    first = 0
+    for start, size, last in zip(
+        run_starts, run_sizes, np.cumsum(run_segments), strict=True
+    ):
+        buffer = source[start : start + size]
+        sizes = seg_sizes[first:last]
+        served.append((int(size), int(sizes.sum()), int(last - first)))
+        assert np.all(seg_local[first:last] + sizes <= size)
+        output[into_array((seg_out[first:last], sizes))] = buffer[
+            into_array((seg_local[first:last], sizes))
+        ]
+        first = last
+    return output, served
+
+
+PLAN_INDICES = {
+    **SIMPLE_INDICES,
+    **CHUNKED_INDICES,
+    "repeated-row": np.full(1_000, 4_321, dtype=np.int64),
+    "nested-in-oversized": (
+        np.array([0, 50, 120], dtype=np.int64),
+        np.array([1_000, 10, 900], dtype=np.int64),
+    ),
+}
+
+
+@pytest.mark.parametrize("hdf5_chunk", [None, HDF5_CHUNK])
+@pytest.mark.parametrize("max_rows", [1, 7, 100, N_ROWS])
+@pytest.mark.parametrize("index", PLAN_INDICES.values(), ids=PLAN_INDICES)
+def test_read_plan_is_bounded(index, max_rows, hdf5_chunk):
+    source = np.arange(N_ROWS, dtype=np.int64)
+    if isinstance(index, np.ndarray):
+        plan = idxlib.get_simple_read_plan(index, hdf5_chunk, max_rows)
+    else:
+        plan = idxlib.get_chunked_read_plan(*index, hdf5_chunk, max_rows)
+
+    flat = into_array(index)
+    output, served = execute_plan(source, plan, len(flat))
+
+    np.testing.assert_array_equal(output, flat)
+    for size, n_served, n_segments in served:
+        # Runs over the limit hold exactly one whole range, read in place
+        assert (size <= max_rows and n_served <= max_rows) or (
+            n_segments == 1 and n_served == size
+        )
+
+
+def test_read_plan_rejects_negative_sizes():
+    starts = np.array([0, 10], dtype=np.int64)
+    sizes = np.array([5, -1], dtype=np.int64)
+    with pytest.raises(ValueError, match="non-negative"):
+        idxlib.get_chunked_read_plan(starts, sizes)

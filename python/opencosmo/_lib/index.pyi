@@ -27,14 +27,14 @@ def project_chunked_on_simple(
     chunk_starts: IndexArray,
     chunk_sizes: IndexArray,
 ) -> IndexArray: ...
-def get_chunked_read_order(
+def get_chunked_read_plan(
     start: IndexArray,
     size: IndexArray,
     hdf5_chunk_size: int | None = None,
-    max_single_read: int | None = None,
-) -> tuple[IndexArray, IndexArray, IndexArray]: ...
-def get_simple_read_order(
+    max_buffer_rows: int | None = None,
+) -> tuple[IndexArray, IndexArray, IndexArray, IndexArray, IndexArray, IndexArray]: ...
+def get_simple_read_plan(
     index: IndexArray,
     hdf5_chunk_size: int | None = None,
-    max_single_read: int | None = None,
-) -> tuple[IndexArray, IndexArray, IndexArray]: ...
+    max_buffer_rows: int | None = None,
+) -> tuple[IndexArray, IndexArray, IndexArray, IndexArray, IndexArray, IndexArray]: ...
