@@ -124,12 +124,15 @@ class Hdf5Handler:
         self,
         columns: Iterable[str],
     ) -> Schema:
-        columns = set(columns)
+        handles = {name: self.__handle(name) for name in set(columns)}
+        plans = build_plans(handles, self.__index)
         data_writers = {}
-        for column_name in columns:
-            column = self.__handle(column_name)
+        for column_name, column in handles.items():
             data_writers[column_name] = ColumnWriter.from_h5_dataset(
-                column, self.__index, attrs=dict(column.attrs)
+                column,
+                self.__index,
+                attrs=dict(column.attrs),
+                plan=plans[column_name],
             )
         data_schema = make_schema("data", FileEntry.COLUMNS, columns=data_writers)
 

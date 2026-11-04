@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self
 
 import numpy as np
 
-from opencosmo.index import get_data, get_length, take
+from opencosmo.index import get_data, get_length, read_with_plan, take
 from opencosmo.mpi import redistribute_data
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     import h5py
     from numpy.typing import DTypeLike
 
-    from opencosmo.index import DataIndex, SimpleIndex
+    from opencosmo.index import DataIndex, ReadPlan, SimpleIndex
     from opencosmo.mpi import MPI
 
 
@@ -80,10 +80,11 @@ class ColumnWriter:
         index: DataIndex,
         strategy: ColumnCombineStrategy = ColumnCombineStrategy.CONCAT,
         attrs: dict[str, Any] | None = None,
+        plan: ReadPlan | None = None,
     ):
         if attrs is None:
             attrs = {}
-        source = Hdf5Source(dataset, index)
+        source = Hdf5Source(dataset, index, plan)
         return ColumnWriter([source], strategy, attrs)
 
     def reorder(self, reorder_index: DataIndex):
@@ -178,13 +179,24 @@ class ColumnWriter:
 
 
 class Hdf5Source:
-    def __init__(self, h5ds: h5py.Dataset, index: DataIndex):
+    """
+    Lazy column read from an HDF5 dataset. An optional read plan, built for
+    ``index`` with ``build_plans``, bounds the read's temporary memory.
+    """
+
+    def __init__(
+        self, h5ds: h5py.Dataset, index: DataIndex, plan: ReadPlan | None = None
+    ):
+        if plan is not None and plan.length != get_length(index):
+            raise ValueError("Read plan does not match the source index")
         self.__source = h5ds
         self.__index = index
+        self.__plan = plan
 
     def __len__(self):
         return get_length(self.__index)
 
+    # A plan only describes the index it was built for, so new indices drop it
     def reorder(self, reorder_index: DataIndex):
         return Hdf5Source(self.__source, take(self.__index, reorder_index))
 
@@ -201,8 +213,9 @@ class Hdf5Source:
 
     @property
     def data(self):
-        data = get_data(self.__source, self.__index)
-        return data
+        if self.__plan is not None:
+            return read_with_plan(self.__source, self.__plan)
+        return get_data(self.__source, self.__index)
 
     @property
     def index(self):

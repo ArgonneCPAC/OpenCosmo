@@ -6,10 +6,12 @@ import h5py
 import numpy as np
 import opencosmo.handler.hdf5 as handler_module
 import opencosmo.index.plan as plan_module
+import opencosmo.io.writer as writer_module
 import pytest
 from opencosmo._lib import plan as planlib
 from opencosmo.handler.hdf5 import Hdf5Handler
 from opencosmo.index import build_plans, get_data, into_array, read_with_plan
+from opencosmo.io.writer import Hdf5Source
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -332,3 +334,67 @@ def test_hdf5_handler_plans_once_per_read(tmp_path: Path, monkeypatch):
         assert list(result) == ["z", "x", "y"]
         for name, values in result.items():
             np.testing.assert_array_equal(values, f["data"][name][:][index])
+
+
+@pytest.fixture
+def handler_file(tmp_path: Path):
+    path = tmp_path / "writer.hdf5"
+    with h5py.File(path, "w") as f:
+        data = f.create_group("data")
+        data.create_dataset("x", data=np.arange(N_ROWS, dtype=np.float64))
+        data.create_dataset(
+            "wide", data=np.arange(3 * N_ROWS, dtype=np.int32).reshape(-1, 3)
+        )
+    with h5py.File(path, "r") as f:
+        yield f
+
+
+@pytest.fixture
+def planned_reads(monkeypatch) -> list[int]:
+    """Record the output length of every planned read issued by a writer source."""
+    lengths: list[int] = []
+    original = writer_module.read_with_plan
+
+    def recording_read_with_plan(data, plan):
+        lengths.append(plan.length)
+        return original(data, plan)
+
+    monkeypatch.setattr(writer_module, "read_with_plan", recording_read_with_plan)
+    return lengths
+
+
+def test_make_schema_sources_read_with_plans(handler_file, planned_reads):
+    index = SIMPLE_INDICES["unordered-duplicates"]
+    handler = Hdf5Handler(handler_file["data"], {"x": None, "wide": None}, index)
+
+    schema = handler.make_schema(["x", "wide"])
+
+    for name, writer in schema.columns.items():
+        (source,) = writer.sources
+        np.testing.assert_array_equal(source.data, handler_file["data"][name][:][index])
+    assert planned_reads == [len(index), len(index)]
+
+
+def test_reindexed_sources_drop_plan(handler_file, planned_reads):
+    index = SIMPLE_INDICES["sorted-sparse"]
+    handler = Hdf5Handler(handler_file["data"], {"wide": None}, index)
+    (source,) = handler.make_schema(["wide"]).columns["wide"].sources
+    expected = handler_file["data"]["wide"][:]
+
+    reorder = np.arange(len(index))[::-1].copy()
+    reordered = source.reorder(reorder)
+    reindexed = source.with_index(SIMPLE_INDICES["unordered-duplicates"])
+
+    np.testing.assert_array_equal(reordered.data, expected[index[reorder]])
+    np.testing.assert_array_equal(
+        reindexed.data, expected[SIMPLE_INDICES["unordered-duplicates"]]
+    )
+    assert planned_reads == []
+
+
+def test_source_rejects_mismatched_plan(handler_file):
+    dataset = handler_file["data"]["x"]
+    plan = build_plans({"x": dataset}, SIMPLE_INDICES["sorted-sparse"])["x"]
+
+    with pytest.raises(ValueError, match="does not match"):
+        Hdf5Source(dataset, SIMPLE_INDICES["unordered-duplicates"], plan)
