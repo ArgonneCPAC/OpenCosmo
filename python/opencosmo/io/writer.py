@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Protocol, Self
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
-from opencosmo.index import get_data, get_length, read_with_plan, take
-from opencosmo.mpi import redistribute_data
+from opencosmo.index import get_data, get_length, read_with_plan
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -15,7 +14,7 @@ if TYPE_CHECKING:
     import h5py
     from numpy.typing import DTypeLike
 
-    from opencosmo.index import DataIndex, ReadPlan, SimpleIndex
+    from opencosmo.index import DataIndex, ReadPlan
     from opencosmo.mpi import MPI
 
 
@@ -33,7 +32,6 @@ class ColumnSource(Protocol):
     def dtype(self) -> DTypeLike: ...
     @property
     def data(self) -> np.ndarray: ...
-    def reorder(self, reorder_index: DataIndex) -> Self: ...
 
 
 class ColumnWriter:
@@ -86,32 +84,6 @@ class ColumnWriter:
             attrs = {}
         source = Hdf5Source(dataset, index, plan)
         return ColumnWriter([source], strategy, attrs)
-
-    def reorder(self, reorder_index: DataIndex):
-        assert len(self.__sources) == 1
-        new_source = self.__sources[0].reorder(reorder_index)
-        return ColumnWriter([new_source], self.__combine_strategy, self.__attrs)
-
-    def redistribute(
-        self,
-        unsorted_rank_local_index,
-        sorted_rank_local_index,
-        argsort,
-        rank_targets: SimpleIndex,
-        comm,
-    ):
-        assert len(self.__sources) == 1
-
-        source = self.__sources[0]
-        match source:
-            case Hdf5Source():
-                new_source = source.with_index(sorted_rank_local_index)
-                return ColumnWriter([new_source], self.__combine_strategy, self.__attrs)
-            case NumpySource():
-                local_data = redistribute_data(source.data, rank_targets, comm)[argsort]
-                return ColumnWriter.from_numpy_array(
-                    local_data, self.__combine_strategy, self.__attrs
-                )
 
     def combine(self, others: list[ColumnWriter]):
         new_sources = reduce(
@@ -196,13 +168,6 @@ class Hdf5Source:
     def __len__(self):
         return get_length(self.__index)
 
-    # A plan only describes the index it was built for, so new indices drop it
-    def reorder(self, reorder_index: DataIndex):
-        return Hdf5Source(self.__source, take(self.__index, reorder_index))
-
-    def with_index(self, index):
-        return Hdf5Source(self.__source, index)
-
     @property
     def shape(self):
         return (len(self),) + self.__source.shape[1:]
@@ -228,9 +193,6 @@ class NumpySource:
 
     def __len__(self):
         return len(self.__source)
-
-    def reorder(self, reorder_index):
-        return NumpySource(self.__source[reorder_index])
 
     @property
     def shape(self):

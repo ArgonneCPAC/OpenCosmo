@@ -1,0 +1,1 @@
+Reads from hdf5 are now planned to balance performance and memory usage.

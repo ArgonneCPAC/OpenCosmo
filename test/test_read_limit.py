@@ -375,23 +375,6 @@ def test_make_schema_sources_read_with_plans(handler_file, planned_reads):
     assert planned_reads == [len(index), len(index)]
 
 
-def test_reindexed_sources_drop_plan(handler_file, planned_reads):
-    index = SIMPLE_INDICES["sorted-sparse"]
-    handler = Hdf5Handler(handler_file["data"], {"wide": None}, index)
-    (source,) = handler.make_schema(["wide"]).columns["wide"].sources
-    expected = handler_file["data"]["wide"][:]
-
-    reorder = np.arange(len(index))[::-1].copy()
-    reordered = source.reorder(reorder)
-    reindexed = source.with_index(SIMPLE_INDICES["unordered-duplicates"])
-
-    np.testing.assert_array_equal(reordered.data, expected[index[reorder]])
-    np.testing.assert_array_equal(
-        reindexed.data, expected[SIMPLE_INDICES["unordered-duplicates"]]
-    )
-    assert planned_reads == []
-
-
 def test_source_rejects_mismatched_plan(handler_file):
     dataset = handler_file["data"]["x"]
     plan = build_plans({"x": dataset}, SIMPLE_INDICES["sorted-sparse"])["x"]

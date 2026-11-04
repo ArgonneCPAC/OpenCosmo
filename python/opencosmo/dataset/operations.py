@@ -34,7 +34,6 @@ from opencosmo.index import (
     reindex_column,
     single_chunk,
 )
-from opencosmo.io.schema import reorder_dataset_schema
 from opencosmo.mpi import gather_index, get_comm_world
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
@@ -548,6 +547,14 @@ def make_schema(state: DatasetState, path: str, canonical: bool = True) -> Schem
     Schema for writing this dataset. Rows are written in ascending raw-row order
     unless ``canonical`` is False, in which case they keep the handler's order.
     """
+    if canonical and (order := get_canonical_order(state)) is not None:
+        # A pure row permutation, so index-update hooks do not apply. Reordering
+        # before the schema is built lets HDF5 read plans see the final index.
+        state = dataclasses.replace(
+            state,
+            raw_data_handler=state.raw_data_handler.take(order),
+            cache=state.cache.take(order),
+        )
     producers = list(state.producers.values())
     derived_names = get_derived_column_names(producers, set(state.column_map))
     if derived_names:
@@ -575,8 +582,6 @@ def make_schema(state: DatasetState, path: str, canonical: bool = True) -> Schem
         written_uuid(path),
         path.split("/")[-1],
     )
-    if canonical and (order := get_canonical_order(state)) is not None:
-        schema = reorder_dataset_schema(schema, order)
     return schema
 
 
