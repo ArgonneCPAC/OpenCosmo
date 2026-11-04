@@ -1,87 +1,73 @@
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
+import astropy.units as u
+import h5py
 import numpy as np
 
-from opencosmo._lib import index as idxlib
-
-from .mask import into_array
 from .unary import get_length
 
-# Largest temporary buffer, in bytes, allocated while reading an index from HDF5.
-# The output array itself is not counted.
-MAX_READ_BUFFER = 8_000_000_000
-
 if TYPE_CHECKING:
-    import h5py
-
-    from opencosmo.index import DataIndex
+    from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
 
 def get_data(data: h5py.Dataset | np.ndarray, index: DataIndex):
     if get_length(index) == 0:
         return np.array([], data.dtype)
-    elif isinstance(data, np.ndarray):
-        return data[into_array(index)]
-
-    chunk_size = data.chunks[0] if data.chunks is not None else None
-    max_rows = __max_buffer_rows(data)
     match index:
         case np.ndarray():
-            plan = idxlib.get_simple_read_plan(index, chunk_size, max_rows)
+            return get_data_simple(data, index)
         case (np.ndarray(), np.ndarray()):
-            plan = idxlib.get_chunked_read_plan(*index, chunk_size, max_rows)
+            return get_data_chunked(data, index)
         case _:
             raise ValueError(f"Got invalid index of type {type(index)}")
-    return __read_plan(data, plan, get_length(index))
 
 
-def __max_buffer_rows(data: h5py.Dataset) -> int:
-    # Scatter index arrays are int64, so no temporary costs less than 8 bytes a row
-    row_bytes = math.prod(data.shape[1:]) * data.dtype.itemsize
-    return max(MAX_READ_BUFFER // max(row_bytes, np.dtype(np.int64).itemsize), 1)
+def get_data_simple(data: h5py.Dataset | np.ndarray, index: SimpleIndex):
+    if isinstance(data, np.ndarray):
+        return data[index]
+
+    min_ = index.min()
+    max_ = index.max()
+    remaining_shape = data.shape[1:]
+    length = int(max_ + 1 - min_)
+
+    shape = (length,) + remaining_shape
+
+    buffer = np.zeros(shape, data.dtype)
+
+    data.read_direct(buffer, np.s_[min_ : max_ + 1], np.s_[0:length])
+    return buffer[index - min_]
 
 
-def __read_plan(
-    data: h5py.Dataset,
-    plan: tuple[np.ndarray, ...],
-    length: int,
-) -> np.ndarray:
+def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
     """
-    Execute a read plan from the Rust kernel. A run that fills one contiguous
-    piece of the output is read in place; any other run is read into a bounded
-    buffer and scattered into the output.
-    """
-    run_starts, run_sizes, run_segments, seg_output, seg_local, seg_sizes = plan
-    seg_ends = np.cumsum(run_segments)
-    firsts = seg_ends - run_segments
-    in_place = (
-        (run_segments == 1)
-        & (seg_local[firsts] == 0)
-        & (seg_sizes[firsts] == run_sizes)
-    )
-    output = np.empty((length,) + data.shape[1:], dtype=data.dtype)
-    buffer: np.ndarray | None = None
-    if not in_place.all():
-        # Runs larger than the limit always hold a single range read in place
-        buffer_rows = int(run_sizes[~in_place].max())
-        buffer = np.empty((buffer_rows,) + data.shape[1:], dtype=data.dtype)
+    Chunks are copied in caller order, so they may be unordered or overlapping
 
-    for start_, size_, first_, last_, direct in zip(
-        run_starts, run_sizes, firsts, seg_ends, in_place, strict=True
-    ):
-        start, size, first, last = int(start_), int(size_), int(first_), int(last_)
-        source = np.s_[start : start + size]
-        if direct:
-            out = int(seg_output[first])
-            data.read_direct(output, source, np.s_[out : out + size])
+    """
+
+    starts = index[0]
+    sizes = index[1]
+
+    unit = None
+    if isinstance(data, u.Quantity):
+        unit = data.unit
+
+    shape = (np.sum(sizes),) + data.shape[1:]
+    storage = np.zeros(shape, dtype=data.dtype)
+    running_index = 0
+
+    for i, (start, size) in enumerate(zip(starts, sizes)):
+        source_slice = np.s_[start : start + size]
+        dest_slice = np.s_[running_index : running_index + size]
+        if isinstance(data, h5py.Dataset):
+            data.read_direct(storage, source_slice, dest_slice)
         else:
-            assert buffer is not None
-            data.read_direct(buffer, source, np.s_[0:size])
-            sizes = seg_sizes[first:last]
-            output[into_array((seg_output[first:last], sizes))] = buffer[
-                into_array((seg_local[first:last], sizes))
-            ]
-    return output
+            storage[dest_slice] = data[source_slice]
+
+        running_index += int(size)
+
+    if unit is not None:
+        storage *= unit
+    return storage

@@ -13,6 +13,7 @@ from .get import get_data
 from .in_range import n_in_range
 from .mask import into_array, mask
 from .ops import offset, rebuild_by_ranges, reindex_column, sort, trim
+from .plan import ReadPlan, build_plans, read_with_plan
 from .project import project
 from .take import take
 from .unary import get_length, get_range
@@ -27,7 +28,9 @@ DataIndex = SimpleIndex | ChunkedIndex
 __all__ = [
     "ChunkedIndex",
     "DataIndex",
+    "ReadPlan",
     "SimpleIndex",
+    "build_plans",
     "coalesce_chunks",
     "concatenate",
     "empty",
@@ -41,6 +44,7 @@ __all__ = [
     "n_in_range",
     "offset",
     "project",
+    "read_with_plan",
     "rebuild_by_ranges",
     "reindex_column",
     "single_chunk",

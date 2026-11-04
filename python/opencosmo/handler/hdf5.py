@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 from opencosmo.index import (
     SimpleIndex,
+    build_plans,
     get_data,
     get_length,
     into_array,
+    read_with_plan,
     take,
 )
 from opencosmo.io.schema import FileEntry, make_schema
@@ -135,7 +137,12 @@ class Hdf5Handler:
 
     def get_data(self, columns: Iterable[str]) -> dict[str, np.ndarray]:
         # Ensure order is preserved
-        return {name: get_data(self.__handle(name), self.__index) for name in columns}
+        handles = {name: self.__handle(name) for name in columns}
+        plans = build_plans(handles, self.__index)
+        return {
+            name: read_with_plan(handle, plans[name])
+            for name, handle in handles.items()
+        }
 
     def take_range(self, start: int, end: int, indices: np.ndarray) -> np.ndarray:
         if start < 0 or end > len(indices):

@@ -4,10 +4,12 @@ from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
-import opencosmo.index.get as get_module
+import opencosmo.handler.hdf5 as handler_module
+import opencosmo.index.plan as plan_module
 import pytest
-from opencosmo._lib import index as idxlib
-from opencosmo.index import get_data, into_array
+from opencosmo._lib import plan as planlib
+from opencosmo.handler.hdf5 import Hdf5Handler
+from opencosmo.index import build_plans, get_data, into_array, read_with_plan
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,12 +52,16 @@ def read_sizes(monkeypatch) -> list[int]:
     return sizes
 
 
+def plan_read(dataset: h5py.Dataset, index) -> np.ndarray:
+    return read_with_plan(dataset, build_plans({"column": dataset}, index)["column"])
+
+
 def row_bytes(dataset: h5py.Dataset) -> int:
     return int(np.prod(dataset.shape[1:], dtype=np.int64)) * dataset.dtype.itemsize
 
 
 def set_limit_rows(monkeypatch, dataset: h5py.Dataset, rows: int) -> None:
-    monkeypatch.setattr(get_module, "MAX_READ_BUFFER", rows * row_bytes(dataset))
+    monkeypatch.setattr(plan_module, "MAX_READ_BUFFER", rows * row_bytes(dataset))
 
 
 SIMPLE_INDICES = {
@@ -85,7 +91,7 @@ def test_simple_read_respects_limit(columns, name, index, monkeypatch, read_size
     expected = dataset[:][index]
     set_limit_rows(monkeypatch, dataset, 100)
 
-    result = get_data(dataset, index)
+    result = plan_read(dataset, index)
 
     np.testing.assert_array_equal(result, expected)
     assert len(read_sizes) > 1
@@ -99,7 +105,7 @@ def test_chunked_read_respects_limit(columns, name, index, monkeypatch, read_siz
     expected = dataset[:][into_array(index)]
     set_limit_rows(monkeypatch, dataset, 300)
 
-    result = get_data(dataset, index)
+    result = plan_read(dataset, index)
 
     np.testing.assert_array_equal(result, expected)
     assert len(read_sizes) > 1
@@ -113,7 +119,7 @@ def test_simple_read_below_limit_is_one_span(columns, name, monkeypatch, read_si
     index = SIMPLE_INDICES["unordered-duplicates"]
     set_limit_rows(monkeypatch, dataset, N_ROWS)
 
-    result = get_data(dataset, index)
+    result = plan_read(dataset, index)
 
     np.testing.assert_array_equal(result, dataset[:][index])
     assert read_sizes == [int(index.max() - index.min() + 1)]
@@ -123,9 +129,9 @@ def test_simple_read_below_limit_is_one_span(columns, name, monkeypatch, read_si
 def test_limit_smaller_than_one_row(columns, name, monkeypatch, read_sizes):
     dataset = columns[name]
     index = np.array([7_000, 3, 3, 512, 9_999], dtype=np.int64)
-    monkeypatch.setattr(get_module, "MAX_READ_BUFFER", row_bytes(dataset) - 1)
+    monkeypatch.setattr(plan_module, "MAX_READ_BUFFER", row_bytes(dataset) - 1)
 
-    result = get_data(dataset, index)
+    result = plan_read(dataset, index)
 
     np.testing.assert_array_equal(result, dataset[:][index])
     assert set(read_sizes) == {1}
@@ -145,8 +151,8 @@ def test_large_contiguous_chunk_reads_in_place(columns, monkeypatch, read_sizes)
         allocations.append(tuple(np.atleast_1d(shape)))
         return original_empty(shape, *args, **kwargs)
 
-    monkeypatch.setattr(get_module.np, "empty", recording_empty)
-    result = get_data(dataset, index)
+    monkeypatch.setattr(plan_module.np, "empty", recording_empty)
+    result = plan_read(dataset, index)
 
     np.testing.assert_array_equal(result, dataset[:][into_array(index)])
     # Oversized ranges are never split, and only the output is allocated
@@ -168,8 +174,8 @@ def test_oversized_range_does_not_size_buffer(columns, monkeypatch):
         allocations.append(tuple(np.atleast_1d(shape)))
         return original_empty(shape, *args, **kwargs)
 
-    monkeypatch.setattr(get_module.np, "empty", recording_empty)
-    result = get_data(dataset, index)
+    monkeypatch.setattr(plan_module.np, "empty", recording_empty)
+    result = plan_read(dataset, index)
 
     np.testing.assert_array_equal(result, dataset[:][into_array(index)])
     # Output, then one buffer sized by the small runs alone
@@ -213,9 +219,9 @@ PLAN_INDICES = {
 def test_read_plan_is_bounded(index, max_rows, hdf5_chunk):
     source = np.arange(N_ROWS, dtype=np.int64)
     if isinstance(index, np.ndarray):
-        plan = idxlib.get_simple_read_plan(index, hdf5_chunk, max_rows)
+        plan = planlib.get_simple_read_plan(index, hdf5_chunk, max_rows)
     else:
-        plan = idxlib.get_chunked_read_plan(*index, hdf5_chunk, max_rows)
+        plan = planlib.get_chunked_read_plan(*index, hdf5_chunk, max_rows)
 
     flat = into_array(index)
     output, served = execute_plan(source, plan, len(flat))
@@ -232,4 +238,97 @@ def test_read_plan_rejects_negative_sizes():
     starts = np.array([0, 10], dtype=np.int64)
     sizes = np.array([5, -1], dtype=np.int64)
     with pytest.raises(ValueError, match="non-negative"):
-        idxlib.get_chunked_read_plan(starts, sizes)
+        planlib.get_chunked_read_plan(starts, sizes)
+
+
+@pytest.fixture
+def mixed_columns(tmp_path: Path):
+    """Columns that pairwise agree or disagree on HDF5 chunk rows and row width."""
+    path = tmp_path / "mixed.hdf5"
+    with h5py.File(path, "w") as f:
+        f.create_dataset("a", data=np.arange(N_ROWS, dtype=np.float64), chunks=(64,))
+        f.create_dataset("b", data=np.arange(N_ROWS, dtype=np.int64), chunks=(64,))
+        f.create_dataset("c", data=np.arange(N_ROWS, dtype=np.float64), chunks=(128,))
+        f.create_dataset("d", data=np.arange(N_ROWS, dtype=np.float32), chunks=None)
+        f.create_dataset(
+            "wide",
+            data=np.arange(3 * N_ROWS, dtype=np.float64).reshape(-1, 3),
+            chunks=(64, 3),
+        )
+    with h5py.File(path, "r") as f:
+        yield {name: f[name] for name in ["a", "b", "c", "d", "wide"]}
+
+
+def test_build_plans_shares_matching_columns(mixed_columns, monkeypatch):
+    monkeypatch.setattr(plan_module, "MAX_READ_BUFFER", 800)
+    index = SIMPLE_INDICES["unordered-duplicates"]
+
+    plans = build_plans(mixed_columns, index)
+
+    assert list(plans) == list(mixed_columns)
+    # Same chunk rows and row budget share one plan
+    assert plans["a"] is plans["b"]
+    # Different chunk rows, no chunking, or a different row budget do not
+    others = [plans["a"], plans["c"], plans["d"], plans["wide"]]
+    assert len({id(plan) for plan in others}) == len(others)
+
+
+@pytest.mark.parametrize(
+    "index",
+    [*SIMPLE_INDICES.values(), *CHUNKED_INDICES.values()],
+    ids=[*SIMPLE_INDICES, *CHUNKED_INDICES],
+)
+def test_read_with_plan_matches_get_data(mixed_columns, index, monkeypatch):
+    monkeypatch.setattr(plan_module, "MAX_READ_BUFFER", 800)
+
+    plans = build_plans(mixed_columns, index)
+
+    for name, column in mixed_columns.items():
+        np.testing.assert_array_equal(
+            read_with_plan(column, plans[name]), get_data(column, index)
+        )
+        np.testing.assert_array_equal(
+            read_with_plan(column, plans[name]), column[:][into_array(index)]
+        )
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        np.array([], dtype=np.int64),
+        (np.array([], dtype=np.int64), np.array([], dtype=np.int64)),
+    ],
+    ids=["simple", "chunked"],
+)
+def test_empty_read_keeps_row_shape(mixed_columns, index):
+    plans = build_plans(mixed_columns, index)
+
+    for name, column in mixed_columns.items():
+        result = read_with_plan(column, plans[name])
+        assert result.shape == (0,) + column.shape[1:]
+        assert result.dtype == column.dtype
+
+
+def test_hdf5_handler_plans_once_per_read(tmp_path: Path, monkeypatch):
+    path = tmp_path / "handler.hdf5"
+    with h5py.File(path, "w") as f:
+        data = f.create_group("data")
+        for name in ["x", "y", "z"]:
+            data.create_dataset(name, data=np.arange(N_ROWS, dtype=np.float64))
+    calls: list[list[str]] = []
+    original = handler_module.build_plans
+
+    def recording_build_plans(columns, index):
+        calls.append(list(columns))
+        return original(columns, index)
+
+    monkeypatch.setattr(handler_module, "build_plans", recording_build_plans)
+    index = SIMPLE_INDICES["unordered-duplicates"]
+    with h5py.File(path, "r") as f:
+        handler = Hdf5Handler(f["data"], {"x": None, "y": None, "z": None}, index)
+        result = handler.get_data(["z", "x", "y"])
+
+        assert calls == [["z", "x", "y"]]
+        assert list(result) == ["z", "x", "y"]
+        for name, values in result.items():
+            np.testing.assert_array_equal(values, f["data"][name][:][index])
