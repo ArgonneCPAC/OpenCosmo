@@ -483,19 +483,25 @@ pub(crate) mod index {
         outputs.into_iter().map(Array1::from_vec).collect()
     }
     #[pyfunction(name = "get_chunked_read_order")]
+    #[pyo3(signature = (start, size, hdf5_chunk_size = None, max_single_read = None))]
     fn get_chunked_read_order_py<'py>(
         py: Python<'py>,
         start: &Bound<'_, PyAny>,
         size: &Bound<'_, PyAny>,
-        hdf5_chunk_size: usize,
+        hdf5_chunk_size: Option<usize>,
+        max_single_read: Option<usize>,
     ) -> PyResult<(
         Bound<'py, PyArray1<i64>>,
         Bound<'py, PyArray1<i64>>,
         Bound<'py, PyArray1<i64>>,
     )> {
         let (start_arr, size_arr) = unpack_chunked_index(start, size)?;
-        let (new_start, new_size, new_slice_starts) =
-            get_chunked_read_order(start_arr.as_array(), size_arr.as_array(), hdf5_chunk_size);
+        let (new_start, new_size, new_slice_starts) = get_chunked_read_order(
+            start_arr.as_array(),
+            size_arr.as_array(),
+            hdf5_chunk_size,
+            max_single_read,
+        );
         Ok((
             new_start.into_pyarray(py),
             new_size.into_pyarray(py),
@@ -506,13 +512,14 @@ pub(crate) mod index {
     fn get_chunked_read_order(
         starts: ArrayView1<'_, i64>,
         sizes: ArrayView1<'_, i64>,
-        hdf5_chunk_size: usize,
+        hdf5_chunk_size: Option<usize>,
+        max_single_read: Option<usize>,
     ) -> (Array1<i64>, Array1<i64>, Array1<i64>) {
         let n = starts.len();
         let mut order: Vec<usize> = (0..n).collect();
         order.sort_by_key(|&i| starts[i]);
 
-        let gap = hdf5_chunk_size as i64;
+        let gap = hdf5_chunk_size.map(|val| val as i64);
         let mut run_starts: Vec<i64> = Vec::new();
         let mut run_sizes: Vec<i64> = Vec::new();
         let mut offsets = Array1::<i64>::zeros(n);
@@ -523,7 +530,12 @@ pub(crate) mod index {
 
         for (k, &i) in order.iter().enumerate() {
             let (start, end) = (starts[i], starts[i] + sizes[i]);
-            if k == 0 || start - run_end >= gap {
+            if k == 0
+                || gap.map(|val| start - run_end >= val).unwrap_or(false)
+                || max_single_read
+                    .map(|maxr| maxr < (end - run_start) as usize)
+                    .unwrap_or(false)
+            {
                 if k > 0 {
                     run_sizes.push(run_end - run_start);
                     buffer_pos += run_end - run_start;

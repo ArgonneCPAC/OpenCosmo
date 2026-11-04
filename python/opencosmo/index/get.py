@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import astropy.units as u
@@ -11,6 +12,8 @@ from opencosmo._lib import index as idxlib
 from .mask import into_array
 from .unary import get_length
 
+MAX_SINGLE_READ = 8_000_000_000
+
 if TYPE_CHECKING:
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
@@ -18,16 +21,18 @@ if TYPE_CHECKING:
 def get_data(data: h5py.Dataset | np.ndarray, index: DataIndex):
     if get_length(index) == 0:
         return np.array([], data.dtype)
+    elif isinstance(data, np.ndarray):
+        return data[into_array(index)]
     match index:
         case np.ndarray():
-            return get_data_simple(data, index)
+            return get_hdf5_data_simple(data, index)
         case (np.ndarray(), np.ndarray()):
-            return get_data_chunked(data, index)
+            return get_hdf5_data_chunked(data, index)
         case _:
             raise ValueError(f"Got invalid index of type {type(index)}")
 
 
-def get_data_simple(data: h5py.Dataset | np.ndarray, index: SimpleIndex):
+def get_hdf5_data_simple(data: h5py.Dataset, index: SimpleIndex):
     if isinstance(data, np.ndarray):
         return data[index]
 
@@ -44,7 +49,7 @@ def get_data_simple(data: h5py.Dataset | np.ndarray, index: SimpleIndex):
     return buffer[index - min_]
 
 
-def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
+def get_hdf5_data_chunked(data: h5py.Dataset, index: ChunkedIndex):
     """
     We do not assume that starts are ordered or non-overlapping
 
@@ -63,8 +68,13 @@ def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
     if isinstance(data, u.Quantity):
         unit = data.unit
 
+    chunk_size = data.chunks[0] if data.chunks is not None else None
+    elems_per_row = math.prod(data.shape[1:])
+    max_elems_read = MAX_SINGLE_READ // (elems_per_row * data.dtype.itemsize)
+
+    assert isinstance(chunk_size, int)
     new_start, new_size, new_output_start = idxlib.get_chunked_read_order(
-        starts, sizes, 512
+        starts, sizes, chunk_size, max_elems_read
     )
     shape = (np.sum(new_size),) + data.shape[1:]
     storage = np.zeros(shape, dtype=data.dtype)
@@ -81,7 +91,7 @@ def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
             data.read_direct(storage, source_slice, dest_slice)
         else:
             storage[dest_slice] = data[source_slice]
-        rs += size  # type: ignore
+        rs += int(size)
 
     output_permutation = into_array((new_output_start, sizes))
     storage = storage[output_permutation]

@@ -2,7 +2,6 @@ use pyo3::prelude::*;
 
 #[pymodule]
 pub(crate) mod spatial {
-    use core::f64;
 
     use crate::arrays::unpack_array;
     use kiddo::dist::SquaredEuclidean;
@@ -216,7 +215,7 @@ pub(crate) mod spatial {
                 octant_bounds[2].min(bounds.2),
                 octant_bounds[3].max(bounds.3),
                 octant_bounds[4].min(bounds.4),
-                octant_bounds[5].max(bounds.5),
+                octant_bounds[5].min(bounds.5),
             )
         }
 
