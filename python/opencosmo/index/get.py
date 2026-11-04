@@ -32,21 +32,42 @@ def get_data(data: h5py.Dataset | np.ndarray, index: DataIndex):
             raise ValueError(f"Got invalid index of type {type(index)}")
 
 
-def get_hdf5_data_simple(data: h5py.Dataset, index: SimpleIndex):
-    if isinstance(data, np.ndarray):
-        return data[index]
+def __max_rows_per_read(data: h5py.Dataset) -> int:
+    row_bytes = math.prod(data.shape[1:]) * data.dtype.itemsize
+    return max(MAX_SINGLE_READ // row_bytes, 1)
 
-    min_ = index.min()
-    max_ = index.max()
-    remaining_shape = data.shape[1:]
-    length = int(max_ + 1 - min_)
 
-    shape = (length,) + remaining_shape
+def __read_runs(
+    data: h5py.Dataset, run_starts: np.ndarray, run_sizes: np.ndarray
+) -> np.ndarray:
+    """Read ascending row runs from ``data`` into one contiguous buffer."""
+    buffer = np.empty((int(run_sizes.sum()),) + data.shape[1:], dtype=data.dtype)
+    offset = 0
+    for start, size in zip(run_starts.tolist(), run_sizes.tolist(), strict=True):
+        data.read_direct(
+            buffer, np.s_[start : start + size], np.s_[offset : offset + size]
+        )
+        offset += size
+    return buffer
 
-    buffer = np.zeros(shape, data.dtype)
 
-    data.read_direct(buffer, np.s_[min_ : max_ + 1], np.s_[0:length])
-    return buffer[index - min_]
+def get_hdf5_data_simple(data: h5py.Dataset, index: SimpleIndex) -> np.ndarray:
+    min_ = int(index.min())
+    max_ = int(index.max())
+    length = max_ + 1 - min_
+    max_rows = __max_rows_per_read(data)
+
+    if length <= max_rows:
+        buffer = np.empty((length,) + data.shape[1:], data.dtype)
+        data.read_direct(buffer, np.s_[min_ : max_ + 1], np.s_[0:length])
+        return buffer[index - min_]
+
+    # The span exceeds the read limit, so read nearby rows in bounded runs
+    chunk_size = data.chunks[0] if data.chunks is not None else None
+    run_starts, run_sizes, positions = idxlib.get_simple_read_order(
+        index, chunk_size, max_rows
+    )
+    return __read_runs(data, run_starts, run_sizes)[positions]
 
 
 def get_hdf5_data_chunked(data: h5py.Dataset, index: ChunkedIndex):
@@ -69,12 +90,10 @@ def get_hdf5_data_chunked(data: h5py.Dataset, index: ChunkedIndex):
         unit = data.unit
 
     chunk_size = data.chunks[0] if data.chunks is not None else None
-    elems_per_row = math.prod(data.shape[1:])
-    max_elems_read = MAX_SINGLE_READ // (elems_per_row * data.dtype.itemsize)
+    max_rows = __max_rows_per_read(data)
 
-    assert isinstance(chunk_size, int)
     new_start, new_size, new_output_start = idxlib.get_chunked_read_order(
-        starts, sizes, chunk_size, max_elems_read
+        starts, sizes, chunk_size, max_rows
     )
     shape = (np.sum(new_size),) + data.shape[1:]
     storage = np.zeros(shape, dtype=data.dtype)
@@ -83,7 +102,7 @@ def get_hdf5_data_chunked(data: h5py.Dataset, index: ChunkedIndex):
     for (
         start,
         size,
-    ) in zip(new_start, new_size):
+    ) in zip(new_start, new_size, strict=True):
         source_slice = np.s_[start : start + size]
         dest_slice = np.s_[rs : rs + size]
 

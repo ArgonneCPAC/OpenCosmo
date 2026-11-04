@@ -33,3 +33,8 @@ def get_chunked_read_order(
     hdf5_chunk_size: int | None = None,
     max_single_read: int | None = None,
 ) -> tuple[IndexArray, IndexArray, IndexArray]: ...
+def get_simple_read_order(
+    index: IndexArray,
+    hdf5_chunk_size: int | None = None,
+    max_single_read: int | None = None,
+) -> tuple[IndexArray, IndexArray, IndexArray]: ...

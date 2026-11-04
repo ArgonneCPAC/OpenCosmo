@@ -509,12 +509,54 @@ pub(crate) mod index {
         ))
     }
 
+    #[pyfunction(name = "get_simple_read_order")]
+    #[pyo3(signature = (index, hdf5_chunk_size = None, max_single_read = None))]
+    fn get_simple_read_order_py<'py>(
+        py: Python<'py>,
+        index: &Bound<'_, PyAny>,
+        hdf5_chunk_size: Option<usize>,
+        max_single_read: Option<usize>,
+    ) -> PyResult<(
+        Bound<'py, PyArray1<i64>>,
+        Bound<'py, PyArray1<i64>>,
+        Bound<'py, PyArray1<i64>>,
+    )> {
+        let index_arr = unpack_index_array(index)?;
+        let (run_starts, run_sizes, positions) = get_read_order(
+            index_arr.as_array(),
+            |_| 1,
+            hdf5_chunk_size,
+            max_single_read,
+        );
+        Ok((
+            run_starts.into_pyarray(py),
+            run_sizes.into_pyarray(py),
+            positions.into_pyarray(py),
+        ))
+    }
+
     fn get_chunked_read_order(
         starts: ArrayView1<'_, i64>,
         sizes: ArrayView1<'_, i64>,
         hdf5_chunk_size: Option<usize>,
         max_single_read: Option<usize>,
     ) -> (Array1<i64>, Array1<i64>, Array1<i64>) {
+        get_read_order(starts, |i| sizes[i], hdf5_chunk_size, max_single_read)
+    }
+
+    /// Group possibly unordered, overlapping row ranges into ascending read runs.
+    ///
+    /// A new run starts when the next range begins at least `hdf5_chunk_size` rows
+    /// past the current run, or when extending the run would exceed
+    /// `max_single_read` rows. Returns the run starts and sizes plus, for each
+    /// input range in caller order, its offset in the concatenated run buffer.
+    fn get_read_order(
+        starts: ArrayView1<'_, i64>,
+        size_of: impl Fn(usize) -> i64,
+        hdf5_chunk_size: Option<usize>,
+        max_single_read: Option<usize>,
+    ) -> (Array1<i64>, Array1<i64>, Array1<i64>) {
+        let sizes = Array1::from_iter((0..starts.len()).map(size_of));
         let n = starts.len();
         let mut order: Vec<usize> = (0..n).collect();
         order.sort_by_key(|&i| starts[i]);
