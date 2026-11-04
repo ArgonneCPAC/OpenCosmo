@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from uuid import UUID
 
-    from opencosmo.index import SimpleIndex
     from opencosmo.mpi import MPI
 
 
@@ -62,21 +61,6 @@ def get_dataset_schema_index(schema: Schema):
             raise ValueError("Inconsistent indices found!")
 
     return index
-
-
-def reorder_dataset_schema(schema: Schema, index: SimpleIndex):
-    assert "data" in schema.children
-    data_columns = schema.children["data"].columns
-    assert len(data_columns) > 0
-
-    new_columns = {}
-    for name, column in data_columns.items():
-        new_column = column.reorder(index)
-        new_columns[name] = new_column
-
-    new_data_schema = schema.children["data"]._replace(columns=new_columns)
-
-    return schema._replace(children=schema.children | {"data": new_data_schema})
 
 
 def empty_schema(name: str, type_: FileEntry) -> Schema:

@@ -2,7 +2,6 @@ use pyo3::prelude::*;
 
 #[pymodule]
 pub(crate) mod spatial {
-    use core::f64;
 
     use crate::arrays::unpack_array;
     use kiddo::dist::SquaredEuclidean;
@@ -71,7 +70,7 @@ pub(crate) mod spatial {
         box_size: f64,
         query_bounds: (f64, f64, f64, f64, f64, f64),
         max_level: usize,
-    ) -> PyResult<Vec<(Bound<'py, PyArray1<usize>>, Bound<'py, PyArray1<usize>>)>> {
+    ) -> PyResult<Vec<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray1<i64>>)>> {
         let query_bounds = [
             query_bounds.0 / box_size,
             query_bounds.1 / box_size,
@@ -85,15 +84,17 @@ pub(crate) mod spatial {
         let remainder = result.remainder;
         let mut output = Vec::new();
 
+        // Indices cross into Python as signed int64, like every other index
+        let as_index = |arr: Array1<usize>| arr.mapv(|val| val as i64);
         for level_result in level_contains.drain(..) {
             output.push((
-                PyArray::from_owned_array(py, level_result),
+                PyArray::from_owned_array(py, as_index(level_result)),
                 PyArray::zeros(py, [0], false),
             ))
         }
         output.push((
-            PyArray::from_owned_array(py, remainder.0),
-            PyArray::from_owned_array(py, remainder.1),
+            PyArray::from_owned_array(py, as_index(remainder.0)),
+            PyArray::from_owned_array(py, as_index(remainder.1)),
         ));
         Ok(output)
     }
@@ -216,7 +217,7 @@ pub(crate) mod spatial {
                 octant_bounds[2].min(bounds.2),
                 octant_bounds[3].max(bounds.3),
                 octant_bounds[4].min(bounds.4),
-                octant_bounds[5].max(bounds.5),
+                octant_bounds[5].min(bounds.5),
             )
         }
 

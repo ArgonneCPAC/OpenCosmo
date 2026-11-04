@@ -67,8 +67,8 @@ where
 {
     let untyped = arr.cast::<PyUntypedArray>().map_err(|_| {
         UnpackError::TypeError((
-            format!("numpy array"),
-            format!("{}", get_type_string(arr.get_type())),
+            "numpy array".to_string(),
+            get_type_string(arr.get_type()).to_string(),
         ))
     })?;
     let dtype = untyped.dtype();

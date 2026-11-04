@@ -43,7 +43,7 @@ def get_data_simple(data: h5py.Dataset | np.ndarray, index: SimpleIndex):
 
 def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
     """
-    We assume that starts are ordered, and chunks are non-overlapping
+    Chunks are copied in caller order, so they may be unordered or overlapping
 
     """
 
@@ -61,8 +61,6 @@ def get_data_chunked(data: h5py.Dataset | np.ndarray, index: ChunkedIndex):
     for i, (start, size) in enumerate(zip(starts, sizes)):
         source_slice = np.s_[start : start + size]
         dest_slice = np.s_[running_index : running_index + size]
-        data[source_slice]
-
         if isinstance(data, h5py.Dataset):
             data.read_direct(storage, source_slice, dest_slice)
         else:

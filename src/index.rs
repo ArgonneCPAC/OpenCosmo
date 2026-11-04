@@ -17,7 +17,7 @@ pub(crate) mod index {
         Ok(unpack_array::<i64, 1>(index)?)
     }
 
-    fn unpack_chunked_index<'py>(
+    pub(crate) fn unpack_chunked_index<'py>(
         start: &Bound<'py, PyAny>,
         size: &Bound<'py, PyAny>,
     ) -> PyResult<(PyReadonlyArray1<'py, i64>, PyReadonlyArray1<'py, i64>)> {
@@ -37,7 +37,7 @@ pub(crate) mod index {
         get_simple_range(index_arr.as_array())
     }
     fn get_simple_range(index: ArrayView1<'_, i64>) -> PyResult<(i64, i64)> {
-        if index.len() == 0 {
+        if index.is_empty() {
             return Ok((0, 0));
         }
         let mut index_range = (index[0], index[0]);
@@ -65,7 +65,7 @@ pub(crate) mod index {
         start: ArrayView1<'_, i64>,
         size: ArrayView1<'_, i64>,
     ) -> PyResult<(i64, i64)> {
-        if start.len() == 0 {
+        if start.is_empty() {
             return Ok((0, 0));
         }
         let mut index_range = (start[0], start[0] + size[0]);
@@ -107,7 +107,7 @@ pub(crate) mod index {
         range_size: ArrayView1<'_, i64>,
     ) -> Array1<i64> {
         let mut output = Array1::<i64>::zeros(range_start.len());
-        if start.len() == 0 {
+        if start.is_empty() {
             return output;
         }
         let end = &start + &size;
@@ -233,7 +233,7 @@ pub(crate) mod index {
         take_start: ArrayView1<'_, i64>,
         take_size: ArrayView1<'_, i64>,
     ) -> Result<(Array1<i64>, Array1<i64>), PyErr> {
-        if take_start.len() == 0 {
+        if take_start.is_empty() {
             return Ok((Array1::<i64>::zeros(0), Array1::<i64>::zeros(0)));
         }
         let mut output_start: Vec<i64> = Vec::new();
@@ -348,7 +348,7 @@ pub(crate) mod index {
         let mut outputs: Vec<(Vec<i64>, Vec<i64>)> =
             (0..n_datasets).map(|_| (Vec::new(), Vec::new())).collect();
 
-        if starts.len() == 0 || n_datasets == 0 {
+        if starts.is_empty() || n_datasets == 0 {
             return outputs
                 .into_iter()
                 .map(|(st, si)| (Array1::from_vec(st), Array1::from_vec(si)))
@@ -458,7 +458,7 @@ pub(crate) mod index {
         let n_ranges = range_starts.len();
         let mut outputs: Vec<Vec<i64>> = (0..n_ranges).map(|_| Vec::new()).collect();
 
-        if n_ranges == 0 || index.len() == 0 {
+        if n_ranges == 0 || index.is_empty() {
             return outputs.into_iter().map(Array1::from_vec).collect();
         }
 

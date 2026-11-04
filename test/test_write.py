@@ -176,3 +176,39 @@ def test_after_sort_drop(halo_properties_path, tmp_path):
         assert np.all(d == new_data[name])
 
     assert "fof_halo_mass" not in new_ds.columns
+
+
+def test_after_unordered_take_rows(halo_properties_path, tmp_path, monkeypatch):
+    import opencosmo.io.writer as writer_module
+
+    planned_reads = []
+    read_with_plan = writer_module.read_with_plan
+
+    def recording_read_with_plan(data, plan):
+        planned_reads.append(plan.length)
+        return read_with_plan(data, plan)
+
+    monkeypatch.setattr(writer_module, "read_with_plan", recording_read_with_plan)
+
+    ds = oc.open(halo_properties_path)
+    rows = np.random.default_rng(0).permutation(len(ds))[:5000]
+    taken = ds.take_rows(rows).with_new_columns(
+        double_mass=col("fof_halo_mass") * 2, taken_position=np.arange(len(rows))
+    )
+    write(tmp_path / "haloproperties.hdf5", taken)
+
+    # Rows are written in ascending raw order, whatever order they were taken in
+    expected = (
+        ds.take_rows(np.sort(rows))
+        .with_new_columns(double_mass=col("fof_halo_mass") * 2)
+        .get_data()
+    )
+    actual = oc.open(tmp_path / "haloproperties.hdf5").get_data()
+    for name in expected.colnames:
+        np.testing.assert_array_equal(actual[name], expected[name])
+    # In-memory columns are permuted along with the raw rows
+    np.testing.assert_array_equal(
+        actual["taken_position"], np.argsort(rows, kind="stable")
+    )
+    # Raw columns were read through plans built for the canonical index
+    assert planned_reads and set(planned_reads) == {len(rows)}

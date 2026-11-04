@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Protocol, Self
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
-from opencosmo.index import get_data, get_length, take
-from opencosmo.mpi import redistribute_data
+from opencosmo.index import get_data, get_length, read_with_plan
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -15,7 +14,7 @@ if TYPE_CHECKING:
     import h5py
     from numpy.typing import DTypeLike
 
-    from opencosmo.index import DataIndex, SimpleIndex
+    from opencosmo.index import DataIndex, ReadPlan
     from opencosmo.mpi import MPI
 
 
@@ -33,7 +32,6 @@ class ColumnSource(Protocol):
     def dtype(self) -> DTypeLike: ...
     @property
     def data(self) -> np.ndarray: ...
-    def reorder(self, reorder_index: DataIndex) -> Self: ...
 
 
 class ColumnWriter:
@@ -80,37 +78,12 @@ class ColumnWriter:
         index: DataIndex,
         strategy: ColumnCombineStrategy = ColumnCombineStrategy.CONCAT,
         attrs: dict[str, Any] | None = None,
+        plan: ReadPlan | None = None,
     ):
         if attrs is None:
             attrs = {}
-        source = Hdf5Source(dataset, index)
+        source = Hdf5Source(dataset, index, plan)
         return ColumnWriter([source], strategy, attrs)
-
-    def reorder(self, reorder_index: DataIndex):
-        assert len(self.__sources) == 1
-        new_source = self.__sources[0].reorder(reorder_index)
-        return ColumnWriter([new_source], self.__combine_strategy, self.__attrs)
-
-    def redistribute(
-        self,
-        unsorted_rank_local_index,
-        sorted_rank_local_index,
-        argsort,
-        rank_targets: SimpleIndex,
-        comm,
-    ):
-        assert len(self.__sources) == 1
-
-        source = self.__sources[0]
-        match source:
-            case Hdf5Source():
-                new_source = source.with_index(sorted_rank_local_index)
-                return ColumnWriter([new_source], self.__combine_strategy, self.__attrs)
-            case NumpySource():
-                local_data = redistribute_data(source.data, rank_targets, comm)[argsort]
-                return ColumnWriter.from_numpy_array(
-                    local_data, self.__combine_strategy, self.__attrs
-                )
 
     def combine(self, others: list[ColumnWriter]):
         new_sources = reduce(
@@ -178,18 +151,22 @@ class ColumnWriter:
 
 
 class Hdf5Source:
-    def __init__(self, h5ds: h5py.Dataset, index: DataIndex):
+    """
+    Lazy column read from an HDF5 dataset. An optional read plan, built for
+    ``index`` with ``build_plans``, bounds the read's temporary memory.
+    """
+
+    def __init__(
+        self, h5ds: h5py.Dataset, index: DataIndex, plan: ReadPlan | None = None
+    ):
+        if plan is not None and plan.length != get_length(index):
+            raise ValueError("Read plan does not match the source index")
         self.__source = h5ds
         self.__index = index
+        self.__plan = plan
 
     def __len__(self):
         return get_length(self.__index)
-
-    def reorder(self, reorder_index: DataIndex):
-        return Hdf5Source(self.__source, take(self.__index, reorder_index))
-
-    def with_index(self, index):
-        return Hdf5Source(self.__source, index)
 
     @property
     def shape(self):
@@ -201,8 +178,9 @@ class Hdf5Source:
 
     @property
     def data(self):
-        data = get_data(self.__source, self.__index)
-        return data
+        if self.__plan is not None:
+            return read_with_plan(self.__source, self.__plan)
+        return get_data(self.__source, self.__index)
 
     @property
     def index(self):
@@ -215,9 +193,6 @@ class NumpySource:
 
     def __len__(self):
         return len(self.__source)
-
-    def reorder(self, reorder_index):
-        return NumpySource(self.__source[reorder_index])
 
     @property
     def shape(self):
