@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Literal,
 )
 from warnings import warn
@@ -17,8 +18,11 @@ from opencosmo.deprecated import deprecated
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
 
+    from annotated_types import Ge
+
     from opencosmo.column.column import (
         ColumnMask,
+        CompoundColumnMask,
         ConstructedColumn,
         DerivedScalarValue,
     )
@@ -238,7 +242,7 @@ class Dataset:
             format = kwargs["output"]
         return dsops.get_data(self.__state, format, unpack, wrap_single, **kwargs)
 
-    def bound(self, region: Region, select_by: str | None = None):
+    def bound(self, region: Region, select_by: str | None = None) -> Dataset:
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -441,7 +445,11 @@ class Dataset:
             )
         )
 
-    def filter(self, *masks: ColumnMask, mode: str = "global") -> Dataset:
+    def filter(
+        self,
+        *masks: ColumnMask | CompoundColumnMask,
+        mode: Literal["local", "global"] = "global",
+    ) -> Dataset:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
         Values` for more information.
@@ -505,7 +513,7 @@ class Dataset:
     def select(
         self,
         *columns: str | Iterable[str],
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **derived_columns: ConstructedColumn | DerivedScalarValue,
     ) -> Dataset:
         """
@@ -624,7 +632,10 @@ class Dataset:
         )
 
     def take(
-        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+        self,
+        n: Annotated[int, Ge(0)],
+        at: Literal["start", "end", "random"] = "random",
+        mode: Literal["local", "global"] = "local",
     ) -> Dataset:
         """
         Create a new dataset from some number of rows from this dataset.
@@ -667,7 +678,10 @@ class Dataset:
         return Dataset(new_state)
 
     def take_range(
-        self, start: int, end: int, mode: Literal["local", "global"] = "local"
+        self,
+        start: Annotated[int, Ge(0)],
+        end: Annotated[int, Ge(0)],
+        mode: Literal["local", "global"] = "local",
     ) -> Dataset:
         """
         Create a new dataset from a row range in this dataset. We use standard
@@ -706,7 +720,7 @@ class Dataset:
         new_state = dsops.take_range(self.__state, start, end, mode)
         return Dataset(new_state)
 
-    def take_rows(self, rows: np.ndarray | DataIndex):
+    def take_rows(self, rows: np.ndarray | DataIndex) -> Dataset:
         """
         Take the rows of a dataset specified by the :code:`rows` argument.
         :code:`rows` should be an array of integers.
@@ -733,9 +747,9 @@ class Dataset:
         self,
         descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
-    ):
+    ) -> Dataset:
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, a numpy array, or an astropy quantity
@@ -814,7 +828,8 @@ class Dataset:
 
     def with_units(
         self,
-        convention: str | None = None,
+        convention: Literal["scalefree", "comoving", "physical", "unitless"]
+        | None = None,
         conversions: dict[u.Unit, u.Unit] | None = None,
         **columns: u.Unit,
     ) -> Dataset:

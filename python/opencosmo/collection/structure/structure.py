@@ -572,7 +572,7 @@ class StructureCollection:
     def select(
         self,
         *select_args,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **select_kwargs: str | Iterable[str] | dict,
     ) -> StructureCollection:
         """

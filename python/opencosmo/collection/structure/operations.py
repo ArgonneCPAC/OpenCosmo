@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from inspect import signature
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from warnings import warn
 
 import numpy as np
@@ -167,7 +167,7 @@ def get_pixels(state: StructureState, nside: int) -> np.ndarray:
 def select(
     state: StructureState,
     *select_args: str | Iterable[str],
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **select_kwargs: Any,
 ) -> StructureState:
     if not select_kwargs and not select_args:

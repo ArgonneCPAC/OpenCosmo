@@ -18,9 +18,10 @@ def get_dtype_parameters(
     else:
         known_dtype_params = {}
     dtype_parameters = known_dtype_params.get(str(file_parameters.data_type), {})
-    if file_parameters.is_lightcone:
-        lightcone_parameters = lightcone.LightconeParams
-        required_dtype_params = dtype_parameters.get("required", {})
-        required_dtype_params["lightcone"] = lightcone_parameters
-        dtype_parameters["required"] = required_dtype_params
-    return dtype_parameters
+    if not file_parameters.is_lightcone:
+        return dtype_parameters
+    # Build new dicts; mutating the module-level registry leaks across headers
+    return dtype_parameters | {
+        "required": dtype_parameters.get("required", {})
+        | {"lightcone": lightcone.LightconeParams}
+    }

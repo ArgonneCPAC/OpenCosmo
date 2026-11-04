@@ -1,4 +1,3 @@
-# ruff: noqa: TC001
 from enum import Enum
 from typing import ClassVar
 
@@ -37,7 +36,7 @@ class FileParameters(BaseModel):
         "redshift": "redshift",
     }
 
-    model_config = ConfigDict(use_enum_values=True, frozen=True)
+    model_config = ConfigDict(use_enum_values=True, frozen=True, validate_default=True)
     origin: str = "HACC"
     data_type: DatasetType
     is_lightcone: bool
