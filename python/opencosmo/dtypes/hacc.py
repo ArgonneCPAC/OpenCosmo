@@ -1,4 +1,3 @@
-# ruff: noqa: TC003
 from datetime import date
 from functools import cached_property
 from pathlib import Path

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 import astropy.units as u
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_serializer
 
 from .units import register_units
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 def to_numpy(parameters: SuperMockParams) -> dict[str, Any]:

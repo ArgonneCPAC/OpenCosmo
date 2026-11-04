@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, ClassVar
+from collections.abc import Callable
+from typing import ClassVar
 
 from astropy import cosmology
 from pydantic import BaseModel, Field, computed_field
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:
