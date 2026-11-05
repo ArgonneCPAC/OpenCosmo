@@ -6,8 +6,10 @@
 # Force standard Unix line endings for all code files
 *.py text diff=python
 *.pyi text diff=python
+*.rs text diff=rust
 
 # 3. Documentation & Data Formats
+*.lock text
 *.md text
 *.rst text
 *.txt text
