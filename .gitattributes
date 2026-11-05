@@ -1,0 +1,43 @@
+# 1. Global text normalization
+# Handle line endings automatically for all files detected as text
+* text=auto eol=lf
+
+# 2. Explicit Python source handling
+# Force standard Unix line endings for all code files
+*.py text diff=python
+*.pyi text diff=python
+
+# 3. Documentation & Data Formats
+*.md text
+*.rst text
+*.txt text
+*.json text
+*.yaml text
+*.yml text
+*.toml text
+*.ini text
+
+# 4. Binary Files (Preserve entirely, do not modify line endings)
+*.pyc binary
+*.pyd binary
+*.pyo binary
+*.so binary
+*.dll binary
+*.dylib binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pck binary
+*.db binary
+
+# 5. Archive and Export Management
+# Exclude development, CI, and test files from the final source distribution package
+.github/           export-ignore
+.gitignore         export-ignore
+.gitattributes     export-ignore
+.pre-commit-config.yaml export-ignore
+tests/             export-ignore
+
+test/** linguist-documentation
