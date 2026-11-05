@@ -34,7 +34,8 @@ from opencosmo.index import (
     reindex_column,
     single_chunk,
 )
-from opencosmo.instrument import instrument_call
+from opencosmo.instrument import instrument_call, record_call
+from opencosmo.instrument import serializers as iss
 from opencosmo.mpi import gather_index, get_comm_world
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
@@ -97,7 +98,7 @@ def get_data(
     return convert_data(data, format, wrap_single=wrap_single)
 
 
-@instrument_call
+@instrument_call(iss.serialize_filter)
 def filter(
     state: DatasetState,
     *masks: ColumnMask | CompoundColumnMask,
@@ -120,7 +121,7 @@ def filter(
     return new_state
 
 
-@instrument_call
+@instrument_call(iss.serialize_select)
 def select(
     state: DatasetState,
     *columns: str | Iterable[str],
@@ -166,7 +167,7 @@ def select(
     return new_state
 
 
-@instrument_call
+@instrument_call(iss.serialize_drop)
 def drop(state: DatasetState, *columns: str | Iterable[str]):
     all_columns: set[str] = set()
     for col_group in columns:
@@ -187,7 +188,7 @@ def sort_by(state: DatasetState, column: str | None, invert: bool) -> DatasetSta
     return dataclasses.replace(state, sort_key=sort_key)
 
 
-@instrument_call
+@instrument_call(iss.serialize_with_new_columns)
 def with_new_columns(
     state: DatasetState,
     descriptions: str | dict[str, str] | None = None,
@@ -239,9 +240,15 @@ def evaluate(
     if not insert:
         output = visit_dataset(evaluated_column, state, batch_size)
         return output
-    return with_new_columns(
-        state, allow_overwrite=allow_overwrite, **{func.__name__: evaluated_column}
-    )
+    return insert_evaluated(state, evaluated_column, allow_overwrite)
+
+
+def insert_evaluated(
+    state: DatasetState, column: EvaluatedColumn, allow_overwrite: bool = False
+) -> DatasetState:
+    """Insert a lazily evaluated column and record the evaluation."""
+    new_state = __with_new_columns(state, {}, allow_overwrite, **{column.name: column})
+    return record_call(state, new_state, iss.serialize_evaluate(column))
 
 
 def evaluate_to_dataset(
@@ -290,7 +297,7 @@ def evaluate_to_dataset(
     )
 
 
-@instrument_call
+@instrument_call(iss.serialize_take_range)
 def take_range(
     state: DatasetState,
     start: int,
@@ -306,7 +313,7 @@ def take_range(
     return __take_rows(state, take_index)
 
 
-@instrument_call
+@instrument_call(iss.serialize_take_rows)
 def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
     row_range = get_range(rows)
     if row_range[0] < 0 or row_range[1] > len(state):
@@ -317,7 +324,7 @@ def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
     return __take_rows(state, rows)
 
 
-@instrument_call
+@instrument_call(iss.serialize_take)
 def take(
     state: DatasetState,
     n: int,
@@ -361,7 +368,7 @@ def rows(
         yield output_data
 
 
-@instrument_call
+@instrument_call(iss.serialize_bound)
 def bound(state: DatasetState, region, select_by):
     if state.spatial_index is None:
         raise AttributeError(

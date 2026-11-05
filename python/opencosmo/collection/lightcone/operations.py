@@ -478,11 +478,10 @@ def evaluate(
         leaves = tuple(
             (
                 key,
-                dsops.with_new_columns(
+                dsops.insert_evaluated(
                     leaf,
-                    {},
+                    evaluated_column.with_kwargs(**leaf_kwargs(key)),
                     allow_overwrite,
-                    **{func.__name__: evaluated_column.with_kwargs(**leaf_kwargs(key))},
                 ),
             )
             for key, leaf in state.leaves

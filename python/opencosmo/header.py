@@ -21,7 +21,6 @@ from opencosmo.dtypes import (
 )
 from opencosmo.dtypes.units import apply_units
 from opencosmo.file import broadcast_read, file_reader, file_writer
-from opencosmo.instrument import make_log_schema
 from opencosmo.io.schema import FileEntry, add_metadata, empty_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.spatial.builders import from_model
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
 
     from pydantic import BaseModel
 
-    from opencosmo.instrument.instrument import LogEntry
     from opencosmo.io.schema import Schema
     from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
@@ -175,7 +173,7 @@ class OpenCosmoHeader:
         )
         return new_header
 
-    def append_log(self, log: list[LogEntry] | None):
+    def append_log(self, log: list[BaseModel] | None):
         if self.file.log is None and log is None:
             return self
 
@@ -241,8 +239,6 @@ class OpenCosmoHeader:
         file_schema = schema.children["file"]
 
         schema.children["file"] = file_schema._replace(updater=combine_header_regions)
-        if log is not None:
-            schema.children["file"].children["log"] = make_log_schema(log)
 
         return schema
 

@@ -17,11 +17,12 @@ from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from pydantic import BaseModel
+
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
-    from opencosmo.instrument.instrument import LogEntry
     from opencosmo.io.schema import Schema
     from opencosmo.spatial.protocols import Region, SpatialIndex
 
@@ -78,7 +79,7 @@ def make_dataset_schema(
     spatial_index: SpatialIndex | None,
     region: Region | None,
     raw_index: DataIndex,
-    log: list[LogEntry] | None,
+    log: list[BaseModel] | None,
     derived_data: dict,
     dataset_uuid: UUID,
     name: str | None = None,
