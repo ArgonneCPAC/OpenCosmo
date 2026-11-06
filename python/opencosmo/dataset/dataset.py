@@ -193,9 +193,9 @@ class Dataset:
 
     def get_data(
         self,
-        format="astropy",
-        unpack=True,
-        wrap_single=False,
+        format: str = "astropy",
+        unpack: bool = True,
+        wrap_single: bool = False,
         **kwargs,
     ) -> OpenCosmoData:
         """
@@ -276,9 +276,9 @@ class Dataset:
     def evaluate(
         self,
         func: Callable,
-        vectorize=False,
-        insert=True,
-        format="astropy",
+        vectorize: bool = False,
+        insert: bool = True,
+        format: str = "astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
         **evaluate_kwargs,
@@ -375,6 +375,7 @@ class Dataset:
             format,
             batch_size,
             allow_overwrite,
+            log=True,
             **evaluate_kwargs,
         )
         if not insert:
@@ -384,8 +385,8 @@ class Dataset:
     def evaluate_to_dataset(
         self,
         func: Callable,
-        vectorize=False,
-        format="astropy",
+        vectorize: bool = False,
+        format: str = "astropy",
         batch_size: int = -1,
         allow_overwrite: bool = False,
         **evaluate_kwargs,

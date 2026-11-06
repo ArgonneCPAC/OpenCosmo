@@ -10,12 +10,12 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
 
 
-def read_header_attributes(
+def read_header_attributes[T: BaseModel](
     file: h5py.File | h5py.Group,
     header_path: str,
-    parameter_model: type[BaseModel],
+    parameter_model: type[T],
     **kwargs,
-):
+) -> T:
     header = file["header"]
     try:
         header_group = header[header_path]

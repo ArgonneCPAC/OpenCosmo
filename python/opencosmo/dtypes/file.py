@@ -45,6 +45,7 @@ class FileParameters(BaseModel):
     region: sm.RegionModel | None = None
     unit_convention: UnitConvention = UnitConvention.SCALEFREE
     require_header_groups: tuple[str, ...] | None = None
+    log: list[BaseModel] | None = None
 
     @model_validator(mode="before")
     @classmethod

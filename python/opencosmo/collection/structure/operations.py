@@ -31,6 +31,7 @@ from opencosmo.dataset.state import DatasetState
 from opencosmo.index import into_array
 from opencosmo.io.schema import FileEntry
 from opencosmo.io.schema import make_schema as make_collection_schema
+from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
@@ -74,7 +75,7 @@ def filter(
     state: StructureState,
     *masks: ColumnMask,
     on_galaxies: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ) -> StructureState:
     if not masks:
         return state
@@ -91,9 +92,13 @@ def filter(
     filtered = __source_op(galaxies, "filter")(galaxies, *masks, mode=mode)
     matching = __source_op(galaxies, "select")(filtered, "fof_halo_tag")
     tags = __source_op(galaxies, "get_data")(matching, "astropy", True)
-    new_source = __source_op(state.source, "filter")(
-        state.source, col("fof_halo_tag").isin(tags)
-    )
+    tag_mask = col("fof_halo_tag").isin(tags)
+    # Not recorded: the tags are rank-local, and the user's masks apply to the
+    # galaxies rather than the source
+    if isinstance(state.source, DatasetState):
+        new_source = dsops.filter(state.source, tag_mask, log=False)
+    else:
+        new_source = lcops.filter(state.source, tag_mask)
     return __with_source_rows(state, new_source)
 
 
@@ -109,20 +114,27 @@ def sort_by(state: StructureState, column: str, invert: bool = False) -> Structu
     return __with_source_rows(state, new_source)
 
 
-def take(state: StructureState, n: int, at: str, mode: str) -> StructureState:
+def take(
+    state: StructureState, n: int, at: str, mode: Literal["local", "global"]
+) -> StructureState:
     new_source = __source_op(state.source, "take")(state.source, n, at, mode)
     return __with_source_rows(state, new_source)
 
 
 def take_range(
-    state: StructureState, start: int, end: int, mode: str
+    state: StructureState, start: int, end: int, mode: Literal["local", "global"]
 ) -> StructureState:
     new_source = __source_op(state.source, "take_range")(state.source, start, end, mode)
     return __with_source_rows(state, new_source)
 
 
-def take_rows(state: StructureState, rows: DataIndex) -> StructureState:
-    new_source = __source_op(state.source, "take_rows")(state.source, rows)
+def take_rows(
+    state: StructureState, rows: DataIndex, log: bool = True
+) -> StructureState:
+    if isinstance(state.source, DatasetState):
+        new_source: Source = dsops.take_rows(state.source, rows, log=log)
+    else:
+        new_source = lcops.take_rows(state.source, rows)
     return __with_source_rows(state, new_source)
 
 
@@ -270,7 +282,7 @@ def with_new_columns(
     dataset: str,
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **new_columns: ConstructedColumn | np.ndarray,
 ) -> StructureState:
     if descriptions is None:
@@ -547,14 +559,46 @@ def evaluate(
         evaluate_kwargs=evaluate_kwargs,
         insert=insert,
     )
-    if not insert or output is None:
+    if not insert:
         return output
+    columns = __with_peer_columns(None if output is None else to_numpy_dict(output))
+    if columns is None:
+        return None
     return with_new_columns(
         state,
         dataset if dataset is not None else state.dtype,
         allow_overwrite=allow_overwrite,
-        **to_numpy_dict(output),  # type: ignore[arg-type]
+        **columns,  # type: ignore[arg-type]
     )
+
+
+def __with_peer_columns(
+    columns: dict[str, np.ndarray] | None,
+) -> dict[str, np.ndarray] | None:
+    """
+    A rank with no structures produces no output. Under MPI, give it empty
+    columns matching the ones produced on the other ranks so every rank
+    inserts the same columns. Must be called on every rank.
+    """
+    comm = get_comm_world()
+    if comm is None:
+        return columns
+    layout = (
+        None
+        if columns is None
+        else {
+            name: (values.dtype, values.shape[1:], getattr(values, "unit", None))
+            for name, values in sorted(columns.items())
+        }
+    )
+    peer_layouts = [peer for peer in comm.allgather(layout) if peer is not None]
+    if columns is not None or not peer_layouts:
+        return columns
+    empty_columns: dict[str, np.ndarray] = {}
+    for name, (dtype, shape, unit) in peer_layouts[0].items():
+        empty = np.empty((0, *shape), dtype=dtype)
+        empty_columns[name] = empty if unit is None else empty * unit
+    return empty_columns
 
 
 def evaluate_on_dataset(

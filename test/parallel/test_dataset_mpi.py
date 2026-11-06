@@ -1,6 +1,10 @@
+import warnings
+
+import h5py
 import numpy as np
 import opencosmo as oc
 import pytest
+from opencosmo.instrument import read_log
 from opencosmo.mpi import get_comm_world
 from pytest_mpi import parallel_assert
 
@@ -504,3 +508,57 @@ def test_evaluate_to_dataset_concatenates_variable_length_rows(input_path):
     parallel_assert(len(result) == expected_length)
     parallel_assert(len(data["mass"]) == expected_length)
     parallel_assert(np.all(data["rank"] == rank))
+
+
+LOG_DROPPED = "Found different operation history on different ranks"
+
+
+def __write_recording_warnings(path, dataset) -> list[str]:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        oc.write(path, dataset)
+    return [str(warning.message) for warning in caught]
+
+
+@pytest.mark.parallel(nprocs=4)
+@pytest.mark.parametrize("shared_filter", [True, False])
+def test_write_drops_log_when_rank_histories_differ(
+    input_path, per_test_dir, shared_filter
+):
+    comm = get_comm_world()
+    path = per_test_dir / "divergent.hdf5"
+
+    # Without the shared filter, ranks other than 0 have an empty history
+    ds = oc.open(input_path)
+    if shared_filter:
+        ds = ds.filter(oc.col("fof_halo_mass") > 0)
+    if comm.Get_rank() == 0:
+        ds = ds.take(10, at="start")
+
+    messages = __write_recording_warnings(path, ds)
+
+    warned = comm.allgather(any(LOG_DROPPED in message for message in messages))
+    print(warned)
+    parallel_assert(warned == [True, False, False, False])
+    with h5py.File(path) as file:
+        parallel_assert(read_log(file) is None)
+    # The write itself goes ahead with every rank's rows
+    parallel_assert(
+        sum(comm.allgather(len(oc.open(path)))) == sum(comm.allgather(len(ds)))
+    )
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_write_keeps_log_when_rank_histories_match(input_path, per_test_dir):
+    path = per_test_dir / "matching.hdf5"
+
+    ds = oc.open(input_path).filter(oc.col("fof_halo_mass") > 0).take(10, at="start")
+
+    messages = __write_recording_warnings(path, ds)
+
+    parallel_assert(not any(LOG_DROPPED in message for message in messages))
+    with h5py.File(path) as file:
+        log = read_log(file)
+    parallel_assert(
+        log is not None and [entry.kind for entry in log] == ["filter", "take"]
+    )

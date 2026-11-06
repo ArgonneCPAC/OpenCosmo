@@ -23,7 +23,7 @@ def halo_properties(test_data):
 
 
 def test_parse_selects_the_message_for_the_target(halo_properties):
-    message = parse_message(halo_properties, json.loads(json.dumps(TAKE)))
+    message = parse_message(type(halo_properties), json.loads(json.dumps(TAKE)))
 
     assert message == DatasetTakeMessage(n=5, at="start")
 
@@ -37,7 +37,7 @@ def test_parse_selects_the_message_for_the_target(halo_properties):
     ],
 )
 def test_parse_returns_an_error_for_invalid_payloads(halo_properties, payload, detail):
-    error = parse_message(halo_properties, payload)
+    error = parse_message(type(halo_properties), payload)
 
     assert isinstance(error, MessageError)
     assert error.kind == "invalid_message"
@@ -46,7 +46,7 @@ def test_parse_returns_an_error_for_invalid_payloads(halo_properties, payload, d
 
 
 def test_unsupported_targets_return_an_error():
-    for result in (parse_message("not a dataset", TAKE), execute_message(3, TAKE)):
+    for result in (parse_message(str, TAKE), execute_message(3, TAKE)):
         assert isinstance(result, MessageError)
         assert result.kind == "unsupported_target"
 
@@ -69,6 +69,6 @@ def test_execute_parses_and_applies(halo_properties):
 
 
 def test_errors_serialize_to_json(halo_properties):
-    error = parse_message(halo_properties, {"kind": "take", "n": "5"})
+    error = parse_message(type(halo_properties), {"kind": "take", "n": "5"})
 
     assert MessageError.model_validate_json(error.model_dump_json()) == error

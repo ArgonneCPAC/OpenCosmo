@@ -156,7 +156,7 @@ def with_units(
 def filter(
     state: LightconeState,
     *masks: ColumnMask | CompoundColumnMask,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ) -> LightconeState:
     if not masks:
         return state
@@ -297,7 +297,7 @@ def get_pixels(state: LightconeState, nside: int) -> np.ndarray:
 def select(
     state: LightconeState,
     *columns: str | Iterable[str],
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **derived_columns: ConstructedColumn,
 ) -> LightconeState:
     if state.maps is not None:
@@ -384,7 +384,7 @@ def with_new_columns(
     state: LightconeState,
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> LightconeState:
     if descriptions is None:
@@ -478,11 +478,10 @@ def evaluate(
         leaves = tuple(
             (
                 key,
-                dsops.with_new_columns(
+                dsops.insert_evaluated(
                     leaf,
-                    {},
+                    evaluated_column.with_kwargs(**leaf_kwargs(key)),
                     allow_overwrite,
-                    **{func.__name__: evaluated_column.with_kwargs(**leaf_kwargs(key))},
                 ),
             )
             for key, leaf in state.leaves
@@ -499,6 +498,7 @@ def evaluate(
             format,
             batch_size,
             allow_overwrite,
+            log=False,
             **evaluate_kwargs,
             **leaf_kwargs(key),
         )
@@ -650,7 +650,7 @@ def make_schema(
 
 
 def __scalar_evaluator(
-    state: LightconeState, mode: str
+    state: LightconeState, mode: Literal["local", "global"]
 ) -> Callable[[DerivedScalarValue], Any]:
     """
     Build a function that evaluates a single DerivedScalarValue against
