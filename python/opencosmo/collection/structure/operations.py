@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from warnings import warn
 
 import numpy as np
@@ -41,7 +41,11 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from opencosmo.collection.structure.state import Source, StructureChild
-    from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.column.column import (
+        ColumnMask,
+        CompoundColumnMask,
+        ConstructedColumn,
+    )
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
@@ -73,7 +77,7 @@ def require_lightcone(state: StructureState, method: str) -> LightconeState:
 
 def filter(
     state: StructureState,
-    *masks: ColumnMask,
+    *masks: ColumnMask | CompoundColumnMask,
     on_galaxies: bool = False,
     mode: Literal["local", "global"] = "global",
 ) -> StructureState:
@@ -163,10 +167,12 @@ def with_redshift_range(
 
 
 def pixel_search(
-    state: StructureState, pixels: npt.NDArray[np.int_], nside: int
+    state: StructureState, pixels: npt.NDArray[np.integer], nside: int
 ) -> StructureState:
     source = require_lightcone(state, "pixel_search")
-    return __with_source_rows(state, lcops.pixel_search(source, pixels, nside))
+    return __with_source_rows(
+        state, lcops.pixel_search(source, cast("npt.NDArray[np.int_]", pixels), nside)
+    )
 
 
 def get_pixels(state: StructureState, nside: int) -> np.ndarray:

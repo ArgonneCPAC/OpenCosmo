@@ -69,6 +69,7 @@ def test_generation_is_reproducible(tmp_path):
     assert first == render(spec(tmp_path, "supported"))
     assert "class TargetSupportedMessage(ExpressionModel):" in first
     assert "return target.supported(" in first
+    assert 'reserved_keywords(self.columns, ("n", "at"))' in first
 
 
 @pytest.mark.parametrize(
