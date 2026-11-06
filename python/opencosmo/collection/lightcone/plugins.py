@@ -42,7 +42,9 @@ def _ensure_coordinates(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
     chi = norm_cols(*list(coord_columns.values()))
     phi = oc.col(coord_columns["y"]).arctan2(oc.col(coord_columns["x"]))
     theta = (oc.col(coord_columns["z"]) / oc.col("chi")).arccos()
-    new_state = lcops.with_new_columns(ctx.state, chi=chi, phi=phi, theta=theta)
+    new_state = lcops.with_new_columns(
+        ctx.state, log=False, chi=chi, phi=phi, theta=theta
+    )
     return dataclasses.replace(ctx, state=new_state)
 
 
@@ -76,7 +78,9 @@ def _ensure_redshift_column(ctx: LightconeOpenCtx) -> LightconeOpenCtx:
         raise ValueError(
             "Unable to find a redshift or scale factor column for this lightcone dataset"
         )
-    return dataclasses.replace(ctx, state=lcops.with_new_columns(state, redshift=z_col))
+    return dataclasses.replace(
+        ctx, state=lcops.with_new_columns(state, log=False, redshift=z_col)
+    )
 
 
 @hook(HookPoint.LightconeOpen)
@@ -97,7 +101,7 @@ def _make_radec_columns(ctx: LightconeOpenCtx):
 def __evaluate(
     state: lcst.LightconeState, func: Callable, **kwargs: Any
 ) -> lcst.LightconeState:
-    result = lcops.evaluate(state, func, insert=True, **kwargs)
+    result = lcops.evaluate(state, func, insert=True, log=False, **kwargs)
     assert isinstance(result, lcst.LightconeState)
     return result
 

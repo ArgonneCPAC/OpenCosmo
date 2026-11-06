@@ -375,6 +375,7 @@ class Dataset:
             format,
             batch_size,
             allow_overwrite,
+            log=True,
             **evaluate_kwargs,
         )
         if not insert:

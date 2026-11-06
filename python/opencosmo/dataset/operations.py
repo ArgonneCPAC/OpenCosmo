@@ -224,6 +224,7 @@ def evaluate(
     batch_size: int = -1,
     allow_overwrite: bool = False,
     require_length: bool = True,
+    log: bool = True,
     **evaluate_kwargs,
 ):
     verify_format(format)
@@ -240,14 +241,19 @@ def evaluate(
     if not insert:
         output = visit_dataset(evaluated_column, state, batch_size)
         return output
-    return insert_evaluated(state, evaluated_column, allow_overwrite)
+    return insert_evaluated(state, evaluated_column, allow_overwrite, log=log)
 
 
 def insert_evaluated(
-    state: DatasetState, column: EvaluatedColumn, allow_overwrite: bool = False
+    state: DatasetState,
+    column: EvaluatedColumn,
+    allow_overwrite: bool = False,
+    log: bool = True,
 ) -> DatasetState:
-    """Insert a lazily evaluated column and record the evaluation."""
+    """Insert a lazily evaluated column, recording the evaluation if ``log``."""
     new_state = __with_new_columns(state, {}, allow_overwrite, **{column.name: column})
+    if not log:
+        return new_state
     return record_call(state, new_state, iss.serialize_evaluate(column))
 
 

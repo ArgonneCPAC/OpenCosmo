@@ -50,16 +50,12 @@ def fold[Ctx](name: str, ctx: Ctx) -> Ctx:
 
     Each matching hook receives the output of the previous one. Non-matching
     hooks (predicate returns False) are skipped and ctx passes through unchanged.
-    Operations performed by hooks are not recorded in provenance logs.
     """
-    from opencosmo.instrument import suspended
-
-    with suspended():
-        return reduce(
-            lambda c, reg: reg.transform(c) if reg.predicate(c) else c,
-            _registry[name],
-            ctx,
-        )
+    return reduce(
+        lambda c, reg: reg.transform(c) if reg.predicate(c) else c,
+        _registry[name],
+        ctx,
+    )
 
 
 def query(name: str, ctx: Any) -> Any | None:
@@ -67,17 +63,13 @@ def query(name: str, ctx: Any) -> Any | None:
 
     Intended for hook points where at most one plugin should respond — the
     first hook whose predicate matches is called, and its return value is
-    returned immediately. Subsequent hooks are not evaluated. Operations
-    performed by hooks are not recorded in provenance logs.
+    returned immediately. Subsequent hooks are not evaluated.
     """
-    from opencosmo.instrument import suspended
-
-    with suspended():
-        return next(
-            (
-                result
-                for reg in _registry[name]
-                if reg.predicate(ctx) and (result := reg.transform(ctx)) is not None
-            ),
-            None,
-        )
+    return next(
+        (
+            result
+            for reg in _registry[name]
+            if reg.predicate(ctx) and (result := reg.transform(ctx)) is not None
+        ),
+        None,
+    )

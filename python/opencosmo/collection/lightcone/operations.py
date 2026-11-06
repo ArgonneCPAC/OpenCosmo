@@ -385,6 +385,7 @@ def with_new_columns(
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     mode: Literal["local", "global"] = "global",
+    log: bool = True,
     **columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> LightconeState:
     if descriptions is None:
@@ -431,6 +432,7 @@ def with_new_columns(
                 descriptions,
                 allow_overwrite,
                 mode=mode,
+                log=log,
                 **{name: arrs[i] for name, arrs in raw_split.items()},
                 **child_scoped,
             ),
@@ -449,6 +451,7 @@ def evaluate(
     batch_size: int = -1,
     allow_overwrite: bool = False,
     combine_mode: Literal["concatenate", "sum", "prod", "avg"] = "concatenate",
+    log: bool = True,
     **evaluate_kwargs: Any,
 ) -> LightconeState | dict[str, Any] | None:
     if combine_mode not in ("concatenate", "sum", "prod", "avg"):
@@ -482,6 +485,7 @@ def evaluate(
                     leaf,
                     evaluated_column.with_kwargs(**leaf_kwargs(key)),
                     allow_overwrite,
+                    log=log,
                 ),
             )
             for key, leaf in state.leaves
