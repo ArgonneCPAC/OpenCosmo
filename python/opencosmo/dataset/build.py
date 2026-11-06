@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
@@ -13,9 +13,9 @@ from opencosmo.spatial.utils import combine_upwards
 if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
 
-T = TypeVar("T")
-GroupedColumnData = dict[str, dict[str, T]]
-RawSpatialIndexData = dict[int, tuple[np.ndarray, int]]
+
+type GroupedColumnData[T] = dict[str, dict[str, T]]
+type RawSpatialIndexData = dict[int, tuple[np.ndarray, int]]
 
 
 def build_dataset_from_data(

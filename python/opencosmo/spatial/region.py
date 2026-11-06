@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 import astropy.units as u  # type: ignore
 import numpy as np
@@ -31,11 +31,10 @@ if TYPE_CHECKING:
     from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
-T = TypeVar("T", float, u.Quantity)
 
-Point3d = tuple[float, float, float]
-Point2d = tuple[T, T]
-BoxSize = tuple[float, float, float]
+type Point3d = tuple[float, float, float]
+type Point2d[T: (float, u.Quantity)] = tuple[T, T]
+type BoxSize = tuple[float, float, float]
 
 
 def physical_to_scalefree(value: float, cosmology: FLRW, z: float):
@@ -432,6 +431,7 @@ class BoxRegion:
             ]
         center = tuple((b[0] + b[1]) / 2 for b in bounds)
         halfwidth = tuple((b[1] - b[0]) / 2 for b in bounds)
+        assert len(center) == 3 and len(halfwidth) == 3
         return BoxRegion(center, halfwidth)
 
     def regularize(

@@ -2,13 +2,13 @@ from collections.abc import Callable
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import Any, Concatenate, TypeVar
+from typing import Any, Concatenate
 
 import h5py
 
 from opencosmo.mpi import get_comm_world
 
-H5Resource = TypeVar("H5Resource", h5py.File, h5py.Group, h5py.Dataset)
+type H5Resource = h5py.File | h5py.Group | h5py.Dataset
 H5Reader = Callable[Concatenate[H5Resource, ...], Any]
 FileReader = Callable[Concatenate[h5py.File | h5py.Group, ...], Any]
 FileWriter = Callable[Concatenate[h5py.File | h5py.Group, ...], None]

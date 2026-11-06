@@ -71,7 +71,7 @@ class Dataset:
         return len(self.__state)
 
     def __dir__(self):
-        return list(self.header.parameters.keys()) + super().__dir__()
+        return list(self.header.parameters.keys()).extend(super().__dir__())
 
     def __enter__(self):
         # Need to write tests

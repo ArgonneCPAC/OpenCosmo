@@ -4,10 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, TypeVar
-
-Ctx = TypeVar("Ctx")
-R = TypeVar("R")
+from typing import Any
 
 type Predicate[Ctx] = Callable[[Ctx], bool]
 

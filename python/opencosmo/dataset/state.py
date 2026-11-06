@@ -111,7 +111,7 @@ class DatasetState:
     def __len__(state: DatasetState) -> int:
         if isinstance(state.raw_data_handler, EmptyHandler):
             return len(state.cache)
-        return len(state.raw_data_handler)  # type: ignore[arg-type]
+        return len(state.raw_data_handler)
 
 
 # ---------------------------------------------------------------------------
