@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from warnings import warn
 
-import pyarrow  # type: ignore
+import pyarrow
 from pyarrow import parquet as pq
 
 import opencosmo as oc

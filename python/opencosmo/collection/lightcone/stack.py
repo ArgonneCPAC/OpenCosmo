@@ -13,9 +13,10 @@ from opencosmo.spatial.check import find_coordinates_2d
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from mpi4py import MPI
+
     from opencosmo.dataset.state import DatasetState
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
 
 
 def update_order(data: np.ndarray, comm: MPI.Comm | None, order: np.ndarray):

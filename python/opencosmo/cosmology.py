@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING
 
-from astropy import cosmology  # type: ignore
+from astropy import cosmology
 
 from opencosmo import header
 from opencosmo.file import broadcast_read, file_reader

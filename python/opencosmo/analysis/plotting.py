@@ -30,7 +30,7 @@ from matplotlib.colors import LogNorm
 import opencosmo as oc
 from opencosmo.analysis import statistics
 from opencosmo.analysis.default_plotting_params import default_params
-from opencosmo.mpi import get_comm_world, get_mpi
+from opencosmo.mpi import get_comm_world
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -41,7 +41,6 @@ if TYPE_CHECKING:
 
     Differential = Literal["linear", "log"]
 
-MPI = get_mpi()
 comm = get_comm_world()
 rank = comm.Get_rank() if comm is not None else 0
 ranks = comm.Get_size() if comm is not None else 1

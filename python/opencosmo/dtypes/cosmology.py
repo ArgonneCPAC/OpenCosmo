@@ -53,7 +53,7 @@ class CosmologyParameters(BaseModel, frozen=True):
 
     h: float = Field(ge=0.0, description="Reduced Hubble constant")
 
-    @computed_field  # type: ignore
+    @computed_field
     @property
     def H0(self) -> float:
         """

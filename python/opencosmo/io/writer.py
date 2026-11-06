@@ -12,10 +12,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     import h5py
+    from mpi4py import MPI
     from numpy.typing import DTypeLike
 
     from opencosmo.index import DataIndex, ReadPlan
-    from opencosmo.mpi import MPI
 
 
 class ColumnCombineStrategy(Enum):
@@ -145,7 +145,7 @@ class ColumnWriter:
                 data = np.vstack([source.data for source in self.__sources]).sum(axis=0)
 
         if self.__transformation is not None:
-            data = self.__transformation(data, comm=comm)  # type: ignore
+            data = self.__transformation(data, comm=comm)
 
         return data
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from astropy.coordinates import SkyCoord  # type: ignore
+from astropy.coordinates import SkyCoord
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray

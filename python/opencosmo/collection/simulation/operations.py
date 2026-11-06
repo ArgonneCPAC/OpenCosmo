@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 
     import astropy.units as u
     import numpy as np
+    from mpi4py import MPI
 
     from opencosmo.collection.simulation.state import SimulationChild, SimulationState
     from opencosmo.column.column import ColumnMask, ConstructedColumn
     from opencosmo.index import DataIndex
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
 
 

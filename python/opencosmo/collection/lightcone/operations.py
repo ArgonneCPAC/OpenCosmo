@@ -6,7 +6,7 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-from astropy.table import vstack  # type: ignore
+from astropy.table import vstack
 
 from opencosmo.collection.healpix_map import operations as mapops
 from opencosmo.collection.healpix_map.state import HealpixMapState

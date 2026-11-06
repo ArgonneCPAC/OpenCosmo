@@ -11,14 +11,12 @@ from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.dataset import operations as dsops
 from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
-from opencosmo.mpi import get_mpi
 from opencosmo.plugins.contexts import HookPoint
 from opencosmo.plugins.hook import hook
 from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
     from astropy.table import Table
-    from mpi4py import MPI
 
     from opencosmo import Dataset
     from opencosmo.dataset.state import DatasetState
@@ -30,9 +28,6 @@ if TYPE_CHECKING:
         PartitionCtx,
         PostSortCtx,
     )
-
-else:
-    MPI = get_mpi()
 
 
 class DiffskyVersionInfo(BaseModel):
@@ -81,7 +76,7 @@ def offset_top_host_idx(datasets: list[Dataset]):
             vectorize=True,
             allow_overwrite=True,
         )
-        output_datasets.append(output_ds)  # type: ignore
+        output_datasets.append(output_ds)
     return output_datasets
 
 

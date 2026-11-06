@@ -214,7 +214,7 @@ def _distribute_redshift(
         return None
 
     # Order steps by redshift (step is monotonic, None values sort last).
-    ordered_steps = sorted(file_info.keys(), key=lambda x: (x is None, x))  # type: ignore
+    ordered_steps = sorted(file_info.keys(), key=lambda x: (x is None, x))
     step_file_indices: list[list[int]] = []
     step_weights: list[int] = []
     for step in ordered_steps:

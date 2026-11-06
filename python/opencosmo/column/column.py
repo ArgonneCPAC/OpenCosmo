@@ -13,7 +13,7 @@ from typing import (
     Union,
 )
 
-import astropy.units as u  # type: ignore
+import astropy.units as u
 import numpy as np
 
 from opencosmo.column.evaluate import (

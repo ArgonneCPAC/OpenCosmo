@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-import yt  # type: ignore
+import yt
 from matplotlib.animation import FuncAnimation
-from matplotlib.colors import LogNorm  # type: ignore
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar  # type: ignore
-from unyt import unyt_quantity  # type: ignore
-from yt.visualization.base_plot_types import get_multi_plot  # type: ignore
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+from unyt import unyt_quantity
+from yt.visualization.base_plot_types import get_multi_plot
 from yt.visualization.particle_plots import OffAxisParticleProjectionPlot
 
 import opencosmo as oc
@@ -305,7 +305,7 @@ def halo_projection_array(
     projection_axis: str | None = "z",
     north_vector: list[float] | None = None,
     cmap: str | None = "gray",
-    cmap_norm: Normalize | None = None,  # type: ignore
+    cmap_norm: Normalize | None = None,
     zlim: tuple[float, float] | None = None,
     params: dict[str, Any] | None = None,
     length_scale: str | None = None,
@@ -531,7 +531,7 @@ def halo_projection_array(
                         if (
                             halo_id
                             != data["halo_properties"].select("unique_tag").get_data()
-                        ):  # type: ignore
+                        ):
                             raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
                         data_id = data
 
@@ -552,9 +552,9 @@ def halo_projection_array(
             )
 
             if weight_field is not None:
-                weight_field = tuple(weight_field)  # type: ignore
+                weight_field = tuple(weight_field)
             if zlim is not None:
-                zlim = tuple(zlim)  # type: ignore
+                zlim = tuple(zlim)
 
             label = labels[i][j]
             projection_axis = projection_axes[i][j]
@@ -575,7 +575,7 @@ def halo_projection_array(
                     field,
                     weight_field=weight_field,
                     north_vector=north_vectors[i][j],
-                )  # type: ignore
+                )
 
             else:
                 proj = ParticleProjectionPlot(
@@ -584,7 +584,7 @@ def halo_projection_array(
                     field,
                     weight_field=weight_field,
                     north_vector=north_vectors[i][j],
-                )  # type: ignore
+                )
 
             proj.set_background_color(field, color="black")
 
@@ -592,7 +592,7 @@ def halo_projection_array(
                 width_ = width
                 proj.set_width(width_ * Rh)
             else:
-                width_ = (max(ds.domain_width.to("Mpc")) / Rh).d  # type: ignore
+                width_ = (max(ds.domain_width.to("Mpc")) / Rh).d
 
             # fetch figure buffer (2D array of pixel values)
             # and re-plot on each panel with imshow
@@ -906,7 +906,7 @@ def animate_halos(
                 if len(data) > 1:
                     data_id = data.filter(oc.col("unique_tag") == halo_id)
                 else:
-                    if data["halo_properties"].data["unique_tag"] != halo_id:  # type: ignore
+                    if data["halo_properties"].data["unique_tag"] != halo_id:
                         raise RuntimeError(f"Halo ID {halo_id} not in dataset!")
                     data_id = data
 

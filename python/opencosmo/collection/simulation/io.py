@@ -16,7 +16,7 @@ from opencosmo.mpi import (
 )
 
 if TYPE_CHECKING:
-    from opencosmo.mpi import MPI
+    from mpi4py import MPI
 
 
 @dataclass(frozen=True)

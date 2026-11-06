@@ -1,5 +1,5 @@
-import astropy.cosmology.units as cu  # type: ignore
-import astropy.units as u  # type: ignore
+import astropy.cosmology.units as cu
+import astropy.units as u
 
 from .convention import UnitConvention
 

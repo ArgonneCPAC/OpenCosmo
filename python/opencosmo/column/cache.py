@@ -109,7 +109,7 @@ class ColumnCache:
                 derived_index,
                 ref(self),
             )
-            self.__finalizer.atexit = False  # type: ignore
+            self.__finalizer.atexit = False
 
     @classmethod
     def empty(cls):

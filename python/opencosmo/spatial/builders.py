@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 from warnings import warn
 
-import astropy.units as u  # type: ignore
+import astropy.units as u
 import numpy as np
-from astropy.coordinates import SkyCoord  # type: ignore
+from astropy.coordinates import SkyCoord
 
 from opencosmo.spatial.models import (
     BoxRegionModel,

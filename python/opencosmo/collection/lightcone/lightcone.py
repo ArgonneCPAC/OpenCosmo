@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     )
     from uuid import UUID
 
-    import astropy.units as u  # type: ignore
+    import astropy.units as u
     import numpy as np
     import numpy.typing as npt
     from astropy.io import fits

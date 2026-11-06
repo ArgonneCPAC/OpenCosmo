@@ -30,10 +30,10 @@ from opencosmo.units import UnitConvention
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from mpi4py import MPI
     from pydantic import BaseModel
 
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
 
 HEADER_WRITE_OVERRIDES = {"region_pixels": ColumnCombineStrategy.CONCAT}

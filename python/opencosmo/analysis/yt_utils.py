@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pyxsim  # type: ignore
-import yt  # type: ignore
+import pyxsim
+import yt
 from astropy.table import Table
-from unyt import unyt_array, unyt_quantity  # type: ignore
+from unyt import unyt_array, unyt_quantity
 
 if TYPE_CHECKING:
-    from pyxsim.source_models.sources import SourceModel  # type: ignore
+    from pyxsim.source_models.sources import SourceModel
     from yt.data_objects.static_output import Dataset as YT_Dataset
 
     import opencosmo as oc

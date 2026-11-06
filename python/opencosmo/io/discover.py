@@ -23,8 +23,9 @@ if TYPE_CHECKING:
     from pathlib import Path
     from uuid import UUID
 
+    from mpi4py import MPI
+
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.mpi import MPI
 
 
 @dataclass(frozen=True)

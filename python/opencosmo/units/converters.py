@@ -44,7 +44,7 @@ def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bo
     inv_transitions = {UnitConvention.SCALEFREE: error}
     distance_power = get_unit_distance_power
     if distance_power is not None and is_comoving:
-        transitions[UnitConvention.PHYSICAL] = comoving_to_physical  # type: ignore
+        transitions[UnitConvention.PHYSICAL] = comoving_to_physical
         inv_transitions[UnitConvention.PHYSICAL] = partial(
             physical_to_comoving,
             base_unit=unit,

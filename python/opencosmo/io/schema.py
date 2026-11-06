@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from uuid import UUID
 
-    from opencosmo.mpi import MPI
+    from mpi4py import MPI
 
 
 class FileEntry(Enum):

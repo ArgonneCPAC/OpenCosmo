@@ -3,7 +3,7 @@ from __future__ import annotations
 from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any
 
-from astropy.units import Quantity  # type: ignore
+from astropy.units import Quantity
 
 from opencosmo import facade
 from opencosmo.collection.lightcone.state import LightconeState
