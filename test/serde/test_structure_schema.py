@@ -1,5 +1,9 @@
 """Recursive wire schemas preserve parser shape and reserved-key constraints."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import pytest
 from opencosmo.serde.structure import (
     DerivedSelection,
@@ -7,6 +11,9 @@ from opencosmo.serde.structure import (
     StructureUnitSettings,
 )
 from pydantic import TypeAdapter, ValidationError
+
+if TYPE_CHECKING:
+    from typing import Literal
 
 
 def test_selection_schema_constraints_and_recursive_refs() -> None:
@@ -33,7 +40,9 @@ def test_selection_schema_constraints_and_recursive_refs() -> None:
 
 
 @pytest.mark.parametrize("mode", ["validation", "serialization"])
-def test_unit_schema_constraints_and_recursive_refs(mode: str) -> None:
+def test_unit_schema_constraints_and_recursive_refs(
+    mode: Literal["validation", "serialization"],
+) -> None:
     schema = TypeAdapter(StructureUnitSettings).json_schema(mode=mode)
     settings = schema["$defs"]["StructureUnitSettings"]
     assert settings["propertyNames"]["allOf"] == [
@@ -56,10 +65,10 @@ def test_unit_schema_constraints_and_recursive_refs(mode: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("wire_type", "valid", "invalid"),
+    ("adapter", "valid", "invalid"),
     [
         (
-            StructureSelection,
+            TypeAdapter(StructureSelection),
             [
                 {},
                 {"columns": []},
@@ -75,7 +84,7 @@ def test_unit_schema_constraints_and_recursive_refs(mode: str) -> None:
             ],
         ),
         (
-            StructureUnitSettings,
+            TypeAdapter(StructureUnitSettings),
             [
                 {},
                 {"mass": "kg"},
@@ -91,14 +100,19 @@ def test_unit_schema_constraints_and_recursive_refs(mode: str) -> None:
                 {"leaf": {"convention": "kg"}},
             ],
         ),
-        (DerivedSelection, [{"columns": []}, {"derived_columns": {}}], [{}]),
+        (
+            TypeAdapter(DerivedSelection),
+            [{"columns": []}, {"derived_columns": {}}],
+            [{}],
+        ),
     ],
 )
 def test_jsonschema_validation_agrees_with_parser(
-    wire_type: object, valid: list[dict], invalid: list[dict]
+    adapter: TypeAdapter[StructureSelection | StructureUnitSettings],
+    valid: list[dict],
+    invalid: list[dict],
 ) -> None:
     jsonschema = pytest.importorskip("jsonschema")
-    adapter = TypeAdapter(wire_type)
     schema = adapter.json_schema()
     jsonschema.Draft202012Validator.check_schema(schema)
     validator = jsonschema.Draft202012Validator(schema)
