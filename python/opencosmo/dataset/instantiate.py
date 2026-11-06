@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 def build_initial_uuid_data(
-    column_producers: Mapping[UUID, ConstructedColumn],
+    column_producers: Mapping[UUID, ConstructedColumn | RawColumn],
     raw_data: dict[str, np.ndarray],
     cached_data: dict[UUID, dict[str, np.ndarray]],
 ) -> dict[UUID, dict[str, np.ndarray]]:
@@ -41,7 +41,7 @@ def build_derived_columns(
     columns_to_uuid: dict[str, UUID],
     uuid_data: dict[UUID, dict[str, np.ndarray]],
     dependency_graph: DependencyGraph,
-    column_producers: Mapping[UUID, ConstructedColumn],
+    column_producers: Mapping[UUID, ConstructedColumn | RawColumn],
     index: DataIndex,
     cache: DataCache,
 ) -> dict[UUID, dict[str, np.ndarray]]:
@@ -124,7 +124,7 @@ def __cache_raw_columns(
 
 
 def instantiate_dataset(
-    column_producers: Mapping[UUID, ConstructedColumn],
+    column_producers: Mapping[UUID, ConstructedColumn | RawColumn],
     columns_to_uuid: dict[str, UUID],
     raw_data_handler: DataHandler,
     cache: DataCache,

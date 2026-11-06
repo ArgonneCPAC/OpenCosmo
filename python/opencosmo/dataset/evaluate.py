@@ -185,13 +185,17 @@ def verify_for_lazy_evaluation(
             for name, val in first_values.items()
         }
         produces = set(first_values.keys())
+    elif not hasattr(func, "__name__"):
+        raise ValueError(
+            "If not returning a dictionary, you must use a callable object with a __name__ attribute"
+        )
     else:
         units = {
-            func.__name__: first_values.unit
+            str(func.__name__): first_values.unit
             if isinstance(first_values, Quantity)
             else None
         }
-        produces = {func.__name__}
+        produces = {str(func.__name__)}
 
     column = EvaluatedColumn(
         func,

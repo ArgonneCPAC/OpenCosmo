@@ -430,7 +430,7 @@ class Column:
     def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
         return ColumnMask(self, other, np.isin)
 
-    def evaluate(self, data: dict[str, np.ndarray], *args) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray], *args, **kwargs) -> np.ndarray:
         lhs: Any
         rhs: Any
         match self.lhs:
@@ -657,10 +657,10 @@ class ConstructedColumn(Protocol):
     def evaluate(
         self,
         data: dict[str, np.ndarray],
-        index: DataIndex,
+        index: DataIndex | None,
     ) -> np.ndarray | dict[str, np.ndarray]: ...
 
-    def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]: ...
+    def get_units(self, known_units: dict[str, u.Unit | None]) -> dict[str, u.Unit]: ...
 
 
 class RawColumn:
@@ -756,7 +756,7 @@ class RawColumn:
     def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]:
         return values[self.__name]
 
-    def evaluate(self, data: dict[str, np.ndarray], *args):
+    def evaluate(self, data: dict[str, np.ndarray], *a, **kw):
         return data[self.__name]
 
 

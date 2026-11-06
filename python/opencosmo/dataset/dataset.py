@@ -7,9 +7,9 @@ from typing import (
 )
 from warnings import warn
 
-import astropy.units as u  # type: ignore
+import astropy.units as u
 import numpy as np
-from astropy.table import QTable  # type: ignore
+from astropy.table import QTable
 
 import opencosmo.dataset.state as st
 from opencosmo.dataset import operations as dsops
@@ -189,7 +189,9 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.get_data("astropy")
+        data = self.get_data("astropy")
+        assert isinstance(data, (QTable, u.Quantity))
+        return data
 
     def get_data(
         self,

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import h5py
     import numpy as np
-    from astropy.table import Table
     from mpi4py import MPI
 
     from opencosmo.collection.lightcone.state import LightconeState
@@ -100,7 +99,7 @@ class PostSortCtx:
     """
 
     state: DatasetState | LightconeState
-    data: Table | dict[str, np.ndarray]
+    data: dict[str, np.ndarray]
     index: IndexArray
 
 

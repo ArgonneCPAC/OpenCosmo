@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from opencosmo.column.column import (
+        Column,
         ColumnMask,
         CompoundColumnMask,
         ConstructedColumn,
@@ -146,14 +147,14 @@ def select(
         )
 
     reducer = default_reducer(mode)
-    derived_columns = {
+    derived = {
         k: v.with_reducer(reducer) if isinstance(v, (Column, DerivedScalarValue)) else v
         for k, v in derived_columns.items()
     }
 
     new_state = state
     if derived_columns:
-        new_state = __with_new_columns(new_state, {}, False, **derived_columns)
+        new_state = __with_new_columns(new_state, {}, False, **derived)
         all_columns.update(derived_columns.keys())
 
     if all_columns:
@@ -186,7 +187,7 @@ def with_new_columns(
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     mode: str = "global",
-    **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
+    **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
 ):
     from opencosmo.column.column import Column, DerivedScalarValue
     from opencosmo.column.reducer import default_reducer
@@ -232,8 +233,11 @@ def evaluate(
     if not insert:
         output = visit_dataset(evaluated_column, state, batch_size)
         return output
+
     return with_new_columns(
-        state, allow_overwrite=allow_overwrite, **{func.__name__: evaluated_column}
+        state,
+        allow_overwrite=allow_overwrite,
+        **{str(evaluated_column.uuid): evaluated_column},
     )
 
 
@@ -594,7 +598,11 @@ def __with_new_columns(
     state: DatasetState,
     descriptions: dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
+    **new_columns: Column
+    | ConstructedColumn
+    | DerivedScalarValue
+    | np.ndarray
+    | u.Quantity,
 ) -> DatasetState:
     if descriptions is None:
         descriptions = {}

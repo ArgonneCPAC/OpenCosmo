@@ -41,8 +41,6 @@ def validate_in_memory_columns(
             raise ValueError(f"Column {colname} is not the same length as the dataset!")
         if isinstance(column, u.Quantity):
             new_units[colname] = column.unit
-        else:
-            new_units[colname] = None
 
     return unit_handler.with_static_columns(**new_units)
 
@@ -53,7 +51,7 @@ def __categorize_columns(
     all_known_uuids: set[UUID],
     descriptions: dict[str, str],
     ds_length: int,
-) -> tuple[dict[UUID, ConstructedColumn], dict, dict, list[str], dict]:
+) -> tuple[dict[UUID, ConstructedColumn | RawColumn], dict, dict, list[str], dict]:
     """
     Classify incoming columns by type and build the UUID-keyed producers, in-memory column
     dicts, and static unit map needed by add_columns.
@@ -62,14 +60,13 @@ def __categorize_columns(
         new_derived_columns, new_in_memory_columns, new_in_memory_descriptions,
         new_column_names, new_static_units
     """
-    new_derived_columns: dict[UUID, ConstructedColumn] = {}
+    new_derived_columns: dict[UUID, ConstructedColumn | RawColumn] = {}
     new_in_memory_columns: dict = {}
     new_in_memory_descriptions: dict = {}
     new_column_names: list[str] = []
     new_static_units: dict = {}
 
     for colname, column in new_columns.items():
-        producer: ConstructedColumn
         match column:
             case Column() | DerivedScalarValue():
                 column.name = colname
@@ -111,7 +108,7 @@ def __categorize_columns(
 
 
 def add_columns(
-    producers: dict[UUID, ConstructedColumn],
+    producers: dict[UUID, ConstructedColumn | RawColumn],
     unit_handler: UnitHandler,
     cache: DataCache,
     name_to_uuid: ColumnMap,
@@ -121,7 +118,7 @@ def add_columns(
     new_columns: dict,
     ds_length: int,
     allow_overwrite: bool,
-) -> tuple[dict[UUID, ConstructedColumn], ColumnMap, UnitHandler]:
+) -> tuple[dict[UUID, ConstructedColumn | RawColumn], ColumnMap, UnitHandler]:
     name_to_uuid = copy(name_to_uuid)
     if (
         inter := set(name_to_uuid.keys()).intersection(new_columns.keys())

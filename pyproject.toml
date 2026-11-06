@@ -39,6 +39,7 @@ dev = [
   "pytest-timeout>=2.4.0",
   "jax>=0.10.1",
   "maturin>=1.15.0",
+  "pyarrow-stubs>=20.0.0.20260819",
 ]
 docs = [
   "sphinx>=9.0.0",

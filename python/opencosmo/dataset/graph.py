@@ -21,7 +21,7 @@ __GRAPH_CACHE: OrderedDict[frozenset[UUID], DependencyGraph] = OrderedDict()
 
 
 def get_all_required_pairs(
-    producers: Mapping[UUID, ConstructedColumn],
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
     columns_to_uuid: dict[str, UUID],
 ) -> set[tuple[UUID, str]]:
     """
@@ -36,7 +36,7 @@ def get_all_required_pairs(
 
 
 def get_dependency_graph(
-    producers: Mapping[UUID, ConstructedColumn],
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
 ) -> DependencyGraph:
     """
     Return the dependency graph for a set of producers, reusing a cached graph
@@ -89,8 +89,8 @@ def evaluate_producers(
 
 
 def get_derived_units(
-    producers: Mapping[UUID, ConstructedColumn],
-    units: dict[str, u.Unit],
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
+    units: dict[str, u.Unit | None],
 ) -> dict[str, u.Unit | None]:
     new_units: dict[str, u.Unit | None] = {}
     for uuid in get_dependency_graph(producers).order():

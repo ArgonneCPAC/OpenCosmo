@@ -48,7 +48,7 @@ class DatasetState:
     """
 
     uuid: UUID
-    producers: dict[UUID, ConstructedColumn]
+    producers: dict[UUID, ConstructedColumn | RawColumn]
     raw_data_handler: DataHandler
     cache: DataCache
     unit_handler: UnitHandler
@@ -150,7 +150,9 @@ def state_from_target(
         for cname, uuid in uuids.items()
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
-    producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
+    producers: dict[UUID, ConstructedColumn | RawColumn] = {
+        p.uuid: p for p in raw_producers
+    }
     cache = ColumnCache.empty()
     return DatasetState(
         uuid=target.uuid,
@@ -187,14 +189,16 @@ def state_in_memory(
         for cname in all_columns
     ]
     column_map = {p.name: p.uuid for p in raw_producers}
-    producers: dict[UUID, ConstructedColumn] = {p.uuid: p for p in raw_producers}
+    producers: dict[UUID, ConstructedColumn | RawColumn] = {
+        p.uuid: p for p in raw_producers
+    }
 
     cache = ColumnCache.empty()
     if all_columns:
         uuid_data = {p.uuid: {p.name: all_columns[p.name]} for p in raw_producers}
         cache.add_data(uuid_data, descriptions)
 
-    units: dict[str, u.Unit] = {}
+    units: dict[str, u.Unit | None] = {}
     for name, column in all_columns.items():
         units[name] = None
         if isinstance(column, u.Quantity):
@@ -239,7 +243,7 @@ def state_from_evaluated_data(
         raw_producers.append(producer)
         all_known_uuids.add(producer.uuid)
     column_map = {producer.name: producer.uuid for producer in raw_producers}
-    producers: dict[UUID, ConstructedColumn] = {
+    producers: dict[UUID, ConstructedColumn | RawColumn] = {
         producer.uuid: producer for producer in raw_producers
     }
     units = {
