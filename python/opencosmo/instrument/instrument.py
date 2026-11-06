@@ -5,18 +5,22 @@ from dataclasses import is_dataclass, replace
 from functools import wraps
 from inspect import signature
 from typing import TYPE_CHECKING, Protocol, TypeGuard
+from warnings import warn
 
 import numpy as np
 
 from opencosmo.io.schema import FileEntry, make_schema
-from opencosmo.io.writer import ColumnWriter
+from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     import h5py
     from _typeshed import DataclassInstance
+    from mpi4py import MPI
     from pydantic import BaseModel
+
+    from opencosmo.io.schema import Schema
 
 
 class Loggable(Protocol):
@@ -87,13 +91,42 @@ def read_log(file: h5py.File | h5py.Group) -> Sequence[BaseModel] | None:
 
 def make_log_schema(log: list[BaseModel]):
     if not log:
-        return make_schema("log", FileEntry.EMPTY)
+        # METADATA rather than EMPTY, so ranks with and without history can
+        # be compared by the updater instead of failing the schema type check
+        return make_schema("log", FileEntry.METADATA, updater=log_schema_updater)
     json_entries = []
 
     for entry in log:
         json_entries.append(entry.model_dump_json())
 
     columns = {
-        "entries": ColumnWriter.from_numpy_array(np.array(json_entries, dtype="S"))
+        "entries": ColumnWriter.from_numpy_array(
+            np.array(json_entries, dtype="S"), ColumnCombineStrategy.EXACT
+        )
     }
-    return make_schema("log", FileEntry.METADATA, columns=columns)
+    return make_schema(
+        "log", FileEntry.METADATA, columns=columns, updater=log_schema_updater
+    )
+
+
+def log_schema_updater(schema: Schema, comm: MPI.Comm | None):
+    if comm is None:
+        return schema
+
+    entries = schema.columns.get("entries")
+    entry_column_data = (
+        np.array([], dtype="S") if entries is None else entries.get_data(comm)
+    )
+    all_entries = comm.allgather(entry_column_data)
+    for messages in all_entries[1:]:
+        if not np.array_equal(messages, all_entries[0]):
+            break
+    else:
+        return schema
+
+    if comm.Get_rank() == 0:
+        warn(
+            "Found different operation history on different ranks. Operation log will be dropped"
+        )
+
+    return schema._replace(columns={})

@@ -92,9 +92,13 @@ def filter(
     filtered = __source_op(galaxies, "filter")(galaxies, *masks, mode=mode)
     matching = __source_op(galaxies, "select")(filtered, "fof_halo_tag")
     tags = __source_op(galaxies, "get_data")(matching, "astropy", True)
-    new_source = __source_op(state.source, "filter")(
-        state.source, col("fof_halo_tag").isin(tags)
-    )
+    tag_mask = col("fof_halo_tag").isin(tags)
+    # Not recorded: the tags are rank-local, and the user's masks apply to the
+    # galaxies rather than the source
+    if isinstance(state.source, DatasetState):
+        new_source = dsops.filter(state.source, tag_mask, log=False)
+    else:
+        new_source = lcops.filter(state.source, tag_mask)
     return __with_source_rows(state, new_source)
 
 

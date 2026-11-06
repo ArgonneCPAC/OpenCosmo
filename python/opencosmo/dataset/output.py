@@ -110,10 +110,6 @@ def make_dataset_schema(
     if name is None:
         name = ""
 
-    header_log = header.file.log or []
-    if log is not None:
-        header_log.extend(log)
-
     if spatial_index is not None:
         from opencosmo.spatial.index import apply_index, make_tree_schema
 
@@ -123,7 +119,7 @@ def make_dataset_schema(
         if region is not None:
             header = header.with_region(region)
 
-    header = header.append_log(log or None)
+    header = header.append_log(log)
     header_schema = header.dump()
     children["header"] = header_schema
 
