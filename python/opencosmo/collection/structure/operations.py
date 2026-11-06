@@ -123,8 +123,13 @@ def take_range(
     return __with_source_rows(state, new_source)
 
 
-def take_rows(state: StructureState, rows: DataIndex) -> StructureState:
-    new_source = __source_op(state.source, "take_rows")(state.source, rows)
+def take_rows(
+    state: StructureState, rows: DataIndex, log: bool = True
+) -> StructureState:
+    if isinstance(state.source, DatasetState):
+        new_source: Source = dsops.take_rows(state.source, rows, log=log)
+    else:
+        new_source = lcops.take_rows(state.source, rows)
     return __with_source_rows(state, new_source)
 
 

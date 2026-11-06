@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from opencosmo.collection.lightcone.scope import LightconeScope
@@ -78,7 +78,8 @@ def from_leaves(
     sort_key: tuple[str, bool] | None = None,
     scope: LightconeScope | None = None,
 ) -> LightconeState:
-    leaves = tuple(leaves)
+    # Lightcones are not instrumented, so their leaves never record operations
+    leaves = tuple((key, replace(leaf, log=None)) for key, leaf in leaves)
     if not leaves:
         raise ValueError("A lightcone must contain at least one dataset!")
     if len({len(key) for key, _ in leaves}) != 1:

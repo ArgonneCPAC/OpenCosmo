@@ -110,10 +110,10 @@ def __with_rows(
     if isinstance(member, DatasetState):
         if redistribute:
             return dsops.redistribute(member, rows)
-        return dsops.take_rows(member, rows)
+        return dsops.take_rows(member, rows, log=False)
     if redistribute:
         return scops.redistribute(member, rows)
-    return scops.take_rows(member, rows)
+    return scops.take_rows(member, rows, log=False)
 
 
 def __match_dataset_rows(

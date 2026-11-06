@@ -169,7 +169,7 @@ def remove_empty(
         return source
     rows = np.where(mask)[0]
     if isinstance(source, DatasetState):
-        return dsops.take_rows(source, rows)
+        return dsops.take_rows(source, rows, log=False)
     return lcops.take_rows(source, rows)
 
 

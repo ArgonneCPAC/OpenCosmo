@@ -606,7 +606,6 @@ class Lightcone:
             batch_size,
             allow_overwrite,
             combine_mode,
-            log=True,
             **evaluate_kwargs,
         )
         if isinstance(result, lcst.LightconeState):
@@ -889,7 +888,6 @@ class Lightcone:
                 descriptions,
                 allow_overwrite,
                 mode=mode,
-                log=True,
                 **columns,
             )
         )
