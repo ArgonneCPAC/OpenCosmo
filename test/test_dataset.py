@@ -674,6 +674,7 @@ def test_write_after_filter(input_path, tmp_path):
         data = ds.get_data()
 
     with oc.open(tmp_path / "haloproperties.hdf5") as new_ds:
+        print(new_ds.header.file)
         filtered_data = new_ds.get_data()
         for col in filtered_data.columns:
             assert np.all(filtered_data[col] == data[col])

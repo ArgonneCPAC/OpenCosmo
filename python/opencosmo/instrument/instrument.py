@@ -1,19 +1,30 @@
 from __future__ import annotations
 
+import json
 from dataclasses import is_dataclass, replace
 from functools import wraps
 from inspect import signature
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
-from opencosmo.io.schema import FileEntry, Schema
+import numpy as np
+
+from opencosmo.io.schema import FileEntry, make_schema
+from opencosmo.io.writer import ColumnWriter
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
+    import h5py
+    from _typeshed import DataclassInstance
     from pydantic import BaseModel
 
 
-def __is_recording(state: object) -> bool:
+class Loggable(Protocol):
+    @property
+    def log(self) -> Sequence[BaseModel]: ...
+
+
+def __is_recording(state: object) -> TypeGuard[Loggable]:
     return is_dataclass(state) and getattr(state, "log", None) is not None
 
 
@@ -25,7 +36,7 @@ def instrument_call(serializer: Callable[..., BaseModel]):
         assert hasattr(func, "__name__")
 
         @wraps(func)
-        def wrapper(state, *args, log: bool = True, **kwargs):
+        def wrapper[T: DataclassInstance](state: T, *args, log: bool = True, **kwargs):
             # log shares a namespace with the wrapped function's **kwargs, so
             # reject a column or keyword argument that happens to be named log
             if not isinstance(log, bool):
@@ -50,7 +61,7 @@ def instrument_call(serializer: Callable[..., BaseModel]):
     return make_wrapped_function
 
 
-def record_call[T](state: T, new_state: T, entry: BaseModel) -> T:
+def record_call[T: DataclassInstance](state: T, new_state: T, entry: BaseModel) -> T:
     """Return ``new_state`` with ``state``'s log plus ``entry``.
 
     The log is rebuilt from the input state, so entries recorded by nested
@@ -61,18 +72,28 @@ def record_call[T](state: T, new_state: T, entry: BaseModel) -> T:
     return replace(new_state, log=[*state.log, entry])  # type: ignore[attr-defined, type-var]
 
 
-def make_arg_group_schema(args: tuple[Any, ...]):
-    attrs = {str(i): arg for i, arg in enumerate(args)}
-    return Schema(
-        name="args", type=FileEntry.METADATA, children={}, columns={}, attributes=attrs
-    )
+def read_log(file: h5py.File | h5py.Group) -> Sequence[BaseModel] | None:
+    from opencosmo import Dataset
+    from opencosmo.serde import parse_message
+
+    if "header/file/log/entries" not in file:
+        return None
+    log_list = file["header/file/log/entries"]
+    if not log_list:
+        return None
+    entries = [parse_message(Dataset, json.loads(le)) for le in log_list[:]]
+    return entries
 
 
-def make_kwarg_group_schema(kwargs: dict[str, Any]):
-    return Schema(
-        name="kwargs",
-        type=FileEntry.METADATA,
-        children={},
-        columns={},
-        attributes=kwargs,
-    )
+def make_log_schema(log: list[BaseModel]):
+    if not log:
+        return make_schema("log", FileEntry.EMPTY)
+    json_entries = []
+
+    for entry in log:
+        json_entries.append(entry.model_dump_json())
+
+    columns = {
+        "entries": ColumnWriter.from_numpy_array(np.array(json_entries, dtype="S"))
+    }
+    return make_schema("log", FileEntry.METADATA, columns=columns)

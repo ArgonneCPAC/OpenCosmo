@@ -1,3 +1,3 @@
-from .instrument import instrument_call, record_call
+from .instrument import instrument_call, make_log_schema, read_log, record_call
 
-__all__ = ["instrument_call", "record_call"]
+__all__ = ["instrument_call", "make_log_schema", "read_log", "record_call"]

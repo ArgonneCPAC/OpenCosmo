@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from copy import copy
-from functools import cache
+from functools import cached_property
 from itertools import chain
 from types import UnionType
 from typing import TYPE_CHECKING, Any
@@ -21,6 +21,7 @@ from opencosmo.dtypes import (
 )
 from opencosmo.dtypes.units import apply_units
 from opencosmo.file import broadcast_read, file_reader, file_writer
+from opencosmo.instrument import make_log_schema, read_log
 from opencosmo.io.schema import FileEntry, add_metadata, empty_schema
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter
 from opencosmo.spatial.builders import from_model
@@ -87,19 +88,6 @@ class OpenCosmoHeader:
     def __dir__(self):
         return list(self.parameters.keys()) + list(super().__dir__())
 
-    def __hash__(self):
-        # Create a frozenset of the items in the dictionary
-        # Each item is a tuple of (key, hash of the model)
-        iter_ = chain(
-            {"file": self.__file_pars}.items(),
-            {"unit_convention": self.unit_convention}.items(),
-            self.__required_origin_parameters.items(),
-            self.__optional_origin_parameters.items(),
-            self.__dtype_parameters.items(),
-        )
-        s = frozenset((key, hash(model)) for key, model in iter_)
-        return hash(s)
-
     def with_units(self, convention: UnitConvention | str):
         convention = UnitConvention(convention)
         if convention == self.unit_convention:
@@ -112,19 +100,7 @@ class OpenCosmoHeader:
             convention,
         )
 
-    @cache  # noqa: B019 — per-instance Header cache; instances are not long-lived
-    def __get_access_table(self):
-        all_models = chain(
-            {"file": self.__file_pars}.values(),
-            self.__required_origin_parameters.values(),
-            self.__optional_origin_parameters.values(),
-            self.__dtype_parameters.values(),
-        )
-        table = get_access_table(all_models, self.unit_convention, self.file.redshift)
-
-        return dict(table)
-
-    @property
+    @cached_property
     def parameters(self):
         """
         Return the parametrs stored in this header as
@@ -147,13 +123,21 @@ class OpenCosmoHeader:
             The parameter blocks associated with this header
 
         """
-        return self.__get_access_table()
+        all_models = chain(
+            {"file": self.__file_pars}.values(),
+            self.__required_origin_parameters.values(),
+            self.__optional_origin_parameters.values(),
+            self.__dtype_parameters.values(),
+        )
+        table = get_access_table(all_models, self.unit_convention, self.file.redshift)
+
+        return dict(table)
 
     def __getattr__(self, key: str):
         if key.startswith("__"):  # avoid infinite recursion when serailizing for MPI
             raise AttributeError(key)
 
-        table = self.__get_access_table()
+        table = self.parameters
         try:
             return table[key]
         except KeyError:
@@ -239,6 +223,8 @@ class OpenCosmoHeader:
         file_schema = schema.children["file"]
 
         schema.children["file"] = file_schema._replace(updater=combine_header_regions)
+        if log is not None:
+            schema.children["file"].children["log"] = make_log_schema(log)
 
         return schema
 
@@ -523,6 +509,8 @@ def read_header(
     """
     try:
         file_parameters = read_header_attributes(file, "file", FileParameters)
+        log = read_log(file)
+        file_parameters = file_parameters.model_copy(update={"log": log})
     except KeyError as e:
         raise KeyError(
             "File header is malformed. Are you sure it is an OpenCosmo file?\n "
