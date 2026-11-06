@@ -1,6 +1,10 @@
 """Parsing decoded JSON into messages and applying them to OpenCosmo objects."""
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import numpy as np
 import opencosmo as oc
@@ -9,12 +13,17 @@ from opencosmo.serde import (
     BoxRegionMessage,
     DatasetTakeMessage,
     MessageError,
+    StructureCollectionTakeMessage,
     apply_message,
     execute_message,
     parse_message,
 )
 
-TAKE = {"kind": "take", "n": 5, "at": "start"}
+if TYPE_CHECKING:
+    from opencosmo.collection.structure import StructureCollection
+    from pydantic import JsonValue
+
+TAKE: dict[str, JsonValue] = {"kind": "take", "n": 5, "at": "start"}
 
 
 @pytest.fixture
@@ -72,3 +81,212 @@ def test_errors_serialize_to_json(halo_properties):
     error = parse_message(halo_properties, {"kind": "take", "n": "5"})
 
     assert MessageError.model_validate_json(error.model_dump_json()) == error
+
+
+@pytest.mark.parametrize("target_name", ["cached_dataset", "cached_structures"])
+def test_data_free_parse_selects_target_union(
+    request: pytest.FixtureRequest, target_name: str
+) -> None:
+    target = request.getfixturevalue(target_name)
+    model = (
+        DatasetTakeMessage
+        if target_name == "cached_dataset"
+        else StructureCollectionTakeMessage
+    )
+    assert parse_message(target, json.loads(json.dumps(TAKE))) == model(n=5, at="start")
+
+
+def test_execute_structure_columns_matches_direct_api(
+    cached_structures: StructureCollection,
+) -> None:
+    payload: dict[str, JsonValue] = {
+        "kind": "select",
+        "select_kwargs": {
+            "halo_properties": "mass",
+            "galaxies": {"galaxy_particles": ["tag"]},
+        },
+    }
+    result = execute_message(cached_structures, payload)
+    expected = cached_structures.select(
+        halo_properties="mass", galaxies={"galaxy_particles": ("tag",)}
+    )
+    assert isinstance(result, oc.StructureCollection)
+    assert (
+        result["halo_properties"].columns
+        == expected["halo_properties"].columns
+        == ["mass"]
+    )
+    galaxies = result["galaxies"]
+    assert isinstance(galaxies, oc.StructureCollection)
+    assert galaxies["galaxy_particles"].columns == ["tag"]
+    np.testing.assert_array_equal(
+        result["halo_properties"].get_data(), expected["halo_properties"].get_data()
+    )
+    assert cached_structures["halo_properties"].columns == ["mass", "tag"]
+
+
+@pytest.mark.parametrize(
+    ("target_name", "message"),
+    [
+        ("cached_dataset", StructureCollectionTakeMessage(n=1)),
+        ("cached_structures", DatasetTakeMessage(n=1)),
+    ],
+)
+def test_apply_rejects_cross_target_operation_messages(
+    request: pytest.FixtureRequest,
+    target_name: str,
+    message: DatasetTakeMessage | StructureCollectionTakeMessage,
+) -> None:
+    target = request.getfixturevalue(target_name)
+    error = apply_message(target, message)
+    assert isinstance(error, MessageError)
+    assert error.kind == "unsupported_message"
+    assert error.target == type(target).__name__
+    assert type(message).__name__ in error.detail
+    assert MessageError.model_validate_json(error.model_dump_json()) == error
+
+
+@pytest.mark.parametrize(
+    ("target_name", "payload"),
+    [
+        (
+            "cached_dataset",
+            {"kind": "select", "select_kwargs": {"halo_properties": "mass"}},
+        ),
+        ("cached_structures", {"kind": "select", "columns": ["mass"]}),
+        ("cached_dataset", {"kind": "with_datasets", "datasets": "halo_properties"}),
+        ("cached_structures", {"kind": "pixel_search", "pixels": [12], "nside": 1}),
+    ],
+)
+def test_parse_and_execute_reject_target_specific_invalid_payloads(
+    request: pytest.FixtureRequest, target_name: str, payload: dict
+) -> None:
+    target = request.getfixturevalue(target_name)
+    parsed = parse_message(target, payload)
+    assert isinstance(parsed, MessageError)
+    assert parsed.kind == "invalid_message"
+    assert parsed.target == type(target).__name__
+    assert execute_message(target, payload) == parsed
+
+
+@pytest.mark.parametrize("target_type", [oc.Dataset, oc.StructureCollection])
+def test_execute_spy_uses_target_specific_message(target_type: type) -> None:
+    target = Mock(spec=target_type)
+    sentinel = object()
+    target.take.return_value = sentinel
+    assert isinstance(target, target_type)
+    assert execute_message(target, TAKE) is sentinel
+    target.take.assert_called_once_with(5, "start", "local")
+
+
+@pytest.mark.parametrize(
+    "target_type", [oc.Lightcone, oc.HealpixMap, oc.SimulationCollection]
+)
+def test_collection_targets_without_messages_are_rejected(target_type: type) -> None:
+    target = Mock(spec=target_type)
+    for result in (
+        parse_message(target, TAKE),
+        apply_message(target, StructureCollectionTakeMessage(n=1)),
+        execute_message(target, TAKE),
+    ):
+        assert isinstance(result, MessageError)
+        assert result.kind == "unsupported_target"
+    assert target.mock_calls == []
+
+
+def test_structure_operation_errors_propagate(
+    cached_structures: StructureCollection,
+) -> None:
+    with pytest.raises(ValueError, match="Unknown datasets"):
+        execute_message(
+            cached_structures, {"kind": "with_datasets", "datasets": "missing"}
+        )
+
+
+@pytest.mark.parametrize("target_type", [oc.Dataset, oc.StructureCollection])
+@pytest.mark.parametrize("reserved", ["mode", "descriptions", "allow_overwrite"])
+def test_new_column_keyword_collisions_fail_before_execution(
+    target_type: type, reserved: str
+) -> None:
+    target = Mock(spec=target_type)
+    payload: dict[str, JsonValue] = {
+        "kind": "with_new_columns",
+        "new_columns": {reserved: {"kind": "column", "name": "mass"}},
+    }
+    if target_type is oc.StructureCollection:
+        payload["dataset"] = "halo_properties"
+    parsed = parse_message(target, payload)
+    assert isinstance(parsed, MessageError)
+    assert parsed.kind == "invalid_message"
+    assert "Reserved keyword names" in parsed.detail
+    assert execute_message(target, payload) == parsed
+    assert target.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    ("target_type", "payload"),
+    [
+        (
+            oc.Dataset,
+            {
+                "kind": "select",
+                "derived_columns": {"mode": {"kind": "column", "name": "mass"}},
+            },
+        ),
+        (
+            oc.StructureCollection,
+            {"kind": "select", "select_kwargs": {"mode": "mass"}},
+        ),
+        *[
+            (target_type, {"kind": "with_units", field: {reserved: "kg"}})
+            for target_type, field in [
+                (oc.Dataset, "columns"),
+                (oc.StructureCollection, "dataset_conversions"),
+            ]
+            for reserved in ["convention", "conversions"]
+        ],
+        (
+            oc.StructureCollection,
+            {
+                "kind": "select",
+                "select_kwargs": {
+                    "galaxies": {
+                        "galaxy_properties": {
+                            "derived_columns": {
+                                "mode": {"kind": "column", "name": "mass"}
+                            }
+                        }
+                    }
+                },
+            },
+        ),
+        (
+            oc.StructureCollection,
+            {
+                "kind": "with_units",
+                "dataset_conversions": {
+                    "galaxies": {"galaxy_properties": {"convention": "kg"}}
+                },
+            },
+        ),
+        (
+            oc.StructureCollection,
+            {
+                "kind": "with_units",
+                "dataset_conversions": {
+                    "galaxies": {"galaxy_properties": {"conversions": None}}
+                },
+            },
+        ),
+    ],
+)
+def test_reserved_or_null_recursive_keywords_are_invalid_messages(
+    target_type: type, payload: dict
+) -> None:
+    target = Mock(spec=target_type)
+    for decoded in (payload, json.loads(json.dumps(payload))):
+        parsed = parse_message(target, decoded)
+        assert isinstance(parsed, MessageError)
+        assert parsed.kind == "invalid_message"
+        assert execute_message(target, decoded) == parsed
+    assert target.mock_calls == []

@@ -7,10 +7,29 @@ combination is invalid.
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING
 
+from .common import validate_healpix
+
 if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping
+    from collections.abc import Callable, Collection, Mapping
+
+
+def explicit_parameters(method: Callable[..., object]) -> tuple[str, ...]:
+    """Return the named parameters of a method, excluding its receiver and variadics."""
+    return tuple(
+        parameter.name
+        for parameter in list(inspect.signature(method).parameters.values())[1:]
+        if parameter.kind
+        not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    )
+
+
+def reserved_keywords(keywords: Collection[str], reserved: Collection[str]) -> None:
+    """Reject variadic keywords that collide with explicit method parameters."""
+    if collisions := set(keywords).intersection(reserved):
+        raise ValueError(f"Reserved keyword names: {sorted(collisions)}")
 
 
 def ordered_range(start: int, end: int) -> None:
@@ -31,4 +50,17 @@ def described_columns(
         raise ValueError(f"Descriptions provided for unknown columns {sorted(unknown)}")
 
 
-__all__ = ["described_columns", "ordered_range"]
+def pixel_search(pixels: Collection[int], nside: int) -> None:
+    """Require nonempty, valid nested HEALPix query pixels."""
+    validate_healpix(pixels, nside)
+    if not pixels:
+        raise ValueError("Pixels must be a 1d array of positive integers")
+
+
+__all__ = [
+    "described_columns",
+    "explicit_parameters",
+    "ordered_range",
+    "pixel_search",
+    "reserved_keywords",
+]

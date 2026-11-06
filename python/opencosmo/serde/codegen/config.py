@@ -15,8 +15,11 @@ from types import NoneType
 
 import astropy.units as u
 import numpy as np
+import numpy.typing as npt
 from annotated_types import Ge
 
+from opencosmo.collection.structure import StructureCollection
+from opencosmo.collection.structure import types as sct
 from opencosmo.column.column import (
     ColumnMask,
     CompoundColumnMask,
@@ -28,6 +31,7 @@ from opencosmo.index import DataIndex
 from opencosmo.spatial.protocols import Region
 
 from .. import checks, live
+from .. import structure as scwire
 from ..common import RowIndices, UnitString
 from ..expression import Expression, FiniteNumber, Mask
 from ..region import RegionMessage
@@ -116,6 +120,14 @@ WIRE_TYPES: Mapping[object, WireType] = {
     Region: __wire(RegionMessage, live.region_to_live),
     u.Unit: __wire(UnitString, live.to_unit),
     np.ndarray | DataIndex: __wire(RowIndices, live.to_rows),
+    npt.NDArray[np.integer]: __wire(RowIndices, live.to_rows),
+    sct.ColumnNames: __wire(scwire.ColumnNames),
+    sct.StructureSelection: __wire(scwire.StructureSelection, live.selection_to_live),
+    sct.StructureDrop: __wire(scwire.StructureDrop, live.drop_to_live),
+    sct.UnitConversions: __wire(scwire.UnitConversions, live.unit_conversions_to_live),
+    sct.StructureUnitSettings: __wire(
+        scwire.StructureUnitSettings, live.unit_settings_to_live
+    ),
     int: WireType(Symbol("pydantic", "StrictInt")),
     float: __wire(FiniteNumber),
     bool: WireType(Symbol("pydantic", "StrictBool")),
@@ -166,6 +178,51 @@ SPECS: tuple[MessageSpec, ...] = (
                     symbol(checks.described_columns), ("descriptions", "new_columns")
                 ),
             ),
+        },
+    ),
+    MessageSpec(
+        target=StructureCollection,
+        public_name="opencosmo.StructureCollection",
+        methods=(
+            "filter",
+            "select",
+            "drop",
+            "sort_by",
+            "take",
+            "take_range",
+            "take_rows",
+            "bound",
+            "with_new_columns",
+            "with_units",
+            "with_datasets",
+            "with_redshift_range",
+            "pixel_search",
+        ),
+        output=__PACKAGE / "messages" / "structure_collection.py",
+        namespace={
+            "ColumnNames": sct.ColumnNames,
+            "ColumnMask": ColumnMask,
+            "CompoundColumnMask": CompoundColumnMask,
+            "ConstructedColumn": ConstructedColumn,
+            "DataIndex": DataIndex,
+            "Ge": Ge,
+            "Region": Region,
+            "StructureSelection": sct.StructureSelection,
+            "StructureDrop": sct.StructureDrop,
+            "StructureUnitSettings": sct.StructureUnitSettings,
+            "UnitConversions": sct.UnitConversions,
+            "np": np,
+            "npt": npt,
+            "u": u,
+        },
+        checks={
+            "take_range": (Check(symbol(checks.ordered_range), ("start", "end")),),
+            "with_new_columns": (
+                Check(
+                    symbol(checks.described_columns), ("descriptions", "new_columns")
+                ),
+            ),
+            "pixel_search": (Check(symbol(checks.pixel_search), ("pixels", "nside")),),
         },
     ),
 )
