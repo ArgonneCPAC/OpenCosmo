@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 class EmptyHandler:
-    def get_data(self, *args):
+    def get_data(self, *args, **kwargs):
         return {}
 
     def take(self, other: DataIndex, sorted: np.ndarray | None = None) -> Self:

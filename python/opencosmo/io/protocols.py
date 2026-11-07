@@ -7,11 +7,6 @@ if TYPE_CHECKING:
 
     from opencosmo.io.schema import Schema
 
-try:
-    from mpi4py import MPI
-except ImportError:
-    MPI = None  # type: ignore
-
 
 class DataWriter(Protocol):
     """

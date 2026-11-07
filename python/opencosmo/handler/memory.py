@@ -42,7 +42,7 @@ class InMemoryHandler:
 
         if get_length(sorted) != get_length(self._index):
             raise ValueError("Sorted index has the wrong length!")
-        new_indices = get_data(other, sorted)
+        new_indices = sorted[into_array(other)]
         return self.__derive(np.sort(into_array(self._index)[new_indices]))
 
     @property

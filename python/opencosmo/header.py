@@ -29,12 +29,13 @@ from opencosmo.spatial.region import combine
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
+    from mpi4py import MPI
     from pydantic import BaseModel
 
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
     from opencosmo.spatial.protocols import Region
 
 HEADER_WRITE_OVERRIDES = {"region_pixels": ColumnCombineStrategy.CONCAT}
@@ -439,12 +440,14 @@ def get_access_table(all_models, unit_convention, redshift):
         for i, m in enumerate(all_models)
         if getattr(m, "ACCESS_PATH", None) == "cosmology"
     ]
-    if len(cosmology_pars) == 1:
-        table["cosmology"] = all_models[cosmology_pars[0]].ACCESS_TRANSFORMATION()
-
+    if len(cosmology_pars) != 1:
+        raise ValueError(
+            f"A header must contain exactly one cosmology block, found {len(cosmology_pars)}"
+        )
+    cosmology = all_models[cosmology_pars[0]].ACCESS_TRANSFORMATION()
+    table["cosmology"] = cosmology
     del all_models[cosmology_pars[0]]
 
-    cosmology = table.get("cosmology")
     scale_factor = None
     if redshift is not None:
         scale_factor = cosmology.scale_factor(redshift)
@@ -482,9 +485,7 @@ def get_access_table(all_models, unit_convention, redshift):
     return dict(table)
 
 
-@broadcast_read
-@file_reader
-def read_header(
+def read_header_undecorated(
     file: h5py.File | h5py.Group,
     unit_convention: UnitConvention = UnitConvention.COMOVING,
 ) -> OpenCosmoHeader:
@@ -540,9 +541,12 @@ def read_header(
     return h
 
 
+read_header = broadcast_read(file_reader(read_header_undecorated))
+
+
 def read_parameter_groups(
     file: h5py.File | h5py.Group,
-    parameter_groups: dict[str, dict[str, type[BaseModel]]],
+    parameter_groups: Mapping[str, Mapping[str, type[BaseModel] | UnionType]],
     additional_required: tuple | None = None,
 ):
     """
@@ -567,12 +571,11 @@ def read_parameter_groups(
     optional_output = {}
     optional = parameter_groups.get("optional", {})
     for path, model in optional.items():
-        if isinstance(origin, UnionType):
-            read_fn = load_union_model
-        else:
-            read_fn = read_header_attributes
         try:
-            optional_output[path] = read_fn(file, path, model)
+            if isinstance(model, UnionType):
+                optional_output[path] = load_union_model(file, path, model)
+            else:
+                optional_output[path] = read_header_attributes(file, path, model)
         except (ValidationError, KeyError):
             if path not in additional_required:
                 continue
@@ -603,7 +606,7 @@ def combine_header_regions(schema: Schema, comm: MPI.Comm | None) -> Schema:
     metadata = schema.attributes | {
         name: col.get_data() for name, col in schema.columns.items()
     }
-    pars = FileParameters(**metadata)  # type: ignore
+    pars = FileParameters.model_validate(metadata)
     if pars.region is None:
         return schema
 

@@ -11,16 +11,13 @@ from opencosmo.column.column import EvaluatedColumn, EvaluateStrategy
 from opencosmo.dataset import operations as dsops
 from opencosmo.index import into_array
 from opencosmo.index.ops import reindex_column
-from opencosmo.mpi import get_mpi
 from opencosmo.plugins.contexts import HookPoint
 from opencosmo.plugins.hook import hook
 from opencosmo.spatial.protocols import TreePartition
 
 if TYPE_CHECKING:
     from astropy.table import Table
-    from mpi4py import MPI
 
-    from opencosmo import Dataset
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex
     from opencosmo.plugins.contexts import (
@@ -30,9 +27,6 @@ if TYPE_CHECKING:
         PartitionCtx,
         PostSortCtx,
     )
-
-else:
-    MPI = get_mpi()
 
 
 class DiffskyVersionInfo(BaseModel):
@@ -62,27 +56,6 @@ class DiffskyCatalogInfo(BaseModel):
 
 
 # --- pure logic ---
-
-
-def __offset(top_host_idx, offset):
-    output = top_host_idx
-    output[output >= 0] += offset
-    return {"top_host_idx": output}
-
-
-def offset_top_host_idx(datasets: list[Dataset]):
-    lengths = [len(ds) for ds in datasets]
-    offsets = np.cumsum(lengths)
-    output_datasets = [datasets[0]]
-    for offset, ds in zip(offsets, datasets[1:]):
-        output_ds = ds.evaluate(
-            __offset,
-            offset=offset,
-            vectorize=True,
-            allow_overwrite=True,
-        )
-        output_datasets.append(output_ds)  # type: ignore
-    return output_datasets
 
 
 def rebuild_top_host_idx(top_host_idx, index):
@@ -183,8 +156,10 @@ def _keep(ctx: IndexUpdateCtx) -> IndexUpdateCtx:
     HookPoint.PostSort,
     when=lambda ctx: _is_synthetic_galaxies_with_top_host_idx(ctx.state),
 )
-def _remap_top_host_idx_after_sort(ctx: PostSortCtx) -> PostSortCtx:
-    data: Table = ctx.data  # type: ignore[assignment]
+def _remap_top_host_idx_after_sort[Data: (Table, dict[str, np.ndarray])](
+    ctx: PostSortCtx[Data],
+) -> PostSortCtx[Data]:
+    data = ctx.data
     mask = data["top_host_idx"] >= 0
     data["top_host_idx"][mask] = ctx.index[data["top_host_idx"][mask]]
     return ctx

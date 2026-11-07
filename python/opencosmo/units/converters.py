@@ -9,19 +9,26 @@ from astropy.cosmology import units as cu
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from fractions import Fraction
+
     import numpy as np
-    from astropy.cosmology import Cosmology
 
     from opencosmo.dataset.state import DatasetState
+    from opencosmo.dtypes.cosmology import FlrwCosmology
+    from opencosmo.units.types import AnyUnit
+
+type Converter = Callable[..., u.Quantity]
+type Transitions = dict[UnitConvention, Converter]
 
 KNOWN_SCALEFACTOR_COLUMNS = {"fof_halo_center_a"}
 KNOWN_REDSHIFT_COLUMNS = {"redshift", "redshift_true"}
 
 
 def get_unit_transitions(
-    unit: u.Unit,
+    unit: AnyUnit,
     base_convention: UnitConvention,
-    cosmology: Cosmology,
+    cosmology: FlrwCosmology,
     is_comoving: bool,
 ):
     match base_convention:
@@ -35,16 +42,18 @@ def get_unit_transitions(
             raise ValueError(f"Invalid unit convention {base_convention}")
 
 
-def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bool):
+def get_comoving_transitions(
+    unit: AnyUnit, cosmology: FlrwCosmology, is_comoving: bool
+):
     error = partial(
         raise_convert_error, from_=UnitConvention.COMOVING, to_=UnitConvention.SCALEFREE
     )
 
-    transitions = {UnitConvention.SCALEFREE: error}
-    inv_transitions = {UnitConvention.SCALEFREE: error}
+    transitions: Transitions = {UnitConvention.SCALEFREE: error}
+    inv_transitions: Transitions = {UnitConvention.SCALEFREE: error}
     distance_power = get_unit_distance_power
     if distance_power is not None and is_comoving:
-        transitions[UnitConvention.PHYSICAL] = comoving_to_physical  # type: ignore
+        transitions[UnitConvention.PHYSICAL] = comoving_to_physical
         inv_transitions[UnitConvention.PHYSICAL] = partial(
             physical_to_comoving,
             base_unit=unit,
@@ -53,10 +62,12 @@ def get_comoving_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bo
     return transitions, inv_transitions, units
 
 
-def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: bool):
+def get_scalefree_transitions(
+    unit: AnyUnit, cosmology: FlrwCosmology, is_comoving: bool
+):
     hless_unit = get_unit_without_h(unit)
-    transitions = {}
-    inv_transitions = {}
+    transitions: Transitions = {}
+    inv_transitions: Transitions = {}
 
     if hless_unit != unit:
         rem_h = partial(remove_littleh, cosmology=cosmology)
@@ -88,49 +99,42 @@ def get_scalefree_transitions(unit: u.Unit, cosmology: Cosmology, is_comoving: b
 
 
 @cache
-def get_unit_without_h(unit: u.Unit) -> u.Unit:
-    try:
-        if isinstance(unit, u.DexUnit):
-            u_base = unit.physical_unit
-            constructor = u.DexUnit
-        else:
-            u_base = unit
-
-            def constructor(x):
-                return x
-
-    except AttributeError:
+def get_unit_without_h(unit: AnyUnit) -> AnyUnit:
+    u_base = unit.physical_unit if isinstance(unit, u.DexUnit) else unit
+    if not isinstance(u_base, u.UnitBase):
         return unit
 
     try:
         index = u_base.bases.index(cu.littleh)
-    except (ValueError, AttributeError):
+    except ValueError:
         return unit
     power = u_base.powers[index]
-    new_unit = u_base / cu.littleh**power
-
-    return new_unit
+    return u_base / cu.littleh**power
 
 
 @cache
-def get_unit_distance_power(unit: u.Unit) -> float | None:
+def get_unit_distance_power(unit: AnyUnit) -> float | Fraction | None:
     decomposed = unit.decompose()
+    if not isinstance(decomposed, u.UnitBase):
+        return None
     try:
         index = decomposed.bases.index(u.m)
-        return decomposed.powers[index]
-    except (ValueError, AttributeError):
+    except ValueError:
         return None
+    return decomposed.powers[index]
 
 
-def add_littleh(value: u.Quantity, cosmology: Cosmology, new_unit: u.Unit, **kwargs):
+def add_littleh(
+    value: u.Quantity, cosmology: FlrwCosmology, new_unit: AnyUnit, **kwargs
+):
     return value.to(
         new_unit,
-        cu.with_H0(cosmology.H0),  # pyrefly: ignore[missing-attribute]
+        cu.with_H0(cosmology.H0),
     )
 
 
 def physical_to_comoving(
-    value: u.Quantity, scale_factor: float | np.ndarray, base_unit: u.Unit, **kwargs
+    value: u.Quantity, scale_factor: float | np.ndarray, base_unit: AnyUnit, **kwargs
 ):
     power = get_unit_distance_power(base_unit)
     if power is not None:
@@ -138,7 +142,7 @@ def physical_to_comoving(
     return value
 
 
-def remove_littleh(value: u.Quantity, cosmology: Cosmology, **kwargs) -> u.Quantity:
+def remove_littleh(value: u.Quantity, cosmology: FlrwCosmology, **kwargs) -> u.Quantity:
     """
     Remove little h from the units of the input table. For comoving
     coordinates, this is the second step after parsing the units themselves.
@@ -147,7 +151,7 @@ def remove_littleh(value: u.Quantity, cosmology: Cosmology, **kwargs) -> u.Quant
     if new_unit != value.unit:
         return value.to(
             new_unit,
-            cu.with_H0(cosmology.H0),  # pyrefly: ignore[missing-attribute]
+            cu.with_H0(cosmology.H0),
         )
     return value
 
@@ -194,7 +198,7 @@ def get_scale_factor(dataset: DatasetState, cosmology, redshift):
 def scalefree_to_physical(
     value: u.Quantity,
     scale_factor: float | np.ndarray,
-    cosmology: Cosmology,
+    cosmology: FlrwCosmology,
 ):
     new_value = remove_littleh(value, cosmology)
     return comoving_to_physical(new_value, scale_factor)
@@ -203,8 +207,8 @@ def scalefree_to_physical(
 def physical_to_scalefree(
     value: u.Quantity,
     scale_factor: float | np.ndarray,
-    base_unit: u.Quantity,
-    cosmology: Cosmology,
+    base_unit: AnyUnit,
+    cosmology: FlrwCosmology,
 ):
     new_value = physical_to_comoving(value, scale_factor, base_unit)
     return add_littleh(new_value, cosmology, base_unit)

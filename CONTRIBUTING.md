@@ -66,11 +66,11 @@ This is where the magic happens. Implement your features! If you have questions,
 
 ### Step 5: Lint and Write Tests
 
-Our CI pipeline performs linting with [ruff](https://astral.sh/ruff) and static type checking with [mypy](https://www.mypy-lang.org/). Both should have been installed automatically when you ran `uv sync`. Your PR must pass both to be merged. If you prefer, you can use [pre-commit](https://pre-commit.com/) to automatically run linting and type checking before you commit. Altenatively, you can call them manually on your last commit. 
+Our CI pipeline performs linting with [ruff](https://astral.sh/ruff) and static type checking with [ty](https://docs.astral.sh/ty/). Both should have been installed automatically when you ran `uv sync`. Your PR must pass both to be merged. If you prefer, you can use [pre-commit](https://pre-commit.com/) to automatically run linting and type checking before you commit. Altenatively, you can call them manually on your last commit.
 
 If you're unfamiliar with type hints, go ahead and implement your features without them and we can worry about the details later.
 
-Many libraries do not have full typing support. If this is the case, you can add a `# type: ignore` directive when you import them. If the type stubs exist as a seperate library, you should instead add them as a development dependency in the pyprojet.toml with 
+Many libraries do not have full typing support. If a single line cannot be typed accurately, add a narrow `# ty: ignore[rule-name]` directive with a short comment explaining why. Plain `# type: ignore` comments are not respected. If the type stubs exist as a seperate library, you should instead add them as a development dependency in the pyprojet.toml with
 
 ```bash
 

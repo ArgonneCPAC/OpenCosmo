@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import copy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import astropy.units as u
 import numpy as np
@@ -16,11 +16,13 @@ from opencosmo.dataset.graph import get_derived_units
 from opencosmo.uuid import get_raw_column_uuid
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache
     from opencosmo.units.handler import UnitHandler
+    from opencosmo.units.types import AnyUnit
 
     ColumnMap = dict[str, UUID]
 
@@ -35,7 +37,7 @@ def resort(columns: dict[str, np.ndarray], sorted_index: np.ndarray | None):
 def validate_in_memory_columns(
     columns: dict[str, np.ndarray], unit_handler: UnitHandler, ds_length: int
 ) -> UnitHandler:
-    new_units = {}
+    new_units: dict[str, AnyUnit | None] = {}
     for colname, column in columns.items():
         if len(column) != ds_length:
             raise ValueError(f"Column {colname} is not the same length as the dataset!")
@@ -48,12 +50,12 @@ def validate_in_memory_columns(
 
 
 def __categorize_columns(
-    new_columns: dict,
+    new_columns: Mapping[str, Any],
     name_to_uuid: dict[str, UUID],
     all_known_uuids: set[UUID],
     descriptions: dict[str, str],
     ds_length: int,
-) -> tuple[dict[UUID, ConstructedColumn], dict, dict, list[str], dict]:
+) -> tuple[dict[UUID, ConstructedColumn | RawColumn], dict, dict, list[str], dict]:
     """
     Classify incoming columns by type and build the UUID-keyed producers, in-memory column
     dicts, and static unit map needed by add_columns.
@@ -62,22 +64,28 @@ def __categorize_columns(
         new_derived_columns, new_in_memory_columns, new_in_memory_descriptions,
         new_column_names, new_static_units
     """
-    new_derived_columns: dict[UUID, ConstructedColumn] = {}
+    new_derived_columns: dict[UUID, ConstructedColumn | RawColumn] = {}
     new_in_memory_columns: dict = {}
     new_in_memory_descriptions: dict = {}
     new_column_names: list[str] = []
     new_static_units: dict = {}
 
     for colname, column in new_columns.items():
-        producer: ConstructedColumn
+        producer: ConstructedColumn | RawColumn
         match column:
             case Column() | DerivedScalarValue():
-                column.name = colname
-                column.description = descriptions.get(colname, "None")
-                producer = column.bind(name_to_uuid, all_known_uuids)
+                producer = column.bind(
+                    name_to_uuid,
+                    all_known_uuids,
+                    output_name=colname,
+                    description=descriptions.get(colname, "None"),
+                )
             case EvaluatedColumn():
-                column.description = descriptions.get(colname, "None")
-                producer = column.bind(name_to_uuid, all_known_uuids)
+                producer = column.bind(
+                    name_to_uuid,
+                    all_known_uuids,
+                    description=descriptions.get(colname, "None"),
+                )
             case np.ndarray():
                 if len(column) != ds_length:
                     raise ValueError(
@@ -111,17 +119,17 @@ def __categorize_columns(
 
 
 def add_columns(
-    producers: dict[UUID, ConstructedColumn],
+    producers: dict[UUID, ConstructedColumn | RawColumn],
     unit_handler: UnitHandler,
     cache: DataCache,
     name_to_uuid: ColumnMap,
     all_known_uuids: set[UUID],
     sorted_index: np.ndarray | None,
     descriptions: dict[str, str],
-    new_columns: dict,
+    new_columns: Mapping[str, Any],
     ds_length: int,
     allow_overwrite: bool,
-) -> tuple[dict[UUID, ConstructedColumn], ColumnMap, UnitHandler]:
+) -> tuple[dict[UUID, ConstructedColumn | RawColumn], ColumnMap, UnitHandler]:
     name_to_uuid = copy(name_to_uuid)
     if (
         inter := set(name_to_uuid.keys()).intersection(new_columns.keys())

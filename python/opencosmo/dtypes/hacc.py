@@ -3,8 +3,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Literal
 
-import astropy.cosmology.units as cu  # type: ignore
-import astropy.units as u  # type: ignore
+import astropy.cosmology.units as cu
+import astropy.units as u
 import numpy as np
 from pydantic import (
     BaseModel,
@@ -51,7 +51,7 @@ class HaccSimulationParameters(BaseModel):
             return {k: empty_string_to_none(v) for k, v in data.items()}
         return data
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @cached_property
     def step_zs(self) -> list[float]:
         """
@@ -64,7 +64,7 @@ class HaccSimulationParameters(BaseModel):
         # Steps are evenly spaced in a with step zero corresponding to the first step
         # after the initial conditions
         step_as = np.linspace(a_ini, a_end, self.n_steps + 1)[1:]
-        return np.round(1 / step_as - 1, 3).tolist()  # type: ignore
+        return np.round(1 / step_as - 1, 3).tolist()
 
 
 HaccGravityOnlySimulationParameters = HaccSimulationParameters

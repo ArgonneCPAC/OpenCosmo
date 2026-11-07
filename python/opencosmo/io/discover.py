@@ -12,7 +12,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from opencosmo.dtypes import read_map_header
-from opencosmo.header import read_header
+from opencosmo.header import read_header_undecorated
 from opencosmo.io.cache import cache_layouts, get_cached_layouts
 from opencosmo.uuid import coerce_to_uuid, get_dataset_uuid
 
@@ -23,8 +23,9 @@ if TYPE_CHECKING:
     from pathlib import Path
     from uuid import UUID
 
+    from mpi4py import MPI
+
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.mpi import MPI
 
 
 @dataclass(frozen=True)
@@ -522,7 +523,7 @@ def discover_file(path: Path) -> FileLayout:
                 return FileLayout(path=path, groups=(), maps=maps)
 
             # Otherwise, process headers and data groups as usual.
-            read_header_local = read_header.__wrapped__  # type: ignore[attr-defined]
+            read_header_local = read_header_undecorated
             scope_to_header: dict[str, tuple[str, OpenCosmoHeader]] = {}
             for header_path in header_groups:
                 try:
@@ -555,21 +556,20 @@ def discover_file(path: Path) -> FileLayout:
 
                 # Extract column metadata for this data group.
                 data_prefix = data_path if data_path.endswith("/") else data_path + "/"
-                columns_in_data = sorted(
-                    [
-                        k.split(data_prefix, 1)[1]
-                        for k in file_map
-                        if k.startswith(data_prefix)
-                        and isinstance(file_map[k], h5py.Dataset)
+                column_datasets: dict[str, h5py.Dataset] = {}
+                for k in sorted(file_map):
+                    item = file_map[k]
+                    if (
+                        k.startswith(data_prefix)
+                        and isinstance(item, h5py.Dataset)
                         and not k.endswith("/index")
                         and "header" not in k
-                    ]
-                )
+                    ):
+                        column_datasets[k.split(data_prefix, 1)[1]] = item
 
+                columns_in_data = sorted(column_datasets)
                 column_names = tuple(columns_in_data)
-                column_handles = [
-                    file_map[f"{data_path}/{col}"] for col in columns_in_data
-                ]
+                column_handles = [column_datasets[col] for col in columns_in_data]
                 column_dtypes = tuple(str(h.dtype) for h in column_handles)
                 column_units = tuple(
                     _normalize_attr(h.attrs.get("unit")) for h in column_handles

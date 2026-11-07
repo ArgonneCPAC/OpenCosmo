@@ -39,6 +39,7 @@ def is_in_global_index(
         the global index.
     """
     mpi = get_mpi()
+    assert mpi is not None
 
     local_values = np.ascontiguousarray(values, dtype=np.int64)
     local_index = np.ascontiguousarray(index, dtype=np.int64)

@@ -46,7 +46,7 @@ class HealpixMap:
             return object.__getattribute__(self, key)
 
     def __dir__(self):
-        return list(self.header.parameters.keys()) + super().__dir__()
+        return [*self.header.parameters, *super().__dir__()]
 
     @property
     def nside(self):
@@ -675,8 +675,8 @@ class HealpixMap:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
-        **columns: u.Unit,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
+        **columns: u.UnitBase,
     ) -> Self:
         r"""
         Unit conversion is usually supported for OpenCosmo datasets, however maps tend to be integrated

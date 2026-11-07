@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Generator, Iterable
 
     from opencosmo.io.discover import FileLayout
 
@@ -44,7 +44,7 @@ def __user_cache_dir() -> Path:
 @contextlib.contextmanager
 def _sqlite_connection(
     cache_db_path: Path, *, readonly: bool
-) -> Iterator[sqlite3.Connection | None]:
+) -> Generator[sqlite3.Connection | None]:
     try:
         if readonly:
             if not cache_db_path.exists():
@@ -90,14 +90,14 @@ def _sqlite_connection(
 
 
 @contextlib.contextmanager
-def open_cache_db_for_read(cache_dir: Path) -> Iterator[sqlite3.Connection | None]:
+def open_cache_db_for_read(cache_dir: Path) -> Generator[sqlite3.Connection | None]:
     cache_path = cache_dir / "files.db"
     with _sqlite_connection(cache_path, readonly=True) as conn:
         yield conn
 
 
 @contextlib.contextmanager
-def open_cache_db_for_write(cache_dir: Path) -> Iterator[sqlite3.Connection | None]:
+def open_cache_db_for_write(cache_dir: Path) -> Generator[sqlite3.Connection | None]:
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_path = cache_dir / "files.db"
     with _sqlite_connection(cache_path, readonly=False) as conn:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 import numpy as np
 
@@ -10,18 +10,28 @@ if TYPE_CHECKING:
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
 
 
+def __is_simple(index: DataIndex) -> TypeGuard[SimpleIndex]:
+    return isinstance(index, np.ndarray)
+
+
+def __is_chunked(index: DataIndex) -> TypeGuard[ChunkedIndex]:
+    return (
+        isinstance(index, (tuple, list))
+        and len(index) == 2
+        and all(isinstance(part, np.ndarray) for part in index)
+    )
+
+
 def take(from_: DataIndex, by: DataIndex) -> DataIndex:
-    match (from_, by):
-        case (np.ndarray(), np.ndarray()):
-            return __take_simple_from_simple(from_, by)
-        case (np.ndarray(), (np.ndarray(), np.ndarray())):
-            return idxlib.take_chunked_from_simple(from_, *by)
-        case ((np.ndarray(), np.ndarray()), np.ndarray()):
-            return __take_simple_from_chunked(from_, by)
-        case ((np.ndarray(), np.ndarray()), (np.ndarray(), np.ndarray())):
-            return idxlib.take_chunked_from_chunked(*from_, *by)
-        case _:
-            raise TypeError(f"Invalid index types: {type(from_)}, {type(by)}")
+    if __is_simple(from_) and __is_simple(by):
+        return __take_simple_from_simple(from_, by)
+    if __is_simple(from_) and __is_chunked(by):
+        return idxlib.take_chunked_from_simple(from_, *by)
+    if __is_chunked(from_) and __is_simple(by):
+        return __take_simple_from_chunked(from_, by)
+    if __is_chunked(from_) and __is_chunked(by):
+        return idxlib.take_chunked_from_chunked(*from_, *by)
+    raise TypeError(f"Invalid index types: {type(from_)}, {type(by)}")
 
 
 def __take_simple_from_chunked(from_: ChunkedIndex, by: SimpleIndex) -> SimpleIndex:

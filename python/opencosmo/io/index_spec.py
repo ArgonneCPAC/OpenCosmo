@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from opencosmo.index.build import empty, from_range
 
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
-    from opencosmo.spatial.protocols import SpatialIndex
+    from opencosmo.spatial.protocols import Region, SpatialIndex
 
 
 class ResolvedIndex(NamedTuple):
@@ -20,8 +20,8 @@ class ResolvedIndex(NamedTuple):
     'no restriction — read the whole dataset on this rank') plus the possibly
     partition-updated spatial region to thread back into dataset state."""
 
-    index: DataIndex | None  # type: ignore[assignment]  # shadows tuple.index
-    region: Any  # a spatial Region; opaque here, threaded through unchanged by full/empty_ref
+    index: DataIndex | None  # shadows tuple.index
+    region: Region | None
 
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
             DatasetTarget,
             SpatialIndex | None,
             int,
-            object,
+            Region | None,
         ],
         ResolvedIndex,
     ]
@@ -47,7 +47,7 @@ def spatial(
     target: DatasetTarget,
     spatial_index: SpatialIndex | None,
     ds_length: int,
-    sim_region: object,
+    sim_region: Region | None,
 ) -> ResolvedIndex:
     """Source in spatial mode: MPI-partition this rank's rows, feeding back the
     partition's region. Holds the partition() call, the KeyError even-chunk
@@ -72,9 +72,12 @@ def spatial(
         if part is None:
             index = empty()
         else:
-            index = part.idx  # type: ignore[assignment]
+            index = part.idx
             sim_region = part.region if part.region is not None else sim_region
         if header.file.is_lightcone:
+            # ds_group["index"] above raised KeyError if there was no spatial index
+            if spatial_index is None:
+                raise RuntimeError("A lightcone partition requires a spatial index")
             sim_region = _expand_lightcone_region(sim_region, spatial_index)
         return ResolvedIndex(index, sim_region)
     except KeyError:
@@ -95,7 +98,7 @@ def full(
     target: DatasetTarget,
     spatial_index: SpatialIndex | None,
     ds_length: int,
-    sim_region: object,
+    sim_region: Region | None,
 ) -> ResolvedIndex:
     """Linked children and redshift-split nodes: no index restriction — the whole
     dataset is read on this rank (matches the old bypass_mpi=True path)."""
@@ -108,7 +111,7 @@ def empty_ref(
     target: DatasetTarget,
     spatial_index: SpatialIndex | None,
     ds_length: int,
-    sim_region: object,
+    sim_region: Region | None,
 ) -> ResolvedIndex:
     """Empty reference rank: read nothing (matches the old index_override=empty())."""
     return ResolvedIndex(empty(), sim_region)

@@ -127,7 +127,7 @@ def to_format_dict(data: dict[str, np.ndarray], output_format: str) -> dict:
 
             return {k: pl.Series(values=strip(v)) for k, v in data.items()}
         case "arrow":
-            import pyarrow as pa  # type: ignore
+            import pyarrow as pa
 
             return {k: pa.array(strip(v)) for k, v in data.items()}
         case _:
@@ -177,7 +177,7 @@ def stack_rows(values: list, output_format: str):
 
             return pl.Series(values=values)
         case "arrow":
-            import pyarrow as pa  # type: ignore
+            import pyarrow as pa
 
             return pa.array(values)
         case _:
@@ -205,7 +205,7 @@ def concat_chunks(chunks: list, output_format: str):
 
             return pl.concat(chunks)
         case "arrow":
-            import pyarrow as pa  # type: ignore
+            import pyarrow as pa
 
             return pa.concat_arrays(chunks)
         case _:
@@ -215,18 +215,18 @@ def concat_chunks(chunks: list, output_format: str):
 def sum_chunks(chunks: list, output_format: str):
     """Sum a list of per-chunk arrays element-wise."""
     if output_format == "arrow":
-        import pyarrow.compute as pc  # type: ignore
+        import pyarrow.compute as pc
 
-        return reduce(pc.add, chunks)
+        return reduce(lambda a, b: pc.add(a, b), chunks)
     return reduce(add, chunks)
 
 
 def product_chunks(chunks: list, output_format: str):
     """Multiply a list of per-chunk arrays element-wise."""
     if output_format == "arrow":
-        import pyarrow.compute as pc  # type: ignore
+        import pyarrow.compute as pc
 
-        return reduce(pc.multiply, chunks)
+        return reduce(lambda a, b: pc.multiply(a, b), chunks)
     return reduce(mul, chunks)
 
 
@@ -236,15 +236,17 @@ def average_chunks(chunks: list, weights: list[int], output_format: str):
         (chunk, weight) for chunk, weight in zip(chunks, weights, strict=True) if weight
     ]
     if output_format == "arrow":
-        import pyarrow.compute as pc  # type: ignore
+        import pyarrow as pa
+        import pyarrow.compute as pc
 
         if not weighted:
             return pc.multiply(chunks[0], 0)
         total = sum(weight for _, weight in weighted)
         numerator = reduce(
-            pc.add, [pc.multiply(chunk, float(weight)) for chunk, weight in weighted]
+            lambda a, b: pc.add(a, b),
+            [pc.multiply(chunk, float(weight)) for chunk, weight in weighted],
         )
-        return pc.divide(numerator, float(total))
+        return pc.divide(numerator, pa.scalar(float(total)))
 
     if not weighted:
         return chunks[0] * 0
@@ -254,7 +256,7 @@ def average_chunks(chunks: list, weights: list[int], output_format: str):
 
 def __convert_to_astropy(
     data: dict[str, np.ndarray], wrap_single: bool = False
-) -> QTable:
+) -> QTable | dict[str, np.ndarray] | np.ndarray:
     if len(data) == 1 and not wrap_single:
         return next(iter(data.values()))
     if any(
@@ -290,7 +292,7 @@ def __convert_to_pandas(data: dict[str, np.ndarray], wrap_single: bool = False):
 
 
 def __convert_to_arrow(data: dict[str, np.ndarray], wrap_single: bool = False):
-    import pyarrow as pa  # type: ignore
+    import pyarrow as pa
 
     numpy_data = convert_to_numpy(data, wrap_single)
     if isinstance(numpy_data, np.ndarray):
@@ -307,7 +309,8 @@ def __convert_to_polars(data: dict[str, np.ndarray], wrap_single: bool = False):
     if isinstance(numpy_data, np.ndarray):
         return pl.Series(name=next(iter(data.keys())), values=numpy_data)
 
-    return pl.from_dict(data)  # type: ignore
+    # polars types the values as Sequence | Series, but numpy arrays are accepted
+    return pl.from_dict(data)  # ty: ignore[invalid-argument-type]
 
 
 def __convert_to_jax(data: dict[str, np.ndarray], wrap_single: bool = False):

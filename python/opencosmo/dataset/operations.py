@@ -50,11 +50,12 @@ from opencosmo.units.converters import get_scale_factor
 from opencosmo.uuid import get_string_uuid
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
     from typing import Literal
     from uuid import UUID
 
     from opencosmo.column.column import (
+        Column,
         ColumnMask,
         CompoundColumnMask,
         ConstructedColumn,
@@ -152,14 +153,14 @@ def select(
         )
 
     reducer = default_reducer(mode)
-    derived_columns = {
+    derived = {
         k: v.with_reducer(reducer) if isinstance(v, (Column, DerivedScalarValue)) else v
         for k, v in derived_columns.items()
     }
 
     new_state = state
     if derived_columns:
-        new_state = __with_new_columns(new_state, {}, False, **derived_columns)
+        new_state = __with_new_columns(new_state, derived, {}, False)
         all_columns.update(derived_columns.keys())
 
     if all_columns:
@@ -194,8 +195,23 @@ def with_new_columns(
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
     mode: Literal["local", "global"] = "global",
-    **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
-):
+    **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
+) -> DatasetState:
+    return add_new_columns(state, new_columns, descriptions, allow_overwrite, mode)
+
+
+def add_new_columns(
+    state: DatasetState,
+    new_columns: Mapping[str, ConstructedColumn | Column | np.ndarray | u.Quantity],
+    descriptions: str | dict[str, str] | None = None,
+    allow_overwrite: bool = False,
+    mode: Literal["local", "global"] = "global",
+) -> DatasetState:
+    """
+    Mapping form of :py:func:`with_new_columns`. Column names are data here, so
+    they cannot collide with the option parameters. It does not record a log
+    entry; the instrumented :py:func:`with_new_columns` does.
+    """
     from opencosmo.column.column import Column, DerivedScalarValue
     from opencosmo.column.reducer import default_reducer
 
@@ -212,7 +228,7 @@ def with_new_columns(
     }
     if isinstance(descriptions, str):
         descriptions = {key: descriptions for key in new_columns}
-    return __with_new_columns(state, descriptions, allow_overwrite, **new_columns)
+    return __with_new_columns(state, new_columns, descriptions, allow_overwrite)
 
 
 def evaluate(
@@ -251,7 +267,7 @@ def insert_evaluated(
     log: bool = True,
 ) -> DatasetState:
     """Insert a lazily evaluated column, recording the evaluation if ``log``."""
-    new_state = __with_new_columns(state, {}, allow_overwrite, **{column.name: column})
+    new_state = __with_new_columns(state, {column.name: column}, {}, allow_overwrite)
     if not log:
         return new_state
     return record_call(state, new_state, iss.serialize_evaluate(column))
@@ -388,7 +404,7 @@ def bound(state: DatasetState, region, select_by):
         )
 
         check_region = region.regularize(
-            state.unit_handler,  # type: ignore[arg-type]
+            state.unit_handler,
             columns,
             state.convention,
             {
@@ -440,8 +456,8 @@ def bound(state: DatasetState, region, select_by):
 def with_units(
     state: DatasetState,
     convention: str | None,
-    conversions: dict[u.Unit, u.Unit],
-    **columns: u.Unit,
+    conversions: dict[u.UnitBase, u.UnitBase],
+    **columns: u.UnitBase,
 ) -> DatasetState:
     if convention is None:
         convention_ = state.unit_handler.current_convention
@@ -617,9 +633,12 @@ def written_uuid(path: str) -> UUID:
 
 def __with_new_columns(
     state: DatasetState,
+    new_columns: Mapping[
+        str,
+        Column | ConstructedColumn | DerivedScalarValue | np.ndarray | u.Quantity,
+    ],
     descriptions: dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> DatasetState:
     if descriptions is None:
         descriptions = {}
@@ -703,8 +722,8 @@ def __take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
 def __with_units(
     state: DatasetState,
     convention: UnitConvention,
-    conversions: dict[u.Unit, u.Unit],
-    columns: dict[str, u.Unit],
+    conversions: dict[u.UnitBase, u.UnitBase],
+    columns: dict[str, u.UnitBase],
     cosmology,
     redshift,
 ) -> DatasetState:

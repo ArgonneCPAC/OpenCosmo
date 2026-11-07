@@ -7,9 +7,9 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     import numpy as np
+    from mpi4py import MPI
     from opencosmo.index import DataIndex, SimpleIndex
     from opencosmo.io.schema import Schema
-    from opencosmo.mpi import MPI
 
 
 class DataHandler(Protocol):
@@ -35,6 +35,8 @@ class DataHandler(Protocol):
     def index(self) -> DataIndex: ...
 
     def with_index(self, index: DataIndex) -> Self: ...
+
+    def __len__(self) -> int: ...
 
 
 class DataCache(Protocol):

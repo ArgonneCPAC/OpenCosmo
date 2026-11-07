@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from opencosmo.mpi import MPI
+    from mpi4py import MPI
 
 
 def do_idx_update(data: np.ndarray, comm: MPI.Comm | None = None):

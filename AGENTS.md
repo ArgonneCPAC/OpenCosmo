@@ -56,7 +56,7 @@ Test data fixtures are in `test/conftest.py`. The fixtures (`snapshot_path`, `li
 ```bash
 uv run ruff check python/        # Lint
 uv run ruff format python/       # Format
-uv run mypy python/              # Type checking
+uv run ty check                  # Type checking (scope set in [tool.ty.src])
 ```
 
 ### Generated Messages
@@ -81,7 +81,7 @@ uv run towncrier create <issue_number>.<type>  # Types: feature, bugfix, improve
 - Add type hints to all code. Avoid `Any` whenever a more specific type can be used.
 - Target Python 3.12+ syntax. Put annotation-only imports behind `TYPE_CHECKING` unless a framework such as Pydantic requires the object at runtime.
 - Use `Protocol` for interchangeable backend or plugin contracts, `TypedDict` for established dictionary payloads, `NamedTuple` when tuple behavior matters, and frozen dataclasses for richer immutable records. Add `@runtime_checkable` only for actual runtime checks.
-- Use narrow, rule-specific `# noqa` or `# type: ignore[...]` suppressions. Do not use a broad suppression when the type or lint rule can be expressed accurately.
+- Use narrow, rule-specific `# noqa` or `# ty: ignore[rule]` suppressions, with a short reason. `# type: ignore` comments are not respected (`respect-type-ignore-comments = false`). Do not use a broad suppression when the type or lint rule can be expressed accurately.
 - Add public names through the appropriate package `__init__.py` and `__all__`. Keep Rust bindings behind Python APIs rather than exposing `opencosmo._lib` directly.
 - Keep optional dependencies out of import-time paths. Import pandas, Polars, Arrow, JAX, yt, and MPI implementations only when requested. Serial code must handle `get_comm_world() is None`.
 - Discovery, schema construction, serialization, and MPI planning must be deterministic. Sort file, group, and column inputs and never depend on set iteration or caller path order where ranks must agree.
@@ -199,7 +199,7 @@ Several concerns are now in dedicated top-level modules under `python/opencosmo/
 
 - **Pydantic header models** live in `python/opencosmo/dtypes/`. Origin, data type, and lightcone status select the required and optional model groups exposed by `OpenCosmoHeader`.
 - **`from __future__ import annotations`** is used where needed. `TYPE_CHECKING` guards keep annotation-only imports out of runtime paths.
-- **Missing third-party stubs** are configured in `pyproject.toml`; source-level suppressions should remain narrow and local.
+- **Type checking** uses `ty` (`[tool.ty]` in `pyproject.toml`, scope `python/opencosmo`). Astropy ships no stubs; `dtypes/cosmology.py` has an internal `FlrwCosmology` Protocol and `units/types.py` has the shared `AnyUnit` / `UnitValue` aliases. Source-level suppressions should remain narrow and local.
 - **Dependency graphs**: column producer graphs use the Rust `DependencyGraph` in `src/graph.rs` (petgraph); small name-keyed graphs such as analysis package install order use the standard library `graphlib`.
 - The CLI entrypoint is `opencosmo.analysis.cli:cli` (accessible as `uv run opencosmo`).
 - Version changes must keep `pyproject.toml`, `Cargo.toml`, `opencosmo.__version__`, Sphinx `release`, and `.bumpversion.toml` synchronized.

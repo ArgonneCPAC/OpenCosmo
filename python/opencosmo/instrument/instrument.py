@@ -4,7 +4,7 @@ import json
 from dataclasses import is_dataclass, replace
 from functools import wraps
 from inspect import signature
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Protocol, cast
 from warnings import warn
 
 import numpy as np
@@ -28,7 +28,7 @@ class Loggable(Protocol):
     def log(self) -> Sequence[BaseModel]: ...
 
 
-def __is_recording(state: object) -> TypeGuard[Loggable]:
+def __is_recording(state: object) -> bool:
     return is_dataclass(state) and getattr(state, "log", None) is not None
 
 
@@ -73,7 +73,8 @@ def record_call[T: DataclassInstance](state: T, new_state: T, entry: BaseModel) 
     """
     if not __is_recording(state):
         return new_state
-    return replace(new_state, log=[*state.log, entry])  # type: ignore[attr-defined, type-var]
+    log: Sequence[BaseModel] = cast("Loggable", state).log
+    return replace(new_state, log=[*log, entry])
 
 
 def read_log(file: h5py.File | h5py.Group) -> Sequence[BaseModel] | None:

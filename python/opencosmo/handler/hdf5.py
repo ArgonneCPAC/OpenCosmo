@@ -7,7 +7,6 @@ import numpy as np
 from opencosmo.index import (
     SimpleIndex,
     build_plans,
-    get_data,
     get_length,
     into_array,
     read_with_plan,
@@ -92,7 +91,7 @@ class Hdf5Handler:
     def __take_sorted(self, other: DataIndex, sorted: np.ndarray):
         if get_length(sorted) != get_length(self.__index):
             raise ValueError("Sorted index has the wrong length!")
-        new_indices = get_data(other, sorted)
+        new_indices = sorted[into_array(other)]
 
         new_raw_index = into_array(self.__index)[new_indices]
         new_index = np.sort(new_raw_index)

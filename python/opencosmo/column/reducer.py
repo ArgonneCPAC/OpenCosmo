@@ -3,13 +3,15 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
-import astropy.units as u  # type: ignore
+import astropy.units as u
 import numpy as np
 
 from opencosmo.mpi import get_comm_world, get_mpi
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from mpi4py import MPI as _MPI
 
 
 class Reducer(Protocol):
@@ -54,7 +56,7 @@ class MpiReducer:
     Reducer that combines local reductions across MPI ranks.
     """
 
-    def __init__(self, comm: Any):
+    def __init__(self, comm: _MPI.Comm | None):
         """
         Parameters
         ----------
@@ -102,8 +104,10 @@ class MpiReducer:
         if self.comm is None:
             return operation(local_data, None)
 
+        MPI = get_mpi()
+        assert MPI is not None
         local_n = len(local_data)
-        global_n = self.comm.allreduce(local_n, op=get_mpi().SUM)
+        global_n = self.comm.allreduce(local_n, op=MPI.SUM)
         if global_n == 0:
             raise ValueError(
                 "Cannot compute reduction on a globally empty dataset (all ranks have 0 rows)."
@@ -115,7 +119,7 @@ class MpiReducer:
 
         if operation is _min or operation is _max:
             identity = np.inf if operation is _min else -np.inf
-            mpi_op = get_mpi().MIN if operation is _min else get_mpi().MAX
+            mpi_op = MPI.MIN if operation is _min else MPI.MAX
             if local_n > 0:
                 local_value = operation(local_data, None)
             else:
@@ -127,14 +131,14 @@ class MpiReducer:
                 if local_n > 0
                 else (0.0 * unit if unit is not None else 0.0)
             )
-            return self.comm.allreduce(local_value, op=get_mpi().SUM)
+            return self.comm.allreduce(local_value, op=MPI.SUM)
         if operation is _mean:
             local_sum = (
                 np.sum(local_data)
                 if local_n > 0
                 else (0.0 * unit if unit is not None else 0.0)
             )
-            gs = self.comm.allreduce(local_sum, op=get_mpi().SUM)
+            gs = self.comm.allreduce(local_sum, op=MPI.SUM)
             return gs / global_n
         if operation in (_var, _std, _median) or (
             isinstance(operation, partial) and operation.func is _quantile
@@ -163,6 +167,9 @@ class MpiReducer:
         Any
             The global reduction result, with units preserved.
         """
+        MPI = get_mpi()
+        assert MPI is not None
+        assert self.comm is not None
         local_values = np.asarray(
             local_data.value if isinstance(local_data, u.Quantity) else local_data,
             dtype=np.float64,
@@ -177,9 +184,7 @@ class MpiReducer:
         offsets[1:] = np.cumsum(lengths)[:-1]
         recv = np.empty(total_length, dtype=np.float64) if rank == 0 else None
 
-        self.comm.Gatherv(
-            local_values, [recv, lengths, offsets, get_mpi().DOUBLE], root=0
-        )
+        self.comm.Gatherv(local_values, [recv, lengths, offsets, MPI.DOUBLE], root=0)
 
         # Compute on rank 0
         if rank != 0:

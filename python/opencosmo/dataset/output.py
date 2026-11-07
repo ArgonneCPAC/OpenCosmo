@@ -15,6 +15,7 @@ from opencosmo.io.schema import (
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from uuid import UUID
 
     from pydantic import BaseModel
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 
 
 def get_derived_column_names(
-    producers: list[ConstructedColumn], columns: set[str]
+    producers: list[ConstructedColumn | RawColumn], columns: set[str]
 ) -> set[str]:
     all_derived: set[str] = reduce(
         lambda acc, col: acc.union(
@@ -41,7 +42,7 @@ def get_derived_column_names(
 
 
 def build_derived_writers(
-    producers: list[ConstructedColumn],
+    producers: Sequence[ConstructedColumn | RawColumn],
     derived_data: dict,
     data_schema: Schema,
     cached_data_schema: Schema,
@@ -71,7 +72,7 @@ def build_derived_writers(
 
 
 def make_dataset_schema(
-    producers: list[ConstructedColumn],
+    producers: Sequence[ConstructedColumn | RawColumn],
     raw_data_handler: DataHandler,
     cache: DataCache,
     columns_to_uuid: dict[str, UUID],

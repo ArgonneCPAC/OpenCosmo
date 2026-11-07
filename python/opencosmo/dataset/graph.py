@@ -10,10 +10,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
 
-    import astropy.units as u
-
     from opencosmo._lib.graph import DependencyGraph
     from opencosmo.column.column import ConstructedColumn
+    from opencosmo.units.types import UnitValue
 
 # Bounded LRU so long sessions that keep deriving new columns do not grow without limit.
 __GRAPH_CACHE_SIZE = 256
@@ -21,7 +20,7 @@ __GRAPH_CACHE: OrderedDict[frozenset[UUID], DependencyGraph] = OrderedDict()
 
 
 def get_all_required_pairs(
-    producers: Mapping[UUID, ConstructedColumn],
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
     columns_to_uuid: dict[str, UUID],
 ) -> set[tuple[UUID, str]]:
     """
@@ -36,7 +35,7 @@ def get_all_required_pairs(
 
 
 def get_dependency_graph(
-    producers: Mapping[UUID, ConstructedColumn],
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
 ) -> DependencyGraph:
     """
     Return the dependency graph for a set of producers, reusing a cached graph
@@ -59,7 +58,7 @@ def get_dependency_graph(
 
 
 def evaluate_producers(
-    producers: Mapping[UUID, ConstructedColumn],
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
     inputs: dict[str, Any],
 ) -> dict[str, Any]:
     """
@@ -81,7 +80,7 @@ def evaluate_producers(
         if isinstance(producer, RawColumn):
             continue
         # Scope producers evaluate over the stacked table, so there is no source index.
-        result = producer.evaluate(inputs | outputs, None)  # type: ignore[arg-type]
+        result = producer.evaluate(inputs | outputs, None)
         if not isinstance(result, dict):
             result = {next(iter(producer.produces)): result}
         outputs.update(result)
@@ -89,16 +88,14 @@ def evaluate_producers(
 
 
 def get_derived_units(
-    producers: Mapping[UUID, ConstructedColumn],
-    units: dict[str, u.Unit],
-) -> dict[str, u.Unit | None]:
-    new_units: dict[str, u.Unit | None] = {}
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
+    units: Mapping[str, UnitValue],
+) -> dict[str, UnitValue]:
+    known_units = dict(units)
+    new_units: dict[str, UnitValue] = {}
     for uuid in get_dependency_graph(producers).order():
         producer = producers[uuid]
         if isinstance(producer, RawColumn):
             continue
-        column_units = producer.get_units(units | new_units)
-        if not isinstance(column_units, dict):
-            column_units = {name: column_units for name in producer.produces}
-        new_units |= column_units
+        new_units |= producer.get_units(known_units | new_units)
     return new_units

@@ -89,18 +89,19 @@ class IndexUpdateCtx:
 
 
 @dataclass(frozen=True)
-class PostSortCtx:
+class PostSortCtx[Data: (Table, dict[str, np.ndarray])]:
     """Fired after a sort operation reorders rows.
 
     state is read-only context for the predicate.
     index is the reverse-sort permutation (i.e. np.argsort of the sort order),
     which can be used to remap index-valued columns.
     data is the value being transformed; return a modified copy via
-    dataclasses.replace(ctx, data=new_data).
+    dataclasses.replace(ctx, data=new_data). Datasets produce a dict of arrays and
+    lightcones an astropy Table; hooks must handle both.
     """
 
     state: DatasetState | LightconeState
-    data: Table | dict[str, np.ndarray]
+    data: Data
     index: IndexArray
 
 

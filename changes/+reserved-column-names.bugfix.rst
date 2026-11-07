@@ -1,0 +1,1 @@
+Columns added through ``evaluate``, ``with_new_columns`` or ``select`` can now be named ``mode``, ``descriptions``, ``allow_overwrite`` or ``dataset`` without being mistaken for an option of the method that adds them.

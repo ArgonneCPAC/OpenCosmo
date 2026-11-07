@@ -66,7 +66,7 @@ class StructureCollection:
         return len(self.__state)
 
     def __dir__(self):
-        return list(self.__state.header.parameters.keys()) + super().__dir__()
+        return [*self.__state.header.parameters, *super().__dir__()]
 
     def __getattr__(self, key: str):
         if key == "_StructureCollection__state":
@@ -77,9 +77,8 @@ class StructureCollection:
             return object.__getattribute__(self, key)
 
     @property
-    def dtype(self):
-        structure_type = self.__state.header.file.dt
-        return structure_type
+    def dtype(self) -> str:
+        return self.__state.dtype
 
     @property
     def header(self) -> OpenCosmoHeader:
@@ -727,7 +726,7 @@ class StructureCollection:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
         **dataset_conversions: dict,
     ):
         """

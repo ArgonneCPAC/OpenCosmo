@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
-import astropy.units as u  # type: ignore
+import astropy.units as u
 import numpy as np
 
 from opencosmo.index import get_length, into_array
@@ -23,28 +23,29 @@ from opencosmo.spatial.relations import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from astropy.coordinates import SkyCoord  # type: ignore
-    from astropy.cosmology import FLRW
+    from astropy.coordinates import SkyCoord
 
+    from opencosmo.dtypes.cosmology import FlrwCosmology
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region, Region2d, Region3d
     from opencosmo.units import UnitConvention
     from opencosmo.units.handler import UnitHandler
 
-T = TypeVar("T", float, u.Quantity)
 
-Point3d = tuple[float, float, float]
-Point2d = tuple[T, T]
-BoxSize = tuple[float, float, float]
+type Point3d = tuple[float, float, float]
+type Point2d[T: (float, u.Quantity)] = tuple[T, T]
+type BoxSize = tuple[float, float, float]
 
 
-def physical_to_scalefree(value: float, cosmology: FLRW, z: float):
+def physical_to_scalefree(
+    value: float | np.ndarray, cosmology: FlrwCosmology, z: float
+):
     a = cosmology.scale_factor(z)
     comoving_value = value / a
     return comoving_to_scalefree(comoving_value, cosmology)
 
 
-def comoving_to_scalefree(value: float, cosmology: FLRW):
+def comoving_to_scalefree(value: float | np.ndarray, cosmology: FlrwCosmology):
     h = cosmology.h
     scalefree_value = value * h
     return scalefree_value
@@ -75,8 +76,10 @@ def combine(*regions: Region) -> Region:
 
 
 def combine_3d_regions(*regions: Region3d):
-    assert all(isinstance(r, BoxRegion) for r in regions)
-    return regions[0].combine(*regions[1:])  # type: ignore
+    boxes = [r for r in regions if isinstance(r, BoxRegion)]
+    if len(boxes) != len(regions):
+        raise TypeError("Only box regions can be combined in three dimensions")
+    return boxes[0].combine(*boxes[1:])
 
 
 def combine_2d_regions(*regions: Region2d):
@@ -188,7 +191,7 @@ class ConeRegion:
         return intersects_2d(self, other)
 
     def get_healpix_intersections(self, nside: int, nest: bool = True):
-        from healpy import ang2vec, query_disc  # type: ignore
+        from healpy import ang2vec, query_disc
 
         vec = ang2vec(self.center.ra.value, self.center.dec.value, lonlat=True)
         radius = self.radius.to(u.rad).value
@@ -250,7 +253,7 @@ class SkyboxRegion:
         # query_polygon would omit pixels along the box's lower-declination edge.
         # Instead, select the full declination band with query_strip and then
         # restrict to the RA bounds.
-        from healpy import max_pixrad, pix2ang, query_strip  # type: ignore
+        from healpy import max_pixrad, pix2ang, query_strip
 
         dec0, dec1 = self.__dec_bounds
         theta1 = np.radians(90.0 - dec1)
@@ -432,6 +435,7 @@ class BoxRegion:
             ]
         center = tuple((b[0] + b[1]) / 2 for b in bounds)
         halfwidth = tuple((b[1] - b[0]) / 2 for b in bounds)
+        assert len(center) == 3 and len(halfwidth) == 3
         return BoxRegion(center, halfwidth)
 
     def regularize(

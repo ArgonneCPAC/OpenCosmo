@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import operator
+from collections.abc import Iterable
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -68,10 +69,11 @@ from .region import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from opencosmo.column.column import ExpressionOperand, MaskOperator
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
 
-    from .expression import Expression, Mask
+    from .expression import Expression, Mask, ScalarLiteral
     from .region import RegionMessage
 
 type LiveScalar = int | float | u.Quantity
@@ -125,17 +127,12 @@ def mask_to_live(mask: Mask) -> LiveMask:
             live_right = expression_to_live(right)
             if not isinstance(live_left, Column) and not isinstance(live_right, Column):
                 raise TypeError("A comparison mask requires a vector expression")
-            return ColumnMask(
-                live_left,  # type: ignore[arg-type]
-                live_right,  # type: ignore[arg-type]
-                __comparison_operator(operation),  # type: ignore[arg-type]
-            )
+            return ColumnMask(live_left, live_right, __comparison_operator(operation))
         case MembershipMask(operand=operand, values=values):
             live_operand = expression_to_live(operand)
             if not isinstance(live_operand, Column):
                 raise TypeError("A membership mask requires a vector expression")
-            live_values = tuple(expression_to_live(value) for value in values)
-            return live_operand.isin(live_values)
+            return live_operand.isin(tuple(__scalar_to_live(value) for value in values))
         case CompoundMask(operator=operation, left=left, right=right):
             live_left = mask_to_live(left)
             live_right = mask_to_live(right)
@@ -197,12 +194,16 @@ def __reduce(operation: ReductionOperator, operand: Column) -> DerivedScalarValu
             return operand.sum()
 
 
-def __comparison_operator(
-    operation: ComparisonOperator,
-) -> Callable[[LiveExpression, LiveExpression], bool]:
-    operations: dict[
-        ComparisonOperator, Callable[[LiveExpression, LiveExpression], bool]
-    ] = {
+def __scalar_to_live(value: ScalarLiteral) -> LiveScalar:
+    match value:
+        case NumberLiteral(value=number):
+            return number
+        case QuantityLiteral(value=number, unit=unit):
+            return u.Quantity(number, u.Unit(unit))
+
+
+def __comparison_operator(operation: ComparisonOperator) -> MaskOperator:
+    operations: dict[ComparisonOperator, MaskOperator] = {
         ComparisonOperator.EQUAL: operator.eq,
         ComparisonOperator.NOT_EQUAL: operator.ne,
         ComparisonOperator.GREATER_THAN: operator.gt,
@@ -296,10 +297,14 @@ def mask_from_live(mask: LiveMask) -> Mask:
     match mask:
         case ColumnMask(left=left, right=right, operator=operation):
             if operation is np.isin:
+                if not isinstance(right, Iterable):
+                    raise TypeError("A membership mask requires a collection of values")
                 return MembershipMask(
                     operand=expression_from_live(left),
-                    values=tuple(__scalar_from_live(value) for value in right),  # type: ignore[union-attr]
+                    values=tuple(__scalar_from_live(value) for value in right),
                 )
+            if isinstance(right, Iterable) and not isinstance(right, u.Quantity):
+                raise TypeError("Only membership masks compare against a collection")
             if (comparison := __COMPARISON_OPERATORS.get(operation)) is None:
                 raise TypeError(f"Unsupported comparison operation: {operation!r}")
             return ComparisonMask(
@@ -324,12 +329,12 @@ def __node_from_live(node: Column | DerivedScalarValue) -> Expression:
         return ArithmeticExpression(
             operator=arithmetic,
             left=expression_from_live(node.lhs),
-            right=expression_from_live(node.rhs),  # type: ignore[arg-type]
+            right=expression_from_live(__require_rhs(node)),
         )
     if function is _arctan2:
         return Arctan2Expression(
             left=expression_from_live(node.lhs),
-            right=expression_from_live(node.rhs),  # type: ignore[arg-type]
+            right=expression_from_live(__require_rhs(node)),
         )
     if function is _quantile:
         if not isinstance(quantile := keywords.get("q"), float | int):
@@ -339,7 +344,7 @@ def __node_from_live(node: Column | DerivedScalarValue) -> Expression:
         )
     if keywords != __DEFAULT_KEYWORDS.get(function, {}):
         raise ValueError(
-            f"Operation {function.__name__} with arguments {keywords} "
+            f"Operation {getattr(function, '__name__', function)!r} with arguments {keywords} "
             "cannot be serialized"
         )
     if (unary := __UNARY_OPERATORS.get(function)) is not None:
@@ -349,6 +354,12 @@ def __node_from_live(node: Column | DerivedScalarValue) -> Expression:
             operator=reduction, operand=expression_from_live(node.lhs)
         )
     raise TypeError(f"Unsupported column operation: {node.operation!r}")
+
+
+def __require_rhs(node: Column | DerivedScalarValue) -> ExpressionOperand:
+    if node.rhs is None:
+        raise TypeError(f"Operation {node.operation!r} requires two operands")
+    return node.rhs
 
 
 def __unwrap(
@@ -406,10 +417,10 @@ def region_from_live(region: Region) -> RegionMessage:
     """
     match region:
         case BoxRegion():
-            lower, upper = zip(*region.bounds)
+            (x0, x1), (y0, y1), (z0, z1) = region.bounds
             return BoxRegionMessage(
-                p1=tuple(float(value) for value in lower),  # type: ignore[arg-type]
-                p2=tuple(float(value) for value in upper),  # type: ignore[arg-type]
+                p1=(float(x0), float(y0), float(z0)),
+                p2=(float(x1), float(y1), float(z1)),
             )
         case ConeRegion():
             return ConeRegionMessage(
@@ -419,8 +430,8 @@ def region_from_live(region: Region) -> RegionMessage:
         case SkyboxRegion():
             model = region.into_model()
             return SkyboxRegionMessage(
-                p1=tuple(float(value) for value in model.p1),  # type: ignore[arg-type]
-                p2=tuple(float(value) for value in model.p2),  # type: ignore[arg-type]
+                p1=(float(model.p1[0]), float(model.p1[1])),
+                p2=(float(model.p2[0]), float(model.p2[1])),
             )
         case HealpixRegion():
             return HealpixRegionMessage(

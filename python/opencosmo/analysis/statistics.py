@@ -20,7 +20,7 @@ need to remember that (for example) unresolved halos are written out with
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
@@ -31,6 +31,8 @@ from opencosmo.mpi import get_comm_world, get_mpi
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from mpi4py import MPI as _MPI
+
     from opencosmo import Dataset, StructureCollection
     from opencosmo.column.column import Column, DerivedScalarValue
 
@@ -40,13 +42,12 @@ if TYPE_CHECKING:
 
 import astropy.units as u
 
-MPI = get_mpi()
 comm = get_comm_world()
 rank = comm.Get_rank() if comm is not None else 0
 ranks = comm.Get_size() if comm is not None else 1
 
 
-def _require_comm() -> Any:
+def _require_comm() -> _MPI.Comm:
     """
     Return the world communicator, asserting that it exists.
 
@@ -211,7 +212,7 @@ def binned_statistic(
     dataset: str = "halo_properties",
     mode: Mode = "global",
     **kwargs: Any,
-) -> tuple[list, np.ndarray | Sequence]:
+) -> tuple[u.Quantity, np.ndarray | Sequence]:
     r"""
     Compute a statistic of ``column`` in bins of ``bin_by``.
 
@@ -441,6 +442,8 @@ def hist1d(
     counts, bin_edges = np.histogram(values, bins=edges)
 
     if ranks > 1 and mode == "global":
+        MPI = get_mpi()
+        assert MPI is not None
         counts = _require_comm().allreduce(counts, op=MPI.SUM)
 
     return counts, bin_edges
@@ -542,11 +545,14 @@ def hist2d(
             mode=mode,
         ).get_data()
 
-        if isinstance(bin_spacing, (list, tuple)):
+        bin_spacing_x: BinSpacing
+        bin_spacing_y: BinSpacing
+        if isinstance(bin_spacing, str):
+            # str is itself a Sequence[str], so the checker cannot separate the two
+            # arms of the annotation; _compute_bins validates the value.
+            bin_spacing_x = bin_spacing_y = cast("BinSpacing", bin_spacing)
+        elif isinstance(bin_spacing, (list, tuple)):
             bin_spacing_x, bin_spacing_y = bin_spacing
-        elif isinstance(bin_spacing, str):
-            bin_spacing_x = bin_spacing
-            bin_spacing_y = bin_spacing
         else:
             raise TypeError(f"Invalid input for bin_spacing: {bin_spacing}")
 
@@ -566,6 +572,8 @@ def hist2d(
     h, x, y = np.histogram2d(data[column_x], data[column_y], bins=[bins_x, bins_y])
 
     if ranks > 1 and mode == "global":
+        MPI = get_mpi()
+        assert MPI is not None
         h = _require_comm().allreduce(h, op=MPI.SUM)
 
     return h, x, y

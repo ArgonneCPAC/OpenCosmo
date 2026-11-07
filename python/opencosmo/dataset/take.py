@@ -9,6 +9,8 @@ from opencosmo.index import empty, from_size, into_array, single_chunk
 from opencosmo.mpi import get_comm_world, get_mpi, has_mpi
 
 if TYPE_CHECKING:
+    from mpi4py import MPI as _MPI
+
     from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.index import DataIndex, IndexArray
@@ -186,6 +188,8 @@ def get_global_sort_order(
 ):
     comm = get_comm_world()
     assert comm is not None
+    MPI = get_mpi()
+    assert MPI is not None
 
     assert sort_key is not None
     raw = _get_sort_column(ds, sort_key[0])
@@ -200,7 +204,7 @@ def get_global_sort_order(
     offsets = np.zeros(len(lengths), dtype=np.int64)
     offsets[1:] = np.cumsum(lengths)[:-1]
     recv = np.empty(total_length, dtype=np.float64) if rank == 0 else None
-    comm.Gatherv(local_values, [recv, lengths, offsets, get_mpi().DOUBLE], root=0)
+    comm.Gatherv(local_values, [recv, lengths, offsets, MPI.DOUBLE], root=0)
 
     # Other ranks return None
     if rank != 0:
@@ -231,7 +235,9 @@ def get_random_take_index_mpi(n: int, ds_length: int):
     return get_local_rows_simple(rows, lengths, comm)
 
 
-def get_local_rows_simple(rows: IndexArray | None, lengths: list[int], comm):
+def get_local_rows_simple(rows: IndexArray | None, lengths: list[int], comm: _MPI.Comm):
+    MPI = get_mpi()
+    assert MPI is not None
     chunk_ranges = np.zeros(len(lengths) + 1, dtype=np.int64)
     chunk_ranges[1:] = np.cumsum(lengths)
     if comm.Get_rank() == 0:
@@ -251,9 +257,9 @@ def get_local_rows_simple(rows: IndexArray | None, lengths: list[int], comm):
         buffer_offsets = np.zeros_like(scatter_lengths)
         buffer_offsets[1:] = np.cumsum(scatter_lengths)[:-1]
 
-        buffspec = [rows, scatter_lengths, buffer_offsets, get_mpi().INT64_T]
+        buffspec = [rows, scatter_lengths, buffer_offsets, MPI.INT64_T]
         comm.Scatterv(buffspec, local_rows)
     else:
-        comm.Scatterv([None, None, None, get_mpi().INT64_T], local_rows)
+        comm.Scatterv([None, None, None, MPI.INT64_T], local_rows)
 
     return local_rows - chunk_ranges[rank_num]

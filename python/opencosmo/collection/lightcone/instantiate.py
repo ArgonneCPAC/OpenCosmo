@@ -7,7 +7,7 @@ import numpy as np
 from opencosmo.dataset.graph import evaluate_producers
 
 if TYPE_CHECKING:
-    from astropy.table import Table  # type: ignore
+    from astropy.table import Table
 
     from opencosmo.collection.lightcone.scope import LightconeScope
 

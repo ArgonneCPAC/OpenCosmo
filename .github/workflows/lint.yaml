@@ -39,8 +39,8 @@ jobs:
       - name: Run ruff linter
         run: uv run ruff check .
 
-      - name: Run mypy type checker
-        run: uv run mypy python/opencosmo
+      - name: Run ty type checker
+        run: uv run ty check
 
       - name: Check generated serde messages
         run: uv run python -m opencosmo.serde.codegen --check

@@ -45,13 +45,12 @@ def determine_max_level(state: LightconeState) -> int | None:
     Return the minimum tree max_level across all datasets in the lightcone, or
     None if any dataset has no spatial index.
     """
-    levels = [
-        leaf.spatial_index.level if leaf.spatial_index is not None else None
-        for _, leaf in state.leaves
-    ]
-    if any(level is None for level in levels):
-        return None
-    return min(levels)  # type: ignore[type-var]
+    levels: list[int] = []
+    for _, leaf in state.leaves:
+        if leaf.spatial_index is None:
+            return None
+        levels.append(leaf.spatial_index.level)
+    return min(levels)
 
 
 def get_pixels(state: LightconeState, level: int) -> np.ndarray:

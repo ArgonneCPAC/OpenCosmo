@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 import h5py
 import numpy as np
@@ -13,9 +13,9 @@ from opencosmo.spatial.utils import combine_upwards
 if TYPE_CHECKING:
     from opencosmo.header import OpenCosmoHeader
 
-T = TypeVar("T")
-GroupedColumnData = dict[str, dict[str, T]]
-RawSpatialIndexData = dict[int, tuple[np.ndarray, int]]
+
+type GroupedColumnData[T] = dict[str, dict[str, T]]
+type RawSpatialIndexData = dict[int, tuple[np.ndarray, int]]
 
 
 def build_dataset_from_data(
@@ -73,9 +73,9 @@ def make_spatial_index(data: RawSpatialIndexData):
         raise ValueError("Data for creating spatial index should include one level > 0")
     name = uuid.uuid1()
     file = h5py.File(f"{name}.hdf5", "w", driver="core", backing_store=False)
-    data = combine_upwards(size, fold_factor, level, file)
+    output_data = combine_upwards(size, fold_factor, level, file)
     output = {}
-    for group in data.values():
+    for group in output_data.values():
         assert isinstance(group, h5py.Group)
         output.update({ds.name[1:]: ds for ds in group.values()})
     return output

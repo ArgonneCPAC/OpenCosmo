@@ -1,17 +1,18 @@
-from collections.abc import Callable
+from __future__ import annotations
+
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import Any, Concatenate, TypeVar
+from typing import TYPE_CHECKING, Any, Concatenate
 
 import h5py
 
 from opencosmo.mpi import get_comm_world
 
-H5Resource = TypeVar("H5Resource", h5py.File, h5py.Group, h5py.Dataset)
-H5Reader = Callable[Concatenate[H5Resource, ...], Any]
-FileReader = Callable[Concatenate[h5py.File | h5py.Group, ...], Any]
-FileWriter = Callable[Concatenate[h5py.File | h5py.Group, ...], None]
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+type H5Resource = h5py.File | h5py.Group | h5py.Dataset
 
 """
 A collection of utilities for working with hdf5 files.
@@ -24,7 +25,9 @@ class FileExistance(Enum):
     EITHER = "either"
 
 
-def file_reader(func: FileReader) -> FileReader:
+def file_reader[**P, R](
+    func: Callable[Concatenate[h5py.File | h5py.Group, P], R],
+) -> Callable[Concatenate[h5py.File | h5py.Group | Path | str, P], R]:
     """
     Resolves the path to a given file and handles opening
     and closing the file for reading purposes. Used as a
@@ -32,7 +35,9 @@ def file_reader(func: FileReader) -> FileReader:
     """
 
     @wraps(func)
-    def wrapper(file: h5py.File | h5py.Group | Path | str, *args, **kwargs):
+    def wrapper(
+        file: h5py.File | h5py.Group | Path | str, *args: P.args, **kwargs: P.kwargs
+    ) -> R:
         if not isinstance(file, (h5py.File, h5py.Group)):
             path = resolve_path(file, FileExistance.MUST_EXIST)
             with h5py.File(path, "r", driver="core") as f:
@@ -42,7 +47,9 @@ def file_reader(func: FileReader) -> FileReader:
     return wrapper
 
 
-def file_writer(func: FileWriter) -> FileWriter:
+def file_writer[**P, R](
+    func: Callable[Concatenate[Path, P], R],
+) -> Callable[Concatenate[Path | str, P], R]:
     """
     Resolves the path to a given file and handles opening
     and closing the file for writing purposes. Used as a
@@ -50,15 +57,16 @@ def file_writer(func: FileWriter) -> FileWriter:
     """
 
     @wraps(func)
-    def wrapper(file: h5py.File | Path | str, *args, **kwargs):
-        if not isinstance(file, h5py.File | h5py.Group):
-            file = resolve_path(file, FileExistance.MUST_NOT_EXIST)
-        return func(file, *args, **kwargs)
+    def wrapper(file: Path | str, *args: P.args, **kwargs: P.kwargs) -> R:
+        path = resolve_path(file, FileExistance.MUST_NOT_EXIST)
+        return func(path, *args, **kwargs)
 
     return wrapper
 
 
-def broadcast_read(func: H5Reader) -> H5Reader:
+def broadcast_read[**P, R](
+    func: Callable[Concatenate[Any, P], R],
+) -> Callable[Concatenate[Any, P], R]:
     """
     If MPI is available, the decorated function will only
     be called on rank 0, with the results broadcast to all
@@ -69,18 +77,19 @@ def broadcast_read(func: H5Reader) -> H5Reader:
     """
 
     @wraps(func)
-    def wrapper(file: h5py.File | Path | str, *args, **kwargs):
-        output = None
+    def wrapper(file: Any, *args: P.args, **kwargs: P.kwargs) -> R:
         comm = get_comm_world()
-        if comm is None or comm.Get_rank() == 0:
+        if comm is None:
+            return func(file, *args, **kwargs)
+
+        output: R | Exception | None = None
+        if comm.Get_rank() == 0:
             try:
                 output = func(file, *args, **kwargs)
             except Exception as e:  # noqa: BLE001 — error is captured and broadcast to all MPI ranks
                 output = e
-        if comm is not None:
-            # Broadcasting the error ensures other ranks
-            # will raise the exception and quit.
-            output = comm.bcast(output, root=0)
+        # Broadcasting the error ensures other ranks will raise the exception and quit.
+        output = comm.bcast(output, root=0)
         if isinstance(output, Exception):
             raise output
         return output

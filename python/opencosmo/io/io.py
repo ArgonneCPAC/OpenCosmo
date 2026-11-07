@@ -15,8 +15,11 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     import opencosmo as oc
+    from opencosmo.collection.healpix_map.state import HealpixMapState
+    from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.collection.simulation.state import SimulationState
-    from opencosmo.io.specs import SpecState
+    from opencosmo.collection.structure.state import StructureState
+    from opencosmo.dataset.state import DatasetState
 
     from .protocols import Writeable
 
@@ -148,9 +151,11 @@ def open(
     return facade.wrap(open_state(*files, mpi_mode=mpi_mode, **open_kwargs))
 
 
+# The return type is spelled out rather than aliased: ty does not expand a
+# PEP 695 alias inside a union across facade.wrap's overloads.
 def open_state(
     *files: str | Path, mpi_mode: str = "spatial", **open_kwargs: bool
-) -> SpecState | SimulationState:
+) -> DatasetState | LightconeState | StructureState | HealpixMapState | SimulationState:
     """Open files as a backend state. See :py:func:`open` for the arguments."""
     try:
         mode = MpiMode(mpi_mode)

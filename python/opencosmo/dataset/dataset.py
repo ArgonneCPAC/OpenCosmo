@@ -7,9 +7,9 @@ from typing import (
 )
 from warnings import warn
 
-import astropy.units as u  # type: ignore
+import astropy.units as u
 import numpy as np
-from astropy.table import QTable  # type: ignore
+from astropy.table import QTable
 
 import opencosmo.dataset.state as st
 from opencosmo.dataset import operations as dsops
@@ -71,7 +71,7 @@ class Dataset:
         return len(self.__state)
 
     def __dir__(self):
-        return list(self.header.parameters.keys()) + super().__dir__()
+        return list(self.header.parameters.keys()).extend(super().__dir__())
 
     def __enter__(self):
         # Need to write tests
@@ -132,7 +132,7 @@ class Dataset:
         return self.__state.descriptions
 
     @property
-    def units(self) -> dict[str, u.Unit | None]:
+    def units(self) -> dict[str, u.UnitBase | None]:
         """
         Return the current units of all columns in the dataset. Columns without units will
         return None.
@@ -189,7 +189,9 @@ class Dataset:
         """
         # should rename this, dataset.data can get confusing
         # Also the point is that there's MORE data than just the table
-        return self.get_data("astropy")
+        data = self.get_data("astropy")
+        assert isinstance(data, (QTable, u.Quantity))
+        return data
 
     def get_data(
         self,
@@ -831,8 +833,8 @@ class Dataset:
         self,
         convention: Literal["scalefree", "comoving", "physical", "unitless"]
         | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
-        **columns: u.Unit,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
+        **columns: u.UnitBase,
     ) -> Dataset:
         r"""
         Create a new dataset from this one with a different unit convention, and/or
