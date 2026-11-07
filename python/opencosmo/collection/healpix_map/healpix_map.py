@@ -675,8 +675,8 @@ class HealpixMap:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
-        **columns: u.Unit,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
+        **columns: u.UnitBase,
     ) -> Self:
         r"""
         Unit conversion is usually supported for OpenCosmo datasets, however maps tend to be integrated

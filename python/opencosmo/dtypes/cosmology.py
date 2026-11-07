@@ -2,14 +2,36 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
 from astropy import cosmology
 from pydantic import BaseModel, Field, computed_field
 
+if TYPE_CHECKING:
+    import astropy.units as u
+    import numpy as np
 
-def make_cosmology(parameters: CosmologyParameters) -> cosmology.Cosmology:
-    cosmology_type = get_cosmology_type(parameters)
+
+class FlrwCosmology(Protocol):
+    """
+    The part of an astropy FLRW cosmology that OpenCosmo uses.
+
+    Astropy's ``dataclass_decorator`` is annotated as returning ``type[Cosmology]``,
+    which hides ``H0`` and the other FLRW members from static type checkers.
+    """
+
+    @property
+    def H0(self) -> u.Quantity: ...
+    @property
+    def h(self) -> float: ...
+    def scale_factor(self, z: float | np.ndarray) -> float | np.ndarray: ...
+
+
+def make_cosmology(parameters: CosmologyParameters) -> FlrwCosmology:
+    # Every type from get_cosmology_type is an FLRW subclass; see FlrwCosmology.
+    cosmology_type = cast(
+        "Callable[..., FlrwCosmology]", get_cosmology_type(parameters)
+    )
     expected_arguments = inspect.signature(cosmology_type).parameters.keys()
     input_paremeters = {}
     for argname in expected_arguments:
@@ -53,7 +75,7 @@ class CosmologyParameters(BaseModel, frozen=True):
 
     h: float = Field(ge=0.0, description="Reduced Hubble constant")
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def H0(self) -> float:
         """

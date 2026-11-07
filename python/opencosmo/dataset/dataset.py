@@ -132,7 +132,7 @@ class Dataset:
         return self.__state.descriptions
 
     @property
-    def units(self) -> dict[str, u.Unit | None]:
+    def units(self) -> dict[str, u.UnitBase | None]:
         """
         Return the current units of all columns in the dataset. Columns without units will
         return None.
@@ -832,8 +832,8 @@ class Dataset:
         self,
         convention: Literal["scalefree", "comoving", "physical", "unitless"]
         | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
-        **columns: u.Unit,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
+        **columns: u.UnitBase,
     ) -> Dataset:
         r"""
         Create a new dataset from this one with a different unit convention, and/or

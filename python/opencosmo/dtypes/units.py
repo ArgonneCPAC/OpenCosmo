@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from astropy.units.typing import UnitLike
 from pydantic import BaseModel
 
 from opencosmo.units import UnitConvention
 from opencosmo.units.get import get_unit_applicators_dict
 
 if TYPE_CHECKING:
-    from astropy.cosmology import Cosmology
+    from opencosmo.dtypes.cosmology import FlrwCosmology
+    from opencosmo.units.types import UnitValue
 
-ModelUnitAnnotation = tuple[UnitConvention, dict[str, UnitLike], bool]
+type ModelUnitAnnotation = tuple[UnitConvention, dict[str, UnitValue], bool]
 
 __KNOWN_UNITFUL_MODELS__: dict[type[BaseModel], ModelUnitAnnotation] = {}
 
@@ -22,12 +22,12 @@ __KNOWN_UNITFUL_MODELS__: dict[type[BaseModel], ModelUnitAnnotation] = {}
 def register_units(
     model: type[BaseModel],
     field_name: str,
-    unit: UnitLike,
+    unit: UnitValue,
     convention: UnitConvention = UnitConvention.SCALEFREE,
     is_comoving: bool = True,
 ):
     model_spec = __KNOWN_UNITFUL_MODELS__.get(model)
-    registered_fields: dict[str, UnitLike]
+    registered_fields: dict[str, UnitValue]
     if model_spec is not None and model_spec[0] != convention:
         raise ValueError(
             "All unitful fields in a parameter model must use the same unit convention"
@@ -58,7 +58,7 @@ def __get_unit_transformations(
 def apply_units(
     model: BaseModel | dict,
     model_type: type,
-    cosmology: Cosmology,
+    cosmology: FlrwCosmology,
     convention: UnitConvention = UnitConvention.SCALEFREE,
     unit_kwargs: dict[str, Any] | None = None,
 ):

@@ -430,12 +430,14 @@ def get_access_table(all_models, unit_convention, redshift):
         for i, m in enumerate(all_models)
         if getattr(m, "ACCESS_PATH", None) == "cosmology"
     ]
-    if len(cosmology_pars) == 1:
-        table["cosmology"] = all_models[cosmology_pars[0]].ACCESS_TRANSFORMATION()
-
+    if len(cosmology_pars) != 1:
+        raise ValueError(
+            f"A header must contain exactly one cosmology block, found {len(cosmology_pars)}"
+        )
+    cosmology = all_models[cosmology_pars[0]].ACCESS_TRANSFORMATION()
+    table["cosmology"] = cosmology
     del all_models[cosmology_pars[0]]
 
-    cosmology = table.get("cosmology")
     scale_factor = None
     if redshift is not None:
         scale_factor = cosmology.scale_factor(redshift)

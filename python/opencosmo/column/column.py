@@ -30,13 +30,9 @@ if TYPE_CHECKING:
 
     from opencosmo.column.reducer import Reducer
     from opencosmo.index import DataIndex
+    from opencosmo.units.types import UnitValue
 
 Comparison = Callable[[float, float], bool]
-type UnitValue = u.UnitBase | u.FunctionUnitBase | u.Quantity | None
-"""
-Value produced by unit inference: a unit, a function unit (e.g. dex), a Quantity
-(arithmetic with a scalar operand can leave a prefactor), or None for unitless.
-"""
 """
 The structures in this file are used both internally and user-facing.
 
@@ -515,7 +511,7 @@ type MaskOperator = Callable[[Any, Any], np.ndarray]
 
 
 def _log10(
-    left: np.ndarray | u.Unit,
+    left: np.ndarray | u.UnitBase,
     right: None,
     unit_container: type[u.LogUnit],
 ):
@@ -532,7 +528,7 @@ def _log10(
 
 
 def _exp10(
-    left: np.ndarray | u.Unit,
+    left: np.ndarray | u.UnitBase,
     right: None,
     expected_unit_container: type[u.LogUnit],
 ):
@@ -560,7 +556,7 @@ def _exp10(
     return 10**left
 
 
-def _sqrt(left: np.ndarray | u.Unit, right: None):
+def _sqrt(left: np.ndarray | u.UnitBase, right: None):
     return left**0.5
 
 

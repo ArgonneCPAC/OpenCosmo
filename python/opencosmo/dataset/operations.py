@@ -420,8 +420,8 @@ def bound(state: DatasetState, region, select_by):
 def with_units(
     state: DatasetState,
     convention: str | None,
-    conversions: dict[u.Unit, u.Unit],
-    **columns: u.Unit,
+    conversions: dict[u.UnitBase, u.UnitBase],
+    **columns: u.UnitBase,
 ) -> DatasetState:
     if convention is None:
         convention_ = state.unit_handler.current_convention
@@ -686,8 +686,8 @@ def __take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
 def __with_units(
     state: DatasetState,
     convention: UnitConvention,
-    conversions: dict[u.Unit, u.Unit],
-    columns: dict[str, u.Unit],
+    conversions: dict[u.UnitBase, u.UnitBase],
+    columns: dict[str, u.UnitBase],
     cosmology,
     redshift,
 ) -> DatasetState:

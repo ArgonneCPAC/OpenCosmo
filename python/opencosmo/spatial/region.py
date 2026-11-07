@@ -24,8 +24,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from astropy.coordinates import SkyCoord
-    from astropy.cosmology import FLRW
 
+    from opencosmo.dtypes.cosmology import FlrwCosmology
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region, Region2d, Region3d
     from opencosmo.units import UnitConvention
@@ -37,13 +37,15 @@ type Point2d[T: (float, u.Quantity)] = tuple[T, T]
 type BoxSize = tuple[float, float, float]
 
 
-def physical_to_scalefree(value: float, cosmology: FLRW, z: float):
+def physical_to_scalefree(
+    value: float | np.ndarray, cosmology: FlrwCosmology, z: float
+):
     a = cosmology.scale_factor(z)
     comoving_value = value / a
     return comoving_to_scalefree(comoving_value, cosmology)
 
 
-def comoving_to_scalefree(value: float, cosmology: FLRW):
+def comoving_to_scalefree(value: float | np.ndarray, cosmology: FlrwCosmology):
     h = cosmology.h
     scalefree_value = value * h
     return scalefree_value

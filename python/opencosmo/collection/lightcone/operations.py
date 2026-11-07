@@ -146,8 +146,8 @@ def from_dataset_states(
 def with_units(
     state: LightconeState,
     convention: str | None,
-    conversions: dict[u.Unit, u.Unit],
-    **columns: u.Unit,
+    conversions: dict[u.UnitBase, u.UnitBase],
+    **columns: u.UnitBase,
 ) -> LightconeState:
     return __map_leaves(
         state, lambda leaf: dsops.with_units(leaf, convention, conversions, **columns)

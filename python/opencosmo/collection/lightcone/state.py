@@ -58,7 +58,7 @@ class LightconeState:
         return {k: v for k, v in descriptions.items() if k not in self.hidden}
 
     @property
-    def units(self) -> dict[str, u.Unit | None]:
+    def units(self) -> dict[str, u.UnitBase | None]:
         units = self.leaves[0][1].units
         return {k: v for k, v in units.items() if k not in self.hidden}
 

@@ -332,7 +332,7 @@ def with_new_columns(
 def with_units(
     state: StructureState,
     convention: str | None = None,
-    conversions: dict[u.Unit, u.Unit] | None = None,
+    conversions: dict[u.UnitBase, u.UnitBase] | None = None,
     **dataset_conversions: dict,
 ) -> StructureState:
     if conversions is None:

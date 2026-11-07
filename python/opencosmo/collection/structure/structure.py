@@ -723,7 +723,7 @@ class StructureCollection:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
         **dataset_conversions: dict,
     ):
         """

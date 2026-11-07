@@ -198,7 +198,7 @@ def state_in_memory(
         uuid_data = {p.uuid: {p.name: all_columns[p.name]} for p in raw_producers}
         cache.add_data(uuid_data, descriptions)
 
-    units: dict[str, u.Unit | None] = {}
+    units: dict[str, u.UnitBase | None] = {}
     for name, column in all_columns.items():
         units[name] = None
         if isinstance(column, u.Quantity):

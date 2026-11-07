@@ -5,15 +5,18 @@ from typing import TYPE_CHECKING, Any
 
 import astropy.cosmology.units as cu
 import astropy.units as u
-from astropy.constants import m_p
+
+# m_p is injected into astropy.constants at runtime, so no static tool can see it.
+from astropy.constants import m_p  # ty: ignore[import-not-found]
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     import h5py
     import numpy as np
-    from astropy.cosmology import Cosmology
-    from numpy.typing import ArrayLike
+
+    from opencosmo.dtypes.cosmology import FlrwCosmology
+    from opencosmo.units.types import AnyUnit, UnitValue
 
 from opencosmo.units.convention import UnitConvention
 from opencosmo.units.converters import get_unit_transitions
@@ -45,7 +48,7 @@ KNOWN_UNITS = {
 class UnitApplicator:
     def __init__(
         self,
-        units: dict[UnitConvention, u.Unit],
+        units: dict[UnitConvention, AnyUnit],
         base_convention: UnitConvention,
         converters: dict[UnitConvention, Callable],
         invserse_converters: dict[UnitConvention, Callable],
@@ -58,7 +61,7 @@ class UnitApplicator:
         self.__prefactor = prefactor
 
     @classmethod
-    def static(cls, base_unit: u.Unit, base_convention: UnitConvention):
+    def static(cls, base_unit: AnyUnit, base_convention: UnitConvention):
         """
         Unit applicator for a column that does not transform under changes in unit convention.
         This column CAN still be transformed explicitly to an equivalent unit.
@@ -73,9 +76,9 @@ class UnitApplicator:
     @classmethod
     def from_unit(
         cls,
-        base_unit: u.Unit | None,
+        base_unit: UnitValue,
         base_convention: UnitConvention,
-        cosmology: Cosmology,
+        cosmology: FlrwCosmology,
         is_comoving: bool = True,
     ):
         if base_unit is None:
@@ -106,11 +109,11 @@ class UnitApplicator:
 
     def apply(
         self,
-        value: ArrayLike,
+        value: np.ndarray | float,
         convention: UnitConvention,
-        convert_to: u.Unit | None = None,
+        convert_to: u.UnitBase | None = None,
         unit_kwargs: dict[str, Any] | None = None,
-    ) -> ArrayLike | u.Quantity:
+    ) -> np.ndarray | float | u.Quantity:
         if unit_kwargs is None:
             unit_kwargs = {}
         if not self.__units or convention == UnitConvention.UNITLESS:
@@ -119,7 +122,7 @@ class UnitApplicator:
             raise ValueError(
                 "Units can only be applied to unitless scalars and numpy arrays"
             )
-        new_value = value * self.__units[self.__base_convention]
+        new_value: u.Quantity = value * self.__units[self.__base_convention]
         if convention != self.__base_convention:
             new_value = self.__convert(new_value, convention, unit_kwargs)
 
@@ -130,7 +133,7 @@ class UnitApplicator:
             new_value *= self.__prefactor
         return new_value
 
-    def can_convert(self, to_: u.Unit, convention: UnitConvention):
+    def can_convert(self, to_: u.UnitBase, convention: UnitConvention):
         unit_to_convert = self.__units.get(convention)
         if unit_to_convert is None:
             return False
@@ -165,9 +168,9 @@ class UnitApplicator:
 
 
 def get_unit_applicators_dict(
-    units: dict[str, u.Unit | None],
+    units: Mapping[str, UnitValue],
     base_convention: UnitConvention | str,
-    cosmology: Cosmology,
+    cosmology: FlrwCosmology,
     is_comoving: bool = True,
 ):
     # FileParameters sets use_enum_values=True, so header.file.unit_convention is
@@ -184,7 +187,7 @@ def get_unit_applicators_dict(
 
 
 @cache
-def parse_unit_string(unit_string: str | None) -> u.Unit | None:
+def parse_unit_string(unit_string: str | None) -> UnitValue:
     """
     Parse a unit string captured from an HDF5 column's "unit" attribute.
 
@@ -201,5 +204,5 @@ def parse_unit_string(unit_string: str | None) -> u.Unit | None:
         return None
 
 
-def get_raw_units(column: h5py.Dataset) -> u.Unit | None:
+def get_raw_units(column: h5py.Dataset) -> UnitValue:
     return parse_unit_string(column.attrs.get("unit"))

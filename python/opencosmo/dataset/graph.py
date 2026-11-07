@@ -11,7 +11,8 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from opencosmo._lib.graph import DependencyGraph
-    from opencosmo.column.column import ConstructedColumn, UnitValue
+    from opencosmo.column.column import ConstructedColumn
+    from opencosmo.units.types import UnitValue
 
 # Bounded LRU so long sessions that keep deriving new columns do not grow without limit.
 __GRAPH_CACHE_SIZE = 256

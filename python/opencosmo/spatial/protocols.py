@@ -8,6 +8,8 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from astropy.coordinates import SkyCoord
+
     from opencosmo.index import ChunkedIndex, DataIndex, SimpleIndex
     from opencosmo.spatial.models import RegionModel
     from opencosmo.spatial.region import BoxRegion, HealpixRegion
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 Point3d = tuple[float, float, float]
 Point2d = tuple[float, float]
 Points = NDArray[np.number]
-SpatialObject = Union["Region", "Points"]
+SpatialObject = Union["Region", "Points", "SkyCoord"]
 
 
 class Region(Protocol):

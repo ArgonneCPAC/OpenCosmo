@@ -542,8 +542,8 @@ class SimulationCollection:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
-        **columns: u.Unit,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
+        **columns: u.UnitBase,
     ) -> SimulationCollection:
         """
         Transform all datasets or collections to use the given unit convention, convert

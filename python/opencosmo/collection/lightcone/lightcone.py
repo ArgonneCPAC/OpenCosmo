@@ -195,7 +195,7 @@ class Lightcone:
         return self.__state.descriptions
 
     @property
-    def units(self) -> dict[str, u.Unit | None]:
+    def units(self) -> dict[str, u.UnitBase | None]:
         """
         Return the units of the columns in this lightcone. Columns without a unit will
         return a value of None
@@ -925,8 +925,8 @@ class Lightcone:
     def with_units(
         self,
         convention: str | None = None,
-        conversions: dict[u.Unit, u.Unit] | None = None,
-        **columns: u.Unit,
+        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
+        **columns: u.UnitBase,
     ) -> Lightcone:
         r"""
         Create a new lightcone from this one with a different unit convention or

@@ -212,7 +212,7 @@ def binned_statistic(
     dataset: str = "halo_properties",
     mode: Mode = "global",
     **kwargs: Any,
-) -> tuple[list, np.ndarray | Sequence]:
+) -> tuple[u.Quantity, np.ndarray | Sequence]:
     r"""
     Compute a statistic of ``column`` in bins of ``bin_by``.
 

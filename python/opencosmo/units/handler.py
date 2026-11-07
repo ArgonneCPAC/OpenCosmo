@@ -17,13 +17,14 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     import numpy as np
-    from astropy.cosmology import Cosmology
 
+    from opencosmo.dtypes.cosmology import FlrwCosmology
     from opencosmo.header import OpenCosmoHeader
+    from opencosmo.units.types import UnitValue
 
 
 def make_unit_handler_from_units(
-    columns: dict[str, u.Unit | None],
+    columns: Mapping[str, UnitValue],
     header: OpenCosmoHeader,
     target_convention: UnitConvention | None = None,
 ):
@@ -63,10 +64,10 @@ class UnitHandler:
         self,
         base_convention: UnitConvention,
         current_convention: UnitConvention,
-        cosmology: Cosmology,
+        cosmology: FlrwCosmology,
         applicators: dict[str, UnitApplicator],
-        conversions: dict[str, u.Unit] | None = None,
-        column_conversions: dict[str, u.Unit] | None = None,
+        conversions: dict[str, u.UnitBase] | None = None,
+        column_conversions: dict[str, u.UnitBase] | None = None,
     ):
         if column_conversions is None:
             column_conversions = {}
@@ -90,7 +91,7 @@ class UnitHandler:
         return self.__base_convention
 
     @property
-    def blanket_conversions(self) -> dict[u.Unit, u.Unit]:
+    def blanket_conversions(self) -> dict[u.UnitBase, u.UnitBase]:
         return {u.Unit(source): target for source, target in self.__conversions.items()}
 
     @property
@@ -121,7 +122,7 @@ class UnitHandler:
     def unitless_columns(self):
         return {key for key, app in self.__applicators.items() if app.base_unit is None}
 
-    def with_static_columns(self, **columns: u.Unit):
+    def with_static_columns(self, **columns: u.UnitBase):
         new_applicators = {}
         for colname, unit in columns.items():
             new_applicators[colname] = UnitApplicator.static(
@@ -136,7 +137,7 @@ class UnitHandler:
             self.__column_conversions,
         )
 
-    def with_new_columns(self, **columns: u.Unit):
+    def with_new_columns(self, **columns: u.UnitBase):
         new_applicators = {}
         for colname, unit in columns.items():
             new_applicators[colname] = UnitApplicator.from_unit(
@@ -152,7 +153,7 @@ class UnitHandler:
         )
 
     def verify_conversions(
-        self, conversions: dict[str, u.Unit], convention: UnitConvention
+        self, conversions: dict[str, u.UnitBase], convention: UnitConvention
     ):
         conversion_keys = set(conversions.keys())
         unitless_columns = self.unitless_columns.intersection(conversion_keys)
@@ -172,7 +173,7 @@ class UnitHandler:
         )
 
     def with_conversions(
-        self, conversions: dict[u.Unit, u.Unit], columns: dict[str, u.Unit]
+        self, conversions: dict[u.UnitBase, u.UnitBase], columns: dict[str, u.UnitBase]
     ):
         if not conversions and not columns:
             return self

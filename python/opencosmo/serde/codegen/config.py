@@ -114,7 +114,7 @@ WIRE_TYPES: Mapping[object, WireType] = {
         Expression, live.to_column_or_scalar
     ),
     Region: __wire(RegionMessage, live.region_to_live),
-    u.Unit: __wire(UnitString, live.to_unit),
+    u.UnitBase: __wire(UnitString, live.to_unit),
     np.ndarray | DataIndex: __wire(RowIndices, live.to_rows),
     int: WireType(Symbol("pydantic", "StrictInt")),
     float: __wire(FiniteNumber),

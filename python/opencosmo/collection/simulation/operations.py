@@ -172,8 +172,8 @@ def with_new_columns(
 def with_units(
     state: SimulationState,
     convention: str | None,
-    conversions: dict[u.Unit, u.Unit],
-    **columns: u.Unit,
+    conversions: dict[u.UnitBase, u.UnitBase],
+    **columns: u.UnitBase,
 ) -> SimulationState:
     return __map(
         state,
