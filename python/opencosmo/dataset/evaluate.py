@@ -8,7 +8,11 @@ import numpy as np
 from astropy.units import Quantity
 
 from opencosmo.column.column import EvaluatedColumn
-from opencosmo.column.evaluate import EvaluateStrategy, do_first_evaluation
+from opencosmo.column.evaluate import (
+    EvaluateStrategy,
+    do_first_evaluation,
+    function_name,
+)
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import concat_chunks, fetch_as_dict
 
@@ -185,17 +189,12 @@ def verify_for_lazy_evaluation(
             for name, val in first_values.items()
         }
         produces = set(first_values.keys())
-    elif not hasattr(func, "__name__"):
-        raise ValueError(
-            "If not returning a dictionary, you must use a callable object with a __name__ attribute"
-        )
     else:
+        name = function_name(func)
         units = {
-            str(func.__name__): first_values.unit
-            if isinstance(first_values, Quantity)
-            else None
+            name: first_values.unit if isinstance(first_values, Quantity) else None
         }
-        produces = {str(func.__name__)}
+        produces = {name}
 
     column = EvaluatedColumn(
         func,

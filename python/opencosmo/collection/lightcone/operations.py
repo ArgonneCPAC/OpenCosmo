@@ -24,6 +24,7 @@ from opencosmo.column.column import (
     mask_contains_scalar,
     resolve_mask_scalars,
 )
+from opencosmo.column.evaluate import function_name
 from opencosmo.column.reducer import default_reducer
 from opencosmo.column.select import build_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
@@ -482,7 +483,11 @@ def evaluate(
                     leaf,
                     {},
                     allow_overwrite,
-                    **{func.__name__: evaluated_column.with_kwargs(**leaf_kwargs(key))},
+                    **{
+                        function_name(func): evaluated_column.with_kwargs(
+                            **leaf_kwargs(key)
+                        )
+                    },
                 ),
             )
             for key, leaf in state.leaves

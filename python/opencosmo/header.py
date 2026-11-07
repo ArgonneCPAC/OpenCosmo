@@ -473,9 +473,7 @@ def get_access_table(all_models, unit_convention, redshift):
     return dict(table)
 
 
-@broadcast_read
-@file_reader
-def read_header(
+def read_header_undecorated(
     file: h5py.File | h5py.Group,
     unit_convention: UnitConvention = UnitConvention.COMOVING,
 ) -> OpenCosmoHeader:
@@ -527,6 +525,9 @@ def read_header(
         unit_convention,
     )
     return h
+
+
+read_header = broadcast_read(file_reader(read_header_undecorated))
 
 
 def read_parameter_groups(

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from functools import partial
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
@@ -11,11 +12,38 @@ if TYPE_CHECKING:
     from opencosmo.dataset.state import DatasetState
 
 
+class NamedCallable(Protocol):
+    """A callable whose ``__name__`` names the output column(s) it produces."""
+
+    __name__: str
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+
+
 class EvaluateStrategy(Enum):
     VECTORIZE = "vectorize"
     ROW_WISE = "row_wise"
     CONCATENATE_ROWS = "concatenate_rows"
     CHUNKED = "chunked"
+
+
+def function_name(func: object) -> str:
+    """
+    Return the output name of an evaluated function.
+
+    Only named functions are supported. Lambdas and ``functools.partial`` objects are
+    rejected because their names are not meaningful column names.
+    """
+    if isinstance(func, partial):
+        raise TypeError("Functions wrapped in functools.partial cannot name columns")
+    name = getattr(func, "__name__", None)
+    if not isinstance(name, str):
+        raise TypeError(
+            "Evaluated callables must have a string __name__ to name their output"
+        )
+    if name == "<lambda>":
+        raise TypeError("Lambda functions cannot name output columns; use a def")
+    return name
 
 
 def evaluate_chunks(
@@ -54,7 +82,7 @@ def evaluate_chunks(
         else:
             output = func(data=chunk_input_data, **kwargs)
         if not isinstance(output, dict):
-            output = {func.__name__: output}
+            output = {function_name(func): output}
         for name, value in output.items():
             per_column.setdefault(name, []).append(value)
 

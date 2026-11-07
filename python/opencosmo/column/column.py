@@ -19,6 +19,7 @@ from opencosmo.column.evaluate import (
     EvaluateStrategy,
     evaluate_chunks,
     evaluate_vectorized,
+    function_name,
 )
 from opencosmo.units import UnitsError
 from opencosmo.uuid import get_derived_column_uuid
@@ -394,11 +395,11 @@ class Column:
     __sub__ = partialmethod(combine_on_left, operation=op.sub)
     __rsub__ = partialmethod(combine_on_right, operation=op.sub)
 
-    def log10(self, unit_container=u.DexUnit):
+    def log10(self, unit_container: type[u.LogUnit] = u.DexUnit):
         op = partial(_log10, unit_container=unit_container)
         return Column(self, None, op)
 
-    def exp10(self, expected_unit_container: u.LogUnit = u.DexUnit):
+    def exp10(self, expected_unit_container: type[u.LogUnit] = u.DexUnit):
         op = partial(_exp10, expected_unit_container=expected_unit_container)
         return Column(self, None, op)
 
@@ -516,32 +517,25 @@ type MaskOperator = Callable[[Any, Any], np.ndarray]
 def _log10(
     left: np.ndarray | u.Unit,
     right: None,
-    unit_container: u.LogUnit,
+    unit_container: type[u.LogUnit],
 ):
-    vals = left
-    unit = None
     if isinstance(left, u.UnitBase):
         return unit_container(left)
 
-    elif isinstance(left, u.Quantity):
-        vals = left.value
+    if isinstance(left, u.Quantity):
         unit = left.unit
         if isinstance(unit, u.LogUnit):
             raise ValueError("Cannot take the log of a log unit!")  # noqa: TRY004 — domain error, not a type error
+        return np.log10(left.value) * unit_container(unit)
 
-    new_vals = np.log10(vals)
-    if unit is not None:
-        return new_vals * unit_container(unit)
-    return new_vals
+    return np.log10(left)
 
 
 def _exp10(
     left: np.ndarray | u.Unit,
     right: None,
-    expected_unit_container: u.LogUnit,
+    expected_unit_container: type[u.LogUnit],
 ):
-    vals = left
-    unit = None
     if isinstance(left, u.LogUnit):
         if not isinstance(left, expected_unit_container):
             raise TypeError(
@@ -549,8 +543,7 @@ def _exp10(
             )
         return left.physical_unit
 
-    elif isinstance(left, u.Quantity):
-        vals = left.value
+    if isinstance(left, u.Quantity):
         unit = left.unit
         if not isinstance(unit, u.LogUnit):
             raise TypeError(
@@ -560,11 +553,11 @@ def _exp10(
             raise TypeError(
                 f"Expected a unit of type {expected_unit_container}, found {type(left)}"
             )
+        return (10**left.value) * unit.physical_unit
 
-    new_vals = 10**vals
-    if unit is not None:
-        return new_vals * unit.physical_unit
-    return new_vals
+    if isinstance(left, u.UnitBase):
+        raise TypeError("Cannot raise 10 to a bare unit")
+    return 10**left
 
 
 def _sqrt(left: np.ndarray | u.Unit, right: None):
@@ -1206,7 +1199,7 @@ class EvaluatedColumn:
 
     @property
     def name(self):
-        return self.__func.__name__
+        return function_name(self.__func)
 
     @property
     def requires(self) -> set[UUID]:
@@ -1433,13 +1426,6 @@ class CompoundColumnMask:
         self.left = left
         self.right = right
         self.op = op
-
-    @property
-    def requires(self):
-        columns = set()
-        columns |= self.left.requires
-        columns |= self.right.requires
-        return columns
 
     @property
     def requires_names(self):

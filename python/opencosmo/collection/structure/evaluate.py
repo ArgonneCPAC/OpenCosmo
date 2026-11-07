@@ -9,6 +9,7 @@ from opencosmo import facade
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure.state import StructureState, public_keys
+from opencosmo.column.evaluate import function_name
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import concat_chunks, stack_rows
 from opencosmo.dataset.state import DatasetState
@@ -94,7 +95,7 @@ def evaluate_into_properties(
                 "You asked to insert these values, but your function returns None!"
             )
         if not isinstance(output, dict):
-            output = {function.__name__: output}
+            output = {function_name(function): output}
         for name, value in output.items():
             per_column.setdefault(name, []).append(value)
 
@@ -121,7 +122,7 @@ def evaluate_into_dataset(
                 "You asked to insert these values, but your function returns None!"
             )
         if not isinstance(output, dict):
-            output = {function.__name__: output}
+            output = {function_name(function): output}
 
         if i == 0 and any(len(v) != expected_length for v in output.values()):
             raise ValueError(

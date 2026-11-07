@@ -46,7 +46,9 @@ def should_dump_to_hdf5_dataset(obj: Any):
     return bool(isinstance(obj, list) and isinstance(obj[0], (int, float)))
 
 
-def write_header_attributes(file: h5py.File, header_path: str, parameters: BaseModel):
+def write_header_attributes(
+    file: h5py.File | h5py.Group, header_path: str, parameters: BaseModel
+):
     group = file.require_group(f"header/{header_path}")
     pars = parameters.model_dump(by_alias=True, exclude_none=True)
     array_pars = {

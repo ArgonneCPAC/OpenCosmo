@@ -77,9 +77,8 @@ class StructureCollection:
             return object.__getattribute__(self, key)
 
     @property
-    def dtype(self):
-        structure_type = self.__state.header.file.dt
-        return structure_type
+    def dtype(self) -> str:
+        return self.__state.dtype
 
     @property
     def header(self) -> OpenCosmoHeader:

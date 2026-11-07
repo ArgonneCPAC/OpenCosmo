@@ -12,7 +12,7 @@ from .units import register_units
 
 def to_numpy(parameters: SuperMockParams) -> dict[str, Any]:
     output = {}
-    for name, value in parameters.dict().items():
+    for name, value in parameters.model_dump().items():
         if isinstance(value, list):
             value = np.array(value)
         output[name] = value

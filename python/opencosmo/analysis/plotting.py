@@ -66,10 +66,10 @@ def _set_params(ds: Dataset, column: str) -> dict[str, Any]:
         axis with the raw column name, uses "x" as its math symbol, and puts it
         on a linear scale.
     """
-    params = default_params.get(column)
+    base: dict[str, Any] | None = default_params.get(column)
 
-    if params is None:
-        params = {
+    if base is None:
+        base = {
             "filter_bad": None,
             "plotting": {
                 "label": column,
@@ -78,8 +78,7 @@ def _set_params(ds: Dataset, column: str) -> dict[str, Any]:
             },
         }
 
-    # add a unit label
-    params["plotting"]["unit_label"] = None
+    params = {**base, "plotting": {**base["plotting"], "unit_label": None}}
 
     units = ds.units[column]
     if units is not None:

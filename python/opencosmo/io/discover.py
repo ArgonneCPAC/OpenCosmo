@@ -12,7 +12,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from opencosmo.dtypes import read_map_header
-from opencosmo.header import read_header
+from opencosmo.header import read_header_undecorated
 from opencosmo.io.cache import cache_layouts, get_cached_layouts
 from opencosmo.uuid import coerce_to_uuid, get_dataset_uuid
 
@@ -523,7 +523,7 @@ def discover_file(path: Path) -> FileLayout:
                 return FileLayout(path=path, groups=(), maps=maps)
 
             # Otherwise, process headers and data groups as usual.
-            read_header_local = read_header.__wrapped__  # type: ignore[attr-defined]
+            read_header_local = read_header_undecorated
             scope_to_header: dict[str, tuple[str, OpenCosmoHeader]] = {}
             for header_path in header_groups:
                 try:

@@ -21,7 +21,7 @@ astropy.cosmology object.
 
 @broadcast_read
 @file_reader
-def read_cosmology(file: h5py.File) -> cosmology.Cosmology:
+def read_cosmology(file: h5py.File | h5py.Group) -> cosmology.Cosmology:
     """
     Read cosmology from the header of an OpenCosmo file
 
