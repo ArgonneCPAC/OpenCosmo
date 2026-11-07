@@ -159,4 +159,4 @@ def __prepare_state(
 ) -> StructureState:
     state = scops.with_datasets(state, list(spec.keys()))
     selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}
-    return scops.select(state, **selections)  # type: ignore[arg-type]
+    return scops.select_with(state, (), selections)

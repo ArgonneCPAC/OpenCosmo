@@ -18,9 +18,9 @@ from opencosmo.mpi import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
-    from astropy.table import QTable
+    import astropy.units as u
     from mpi4py import MPI as _MPI
 
 
@@ -384,7 +384,7 @@ def gather(
 
 
 def __concatenate_multi_dataset_rank_data(
-    data: dict[str, dict[str, np.ndarray]], all: bool, format, comm: _MPI.Comm
+    data: Mapping[str, Mapping[str, u.Quantity]], all: bool, format, comm: _MPI.Comm
 ):
     new_data = {}
     for name, dataset_data in get_all_entries(data, comm):
@@ -393,10 +393,11 @@ def __concatenate_multi_dataset_rank_data(
     return new_data
 
 
-def __concatenate_rank_data(data: QTable, all: bool, format, comm: _MPI.Comm):
+def __concatenate_rank_data(
+    data: Mapping[str, u.Quantity], all: bool, format, comm: _MPI.Comm
+):
     output = {}
-    data = dict(data)
-    for name, arr in get_all_entries(data, comm):
+    for name, arr in get_all_entries(dict(data), comm):
         parallel_assert(arr is not None)
         assert arr is not None  # narrow for the type checker; guaranteed above
         column = gather_data(arr, comm, all)

@@ -66,7 +66,7 @@ class StructureCollection:
         return len(self.__state)
 
     def __dir__(self):
-        return list(self.__state.header.parameters.keys()) + super().__dir__()
+        return [*self.__state.header.parameters, *super().__dir__()]
 
     def __getattr__(self, key: str):
         if key == "_StructureCollection__state":

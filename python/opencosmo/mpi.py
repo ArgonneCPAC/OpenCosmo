@@ -8,7 +8,7 @@ import numpy as np
 from opencosmo.index import coalesce_chunks, into_array, sort
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Callable, Generator, Mapping
     from types import ModuleType
 
     from _typeshed import SupportsRichComparison
@@ -323,7 +323,7 @@ def redistribute_data(data: np.ndarray, target_rank: np.ndarray, comm: _MPI.Comm
 
 
 def get_all_keys[T: SupportsRichComparison](
-    data: dict[T, Any], comm: _MPI.Comm | None
+    data: Mapping[T, Any], comm: _MPI.Comm | None
 ) -> list[T]:
     """
     Return all keys in the dictionary across all ranks, sorted
@@ -341,18 +341,18 @@ def get_all_keys[T: SupportsRichComparison](
 
 @overload
 def get_all_entries[T: SupportsRichComparison, U](
-    data: dict[T, U], comm: _MPI.Comm | None, default: None = None
+    data: Mapping[T, U], comm: _MPI.Comm | None, default: None = None
 ) -> Generator[tuple[T, U | None]]: ...
 
 
 @overload
 def get_all_entries[T: SupportsRichComparison, U](
-    data: dict[T, U], comm: _MPI.Comm | None, default: Callable[[T], U]
+    data: Mapping[T, U], comm: _MPI.Comm | None, default: Callable[[T], U]
 ) -> Generator[tuple[T, U]]: ...
 
 
 def get_all_entries[T: SupportsRichComparison, U](
-    data: dict[T, U],
+    data: Mapping[T, U],
     comm: _MPI.Comm | None,
     default: Callable[[T], U] | None = None,
 ) -> Generator[tuple[T, U | None]]:

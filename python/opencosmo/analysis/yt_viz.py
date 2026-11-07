@@ -256,10 +256,13 @@ def visualize_halo(
         )
 
     halo_ids: list[int] | tuple[list[int], list[int]]
+    yt_ds_arr: (
+        list[YT_Dataset | None]
+        | tuple[list[YT_Dataset | None], list[YT_Dataset | None]]
+        | None
+    ) = None
 
     yt_dataset_provided = yt_ds is not None
-    if not yt_dataset_provided:
-        yt_ds_arr = None
 
     if len(params["fields"]) == 4:
         # if 4 fields, make a 2x2 figure

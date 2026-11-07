@@ -53,13 +53,14 @@ def get_column_selection(
 def do_multi_dataset_selections(
     datasets: Mapping[Any, Dataset | DatasetState | LightconeState],
     select_args: tuple[str | Iterable[str], ...],
-    select_kwargs: dict[str, Any],
+    select_kwargs: Mapping[str, Any],
     mode: Literal["local", "global"] = "global",
 ):
     from opencosmo.collection.lightcone import operations as lcops
     from opencosmo.collection.lightcone.state import LightconeState
     from opencosmo.dataset.state import DatasetState
 
+    select_kwargs = dict(select_kwargs)
     mode = select_kwargs.pop("mode", mode)
     columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
     length_by_ds = {name: len(ds) for name, ds in datasets.items()}

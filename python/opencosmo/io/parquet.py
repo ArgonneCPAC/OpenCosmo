@@ -12,6 +12,8 @@ import opencosmo as oc
 if TYPE_CHECKING:
     from os import PathLike
 
+    import numpy as np
+
     from opencosmo.collection.protocols import Collection
 
 
@@ -57,7 +59,7 @@ def __write_dataset(path: Path, dataset: oc.Dataset | oc.Lightcone, overwrite: b
     data = dataset.get_data("numpy")
     if path.exists() and not overwrite:
         raise FileExistsError(path)
-    output = {}
+    output: dict[str, np.ndarray] = {}
     if not isinstance(data, dict):
         raise NotImplementedError
     for name, column in data.items():
@@ -67,7 +69,8 @@ def __write_dataset(path: Path, dataset: oc.Dataset | oc.Lightcone, overwrite: b
         outputs = {f"{name}_{cname}": column[cname] for cname in column.dtype.names}
         output.update(outputs)
 
-    table = pyarrow.table(output)
+    # pyarrow-stubs types the mapping values as Sequence | Array, but numpy arrays work.
+    table = pyarrow.table(output)  # type: ignore[arg-type]  # ty: ignore[no-matching-overload]
     pq.write_table(table, path)
 
 

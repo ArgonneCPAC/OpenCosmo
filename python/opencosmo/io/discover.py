@@ -556,21 +556,20 @@ def discover_file(path: Path) -> FileLayout:
 
                 # Extract column metadata for this data group.
                 data_prefix = data_path if data_path.endswith("/") else data_path + "/"
-                columns_in_data = sorted(
-                    [
-                        k.split(data_prefix, 1)[1]
-                        for k in file_map
-                        if k.startswith(data_prefix)
-                        and isinstance(file_map[k], h5py.Dataset)
+                column_datasets: dict[str, h5py.Dataset] = {}
+                for k in sorted(file_map):
+                    item = file_map[k]
+                    if (
+                        k.startswith(data_prefix)
+                        and isinstance(item, h5py.Dataset)
                         and not k.endswith("/index")
                         and "header" not in k
-                    ]
-                )
+                    ):
+                        column_datasets[k.split(data_prefix, 1)[1]] = item
 
+                columns_in_data = sorted(column_datasets)
                 column_names = tuple(columns_in_data)
-                column_handles = [
-                    file_map[f"{data_path}/{col}"] for col in columns_in_data
-                ]
+                column_handles = [column_datasets[col] for col in columns_in_data]
                 column_dtypes = tuple(str(h.dtype) for h in column_handles)
                 column_units = tuple(
                     _normalize_attr(h.attrs.get("unit")) for h in column_handles

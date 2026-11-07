@@ -23,6 +23,7 @@ from opencosmo.spatial.index import (
     get_region,
     open_spatial_index,
 )
+from opencosmo.spatial.protocols import Region2d
 from opencosmo.spatial.region import FullSkyRegion, HealpixRegion
 from opencosmo.units import UnitConvention
 from opencosmo.utils import normalize_kwarg_name
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
     from opencosmo.io.io import MpiMode
     from opencosmo.io.specs import SpecState
     from opencosmo.mapping.mapping import DatasetMatchSet
+    from opencosmo.spatial.protocols import Region, SpatialIndex
 
 """
 This file contains all the internal logic for opening a file or files.
@@ -475,9 +477,11 @@ def open_dataset(
         assert header.healpix_map["full_sky"]
         sim_region = FullSkyRegion()
     elif not header.file.is_lightcone:
-        p1 = (0, 0, 0)
-        p2 = tuple(box_size for _ in range(3))
-        sim_region = oc.make_box(p1, p2)
+        if box_size is None:
+            raise ValueError(
+                "Cannot open a snapshot dataset whose header has no simulation box size"
+            )
+        sim_region = oc.make_box((0, 0, 0), (box_size, box_size, box_size))
 
     spatial_index_data = target.spatial_index
     spatial_index = (
@@ -514,10 +518,19 @@ def _open_healpix_map(state: DatasetState) -> HealpixMapState:
     return mapst.from_dataset(state)
 
 
-def _expand_lightcone_region(region, spatial_index):
+def _expand_lightcone_region(
+    region: Region | None, spatial_index: SpatialIndex
+) -> HealpixRegion:
     import healpy as hp
 
     region = get_region(spatial_index, region)
+    if not isinstance(region, HealpixRegion):
+        if not isinstance(region, Region2d):
+            raise TypeError(
+                f"Cannot partition a lightcone by a {type(region).__name__}; "
+                "lightcone regions must be 2-dimensional"
+            )
+        region = region.into_healpix_region(2**spatial_index.level)
 
     pixels = region.pixels
     npix_ratio = hp.nside2npix(2**spatial_index.level) // hp.nside2npix(region.nside)

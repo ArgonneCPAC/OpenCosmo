@@ -165,7 +165,8 @@ class Column:
         self.__no_cache = no_cache
 
     def __repr__(self):
-        caller = currentframe().f_back.f_code.co_qualname
+        frame = currentframe()
+        caller = frame.f_back.f_code.co_qualname if frame and frame.f_back else None
         if self.operation is ident:
             return self.lhs
         op_ = render_op(self.operation)

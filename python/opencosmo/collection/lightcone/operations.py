@@ -59,7 +59,7 @@ from opencosmo.plugins.hook import fold
 from opencosmo.spatial.index import project_on_index
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable
+    from collections.abc import Callable, Generator, Iterable, Mapping
 
     import astropy.units as u
     import numpy.typing as npt
@@ -388,6 +388,20 @@ def with_new_columns(
     mode: str = "global",
     **columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> LightconeState:
+    return add_new_columns(state, columns, descriptions, allow_overwrite, mode)
+
+
+def add_new_columns(
+    state: LightconeState,
+    columns: Mapping[str, ConstructedColumn | np.ndarray | u.Quantity],
+    descriptions: str | dict[str, str] | None = None,
+    allow_overwrite: bool = False,
+    mode: str = "global",
+) -> LightconeState:
+    """
+    Mapping form of :py:func:`with_new_columns`. Column names are data here, so
+    they cannot collide with the option parameters.
+    """
     if descriptions is None:
         descriptions = {}
     if any(isinstance(col, DerivedScalarValue) for col in columns.values()):
@@ -427,13 +441,15 @@ def with_new_columns(
     leaves = tuple(
         (
             key,
-            dsops.with_new_columns(
+            dsops.add_new_columns(
                 leaf,
+                {
+                    **{name: arrs[i] for name, arrs in raw_split.items()},
+                    **child_scoped,
+                },
                 descriptions,
                 allow_overwrite,
                 mode=mode,
-                **{name: arrs[i] for name, arrs in raw_split.items()},
-                **child_scoped,
             ),
         )
         for i, (key, leaf) in enumerate(state.leaves)
@@ -479,15 +495,15 @@ def evaluate(
         leaves = tuple(
             (
                 key,
-                dsops.with_new_columns(
+                dsops.add_new_columns(
                     leaf,
-                    {},
-                    allow_overwrite,
-                    **{
+                    {
                         function_name(func): evaluated_column.with_kwargs(
                             **leaf_kwargs(key)
                         )
                     },
+                    {},
+                    allow_overwrite,
                 ),
             )
             for key, leaf in state.leaves

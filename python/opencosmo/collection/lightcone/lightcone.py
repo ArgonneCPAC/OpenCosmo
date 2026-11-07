@@ -120,7 +120,7 @@ class Lightcone:
             return object.__getattribute__(self, key)
 
     def __dir__(self):
-        return list(self.header.parameters.keys()) + super().__dir__()
+        return [*self.header.parameters, *super().__dir__()]
 
     @property
     def header(self) -> OpenCosmoHeader:

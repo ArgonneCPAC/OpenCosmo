@@ -119,3 +119,107 @@ def test_access_table_requires_one_cosmology():
 
     with pytest.raises(ValueError, match="exactly one cosmology"):
         get_access_table([], UnitConvention.COMOVING, None)
+
+
+# Column names are data. A new column named like an option parameter of the
+# function that adds it must be added as a column, not swallowed as an option.
+RESERVED_COLUMN_NAMES = ["mode", "descriptions", "allow_overwrite", "dataset"]
+
+
+@pytest.fixture
+def memory_dataset_state(test_data):
+    from opencosmo.dataset.state import state_from_evaluated_data
+    from opencosmo.header import read_header
+
+    header = read_header(test_data.healpix_map)
+    return state_from_evaluated_data({"v": np.arange(5.0)}, header)
+
+
+@pytest.mark.parametrize("name", RESERVED_COLUMN_NAMES)
+def test_dataset_add_new_columns_accepts_reserved_names(memory_dataset_state, name):
+    from opencosmo.dataset import operations as dsops
+
+    new = dsops.add_new_columns(memory_dataset_state, {name: np.arange(5.0) * 2})
+    assert name in new.columns
+    assert np.array_equal(
+        dsops.get_data(dsops.select(new, name), "numpy", wrap_single=True)[name],
+        np.arange(5.0) * 2,
+    )
+
+
+# `mode` is a public keyword of select, so it can never name a derived column there.
+@pytest.mark.parametrize("name", ["descriptions", "allow_overwrite", "dataset"])
+def test_dataset_select_accepts_reserved_derived_names(memory_dataset_state, name):
+    from opencosmo.dataset import operations as dsops
+
+    selected = dsops.select(memory_dataset_state, **{name: col("v") * 2})
+    assert list(selected.columns) == [name]
+
+
+@pytest.mark.parametrize("name", RESERVED_COLUMN_NAMES)
+def test_structure_evaluate_inserts_reserved_output_names(halo_paths, name):
+    import opencosmo as oc
+
+    collection = oc.open(*halo_paths).take(5)
+
+    def evaluated(dm_particles, halo_properties):
+        return {name: float(np.mean(np.asarray(dm_particles["x"].value)))}
+
+    result = collection.evaluate(
+        evaluated,
+        dm_particles=["x"],
+        halo_properties=["fof_halo_center_x"],
+        insert=True,
+    )
+    assert name in result["halo_properties"].columns
+
+
+@pytest.fixture
+def halo_paths(test_data):
+    return test_data.snapshot.primary.halos
+
+
+def _healpix_index(level: int):
+    from opencosmo.spatial.index import HealpixIndex
+
+    data = {}
+    for lvl in range(level + 1):
+        n = 12 * 4**lvl
+        full = lvl == level
+        data[f"level_{lvl}"] = {
+            "start": np.arange(n, dtype=np.int64) if full else np.zeros(n, np.int64),
+            "size": np.ones(n, np.int64) if full else np.zeros(n, np.int64),
+        }
+    return HealpixIndex(level, data)
+
+
+def test_expand_lightcone_region_converts_cone_to_healpix():
+    import opencosmo as oc
+    from opencosmo.io.iopen import _expand_lightcone_region
+    from opencosmo.spatial.region import HealpixRegion
+
+    cone = oc.make_cone((45 * u.deg, 10 * u.deg), 20 * u.deg)
+    expanded = _expand_lightcone_region(cone, _healpix_index(2))
+    assert isinstance(expanded, HealpixRegion)
+    assert expanded.nside == 4
+    assert len(expanded.pixels) > 0
+
+
+def test_expand_lightcone_region_keeps_healpix_region_pixels():
+    from opencosmo.io.iopen import _expand_lightcone_region
+    from opencosmo.spatial.region import HealpixRegion
+
+    region = HealpixRegion(np.array([0, 1, 5], dtype=np.int64), 2)
+    expanded = _expand_lightcone_region(region, _healpix_index(2))
+    # nside 2 -> 4 multiplies each pixel by 4
+    assert expanded.nside == 4
+    assert set(expanded.pixels) == set(range(8)) | set(range(20, 24))
+
+
+def test_expand_lightcone_region_rejects_3d_region():
+    import opencosmo as oc
+    from opencosmo.io.iopen import _expand_lightcone_region
+
+    box = oc.make_box((0, 0, 0), (1, 1, 1))
+    with pytest.raises(TypeError, match="2-dimensional"):
+        _expand_lightcone_region(box, _healpix_index(2))

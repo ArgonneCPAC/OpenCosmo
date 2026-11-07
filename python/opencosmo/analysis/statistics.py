@@ -20,7 +20,7 @@ need to remember that (for example) unresolved halos are written out with
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 
@@ -545,11 +545,14 @@ def hist2d(
             mode=mode,
         ).get_data()
 
-        if isinstance(bin_spacing, (list, tuple)):
+        bin_spacing_x: BinSpacing
+        bin_spacing_y: BinSpacing
+        if isinstance(bin_spacing, str):
+            # str is itself a Sequence[str], so the checker cannot separate the two
+            # arms of the annotation; _compute_bins validates the value.
+            bin_spacing_x = bin_spacing_y = cast("BinSpacing", bin_spacing)
+        elif isinstance(bin_spacing, (list, tuple)):
             bin_spacing_x, bin_spacing_y = bin_spacing
-        elif isinstance(bin_spacing, str):
-            bin_spacing_x = bin_spacing
-            bin_spacing_y = bin_spacing
         else:
             raise TypeError(f"Invalid input for bin_spacing: {bin_spacing}")
 

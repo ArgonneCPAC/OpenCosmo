@@ -48,7 +48,7 @@ from opencosmo.units.converters import get_scale_factor
 from opencosmo.uuid import get_string_uuid
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
     from typing import Literal
     from uuid import UUID
 
@@ -154,7 +154,7 @@ def select(
 
     new_state = state
     if derived_columns:
-        new_state = __with_new_columns(new_state, {}, False, **derived)
+        new_state = __with_new_columns(new_state, derived, {}, False)
         all_columns.update(derived_columns.keys())
 
     if all_columns:
@@ -188,7 +188,21 @@ def with_new_columns(
     allow_overwrite: bool = False,
     mode: str = "global",
     **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
-):
+) -> DatasetState:
+    return add_new_columns(state, new_columns, descriptions, allow_overwrite, mode)
+
+
+def add_new_columns(
+    state: DatasetState,
+    new_columns: Mapping[str, ConstructedColumn | Column | np.ndarray | u.Quantity],
+    descriptions: str | dict[str, str] | None = None,
+    allow_overwrite: bool = False,
+    mode: str = "global",
+) -> DatasetState:
+    """
+    Mapping form of :py:func:`with_new_columns`. Column names are data here, so
+    they cannot collide with the option parameters.
+    """
     from opencosmo.column.column import Column, DerivedScalarValue
     from opencosmo.column.reducer import default_reducer
 
@@ -205,7 +219,7 @@ def with_new_columns(
     }
     if isinstance(descriptions, str):
         descriptions = {key: descriptions for key in new_columns}
-    return __with_new_columns(state, descriptions, allow_overwrite, **new_columns)
+    return __with_new_columns(state, new_columns, descriptions, allow_overwrite)
 
 
 def evaluate(
@@ -234,10 +248,10 @@ def evaluate(
         output = visit_dataset(evaluated_column, state, batch_size)
         return output
 
-    return with_new_columns(
+    return add_new_columns(
         state,
+        {str(evaluated_column.uuid): evaluated_column},
         allow_overwrite=allow_overwrite,
-        **{str(evaluated_column.uuid): evaluated_column},
     )
 
 
@@ -596,13 +610,12 @@ def written_uuid(path: str) -> UUID:
 
 def __with_new_columns(
     state: DatasetState,
+    new_columns: Mapping[
+        str,
+        Column | ConstructedColumn | DerivedScalarValue | np.ndarray | u.Quantity,
+    ],
     descriptions: dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    **new_columns: Column
-    | ConstructedColumn
-    | DerivedScalarValue
-    | np.ndarray
-    | u.Quantity,
 ) -> DatasetState:
     if descriptions is None:
         descriptions = {}

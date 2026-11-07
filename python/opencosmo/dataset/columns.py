@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import copy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import astropy.units as u
 import numpy as np
@@ -16,6 +16,7 @@ from opencosmo.dataset.graph import get_derived_units
 from opencosmo.uuid import get_raw_column_uuid
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
     from opencosmo.column.column import ConstructedColumn
@@ -46,7 +47,7 @@ def validate_in_memory_columns(
 
 
 def __categorize_columns(
-    new_columns: dict,
+    new_columns: Mapping[str, Any],
     name_to_uuid: dict[str, UUID],
     all_known_uuids: set[UUID],
     descriptions: dict[str, str],
@@ -122,7 +123,7 @@ def add_columns(
     all_known_uuids: set[UUID],
     sorted_index: np.ndarray | None,
     descriptions: dict[str, str],
-    new_columns: dict,
+    new_columns: Mapping[str, Any],
     ds_length: int,
     allow_overwrite: bool,
 ) -> tuple[dict[UUID, ConstructedColumn | RawColumn], ColumnMap, UnitHandler]:

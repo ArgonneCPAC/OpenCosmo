@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from opencosmo.collection.lightcone.scope import LightconeScope
+from opencosmo.spatial.region import combine
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -65,9 +66,11 @@ class LightconeState:
     @property
     def region(self) -> Region | None:
         regions = [leaf.region for _, leaf in self.leaves]
+        if any(region is None for region in regions):
+            return None
         if len(regions) == 1:
             return regions[0]
-        return regions[0].combine(*regions[1:])  # type: ignore[union-attr]
+        return combine(*(r for r in regions if r is not None))
 
 
 def from_leaves(

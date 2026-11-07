@@ -86,8 +86,13 @@ def __get_level_columns(
     key = f"level_{level}"
     if key in columns:
         level_data = columns[key]
+        if isinstance(level_data, h5py.Dataset | np.ndarray):
+            raise TypeError(f"Spatial index level {level} must be a group")
         return level_data["start"], level_data["size"]
-    return columns[f"{key}/start"], columns[f"{key}/size"]
+    start, size = columns[f"{key}/start"], columns[f"{key}/size"]
+    if isinstance(start, h5py.Group) or isinstance(size, h5py.Group):
+        raise TypeError(f"Spatial index level {level} start and size must be arrays")
+    return start, size
 
 
 def __get_level_data(

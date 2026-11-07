@@ -70,7 +70,7 @@ def read_match_set(
         remain after filtering.
     """
 
-    primary_maps: dict[UUID, SimpleH5pyIndex] = {}
+    primary_maps: dict[UUID, MapSlot] = {}
     for slot_name, target_uuid in layout.primary_slots:
         if target_uuid in available:
             primary_maps[target_uuid] = read_index_group(

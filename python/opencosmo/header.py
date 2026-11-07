@@ -28,6 +28,7 @@ from opencosmo.spatial.region import combine
 from opencosmo.units import UnitConvention
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from mpi4py import MPI
@@ -534,7 +535,7 @@ read_header = broadcast_read(file_reader(read_header_undecorated))
 
 def read_parameter_groups(
     file: h5py.File | h5py.Group,
-    parameter_groups: dict[str, dict[str, type[BaseModel]]],
+    parameter_groups: Mapping[str, Mapping[str, type[BaseModel] | UnionType]],
     additional_required: tuple | None = None,
 ):
     """
@@ -559,12 +560,11 @@ def read_parameter_groups(
     optional_output = {}
     optional = parameter_groups.get("optional", {})
     for path, model in optional.items():
-        if isinstance(origin, UnionType):
-            read_fn = load_union_model
-        else:
-            read_fn = read_header_attributes
         try:
-            optional_output[path] = read_fn(file, path, model)
+            if isinstance(model, UnionType):
+                optional_output[path] = load_union_model(file, path, model)
+            else:
+                optional_output[path] = read_header_attributes(file, path, model)
         except (ValidationError, KeyError):
             if path not in additional_required:
                 continue

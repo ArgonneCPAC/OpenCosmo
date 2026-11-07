@@ -170,6 +170,19 @@ def select(
     mode: Literal["local", "global"] = "global",
     **select_kwargs: Any,
 ) -> StructureState:
+    return select_with(state, select_args, select_kwargs, mode)
+
+
+def select_with(
+    state: StructureState,
+    select_args: tuple[str | Iterable[str], ...],
+    select_kwargs: Mapping[str, Any],
+    mode: Literal["local", "global"] = "global",
+) -> StructureState:
+    """
+    Mapping form of :py:func:`select`. Keys of ``select_kwargs`` are dataset or
+    derived-column names, so they cannot collide with ``mode``.
+    """
     if not select_kwargs and not select_args:
         return state
 
@@ -216,7 +229,7 @@ def select(
                 raise TypeError(
                     "When working with nested structure collections, the argument should be a dictionary!"
                 )
-            new_linked[dataset] = select(child, mode=mode, **arg)
+            new_linked[dataset] = select_with(child, (), arg, mode)
         else:
             new_linked[dataset] = __source_op(child, "select")(
                 child, arg, mode=mode, **kwargs
@@ -273,6 +286,23 @@ def with_new_columns(
     mode: str = "global",
     **new_columns: ConstructedColumn | np.ndarray,
 ) -> StructureState:
+    return add_new_columns(
+        state, dataset, new_columns, descriptions, allow_overwrite, mode
+    )
+
+
+def add_new_columns(
+    state: StructureState,
+    dataset: str,
+    new_columns: Mapping[str, ConstructedColumn | np.ndarray],
+    descriptions: str | dict[str, str] | None = None,
+    allow_overwrite: bool = False,
+    mode: str = "global",
+) -> StructureState:
+    """
+    Mapping form of :py:func:`with_new_columns`. Column names are data here, so
+    they cannot collide with the option parameters.
+    """
     if descriptions is None:
         descriptions = {}
     if any(isinstance(c, DerivedScalarValue) for c in new_columns.values()):
@@ -288,22 +318,28 @@ def with_new_columns(
         nested = resolved.linked[collection_name]
         if not isinstance(nested, StructureState):
             raise ValueError(f"{collection_name} is not a collection!")
-        new_nested = with_new_columns(
+        new_nested = add_new_columns(
             nested,
             ".".join(path[1:]),
+            new_columns,
             descriptions=descriptions,
             allow_overwrite=allow_overwrite,
             mode=mode,
-            **new_columns,
         )
         return replace(
             resolved, linked={**resolved.linked, collection_name: new_nested}
         )
 
     if dataset == state.dtype:
-        new_source = __source_op(state.source, "with_new_columns")(
-            state.source, descriptions, allow_overwrite, mode=mode, **new_columns
-        )
+        new_source: Source
+        if isinstance(state.source, DatasetState):
+            new_source = dsops.add_new_columns(
+                state.source, new_columns, descriptions, allow_overwrite, mode
+            )
+        else:
+            new_source = lcops.add_new_columns(
+                state.source, new_columns, descriptions, allow_overwrite, mode
+            )
         return replace(state, source=new_source)
     elif dataset not in state.linked:
         raise ValueError(f"Dataset {dataset} not found in this collection!")
@@ -313,8 +349,8 @@ def with_new_columns(
     if not isinstance(child, DatasetState):
         raise TypeError(f"{dataset} is not a dataset!")
 
-    new_child = dsops.with_new_columns(
-        child, descriptions, allow_overwrite, mode=mode, **new_columns
+    new_child = dsops.add_new_columns(
+        child, new_columns, descriptions, allow_overwrite, mode
     )
     in_memory = {
         name for name, column in new_columns.items() if isinstance(column, np.ndarray)
@@ -549,11 +585,11 @@ def evaluate(
     )
     if not insert or output is None:
         return output
-    return with_new_columns(
+    return add_new_columns(
         state,
         dataset if dataset is not None else state.dtype,
+        to_numpy_dict(output),
         allow_overwrite=allow_overwrite,
-        **to_numpy_dict(output),  # type: ignore[arg-type]
     )
 
 
