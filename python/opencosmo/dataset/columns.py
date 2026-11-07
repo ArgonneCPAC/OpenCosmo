@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache
     from opencosmo.units.handler import UnitHandler
+    from opencosmo.units.types import AnyUnit
 
     ColumnMap = dict[str, UUID]
 
@@ -36,12 +37,14 @@ def resort(columns: dict[str, np.ndarray], sorted_index: np.ndarray | None):
 def validate_in_memory_columns(
     columns: dict[str, np.ndarray], unit_handler: UnitHandler, ds_length: int
 ) -> UnitHandler:
-    new_units = {}
+    new_units: dict[str, AnyUnit | None] = {}
     for colname, column in columns.items():
         if len(column) != ds_length:
             raise ValueError(f"Column {colname} is not the same length as the dataset!")
         if isinstance(column, u.Quantity):
             new_units[colname] = column.unit
+        else:
+            new_units[colname] = None
 
     return unit_handler.with_static_columns(**new_units)
 

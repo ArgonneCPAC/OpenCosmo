@@ -61,11 +61,13 @@ class UnitApplicator:
         self.__prefactor = prefactor
 
     @classmethod
-    def static(cls, base_unit: AnyUnit, base_convention: UnitConvention):
+    def static(cls, base_unit: AnyUnit | None, base_convention: UnitConvention):
         """
         Unit applicator for a column that does not transform under changes in unit convention.
         This column CAN still be transformed explicitly to an equivalent unit.
         """
+        if base_unit is None:
+            return UnitApplicator({}, base_convention, {}, {})
         units = {base_convention: base_unit}
         if base_convention in [UnitConvention.COMOVING, UnitConvention.SCALEFREE]:
             units[UnitConvention.PHYSICAL] = base_unit

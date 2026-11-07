@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from opencosmo.dtypes.cosmology import FlrwCosmology
     from opencosmo.header import OpenCosmoHeader
-    from opencosmo.units.types import UnitValue
+    from opencosmo.units.types import AnyUnit, UnitValue
 
 
 def make_unit_handler_from_units(
@@ -122,7 +122,7 @@ class UnitHandler:
     def unitless_columns(self):
         return {key for key, app in self.__applicators.items() if app.base_unit is None}
 
-    def with_static_columns(self, **columns: u.UnitBase):
+    def with_static_columns(self, **columns: AnyUnit | None):
         new_applicators = {}
         for colname, unit in columns.items():
             new_applicators[colname] = UnitApplicator.static(
