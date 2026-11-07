@@ -522,7 +522,10 @@ class StructureCollection:
         return result
 
     def filter(
-        self, *masks, on_galaxies: bool = False, mode: str = "global"
+        self,
+        *masks,
+        on_galaxies: bool = False,
+        mode: Literal["local", "global"] = "global",
     ) -> StructureCollection:
         """
         Apply a filter to the halo or galaxy properties. Filters are constructed with
@@ -892,7 +895,7 @@ class StructureCollection:
         dataset: str,
         descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
-        mode: str = "global",
+        mode: Literal["local", "global"] = "global",
         **new_columns: ConstructedColumn | np.ndarray,
     ):
         """

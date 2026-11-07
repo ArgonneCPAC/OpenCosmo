@@ -1,8 +1,10 @@
-"""Convert validated wire values into live OpenCosmo objects."""
+"""Convert between validated wire values and live OpenCosmo objects."""
 
 from __future__ import annotations
 
 import operator
+from collections.abc import Iterable
+from functools import partial
 from typing import TYPE_CHECKING
 
 import astropy.units as u
@@ -13,10 +15,31 @@ from opencosmo.column.column import (
     ColumnMask,
     CompoundColumnMask,
     DerivedScalarValue,
+    _arccos,
+    _arcsin,
+    _arctan2,
+    _exp10,
+    _log10,
+    _max,
+    _mean,
+    _median,
+    _min,
+    _quantile,
+    _sqrt,
+    _std,
+    _sum,
+    _var,
     col,
+    ident,
 )
+from opencosmo.index import into_array
 from opencosmo.spatial.builders import make_box, make_cone, make_skybox
-from opencosmo.spatial.region import HealpixRegion
+from opencosmo.spatial.region import (
+    BoxRegion,
+    ConeRegion,
+    HealpixRegion,
+    SkyboxRegion,
+)
 
 from .expression import (
     Arctan2Expression,
@@ -44,7 +67,10 @@ from .region import (
 )
 
 if TYPE_CHECKING:
-    from opencosmo.column.column import MaskOperator
+    from collections.abc import Callable
+
+    from opencosmo.column.column import ExpressionOperand, MaskOperator
+    from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
 
     from .expression import Expression, Mask, ScalarLiteral
@@ -188,6 +214,185 @@ def __comparison_operator(operation: ComparisonOperator) -> MaskOperator:
     return operations[operation]
 
 
+__ARITHMETIC_OPERATORS: dict[Callable[..., object], ArithmeticOperator] = {
+    operator.add: ArithmeticOperator.ADD,
+    operator.sub: ArithmeticOperator.SUBTRACT,
+    operator.mul: ArithmeticOperator.MULTIPLY,
+    operator.truediv: ArithmeticOperator.DIVIDE,
+    operator.pow: ArithmeticOperator.POWER,
+}
+
+__UNARY_OPERATORS: dict[Callable[..., object], UnaryOperator] = {
+    _log10: UnaryOperator.LOG10,
+    _exp10: UnaryOperator.EXP10,
+    _sqrt: UnaryOperator.SQRT,
+    _arcsin: UnaryOperator.ARCSIN,
+    _arccos: UnaryOperator.ARCCOS,
+}
+
+__REDUCTION_OPERATORS: dict[Callable[..., object], ReductionOperator] = {
+    _mean: ReductionOperator.MEAN,
+    _std: ReductionOperator.STANDARD_DEVIATION,
+    _var: ReductionOperator.VARIANCE,
+    _min: ReductionOperator.MINIMUM,
+    _max: ReductionOperator.MAXIMUM,
+    _median: ReductionOperator.MEDIAN,
+    _sum: ReductionOperator.SUM,
+}
+
+__COMPARISON_OPERATORS: dict[Callable[..., object], ComparisonOperator] = {
+    operator.eq: ComparisonOperator.EQUAL,
+    operator.ne: ComparisonOperator.NOT_EQUAL,
+    operator.gt: ComparisonOperator.GREATER_THAN,
+    operator.ge: ComparisonOperator.GREATER_THAN_OR_EQUAL,
+    operator.lt: ComparisonOperator.LESS_THAN,
+    operator.le: ComparisonOperator.LESS_THAN_OR_EQUAL,
+}
+
+__BOOLEAN_OPERATORS: dict[Callable[..., object], BooleanOperator] = {
+    operator.and_: BooleanOperator.AND,
+    operator.or_: BooleanOperator.OR,
+}
+
+# Keyword arguments that the wire grammar implies for parameterized operations.
+__DEFAULT_KEYWORDS: dict[Callable[..., object], dict[str, object]] = {
+    _log10: {"unit_container": u.DexUnit},
+    _exp10: {"expected_unit_container": u.DexUnit},
+}
+
+
+def expression_from_live(expression: LiveExpression | str) -> Expression:
+    """Build a serialized expression from a lazy OpenCosmo expression.
+
+    Raises
+    ------
+    TypeError
+        If the expression contains a value or operation with no wire form.
+    ValueError
+        If the expression contains a non-scalar quantity or an operation
+        configured with arguments the wire grammar cannot express.
+    """
+    match expression:
+        case str():
+            return ColumnReference(name=expression)
+        case Column(lhs=str() as name, rhs=None, operation=operation) if (
+            operation is ident
+        ):
+            return ColumnReference(name=name)
+        case Column() | DerivedScalarValue():
+            return __node_from_live(expression)
+        case u.Quantity() | int() | float() | np.integer() | np.floating():
+            return __scalar_from_live(expression)
+    raise TypeError(f"Unsupported expression type: {type(expression).__name__}")
+
+
+def mask_from_live(mask: LiveMask) -> Mask:
+    """Build a serialized mask from a lazy OpenCosmo mask.
+
+    Raises
+    ------
+    TypeError
+        If the mask contains a value or operation with no wire form.
+    """
+    match mask:
+        case ColumnMask(left=left, right=right, operator=operation):
+            if operation is np.isin:
+                if not isinstance(right, Iterable):
+                    raise TypeError("A membership mask requires a collection of values")
+                return MembershipMask(
+                    operand=expression_from_live(left),
+                    values=tuple(__scalar_from_live(value) for value in right),
+                )
+            if isinstance(right, Iterable) and not isinstance(right, u.Quantity):
+                raise TypeError("Only membership masks compare against a collection")
+            if (comparison := __COMPARISON_OPERATORS.get(operation)) is None:
+                raise TypeError(f"Unsupported comparison operation: {operation!r}")
+            return ComparisonMask(
+                operator=comparison,
+                left=expression_from_live(left),
+                right=expression_from_live(right),
+            )
+        case CompoundColumnMask(left=left, right=right, op=operation):
+            if (boolean := __BOOLEAN_OPERATORS.get(operation)) is None:
+                raise TypeError(f"Unsupported mask combination: {operation!r}")
+            return CompoundMask(
+                operator=boolean,
+                left=mask_from_live(left),
+                right=mask_from_live(right),
+            )
+    raise TypeError(f"Unsupported mask type: {type(mask).__name__}")
+
+
+def __node_from_live(node: Column | DerivedScalarValue) -> Expression:
+    function, keywords = __unwrap(node.operation)
+    if (arithmetic := __ARITHMETIC_OPERATORS.get(function)) is not None:
+        return ArithmeticExpression(
+            operator=arithmetic,
+            left=expression_from_live(node.lhs),
+            right=expression_from_live(__require_rhs(node)),
+        )
+    if function is _arctan2:
+        return Arctan2Expression(
+            left=expression_from_live(node.lhs),
+            right=expression_from_live(__require_rhs(node)),
+        )
+    if function is _quantile:
+        if not isinstance(quantile := keywords.get("q"), float | int):
+            raise TypeError(f"Unsupported quantile: {quantile!r}")
+        return QuantileExpression(
+            operand=expression_from_live(node.lhs), quantile=float(quantile)
+        )
+    if keywords != __DEFAULT_KEYWORDS.get(function, {}):
+        raise ValueError(
+            f"Operation {getattr(function, '__name__', function)!r} with arguments {keywords} "
+            "cannot be serialized"
+        )
+    if (unary := __UNARY_OPERATORS.get(function)) is not None:
+        return UnaryExpression(operator=unary, operand=expression_from_live(node.lhs))
+    if (reduction := __REDUCTION_OPERATORS.get(function)) is not None:
+        return ReductionExpression(
+            operator=reduction, operand=expression_from_live(node.lhs)
+        )
+    raise TypeError(f"Unsupported column operation: {node.operation!r}")
+
+
+def __require_rhs(node: Column | DerivedScalarValue) -> ExpressionOperand:
+    if node.rhs is None:
+        raise TypeError(f"Operation {node.operation!r} requires two operands")
+    return node.rhs
+
+
+def __unwrap(
+    operation: Callable[..., object],
+) -> tuple[Callable[..., object], dict[str, object]]:
+    if isinstance(operation, partial):
+        if operation.args:
+            raise ValueError(f"Operation {operation!r} cannot be serialized")
+        return operation.func, dict(operation.keywords)
+    return operation, {}
+
+
+def __scalar_from_live(
+    value: u.Quantity | float | np.integer | np.floating,
+) -> NumberLiteral | QuantityLiteral:
+    match value:
+        case bool() | np.bool_():
+            raise TypeError("Boolean values cannot be used as expression literals")
+        case u.Quantity():
+            if not value.isscalar:
+                raise ValueError(
+                    f"Only scalar quantities can be serialized, got shape {value.shape}"
+                )
+            return QuantityLiteral(
+                value=value.value.item(), unit=value.unit.to_string()
+            )
+        case int() | float() | np.integer() | np.floating():
+            return NumberLiteral(
+                value=value.item() if isinstance(value, np.generic) else value
+            )
+    raise TypeError(f"Unsupported literal type: {type(value).__name__}")
+
+
 def region_to_live(region: RegionMessage) -> Region:
     """Build an OpenCosmo region from a serialized region message."""
     match region:
@@ -199,6 +404,39 @@ def region_to_live(region: RegionMessage) -> Region:
             return make_skybox(p1, p2)
         case HealpixRegionMessage(pixels=pixels, nside=nside):
             return HealpixRegion(np.asarray(sorted(pixels), dtype=np.int64), nside)
+    raise TypeError(f"Unsupported region type: {type(region).__name__}")
+
+
+def region_from_live(region: Region) -> RegionMessage:
+    """Build a serialized region message from an OpenCosmo region.
+
+    Raises
+    ------
+    TypeError
+        If the region kind has no wire form.
+    """
+    match region:
+        case BoxRegion():
+            (x0, x1), (y0, y1), (z0, z1) = region.bounds
+            return BoxRegionMessage(
+                p1=(float(x0), float(y0), float(z0)),
+                p2=(float(x1), float(y1), float(z1)),
+            )
+        case ConeRegion():
+            return ConeRegionMessage(
+                center=(float(region.center.ra.deg), float(region.center.dec.deg)),
+                radius=float(region.radius.to_value(u.deg)),
+            )
+        case SkyboxRegion():
+            model = region.into_model()
+            return SkyboxRegionMessage(
+                p1=(float(model.p1[0]), float(model.p1[1])),
+                p2=(float(model.p2[0]), float(model.p2[1])),
+            )
+        case HealpixRegion():
+            return HealpixRegionMessage(
+                pixels=frozenset(region.pixels.tolist()), nside=int(region.nside)
+            )
     raise TypeError(f"Unsupported region type: {type(region).__name__}")
 
 
@@ -228,12 +466,52 @@ def to_rows(rows: tuple[int, ...]) -> np.ndarray:
     return np.asarray(rows, dtype=np.int64)
 
 
+def from_column(column: Column) -> Expression:
+    """Build a serialized expression from a lazy column."""
+    if not isinstance(column, Column):
+        raise TypeError("Expected a column expression")
+    return expression_from_live(column)
+
+
+def from_column_or_scalar(value: Column | DerivedScalarValue) -> Expression:
+    """Build a serialized expression from a lazy column or scalar reduction."""
+    if not isinstance(value, Column | DerivedScalarValue):
+        raise TypeError("Expected a column or a scalar reduction")
+    return expression_from_live(value)
+
+
+def from_unit(unit: u.UnitBase | str) -> str:
+    """Build a normalized unit string from an Astropy unit."""
+    return u.Unit(unit).to_string()
+
+
+def from_rows(rows: np.ndarray | DataIndex) -> tuple[int, ...]:
+    """Build row positions from a row index.
+
+    Raises
+    ------
+    TypeError
+        If the index is not an integer array.
+    """
+    array = into_array(rows)
+    if not np.issubdtype(array.dtype, np.integer):
+        raise TypeError(f"Row indices must be integers, got {array.dtype}")
+    return tuple(array.tolist())
+
+
 __all__ = [
     "LiveExpression",
     "LiveMask",
     "LiveScalar",
+    "expression_from_live",
     "expression_to_live",
+    "from_column",
+    "from_column_or_scalar",
+    "from_rows",
+    "from_unit",
+    "mask_from_live",
     "mask_to_live",
+    "region_from_live",
     "region_to_live",
     "to_column",
     "to_column_or_scalar",

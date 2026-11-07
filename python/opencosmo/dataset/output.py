@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from functools import reduce
 from typing import TYPE_CHECKING
 
@@ -16,7 +15,10 @@ from opencosmo.io.schema import (
 from opencosmo.io.writer import ColumnCombineStrategy, ColumnWriter, NumpySource
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from uuid import UUID
+
+    from pydantic import BaseModel
 
     from opencosmo.column.column import ConstructedColumn
     from opencosmo.handler.protocols import DataCache, DataHandler
@@ -78,6 +80,7 @@ def make_dataset_schema(
     spatial_index: SpatialIndex | None,
     region: Region | None,
     raw_index: DataIndex,
+    log: list[BaseModel] | None,
     derived_data: dict,
     dataset_uuid: UUID,
     name: str | None = None,
@@ -116,6 +119,8 @@ def make_dataset_schema(
         children["index"] = tree_schema
         if region is not None:
             header = header.with_region(region)
+
+    header = header.append_log(log)
     header_schema = header.dump()
     children["header"] = header_schema
 

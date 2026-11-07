@@ -1,6 +1,9 @@
+from contextlib import nullcontext
+
 import numpy as np
 import opencosmo as oc
 import pytest
+from mpi4py import MPI
 from opencosmo.mpi import get_comm_world
 
 
@@ -325,3 +328,26 @@ def test_write_lightcone_structure_with_galaxies(
     assert halo_tags_start.issubset(all_halos)
     assert halo_tags_end.issubset(all_halos)
     assert all_halos_read == all_halos
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_insert_with_empty_ranks(test_data):
+    paths = test_data.snapshot.primary
+    collection = oc.open(paths.halo_properties, paths.halo_profiles)
+    # A global take of two structures leaves most ranks without any
+    collection = collection.take(2, at="start", mode="global")
+
+    def doubled_mass(halo_properties, halo_profiles):
+        return halo_properties["fof_halo_mass"] * 2
+
+    with pytest.warns(UserWarning) if len(collection) == 0 else nullcontext():
+        result = collection.evaluate(doubled_mass, insert=True)
+
+    comm = get_comm_world()
+    assert comm is not None
+    assert comm.allreduce(len(collection) == 0, op=MPI.LOR)
+    assert "doubled_mass" in result["halo_properties"].columns
+    columns = comm.allgather(sorted(result["halo_properties"].columns))
+    assert all(rank_columns == columns[0] for rank_columns in columns)
+    data = result["halo_properties"].select("doubled_mass").get_data("numpy")
+    assert comm.allreduce(len(data)) == 2

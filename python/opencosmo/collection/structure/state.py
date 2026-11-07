@@ -5,13 +5,13 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 from opencosmo.collection.structure import links
+from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
 
     from opencosmo.collection.lightcone.state import LightconeState
-    from opencosmo.dataset.state import DatasetState
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.mapping.mapping import DatasetMatchSet
     from opencosmo.spatial.protocols import Region
@@ -109,6 +109,8 @@ def from_parts(
                 f"dataset, but none were found for {missing}"
             )
 
+    # Only the source records operations, so linked children never do
+    linked = {name: __without_log(child) for name, child in linked.items()}
     if resolve:
         linked = links.resolve(match_sets, source, linked)
 
@@ -119,6 +121,14 @@ def from_parts(
         hide_source=hide_source,
         derived_columns=derived_columns,
     )
+
+
+def __without_log[T: StructureChild](child: T) -> T:
+    if isinstance(child, StructureState):
+        return replace(child, source=__without_log(child.source))
+    if isinstance(child, DatasetState):
+        return replace(child, log=None)
+    return child  # lightcone leaves never record
 
 
 def public_keys(state: StructureState) -> list[str]:

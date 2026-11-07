@@ -52,8 +52,8 @@ class MessageError(BaseModel):
 __DATASET_MESSAGES: TypeAdapter[DatasetMessage] = TypeAdapter(DatasetMessage)
 
 
-def __unsupported_target(target: MessageTarget) -> MessageError:
-    name = type(target).__name__
+def __unsupported_target(target: type[MessageTarget]) -> MessageError:
+    name = target.__name__
     return MessageError(
         kind="unsupported_target",
         target=name,
@@ -62,7 +62,7 @@ def __unsupported_target(target: MessageTarget) -> MessageError:
 
 
 def parse_message(
-    target: MessageTarget, payload: Mapping[str, JsonValue]
+    target: type[MessageTarget], payload: Mapping[str, JsonValue]
 ) -> Message | MessageError:
     """Validate a decoded JSON object as a message for ``target``.
 
@@ -80,7 +80,7 @@ def parse_message(
         The validated message, or why it could not be parsed.
     """
     match target:
-        case Dataset():
+        case _ if target is Dataset:
             try:
                 return __DATASET_MESSAGES.validate_python(payload)
             except ValidationError as error:
@@ -116,7 +116,7 @@ def apply_message(
                 target="Dataset",
                 detail=f"{type(message).__name__} cannot be applied to a Dataset",
             )
-    return __unsupported_target(target)
+    return __unsupported_target(type(target))
 
 
 def execute_message(
@@ -137,7 +137,7 @@ def execute_message(
         The transformed object, or why the message could not be parsed or
         applied.
     """
-    message = parse_message(target, payload)
+    message = parse_message(type(target), payload)
     if isinstance(message, MessageError):
         return message
     return apply_message(target, message)

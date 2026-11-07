@@ -58,6 +58,7 @@ class DatasetState:
     column_map: dict[str, UUID]
     open_kwargs: dict[str, Any]
     sort_key: tuple[str, bool, bool] | None
+    log: list | None
 
     def __post_init__(self):
         self.cache.register_column_group(id(self), self.column_map)
@@ -166,6 +167,7 @@ def state_from_target(
         column_map=column_map,
         open_kwargs=open_kwargs,
         sort_key=None,
+        log=[],
     )
 
 
@@ -218,6 +220,7 @@ def state_in_memory(
         column_map=column_map,
         open_kwargs=open_kwargs,
         sort_key=None,
+        log=[],
     )
 
 
@@ -272,6 +275,7 @@ def state_from_evaluated_data(
         column_map=column_map,
         open_kwargs={},
         sort_key=None,
+        log=[],
     )
 
 

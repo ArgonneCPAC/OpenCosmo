@@ -34,6 +34,8 @@ from opencosmo.index import (
     reindex_column,
     single_chunk,
 )
+from opencosmo.instrument import instrument_call, record_call
+from opencosmo.instrument import serializers as iss
 from opencosmo.mpi import gather_index, get_comm_world
 from opencosmo.plugins.contexts import (
     DatasetInstantiateCtx,
@@ -97,8 +99,11 @@ def get_data(
     return convert_data(data, format, wrap_single=wrap_single)
 
 
+@instrument_call(iss.serialize_filter)
 def filter(
-    state: DatasetState, *masks: ColumnMask | CompoundColumnMask, mode: str = "global"
+    state: DatasetState,
+    *masks: ColumnMask | CompoundColumnMask,
+    mode: Literal["local", "global"] = "global",
 ):
     reducer = default_reducer(mode)
     masks = tuple(m.with_reducer(reducer) for m in masks)
@@ -117,10 +122,11 @@ def filter(
     return new_state
 
 
+@instrument_call(iss.serialize_select)
 def select(
     state: DatasetState,
     *columns: str | Iterable[str],
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **derived_columns: ConstructedColumn | DerivedScalarValue,
 ):
     from opencosmo.column.column import Column, DerivedScalarValue
@@ -162,6 +168,7 @@ def select(
     return new_state
 
 
+@instrument_call(iss.serialize_drop)
 def drop(state: DatasetState, *columns: str | Iterable[str]):
     all_columns: set[str] = set()
     for col_group in columns:
@@ -182,11 +189,12 @@ def sort_by(state: DatasetState, column: str | None, invert: bool) -> DatasetSta
     return dataclasses.replace(state, sort_key=sort_key)
 
 
+@instrument_call(iss.serialize_with_new_columns)
 def with_new_columns(
     state: DatasetState,
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **new_columns: ConstructedColumn | Column | np.ndarray | u.Quantity,
 ) -> DatasetState:
     return add_new_columns(state, new_columns, descriptions, allow_overwrite, mode)
@@ -197,11 +205,12 @@ def add_new_columns(
     new_columns: Mapping[str, ConstructedColumn | Column | np.ndarray | u.Quantity],
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ) -> DatasetState:
     """
     Mapping form of :py:func:`with_new_columns`. Column names are data here, so
-    they cannot collide with the option parameters.
+    they cannot collide with the option parameters. It does not record a log
+    entry; the instrumented :py:func:`with_new_columns` does.
     """
     from opencosmo.column.column import Column, DerivedScalarValue
     from opencosmo.column.reducer import default_reducer
@@ -231,6 +240,7 @@ def evaluate(
     batch_size: int = -1,
     allow_overwrite: bool = False,
     require_length: bool = True,
+    log: bool = True,
     **evaluate_kwargs,
 ):
     verify_format(format)
@@ -247,12 +257,20 @@ def evaluate(
     if not insert:
         output = visit_dataset(evaluated_column, state, batch_size)
         return output
+    return insert_evaluated(state, evaluated_column, allow_overwrite, log=log)
 
-    return add_new_columns(
-        state,
-        {str(evaluated_column.uuid): evaluated_column},
-        allow_overwrite=allow_overwrite,
-    )
+
+def insert_evaluated(
+    state: DatasetState,
+    column: EvaluatedColumn,
+    allow_overwrite: bool = False,
+    log: bool = True,
+) -> DatasetState:
+    """Insert a lazily evaluated column, recording the evaluation if ``log``."""
+    new_state = __with_new_columns(state, {column.name: column}, {}, allow_overwrite)
+    if not log:
+        return new_state
+    return record_call(state, new_state, iss.serialize_evaluate(column))
 
 
 def evaluate_to_dataset(
@@ -301,6 +319,7 @@ def evaluate_to_dataset(
     )
 
 
+@instrument_call(iss.serialize_take_range)
 def take_range(
     state: DatasetState,
     start: int,
@@ -316,6 +335,7 @@ def take_range(
     return __take_rows(state, take_index)
 
 
+@instrument_call(iss.serialize_take_rows)
 def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
     row_range = get_range(rows)
     if row_range[0] < 0 or row_range[1] > len(state):
@@ -326,6 +346,7 @@ def take_rows(state: DatasetState, rows: DataIndex) -> DatasetState:
     return __take_rows(state, rows)
 
 
+@instrument_call(iss.serialize_take)
 def take(
     state: DatasetState,
     n: int,
@@ -369,6 +390,7 @@ def rows(
         yield output_data
 
 
+@instrument_call(iss.serialize_bound)
 def bound(state: DatasetState, region, select_by):
     if state.spatial_index is None:
         raise AttributeError(
@@ -596,6 +618,7 @@ def make_schema(state: DatasetState, path: str, canonical: bool = True) -> Schem
         state.spatial_index,
         state.region,
         state.raw_index,
+        state.log,
         derived_data,
         written_uuid(path),
         path.split("/")[-1],

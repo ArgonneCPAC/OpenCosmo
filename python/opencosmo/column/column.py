@@ -1407,10 +1407,10 @@ class ColumnMask:
         )
 
     def __and__(self, other: Self | CompoundColumnMask):
-        return CompoundColumnMask(self, other, lambda left, right: left & right)
+        return CompoundColumnMask(self, other, op.and_)
 
     def __or__(self, other: Self | CompoundColumnMask):
-        return CompoundColumnMask(self, other, lambda left, right: left | right)
+        return CompoundColumnMask(self, other, op.or_)
 
 
 class CompoundColumnMask:
@@ -1432,10 +1432,10 @@ class CompoundColumnMask:
         return columns
 
     def __and__(self, other: ColumnMask | Self):
-        return CompoundColumnMask(self, other, lambda left, right: left & right)
+        return CompoundColumnMask(self, other, op.and_)
 
     def __or__(self, other: ColumnMask | Self):
-        return CompoundColumnMask(self, other, lambda left, right: left | right)
+        return CompoundColumnMask(self, other, op.or_)
 
     def apply(self, columns: dict[str, np.ndarray]):
         left_mask = self.left.apply(columns)

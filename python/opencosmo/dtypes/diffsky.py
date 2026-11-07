@@ -66,7 +66,7 @@ def rebuild_top_host_idx(top_host_idx, index):
 def keep_top_host_idx(dataset: DatasetState, new_index: DataIndex):
     index_array = into_array(new_index)
     top_host_idx = dsops.get_data(
-        dsops.select(dataset, "top_host_idx"), "numpy", wrap_single=True
+        dsops.select(dataset, "top_host_idx", log=False), "numpy", wrap_single=True
     )["top_host_idx"]
     unique_in_sample = np.unique(top_host_idx[index_array])
 
@@ -107,7 +107,7 @@ def _attach_top_host_idx_column(ctx: DatasetOpenCtx) -> DatasetOpenCtx:
         no_cache=True,
     )
     new_state = dsops.with_new_columns(
-        ctx.state, allow_overwrite=True, updated_host_idx=top_host_idx
+        ctx.state, allow_overwrite=True, log=False, updated_host_idx=top_host_idx
     )
     return dataclasses.replace(ctx, state=new_state)
 
@@ -130,6 +130,7 @@ def _offset_top_host_idx(ctx: LightconeInstantiateCtx) -> LightconeInstantiateCt
                 _offset_top_host_idx,
                 vectorize=True,
                 allow_overwrite=True,
+                log=False,
                 offset=offset,
             ),
         )

@@ -430,7 +430,10 @@ def get_column_offset(column: ColumnWriter | None, comm: _MPI.Comm):
     """
     Determine the offset for a given column on this rank.
     """
-    if column is None or column.combine_strategy == ColumnCombineStrategy.SUM:
+    if column is None or column.combine_strategy in (
+        ColumnCombineStrategy.SUM,
+        ColumnCombineStrategy.EXACT,
+    ):
         length = 0
     else:
         length = len(column)
@@ -506,6 +509,9 @@ def __write_column_serial(writer, offset, ds):
         case ColumnCombineStrategy.SUM:
             data += ds[:]
             ds[:] = data
+        case ColumnCombineStrategy.EXACT:
+            # Identical on every rank, so rewriting it on each turn is harmless
+            ds[:] = data
 
 
 def __write_column(
@@ -524,9 +530,8 @@ def __write_column(
         filter(lambda strat: strat is not None, write_comm.allgather(strategy))
     )
     strategy = strategies[0]
-    data_comm, new_group = get_subcom(
-        write_comm.allgather(writer is not None), write_comm
-    )
+    has_writer = write_comm.allgather(writer is not None)
+    data_comm, new_group = get_subcom(has_writer, write_comm)
 
     data: np.ndarray | None
     match strategy:
@@ -544,8 +549,11 @@ def __write_column(
                 data = writer.get_data(data_comm)
             data, offset = sum_scatter(data, write_comm)
 
-        case _:
-            data = None
+        case ColumnCombineStrategy.EXACT:
+            # Every rank holds the same values, so only the first holder writes
+            data = None if writer is None else writer.get_data(data_comm)
+            if write_comm.Get_rank() != has_writer.index(True):
+                data = None
 
     if data is None or len(data) == 0:
         shape = (0,) + ds.shape[1:]

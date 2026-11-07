@@ -24,7 +24,6 @@ from opencosmo.column.column import (
     mask_contains_scalar,
     resolve_mask_scalars,
 )
-from opencosmo.column.evaluate import function_name
 from opencosmo.column.reducer import default_reducer
 from opencosmo.column.select import build_multi_dataset_selections
 from opencosmo.dataset import operations as dsops
@@ -157,7 +156,7 @@ def with_units(
 def filter(
     state: LightconeState,
     *masks: ColumnMask | CompoundColumnMask,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ) -> LightconeState:
     if not masks:
         return state
@@ -298,7 +297,7 @@ def get_pixels(state: LightconeState, nside: int) -> np.ndarray:
 def select(
     state: LightconeState,
     *columns: str | Iterable[str],
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **derived_columns: ConstructedColumn,
 ) -> LightconeState:
     if state.maps is not None:
@@ -385,7 +384,7 @@ def with_new_columns(
     state: LightconeState,
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
     **columns: ConstructedColumn | np.ndarray | u.Quantity,
 ) -> LightconeState:
     return add_new_columns(state, columns, descriptions, allow_overwrite, mode)
@@ -396,7 +395,7 @@ def add_new_columns(
     columns: Mapping[str, ConstructedColumn | np.ndarray | u.Quantity],
     descriptions: str | dict[str, str] | None = None,
     allow_overwrite: bool = False,
-    mode: str = "global",
+    mode: Literal["local", "global"] = "global",
 ) -> LightconeState:
     """
     Mapping form of :py:func:`with_new_columns`. Column names are data here, so
@@ -495,14 +494,9 @@ def evaluate(
         leaves = tuple(
             (
                 key,
-                dsops.add_new_columns(
+                dsops.insert_evaluated(
                     leaf,
-                    {
-                        function_name(func): evaluated_column.with_kwargs(
-                            **leaf_kwargs(key)
-                        )
-                    },
-                    {},
+                    evaluated_column.with_kwargs(**leaf_kwargs(key)),
                     allow_overwrite,
                 ),
             )
@@ -520,6 +514,7 @@ def evaluate(
             format,
             batch_size,
             allow_overwrite,
+            log=False,
             **evaluate_kwargs,
             **leaf_kwargs(key),
         )
@@ -671,7 +666,7 @@ def make_schema(
 
 
 def __scalar_evaluator(
-    state: LightconeState, mode: str
+    state: LightconeState, mode: Literal["local", "global"]
 ) -> Callable[[DerivedScalarValue], Any]:
     """
     Build a function that evaluates a single DerivedScalarValue against
