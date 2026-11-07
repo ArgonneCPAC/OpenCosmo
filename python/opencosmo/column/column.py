@@ -10,7 +10,6 @@ from typing import (
     Any,
     Protocol,
     Self,
-    Union,
 )
 
 import astropy.units as u
@@ -25,14 +24,18 @@ from opencosmo.units import UnitsError
 from opencosmo.uuid import get_derived_column_uuid
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
-
-    from astropy import table
 
     from opencosmo.column.reducer import Reducer
     from opencosmo.index import DataIndex
 
 Comparison = Callable[[float, float], bool]
+type UnitValue = u.UnitBase | u.FunctionUnitBase | u.Quantity | None
+"""
+Value produced by unit inference: a unit, a function unit (e.g. dex), a Quantity
+(arithmetic with a scalar operand can leave a prefactor), or None for unitless.
+"""
 """
 The structures in this file are used both internally and user-facing.
 
@@ -145,8 +148,8 @@ class Column:
 
     def __init__(
         self,
-        lhs: ColumnOrScalar,
-        rhs: ColumnOrScalar | None,
+        lhs: ExpressionOperand,
+        rhs: ExpressionOperand | None,
         operation: Callable,
         description: str | None = None,
         output_name: str | None = None,
@@ -281,12 +284,16 @@ class Column:
 
         return lhs_valid and rhs_valid
 
-    def get_units(self, units: dict[str, u.Unit]):
+    def infer_unit(self, units: Mapping[str, UnitValue]) -> UnitValue:
+        """
+        Infer the unit of this single expression from the units of its inputs.
+        Works for unnamed expressions. See :meth:`get_units` for producer metadata.
+        """
         match self.lhs:
             case str():
                 lhs_unit = units[self.lhs]
             case Column() | DerivedScalarValue():
-                lhs_unit = self.lhs.get_units(units)
+                lhs_unit = self.lhs.infer_unit(units)
             case u.Quantity():
                 lhs_unit = self.lhs.unit
             case _:
@@ -295,7 +302,7 @@ class Column:
             case str():
                 rhs_unit = units[self.rhs]
             case Column() | DerivedScalarValue():
-                rhs_unit = self.rhs.get_units(units)
+                rhs_unit = self.rhs.infer_unit(units)
             case u.Quantity():
                 rhs_unit = self.rhs.unit
             case _:
@@ -321,7 +328,16 @@ class Column:
             case (_, _):
                 return self.operation(lhs_unit, rhs_unit)
 
-    def combine_on_left(self, other: ColumnOrScalar, operation: Callable):
+    def get_units(self, units: Mapping[str, UnitValue]) -> dict[str, UnitValue]:
+        """
+        Producer metadata: map the output name of this named expression to its
+        inferred unit.
+        """
+        if self.name is None:
+            raise RuntimeError("Cannot get output units for an unnamed expression.")
+        return {self.name: self.infer_unit(units)}
+
+    def combine_on_left(self, other: ExpressionOperand, operation: Callable):
         """
         Combine such that this column becomes the lhs of a new derived column.
         """
@@ -338,7 +354,7 @@ class Column:
             case _:
                 return NotImplemented
 
-    def combine_on_right(self, other: ColumnOrScalar, operation: Callable):
+    def combine_on_right(self, other: ExpressionOperand, operation: Callable):
         """
         Combine such that this column becomes the rhs of a new derived column.
         """
@@ -382,7 +398,7 @@ class Column:
     def arccos(self) -> Column:
         return Column(self, None, _arccos)
 
-    def arctan2(self, other: ColumnOrScalar) -> Column:
+    def arctan2(self, other: ExpressionOperand) -> Column:
         return Column(self, other, _arctan2)
 
     def mean(self) -> DerivedScalarValue:
@@ -409,25 +425,29 @@ class Column:
     def quantile(self, q: float) -> DerivedScalarValue:
         return DerivedScalarValue(self, None, partial(_quantile, q=q))
 
-    def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+    def __eq__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+        self, other: ComparisonOperand
+    ) -> ColumnMask:
         return ColumnMask(self, other, op.eq)
 
-    def __ne__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+    def __ne__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+        self, other: ComparisonOperand
+    ) -> ColumnMask:
         return ColumnMask(self, other, op.ne)
 
-    def __gt__(self, other: float | u.Quantity) -> ColumnMask:
+    def __gt__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.gt)
 
-    def __ge__(self, other: float | u.Quantity) -> ColumnMask:
+    def __ge__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.ge)
 
-    def __lt__(self, other: float | u.Quantity) -> ColumnMask:
+    def __lt__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.lt)
 
-    def __le__(self, other: float | u.Quantity) -> ColumnMask:
+    def __le__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.le)
 
-    def isin(self, other: Iterable[float | u.Quantity]) -> ColumnMask:
+    def isin(self, other: Iterable[ScalarLiteral]) -> ColumnMask:
         return ColumnMask(self, other, np.isin)
 
     def evaluate(self, data: dict[str, np.ndarray], *args, **kwargs) -> np.ndarray:
@@ -467,7 +487,15 @@ def _require_scalar_quantity(func: Callable) -> Callable:
     return wrapper
 
 
-ColumnOrScalar = Union[str, "Column", int, float, u.Quantity]
+type ScalarLiteral = int | float | u.Quantity
+type ExpressionOperand = str | Column | DerivedScalarValue | ScalarLiteral
+"""
+Operand of a column or scalar expression. Strings are column names. Scalar
+reductions are valid operands, as in ``(col("x") - col("x").mean()) / col("x").std()``.
+"""
+type ComparisonOperand = Column | DerivedScalarValue | ScalarLiteral
+# Operands are evaluated arrays, Quantities, or scalars; the result is a boolean mask.
+type MaskOperator = Callable[[Any, Any], np.ndarray]
 
 
 def _log10(
@@ -660,7 +688,9 @@ class ConstructedColumn(Protocol):
         index: DataIndex | None,
     ) -> np.ndarray | dict[str, np.ndarray]: ...
 
-    def get_units(self, known_units: dict[str, u.Unit | None]) -> dict[str, u.Unit]: ...
+    def get_units(self, known_units: Mapping[str, UnitValue]) -> dict[str, UnitValue]:
+        """Map each output name to its unit, given the units of the inputs."""
+        ...
 
 
 class RawColumn:
@@ -753,8 +783,9 @@ class RawColumn:
     def description(self):
         return self.__description
 
-    def get_units(self, values: dict[str, u.Quantity]) -> dict[str, u.Unit]:
-        return values[self.__name]
+    def get_units(self, units: Mapping[str, UnitValue]) -> dict[str, UnitValue]:
+        """Producer metadata: the unit of the underlying column, under its output name."""
+        return {name: units[self.__name] for name in self.produces}
 
     def evaluate(self, data: dict[str, np.ndarray], *a, **kw):
         return data[self.__name]
@@ -772,8 +803,8 @@ class DerivedScalarValue:
 
     def __init__(
         self,
-        lhs: ColumnOrScalar | DerivedScalarValue,
-        rhs: ColumnOrScalar | DerivedScalarValue | None,
+        lhs: ExpressionOperand,
+        rhs: ExpressionOperand | None,
         operation: Callable,
         description: str | None = None,
         output_name: str | None = None,
@@ -904,17 +935,21 @@ class DerivedScalarValue:
                 rhs_valid = True
         return lhs_valid and rhs_valid
 
-    def get_units(self, units: dict[str, u.Unit]):
+    def infer_unit(self, units: Mapping[str, UnitValue]) -> UnitValue:
+        """
+        Infer the unit of this single expression from the units of its inputs.
+        Works for unnamed expressions. See :meth:`get_units` for producer metadata.
+        """
         match self.lhs:
             case Column() | DerivedScalarValue():
-                lhs_unit = self.lhs.get_units(units)
+                lhs_unit = self.lhs.infer_unit(units)
             case u.Quantity():
                 lhs_unit = self.lhs.unit
             case _:
                 lhs_unit = None
         match self.rhs:
             case Column() | DerivedScalarValue():
-                rhs_unit = self.rhs.get_units(units)
+                rhs_unit = self.rhs.infer_unit(units)
             case u.Quantity():
                 rhs_unit = self.rhs.unit
             case _:
@@ -936,6 +971,15 @@ class DerivedScalarValue:
                 return self.operation(1, rhs_unit)
             case (_, _):
                 return self.operation(lhs_unit, rhs_unit)
+
+    def get_units(self, units: Mapping[str, UnitValue]) -> dict[str, UnitValue]:
+        """
+        Producer metadata: map the output name of this named expression to its
+        inferred unit.
+        """
+        if self.name is None:
+            raise RuntimeError("Cannot get output units for an unnamed expression.")
+        return {self.name: self.infer_unit(units)}
 
     def evaluate(self, data: dict[str, np.ndarray], *args) -> Any:
         match self.lhs:
@@ -1005,22 +1049,26 @@ class DerivedScalarValue:
             case _:
                 return NotImplemented
 
-    def __eq__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+    def __eq__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+        self, other: ComparisonOperand
+    ) -> ColumnMask:
         return ColumnMask(self, other, op.eq)
 
-    def __ne__(self, other: float | u.Quantity) -> ColumnMask:  # type: ignore
+    def __ne__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+        self, other: ComparisonOperand
+    ) -> ColumnMask:
         return ColumnMask(self, other, op.ne)
 
-    def __gt__(self, other: float | u.Quantity) -> ColumnMask:
+    def __gt__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.gt)
 
-    def __ge__(self, other: float | u.Quantity) -> ColumnMask:
+    def __ge__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.ge)
 
-    def __lt__(self, other: float | u.Quantity) -> ColumnMask:
+    def __lt__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.lt)
 
-    def __le__(self, other: float | u.Quantity) -> ColumnMask:
+    def __le__(self, other: ComparisonOperand) -> ColumnMask:
         return ColumnMask(self, other, op.le)
 
 
@@ -1031,7 +1079,7 @@ class EvaluatedColumn:
         requires: set[str],
         produces: set[str],
         format: str,
-        units: dict[str, u.Unit | None],
+        units: Mapping[str, UnitValue],
         strategy: EvaluateStrategy = EvaluateStrategy.ROW_WISE,
         batch_size: int = -1,
         should_unpack_data: bool = True,
@@ -1046,7 +1094,7 @@ class EvaluatedColumn:
         self.__should_unpack_data = should_unpack_data
         self.__kwargs = kwargs
         self.__produces = produces
-        self.__units = units
+        self.__units = dict(units)
         self.__format = format
         self.__strategy = strategy
         self.__batch_size = batch_size
@@ -1152,8 +1200,8 @@ class EvaluatedColumn:
     def kwarg_names(self):
         return self.__kwargs.keys()
 
-    def get_units(self, units: dict[str, np.ndarray]):
-        return self.__units
+    def get_units(self, units: Mapping[str, UnitValue]) -> dict[str, UnitValue]:
+        return dict(self.__units)
 
     def evaluate(self, data: dict[str, np.ndarray], index: DataIndex | None):
         data = {name: data[name] for name in self.__requires}
@@ -1253,9 +1301,9 @@ class ColumnMask:
 
     def __init__(
         self,
-        left: ColumnOrScalar,
-        right: ColumnOrScalar,
-        operator: Callable[[table.Column, float | u.Quantity], np.ndarray],
+        left: ComparisonOperand,
+        right: ComparisonOperand | Iterable[ScalarLiteral],
+        operator: MaskOperator,
     ):
         self.left = left
         self.right = right

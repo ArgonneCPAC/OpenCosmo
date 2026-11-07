@@ -378,7 +378,10 @@ def __get_all_offsets(schema: Schema, comm: _MPI.Comm, name: str):
 
 
 def __allocate(
-    schema: Schema, group: h5py.File | h5py.Group | None, comm: _MPI.Comm, compress: bool
+    schema: Schema,
+    group: h5py.File | h5py.Group | None,
+    comm: _MPI.Comm,
+    compress: bool,
 ):
     """
     Allocate the file.

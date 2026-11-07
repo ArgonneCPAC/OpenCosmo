@@ -184,9 +184,7 @@ class MpiReducer:
         offsets[1:] = np.cumsum(lengths)[:-1]
         recv = np.empty(total_length, dtype=np.float64) if rank == 0 else None
 
-        self.comm.Gatherv(
-            local_values, [recv, lengths, offsets, MPI.DOUBLE], root=0
-        )
+        self.comm.Gatherv(local_values, [recv, lengths, offsets, MPI.DOUBLE], root=0)
 
         # Compute on rank 0
         if rank != 0:

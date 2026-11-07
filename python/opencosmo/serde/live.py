@@ -44,11 +44,10 @@ from .region import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
+    from opencosmo.column.column import MaskOperator
     from opencosmo.spatial.protocols import Region
 
-    from .expression import Expression, Mask
+    from .expression import Expression, Mask, ScalarLiteral
     from .region import RegionMessage
 
 type LiveScalar = int | float | u.Quantity
@@ -102,17 +101,12 @@ def mask_to_live(mask: Mask) -> LiveMask:
             live_right = expression_to_live(right)
             if not isinstance(live_left, Column) and not isinstance(live_right, Column):
                 raise TypeError("A comparison mask requires a vector expression")
-            return ColumnMask(
-                live_left,  # type: ignore[arg-type]
-                live_right,  # type: ignore[arg-type]
-                __comparison_operator(operation),  # type: ignore[arg-type]
-            )
+            return ColumnMask(live_left, live_right, __comparison_operator(operation))
         case MembershipMask(operand=operand, values=values):
             live_operand = expression_to_live(operand)
             if not isinstance(live_operand, Column):
                 raise TypeError("A membership mask requires a vector expression")
-            live_values = tuple(expression_to_live(value) for value in values)
-            return live_operand.isin(live_values)
+            return live_operand.isin(tuple(__scalar_to_live(value) for value in values))
         case CompoundMask(operator=operation, left=left, right=right):
             live_left = mask_to_live(left)
             live_right = mask_to_live(right)
@@ -174,12 +168,16 @@ def __reduce(operation: ReductionOperator, operand: Column) -> DerivedScalarValu
             return operand.sum()
 
 
-def __comparison_operator(
-    operation: ComparisonOperator,
-) -> Callable[[LiveExpression, LiveExpression], bool]:
-    operations: dict[
-        ComparisonOperator, Callable[[LiveExpression, LiveExpression], bool]
-    ] = {
+def __scalar_to_live(value: ScalarLiteral) -> LiveScalar:
+    match value:
+        case NumberLiteral(value=number):
+            return number
+        case QuantityLiteral(value=number, unit=unit):
+            return u.Quantity(number, u.Unit(unit))
+
+
+def __comparison_operator(operation: ComparisonOperator) -> MaskOperator:
+    operations: dict[ComparisonOperator, MaskOperator] = {
         ComparisonOperator.EQUAL: operator.eq,
         ComparisonOperator.NOT_EQUAL: operator.ne,
         ComparisonOperator.GREATER_THAN: operator.gt,

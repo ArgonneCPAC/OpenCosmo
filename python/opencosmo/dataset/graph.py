@@ -10,10 +10,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
 
-    import astropy.units as u
-
     from opencosmo._lib.graph import DependencyGraph
-    from opencosmo.column.column import ConstructedColumn
+    from opencosmo.column.column import ConstructedColumn, UnitValue
 
 # Bounded LRU so long sessions that keep deriving new columns do not grow without limit.
 __GRAPH_CACHE_SIZE = 256
@@ -90,15 +88,13 @@ def evaluate_producers(
 
 def get_derived_units(
     producers: Mapping[UUID, ConstructedColumn | RawColumn],
-    units: dict[str, u.Unit | None],
-) -> dict[str, u.Unit | None]:
-    new_units: dict[str, u.Unit | None] = {}
+    units: Mapping[str, UnitValue],
+) -> dict[str, UnitValue]:
+    known_units = dict(units)
+    new_units: dict[str, UnitValue] = {}
     for uuid in get_dependency_graph(producers).order():
         producer = producers[uuid]
         if isinstance(producer, RawColumn):
             continue
-        column_units = producer.get_units(units | new_units)
-        if not isinstance(column_units, dict):
-            column_units = {name: column_units for name in producer.produces}
-        new_units |= column_units
+        new_units |= producer.get_units(known_units | new_units)
     return new_units
