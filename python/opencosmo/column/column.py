@@ -436,12 +436,12 @@ class Column:
     def quantile(self, q: float) -> DerivedScalarValue:
         return DerivedScalarValue(self, None, partial(_quantile, q=q))
 
-    def __eq__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+    def __eq__(  # ty: ignore[invalid-method-override]
         self, other: ComparisonOperand
     ) -> ColumnMask:
         return ColumnMask(self, other, op.eq)
 
-    def __ne__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+    def __ne__(  # ty: ignore[invalid-method-override]
         self, other: ComparisonOperand
     ) -> ColumnMask:
         return ColumnMask(self, other, op.ne)
@@ -1075,12 +1075,12 @@ class DerivedScalarValue:
             case _:
                 return NotImplemented
 
-    def __eq__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+    def __eq__(  # ty: ignore[invalid-method-override]
         self, other: ComparisonOperand
     ) -> ColumnMask:
         return ColumnMask(self, other, op.eq)
 
-    def __ne__(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+    def __ne__(  # ty: ignore[invalid-method-override]
         self, other: ComparisonOperand
     ) -> ColumnMask:
         return ColumnMask(self, other, op.ne)

@@ -70,7 +70,7 @@ def __write_dataset(path: Path, dataset: oc.Dataset | oc.Lightcone, overwrite: b
         output.update(outputs)
 
     # pyarrow-stubs types the mapping values as Sequence | Array, but numpy arrays work.
-    table = pyarrow.table(output)  # type: ignore[arg-type]  # ty: ignore[no-matching-overload]
+    table = pyarrow.table(output)  # ty: ignore[no-matching-overload]
     pq.write_table(table, path)
 
 

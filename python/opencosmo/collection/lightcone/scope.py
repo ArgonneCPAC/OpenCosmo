@@ -53,14 +53,8 @@ class LightconeScope:
     """
 
     producers: dict[UUID, ConstructedColumn | RawColumn] = field(default_factory=dict)
-    column_map: dict[str, UUID] = None  # type: ignore
-    descriptions: dict[str, str | None] = None  # type: ignore
-
-    def __post_init__(self):
-        if self.column_map is None:
-            object.__setattr__(self, "column_map", {})
-        if self.descriptions is None:
-            object.__setattr__(self, "descriptions", {})
+    column_map: dict[str, UUID] = field(default_factory=dict)
+    descriptions: dict[str, str | None] = field(default_factory=dict)
 
     def names(self) -> set[str]:
         """Return the names of all scope-owned columns."""

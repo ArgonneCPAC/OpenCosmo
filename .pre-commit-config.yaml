@@ -1,11 +1,14 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
--   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v2.4.0'  # Use the sha / tag you want to point at
+-   repo: local
     hooks:
-    -   id: mypy
-        additional_dependencies: ["numpy", "types-deprecated"]
+    -   id: ty
+        name: ty
+        entry: uv run ty check
+        language: system
+        types: [python]
+        pass_filenames: false
 -   repo: https://github.com/astral-sh/ruff-pre-commit
     rev: 'v0.17.1'
     hooks:

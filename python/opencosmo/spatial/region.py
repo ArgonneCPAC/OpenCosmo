@@ -76,8 +76,10 @@ def combine(*regions: Region) -> Region:
 
 
 def combine_3d_regions(*regions: Region3d):
-    assert all(isinstance(r, BoxRegion) for r in regions)
-    return regions[0].combine(*regions[1:])  # type: ignore
+    boxes = [r for r in regions if isinstance(r, BoxRegion)]
+    if len(boxes) != len(regions):
+        raise TypeError("Only box regions can be combined in three dimensions")
+    return boxes[0].combine(*boxes[1:])
 
 
 def combine_2d_regions(*regions: Region2d):

@@ -51,7 +51,7 @@ class HaccSimulationParameters(BaseModel):
             return {k: empty_string_to_none(v) for k, v in data.items()}
         return data
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @cached_property
     def step_zs(self) -> list[float]:
         """

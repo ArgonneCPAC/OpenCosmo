@@ -36,7 +36,8 @@ def read_header_attributes(
             f"{parameter_model.__name__}. "
             "Are you sure this is an OpenCosmo file?\n"
         )
-        raise ValidationError.from_exception_data(msg, e.errors())  # type: ignore
+        # errors() returns ErrorDetails, which from_exception_data accepts at runtime
+        raise ValidationError.from_exception_data(msg, e.errors())  # ty: ignore[invalid-argument-type]
     return parameters
 
 

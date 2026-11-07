@@ -595,7 +595,7 @@ def combine_header_regions(schema: Schema, comm: MPI.Comm | None) -> Schema:
     metadata = schema.attributes | {
         name: col.get_data() for name, col in schema.columns.items()
     }
-    pars = FileParameters(**metadata)  # type: ignore
+    pars = FileParameters.model_validate(metadata)
     if pars.region is None:
         return schema
 

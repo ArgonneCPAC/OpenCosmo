@@ -30,8 +30,7 @@ Documentation = "https://opencosmo.readthedocs.io/en/stable/"
 [dependency-groups]
 dev = [
   "ruff>=0.9.4,<1.0.0",
-  "mypy>=1.15,<3.0.0",
-  "types-deprecated>=1.2.55.20250304",
+  "ty>=0.0.99,<0.1.0",
   "pre-commit>=4.2.0,<5.0.0",
   "towncrier>=24.8.0,<27.0.0",
   "pip>=25.1.1",
@@ -81,9 +80,12 @@ python-source = "python"
 [tool.uv]
 cache-keys = [{file = "pyproject.toml"}, {file = "Cargo.toml"}, {file = "**/*.rs"}]
 
-[[tool.mypy.overrides]]
-module = ["h5py", "astropy.*", "healpy", "healsparse", "numba"]
-ignore_missing_imports = true
+[tool.ty.src]
+include = ["python/opencosmo"]
+
+[tool.ty.analysis]
+# mypy-style ignores are dead once mypy is gone; use `# ty: ignore[rule]`.
+respect-type-ignore-comments = false
 
 
 [tool.pytest.ini_options]

@@ -42,8 +42,8 @@ def ParticleProjectionPlot(
     yt.visualization.plot_window.ParticleProjectionPlot
         A ParticleProjectionPlot object containing the particle projection plot.
     """
-    # mypy gets this wrong. ParticleProjectionPlot is basically a factory class
-    return yt.ParticleProjectionPlot(*args, **kwargs)  # type: ignore
+    # ParticleProjectionPlot is a factory class that yt's source types as its return value
+    return yt.ParticleProjectionPlot(*args, **kwargs)  # ty: ignore[invalid-return-type]
 
 
 def ProjectionPlot(*args, **kwargs) -> NormalPlot:

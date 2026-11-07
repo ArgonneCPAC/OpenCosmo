@@ -80,7 +80,7 @@ def evaluate_producers(
         if isinstance(producer, RawColumn):
             continue
         # Scope producers evaluate over the stacked table, so there is no source index.
-        result = producer.evaluate(inputs | outputs, None)  # type: ignore[arg-type]
+        result = producer.evaluate(inputs | outputs, None)
         if not isinstance(result, dict):
             result = {next(iter(producer.produces)): result}
         outputs.update(result)

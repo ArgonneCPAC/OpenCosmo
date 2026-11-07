@@ -20,7 +20,7 @@ class ResolvedIndex(NamedTuple):
     'no restriction — read the whole dataset on this rank') plus the possibly
     partition-updated spatial region to thread back into dataset state."""
 
-    index: DataIndex | None  # type: ignore[assignment]  # shadows tuple.index
+    index: DataIndex | None  # shadows tuple.index
     region: Region | None
 
 
@@ -72,7 +72,7 @@ def spatial(
         if part is None:
             index = empty()
         else:
-            index = part.idx  # type: ignore[assignment]
+            index = part.idx
             sim_region = part.region if part.region is not None else sim_region
         if header.file.is_lightcone:
             # ds_group["index"] above raised KeyError if there was no spatial index

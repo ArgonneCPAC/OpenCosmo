@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 def read_index_group(group: h5py.Group) -> SimpleH5pyIndex:
     """Resolve a primary map slot into its live simple index dataset."""
-    return group["index"]  # type: ignore[return-value]
+    return group["index"]
 
 
 def read_match_set(
@@ -73,9 +73,7 @@ def read_match_set(
     primary_maps: dict[UUID, MapSlot] = {}
     for slot_name, target_uuid in layout.primary_slots:
         if target_uuid in available:
-            primary_maps[target_uuid] = read_index_group(
-                group[f"primary/{slot_name}"]  # type: ignore[arg-type]
-            )
+            primary_maps[target_uuid] = read_index_group(group[f"primary/{slot_name}"])
 
     if layout.reference not in available and len(primary_maps) < 2:
         primary_maps = {}
@@ -83,9 +81,9 @@ def read_match_set(
     aux_maps: dict[tuple[UUID, UUID], tuple[SimpleH5pyIndex, SimpleH5pyIndex]] = {}
     for slot_name, uuid_a, uuid_b in layout.aux_slots:
         if uuid_a in available and uuid_b in available:
-            pair = group[f"auxiliary/{slot_name}"]  # type: ignore[index]
-            source = pair["source"]  # type: ignore[index]
-            target = pair["target"]  # type: ignore[index]
+            pair = group[f"auxiliary/{slot_name}"]
+            source = pair["source"]
+            target = pair["target"]
             for side, array in (("source", source), ("target", target)):
                 values = array[:]
                 if np.any(values < 0):
@@ -165,12 +163,12 @@ def read_link_set(
         if slot.kind is LinkSlotKind.CHUNKED:
             start_name, size_name = slot.dataset_names
             primary_maps[target_uuid] = ChunkedSlot(
-                source_group[start_name],  # type: ignore[arg-type]
-                source_group[size_name],  # type: ignore[arg-type]
+                source_group[start_name],
+                source_group[size_name],
             )
         else:
             (idx_name,) = slot.dataset_names
-            primary_maps[target_uuid] = source_group[idx_name]  # type: ignore[assignment]
+            primary_maps[target_uuid] = source_group[idx_name]
 
     if not primary_maps:
         return None

@@ -309,7 +309,8 @@ def __convert_to_polars(data: dict[str, np.ndarray], wrap_single: bool = False):
     if isinstance(numpy_data, np.ndarray):
         return pl.Series(name=next(iter(data.keys())), values=numpy_data)
 
-    return pl.from_dict(data)  # type: ignore
+    # polars types the values as Sequence | Series, but numpy arrays are accepted
+    return pl.from_dict(data)  # ty: ignore[invalid-argument-type]
 
 
 def __convert_to_jax(data: dict[str, np.ndarray], wrap_single: bool = False):

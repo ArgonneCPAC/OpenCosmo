@@ -382,7 +382,7 @@ def bound(state: DatasetState, region, select_by):
         )
 
         check_region = region.regularize(
-            state.unit_handler,  # type: ignore[arg-type]
+            state.unit_handler,
             columns,
             state.convention,
             {
