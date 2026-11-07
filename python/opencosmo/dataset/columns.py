@@ -67,14 +67,21 @@ def __categorize_columns(
     new_static_units: dict = {}
 
     for colname, column in new_columns.items():
+        producer: ConstructedColumn | RawColumn
         match column:
             case Column() | DerivedScalarValue():
-                column.name = colname
-                column.description = descriptions.get(colname, "None")
-                producer = column.bind(name_to_uuid, all_known_uuids)
+                producer = column.bind(
+                    name_to_uuid,
+                    all_known_uuids,
+                    output_name=colname,
+                    description=descriptions.get(colname, "None"),
+                )
             case EvaluatedColumn():
-                column.description = descriptions.get(colname, "None")
-                producer = column.bind(name_to_uuid, all_known_uuids)
+                producer = column.bind(
+                    name_to_uuid,
+                    all_known_uuids,
+                    description=descriptions.get(colname, "None"),
+                )
             case np.ndarray():
                 if len(column) != ds_length:
                     raise ValueError(

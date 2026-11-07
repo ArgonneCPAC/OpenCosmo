@@ -109,6 +109,11 @@ You can add multiple derived columns in a single call:
 
    ds = ds.select("*", fof_halo_ke=fof_halo_ke, fof_halo_p=fof_halo_p)
 
+Registering an expression does not change its name, description, or dependencies.
+You can reuse the same expression under different output names, in the same call
+or on different datasets and lightcones. Each registration binds a separate copy
+to the columns available at that point.
+
 :py:meth:`opencosmo.Dataset.select` checks to ensure that the columns you are using already exist in the dataset and that the units of the various columns match. For example
 
 .. code-block:: python

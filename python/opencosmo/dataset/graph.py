@@ -57,7 +57,7 @@ def get_dependency_graph(
 
 
 def evaluate_producers(
-    producers: Mapping[UUID, ConstructedColumn],
+    producers: Mapping[UUID, ConstructedColumn | RawColumn],
     inputs: dict[str, Any],
 ) -> dict[str, Any]:
     """

@@ -189,29 +189,39 @@ class Column:
     def dep_map(self) -> dict[str, UUID] | None:
         return self.__dep_map
 
-    def bind(self, name_to_uuid: dict[str, UUID], all_known_uuids: set[UUID]) -> Column:
+    def bind(
+        self,
+        name_to_uuid: dict[str, UUID],
+        all_known_uuids: set[UUID],
+        *,
+        output_name: str | None = None,
+        description: str | None = None,
+    ) -> Column:
         """
         Resolve each dependency column name to the UUID of the producer that was
         producing it at the time this column was registered with a dataset.
         Returns a new bound Column; does not mutate this instance.
+        ``output_name`` and ``description`` override metadata on the returned copy.
         """
-        required_names = self._traverse_names()
+        name = output_name if output_name is not None else self.name
+        if name is None:
+            raise RuntimeError("Cannot bind an unnamed expression.")
+        required_names = self.requires_names
         if missing := required_names.difference(name_to_uuid):
             raise ValueError(f"Derived column depends on unknown columns {missing}")
 
-        dep_map = {name: name_to_uuid[name] for name in self._traverse_names()}
-        uuid = get_derived_column_uuid(
-            set(dep_map.values()), self.produces, all_known_uuids
-        )
+        dep_map = {name: name_to_uuid[name] for name in required_names}
+        uuid = get_derived_column_uuid(set(dep_map.values()), {name}, all_known_uuids)
 
         return Column(
             self.lhs,
             self.rhs,
             self.operation,
-            self.description,
-            self.name,
+            self.description if description is None else description,
+            name,
             _dep_map=dep_map,
             _uuid=uuid,
+            no_cache=self.__no_cache,
         )
 
     def with_reducer(self, reducer: Reducer) -> Column:
@@ -229,6 +239,7 @@ class Column:
             self.name,
             _dep_map=self.__dep_map,
             _uuid=self.__uuid,
+            no_cache=self.__no_cache,
         )
 
     def _traverse_names(self) -> set[str]:
@@ -258,8 +269,10 @@ class Column:
         return self._traverse_names()
 
     @property
-    def produces(self):
-        return None if self.name is None else {self.name}
+    def produces(self) -> set[str]:
+        if self.name is None:
+            raise RuntimeError("Cannot get output names for an unnamed expression.")
+        return {self.name}
 
     @property
     def no_cache(self):
@@ -450,7 +463,9 @@ class Column:
     def isin(self, other: Iterable[ScalarLiteral]) -> ColumnMask:
         return ColumnMask(self, other, np.isin)
 
-    def evaluate(self, data: dict[str, np.ndarray], *args, **kwargs) -> np.ndarray:
+    def evaluate(
+        self, data: dict[str, np.ndarray], index: DataIndex | None = None
+    ) -> np.ndarray:
         lhs: Any
         rhs: Any
         match self.lhs:
@@ -656,6 +671,12 @@ def _arctan2(left: Any, right: Any) -> Any:
 
 
 class ConstructedColumn(Protocol):
+    """A lazy producer, possibly unbound until registered with a dataset.
+
+    Binding resolves dependencies and output names without mutating the input.
+    Output metadata requires a named producer; UUID dependencies require binding.
+    """
+
     @property
     def uuid(self) -> UUID | None: ...
 
@@ -678,7 +699,10 @@ class ConstructedColumn(Protocol):
         self,
         name_to_uuid: dict[str, UUID],
         all_known_uuids: set[UUID],
-    ) -> Self: ...
+        *,
+        output_name: str | None = None,
+        description: str | None = None,
+    ) -> ConstructedColumn: ...
 
     @property
     def no_cache(self) -> bool: ...
@@ -688,7 +712,7 @@ class ConstructedColumn(Protocol):
         index: DataIndex | None,
     ) -> np.ndarray | dict[str, np.ndarray]: ...
 
-    def get_units(self, known_units: Mapping[str, UnitValue]) -> dict[str, UnitValue]:
+    def get_units(self, units: Mapping[str, UnitValue]) -> dict[str, UnitValue]:
         """Map each output name to its unit, given the units of the inputs."""
         ...
 
@@ -857,8 +881,10 @@ class DerivedScalarValue:
         return self._traverse_names()
 
     @property
-    def produces(self):
-        return None if self.name is None else {self.name}
+    def produces(self) -> set[str]:
+        if self.name is None:
+            raise RuntimeError("Cannot get output names for an unnamed expression.")
+        return {self.name}
 
     @property
     def no_cache(self):
@@ -889,27 +915,35 @@ class DerivedScalarValue:
         )
 
     def bind(
-        self, name_to_uuid: dict[str, UUID], all_known_uuids: set[UUID]
+        self,
+        name_to_uuid: dict[str, UUID],
+        all_known_uuids: set[UUID],
+        *,
+        output_name: str | None = None,
+        description: str | None = None,
     ) -> DerivedScalarValue:
         """
         Resolve each dependency column name to the UUID of the producer that was
         producing it at the time this scalar was registered with a dataset.
         Returns a new bound DerivedScalarValue; does not mutate this instance.
+        ``output_name`` and ``description`` override metadata on the returned copy.
         """
-        assert self.name is not None
-        required_names = self._traverse_names()
+        name = output_name if output_name is not None else self.name
+        if name is None:
+            raise RuntimeError("Cannot bind an unnamed expression.")
+        required_names = self.requires_names
         if missing := required_names.difference(name_to_uuid):
             raise ValueError(f"Derived scalar depends on unknown columns {missing}")
 
-        dep_map = {name: name_to_uuid[name] for name in self._traverse_names()}
-        uuid = get_derived_column_uuid(dep_map.values(), self.produces, all_known_uuids)
+        dep_map = {name: name_to_uuid[name] for name in required_names}
+        uuid = get_derived_column_uuid(dep_map.values(), {name}, all_known_uuids)
 
         return DerivedScalarValue(
             self.lhs,
             self.rhs,
             self.operation,
-            self.description,
-            self.name,
+            self.description if description is None else description,
+            name,
             _dep_map=dep_map,
             no_cache=self.__no_cache,
             _uuid=uuid,
@@ -981,7 +1015,9 @@ class DerivedScalarValue:
             raise RuntimeError("Cannot get output units for an unnamed expression.")
         return {self.name: self.infer_unit(units)}
 
-    def evaluate(self, data: dict[str, np.ndarray], *args) -> Any:
+    def evaluate(
+        self, data: dict[str, np.ndarray], index: DataIndex | None = None
+    ) -> Any:
         match self.lhs:
             case Column() | DerivedScalarValue():
                 lhs = self.lhs.evaluate(data)
@@ -1112,12 +1148,18 @@ class EvaluatedColumn:
         return self.__dep_map
 
     def bind(
-        self, name_to_uuid: dict[str, UUID], all_known_uuids: set[UUID]
+        self,
+        name_to_uuid: dict[str, UUID],
+        all_known_uuids: set[UUID],
+        *,
+        output_name: str | None = None,
+        description: str | None = None,
     ) -> EvaluatedColumn:
         """
         Resolve each dependency column name to the UUID of the producer that was
         producing it at the time this column was registered with a dataset.
         Returns a new bound EvaluatedColumn; does not mutate this instance.
+        Output names come from ``produces``; ``output_name`` is ignored.
         """
         dep_map = {name: name_to_uuid[name] for name in self.__requires}
         uuid = get_derived_column_uuid(
@@ -1132,7 +1174,7 @@ class EvaluatedColumn:
             self.__strategy,
             self.__batch_size,
             self.__should_unpack_data,
-            self.description,
+            self.description if description is None else description,
             _dep_map=dep_map,
             no_cache=self.__no_cache,
             _uuid=uuid,
