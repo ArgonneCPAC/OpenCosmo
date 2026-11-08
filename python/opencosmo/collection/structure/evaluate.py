@@ -15,7 +15,7 @@ from opencosmo.dataset.formats import concat_chunks, stack_rows
 from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
 
 def verify_evaluate_on_collection(
@@ -72,7 +72,11 @@ def visit_structure_eagerly(
     to_visit = __prepare_state(spec, state)
 
     if dataset is None:
-        return evaluate_into_properties(function, to_visit, format, kwargs, insert)
+        inputs = (
+            __make_input(structure, format)
+            for structure in scops.iter_objects(to_visit)
+        )
+        return evaluate_into_properties(function, inputs, format, kwargs, insert)
     else:
         return evaluate_into_dataset(
             function, to_visit, format, kwargs, dataset, insert
@@ -81,14 +85,13 @@ def visit_structure_eagerly(
 
 def evaluate_into_properties(
     function: Callable,
-    state: StructureState,
+    inputs: Iterable[Mapping[str, Any]],
     format: str,
     kwargs: dict[str, Any],
     insert: bool,
 ):
     per_column: dict[str, list] = {}
-    for structure in scops.iter_objects(state):
-        input_structure = __make_input(structure, format)
+    for input_structure in inputs:
         output = function(**input_structure, **kwargs)
         if output is None and insert:
             raise ValueError(
