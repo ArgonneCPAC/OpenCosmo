@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any
 
 from astropy.units import Quantity
 
 from opencosmo import facade
+from opencosmo.collection.lightcone import operations as lcops
 from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure.state import StructureState, public_keys
@@ -19,7 +21,7 @@ from opencosmo.dataset.formats import concat_chunks, stack_rows
 from opencosmo.dataset.state import DatasetState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Generator, Iterable, Mapping
 
 
 def verify_evaluate_on_collection(
@@ -146,6 +148,26 @@ def visit_structure_eagerly(
         )
 
 
+def visit_structure_by_columns(
+    function: Callable,
+    state: StructureState,
+    columns: Mapping[str, tuple[str, ...]],
+    format: str,
+    evaluate_kwargs: dict[str, Any],
+    insert: bool,
+):
+    """
+    Evaluate ``function`` once per structure, passing each column argument
+    the values from the dataset ``columns`` maps it to.
+    """
+    by_path: dict[tuple[str, ...], list[str]] = {}
+    for name, path in sorted(columns.items()):
+        by_path.setdefault(path, []).append(name)
+    to_visit = __restrict_to_columns(state, by_path)
+    inputs = __column_inputs(to_visit, by_path, format)
+    return evaluate_into_properties(function, inputs, format, evaluate_kwargs, insert)
+
+
 def evaluate_into_properties(
     function: Callable,
     inputs: Iterable[Mapping[str, Any]],
@@ -226,3 +248,72 @@ def __prepare_state(
     state = scops.with_datasets(state, list(spec.keys()))
     selections = {ds_name: cols for ds_name, cols in spec.items() if cols is not None}
     return scops.select_with(state, (), selections)
+
+
+def __restrict_to_columns(
+    state: StructureState, by_path: Mapping[tuple[str, ...], list[str]]
+) -> StructureState:
+    by_child: dict[str, dict[tuple[str, ...], list[str]]] = {}
+    for path, names in by_path.items():
+        by_child.setdefault(path[0], {})[path[1:]] = names
+    # Keep the source visible so iteration yields every structure, including
+    # those with no rows in the requested linked datasets.
+    source_columns = by_child.pop(state.dtype, {}).get(
+        (), [next(iter(state.source.columns))]
+    )
+    state = replace(
+        state,
+        linked={
+            name: child for name, child in state.linked.items() if name in by_child
+        },
+        hide_source=False,
+    )
+    selections = {name: sub[()] for name, sub in by_child.items() if () in sub}
+    state = scops.select_with(state, (), {state.dtype: source_columns, **selections})
+    nested: dict[str, StructureState] = {}
+    for name, sub in by_child.items():
+        if () in sub:
+            continue
+        child = state.linked[name]
+        assert isinstance(child, StructureState)
+        nested[name] = __restrict_to_columns(child, sub)
+    return replace(state, linked={**state.linked, **nested})
+
+
+def __column_inputs(
+    state: StructureState,
+    by_path: Mapping[tuple[str, ...], list[str]],
+    format: str,
+) -> Generator[dict[str, Any]]:
+    leaves = scops.leaf_datasets(state)
+    empty: dict[tuple[str, ...], Any] = {}
+    for structure in scops.iter_objects(state):
+        values = {}
+        for path, names in by_path.items():
+            element = structure.get(path[0])
+            if isinstance(element, StructureState):
+                element = scops.leaf_datasets(element)[path[1:]]
+            if element is None:
+                if path not in empty:
+                    empty[path] = __leaf_data(__empty_leaf(leaves[path]), format)
+                data = empty[path]
+            else:
+                data = __leaf_data(element, format)
+            values.update({name: data[name] for name in names})
+        yield values
+
+
+def __leaf_data(element: Any, format: str) -> Any:
+    if isinstance(element, dict):
+        return __make_input(element, format)
+    if isinstance(element, DatasetState):
+        return dsops.get_data(element, format, unpack=False, wrap_single=True)
+    return lcops.get_data(element, format, unpack=False, wrap_single=True)
+
+
+def __empty_leaf(
+    leaf: DatasetState | LightconeState,
+) -> DatasetState | LightconeState:
+    if isinstance(leaf, DatasetState):
+        return dsops.take_range(leaf, 0, 0, "local")
+    return lcops.take_range(leaf, 0, 0, "local")

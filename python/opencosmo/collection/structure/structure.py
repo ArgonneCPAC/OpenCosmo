@@ -390,6 +390,25 @@ class StructureCollection:
         The collection will now contain a column named "offset" with the results of the
         computation applied to each halo in the collection.
 
+        Your function can instead take column names as arguments. The dataset each
+        column belongs to is inferred, as in :py:meth:`select
+        <opencosmo.StructureCollection.select>`, and only those columns are read.
+        Columns from the halo or galaxy properties are passed as single values, and
+        columns from linked datasets are passed as arrays holding that structure's rows:
+
+        .. code-block:: python
+
+            def gas_fraction(fof_halo_mass, mass):
+                return np.sum(mass) / fof_halo_mass
+
+            collection = collection.with_datasets(["halo_properties", "gas_particles"])
+            collection = collection.evaluate(gas_fraction)
+
+        If a column name appears in more than one dataset a ``ValueError`` is raised.
+        Use :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>` to
+        narrow the collection, or take dataset names as arguments as above. The results
+        are inserted into the halo or galaxy properties.
+
         It is not required to pass a list of column names for a given dataset. If a list
         is not provided, all columns will be passed to the computation function. Data will
         be passed into the function as numpy arrays or astropy tables, depending on the
