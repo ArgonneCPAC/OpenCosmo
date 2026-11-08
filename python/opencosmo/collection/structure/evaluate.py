@@ -10,6 +10,10 @@ from opencosmo.collection.lightcone.state import LightconeState
 from opencosmo.collection.structure import operations as scops
 from opencosmo.collection.structure.state import StructureState, public_keys
 from opencosmo.column.evaluate import function_name
+from opencosmo.column.select import (
+    MissingColumnError,
+    build_multi_dataset_selections,
+)
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.formats import concat_chunks, stack_rows
 from opencosmo.dataset.state import DatasetState
@@ -53,6 +57,65 @@ def verify_evaluate_on_collection(
 
     spec = {name: evaluate_kwargs.pop(name, None) for name in requested_datasets}
     return spec, evaluate_kwargs
+
+
+def resolve_column_arguments(
+    function: Callable,
+    columns_by_dataset: Mapping[tuple[str, ...], Iterable[str]],
+    evaluate_kwargs: Mapping[str, Any],
+) -> dict[str, tuple[str, ...]]:
+    """
+    Map each parameter of ``function`` that names a column to the path of the
+    one dataset that contains it. Parameters that match no column must be
+    supplied through ``evaluate_kwargs`` or have defaults. A parameter that is
+    both a column and an evaluate kwarg is ambiguous and raises.
+    """
+    columns_by_dataset = {
+        path: set(columns) for path, columns in sorted(columns_by_dataset.items())
+    }
+    parameters = {
+        name: parameter
+        for name, parameter in signature(function).parameters.items()
+        if parameter.kind not in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD)
+    }
+    # Lengths only route array kwargs, which are never passed here
+    names_by_dataset, _, unmatched = build_multi_dataset_selections(
+        columns_by_dataset,
+        dict.fromkeys(columns_by_dataset, 0),
+        (list(parameters),),
+        {},
+    )
+
+    paths_by_name: dict[str, list[tuple[str, ...]]] = {}
+    for path, names in names_by_dataset.items():
+        for name in names:
+            paths_by_name.setdefault(name, []).append(path)
+    for name, paths in paths_by_name.items():
+        found_in = ", ".join(".".join(path) for path in paths)
+        if len(paths) > 1:
+            raise ValueError(
+                f"Column {name} was found in multiple datasets ({found_in}). "
+                "Use with_datasets to narrow the collection, or take dataset names "
+                "as arguments to your function."
+            )
+        if name in evaluate_kwargs:
+            raise ValueError(
+                f"{name} was passed to evaluate as a keyword argument, but it is "
+                f"also a column in {found_in}. Rename the function parameter to "
+                "pass a value that is not a column."
+            )
+
+    missing = [
+        name
+        for name in unmatched
+        if name not in evaluate_kwargs and parameters[name].default is Parameter.empty
+    ]
+    if missing:
+        raise MissingColumnError(
+            f"Your function has required arguments {missing}, but they are not "
+            "columns in any dataset in this collection and you didn't provide them!"
+        )
+    return {name: paths[0] for name, paths in paths_by_name.items()}
 
 
 def visit_structure_eagerly(
