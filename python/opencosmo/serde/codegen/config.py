@@ -15,8 +15,10 @@ from types import NoneType
 
 import astropy.units as u
 import numpy as np
+import numpy.typing as npt
 from annotated_types import Ge
 
+from opencosmo.collection.lightcone import Lightcone
 from opencosmo.column.column import (
     ColumnMask,
     CompoundColumnMask,
@@ -116,6 +118,7 @@ WIRE_TYPES: Mapping[object, WireType] = {
     Region: __wire(RegionMessage, live.region_to_live),
     u.UnitBase: __wire(UnitString, live.to_unit),
     np.ndarray | DataIndex: __wire(RowIndices, live.to_rows),
+    npt.NDArray[np.integer]: __wire(RowIndices, live.to_rows),
     int: WireType(Symbol("pydantic", "StrictInt")),
     float: __wire(FiniteNumber),
     bool: WireType(Symbol("pydantic", "StrictBool")),
@@ -166,6 +169,45 @@ SPECS: tuple[MessageSpec, ...] = (
                     symbol(checks.described_columns), ("descriptions", "new_columns")
                 ),
             ),
+        },
+    ),
+    MessageSpec(
+        target=Lightcone,
+        public_name="opencosmo.Lightcone",
+        methods=(
+            "filter",
+            "select",
+            "drop",
+            "sort_by",
+            "take",
+            "take_range",
+            "take_rows",
+            "bound",
+            "with_new_columns",
+            "with_units",
+            "with_redshift_range",
+            "pixel_search",
+        ),
+        output=__PACKAGE / "messages" / "lightcone.py",
+        namespace={
+            "ColumnMask": ColumnMask,
+            "CompoundColumnMask": CompoundColumnMask,
+            "ConstructedColumn": ConstructedColumn,
+            "DataIndex": DataIndex,
+            "DerivedScalarValue": DerivedScalarValue,
+            "Ge": Ge,
+            "Iterable": Iterable,
+            "Region": Region,
+            "np": np,
+            "npt": npt,
+            "u": u,
+        },
+        checks={
+            "take_range": (Check(symbol(checks.ordered_range), ("start", "end")),),
+            "with_new_columns": (
+                Check(symbol(checks.described_columns), ("descriptions", "columns")),
+            ),
+            "pixel_search": (Check(symbol(checks.pixel_search), ("pixels", "nside")),),
         },
     ),
 )

@@ -6,8 +6,12 @@ validated, JSON-serializable messages. A message records one call to a public
 method. It can be sent over the wire, validated on the other side, and applied to
 a live object.
 
-Every :class:`opencosmo.Dataset` transformation that can be described without
-in-memory data has a message, discriminated by its ``kind``.
+Transformations on :class:`opencosmo.Dataset` and :class:`opencosmo.Lightcone`
+that can be described without in-memory data have generated messages,
+discriminated by their ``kind``. The live target determines which message union
+is used: for example, ``take`` parses as a ``DatasetTakeMessage`` for a dataset
+and a ``LightconeTakeMessage`` for a lightcone. Applying a message to a target of
+another type returns an ``unsupported_message`` error.
 
 Execution environments receive a message as decoded JSON and hold the object it
 applies to. :func:`opencosmo.serde.execute_message` validates the payload against
@@ -39,6 +43,48 @@ Validation checks the same constraints the method signature declares, such as
 allowed values for ``mode`` and non-negative row counts. Checks that depend on the
 dataset itself, such as whether a column exists, happen when the message is
 applied.
+
+Variadic keyword objects cannot contain explicit parameter names from the live
+method signature. For example, ``mode`` is reserved in selection keywords, and
+``descriptions``, ``allow_overwrite`` and ``mode`` are reserved in new-column
+keywords. Such collisions are rejected during parsing, before the method is called.
+
+Lightcone messages
+------------------
+
+Lightcone messages mirror the Dataset messages for ``filter``, ``select``,
+``drop``, ``sort_by``, ``take``, ``take_range``, ``take_rows``, ``bound``,
+``with_new_columns`` and ``with_units``, and add ``with_redshift_range`` and
+``pixel_search``. Their models are exported from :mod:`opencosmo.serde` as
+``Lightcone<Operation>Message`` classes, alongside the discriminated
+``LightconeMessage`` union and the ``LIGHTCONE_MESSAGE_TYPES`` tuple.
+
+Fields preserve the public method's parameter names, so payloads differ from the
+Dataset payloads where the signatures differ. In particular,
+``Lightcone.with_new_columns`` stores its expressions in ``columns`` rather than
+``new_columns``:
+
+.. code-block:: python
+
+    payload = {
+        "kind": "with_new_columns",
+        "descriptions": {"m2": "doubled mass"},
+        "columns": {
+            "m2": {
+                "kind": "arithmetic",
+                "operator": "multiply",
+                "left": {"kind": "column", "name": "fof_halo_mass"},
+                "right": {"kind": "number", "value": 2},
+            }
+        },
+    }
+    result = execute_message(lightcone, payload)
+
+``with_redshift_range`` takes finite ``z_low`` and ``z_high`` values. HEALPix query
+pixels for ``pixel_search`` use nested ordering: ``pixels`` must be a nonempty
+list of non-negative integers below ``12 * nside**2``, and ``nside`` must be a
+positive power of two. Pixels are converted to a one-dimensional signed ``int64``
+array at application time.
 
 Generated and hand-written code
 -------------------------------

@@ -264,7 +264,7 @@ def with_redshift_range(
 
 
 def pixel_search(
-    state: LightconeState, pixels: npt.NDArray[np.int_], nside: int
+    state: LightconeState, pixels: npt.NDArray[np.integer], nside: int
 ) -> LightconeState:
     import healpy as hp
 
@@ -272,17 +272,18 @@ def pixel_search(
     if not level.is_integer() or level < 0:
         raise ValueError("nside must be a positive power of two!")
     level = int(level)
-    pixels = np.unique(np.atleast_1d(pixels))
-    if not np.isdtype(pixels.dtype, "integral") or len(pixels) == 0:
+    unique = np.unique(np.atleast_1d(pixels))
+    if not np.isdtype(unique.dtype, "integral") or len(unique) == 0:
         raise ValueError("Pixels must be a 1d array of positive integers")
-    if pixels[0] < 0 or pixels[-1] >= hp.nside2npix(nside):
+    if unique[0] < 0 or unique[-1] >= hp.nside2npix(nside):
         raise ValueError("Pixels must be a 1d array of positive integers")
+    query = unique.astype(np.int64)
 
     leaves = []
     for key, leaf in state.leaves:
         if leaf.spatial_index is None:
             raise ValueError("Lightcone does not have a spatial index!")
-        rows = project_on_index(leaf.spatial_index, level, leaf.raw_index, pixels)
+        rows = project_on_index(leaf.spatial_index, level, leaf.raw_index, query)
         leaves.append((key, dsops.take_rows(leaf, rows)))
     return __with_leaves(state, tuple(leaves))
 
@@ -298,7 +299,7 @@ def select(
     state: LightconeState,
     *columns: str | Iterable[str],
     mode: Literal["local", "global"] = "global",
-    **derived_columns: ConstructedColumn,
+    **derived_columns: ConstructedColumn | DerivedScalarValue,
 ) -> LightconeState:
     if state.maps is not None:
         selection_args, selection_kwargs = build_multi_dataset_selections(

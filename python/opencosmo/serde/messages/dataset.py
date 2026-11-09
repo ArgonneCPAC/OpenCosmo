@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, Self
 from annotated_types import Ge
 from pydantic import Field, StrictBool, StrictInt, model_validator
 
-from opencosmo.serde.checks import described_columns, ordered_range
+from opencosmo.serde.checks import described_columns, ordered_range, reserved_keywords
 from opencosmo.serde.common import Keyword, RowIndices, UnitString
 from opencosmo.serde.expression import Expression, ExpressionModel, Mask
 from opencosmo.serde.live import (
@@ -52,6 +52,12 @@ class DatasetSelectMessage(ExpressionModel):
     derived_columns: Annotated[dict[Keyword, Expression], VarKwargs()] = Field(
         default_factory=dict
     )
+
+    @model_validator(mode="after")
+    def check_derived_columns_keywords(self) -> Self:
+        """Reject keywords reserved by the method signature."""
+        reserved_keywords(self.derived_columns, ("mode",))
+        return self
 
     def apply(self, target: Dataset) -> Dataset:
         """Call ``Dataset.select`` with the arguments in this message."""
@@ -159,6 +165,12 @@ class DatasetWithNewColumnsMessage(ExpressionModel):
     )
 
     @model_validator(mode="after")
+    def check_new_columns_keywords(self) -> Self:
+        """Reject keywords reserved by the method signature."""
+        reserved_keywords(self.new_columns, ("descriptions", "allow_overwrite", "mode"))
+        return self
+
+    @model_validator(mode="after")
     def check_described_columns(self) -> Self:
         """Validate this message with ``described_columns``."""
         described_columns(self.descriptions, self.new_columns)
@@ -184,6 +196,12 @@ class DatasetWithUnitsMessage(ExpressionModel):
     columns: Annotated[dict[Keyword, UnitString], VarKwargs()] = Field(
         default_factory=dict
     )
+
+    @model_validator(mode="after")
+    def check_columns_keywords(self) -> Self:
+        """Reject keywords reserved by the method signature."""
+        reserved_keywords(self.columns, ("convention", "conversions"))
+        return self
 
     def apply(self, target: Dataset) -> Dataset:
         """Call ``Dataset.with_units`` with the arguments in this message."""
