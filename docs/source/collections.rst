@@ -9,7 +9,7 @@ Datasets behave a lot like dictionaries. You can get the names of the dataset wi
 Types of Collections
 --------------------
 
-OpenCosmo currently implements three collection types. :py:class:`opencosmo.Ligthcone` collections stack datasets in angular coordinates from  different redshift slices into a single dataset-like object. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset`, :py:class:`opencosmo.Lightcone`, or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. A :py:class:`opencosmo.HealpixMap` holds one or more on-sky maps. See below for information of how these collections can be used. 
+OpenCosmo currently implements three collection types. :py:class:`opencosmo.Ligthcone` collections stack datasets in angular coordinates from  different redshift slices into a single dataset-like object. :py:class:`opencosmo.SimulationCollection` collections hold :py:class:`opencosmo.Dataset`, :py:class:`opencosmo.Lightcone`, or :py:class:`opencosmo.StructureCollection` of the same type from several simulations. :py:class:`opencosmo.StructureCollection` collections hold multiple data types from a single collection, grouped by object. A :py:class:`opencosmo.HealpixMap` holds one or more on-sky maps. A :py:class:`opencosmo.ParticleCollection` holds the particle types of a full particle snapshot. See below for information of how these collections can be used. 
 
 Collections can be opened just like datasets using :py:func:`opencosmo.open`, and written with :py:func:`opencosmo.write`.
 
@@ -43,6 +43,20 @@ Lightcones hold datasets from several different redshift steps, which are stacke
            10 119.903854             46.74386        0.96118975         128.91646 ...       -149.2758 1.5263848             (1049601, 62555736594)  0.04037726
            11 119.049706            49.151897        0.96145815         126.78099 ...      0.12496548 1.5141958             (1049601, 60492121202) 0.040086865
            11  119.60659             43.32933         0.9612831        127.099144 ...       -149.2758  1.519284             (1049601, 60492184203)  0.04027629
+
+Particle Collections
+--------------------
+
+A full particle snapshot of a HACC simulation (a ``snapshotparticles`` file) opens as a :py:class:`opencosmo.ParticleCollection`. It holds one :py:class:`opencosmo.Dataset` for each particle type, keyed by the type: ``dm_particles``, ``gas_particles``, ``star_particles`` and ``agn_particles``. The particle types are not linked to each other or to any halo.
+
+.. code-block:: python
+
+   import opencosmo as oc
+   particles = oc.open("m000p-624.snapshotparticles.hdf5")
+   region = oc.make_box((100, 100, 100), (120, 120, 120))
+   gas = particles.with_units("scalefree").bound(region)["gas_particles"]
+
+:py:meth:`bound <opencosmo.ParticleCollection.bound>` and :py:meth:`with_units <opencosmo.ParticleCollection.with_units>` apply to every particle type, and each type is queried through its own spatial index. For other operations, transform the datasets one at a time. Open a split snapshot through its master file, not through one of its subfiles. A particle collection cannot be written with :py:func:`opencosmo.write` as a whole, but each of its datasets can.
 
 Structure Collections
 ---------------------

@@ -15,7 +15,8 @@ ALLOWED_COORDINATES_3D = {
         "fof": "fof_halo_center_",
         "mass": "fof_halo_com_",
         "sod": "sod_halo_com_",
-    }
+    },
+    "snapshot_particles": {"position": ""},
 }
 
 
@@ -53,10 +54,12 @@ def find_coordinates_3d(state: DatasetState, dtype: str, select_by: str | None =
     else:
         column_name_base = allowed_coordinates[select_by]
 
-    cols = set(
-        filter(lambda colname: colname.startswith(column_name_base), state.columns)
-    )
     expected_cols = [column_name_base + dim for dim in ["x", "y", "z"]]
+    if column_name_base:
+        cols = {name for name in state.columns if name.startswith(column_name_base)}
+    else:
+        # An empty prefix matches every column, so look for the bare names.
+        cols = set(expected_cols).intersection(state.columns)
     if cols != set(expected_cols):
         raise ValueError(
             "Unable to find the correct coordinate columns in this dataset! "

@@ -256,6 +256,7 @@ DATATYPE_PARAMETERS: dict[str, dict[str, dict[str, type[BaseModel]]]] = {
     "halo_particles": {},
     "galaxy_particles": {},
     "halo_profiles": {},
+    "snapshot_particles": {},
     "synthetic_galaxies": {
         "optional": {
             "diffsky_versions": DiffskyVersionInfo,

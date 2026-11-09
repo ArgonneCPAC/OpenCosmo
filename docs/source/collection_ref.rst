@@ -22,6 +22,11 @@ Collections within a single file can always be loaded with :py:func:`opencosmo.o
    :undoc-members:
    :member-order: bysource
 
+.. autoclass:: opencosmo.ParticleCollection
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
 .. autoclass:: opencosmo.HealpixMap
    :members:
    :exclude-members: read,close,write

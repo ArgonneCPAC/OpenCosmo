@@ -11,6 +11,7 @@ from opencosmo.io.discover import (
     is_healpix_map_group,
     is_lightcone_group,
     is_properties_group,
+    is_snapshot_particle_group,
 )
 
 if TYPE_CHECKING:
@@ -18,13 +19,16 @@ if TYPE_CHECKING:
 
     from opencosmo.collection.healpix_map.state import HealpixMapState
     from opencosmo.collection.lightcone.state import LightconeState
+    from opencosmo.collection.particles.state import ParticleState
     from opencosmo.collection.structure.state import StructureState
     from opencosmo.dataset.state import DatasetState
     from opencosmo.io.discover import GroupLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
 
-    type SpecState = DatasetState | LightconeState | StructureState | HealpixMapState
+    type SpecState = (
+        DatasetState | LightconeState | StructureState | HealpixMapState | ParticleState
+    )
 
 """
 Spec registry for opening OpenCosmo files.
@@ -423,6 +427,52 @@ class LightconeSpec:
         )
 
 
+class ParticleCollectionSpec:
+    """The particle type groups of one snapshot particle file.
+
+    A ``snapshot_particles`` file holds one group per particle type, each with
+    its own octree index and no links. The types open together as a
+    ParticleState. Several such files are not combined, so this spec matches a
+    single file only.
+    """
+
+    name = "particle_collection"
+
+    def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
+        groups = _all_groups(layouts)
+        n_files = sum(1 for fl in layouts if fl.error is None)
+        return (
+            n_files == 1
+            and bool(groups)
+            and all(
+                is_snapshot_particle_group(g)
+                and not is_lightcone_group(g)
+                and g.path != "/"
+                for g in groups
+            )
+        )
+
+    def verify(self, layouts: tuple[FileLayout, ...]) -> None:
+        return None
+
+    def build_from_targets(
+        self,
+        targets: list[DatasetTarget],
+        *,
+        index_kind: str,
+        is_empty_ref: bool,
+        open_kwargs: dict[str, Any],
+    ) -> SpecState:
+        from opencosmo.collection.particles import operations as pops
+
+        return pops.open_state(
+            targets,
+            index_kind=index_kind,
+            is_empty_ref=is_empty_ref,
+            open_kwargs=open_kwargs,
+        )
+
+
 class DatasetSpec:
     """A single non-lightcone, non-healpix group -> plain DatasetState."""
 
@@ -453,6 +503,7 @@ SPECS: tuple[FileSpec, ...] = (
     StructureCollectionSpec(),
     HealpixMapSpec(),
     LightconeSpec(),
+    ParticleCollectionSpec(),
     DatasetSpec(),
 )
 

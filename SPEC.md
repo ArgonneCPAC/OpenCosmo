@@ -99,7 +99,7 @@ The "halo_properties" group contains a "data_linked" group which allows the tool
 
 The "header" group contains information about the file and the OpenCosmo datasets it governs: cosmology, simulation parameters, and a `file` block of per-dataset metadata. The library reads it into an `OpenCosmoHeader` (`python/opencosmo/header.py`) whose `file` field is a `FileParameters` model (`python/opencosmo/dtypes/file.py`). The fields that drive file identification are:
 
-- **`data_type`** — one of `galaxy_properties`, `galaxy_particles`, `halo_properties`, `halo_profiles`, `halo_particles`, `synthetic_galaxies`, `healpix_map`. (`diffsky_fits` is normalized to `synthetic_galaxies` on read.)
+- **`data_type`** — one of `galaxy_properties`, `galaxy_particles`, `halo_properties`, `halo_profiles`, `halo_particles`, `snapshot_particles`, `synthetic_galaxies`, `healpix_map`. (`diffsky_fits` is normalized to `synthetic_galaxies` on read.)
 - **`is_lightcone`** — `True` when the dataset covers a lightcone (2D sky) rather than a 3D snapshot volume.
 - **`step`** — the redshift step for stacked/redshift-split data; `None` for a single-step snapshot.
 - **`redshift`**, **`region`**, **`unit_convention`** — additional per-dataset metadata.
@@ -113,7 +113,7 @@ Identification never depends on header *content* equality. Two independent simul
 
 ## File and Collection Types
 
-`opencosmo.open()` inspects file metadata (a "layout" — see `python/opencosmo/io/discover.py`) and dispatches to one of the types below. Single-file datasets and collections are recognized by a small registry of **specs** in `python/opencosmo/io/specs.py`; the four spec names are `dataset`, `healpix_map`, `lightcone`, and `structure_collection`. A simulation collection is not a spec — it is recognized structurally (see below) and assembled from per-scope children.
+`opencosmo.open()` inspects file metadata (a "layout" — see `python/opencosmo/io/discover.py`) and dispatches to one of the types below. Single-file datasets and collections are recognized by a small registry of **specs** in `python/opencosmo/io/specs.py`; the five spec names are `dataset`, `healpix_map`, `lightcone`, `particle_collection`, and `structure_collection`. A simulation collection is not a spec — it is recognized structurally (see below) and assembled from per-scope children.
 
 Identification uses only metadata-derived signals — never live reads of column values:
 
@@ -123,7 +123,7 @@ Identification uses only metadata-derived signals — never live reads of column
 - whether a group is a "properties" group (`data_type` in `halo_properties` / `galaxy_properties`).
 - the number of distinct governing header scopes / top-level containers across the open set.
 
-Specs are tried in a fixed precedence order (most-constrained first): `structure_collection`, `healpix_map`, `lightcone`, `dataset`. The first whose match predicate is true wins. This order matters — a structure collection would also satisfy weaker predicates, so it is tested first.
+Specs are tried in a fixed precedence order (most-constrained first): `structure_collection`, `healpix_map`, `lightcone`, `particle_collection`, `dataset`. The first whose match predicate is true wins. This order matters — a structure collection would also satisfy weaker predicates, so it is tested first.
 
 ### dataset (`dataset` spec)
 
@@ -148,6 +148,28 @@ A redshift-split lightcone writes each step under a `<step>_<name>` subgroup (e.
 Parent–child datasets linked via `/data_linked` — e.g. halo properties plus halo particles/profiles. **Signal:** at least one properties group (`data_type` in `halo_properties`/`galaxy_properties`) that carries a `/data_linked` group, **and** more than one distinct `data_type` present in the open set. Opens as a `StructureCollection`.
 
 The "more than one `data_type`" requirement ensures at least one linked *child* type is actually being opened; a properties file on its own opens as a plain dataset (see above). Across redshift steps, a structure collection must present an identical set of `data_type`s at every step, and every step must contain a properties-with-`/data_linked` group; these are verified structurally (cross-file), without reading link indices or row counts.
+
+### particle collection (`particle_collection` spec)
+
+The particle types of one HACC full particle snapshot (a `snapshotparticles` file). **Signal:** a single file whose `/data` groups all have `data_type == "snapshot_particles"` and `is_lightcone` false, none of them at the root. Opens as a `ParticleCollection` keyed by group name. The file has a root `/header` and one group per particle type, with no `/data_linked` groups:
+
+```text
+/header
+/dm_particles
+    /data
+    /index
+/gas_particles
+    /data
+    /index
+/star_particles
+    /data
+    /index
+/agn_particles
+    /data
+    /index
+```
+
+Each type group has its own octree index on the particle positions `x`, `y` and `z`, and each type is opened as its own dataset. Particle files of other data types still cannot be opened without their properties dataset.
 
 ### simulation collection (structural, not a spec)
 
