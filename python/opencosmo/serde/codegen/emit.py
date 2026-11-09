@@ -20,6 +20,7 @@ from typing import (
     get_type_hints,
 )
 
+from ..checks import explicit_parameters
 from .config import LIVE_ONLY, METADATA, WIRE_TYPES, Symbol, symbol
 
 if TYPE_CHECKING:
@@ -264,6 +265,22 @@ def __message(spec: MessageSpec, method: str) -> tuple[str, frozenset[Symbol]]:
         *(f"    {f.declaration}" for f in fields),
     ]
     names = {name for name in inspect.signature(function).parameters}
+    reserved = explicit_parameters(function)
+    for parameter in inspect.signature(function).parameters.values():
+        if parameter.kind is inspect.Parameter.VAR_KEYWORD and reserved:
+            lines += [
+                "",
+                '    @model_validator(mode="after")',
+                f"    def check_{parameter.name}_keywords(self) -> Self:",
+                '        """Reject keywords reserved by the method signature."""',
+                f"        reserved_keywords(self.{parameter.name}, {reserved!r})",
+                "        return self",
+            ]
+            imports |= {
+                Symbol(f"{__SERDE}.checks", "reserved_keywords"),
+                Symbol("pydantic", "model_validator"),
+                Symbol("typing", "Self"),
+            }
     for check in spec.checks.get(method, ()):
         if unknown := set(check.fields) - names:
             raise ValueError(f"{check.function.name} uses unknown fields {unknown}")

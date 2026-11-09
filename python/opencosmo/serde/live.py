@@ -5,7 +5,7 @@ from __future__ import annotations
 import operator
 from collections.abc import Iterable
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import astropy.units as u
 import numpy as np
@@ -65,14 +65,17 @@ from .region import (
     HealpixRegionMessage,
     SkyboxRegionMessage,
 )
+from .structure import DerivedSelection
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from opencosmo.collection.structure import types as sct
     from opencosmo.column.column import ExpressionOperand, MaskOperator
     from opencosmo.index import DataIndex
     from opencosmo.spatial.protocols import Region
 
+    from . import structure as scwire
     from .expression import Expression, Mask, ScalarLiteral
     from .region import RegionMessage
 
@@ -499,10 +502,59 @@ def from_rows(rows: np.ndarray | DataIndex) -> tuple[int, ...]:
     return tuple(array.tolist())
 
 
+def selection_to_live(selection: scwire.StructureSelection) -> sct.StructureSelection:
+    """Convert explicit, automatic, and nested column selections recursively."""
+    if isinstance(selection, str | tuple):
+        return selection
+    if isinstance(selection, DerivedSelection):
+        return {
+            "columns": selection.columns,
+            "derived_columns": {
+                name: to_column(expression)
+                for name, expression in selection.derived_columns.items()
+            },
+        }
+    if isinstance(selection, dict):
+        return {name: selection_to_live(value) for name, value in selection.items()}
+    return to_column(selection)
+
+
+def drop_to_live(columns: scwire.StructureDrop) -> sct.StructureDrop:
+    """Convert nested drop specifications into live dictionaries."""
+    if isinstance(columns, str | tuple):
+        return columns
+    return {name: drop_to_live(value) for name, value in columns.items()}
+
+
+def unit_conversions_to_live(
+    conversions: scwire.UnitConversions,
+) -> sct.UnitConversions:
+    """Convert both sides of a blanket unit conversion."""
+    return {to_unit(source): to_unit(target) for source, target in conversions.items()}
+
+
+def unit_settings_to_live(
+    settings: scwire.StructureUnitSettings,
+) -> sct.StructureUnitSettings:
+    """Convert column units and blanket conversions at every collection depth."""
+    result: sct.StructureUnitSettings = {}
+    for name, value in settings.items():
+        if name == "conversions":
+            result[name] = unit_conversions_to_live(
+                cast("scwire.UnitConversions", value)
+            )
+        elif isinstance(value, str):
+            result[name] = to_unit(value)
+        else:
+            result[name] = unit_settings_to_live(value)
+    return result
+
+
 __all__ = [
     "LiveExpression",
     "LiveMask",
     "LiveScalar",
+    "drop_to_live",
     "expression_from_live",
     "expression_to_live",
     "from_column",
@@ -513,8 +565,11 @@ __all__ = [
     "mask_to_live",
     "region_from_live",
     "region_to_live",
+    "selection_to_live",
     "to_column",
     "to_column_or_scalar",
     "to_rows",
     "to_unit",
+    "unit_conversions_to_live",
+    "unit_settings_to_live",
 ]

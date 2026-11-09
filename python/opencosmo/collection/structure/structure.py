@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     Literal,
     cast,
@@ -18,8 +19,21 @@ if TYPE_CHECKING:
 
     import astropy.units as u
     import numpy as np
+    import numpy.typing as npt
+    from annotated_types import Ge
 
-    from opencosmo.column.column import ConstructedColumn
+    from opencosmo.collection.structure.types import (
+        ColumnNames,
+        StructureDrop,
+        StructureSelection,
+        StructureUnitSettings,
+        UnitConversions,
+    )
+    from opencosmo.column.column import (
+        ColumnMask,
+        CompoundColumnMask,
+        ConstructedColumn,
+    )
     from opencosmo.dtypes import HaccSimulationParameters
     from opencosmo.header import OpenCosmoHeader
     from opencosmo.index import DataIndex
@@ -299,7 +313,9 @@ class StructureCollection:
         """
         return scops.get_pixels(self.__state, nside)
 
-    def pixel_search(self, pixels: np.ndarray, nside: int = 64) -> StructureCollection:
+    def pixel_search(
+        self, pixels: npt.NDArray[np.integer], nside: int = 64
+    ) -> StructureCollection:
         """
         Return the subset of this lightcone structure collection that falls within
         a set of HEALPix pixels.
@@ -542,7 +558,7 @@ class StructureCollection:
 
     def filter(
         self,
-        *masks,
+        *masks: ColumnMask | CompoundColumnMask,
         on_galaxies: bool = False,
         mode: Literal["local", "global"] = "global",
     ) -> StructureCollection:
@@ -592,9 +608,9 @@ class StructureCollection:
 
     def select(
         self,
-        *select_args,
+        *select_args: ColumnNames,
         mode: Literal["local", "global"] = "global",
-        **select_kwargs: str | Iterable[str] | dict,
+        **select_kwargs: StructureSelection,
     ) -> StructureCollection:
         """
         Select columns from the datasets in this collection.
@@ -679,9 +695,9 @@ class StructureCollection:
 
     def drop(
         self,
-        *drop_args: str | Iterable[str],
-        **columns_to_drop: str | Iterable[str] | dict,
-    ):
+        *drop_args: ColumnNames,
+        **columns_to_drop: StructureDrop,
+    ) -> StructureCollection:
         """
         Drop columns by automatically matching their names to datasets in this
         collection. Like :py:meth:`StructureCollection.select
@@ -744,10 +760,11 @@ class StructureCollection:
 
     def with_units(
         self,
-        convention: str | None = None,
-        conversions: dict[u.UnitBase, u.UnitBase] | None = None,
-        **dataset_conversions: dict,
-    ):
+        convention: Literal["scalefree", "comoving", "physical", "unitless"]
+        | None = None,
+        conversions: UnitConversions | None = None,
+        **dataset_conversions: StructureUnitSettings,
+    ) -> StructureCollection:
         """
         Apply the given unit convention to the collection, or convert a subset
         of the columns in one or more of these datasets into a compatible
@@ -817,8 +834,11 @@ class StructureCollection:
         )
 
     def take(
-        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
-    ):
+        self,
+        n: Annotated[int, Ge(0)],
+        at: Literal["start", "end", "random"] = "random",
+        mode: Literal["local", "global"] = "local",
+    ) -> StructureCollection:
         """
         Take some number of structures from the collection.
         See :py:meth:`opencosmo.Dataset.take`.
@@ -850,8 +870,11 @@ class StructureCollection:
         return self.__with_state(scops.take(self.__state, n, at, mode))
 
     def take_range(
-        self, start: int, end: int, mode: Literal["local", "global"] = "local"
-    ):
+        self,
+        start: Annotated[int, Ge(0)],
+        end: Annotated[int, Ge(0)],
+        mode: Literal["local", "global"] = "local",
+    ) -> StructureCollection:
         """
         Create a new collection from a row range in this collection. We use standard
         indexing conventions, so the rows included will be start -> end - 1.
@@ -887,7 +910,7 @@ class StructureCollection:
         """
         return self.__with_state(scops.take_range(self.__state, start, end, mode))
 
-    def take_rows(self, rows: np.ndarray | DataIndex):
+    def take_rows(self, rows: np.ndarray | DataIndex) -> StructureCollection:
         """
         Take the rows of this collection  specified by the :code:`rows` argument.
         :code:`rows` should be an array of integers.
@@ -915,8 +938,8 @@ class StructureCollection:
         descriptions: str | dict[str, str] | None = None,
         allow_overwrite: bool = False,
         mode: Literal["local", "global"] = "global",
-        **new_columns: ConstructedColumn | np.ndarray,
-    ):
+        **new_columns: ConstructedColumn | np.ndarray | u.Quantity,
+    ) -> StructureCollection:
         """
         Add new column(s) to one of the datasets in this collection. This behaves
         exactly like :py:meth:`oc.Dataset.with_new_columns`, except that you must
@@ -1018,7 +1041,7 @@ class StructureCollection:
                 for name, value in structure.items()
             }
 
-    def with_datasets(self, datasets: str | Iterable[str]):
+    def with_datasets(self, datasets: ColumnNames) -> StructureCollection:
         """
         Create a new collection out of a subset of the datasets in this collection.
         It is also possible to do this when you iterate over the collection with

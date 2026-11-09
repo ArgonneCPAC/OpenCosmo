@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import astropy.units as u
 import healpy as hp
 from pydantic import AfterValidator, Field, StrictInt
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 
 def normalize_unit(value: str) -> str:
@@ -19,7 +22,7 @@ def normalize_unit(value: str) -> str:
         raise ValueError(f"Invalid Astropy unit: {value!r}") from error
 
 
-def validate_healpix(pixels: frozenset[int], nside: int) -> None:
+def validate_healpix(pixels: Collection[int], nside: int) -> None:
     """Validate nested HEALPix resolution and pixel identifiers."""
     if not hp.isnsideok(nside) or nside & (nside - 1):
         raise ValueError("nside must be a positive power of two")
