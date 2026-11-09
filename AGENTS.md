@@ -42,6 +42,8 @@ uv sync --group mpi --group test-mpi  # Add MPI support
 ```
 
 ### Testing
+In general, do not run the full test suite. Focused tests are fine.
+
 Tests require the repository-local `test_data/` directory, which is distributed separately. Run:
 ```bash
 uv run pytest --ignore=test/parallel          # All non-parallel tests
