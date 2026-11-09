@@ -13,10 +13,15 @@ from typing import TYPE_CHECKING, Literal, overload
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 from opencosmo.collection.lightcone import Lightcone
+from opencosmo.collection.structure import StructureCollection
 from opencosmo.dataset import Dataset
 
 from .messages.dataset import DATASET_MESSAGE_TYPES, DatasetMessage
 from .messages.lightcone import LIGHTCONE_MESSAGE_TYPES, LightconeMessage
+from .messages.structure_collection import (
+    STRUCTURE_COLLECTION_MESSAGE_TYPES,
+    StructureCollectionMessage,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -26,13 +31,12 @@ if TYPE_CHECKING:
     from opencosmo import (
         HealpixMap,
         SimulationCollection,
-        StructureCollection,
     )
 
 type MessageTarget = (
     Dataset | HealpixMap | Lightcone | StructureCollection | SimulationCollection
 )
-type Message = DatasetMessage | LightconeMessage
+type Message = DatasetMessage | LightconeMessage | StructureCollectionMessage
 
 
 class MessageError(BaseModel):
@@ -52,6 +56,9 @@ class MessageError(BaseModel):
 
 __DATASET_MESSAGES: TypeAdapter[DatasetMessage] = TypeAdapter(DatasetMessage)
 __LIGHTCONE_MESSAGES: TypeAdapter[LightconeMessage] = TypeAdapter(LightconeMessage)
+__STRUCTURE_MESSAGES: TypeAdapter[StructureCollectionMessage] = TypeAdapter(
+    StructureCollectionMessage
+)
 
 
 def __unsupported_target(target: type[MessageTarget]) -> MessageError:
@@ -65,8 +72,7 @@ def __unsupported_target(target: type[MessageTarget]) -> MessageError:
 
 @overload
 def parse_message(
-    target: type[HealpixMap | StructureCollection | SimulationCollection],
-    payload: Mapping[str, JsonValue],
+    target: type[HealpixMap | Lightcone | StructureCollection | SimulationCollection],
 ) -> MessageError: ...
 
 
@@ -80,6 +86,12 @@ def parse_message(
 def parse_message(
     target: type[Lightcone], payload: Mapping[str, JsonValue]
 ) -> LightconeMessage | MessageError: ...
+
+
+@overload
+def parse_message(
+    target: type[StructureCollection], payload: Mapping[str, JsonValue]
+) -> StructureCollectionMessage | MessageError: ...
 
 
 @overload
@@ -121,12 +133,22 @@ def parse_message(
                 return MessageError(
                     kind="invalid_message", target="Lightcone", detail=str(error)
                 )
+        case _ if target is StructureCollection:
+            try:
+                return __STRUCTURE_MESSAGES.validate_python(payload)
+            except ValidationError as error:
+                return MessageError(
+                    kind="invalid_message",
+                    target="StructureCollection",
+                    detail=str(error),
+                )
     return __unsupported_target(target)
 
 
 @overload
 def apply_message(
-    target: HealpixMap | StructureCollection | SimulationCollection, message: Message
+    target: HealpixMap | Lightcone | StructureCollection | SimulationCollection,
+    message: Message,
 ) -> MessageError: ...
 
 
@@ -135,7 +157,14 @@ def apply_message(target: Dataset, message: Message) -> Dataset | MessageError: 
 
 
 @overload
+@overload
 def apply_message(target: Lightcone, message: Message) -> Lightcone | MessageError: ...
+
+
+@overload
+def apply_message(
+    target: StructureCollection, message: Message
+) -> StructureCollection | MessageError: ...
 
 
 @overload
@@ -178,12 +207,20 @@ def apply_message(
                 target="Lightcone",
                 detail=f"{type(message).__name__} cannot be applied to a Lightcone",
             )
+        case StructureCollection():
+            if isinstance(message, STRUCTURE_COLLECTION_MESSAGE_TYPES):
+                return message.apply(target)
+            return MessageError(
+                kind="unsupported_message",
+                target="StructureCollection",
+                detail=f"{type(message).__name__} cannot be applied to a StructureCollection",
+            )
     return __unsupported_target(type(target))
 
 
 @overload
 def execute_message(
-    target: HealpixMap | StructureCollection | SimulationCollection,
+    target: HealpixMap | Lightcone | StructureCollection | SimulationCollection,
     payload: Mapping[str, JsonValue],
 ) -> MessageError: ...
 
@@ -198,6 +235,12 @@ def execute_message(
 def execute_message(
     target: Lightcone, payload: Mapping[str, JsonValue]
 ) -> Lightcone | MessageError: ...
+
+
+@overload
+def execute_message(
+    target: StructureCollection, payload: Mapping[str, JsonValue]
+) -> StructureCollection | MessageError: ...
 
 
 @overload

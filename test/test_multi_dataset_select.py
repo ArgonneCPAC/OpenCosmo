@@ -20,7 +20,7 @@ def dataset_columns():
 
 
 def test_routes_columns_and_wildcards(dataset_columns):
-    args, _ = build_multi_dataset_selections(
+    args, _, unmatched = build_multi_dataset_selections(
         dataset_columns,
         {"gravity": 3, "hydro": 5},
         ("x", "temperature", "m*"),
@@ -29,10 +29,11 @@ def test_routes_columns_and_wildcards(dataset_columns):
 
     assert set(args["gravity"]) == {"x", "m*"}
     assert set(args["hydro"]) == {"temperature", "m*"}
+    assert unmatched == []
 
 
 def test_routes_derived_columns_by_dependencies(dataset_columns):
-    _, kwargs = build_multi_dataset_selections(
+    _, kwargs, _ = build_multi_dataset_selections(
         dataset_columns,
         {"gravity": 3, "hydro": 5},
         (),
@@ -49,7 +50,7 @@ def test_routes_derived_columns_by_dependencies(dataset_columns):
 def test_routes_arrays_by_dataset_length(dataset_columns):
     gravity_values = np.arange(3)
     hydro_values = np.arange(5)
-    _, kwargs = build_multi_dataset_selections(
+    _, kwargs, _ = build_multi_dataset_selections(
         dataset_columns,
         {"gravity": 3, "hydro": 5},
         (),
@@ -70,20 +71,26 @@ def test_rejects_array_that_matches_no_dataset_length(dataset_columns):
         )
 
 
-@pytest.mark.parametrize(
-    ("args", "kwargs"),
-    [
-        (("missing",), {}),
-        ((), {"derived": oc.col("missing") * 2}),
-    ],
-)
-def test_rejects_selections_missing_from_every_dataset(dataset_columns, args, kwargs):
+def test_returns_names_missing_from_every_dataset(dataset_columns):
+    args, _, unmatched = build_multi_dataset_selections(
+        dataset_columns,
+        {"gravity": 3, "hydro": 5},
+        ("missing", "x", "other", "missing"),
+        {},
+    )
+
+    assert unmatched == ["missing", "other"]
+    assert args["gravity"] == ["x"]
+    assert args["hydro"] == []
+
+
+def test_rejects_derived_columns_missing_from_every_dataset(dataset_columns):
     with pytest.raises(MissingColumnError):
         build_multi_dataset_selections(
             dataset_columns,
             {"gravity": 3, "hydro": 5},
-            args,
-            kwargs,
+            (),
+            {"derived": oc.col("missing") * 2},
         )
 
 

@@ -76,21 +76,20 @@ uv run towncrier create <issue_number>.<type>  # Types: feature, bugfix, improve
 ## Coding Guidelines
 
 - Prefer functional code. Make classes immutable whenever possible; user-facing classes must always be immutable. Prefer frozen dataclasses for backend containers.
-- Avoid helper methods unless they are necessary. Prefix helper methods with `__` so they are name-mangled.
 - Prefix backend module functions with `__` when they are not used outside their defining module.
 - Avoid over-commenting. Add concise comments only when the logic is not obvious.
 - Do not use class inheritance except where an existing framework requires it, such as Pydantic models.
-- Add type hints to all code. Avoid `Any` whenever a more specific type can be used.
+- Add type hints to all code. Avoid `Any` whenever a more specific type can be used. Use generics and overloads when appropriate.
 - Target Python 3.12+ syntax. Put annotation-only imports behind `TYPE_CHECKING` unless a framework such as Pydantic requires the object at runtime.
 - Use `Protocol` for interchangeable backend or plugin contracts, `TypedDict` for established dictionary payloads, `NamedTuple` when tuple behavior matters, and frozen dataclasses for richer immutable records. Add `@runtime_checkable` only for actual runtime checks.
 - Use narrow, rule-specific `# noqa` or `# ty: ignore[rule]` suppressions, with a short reason. `# type: ignore` comments are not respected (`respect-type-ignore-comments = false`). Do not use a broad suppression when the type or lint rule can be expressed accurately.
 - Add public names through the appropriate package `__init__.py` and `__all__`. Keep Rust bindings behind Python APIs rather than exposing `opencosmo._lib` directly.
 - Keep optional dependencies out of import-time paths. Import pandas, Polars, Arrow, JAX, yt, and MPI implementations only when requested. Serial code must handle `get_comm_world() is None`.
 - Discovery, schema construction, serialization, and MPI planning must be deterministic. Sort file, group, and column inputs and never depend on set iteration or caller path order where ranks must agree.
-- Accept `str | Path` at public file boundaries, normalize to `Path`, and use context managers for owned HDF5 resources. Frozen discovery and planning records must not retain live h5py objects.
 - Match existing exception semantics: `TypeError` for unsupported object kinds, `ValueError` for invalid domain values or combinations, filesystem-specific exceptions for paths, `UnitsError` for unit arithmetic, and `RuntimeError` for broken internal invariants. Treat changes to tested user-facing error messages as behavioral changes.
 - Validate user inputs before performing potentially expensive I/O or computation so invalid requests fail fast.
 - Public APIs use NumPy-style docstrings compatible with Sphinx Napoleon. Update the relevant guide or reference page when user-visible behavior changes.
+- Try not use try...except as an error handling technique for functions that are part of this library. If a function can error in a way that can be handled, it should return a value to indicate when the error has occured.
 
 ### Rust Guidelines
 

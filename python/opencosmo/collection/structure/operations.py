@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from warnings import warn
 
 import numpy as np
@@ -41,7 +41,11 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from opencosmo.collection.structure.state import Source, StructureChild
-    from opencosmo.column.column import ColumnMask, ConstructedColumn
+    from opencosmo.column.column import (
+        ColumnMask,
+        CompoundColumnMask,
+        ConstructedColumn,
+    )
     from opencosmo.index import DataIndex
     from opencosmo.io.iopen import DatasetTarget
     from opencosmo.io.schema import Schema
@@ -73,7 +77,7 @@ def require_lightcone(state: StructureState, method: str) -> LightconeState:
 
 def filter(
     state: StructureState,
-    *masks: ColumnMask,
+    *masks: ColumnMask | CompoundColumnMask,
     on_galaxies: bool = False,
     mode: Literal["local", "global"] = "global",
 ) -> StructureState:
@@ -163,10 +167,12 @@ def with_redshift_range(
 
 
 def pixel_search(
-    state: StructureState, pixels: npt.NDArray[np.int_], nside: int
+    state: StructureState, pixels: npt.NDArray[np.integer], nside: int
 ) -> StructureState:
     source = require_lightcone(state, "pixel_search")
-    return __with_source_rows(state, lcops.pixel_search(source, pixels, nside))
+    return __with_source_rows(
+        state, lcops.pixel_search(source, cast("npt.NDArray[np.int_]", pixels), nside)
+    )
 
 
 def get_pixels(state: StructureState, nside: int) -> np.ndarray:
@@ -554,9 +560,22 @@ def evaluate(
     keys = public_keys(state)
     required_datasets = set(signature(func).parameters).intersection(keys)
     if not required_datasets and dataset is None:
-        raise ValueError(
-            "If your function does not take dataset names as arguments, you must specify which dataset you want to evaluate on!"
+        # Case 4: the function takes column names. Infer their datasets and
+        # insert into the source, as in case 1.
+        leaves = leaf_datasets(state)
+        columns = sevaluate.resolve_column_arguments(
+            func,
+            {path: leaf.columns for path, leaf in leaves.items()},
+            evaluate_kwargs,
         )
+        if not columns:
+            raise ValueError(
+                "Your function must take the names of datasets or columns in this collection as arguments, or you must specify which dataset you want to evaluate on!"
+            )
+        output = sevaluate.visit_structure_by_columns(
+            func, state, columns, format, evaluate_kwargs, insert
+        )
+        return __insert_output(state, output, None, insert, allow_overwrite)
 
     if dataset is not None and not required_datasets:
         # Case 2
@@ -595,6 +614,16 @@ def evaluate(
         evaluate_kwargs=evaluate_kwargs,
         insert=insert,
     )
+    return __insert_output(state, output, dataset, insert, allow_overwrite)
+
+
+def __insert_output(
+    state: StructureState,
+    output: dict[str, Any] | None,
+    dataset: str | None,
+    insert: bool,
+    allow_overwrite: bool,
+) -> StructureState | dict[str, Any] | None:
     if not insert:
         return output
     columns = __with_peer_columns(None if output is None else to_numpy_dict(output))

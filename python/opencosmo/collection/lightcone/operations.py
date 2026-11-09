@@ -25,7 +25,10 @@ from opencosmo.column.column import (
     resolve_mask_scalars,
 )
 from opencosmo.column.reducer import default_reducer
-from opencosmo.column.select import build_multi_dataset_selections
+from opencosmo.column.select import (
+    MissingColumnError,
+    build_multi_dataset_selections,
+)
 from opencosmo.dataset import operations as dsops
 from opencosmo.dataset.evaluate import build_evaluated_column
 from opencosmo.dataset.formats import (
@@ -302,12 +305,16 @@ def select(
     **derived_columns: ConstructedColumn | DerivedScalarValue,
 ) -> LightconeState:
     if state.maps is not None:
-        selection_args, selection_kwargs = build_multi_dataset_selections(
+        selection_args, selection_kwargs, missing = build_multi_dataset_selections(
             {"map": set(state.maps.columns), "lightcone": set(state.columns)},
             {"map": len(state.maps), "lightcone": len(state)},
             columns,
             derived_columns,
         )
+        if missing:
+            raise MissingColumnError(
+                f"Columns {missing} could not be found in any datasets!"
+            )
         lightcone_columns = selection_args["lightcone"]
         lightcone_derived_columns = selection_kwargs["lightcone"]
         new_maps = mapops.select(
