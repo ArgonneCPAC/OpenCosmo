@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from contextlib import ExitStack
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import numpy as np
 import opencosmo as oc
@@ -22,6 +23,23 @@ from opencosmo.serde import (
 if TYPE_CHECKING:
     from opencosmo.collection.structure import StructureCollection
     from pydantic import JsonValue
+
+_TRANSFORMS = ("select", "with_units", "with_new_columns")
+
+
+def __live_target(
+    request: pytest.FixtureRequest, target_type: type
+) -> oc.Dataset | oc.StructureCollection:
+    return request.getfixturevalue(
+        "cached_dataset" if target_type is oc.Dataset else "cached_structures"
+    )
+
+
+def __spy_on_transforms(target_type: type, stack: ExitStack) -> list[Mock]:
+    return [
+        stack.enter_context(patch.object(target_type, name)) for name in _TRANSFORMS
+    ]
+
 
 TAKE: dict[str, JsonValue] = {"kind": "take", "n": 5, "at": "start"}
 
@@ -93,7 +111,9 @@ def test_data_free_parse_selects_target_union(
         if target_name == "cached_dataset"
         else StructureCollectionTakeMessage
     )
-    assert parse_message(target, json.loads(json.dumps(TAKE))) == model(n=5, at="start")
+    assert parse_message(type(target), json.loads(json.dumps(TAKE))) == model(
+        n=5, at="start"
+    )
 
 
 def test_execute_structure_columns_matches_direct_api(
@@ -162,7 +182,7 @@ def test_parse_and_execute_reject_target_specific_invalid_payloads(
     request: pytest.FixtureRequest, target_name: str, payload: dict
 ) -> None:
     target = request.getfixturevalue(target_name)
-    parsed = parse_message(target, payload)
+    parsed = parse_message(type(target), payload)
     assert isinstance(parsed, MessageError)
     assert parsed.kind == "invalid_message"
     assert parsed.target == type(target).__name__
@@ -170,13 +190,15 @@ def test_parse_and_execute_reject_target_specific_invalid_payloads(
 
 
 @pytest.mark.parametrize("target_type", [oc.Dataset, oc.StructureCollection])
-def test_execute_spy_uses_target_specific_message(target_type: type) -> None:
-    target = Mock(spec=target_type)
+def test_execute_spy_uses_target_specific_message(
+    request: pytest.FixtureRequest, target_type: type
+) -> None:
+    target = __live_target(request, target_type)
     sentinel = object()
-    target.take.return_value = sentinel
-    assert isinstance(target, target_type)
-    assert execute_message(target, TAKE) is sentinel
-    target.take.assert_called_once_with(5, "start", "local")
+    with patch.object(target_type, "take", autospec=True) as take:
+        take.return_value = sentinel
+        assert execute_message(target, TAKE) is sentinel
+    take.assert_called_once_with(target, 5, "start", "local")
 
 
 @pytest.mark.parametrize(
@@ -185,7 +207,7 @@ def test_execute_spy_uses_target_specific_message(target_type: type) -> None:
 def test_collection_targets_without_messages_are_rejected(target_type: type) -> None:
     target = Mock(spec=target_type)
     for result in (
-        parse_message(target, TAKE),
+        parse_message(target_type, TAKE),
         apply_message(target, StructureCollectionTakeMessage(n=1)),
         execute_message(target, TAKE),
     ):
@@ -206,21 +228,23 @@ def test_structure_operation_errors_propagate(
 @pytest.mark.parametrize("target_type", [oc.Dataset, oc.StructureCollection])
 @pytest.mark.parametrize("reserved", ["mode", "descriptions", "allow_overwrite"])
 def test_new_column_keyword_collisions_fail_before_execution(
-    target_type: type, reserved: str
+    request: pytest.FixtureRequest, target_type: type, reserved: str
 ) -> None:
-    target = Mock(spec=target_type)
+    target = __live_target(request, target_type)
     payload: dict[str, JsonValue] = {
         "kind": "with_new_columns",
         "new_columns": {reserved: {"kind": "column", "name": "mass"}},
     }
     if target_type is oc.StructureCollection:
         payload["dataset"] = "halo_properties"
-    parsed = parse_message(target, payload)
+    parsed = parse_message(target_type, payload)
     assert isinstance(parsed, MessageError)
     assert parsed.kind == "invalid_message"
     assert "Reserved keyword names" in parsed.detail
-    assert execute_message(target, payload) == parsed
-    assert target.mock_calls == []
+    with ExitStack() as stack:
+        spies = __spy_on_transforms(target_type, stack)
+        assert execute_message(target, payload) == parsed
+    assert [spy.mock_calls for spy in spies] == [[]] * len(spies)
 
 
 @pytest.mark.parametrize(
@@ -281,12 +305,14 @@ def test_new_column_keyword_collisions_fail_before_execution(
     ],
 )
 def test_reserved_or_null_recursive_keywords_are_invalid_messages(
-    target_type: type, payload: dict
+    request: pytest.FixtureRequest, target_type: type, payload: dict
 ) -> None:
-    target = Mock(spec=target_type)
-    for decoded in (payload, json.loads(json.dumps(payload))):
-        parsed = parse_message(target, decoded)
-        assert isinstance(parsed, MessageError)
-        assert parsed.kind == "invalid_message"
-        assert execute_message(target, decoded) == parsed
-    assert target.mock_calls == []
+    target = __live_target(request, target_type)
+    with ExitStack() as stack:
+        spies = __spy_on_transforms(target_type, stack)
+        for decoded in (payload, json.loads(json.dumps(payload))):
+            parsed = parse_message(target_type, decoded)
+            assert isinstance(parsed, MessageError)
+            assert parsed.kind == "invalid_message"
+            assert execute_message(target, decoded) == parsed
+    assert [spy.mock_calls for spy in spies] == [[]] * len(spies)

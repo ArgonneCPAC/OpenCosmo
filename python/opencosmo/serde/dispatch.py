@@ -70,26 +70,26 @@ def __unsupported_target(target: type[MessageTarget]) -> MessageError:
 
 @overload
 def parse_message(
-    target: HealpixMap | Lightcone | SimulationCollection,
+    target: type[HealpixMap | Lightcone | SimulationCollection],
     payload: Mapping[str, JsonValue],
 ) -> MessageError: ...
 
 
 @overload
 def parse_message(
-    target: Dataset, payload: Mapping[str, JsonValue]
+    target: type[Dataset], payload: Mapping[str, JsonValue]
 ) -> DatasetMessage | MessageError: ...
 
 
 @overload
 def parse_message(
-    target: StructureCollection, payload: Mapping[str, JsonValue]
+    target: type[StructureCollection], payload: Mapping[str, JsonValue]
 ) -> StructureCollectionMessage | MessageError: ...
 
 
 @overload
 def parse_message(
-    target: MessageTarget, payload: Mapping[str, JsonValue]
+    target: type[MessageTarget], payload: Mapping[str, JsonValue]
 ) -> Message | MessageError: ...
 
 
@@ -119,7 +119,7 @@ def parse_message(
                 return MessageError(
                     kind="invalid_message", target="Dataset", detail=str(error)
                 )
-        case StructureCollection():
+        case _ if target is StructureCollection:
             try:
                 return __STRUCTURE_MESSAGES.validate_python(payload)
             except ValidationError as error:
