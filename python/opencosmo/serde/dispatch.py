@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING, Literal, overload
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
+from opencosmo.collection.lightcone import Lightcone
 from opencosmo.collection.structure import StructureCollection
 from opencosmo.dataset import Dataset
 
 from .messages.dataset import DATASET_MESSAGE_TYPES, DatasetMessage
+from .messages.lightcone import LIGHTCONE_MESSAGE_TYPES, LightconeMessage
 from .messages.structure_collection import (
     STRUCTURE_COLLECTION_MESSAGE_TYPES,
     StructureCollectionMessage,
@@ -28,14 +30,13 @@ if TYPE_CHECKING:
 
     from opencosmo import (
         HealpixMap,
-        Lightcone,
         SimulationCollection,
     )
 
 type MessageTarget = (
     Dataset | HealpixMap | Lightcone | StructureCollection | SimulationCollection
 )
-type Message = DatasetMessage | StructureCollectionMessage
+type Message = DatasetMessage | LightconeMessage | StructureCollectionMessage
 
 
 class MessageError(BaseModel):
@@ -54,6 +55,7 @@ class MessageError(BaseModel):
 
 
 __DATASET_MESSAGES: TypeAdapter[DatasetMessage] = TypeAdapter(DatasetMessage)
+__LIGHTCONE_MESSAGES: TypeAdapter[LightconeMessage] = TypeAdapter(LightconeMessage)
 __STRUCTURE_MESSAGES: TypeAdapter[StructureCollectionMessage] = TypeAdapter(
     StructureCollectionMessage
 )
@@ -70,7 +72,7 @@ def __unsupported_target(target: type[MessageTarget]) -> MessageError:
 
 @overload
 def parse_message(
-    target: type[HealpixMap | Lightcone | SimulationCollection],
+    target: type[HealpixMap | Lightcone | StructureCollection | SimulationCollection],
     payload: Mapping[str, JsonValue],
 ) -> MessageError: ...
 
@@ -79,6 +81,12 @@ def parse_message(
 def parse_message(
     target: type[Dataset], payload: Mapping[str, JsonValue]
 ) -> DatasetMessage | MessageError: ...
+
+
+@overload
+def parse_message(
+    target: type[Lightcone], payload: Mapping[str, JsonValue]
+) -> LightconeMessage | MessageError: ...
 
 
 @overload
@@ -119,6 +127,13 @@ def parse_message(
                 return MessageError(
                     kind="invalid_message", target="Dataset", detail=str(error)
                 )
+        case _ if target is Lightcone:
+            try:
+                return __LIGHTCONE_MESSAGES.validate_python(payload)
+            except ValidationError as error:
+                return MessageError(
+                    kind="invalid_message", target="Lightcone", detail=str(error)
+                )
         case _ if target is StructureCollection:
             try:
                 return __STRUCTURE_MESSAGES.validate_python(payload)
@@ -133,12 +148,18 @@ def parse_message(
 
 @overload
 def apply_message(
-    target: HealpixMap | Lightcone | SimulationCollection, message: Message
+    target: HealpixMap | Lightcone | StructureCollection | SimulationCollection,
+    message: Message,
 ) -> MessageError: ...
 
 
 @overload
 def apply_message(target: Dataset, message: Message) -> Dataset | MessageError: ...
+
+
+@overload
+@overload
+def apply_message(target: Lightcone, message: Message) -> Lightcone | MessageError: ...
 
 
 @overload
@@ -179,6 +200,14 @@ def apply_message(
                 target="Dataset",
                 detail=f"{type(message).__name__} cannot be applied to a Dataset",
             )
+        case Lightcone():
+            if isinstance(message, LIGHTCONE_MESSAGE_TYPES):
+                return message.apply(target)
+            return MessageError(
+                kind="unsupported_message",
+                target="Lightcone",
+                detail=f"{type(message).__name__} cannot be applied to a Lightcone",
+            )
         case StructureCollection():
             if isinstance(message, STRUCTURE_COLLECTION_MESSAGE_TYPES):
                 return message.apply(target)
@@ -192,7 +221,7 @@ def apply_message(
 
 @overload
 def execute_message(
-    target: HealpixMap | Lightcone | SimulationCollection,
+    target: HealpixMap | Lightcone | StructureCollection | SimulationCollection,
     payload: Mapping[str, JsonValue],
 ) -> MessageError: ...
 
@@ -201,6 +230,12 @@ def execute_message(
 def execute_message(
     target: Dataset, payload: Mapping[str, JsonValue]
 ) -> Dataset | MessageError: ...
+
+
+@overload
+def execute_message(
+    target: Lightcone, payload: Mapping[str, JsonValue]
+) -> Lightcone | MessageError: ...
 
 
 @overload

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Literal,
 )
 from warnings import warn
@@ -30,11 +31,14 @@ if TYPE_CHECKING:
     import astropy.units as u
     import numpy as np
     import numpy.typing as npt
+    from annotated_types import Ge
     from astropy.io import fits
 
     from opencosmo.column.column import (
         ColumnMask,
+        CompoundColumnMask,
         ConstructedColumn,
+        DerivedScalarValue,
     )
     from opencosmo.dataset import Dataset
     from opencosmo.header import OpenCosmoHeader
@@ -391,7 +395,7 @@ class Lightcone:
 
         yield from zip(lcops.rows(self.__state), cutouts)
 
-    def with_redshift_range(self, z_low: float, z_high: float):
+    def with_redshift_range(self, z_low: float, z_high: float) -> Lightcone:
         """
         Restrict this lightcone to a specific redshift range. Lightcone datasets will
         always contain a column titled "redshift." This function is always operates on
@@ -408,7 +412,7 @@ class Lightcone:
     ) -> Schema:
         return lcops.make_schema(self.__state, path, _min_size, no_stack)
 
-    def bound(self, region: Region, select_by: str | None = None):
+    def bound(self, region: Region, select_by: str | None = None) -> Lightcone:
         """
         Restrict the dataset to some subregion. The subregion will always be evaluated
         in the same units as the current dataset. For example, if the dataset is
@@ -497,7 +501,9 @@ class Lightcone:
         region = oc.make_skybox(p1, p2)
         return self.bound(region)
 
-    def pixel_search(self, pixels: npt.NDArray[np.int_], nside: int = 64):
+    def pixel_search(
+        self, pixels: npt.NDArray[np.integer], nside: int = 64
+    ) -> Lightcone:
         """
         Return the subset of this lightcone that falls within a set of HEALPix pixels.
 
@@ -613,7 +619,9 @@ class Lightcone:
         return result
 
     def filter(
-        self, *masks: ColumnMask, mode: Literal["local", "global"] = "global", **kwargs
+        self,
+        *masks: ColumnMask | CompoundColumnMask,
+        mode: Literal["local", "global"] = "global",
     ) -> Lightcone:
         """
         Filter the dataset based on some criteria. See :ref:`Querying Based on Column
@@ -642,7 +650,7 @@ class Lightcone:
             not in the dataset, or the  would return zero rows.
 
         """
-        return Lightcone(lcops.filter(self.__state, *masks, mode=mode, **kwargs))
+        return Lightcone(lcops.filter(self.__state, *masks, mode=mode))
 
     def rows(self) -> Generator[dict[str, float | u.Quantity], None, None]:
         """
@@ -661,7 +669,7 @@ class Lightcone:
         self,
         *columns: str | Iterable[str],
         mode: Literal["local", "global"] = "global",
-        **derived_columns: ConstructedColumn,
+        **derived_columns: ConstructedColumn | DerivedScalarValue,
     ) -> Lightcone:
         """
 
@@ -740,7 +748,10 @@ class Lightcone:
         return Lightcone(lcops.drop(self.__state, *columns))
 
     def take(
-        self, n: int, at: str = "random", mode: Literal["local", "global"] = "local"
+        self,
+        n: Annotated[int, Ge(0)],
+        at: Literal["start", "end", "random"] = "random",
+        mode: Literal["local", "global"] = "local",
     ) -> Lightcone:
         """
         Create a new dataset from some number of rows from this dataset.
@@ -781,8 +792,11 @@ class Lightcone:
         return Lightcone(lcops.take(self.__state, n, at, mode))
 
     def take_range(
-        self, start: int, end: int, mode: Literal["local", "global"] = "local"
-    ):
+        self,
+        start: Annotated[int, Ge(0)],
+        end: Annotated[int, Ge(0)],
+        mode: Literal["local", "global"] = "local",
+    ) -> Lightcone:
         """
         Create a new lightcone from a row range in this lightcone. We use standard
         indexing conventions, so the rows included will be start -> end - 1. Because
@@ -821,7 +835,7 @@ class Lightcone:
         """
         return Lightcone(lcops.take_range(self.__state, start, end, mode))
 
-    def take_rows(self, rows: DataIndex):
+    def take_rows(self, rows: np.ndarray | DataIndex) -> Lightcone:
         """
         Take the rows of a lightcone specified by the :code:`rows` argument.
         :code:`rows` should be an array of integers.
@@ -850,7 +864,7 @@ class Lightcone:
         allow_overwrite: bool = False,
         mode: Literal["local", "global"] = "global",
         **columns: ConstructedColumn | np.ndarray | u.Quantity,
-    ):
+    ) -> Lightcone:
         """
         Create a new dataset with additional columns. These new columns can be derived
         from columns already in the dataset, a numpy array, or an Astropy quantity
@@ -892,7 +906,7 @@ class Lightcone:
             )
         )
 
-    def sort_by(self, column: str | None, invert: bool = False):
+    def sort_by(self, column: str | None, invert: bool = False) -> Lightcone:
         """
         Sort this dataset by the values in a given column. By default sorting is in
         ascending order (least to greatest). Pass invert = True to sort in descending
@@ -930,7 +944,8 @@ class Lightcone:
 
     def with_units(
         self,
-        convention: str | None = None,
+        convention: Literal["scalefree", "comoving", "physical", "unitless"]
+        | None = None,
         conversions: dict[u.UnitBase, u.UnitBase] | None = None,
         **columns: u.UnitBase,
     ) -> Lightcone:

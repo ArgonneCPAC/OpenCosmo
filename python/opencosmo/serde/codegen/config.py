@@ -18,6 +18,7 @@ import numpy as np
 import numpy.typing as npt
 from annotated_types import Ge
 
+from opencosmo.collection.lightcone import Lightcone
 from opencosmo.collection.structure import StructureCollection
 from opencosmo.collection.structure import types as sct
 from opencosmo.column.column import (
@@ -178,6 +179,45 @@ SPECS: tuple[MessageSpec, ...] = (
                     symbol(checks.described_columns), ("descriptions", "new_columns")
                 ),
             ),
+        },
+    ),
+    MessageSpec(
+        target=Lightcone,
+        public_name="opencosmo.Lightcone",
+        methods=(
+            "filter",
+            "select",
+            "drop",
+            "sort_by",
+            "take",
+            "take_range",
+            "take_rows",
+            "bound",
+            "with_new_columns",
+            "with_units",
+            "with_redshift_range",
+            "pixel_search",
+        ),
+        output=__PACKAGE / "messages" / "lightcone.py",
+        namespace={
+            "ColumnMask": ColumnMask,
+            "CompoundColumnMask": CompoundColumnMask,
+            "ConstructedColumn": ConstructedColumn,
+            "DataIndex": DataIndex,
+            "DerivedScalarValue": DerivedScalarValue,
+            "Ge": Ge,
+            "Iterable": Iterable,
+            "Region": Region,
+            "np": np,
+            "npt": npt,
+            "u": u,
+        },
+        checks={
+            "take_range": (Check(symbol(checks.ordered_range), ("start", "end")),),
+            "with_new_columns": (
+                Check(symbol(checks.described_columns), ("descriptions", "columns")),
+            ),
+            "pixel_search": (Check(symbol(checks.pixel_search), ("pixels", "nside")),),
         },
     ),
     MessageSpec(

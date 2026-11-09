@@ -13,6 +13,8 @@ import pytest
 from opencosmo.serde import (
     BoxRegionMessage,
     DatasetTakeMessage,
+    LightconePixelSearchMessage,
+    LightconeTakeMessage,
     MessageError,
     StructureCollectionTakeMessage,
     apply_message,
@@ -47,6 +49,14 @@ TAKE: dict[str, JsonValue] = {"kind": "take", "n": 5, "at": "start"}
 @pytest.fixture
 def halo_properties(test_data):
     return oc.open(test_data.snapshot.primary.halo_properties)
+
+
+@pytest.fixture
+def lightcone(test_data):
+    return oc.open(
+        test_data.lightcone.step(600).halo_properties,
+        test_data.lightcone.step(601).halo_properties,
+    )
 
 
 def test_parse_selects_the_message_for_the_target(halo_properties):
@@ -101,6 +111,20 @@ def test_errors_serialize_to_json(halo_properties):
     assert MessageError.model_validate_json(error.model_dump_json()) == error
 
 
+def test_parse_selects_the_lightcone_union(lightcone):
+    assert parse_message(oc.Lightcone, TAKE) == LightconeTakeMessage(n=5, at="start")
+    pixels = parse_message(oc.Lightcone, {"kind": "pixel_search", "pixels": [1]})
+    assert pixels == LightconePixelSearchMessage(pixels=(1,))
+
+
+def test_lightcone_parse_errors_name_the_target():
+    error = parse_message(oc.Lightcone, {"kind": "take", "n": -1})
+
+    assert isinstance(error, MessageError)
+    assert error.kind == "invalid_message"
+    assert error.target == "Lightcone"
+
+
 @pytest.mark.parametrize("target_name", ["cached_dataset", "cached_structures"])
 def test_data_free_parse_selects_target_union(
     request: pytest.FixtureRequest, target_name: str
@@ -146,6 +170,23 @@ def test_execute_structure_columns_matches_direct_api(
 
 
 @pytest.mark.parametrize(
+    ("fixture", "message"),
+    [
+        ("halo_properties", LightconeTakeMessage(n=1)),
+        ("lightcone", DatasetTakeMessage(n=1)),
+    ],
+)
+def test_apply_rejects_cross_target_messages(request, fixture, message):
+    target = request.getfixturevalue(fixture)
+    error = apply_message(target, message)
+
+    assert isinstance(error, MessageError)
+    assert error.kind == "unsupported_message"
+    assert error.target == type(target).__name__
+    assert type(message).__name__ in error.detail
+
+
+@pytest.mark.parametrize(
     ("target_name", "message"),
     [
         ("cached_dataset", StructureCollectionTakeMessage(n=1)),
@@ -163,7 +204,30 @@ def test_apply_rejects_cross_target_operation_messages(
     assert error.kind == "unsupported_message"
     assert error.target == type(target).__name__
     assert type(message).__name__ in error.detail
-    assert MessageError.model_validate_json(error.model_dump_json()) == error
+
+
+def test_execute_applies_lightcone_messages(lightcone):
+    result = execute_message(lightcone, TAKE)
+    expected = lightcone.take(5, at="start")
+
+    assert isinstance(result, oc.Lightcone)
+    data, expected_data = result.get_data(), expected.get_data()
+    assert data.colnames == expected_data.colnames
+    assert all(np.array_equal(data[c], expected_data[c]) for c in data.colnames)
+
+
+@pytest.mark.parametrize("target_type", [oc.HealpixMap, oc.SimulationCollection])
+def test_collection_targets_without_messages_are_rejected(target_type):
+    target = Mock(spec=target_type)
+    for result in (
+        parse_message(target_type, TAKE),
+        apply_message(target, LightconeTakeMessage(n=1)),
+        apply_message(target, StructureCollectionTakeMessage(n=1)),
+        execute_message(target, TAKE),
+    ):
+        assert isinstance(result, MessageError)
+        assert result.kind == "unsupported_target"
+    assert target.mock_calls == []
 
 
 @pytest.mark.parametrize(
@@ -199,21 +263,6 @@ def test_execute_spy_uses_target_specific_message(
         take.return_value = sentinel
         assert execute_message(target, TAKE) is sentinel
     take.assert_called_once_with(target, 5, "start", "local")
-
-
-@pytest.mark.parametrize(
-    "target_type", [oc.Lightcone, oc.HealpixMap, oc.SimulationCollection]
-)
-def test_collection_targets_without_messages_are_rejected(target_type: type) -> None:
-    target = Mock(spec=target_type)
-    for result in (
-        parse_message(target_type, TAKE),
-        apply_message(target, StructureCollectionTakeMessage(n=1)),
-        execute_message(target, TAKE),
-    ):
-        assert isinstance(result, MessageError)
-        assert result.kind == "unsupported_target"
-    assert target.mock_calls == []
 
 
 def test_structure_operation_errors_propagate(
