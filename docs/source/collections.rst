@@ -56,7 +56,9 @@ A full particle snapshot of a HACC simulation (a ``snapshotparticles`` file) ope
    region = oc.make_box((100, 100, 100), (120, 120, 120))
    gas = particles.with_units("scalefree").bound(region)["gas_particles"]
 
-:py:meth:`bound <opencosmo.ParticleCollection.bound>` and :py:meth:`with_units <opencosmo.ParticleCollection.with_units>` apply to every particle type, and each type is queried through its own spatial index. For other operations, transform the datasets one at a time. Open a split snapshot through its master file, not through one of its subfiles. A particle collection cannot be written with :py:func:`opencosmo.write` as a whole, but each of its datasets can.
+:py:meth:`bound <opencosmo.ParticleCollection.bound>`, :py:meth:`box_search <opencosmo.ParticleCollection.box_search>` and :py:meth:`with_units <opencosmo.ParticleCollection.with_units>` apply to every particle type, and each type is queried through its own spatial index. :py:meth:`select <opencosmo.ParticleCollection.select>` and :py:meth:`drop <opencosmo.ParticleCollection.drop>` match column names to the particle types that have them, so ``particles.select("x", "y", "z", "sfr")`` keeps the positions of every type and the star formation rate of the gas. :py:meth:`with_datasets <opencosmo.ParticleCollection.with_datasets>` keeps only some of the types, :py:meth:`evaluate_on_dataset <opencosmo.ParticleCollection.evaluate_on_dataset>` evaluates a function on one type, and :py:meth:`get_data <opencosmo.ParticleCollection.get_data>` returns the data of every type in a dictionary keyed by type. For other operations, transform the datasets one at a time.
+
+Open a split snapshot through its master file, not through one of its subfiles. When the file is opened with MPI, every particle type is split between the ranks in the same way, so each rank holds all the particles in its part of the box. A particle collection can be written with :py:func:`opencosmo.write` and opens again as a particle collection.
 
 Structure Collections
 ---------------------

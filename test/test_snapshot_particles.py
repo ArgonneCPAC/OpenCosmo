@@ -146,3 +146,143 @@ def test_two_snapshot_particle_files_raise(tmp_path, snapshot_particle_writer):
     second = snapshot_particle_writer.write(tmp_path / "b.hdf5")
     with pytest.raises(ValueError, match="cannot be combined"):
         oc.open(first, second)
+
+
+def test_select_matches_columns_to_types(snapshot_particles_path, counts):
+    collection = oc.open(snapshot_particles_path)
+    selected = collection.select("x", "sfr", px=oc.col("mass") * oc.col("vx"))
+    assert set(selected["gas_particles"].columns) == {"x", "sfr", "px"}
+    for name in ("dm_particles", "star_particles", "agn_particles"):
+        assert set(selected[name].columns) == {"x", "px"}
+    data = selected.with_units("scalefree")["dm_particles"].get_data("numpy")
+    mass = _read(snapshot_particles_path, "dm_particles", "mass")
+    vx = _read(snapshot_particles_path, "dm_particles", "vx")
+    assert np.allclose(data["px"], mass * vx)
+    # select returns a new collection and leaves the original unchanged
+    for name, dataset in collection.items():
+        assert set(dataset.columns) == _fields(snapshot_particles_path, name)
+        assert len(dataset) == counts[name]
+
+
+def test_select_explicit(snapshot_particles_path):
+    collection = oc.open(snapshot_particles_path)
+    selected = collection.select(
+        gas_particles=["rho"],
+        dm_particles={
+            "columns": ["x"],
+            "derived_columns": {"px": oc.col("mass") * oc.col("vx")},
+        },
+    )
+    assert set(selected["gas_particles"].columns) == {"rho"}
+    assert set(selected["dm_particles"].columns) == {"x", "px"}
+    assert set(selected["agn_particles"].columns) == set(
+        collection["agn_particles"].columns
+    )
+
+
+def test_select_errors(snapshot_particles_path):
+    collection = oc.open(snapshot_particles_path)
+    with pytest.raises(ValueError, match="fof_halo_mass"):
+        collection.select("fof_halo_mass")
+    with pytest.raises(ValueError, match="halo_particles"):
+        collection.select(gas_particles=["rho"], halo_particles=["x"])
+
+
+def test_drop(snapshot_particles_path):
+    collection = oc.open(snapshot_particles_path)
+    dropped = collection.drop("sfr", "phi_grav", dm_particles="vx")
+    gas_columns = set(collection["gas_particles"].columns)
+    dm_columns = set(collection["dm_particles"].columns)
+    assert set(dropped["gas_particles"].columns) == gas_columns - {"sfr", "phi_grav"}
+    assert set(dropped["dm_particles"].columns) == dm_columns - {"phi_grav", "vx"}
+    with pytest.raises(ValueError, match="halo_particles"):
+        collection.drop(halo_particles="x")
+
+
+def test_with_datasets(snapshot_particles_path):
+    collection = oc.open(snapshot_particles_path)
+    subset = collection.with_datasets(["gas_particles", "star_particles"])
+    assert sorted(subset.keys()) == ["gas_particles", "star_particles"]
+    assert sorted(collection.with_datasets("dm_particles").keys()) == ["dm_particles"]
+    assert len(collection) == 4
+    with pytest.raises(ValueError, match="halo_particles"):
+        collection.with_datasets(["gas_particles", "halo_particles"])
+    with pytest.raises(ValueError, match="at least one"):
+        collection.with_datasets([])
+
+
+def test_box_search(snapshot_particles_path, counts):
+    collection = oc.open(snapshot_particles_path).with_units("scalefree")
+    p1, p2 = (10.0, 20.0, 5.0), (30.0, 45.0, 60.0)
+    searched = collection.box_search(p1, p2)
+    bounded = collection.bound(oc.make_box(p1, p2))
+    for name in counts:
+        assert np.array_equal(
+            searched[name].select("id").get_data("numpy"),
+            bounded[name].select("id").get_data("numpy"),
+        )
+
+
+def test_evaluate_on_dataset(snapshot_particles_path):
+    collection = oc.open(snapshot_particles_path).with_units("scalefree")
+
+    def kinetic(mass, vx, vy, vz):
+        return 0.5 * mass * (vx**2 + vy**2 + vz**2)
+
+    evaluated = collection.evaluate_on_dataset(kinetic, "gas_particles")
+    assert isinstance(evaluated, oc.ParticleCollection)
+    assert "kinetic" in evaluated["gas_particles"].columns
+    assert "kinetic" not in evaluated["dm_particles"].columns
+    assert "kinetic" not in collection["gas_particles"].columns
+
+    gas = collection["gas_particles"].select("mass", "vx", "vy", "vz")
+    data = gas.get_data("numpy")
+    expected = kinetic(data["mass"], data["vx"], data["vy"], data["vz"])
+    inserted = evaluated["gas_particles"].select("kinetic").get_data("numpy")
+    assert np.allclose(inserted, expected)
+
+    batched = collection.evaluate_on_dataset(
+        kinetic, "gas_particles", insert=False, format="numpy", batch_size=1000
+    )
+    assert np.allclose(batched["kinetic"], expected)
+
+    with pytest.raises(ValueError, match="halo_particles"):
+        collection.evaluate_on_dataset(kinetic, "halo_particles")
+
+
+def test_get_data(snapshot_particles_path, counts):
+    collection = oc.open(snapshot_particles_path).select("id")
+    data = collection.get_data("numpy")
+    assert sorted(data) == sorted(counts)
+    for name in counts:
+        assert np.array_equal(data[name], _read(snapshot_particles_path, name, "id"))
+
+
+def test_write_round_trip(snapshot_particles_path, tmp_path, counts):
+    region = oc.make_box((10.0, 20.0, 5.0), (30.0, 45.0, 60.0))
+    collection = (
+        oc.open(snapshot_particles_path)
+        .with_units("scalefree")
+        .bound(region)
+        .select("id", "x", "y", "z", px=oc.col("mass") * oc.col("vx"))
+    )
+    path = tmp_path / "written.hdf5"
+    oc.write(path, collection)
+
+    reopened = oc.open(path).with_units("scalefree")
+    assert isinstance(reopened, oc.ParticleCollection)
+    assert sorted(reopened.keys()) == sorted(counts)
+    for name in counts:
+        assert set(reopened[name].columns) == {"id", "x", "y", "z", "px"}
+        written = reopened[name].select("id", "px").get_data("numpy")
+        expected = collection[name].select("id", "px").get_data("numpy")
+        order, expected_order = np.argsort(written["id"]), np.argsort(expected["id"])
+        assert np.array_equal(written["id"][order], expected["id"][expected_order])
+        assert np.allclose(written["px"][order], expected["px"][expected_order])
+    # the written spatial index still answers spatial queries
+    inner = oc.make_box((15.0, 25.0, 10.0), (25.0, 40.0, 50.0))
+    for name in counts:
+        assert np.array_equal(
+            np.sort(reopened.bound(inner)[name].select("id").get_data("numpy")),
+            np.sort(collection.bound(inner)[name].select("id").get_data("numpy")),
+        )

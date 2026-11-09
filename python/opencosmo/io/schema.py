@@ -19,6 +19,7 @@ class FileEntry(Enum):
     MULTI_DATASET = "multi_dataset"
     STRUCTURE_COLLECTION = "structure_collection"
     SIMULATION_COLLECTION = "simulation_collection"
+    PARTICLE_COLLECTION = "particle_collection"
     LIGHTCONE = "lightcone"
     LIGHCONE_MAP = "lightcone_map"
     HEALPIX_MAP = "healpix_map"

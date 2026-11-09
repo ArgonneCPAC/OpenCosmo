@@ -46,6 +46,9 @@ def verify_structure(
                         verify_structure_collection_data(ds_schema)
         case FileEntry.HEALPIX_MAP:
             verify_dataset_data(schema, has_index=False)
+        case FileEntry.PARTICLE_COLLECTION:
+            for ds_schema in schema.children.values():
+                verify_dataset_data(ds_schema)
         case _:
             raise ValueError("Unknown file structure!")
 
@@ -74,7 +77,11 @@ def schema_data_length(schema: Schema) -> int:
             if "data" in schema.children:  # single-dataset lightcone
                 return data_group_length(schema)
             return sum(schema_data_length(c) for c in schema.children.values())
-        case FileEntry.STRUCTURE_COLLECTION | FileEntry.SIMULATION_COLLECTION:
+        case (
+            FileEntry.STRUCTURE_COLLECTION
+            | FileEntry.SIMULATION_COLLECTION
+            | FileEntry.PARTICLE_COLLECTION
+        ):
             return sum(schema_data_length(c) for c in schema.children.values())
         case _:
             return 0

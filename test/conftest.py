@@ -265,15 +265,19 @@ class SnapshotParticleWriter:
         path: Path,
         counts: dict[str, int] | None = None,
         data_type: str = "snapshot_particles",
+        extent: dict[str, float] | None = None,
     ) -> Path:
+        """``extent`` confines the named types to the box [0, extent)^3."""
         import h5py
         import numpy as np
 
         rng = np.random.default_rng(42)
+        extent = extent or {}
         with h5py.File(path, "w") as f:
             self.__header(data_type).write(f)
             for name, n in (counts or dict(self.counts)).items():
-                self.__write_type(f.create_group(name), name, n, rng)
+                high = extent.get(name, self.box_size)
+                self.__write_type(f.create_group(name), name, n, high, rng)
         return path
 
     def __header(self, data_type: str):
@@ -324,10 +328,10 @@ class SnapshotParticleWriter:
         optional = {"simulation": HaccSimulationInfo(name="snapshot_test")}
         return OpenCosmoHeader(file_pars, required, optional, {})
 
-    def __write_type(self, group, name: str, n: int, rng) -> None:
+    def __write_type(self, group, name: str, n: int, high: float, rng) -> None:
         import numpy as np
 
-        positions = rng.uniform(0, self.box_size, size=(3, n)).astype(np.float32)
+        positions = rng.uniform(0, high, size=(3, n)).astype(np.float32)
         ids = rng.permutation(10 * n)[:n].astype(np.int64)
         n_cells = 2**self.max_level
         cells = np.clip(

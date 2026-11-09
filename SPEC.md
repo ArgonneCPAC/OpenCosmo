@@ -169,7 +169,7 @@ The particle types of one HACC full particle snapshot (a `snapshotparticles` fil
     /index
 ```
 
-Each type group has its own octree index on the particle positions `x`, `y` and `z`, and each type is opened as its own dataset. Particle files of other data types still cannot be opened without their properties dataset.
+Each type group has its own octree index on the particle positions `x`, `y` and `z`, and each type is opened as its own dataset. A particle collection written by opencosmo has a `/header` group inside each type group and no root header, and opens the same way. Under MPI, the cells of the octree are split between ranks using the counts of all types added together, so every type gets the same region on each rank. Particle files of other data types still cannot be opened without their properties dataset.
 
 ### simulation collection (structural, not a spec)
 
