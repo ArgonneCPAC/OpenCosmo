@@ -64,9 +64,13 @@ def do_multi_dataset_selections(
     mode = select_kwargs.pop("mode", mode)
     columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
     length_by_ds = {name: len(ds) for name, ds in datasets.items()}
-    args_by_ds, kwargs_by_ds = build_multi_dataset_selections(
+    args_by_ds, kwargs_by_ds, missing = build_multi_dataset_selections(
         columns_by_ds, length_by_ds, select_args, select_kwargs
     )
+    if missing:
+        raise MissingColumnError(
+            f"Columns {missing} could not be found in any datasets!"
+        )
     new_datasets = {}
     for name, dataset in datasets.items():
         ds_args = args_by_ds.get(name, [])
@@ -100,9 +104,13 @@ def do_multi_dataset_drops(
 
     columns_by_ds = {name: set(ds.columns) for name, ds in datasets.items()}
     length_by_ds = {name: len(ds) for name, ds in datasets.items()}
-    args_by_ds, _ = build_multi_dataset_selections(
+    args_by_ds, _, missing = build_multi_dataset_selections(
         columns_by_ds, length_by_ds, drop_args, {}
     )
+    if missing:
+        raise MissingColumnError(
+            f"Columns {missing} could not be found in any datasets!"
+        )
     new_datasets = {}
     for name, dataset in datasets.items():
         ds_args = args_by_ds.get(name, [])
@@ -130,7 +138,12 @@ def build_multi_dataset_selections(
     ds_lengths: dict[Any, int],
     select_args: tuple[str | Iterable[str], ...],
     select_kwargs: dict[str, Any],
-):
+) -> tuple[dict[Any, list[str]], dict[Any, dict[str, Any]], list[str]]:
+    """
+    Route column names and derived columns to the datasets that can provide
+    them. Names found in no dataset are returned, in order, for the caller to
+    handle. Derived columns whose requirements are found in no dataset raise.
+    """
     flat_args = []
     for selection in select_args:
         if isinstance(selection, str):
@@ -141,7 +154,7 @@ def build_multi_dataset_selections(
 
     wildcards = []
     output_args: dict[Any, list[str]] = {name: [] for name in columns_by_ds}
-    missing = set()
+    unmatched: list[str] = []
     for arg in flat_args:
         if not isinstance(arg, str):
             raise TypeError("Column selection arguments must be strings!")
@@ -152,14 +165,11 @@ def build_multi_dataset_selections(
             ds_name for ds_name, cols in columns_by_ds.items() if arg in cols
         }
         if not datasets_with_column:
-            missing.add(arg)
+            if arg not in unmatched:
+                unmatched.append(arg)
             continue
         for ds_name in datasets_with_column:
             output_args[ds_name].append(arg)
-    if missing:
-        raise MissingColumnError(
-            f"Columns {missing} could not be found in any datasets!"
-        )
     for ds_selection in output_args.values():
         ds_selection.extend(wildcards)
     output_kwargs: dict[Any, dict[str, Any]] = {name: {} for name in columns_by_ds}
@@ -205,7 +215,7 @@ def build_multi_dataset_selections(
         raise ValueError(
             f"The arrays passed in {missing_lengths} do not match the length of any dataset!"
         )
-    return output_args, output_kwargs
+    return output_args, output_kwargs, unmatched
 
 
 def __evaluate_wildcards(select_from: set[str], wildcards: Iterable[str]):

@@ -234,11 +234,24 @@ If you have a nested :py:class:`StructureCollection <opencosmo.StructureCollecti
         }
    )
 
-Currently, there are three use cases that are supported if you want the data to be inserted as a new column:
+Using Column Names as Arguments
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-1. You evaluate using data from multiple datasets in the collection, and insert into the halo_properties or galaxy_properties dataset.
-2. You evaluate using the data from a single dataset (chunked by structure), and insert the results into that dataset
-3. You evaaluate using all the data in a single dataset, and insert into that dataset (using :py:meth:`evaluate_on_dataset <opencosmo.StructureCollection.evaluate_on_dataset>`)
+If you do not explicitly list columns, and your function does not take the names of datasets as parameter, OpenCosmo will attempt to infer which columns come from which datasets:
+
+.. code-block:: python
+
+        collection = oc.open("haloproperties.hdf5", "haloparticles.hdf5")
+
+        def gas_fraction(fof_halo_mass, rho, mass):
+                return np.sum(mass[rho > 0]) / fof_halo_mass
+
+        collection = collection.with_datasets(["halo_properties", "gas_particles"])
+        collection = collection.evaluate(gas_fraction, insert=True)
+
+Columns from the halo or galaxy properties are passed as single values, and columns from other datasets are passed as arrays that hold the rows belonging to the current structure. Columns in nested collections can be used as well. For example, :code:`gal_mass_star` gives the stellar masses of every galaxy in the halo. The results are inserted into the halo or galaxy properties dataset.
+
+A column name can appear in more than one dataset. For example, every particle species has an :code:`x` column. In that case, :py:meth:`evaluate <opencosmo.StructureCollection.evaluate>` raises an error instead of guessing. You can remove the datasets you don't need with :py:meth:`with_datasets <opencosmo.StructureCollection.with_datasets>`, as above, or use dataset names as arguments to say exactly where each column comes from.
 
 Evaluating on a Single Dataset in a Structure Collection
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

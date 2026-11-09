@@ -351,3 +351,25 @@ def test_evaluate_insert_with_empty_ranks(test_data):
     assert all(rank_columns == columns[0] for rank_columns in columns)
     data = result["halo_properties"].select("doubled_mass").get_data("numpy")
     assert comm.allreduce(len(data)) == 2
+
+
+@pytest.mark.parallel(nprocs=4)
+def test_evaluate_inferred_columns_with_empty_ranks(test_data):
+    paths = test_data.snapshot.primary
+    collection = oc.open(paths.halo_properties, paths.halo_profiles)
+    collection = collection.take(2, at="start", mode="global")
+
+    def doubled_mass(fof_halo_mass, sod_halo_bin_count):
+        return fof_halo_mass * 2
+
+    with pytest.warns(UserWarning) if len(collection) == 0 else nullcontext():
+        result = collection.evaluate(doubled_mass, insert=True)
+
+    comm = get_comm_world()
+    assert comm is not None
+    columns = comm.allgather(sorted(result["halo_properties"].columns))
+    assert all(rank_columns == columns[0] for rank_columns in columns)
+    data = result["halo_properties"].select("doubled_mass", "fof_halo_mass")
+    data = data.get_data("numpy")
+    assert comm.allreduce(len(data["doubled_mass"])) == 2
+    assert np.all(data["doubled_mass"] == 2 * data["fof_halo_mass"])
