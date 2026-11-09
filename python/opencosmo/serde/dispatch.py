@@ -73,6 +73,7 @@ def __unsupported_target(target: type[MessageTarget]) -> MessageError:
 @overload
 def parse_message(
     target: type[HealpixMap | Lightcone | StructureCollection | SimulationCollection],
+    payload: Mapping[str, JsonValue],
 ) -> MessageError: ...
 
 
