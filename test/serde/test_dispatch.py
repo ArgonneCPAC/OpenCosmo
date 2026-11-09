@@ -265,13 +265,18 @@ def test_execute_spy_uses_target_specific_message(
     take.assert_called_once_with(target, 5, "start", "local")
 
 
-def test_structure_operation_errors_propagate(
+def test_structure_operation_errors_are_captured(
     cached_structures: StructureCollection,
 ) -> None:
-    with pytest.raises(ValueError, match="Unknown datasets"):
-        execute_message(
-            cached_structures, {"kind": "with_datasets", "datasets": "missing"}
-        )
+    result = execute_message(
+        cached_structures, {"kind": "with_datasets", "datasets": "missing"}
+    )
+
+    assert isinstance(result, MessageError)
+    assert result.kind == "operation_failed"
+    assert result.target == "StructureCollection"
+    assert result.error_type == "ValueError"
+    assert "Unknown datasets" in result.detail
 
 
 @pytest.mark.parametrize("target_type", [oc.Dataset, oc.StructureCollection])
@@ -365,3 +370,49 @@ def test_reserved_or_null_recursive_keywords_are_invalid_messages(
             assert parsed.kind == "invalid_message"
             assert execute_message(target, decoded) == parsed
     assert [spy.mock_calls for spy in spies] == [[]] * len(spies)
+
+
+@pytest.mark.parametrize("target_name", ["cached_dataset", "cached_structures"])
+def test_execute_captures_operation_errors(
+    request: pytest.FixtureRequest, target_name: str
+) -> None:
+    target = request.getfixturevalue(target_name)
+    payload: dict[str, JsonValue] = {
+        "kind": "filter",
+        "masks": [
+            {
+                "kind": "comparison",
+                "operator": "greater_than",
+                "left": {"kind": "column", "name": "no_such_column"},
+                "right": {"kind": "number", "value": 1.0},
+            }
+        ],
+    }
+    result = execute_message(target, payload)
+
+    assert isinstance(result, MessageError)
+    assert result.kind == "operation_failed"
+    assert result.target == type(target).__name__
+    assert result.error_type is not None
+    assert "no_such_column" in result.detail
+    # The error must serialize for the trip back to the client
+    assert json.loads(result.model_dump_json())["kind"] == "operation_failed"
+
+
+def test_apply_captures_operation_errors(cached_dataset) -> None:
+    payload: dict[str, JsonValue] = {
+        "kind": "filter",
+        "masks": [
+            {
+                "kind": "comparison",
+                "operator": "greater_than",
+                "left": {"kind": "column", "name": "no_such_column"},
+                "right": {"kind": "number", "value": 1.0},
+            }
+        ],
+    }
+    message = parse_message(type(cached_dataset), json.loads(json.dumps(payload)))
+    result = apply_message(cached_dataset, message)
+    assert isinstance(result, MessageError)
+    assert result.kind == "operation_failed"
+    assert result.error_type is not None

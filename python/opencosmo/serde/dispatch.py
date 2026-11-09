@@ -43,15 +43,23 @@ class MessageError(BaseModel):
     """Why a message could not be parsed or applied.
 
     ``kind`` is ``"unsupported_target"`` when the object has no messages,
-    ``"invalid_message"`` when the payload fails validation, and
-    ``"unsupported_message"`` when a parsed message belongs to another type.
+    ``"invalid_message"`` when the payload fails validation,
+    ``"unsupported_message"`` when a parsed message belongs to another type,
+    and ``"operation_failed"`` when applying the message raised. In the last
+    case ``error_type`` is the exception class name and ``detail`` its message.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["unsupported_target", "invalid_message", "unsupported_message"]
+    kind: Literal[
+        "unsupported_target",
+        "invalid_message",
+        "unsupported_message",
+        "operation_failed",
+    ]
     target: str
     detail: str
+    error_type: str | None = None
 
 
 __DATASET_MESSAGES: TypeAdapter[DatasetMessage] = TypeAdapter(DatasetMessage)
@@ -68,6 +76,39 @@ def __unsupported_target(target: type[MessageTarget]) -> MessageError:
         target=name,
         detail=f"{name} does not support messages",
     )
+
+
+@overload
+def __apply(
+    message: DatasetMessage, target: Dataset, name: str
+) -> Dataset | MessageError: ...
+
+
+@overload
+def __apply(
+    message: LightconeMessage, target: Lightcone, name: str
+) -> Lightcone | MessageError: ...
+
+
+@overload
+def __apply(
+    message: StructureCollectionMessage, target: StructureCollection, name: str
+) -> StructureCollection | MessageError: ...
+
+
+def __apply(
+    message: Message, target: MessageTarget, name: str
+) -> MessageTarget | MessageError:
+    try:
+        # The match in apply_message guarantees message and target are paired
+        return message.apply(target)  # ty: ignore[invalid-argument-type]
+    except Exception as error:  # noqa: BLE001 - operations raise arbitrary user-facing errors
+        return MessageError(
+            kind="operation_failed",
+            target=name,
+            detail=str(error),
+            error_type=type(error).__name__,
+        )
 
 
 @overload
@@ -194,7 +235,7 @@ def apply_message(
     match target:
         case Dataset():
             if isinstance(message, DATASET_MESSAGE_TYPES):
-                return message.apply(target)
+                return __apply(message, target, "Dataset")
             return MessageError(
                 kind="unsupported_message",
                 target="Dataset",
@@ -202,7 +243,7 @@ def apply_message(
             )
         case Lightcone():
             if isinstance(message, LIGHTCONE_MESSAGE_TYPES):
-                return message.apply(target)
+                return __apply(message, target, "Lightcone")
             return MessageError(
                 kind="unsupported_message",
                 target="Lightcone",
@@ -210,7 +251,7 @@ def apply_message(
             )
         case StructureCollection():
             if isinstance(message, STRUCTURE_COLLECTION_MESSAGE_TYPES):
-                return message.apply(target)
+                return __apply(message, target, "StructureCollection")
             return MessageError(
                 kind="unsupported_message",
                 target="StructureCollection",
