@@ -52,13 +52,18 @@ def open_state(target: DatasetTarget) -> PowerSpectrumState:
     return PowerSpectrumState(
         header=target.header.with_units(UnitConvention.COMOVING),
         group=group,
-        steps=group["step"][:],
-        redshifts=group["redshift"][:],
-        k=group["k"][:],
-        n_modes=group["n_modes"][:],
+        steps=__read_only(group["step"][:]),
+        redshifts=__read_only(group["redshift"][:]),
+        k=__read_only(group["k"][:]),
+        n_modes=__read_only(group["n_modes"][:]),
         components=components,
         unit_handler=unit_handler,
     )
+
+
+def __read_only(array: np.ndarray) -> np.ndarray:
+    array.flags.writeable = False
+    return array
 
 
 def with_units(
@@ -92,6 +97,8 @@ def step_index(
             )
         return int(matches[0])
     if redshift is not None:
+        if not np.isfinite(redshift):
+            raise ValueError(f"The redshift must be finite, got {redshift}")
         return int(np.argmin(np.abs(state.redshifts - redshift)))
     return None
 

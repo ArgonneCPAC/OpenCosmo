@@ -120,6 +120,17 @@ def test_step_and_redshift(hydro):
         hydro.get_data(step=hydro.steps[0], redshift=0)
 
 
+def test_nonfinite_redshift(hydro):
+    with pytest.raises(ValueError, match="must be finite"):
+        hydro.get_data(redshift=np.nan)
+
+
+def test_axes_are_read_only(hydro):
+    for axis in (hydro.steps, hydro.redshifts, hydro.n_modes):
+        with pytest.raises(ValueError, match="read-only"):
+            axis[0] = 0
+
+
 def test_missing_spectrum_is_nan(hydro_copy):
     with h5py.File(hydro_copy, "r+") as f:
         f["power_spectrum/pk_agn"][0] = np.nan
