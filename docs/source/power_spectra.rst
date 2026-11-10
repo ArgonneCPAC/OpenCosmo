@@ -17,7 +17,7 @@ a :py:class:`PowerSpectrum <opencosmo.PowerSpectrum>`.
 
    k = ps.k                                  # shape (n_k,)
    pk_cdm = ps.get_data("cdm", step=624)     # shape (n_k,)
-   pk_cdm = ps.get_data("cdm", redshift=0.5) # the step closest to z = 0.5
+   pk_cdm = ps.get_data("cdm", redshift=0.5) # the step closest to z = 0.5, within 0.01
    pk_all = ps.get_data("total")             # shape (n_steps, n_k)
 
 A gravity-only simulation has only the "total" component. A hydrodynamic simulation
@@ -45,14 +45,15 @@ Units
 
 A power spectrum opens in the "comoving" unit convention, like a dataset, with
 wavenumbers in 1/Mpc and spectra in Mpc^3. :py:meth:`with_units
-<opencosmo.PowerSpectrum.with_units>` changes the convention. In the "physical"
-convention, the wavenumbers and the spectrum of each step are converted with the
-scale factor of that step. The physical wavenumbers therefore differ between
-steps, and :py:attr:`k <opencosmo.PowerSpectrum.k>` has the shape (n_steps, n_k):
+<opencosmo.PowerSpectrum.with_units>` changes to the "scalefree" convention, with
+wavenumbers in h/Mpc and spectra in (Mpc/h)^3, or to "unitless". Power spectra are
+defined in comoving coordinates, so there is no "physical" convention.
 
-.. code-block:: python
+Selecting a redshift
+--------------------
 
-   physical = ps.with_units("physical")
-   i = 0
-   k = physical.k[i]
-   pk = physical.get_data("total", step=physical.steps[i])
+``get_data(component, redshift=z)`` selects the step whose redshift is closest to
+``z``. HACC steps lie within a few thousandths of round redshifts, so
+``redshift=0.5`` selects the step at z = 0.4987 in the SCIDAC simulations. If no
+step is within 0.01 of ``z``, the call raises a ``ValueError`` that names the
+closest steps. Pass ``step=`` to select a step exactly.

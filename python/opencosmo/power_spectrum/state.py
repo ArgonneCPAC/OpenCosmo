@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from opencosmo.units.handler import UnitHandler
 
 PREFIX = "pk_"
+# The largest difference between a requested redshift and the step it selects.
+# HACC steps sit within a few thousandths of the round redshifts users ask for.
+REDSHIFT_TOLERANCE = 0.01
 
 
 @dataclass(frozen=True, eq=False)
@@ -70,14 +73,14 @@ def with_units(
     state: PowerSpectrumState, convention: str | UnitConvention
 ) -> PowerSpectrumState:
     convention = UnitConvention(convention)
-    # The header has no single redshift, so it cannot be physical. Its comoving
-    # values describe every step.
-    header_convention = (
-        UnitConvention.COMOVING if convention == UnitConvention.PHYSICAL else convention
-    )
+    if convention == UnitConvention.PHYSICAL:
+        raise ValueError(
+            "Power spectra are defined in comoving coordinates and have no physical "
+            "units. Use the 'comoving' convention for values without factors of h."
+        )
     return replace(
         state,
-        header=state.header.with_units(header_convention),
+        header=state.header.with_units(convention),
         unit_handler=state.unit_handler.with_convention(convention),
     )
 
@@ -97,24 +100,39 @@ def step_index(
             )
         return int(matches[0])
     if redshift is not None:
-        if not np.isfinite(redshift):
-            raise ValueError(f"The redshift must be finite, got {redshift}")
-        return int(np.argmin(np.abs(state.redshifts - redshift)))
+        return __redshift_index(state, redshift)
     return None
 
 
-def scale_factor(state: PowerSpectrumState, index: int | None) -> float | np.ndarray:
-    """The scale factor of one step, or of every step as a column."""
-    a = 1 / (1 + state.redshifts)
-    return a[:, np.newaxis] if index is None else a[index]
+def __redshift_index(state: PowerSpectrumState, redshift: float) -> int:
+    """The index of the step closest to ``redshift``, within REDSHIFT_TOLERANCE."""
+    if not np.isfinite(redshift):
+        raise ValueError(f"The redshift must be finite, got {redshift}")
+    distance = np.abs(state.redshifts - redshift)
+    index = int(np.argmin(distance))
+    if distance[index] <= REDSHIFT_TOLERANCE:
+        return index
+    below = np.flatnonzero(state.redshifts < redshift)
+    above = np.flatnonzero(state.redshifts > redshift)
+    closest = [
+        i
+        for i in (
+            below[np.argmax(state.redshifts[below])] if len(below) else None,
+            above[np.argmin(state.redshifts[above])] if len(above) else None,
+        )
+        if i is not None
+    ]
+    candidates = " and ".join(
+        f"step {state.steps[i]} (z = {state.redshifts[i]:.4f})" for i in closest
+    )
+    raise ValueError(
+        f"No step of this power spectrum is within {REDSHIFT_TOLERANCE} of redshift "
+        f"{redshift}. The closest are {candidates}."
+    )
 
 
 def get_k(state: PowerSpectrumState) -> np.ndarray | u.Quantity:
-    # Physical wavenumbers depend on the step, so they are returned for every step.
-    a = scale_factor(state, None)
-    return state.unit_handler.apply_units(
-        {"k": state.k.copy()}, unit_kwargs={"scale_factor": a}
-    )["k"]
+    return state.unit_handler.apply_units({"k": state.k.copy()}, unit_kwargs={})["k"]
 
 
 def get_spectrum(
@@ -127,6 +145,4 @@ def get_spectrum(
         )
     name = f"{PREFIX}{component}"
     values = state.group[name][:] if index is None else state.group[name][index]
-    return state.unit_handler.apply_units(
-        {name: values}, unit_kwargs={"scale_factor": scale_factor(state, index)}
-    )[name]
+    return state.unit_handler.apply_units({name: values}, unit_kwargs={})[name]

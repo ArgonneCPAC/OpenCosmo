@@ -19,7 +19,7 @@ class PowerSpectrum:
     on one set of wavenumber bins.
 
     Like a :py:class:`Dataset <opencosmo.Dataset>`, a power spectrum opens in the
-    "comoving" unit convention, and its header parameters such as ``cosmology`` and
+    "comoving" unit convention (there is no "physical" convention for spectra), and its header parameters such as ``cosmology`` and
     ``simulation`` are available as attributes. HACC's measurement settings are in
     ``power_spectrum``.
 
@@ -64,8 +64,7 @@ class PowerSpectrum:
     @property
     def header(self) -> OpenCosmoHeader:
         """
-        The header of the file. Its values do not depend on the step, so in the
-        "physical" convention they stay comoving.
+        The header of the file.
 
         Returns
         -------
@@ -111,9 +110,8 @@ class PowerSpectrum:
     @property
     def k(self) -> u.Quantity | np.ndarray:
         """
-        The mean wavenumber of the modes in each bin. Comoving wavenumbers are the
-        same at every step and have shape (n_k,). In the "physical" convention the
-        wavenumbers depend on the step, and the shape is (n_steps, n_k).
+        The mean wavenumber of the modes in each bin, with shape (n_k,). The
+        wavenumbers are comoving and the same at every step.
 
         Returns
         -------
@@ -155,8 +153,11 @@ class PowerSpectrum:
         step: int, optional
             The step of the spectrum. Must be one of :py:attr:`steps`.
         redshift: float, optional
-            The redshift of the spectrum. The step closest to this redshift is
-            used. Cannot be combined with ``step``.
+            The redshift of the spectrum. This selects the step whose redshift in
+            :py:attr:`redshifts` is closest to the given value, and it fails if
+            that step is more than 0.01 away. HACC steps lie within a few
+            thousandths of round redshifts, so ``redshift=0.5`` selects the step at
+            z = 0.4987 in the SCIDAC simulations. Cannot be combined with ``step``.
 
         Returns
         -------
@@ -165,28 +166,35 @@ class PowerSpectrum:
         Raises
         ------
         ValueError
-            If the component or step is not in the file, or if both a step and a
-            redshift are given.
+            If the component or step is not in the file, if no step is within
+            0.01 of the redshift (the message names the closest steps), or if both
+            a step and a redshift are given.
         """
         index = psst.step_index(self.__state, step, redshift)
         return psst.get_spectrum(self.__state, component, index)
 
     def with_units(
         self,
-        convention: Literal["scalefree", "comoving", "physical", "unitless"],
+        convention: Literal["scalefree", "comoving", "unitless"],
     ) -> PowerSpectrum:
         """
-        Create a new power spectrum with a different unit convention. In the
-        "physical" convention the wavenumbers and spectra of each step use the
-        scale factor of that step. See :doc:`units`.
+        Create a new power spectrum with a different unit convention. See
+        :doc:`units`. Power spectra are defined in comoving coordinates, so the
+        "physical" convention is not available. Use "comoving" for values without
+        factors of h.
 
         Parameters
         ----------
         convention : str
-            One of "physical", "comoving", "scalefree", or "unitless".
+            One of "comoving", "scalefree", or "unitless".
 
         Returns
         -------
         power_spectrum : PowerSpectrum
+
+        Raises
+        ------
+        ValueError
+            If the convention is "physical" or unknown.
         """
         return PowerSpectrum(psst.with_units(self.__state, convention))

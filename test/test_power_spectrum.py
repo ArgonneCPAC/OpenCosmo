@@ -63,22 +63,9 @@ def test_scalefree_units(hydro):
     assert np.allclose(scalefree.get_data().value / h**3, hydro.get_data().value)
 
 
-def test_physical_units(hydro):
-    physical = hydro.with_units("physical")
-    a = 1 / (1 + hydro.redshifts)
-    k = physical.k
-    assert k.shape == (len(hydro.steps), len(hydro.k))
-    assert np.allclose(k.value, hydro.k.value / a[:, np.newaxis])
-    assert np.allclose(
-        physical.get_data().value, hydro.get_data().value * a[:, np.newaxis] ** 3
-    )
-    step = hydro.steps[0]
-    assert np.allclose(
-        physical.get_data(step=step).value,
-        hydro.get_data(step=step).value * a[0] ** 3,
-    )
-    # The header has no single redshift, so it stays comoving
-    assert physical.simulation["box_size"].unit == u.Mpc
+def test_physical_units_are_refused(hydro):
+    with pytest.raises(ValueError, match="no physical units"):
+        hydro.with_units("physical")
 
 
 def test_unitless(hydro):
@@ -101,8 +88,30 @@ def test_get_step(hydro):
 
 def test_get_redshift(hydro):
     i = len(hydro.steps) // 2
-    redshift = hydro.redshifts[i] + 1e-3
+    redshift = hydro.redshifts[i] + 0.005
     assert np.array_equal(hydro.get_data(redshift=redshift), hydro.get_data()[i])
+
+
+def test_redshift_outside_tolerance(hydro):
+    redshifts = hydro.redshifts
+    steps = hydro.steps
+    # Steps are in increasing order, so redshifts decrease; pick a gap wider than 0.02
+    i = int(np.argmax(-np.diff(redshifts)))
+    redshift = (redshifts[i] + redshifts[i + 1]) / 2
+    message = (
+        rf"within 0.01 of redshift {redshift}\. The closest are "
+        rf"step {steps[i + 1]} \(z = {redshifts[i + 1]:.4f}\) and "
+        rf"step {steps[i]} \(z = {redshifts[i]:.4f}\)"
+    )
+    with pytest.raises(ValueError, match=message):
+        hydro.get_data(redshift=redshift)
+
+
+def test_redshift_beyond_last_step(hydro):
+    with pytest.raises(
+        ValueError, match=r"The closest are step 624 \(z = 0\.0000\)\.$"
+    ):
+        hydro.get_data(redshift=-0.5)
 
 
 def test_unknown_component(hydro):
