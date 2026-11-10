@@ -26,6 +26,7 @@ from opencosmo.dataset.take import (
     get_range_take_index,
 )
 from opencosmo.index import (
+    combine,
     empty,
     get_range,
     into_array,
@@ -391,7 +392,7 @@ def rows(
 
 
 @instrument_call(iss.serialize_bound)
-def bound(state: DatasetState, region, select_by):
+def bound(state: DatasetState, region, select_by, snap: bool = False):
     if state.spatial_index is None:
         raise AttributeError(
             "Your dataset does not contain a spatial index, "
@@ -430,9 +431,14 @@ def bound(state: DatasetState, region, select_by):
     contained_index: DataIndex
     intersects_index: DataIndex
     contained_index, intersects_index = state.spatial_index.query(check_region)
+    if snap:
+        new_index = combine(contained_index, intersects_index)
+        new_index = project(state.raw_index, new_index)
+        new_state = __take_rows(state, new_index)
+        return dataclasses.replace(new_state, region=check_region)
+
     contained_index = project(state.raw_index, contained_index)
     intersects_index = project(state.raw_index, intersects_index)
-
     check_state = __take_rows(state, intersects_index)
     if not state.header.file.is_lightcone:
         check_state = with_units(check_state, "scalefree", {})

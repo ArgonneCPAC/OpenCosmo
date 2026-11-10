@@ -51,7 +51,9 @@ def open_state(
 def bound(
     state: ParticleState, region: Region, select_by: str | None = None
 ) -> ParticleState:
-    return __map(state, lambda member: dsops.bound(member, region, select_by))
+    return __map(
+        state, lambda member: dsops.bound(member, region, select_by, snap=True)
+    )
 
 
 def with_units(

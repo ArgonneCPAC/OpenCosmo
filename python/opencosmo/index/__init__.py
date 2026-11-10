@@ -12,7 +12,7 @@ from .build import (
 from .get import get_data
 from .in_range import n_in_range
 from .mask import into_array, mask
-from .ops import offset, rebuild_by_ranges, reindex_column, sort, trim
+from .ops import combine, offset, rebuild_by_ranges, reindex_column, sort, trim
 from .plan import ReadPlan, build_plans, read_with_plan
 from .project import project
 from .take import take
@@ -32,6 +32,7 @@ __all__ = [
     "SimpleIndex",
     "build_plans",
     "coalesce_chunks",
+    "combine",
     "concatenate",
     "empty",
     "from_size",
