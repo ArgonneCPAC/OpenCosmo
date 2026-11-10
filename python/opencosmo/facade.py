@@ -14,6 +14,8 @@ from opencosmo.collection.structure import structure as sc
 from opencosmo.collection.structure.state import StructureState
 from opencosmo.dataset import dataset as ds
 from opencosmo.dataset.state import DatasetState
+from opencosmo.power_spectrum import power_spectrum as ps
+from opencosmo.power_spectrum.state import PowerSpectrumState
 
 if TYPE_CHECKING:
     from opencosmo.collection.healpix_map.healpix_map import HealpixMap
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.simulation.simulation import SimulationCollection
     from opencosmo.collection.structure.structure import StructureCollection
     from opencosmo.dataset.dataset import Dataset
+    from opencosmo.power_spectrum.power_spectrum import PowerSpectrum
 
 
 @overload
@@ -36,13 +39,16 @@ def wrap(state: SimulationState) -> SimulationCollection: ...
 def wrap(state: HealpixMapState) -> HealpixMap: ...
 @overload
 def wrap(state: ParticleState) -> ParticleCollection: ...
+@overload
+def wrap(state: PowerSpectrumState) -> PowerSpectrum: ...
 def wrap(
     state: DatasetState
     | LightconeState
     | StructureState
     | SimulationState
     | HealpixMapState
-    | ParticleState,
+    | ParticleState
+    | PowerSpectrumState,
 ) -> (
     Dataset
     | Lightcone
@@ -50,6 +56,7 @@ def wrap(
     | SimulationCollection
     | HealpixMap
     | ParticleCollection
+    | PowerSpectrum
 ):
     """Wrap a backend state in the facade that presents it to the user."""
     match state:
@@ -65,4 +72,6 @@ def wrap(
             return hm.HealpixMap(state)
         case ParticleState():
             return pc.ParticleCollection(state)
+        case PowerSpectrumState():
+            return ps.PowerSpectrum(state)
     raise TypeError(f"Cannot wrap object of type {type(state).__name__}")

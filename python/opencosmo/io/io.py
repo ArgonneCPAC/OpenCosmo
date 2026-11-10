@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from opencosmo.collection.simulation.state import SimulationState
     from opencosmo.collection.structure.state import StructureState
     from opencosmo.dataset.state import DatasetState
+    from opencosmo.power_spectrum.state import PowerSpectrumState
 
     from .protocols import Writeable
 
@@ -78,6 +79,7 @@ def open(
     | oc.SimulationCollection
     | oc.HealpixMap
     | oc.ParticleCollection
+    | oc.PowerSpectrum
 ):
     """
     Open a dataset or data collection from one or more opencosmo files.
@@ -164,6 +166,7 @@ def open_state(
     | HealpixMapState
     | SimulationState
     | ParticleState
+    | PowerSpectrumState
 ):
     """Open files as a backend state. See :py:func:`open` for the arguments."""
     try:

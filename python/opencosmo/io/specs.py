@@ -10,6 +10,7 @@ from opencosmo.io.discover import (
     has_linked_targets,
     is_healpix_map_group,
     is_lightcone_group,
+    is_power_spectrum_group,
     is_properties_group,
     is_snapshot_particle_group,
 )
@@ -25,9 +26,15 @@ if TYPE_CHECKING:
     from opencosmo.io.discover import GroupLayout
     from opencosmo.io.index_spec import IndexSpec
     from opencosmo.io.iopen import DatasetTarget
+    from opencosmo.power_spectrum.state import PowerSpectrumState
 
     type SpecState = (
-        DatasetState | LightconeState | StructureState | HealpixMapState | ParticleState
+        DatasetState
+        | LightconeState
+        | StructureState
+        | HealpixMapState
+        | ParticleState
+        | PowerSpectrumState
     )
 
 """
@@ -390,6 +397,31 @@ class HealpixMapSpec:
         return _build_single_dataset(targets, open_kwargs, index)
 
 
+class PowerSpectrumSpec:
+    """A single power_spectrum group. Its arrays are read without a row index."""
+
+    name = "power_spectrum"
+
+    def matches(self, layouts: tuple[FileLayout, ...]) -> bool:
+        groups = _all_groups(layouts)
+        return len(groups) == 1 and is_power_spectrum_group(groups[0])
+
+    def verify(self, layouts: tuple[FileLayout, ...]) -> None:
+        return None
+
+    def build_from_targets(
+        self,
+        targets: list[DatasetTarget],
+        *,
+        index_kind: str,
+        is_empty_ref: bool,
+        open_kwargs: dict[str, Any],
+    ) -> SpecState:
+        from opencosmo.power_spectrum.state import open_state
+
+        return open_state(targets[0])
+
+
 class LightconeSpec:
     """>=1 group, all is_lightcone, a single data_type."""
 
@@ -483,7 +515,11 @@ class DatasetSpec:
         if len(groups) != 1:
             return False
         g = groups[0]
-        return not is_lightcone_group(g) and not is_healpix_map_group(g)
+        return (
+            not is_lightcone_group(g)
+            and not is_healpix_map_group(g)
+            and not is_power_spectrum_group(g)
+        )
 
     def verify(self, layouts: tuple[FileLayout, ...]) -> None:
         return None
@@ -502,6 +538,7 @@ class DatasetSpec:
 SPECS: tuple[FileSpec, ...] = (
     StructureCollectionSpec(),
     HealpixMapSpec(),
+    PowerSpectrumSpec(),
     LightconeSpec(),
     ParticleCollectionSpec(),
     DatasetSpec(),

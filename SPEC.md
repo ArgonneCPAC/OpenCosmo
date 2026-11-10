@@ -99,7 +99,7 @@ The "halo_properties" group contains a "data_linked" group which allows the tool
 
 The "header" group contains information about the file and the OpenCosmo datasets it governs: cosmology, simulation parameters, and a `file` block of per-dataset metadata. The library reads it into an `OpenCosmoHeader` (`python/opencosmo/header.py`) whose `file` field is a `FileParameters` model (`python/opencosmo/dtypes/file.py`). The fields that drive file identification are:
 
-- **`data_type`** — one of `galaxy_properties`, `galaxy_particles`, `halo_properties`, `halo_profiles`, `halo_particles`, `snapshot_particles`, `synthetic_galaxies`, `healpix_map`. (`diffsky_fits` is normalized to `synthetic_galaxies` on read.)
+- **`data_type`** — one of `galaxy_properties`, `galaxy_particles`, `halo_properties`, `halo_profiles`, `halo_particles`, `snapshot_particles`, `synthetic_galaxies`, `healpix_map`, `power_spectrum`. (`diffsky_fits` is normalized to `synthetic_galaxies` on read.)
 - **`is_lightcone`** — `True` when the dataset covers a lightcone (2D sky) rather than a 3D snapshot volume.
 - **`step`** — the redshift step for stacked/redshift-split data; `None` for a single-step snapshot.
 - **`redshift`**, **`region`**, **`unit_convention`** — additional per-dataset metadata.
@@ -113,7 +113,7 @@ Identification never depends on header *content* equality. Two independent simul
 
 ## File and Collection Types
 
-`opencosmo.open()` inspects file metadata (a "layout" — see `python/opencosmo/io/discover.py`) and dispatches to one of the types below. Single-file datasets and collections are recognized by a small registry of **specs** in `python/opencosmo/io/specs.py`; the five spec names are `dataset`, `healpix_map`, `lightcone`, `particle_collection`, and `structure_collection`. A simulation collection is not a spec — it is recognized structurally (see below) and assembled from per-scope children.
+`opencosmo.open()` inspects file metadata (a "layout" — see `python/opencosmo/io/discover.py`) and dispatches to one of the types below. Single-file datasets and collections are recognized by a small registry of **specs** in `python/opencosmo/io/specs.py`; the six spec names are `dataset`, `healpix_map`, `lightcone`, `particle_collection`, `power_spectrum`, and `structure_collection`. A simulation collection is not a spec — it is recognized structurally (see below) and assembled from per-scope children.
 
 Identification uses only metadata-derived signals — never live reads of column values:
 
@@ -123,17 +123,35 @@ Identification uses only metadata-derived signals — never live reads of column
 - whether a group is a "properties" group (`data_type` in `halo_properties` / `galaxy_properties`).
 - the number of distinct governing header scopes / top-level containers across the open set.
 
-Specs are tried in a fixed precedence order (most-constrained first): `structure_collection`, `healpix_map`, `lightcone`, `particle_collection`, `dataset`. The first whose match predicate is true wins. This order matters — a structure collection would also satisfy weaker predicates, so it is tested first.
+Specs are tried in a fixed precedence order (most-constrained first): `structure_collection`, `healpix_map`, `power_spectrum`, `lightcone`, `particle_collection`, `dataset`. The first whose match predicate is true wins. This order matters — a structure collection would also satisfy weaker predicates, so it is tested first.
 
 ### dataset (`dataset` spec)
 
-A single OpenCosmo dataset. **Signal:** exactly one `/data` group, and that group is neither a lightcone (`is_lightcone` false) nor a healpix map (`data_type != "healpix_map"`). Opens as a `Dataset`.
+A single OpenCosmo dataset. **Signal:** exactly one `/data` group, and that group is neither a lightcone (`is_lightcone` false) nor a healpix map (`data_type != "healpix_map"`) nor a power spectrum. Opens as a `Dataset`.
 
 A lone properties file that carries `/data_linked` still opens as a `dataset` (or a `lightcone`), not a structure collection: its links reference child datasets that are not present in the open set. The collection only comes into being once a linked child type is opened alongside it.
 
 ### healpix map (`healpix_map` spec)
 
 A full-sky or partial-sky HEALPix map. **Signal:** exactly one `/data` group whose `data_type == "healpix_map"`. Opens as a `HealpixMap`. Its `/index` group uses `index_type == "healpix"` with nested pixel ordering.
+
+### power spectrum (`power_spectrum` spec)
+
+The in-situ matter power spectra of one HACC simulation, at all of its power spectrum steps. **Signal:** exactly one group, with `data_type == "power_spectrum"`. Opens as a `PowerSpectrum`.
+
+A power spectrum is a function of step and wavenumber, so the file stores it on that grid rather than as a table. In place of `/data` there is a `/power_spectrum` group, and there is no `/index` or `/data_linked`. `/header/file` has no `step` or `redshift`, because the file holds all steps. `/header/power_spectrum` records how HACC measured the spectra.
+
+```text
+/header
+/power_spectrum/step        (n_steps,)        integer
+/power_spectrum/redshift    (n_steps,)
+/power_spectrum/k           (n_k,)            unit "comoving h/Mpc"
+/power_spectrum/n_modes     (n_k,)
+/power_spectrum/pk_total    (n_steps, n_k)    unit "comoving (Mpc/h)^3"
+/power_spectrum/pk_<component>  (n_steps, n_k), one per component
+```
+
+Discovery checks these shapes. A row of a `pk_` array is NaN at a step where the component has no spectrum. A `/power_spectrum` group under a header of another `data_type`, or a `/data` group under a `power_spectrum` header, is an error.
 
 ### lightcone (`lightcone` spec)
 

@@ -27,6 +27,7 @@ The OpenCosmo Python Toolkit provides utilities for reading, writing and manipul
    main_api
    cols
    collections
+   power_spectra
    units
    io
 

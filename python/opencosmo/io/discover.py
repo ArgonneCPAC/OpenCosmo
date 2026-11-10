@@ -12,6 +12,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from opencosmo.dtypes import read_map_header
+from opencosmo.dtypes.file import DatasetType
 from opencosmo.header import read_header_undecorated
 from opencosmo.io.cache import cache_layouts, get_cached_layouts
 from opencosmo.uuid import coerce_to_uuid, get_dataset_uuid
@@ -30,10 +31,12 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class GroupLayout:
-    """Frozen layout of a single /data group within a file."""
+    """Frozen layout of a single /data group, or the /power_spectrum group of a power
+    spectrum file, within a file."""
 
     path: str
-    """In-file path of the group holding /data, e.g. "/" or "/scidac1" or "/halo_properties"."""
+    """In-file path of the group holding /data (or /power_spectrum), e.g. "/" or
+    "/scidac1" or "/halo_properties"."""
 
     header_path: str
     """In-file path of the group's governing header (nearest enclosing /header)."""
@@ -56,7 +59,8 @@ class GroupLayout:
     when the attribute is absent."""
 
     row_count: int
-    """Number of rows in the first column, or 0 if no /data group."""
+    """Number of rows in the first column, or 0 if no /data group. For a power
+    spectrum, the number of steps."""
 
     has_index: bool
     """Whether an /index group exists as a sibling of /data."""
@@ -221,6 +225,52 @@ def _iter_ancestors(group_path: str) -> Iterator[str]:
     while group_path != "/":
         group_path = group_path.rsplit("/", 1)[0] or "/"
         yield group_path
+
+
+def __is_power_spectrum_path(path: str) -> bool:
+    """Whether ``path`` is the group that holds the arrays of a power spectrum file.
+
+    ``/header/power_spectrum`` holds header attributes, not the arrays.
+    """
+    parts = path.split("/")
+    return parts[-1] == "power_spectrum" and "header" not in parts
+
+
+def __power_spectrum_shape_error(
+    datasets: dict[str, h5py.Dataset], where: str
+) -> str | None:
+    """Check the shapes of the arrays in a /power_spectrum group.
+
+    The steps and redshifts share the step axis, the wavenumbers and mode counts
+    share the wavenumber axis, and every ``pk_`` array has shape (n_steps, n_k).
+    Returns an error message, or None if the group is well formed.
+    """
+    missing = [n for n in ("step", "redshift", "k", "n_modes") if n not in datasets]
+    if missing:
+        return f"{where} is missing the datasets {', '.join(missing)}"
+    shapes = {name: dataset.shape for name, dataset in datasets.items()}
+    n_steps = shapes["step"]
+    n_k = shapes["k"]
+    if len(n_steps) != 1 or len(n_k) != 1:
+        return f"{where}/step and {where}/k must be one-dimensional"
+    if n_steps[0] == 0 or n_k[0] == 0:
+        return f"{where} has no steps or no wavenumber bins"
+    if shapes["redshift"] != n_steps or shapes["n_modes"] != n_k:
+        return (
+            f"{where}/redshift must have the shape of {where}/step and "
+            f"{where}/n_modes the shape of {where}/k"
+        )
+    spectra = sorted(name for name in shapes if name.startswith("pk_"))
+    if not spectra:
+        return f"{where} has no pk_ datasets"
+    expected = n_steps + n_k
+    wrong = [name for name in spectra if shapes[name] != expected]
+    if wrong:
+        return (
+            f"{where}: {', '.join(wrong)} must have the shape (n_steps, n_k) = "
+            f"{expected}"
+        )
+    return None
 
 
 def _verify_map_array(array: h5py.Dataset | None, where: str) -> int:
@@ -471,7 +521,11 @@ def discover_file(path: Path) -> FileLayout:
 
             # Find all header and data groups.
             header_groups = sorted([k for k in file_map if k.endswith("header")])
-            data_groups = sorted([k for k in file_map if k.endswith("/data")])
+            data_groups = sorted(
+                k
+                for k in file_map
+                if k.endswith("/data") or __is_power_spectrum_path(k)
+            )
             map_groups = sorted([k for k in file_map if k.endswith("/map")])
 
             # Maps are parsed first: a mapping file has no header and no data, so
@@ -539,7 +593,9 @@ def discover_file(path: Path) -> FileLayout:
             group_layouts = []
             for data_path in data_groups:
                 # The owning group is the parent of /data ("/scidac1/data" -> "/scidac1").
-                group_path = data_path.rsplit("/data", 1)[0] or "/"
+                # A power spectrum file holds its arrays in /power_spectrum instead.
+                is_power_spectrum = __is_power_spectrum_path(data_path)
+                group_path = data_path.rsplit("/", 1)[0] or "/"
 
                 # Governing header = nearest enclosing scope on this group's ancestry.
                 governing_scope = next(
@@ -553,6 +609,14 @@ def discover_file(path: Path) -> FileLayout:
                         error=f"No header governs data group {data_path}",
                     )
                 governing_header_path, header = scope_to_header[governing_scope]
+                data_type = str(header.file.data_type)
+                if is_power_spectrum != (data_type == DatasetType.power_spectrum.value):
+                    return FileLayout(
+                        path=path,
+                        groups=(),
+                        error=f"The data type {data_type} of the header "
+                        f"at {governing_header_path} does not match {data_path}",
+                    )
 
                 # Extract column metadata for this data group.
                 data_prefix = data_path if data_path.endswith("/") else data_path + "/"
@@ -582,7 +646,12 @@ def discover_file(path: Path) -> FileLayout:
                 # single row index for the whole group. Shapes are already
                 # fetched by the walk above, so checking here is free.
                 row_count = 0
-                if column_handles:
+                if is_power_spectrum:
+                    error = __power_spectrum_shape_error(column_datasets, data_path)
+                    if error is not None:
+                        return FileLayout(path=path, groups=(), error=error)
+                    row_count = column_datasets["step"].shape[0]
+                elif column_handles:
                     row_counts = {h.shape[0] for h in column_handles}
                     if len(row_counts) > 1:
                         return FileLayout(
@@ -727,6 +796,11 @@ def has_linked_targets(group: GroupLayout) -> bool:
 def is_healpix_map_group(group: GroupLayout) -> bool:
     """Return True if the group's data_type is healpix_map."""
     return group_data_type(group) == "healpix_map"
+
+
+def is_power_spectrum_group(group: GroupLayout) -> bool:
+    """Return True if the group's data_type is power_spectrum."""
+    return group_data_type(group) == DatasetType.power_spectrum.value
 
 
 def is_particle_group(group: GroupLayout) -> bool:

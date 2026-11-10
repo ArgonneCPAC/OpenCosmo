@@ -24,6 +24,8 @@ from opencosmo.units.converters import get_unit_transitions
 KNOWN_UNITS = {
     "comoving Mpc/h": u.Mpc / cu.littleh,
     "comoving (Mpc/h)^2": (u.Mpc / cu.littleh) ** 2,
+    "comoving (Mpc/h)^3": (u.Mpc / cu.littleh) ** 3,
+    "comoving h/Mpc": cu.littleh / u.Mpc,
     "comoving km/s": u.km / u.s,
     "comoving (km/s)^2": (u.km / u.s) ** 2,
     "Msun/h": u.Msun / cu.littleh,

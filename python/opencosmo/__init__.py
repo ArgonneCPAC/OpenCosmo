@@ -8,6 +8,7 @@ from .collection import (
 from .column import col
 from .dataset import Dataset
 from .io import open, write
+from .power_spectrum import PowerSpectrum
 from .spatial import make_box, make_cone, make_skybox
 
 __version__ = "1.4.7"
@@ -17,6 +18,7 @@ __all__ = [
     "HealpixMap",
     "Lightcone",
     "ParticleCollection",
+    "PowerSpectrum",
     "SimulationCollection",
     "StructureCollection",
     "__version__",
