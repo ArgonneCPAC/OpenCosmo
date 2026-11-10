@@ -252,10 +252,18 @@ class Dataset:
         comoving Mpc. However Region objects themselves do not carry units.
         See :doc:`spatial_ref` for details of how to construct regions.
 
+        This method is exact: it reads the coordinates of particles or objects in
+        cells on the region boundary and keeps only those inside. It has no
+        ``snap`` argument. :py:meth:`opencosmo.ParticleCollection.bound` instead
+        selects whole octree cells without checking coordinates.
+
         Parameters
         ----------
         region: opencosmo.spatial.Region
             The region to query.
+        select_by: str, optional
+            The coordinates to query with, for datasets that have more than one
+            set.
 
         Returns
         -------
@@ -264,10 +272,7 @@ class Dataset:
 
         Raises
         ------
-        ValueError
-            If the query region does not overlap with the region this dataset resides
-            in
-        AttributeError:
+        AttributeError
             If the dataset does not contain a spatial index
         """
 

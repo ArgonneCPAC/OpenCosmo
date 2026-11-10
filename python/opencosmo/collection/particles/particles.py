@@ -28,9 +28,10 @@ class ParticleCollection:
     index. The types are not linked to each other. The collection behaves like
     a read-only dictionary keyed by the particle type, for example
     ``collection["gas_particles"]``. :py:meth:`bound` and :py:meth:`with_units`
-    apply to every particle type. :py:meth:`select` and :py:meth:`drop` match
-    columns to the particle types that have them. For other operations,
-    transform the datasets one at a time.
+    apply to every particle type. :py:meth:`bound` and :py:meth:`box_search`
+    select whole octree cells, so they can return particles outside the region.
+    :py:meth:`select` and :py:meth:`drop` match columns to the particle types
+    that have them. For other operations, transform the datasets one at a time.
     """
 
     def __init__(self, state: ParticleState) -> None:
@@ -103,9 +104,31 @@ class ParticleCollection:
 
     def bound(self, region: Region, select_by: str | None = None) -> ParticleCollection:
         """
-        Restrict every particle type to the particles inside a region. Each type
-        is queried through its own spatial index, as in
-        :py:meth:`opencosmo.Dataset.bound`.
+        Restrict the particle datasets to the specified region. Because particle datasets
+        can be very large, this method snaps the input region to the closest spatial index
+        region that fully contains the query. As a result, the new particle datasets
+        may contain small numbers of particles near the boundary that are outside the region.
+
+        The region is evaluated in the current unit convention of the collection.
+        Region objects do not carry units, so a box built from plain numbers is
+        interpreted in that convention's position units. Use :py:meth:`with_units`
+        first to choose the convention.
+
+        To keep only the particles that are exactly inside the region, bound the
+        particle type with the same region and unit convention. This reads the
+        coordinates of the particles in boundary cells:
+
+        .. code-block:: python
+
+            region = oc.make_box((100, 100, 100), (120, 120, 120))
+            snapped = collection.with_units("scalefree").bound(region)
+            exact = snapped["gas_particles"].bound(region)
+
+        Repeated bounds act on the current selection. After an overlapping
+        query, the requested region becomes the logical region used to check
+        subsequent queries, even though the retained cells can extend beyond it.
+        A query outside that region may warn or return an empty selection, even
+        if retained boundary cells contain particles there.
 
         See :doc:`spatial_ref` for details of how to construct regions.
 
@@ -120,7 +143,7 @@ class ParticleCollection:
         Returns
         -------
         collection : opencosmo.ParticleCollection
-            A new collection with the particles inside the region.
+            A new collection with the particles in selected cells for each type.
         """
         return self.__with_state(pops.bound(self.__state, region, select_by))
 
@@ -165,8 +188,11 @@ class ParticleCollection:
 
     def box_search(self, p1: Point3d, p2: Point3d) -> ParticleCollection:
         """
-        Restrict every particle type to the particles inside a 3D box.
-        Equivalent to ``collection.bound(oc.make_box(p1, p2))``.
+        Restrict every particle type to the octree cells contained in or
+        intersecting a 3D box. Equivalent to ``collection.bound(oc.make_box(p1, p2))``, so
+        particles outside the box but in a selected boundary cell can be
+        returned. See :py:meth:`bound` for exact selection and repeated bounds.
+        The corners are read in the current unit convention of the collection.
 
         Parameters
         ----------
@@ -178,7 +204,7 @@ class ParticleCollection:
         Returns
         -------
         collection : opencosmo.ParticleCollection
-            A new collection with the particles inside the box.
+            A new collection with the particles in selected cells for each type.
         """
         return self.bound(make_box(p1, p2))
 

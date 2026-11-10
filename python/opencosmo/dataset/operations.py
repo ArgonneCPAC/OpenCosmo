@@ -393,6 +393,20 @@ def rows(
 
 @instrument_call(iss.serialize_bound, drop="snap")
 def bound(state: DatasetState, region, select_by, snap: bool = False):
+    """
+    Restrict a dataset to a region, in the current unit convention.
+
+    By default, particles or objects in cells on the region boundary are checked
+    individually, so the result is exact. This is what the public
+    :py:meth:`opencosmo.Dataset.bound` does, and it has no ``snap`` argument.
+
+    With ``snap=True``, which only :py:meth:`opencosmo.ParticleCollection.bound`
+    uses internally, the whole contained and intersecting cells are selected and
+    boundary coordinates are never read. Particles outside the region can be
+    returned, and compact chunked selections are kept where possible. The state
+    records the requested region, so a later bound is compared with it and
+    not with the cells that were selected.
+    """
     if state.spatial_index is None:
         raise AttributeError(
             "Your dataset does not contain a spatial index, "

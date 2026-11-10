@@ -44,6 +44,8 @@ Lightcones hold datasets from several different redshift steps, which are stacke
            11 119.049706            49.151897        0.96145815         126.78099 ...      0.12496548 1.5141958             (1049601, 60492121202) 0.040086865
            11  119.60659             43.32933         0.9612831        127.099144 ...       -149.2758  1.519284             (1049601, 60492184203)  0.04027629
 
+.. _particle-collections:
+
 Particle Collections
 --------------------
 
@@ -55,6 +57,10 @@ A full particle snapshot of a HACC simulation (a ``snapshotparticles`` file) ope
    particles = oc.open("m000p-624.snapshotparticles.hdf5")
    region = oc.make_box((100, 100, 100), (120, 120, 120))
    gas = particles.with_units("scalefree").bound(region)["gas_particles"]
+
+Due to the large size of particle datasets, spatial queries on a particle collection are snapped to the spatial index. This snapping means :py:meth:`bound <opencosmo.ParticleCollection.bound>` and :py:meth:`box_search <opencosmo.ParticleCollection.box_search>` will sometimes return particles that are slightly outside the requested region
+
+Repeated bounds work on the current selection. After an overlapping query, the requested region becomes the logical region used to check later queries, even though the retained cells can extend beyond it. A later query outside that region may warn or return an empty selection, even if retained boundary cells contain particles there.
 
 :py:meth:`bound <opencosmo.ParticleCollection.bound>`, :py:meth:`box_search <opencosmo.ParticleCollection.box_search>` and :py:meth:`with_units <opencosmo.ParticleCollection.with_units>` apply to every particle type, and each type is queried through its own spatial index. :py:meth:`select <opencosmo.ParticleCollection.select>` and :py:meth:`drop <opencosmo.ParticleCollection.drop>` match column names to the particle types that have them, so ``particles.select("x", "y", "z", "sfr")`` keeps the positions of every type and the star formation rate of the gas. :py:meth:`with_datasets <opencosmo.ParticleCollection.with_datasets>` keeps only some of the types, :py:meth:`evaluate_on_dataset <opencosmo.ParticleCollection.evaluate_on_dataset>` evaluates a function on one type, and :py:meth:`get_data <opencosmo.ParticleCollection.get_data>` returns the data of every type in a dictionary keyed by type. For other operations, transform the datasets one at a time.
 
