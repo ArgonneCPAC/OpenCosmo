@@ -39,7 +39,7 @@ def instrument_call(
     if isinstance(drop, str):
         drop_columns.add(drop)
     elif drop is not None:
-        drop_columns = drop_columns.intersection(drop)
+        drop_columns = drop_columns.union(drop)
 
     def make_wrapped_function(func: Callable) -> Callable:
 

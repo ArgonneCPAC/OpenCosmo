@@ -58,7 +58,7 @@ A full particle snapshot of a HACC simulation (a ``snapshotparticles`` file) ope
    region = oc.make_box((100, 100, 100), (120, 120, 120))
    gas = particles.with_units("scalefree").bound(region)["gas_particles"]
 
-Due to the large size of particle datasets, spatial queries on a particle collection are snapped to the spatial index. This snapping means :py:meth:`bound <opencosmo.ParticleCollection.bound>` and :py:meth:`box_search <opencosmo.ParticleCollection.box_search>` will sometimes return particles that are slightly outside the requested region
+Due to the large size of particle datasets, spatial queries on a particle collection are snapped to the spatial index. This snapping means :py:meth:`bound <opencosmo.ParticleCollection.bound>` and :py:meth:`box_search <opencosmo.ParticleCollection.box_search>` will sometimes return particles that are slightly outside the requested region.
 
 Repeated bounds work on the current selection. After an overlapping query, the requested region becomes the logical region used to check later queries, even though the retained cells can extend beyond it. A later query outside that region may warn or return an empty selection, even if retained boundary cells contain particles there.
 
