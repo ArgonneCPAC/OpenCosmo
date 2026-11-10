@@ -95,7 +95,7 @@ class PowerSpectrum:
         -------
         steps: np.ndarray
         """
-        return self.__state.steps
+        return self.__state.steps.copy()
 
     @property
     def redshifts(self) -> np.ndarray:
@@ -106,7 +106,7 @@ class PowerSpectrum:
         -------
         redshifts: np.ndarray
         """
-        return self.__state.redshifts
+        return self.__state.redshifts.copy()
 
     @property
     def k(self) -> u.Quantity | np.ndarray:
@@ -131,7 +131,7 @@ class PowerSpectrum:
         -------
         n_modes: np.ndarray
         """
-        return self.__state.n_modes
+        return self.__state.n_modes.copy()
 
     def get_data(
         self,

@@ -125,10 +125,15 @@ def test_nonfinite_redshift(hydro):
         hydro.get_data(redshift=np.nan)
 
 
-def test_axes_are_read_only(hydro):
-    for axis in (hydro.steps, hydro.redshifts, hydro.n_modes):
-        with pytest.raises(ValueError, match="read-only"):
-            axis[0] = 0
+def test_axes_are_copies(hydro):
+    unitless = hydro.with_units("unitless")
+    for name in ("steps", "redshifts", "n_modes", "k"):
+        axis = getattr(unitless, name)
+        expected = axis.copy()
+        axis.flags.writeable = True
+        axis[:] = 0
+        assert np.array_equal(getattr(unitless, name), expected)
+    assert np.array_equal(hydro.get_data(redshift=0), hydro.get_data()[-1])
 
 
 def test_missing_spectrum_is_nan(hydro_copy):

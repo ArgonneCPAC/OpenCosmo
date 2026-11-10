@@ -113,7 +113,7 @@ def get_k(state: PowerSpectrumState) -> np.ndarray | u.Quantity:
     # Physical wavenumbers depend on the step, so they are returned for every step.
     a = scale_factor(state, None)
     return state.unit_handler.apply_units(
-        {"k": state.k}, unit_kwargs={"scale_factor": a}
+        {"k": state.k.copy()}, unit_kwargs={"scale_factor": a}
     )["k"]
 
 
